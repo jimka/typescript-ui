@@ -1,0 +1,29 @@
+{
+  "name": "base-typescript",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "start": "ws --directory dist",
+    "watch": "concurrently --kill-others \"npm run watch_sources\" \"npm run watch_resources\"",
+    "watch_sources": "tsc-watch",
+    "watch_resources": "cpx src/resources/**/* dist --watch",
+    "minify": "npx google-closure-compiler --js ./dist/app.js --js_output_file ./dist/app.js\"",
+    "compile": "tsc",
+    "sync": "cpx src/resources/**/* dist",
+    "doc": "typedoc --out dist/docs src/typescript",
+    "clean": "rimraf dist/*",
+    "build": "npm run sync && npm run compile",
+    "cleanbuild": "npm run clean && npm run build",
+    "dev": "concurrently --kill-others \"npm run watch\" \"npm run start\"",
+    "version": "tsc --version"
+  },
+  "devDependencies": {
+    "cpx": "^1.5.0",
+    "rimraf": "^3.0.2",
+    "tsc-watch": "^4.2.3",
+    "google-closure-compiler": "^20200406.0.0",
+    "typedoc": "^0.15.8",
+    "typescript": "^3.8.3",
+    "ws": "^7.2.5"
+  }
+}

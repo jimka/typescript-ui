@@ -1,0 +1,19 @@
+<html>
+    <head>
+        <script src="Base/script/fontawesome/js/all.js"></script>
+        <script src="s.min.js"></script>
+        <script>
+            if (typeof Promise === 'undefined') {
+                document.write('<script src="bluebird.core.min.js"><\/script>');
+            }
+
+            if (typeof fetch === 'undefined') {
+                document.write('<script src="fetch.umd.js"><\/script>');
+            }
+
+            System.import('/main.js');
+        </script>
+    </head>
+    <body>
+    </body>
+</html>

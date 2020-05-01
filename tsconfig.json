@@ -1,0 +1,16 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "system",
+        "sourceRoot": "src/typescript",
+        "outDir": "dist",
+        //"outFile": "dist/app.js",
+        "inlineSourceMap": true,
+        "noImplicitReturns": true,
+        "noImplicitAny": true,
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "removeComments": true,
+    }
+}
