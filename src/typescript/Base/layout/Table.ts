@@ -10,7 +10,7 @@ export class Table extends LayoutManager {
     }
 
     attach(container: Component) {
-        if (!(container instanceof TableComponent)) {
+        if (container.getClassName() != "Table") {
             throw new Error("Container must be a Table.");
         }
 
