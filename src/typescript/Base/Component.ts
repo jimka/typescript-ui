@@ -310,7 +310,7 @@ export class Component extends BaseObject {
 
         let ruleValue;
         if (this.visible != null) {
-            ruleValue = this.visible ? "visible" : "hidden";
+            ruleValue = this.visible ? "inherit" : "hidden";
         } else {
             ruleValue = "inherit";
         }
