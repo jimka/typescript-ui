@@ -1,4 +1,4 @@
-import { Border } from "./Base/Layout/Border.js";
+import { Border } from "./Base/layout/Border.js";
 import { Component } from "./Base/Component.js";
 import { List } from "./Base/component/List.js";
 import { Label } from "./Base/component/Label.js";
