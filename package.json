@@ -24,6 +24,6 @@
     "google-closure-compiler": "^20200406.0.0",
     "typedoc": "^0.15.8",
     "typescript": "^3.8.3",
-    "ws": "^7.2.5"
+    "ws": "^7.4.6"
   }
 }
