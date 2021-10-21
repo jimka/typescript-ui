@@ -1,7 +1,7 @@
 import { Component } from "../Component.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
-import { LayoutConstraints } from "../Layout/LayoutConstraints.js";
+import { LayoutConstraints } from "../layout/LayoutConstraints.js";
 import { BulletedListItemStyle } from "./BulletedListItemStyle.js";
 import { NumberedListItemStyle } from "./NumberedListItemStyle.js";
 import { ListItem } from "./ListItem.js";

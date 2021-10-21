@@ -4,7 +4,7 @@ import { Fit } from "../layout/Fit.js";
 import { Label } from "./Label.js";
 import { FillType } from "../layout/FillType.js";
 import { BorderStyle } from "../BorderStyle.js";
-import { AnchorType } from "../Layout/AnchorType.js";
+import { AnchorType } from "../layout/AnchorType.js";
 
 export class Button extends Component {
 

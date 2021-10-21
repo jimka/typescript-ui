@@ -1,6 +1,6 @@
 import { Component } from "./Base/Component.js"
 import { Button } from "./Base/component/Button.js";
-import { Checkbox } from "./Base/component/CheckBox.js";
+import { Checkbox } from "./Base/component/Checkbox.js";
 import { ComboBox } from "./Base/component/ComboBox.js";
 import { Label } from "./Base/component/Label.js";
 import { List } from "./Base/component/List.js";

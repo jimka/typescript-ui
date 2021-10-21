@@ -1,5 +1,5 @@
 import { CellEditor } from "./CellEditor.js";
-import { Checkbox } from "../../../../component/CheckBox.js";
+import { Checkbox } from "../../../../component/Checkbox.js";
 
 export class BooleanEditor extends CellEditor<Boolean> {
 
