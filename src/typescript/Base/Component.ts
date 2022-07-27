@@ -932,6 +932,7 @@ export class Component extends BaseObject {
         let constraints = this.delLayoutConstraints(component);
 
         component.removeElement();
+        this.doLayout();
 
         return constraints;
     }
