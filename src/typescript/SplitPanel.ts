@@ -57,7 +57,6 @@ export class SplitPanel extends Component {
         sliderLabel.setText(slider.getValue().toString() + "%");
         slider.addActionListener(() => {
             sliderLabel.setText(slider.getValue().toString() + "%");
-            this.doLayout();
         });
         southComponent.addComponent(slider);
     }
