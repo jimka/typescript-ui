@@ -81,7 +81,6 @@ export class LayoutTestPanel extends Component {
         sliderLabel.setText(slider.getValue().toString() + "%");
         slider.addActionListener(() => {
             sliderLabel.setText(slider.getValue().toString() + "%");
-            this.doLayout();
         });
         this.addComponent(slider);
 
@@ -92,7 +91,6 @@ export class LayoutTestPanel extends Component {
         textField.addActionListener(() => {
             label.setText(textField.getText());
             textArea.setText(textField.getText());
-            this.doLayout();
         });
         this.addComponent(textField);
 
