@@ -8,6 +8,8 @@ import { ColumnPanel } from "./ColumnPanel.js";
 import { FitPanel } from "./FitPanel.js";
 import { SplitPanel } from "./SplitPanel.js";
 import { MiscPanel } from "./MiscPanel.js";
+import { ComplexUIPanel } from "./ComplexUIPanel.js";
+import { Fit } from "./Base/layout/Fit.js";
 
 let body = Body.getInstance();
 
@@ -37,3 +39,9 @@ body.addComponent(hboxPanel, { name: "HBox" });
 
 let vboxPanel = new VBoxPanel();
 body.addComponent(vboxPanel, { name: "VBox" });
+
+
+// body.setLayoutManager(new Fit());
+let complexPanel = new ComplexUIPanel();
+// debugger;
+body.addComponent(complexPanel, { name: "Complex" });
