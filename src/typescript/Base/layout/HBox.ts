@@ -48,7 +48,7 @@ export class HBox extends LayoutManager {
 
             if (size) {
                 width += size.width;
-                height = Math.min(height, size.height);
+                height = height == Number.MAX_SAFE_INTEGER ? Math.min(height, size.height) : Math.max(height, size.height);
             }
         }
 
@@ -167,10 +167,7 @@ export class HBox extends LayoutManager {
                 FillType.BOTH
             );
 
-            if (size) {
-                x += size.width;
-            }
-
+            x += component.getWidth();
             x += this.getComponentSpacing();
         }
     }

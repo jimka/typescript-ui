@@ -13,7 +13,6 @@ export class FieldSet extends Component {
         this.legend.setText(title);
         this.setBorder(BorderStyle.GROOVE, 1, "BLACK");
         this.setPadding(new Insets(3, 3, 3, 3));
-        this.setPreferredSize(200, 200);
     }
 
     getTitle() {
