@@ -47,7 +47,7 @@ export class VBox extends LayoutManager {
             let size = component.getPreferredSize();
 
             if (size) {
-                width = Math.min(width, size.width);
+                width = width == Number.MAX_SAFE_INTEGER ? Math.min(width, size.width) : Math.max(width, size.width);
                 height += size.height;
             }
         }
@@ -167,10 +167,7 @@ export class VBox extends LayoutManager {
                 FillType.BOTH
             )
 
-            if (size) {
-                y += size.height;
-            }
-
+            y += component.getHeight();
             y += this.getComponentSpacing();
         }
     }
