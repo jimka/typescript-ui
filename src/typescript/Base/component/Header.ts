@@ -15,7 +15,6 @@ export class Header extends Component {
 
         this.setPreferredSize(100, 20);
         this.setInsets(new Insets(0, 0, 0, 0));
-        this.setBackgroundColor("#eee");
 
         this.setLayoutManager(new BorderLayout());
 

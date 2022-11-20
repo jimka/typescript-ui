@@ -10,6 +10,7 @@ export class TextArea extends Text {
         this.setCursor("text");
         this.setPadding(new Insets(3, 3, 3, 3));
         this.setPreferredSize(200, 200);
+        this.setBackgroundColor("rgb(255, 255, 255");
         if (text) {
             this.setText(text);
         }

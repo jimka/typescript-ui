@@ -1,11 +1,11 @@
 import { LayoutManager } from "./LayoutManager.js";
-import { HBox } from "./HBox.js";
 import { ToggleButton } from "../component/ToggleButton.js";
 import { Component } from "../Component.js";
 import { Insets } from "../Insets.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { FillType } from "./FillType.js";
 import { ButtonGroup } from "../ButtonGroup.js";
+import { Column } from "./Column.js"
 
 export class Tab extends LayoutManager {
 
@@ -20,10 +20,14 @@ export class Tab extends LayoutManager {
         this.tabs = [];
         this.buttonGroup = new ButtonGroup();
         this.toolbar = new Component();
-        this.toolbar.setLayoutManager(new HBox());
+        let columnLayout = new Column();
+        //columnLayout.setGap(true);
+        columnLayout.setGap(0);
+        this.toolbar.setLayoutManager(columnLayout);
         this.toolbar.setBackgroundColor("#eee");
         this.toolbar.setInsets(new Insets(0, 4, 0, 4));
         this.toolbar.setBorder(BorderStyle.SOLID, 1, "#e1e1e8");
+        this.toolbar.setPreferredSize(0, 30);
         this.selectedTabIndex = 0;
     }
 
@@ -155,7 +159,7 @@ export class Tab extends LayoutManager {
 
     createTab(component: Component) {
         let constraints = this.getLayoutConstraints(component);
-        let name: String;
+        let name: string;
 
         if(constraints && constraints.name) {
             name = constraints.name;
@@ -167,8 +171,8 @@ export class Tab extends LayoutManager {
         let toggleButton = new ToggleButton(name);
 
         toggleButton.setBackgroundColor("#b8b8c3");
-        toggleButton.setForegroundColor("#fff");
-        toggleButton.setBorder(BorderStyle.SOLID, 1, "#e1e1e8");
+        toggleButton.setBorder();
+        toggleButton.setBorderRadius();
         toggleButton.setShadow(null);
         toggleButton.setInsets(new Insets(0, 4, 0, 4));
         toggleButton.getLabel().setInsets(new Insets(0, 4, 0, 4));

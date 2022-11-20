@@ -1,7 +1,7 @@
 import { Text } from "./Text.js";
 import { Insets } from "../Insets.js";
 
-export class PasswordField extends Text {
+export class PasswordField extends Text { // TODO: Don't inherit from Text!
 
     constructor() {
         super("input");
@@ -10,6 +10,7 @@ export class PasswordField extends Text {
         this.setPadding(new Insets(3, 3, 3, 3));
         this.setMaxSize(Number.MAX_SAFE_INTEGER, 20);
         this.setCursor("text");
+        this.setBackgroundColor("rgb(255, 255, 255");
     }
 
     setText(text: String) {

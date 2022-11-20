@@ -7,9 +7,15 @@ export class FooterRow extends Component {
     constructor() {
         super("tfoot");
 
+        this.setBorder(
+            BorderStyle.SOLID, 1, "black",
+            undefined, undefined, undefined,
+            undefined, undefined, undefined,
+            undefined, undefined, undefined
+        );
+        this.setBackgroundImage("linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))");
+
         let row = new Row();
-        row.setBorder(BorderStyle.SOLID, 1, "black");
-        row.setBackgroundColor("#eee");
         this.addRow(row);
     }
 
