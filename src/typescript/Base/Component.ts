@@ -47,6 +47,7 @@ export class Component extends BaseObject {
     private padding: Insets | null;
     private foregroundColor: string | null;
     private backgroundColor: string | null;
+    private backgroundImage: string | null;
     private preferredSize: Size | null = null;
     private minSize: Size | null;
     private maxSize: Size;
@@ -92,6 +93,7 @@ export class Component extends BaseObject {
         this.padding = new Insets(0, 0, 0, 0);
         this.foregroundColor = null; // Inherit from our parent.
         this.backgroundColor = null; // Inherit from our parent.
+        this.backgroundImage = null;
         //this.preferredSize = Base.instantiate("Base.Size");
         this.minSize = {
             width: 0,
@@ -368,6 +370,15 @@ export class Component extends BaseObject {
     setBackgroundColor(backgroundColor: string | null) {
         this.backgroundColor = backgroundColor;
         this.cssRule.style.backgroundColor = this.backgroundColor ? this.backgroundColor : "";
+    }
+
+    getBackgroundImage() {
+        return this.backgroundImage;
+    }
+
+    setBackgroundImage(backgroundImage: string | null) {
+        this.backgroundImage = backgroundImage;
+        this.cssRule.style.backgroundImage = this.backgroundImage ? this.backgroundImage : "";
     }
 
     getForegroundColor() {
@@ -817,6 +828,10 @@ export class Component extends BaseObject {
 
         if (this.backgroundColor) {
             this.cssRule.style.backgroundColor = this.backgroundColor;
+        }
+
+        if (this.backgroundImage) {
+            this.cssRule.style.backgroundImage = this.backgroundImage;
         }
 
         if (this.width) {
