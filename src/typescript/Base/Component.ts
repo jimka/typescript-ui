@@ -425,7 +425,7 @@ export class Component extends BaseObject {
         return this.borderRadius;
     }
 
-    setBorderRadius(borderRadius: string) {
+    setBorderRadius(borderRadius: string | null = null) {
         this.borderRadius = borderRadius;
         this.setElementStyle("borderRadius", this.borderRadius);
     }
