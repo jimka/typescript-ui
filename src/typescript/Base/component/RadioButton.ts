@@ -1,21 +1,36 @@
 import { Component } from "../Component.js";
 import { Event } from "../Event.js";
+import { HBox } from "../layout/HBox.js";
+import { Input } from "./Input.js";
+import { Label } from "./Label.js";
 
 export class RadioButton extends Component {
 
     private selected: boolean;
+    private label: Label;
+    private radio: Input;
 
-    constructor() {
-        super("input");
+    constructor(text? : string) {
+        super();
+
+        this.setLayoutManager(new HBox());
+
+        this.radio = new Input();
+
+        this.label = new Label(text);
+        this.label.setForId(this.radio.getId());
+
+        this.addComponent(this.radio);
+        this.addComponent(this.label);
 
         this.selected = false;
 
-        this.setPreferredSize(20, 20);
-        this.setMaxSize(16, 16);
-        this.setCursor("pointer");
+        this.radio.setPreferredSize(20, 20);
+        this.radio.setMaxSize(16, 16);
+        this.radio.setCursor("pointer");
 
         this.addActionListener(() => {
-            this.selected = this.getElement().checked;
+            this.selected = this.radio.getElement().checked;
         });
     }
 
@@ -24,13 +39,13 @@ export class RadioButton extends Component {
     }
 
     addActionListener(listener: Function) {
-        Event.addListener(this, "change", listener);
+        Event.addListener(this.radio, "change", listener);
     }
 
     setSelected(value: boolean) {
         this.selected = !!value;
 
-        let element = this.getElement();
+        let element = this.radio.getElement();
         if (!element) {
             return;
         }
@@ -44,9 +59,10 @@ export class RadioButton extends Component {
 
     render() {
         let element = <HTMLInputElement>super.render();
+        let radioElement = this.radio.getElement();
 
-        element.setAttribute("type", "radio");
-        element.checked = this.isSelected();
+        radioElement.setAttribute("type", "radio");
+        radioElement.checked = this.isSelected();
 
         return element;
     }
