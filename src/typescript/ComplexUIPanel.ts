@@ -12,6 +12,7 @@ import { TextArea } from "./Base/component/TextArea.js";
 import { Table } from "./Base/component/table/Table.js";
 import { Model } from "./Base/component/table/model/Model.js";
 import { Field } from "./Base/component/table/model/Field.js";
+import { BorderStyle } from "./Base/BorderStyle.js";
 
 export class ComplexUIPanel extends Component {
 
@@ -22,7 +23,9 @@ export class ComplexUIPanel extends Component {
     }
 
     private initLayout() {
-        this.setLayoutManager(new VBox());
+        let vbox = new VBox()
+        vbox.setStretching(true);
+        this.setLayoutManager(vbox);
 
         let panel1 = this.buildPanel1();
         this.addComponent(panel1);
@@ -49,6 +52,7 @@ export class ComplexUIPanel extends Component {
     private buildPanel1() {
         let comp = new Component();
         comp.setLayoutManager(new HBox());
+        comp.setBorder(BorderStyle.SOLID, 1, "black")
 
         let panel11 = new Component();
         panel11.setLayoutManager(new VBox());
@@ -65,9 +69,9 @@ export class ComplexUIPanel extends Component {
         let panel12 = new FieldSet("Filter");
         panel12.setLayoutManager(new VBox());
 
-        let radioCustomersOnly = new RadioButton(); // "Customers Only");
-        let radioCustomersOnATrip = new RadioButton(); // "Customers on a Trip");
-        let radioAllContacts = new RadioButton(); // "All Contacts");
+        let radioCustomersOnly = new RadioButton("Customers Only");
+        let radioCustomersOnATrip = new RadioButton("Customers on a Trip");
+        let radioAllContacts = new RadioButton("All Contacts");
 
         panel12.addComponent(radioCustomersOnly);
         panel12.addComponent(radioCustomersOnATrip);
