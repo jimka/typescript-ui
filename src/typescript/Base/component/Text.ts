@@ -29,6 +29,7 @@ export class Text extends Component {
         this.fontStyle = "normal";
         this.fontVariant = "normal";
         this.fontWeight = "normal";
+
         this.setInsets(null);
 
         this.calculateSize();
@@ -215,7 +216,7 @@ export class Text extends Component {
         rule.style.fontFamily = this.fontFamily ? this.fontFamily : "";
         rule.style.textAlign = this.textAlign ? this.textAlign : "";
         rule.style.textShadow = this.textShadow ? this.textShadow : "";
-        rule.style.kerning = this.fontKerning ? this.fontKerning : "";
+        rule.style.fontKerning = this.fontKerning ? this.fontKerning : "";
         rule.style.fontSize = this.fontSize ? String(this.fontSize) : "";
         rule.style.fontSizeAdjust = this.fontSizeAdjust ? this.fontSizeAdjust : "";
         rule.style.fontStretch = this.fontStretch ? this.fontStretch : "";
@@ -224,7 +225,7 @@ export class Text extends Component {
         rule.style.fontWeight = this.fontWeight ? this.fontWeight : "";
     }
 
-    render() {
+    protected render() {
         let element = super.render();
 
         element.textContent = this.getText().valueOf();
