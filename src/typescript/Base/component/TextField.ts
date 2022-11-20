@@ -2,7 +2,7 @@ import { Text } from "./Text.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 
-export class TextField extends Text {
+export class TextField extends Text { // TODO: Don't inherit from Text!
 
     constructor() {
         super("input");
@@ -11,6 +11,7 @@ export class TextField extends Text {
         this.setPreferredSize(200, 20);
         this.setPadding(new Insets(3, 3, 3, 3));
         this.setMaxSize(Number.MAX_SAFE_INTEGER, 20);
+        this.setBackgroundColor("rgb(255, 255, 255");
 
         Event.addListener(this, "input", this.onInput);
     }

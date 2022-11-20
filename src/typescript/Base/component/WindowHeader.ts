@@ -11,7 +11,11 @@ export class WindowHeader extends Header {
     constructor(text: string) {
         super(text);
 
+        this.setBackgroundImage("linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))");
+
         this.exitButton = new Button();
+        this.exitButton.setBackgroundImage("linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))");
+        this.exitButton.setBorder();
         this.exitButton.removeAllComponents();
 
         let fontAwesomeIcon = new FontAwesomeIcon("fas", "times");

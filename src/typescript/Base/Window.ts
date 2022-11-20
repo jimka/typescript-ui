@@ -58,7 +58,7 @@ export class Window extends Component {
         this.setBorder(BorderStyle.SOLID, 1, "black");
         this.setBorderRadius("4px");
         this.setShadow("3px 3px 2px rgba(0, 0, 0, 0.4)");
-        this.setBackgroundColor("#FFFFFF");
+        this.setBackgroundColor("rgb(241, 241, 241)");
 
         Event.addListener(this.header, "mousedown", this.onMouseDown.bind(this));
     }

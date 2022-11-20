@@ -12,9 +12,15 @@ export class Header extends Component {
     constructor(model: Model) {
         super("thead");
 
+        this.setBorder(
+            undefined, undefined, undefined,
+            undefined, undefined, undefined,
+            BorderStyle.SOLID, 1, "black",
+            undefined, undefined, undefined
+        );
+        this.setBackgroundImage("linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))");
+
         let row = new Row();
-        row.setBorder(BorderStyle.SOLID, 1, "#e1e1e8");
-        row.setBackgroundColor("#eee");
         this.addRow(row);
 
         if (model) {

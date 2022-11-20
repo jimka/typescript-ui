@@ -24,6 +24,8 @@ export class Body extends Component {
         super("body");
 
         this.init();
+
+        this.setBackgroundColor("rgb(241, 241, 241)");
     }
 
     getElement() {

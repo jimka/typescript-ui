@@ -12,6 +12,8 @@ export class ComboBox extends Component {
 
         this.setPreferredSize(200, 20);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, 20);
+        this.setBackgroundColor("rgb(255, 255, 255");
+
         this.items = [];
     }
 

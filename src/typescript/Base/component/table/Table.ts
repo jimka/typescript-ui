@@ -5,6 +5,8 @@ import { Header } from "./Header.js";
 import { Body } from "./Body.js";
 import { FooterRow } from "./Footer.js";
 import { Model } from "./model/Model.js";
+import { BorderStyle } from "../../BorderStyle.js";
+import { Insets } from "../../Insets.js";
 
 export class Table extends Component {
 
@@ -20,6 +22,8 @@ export class Table extends Component {
         super("table");
 
         this.setLayoutManager(new TableLayout());
+        this.setBorder(BorderStyle.SOLID, 1, "rgb(0, 0, 0)");
+        this.setInsets(new Insets(0, 0, 0, 0));
 
         this.model = model;
         this.headerVisible = true;
