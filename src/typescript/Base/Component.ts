@@ -394,6 +394,7 @@ export class Component extends BaseObject {
         return this.border;
     }
 
+    // TODO: Fix this mess and make it easier to call.
     setBorder(topBorderStyle?: BorderStyle, topWidth?: number, topColor?: string,
         rightBorderStyle?: BorderStyle, rightWidth?: number, rightColor?: string,
         bottomBorderStyle?: BorderStyle, bottomWidth?: number, bottomColor?: string,

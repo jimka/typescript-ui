@@ -7,7 +7,7 @@ export class ToggleButton extends Button {
 
     private selected: boolean;
 
-    constructor(text: String) {
+    constructor(text: string) {
         super(text);
 
         this.selected = false;

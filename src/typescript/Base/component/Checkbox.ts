@@ -1,12 +1,12 @@
-import { Component } from "../Component.js";
 import { Event } from "../Event.js";
+import { Input } from "./Input.js";
 
-export class Checkbox extends Component {
+export class Checkbox extends Input {
 
     private selected: boolean;
 
     constructor() {
-        super("input");
+        super();
 
         this.selected = false;
 

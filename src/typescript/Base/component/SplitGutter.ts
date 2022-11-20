@@ -8,7 +8,7 @@ export class SplitGutter extends Component {
     private dragListeners: Array<Function>;
 
     constructor(direction: String) {
-        super("div");
+        super();
 
         this.setBackgroundColor("#AAAAAA");
         this.direction = direction || "horizontal";
