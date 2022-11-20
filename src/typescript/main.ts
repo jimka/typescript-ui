@@ -9,7 +9,6 @@ import { FitPanel } from "./FitPanel.js";
 import { SplitPanel } from "./SplitPanel.js";
 import { MiscPanel } from "./MiscPanel.js";
 import { ComplexUIPanel } from "./ComplexUIPanel.js";
-import { Fit } from "./Base/layout/Fit.js";
 
 let body = Body.getInstance();
 
