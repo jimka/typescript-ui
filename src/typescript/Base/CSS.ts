@@ -19,7 +19,6 @@ export namespace CSS {
 
         if (!style) {
             style = document.createElement("style");
-            style.type = "text/css";
             style.id = "Base";
 
             head.appendChild(style);
@@ -35,8 +34,8 @@ export namespace CSS {
     export function getRule(name: string): CSSStyleRule | null {
         let sheet = getMainStyle();
 
-        for (let idx in sheet.rules) {
-            let rule = sheet.rules[idx] as CSSStyleRule;
+        for (let idx in sheet.cssRules) {
+            let rule = sheet.cssRules[idx] as CSSStyleRule;
 
             if (rule.selectorText === name) {
                 return rule;
@@ -61,7 +60,7 @@ export namespace CSS {
         }
 
         let sheet = getMainStyle();
-        sheet.addRule(name);
+        sheet.insertRule(name + "{}");
 
         return getRule(name);
     }

@@ -115,7 +115,7 @@ export class Button extends Component {
         return this.pressedBorderRadius;
     }
 
-    setBorderRadius(borderRadius: string | null = null) {
+    setPressedBorderRadius(borderRadius: string | null = null) {
         this.pressedBorderRadius = borderRadius;
         this.pressedCSSRule.style.borderRadius = this.pressedBorderRadius ? this.pressedBorderRadius : "none";
     }
