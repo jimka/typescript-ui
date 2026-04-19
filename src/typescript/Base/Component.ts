@@ -518,8 +518,8 @@ export class Component extends BaseObject {
             height: height
         };
 
-        this.cssRule.style.minWidth = String(this.minSize.width);
-        this.cssRule.style.minHeight = String(this.minSize.height);
+        this.cssRule.style.minWidth = this.minSize.width + "px";
+        this.cssRule.style.minHeight = this.minSize.height + "px";
     }
 
     getMaxSize() {
@@ -565,8 +565,8 @@ export class Component extends BaseObject {
             height: height
         };
 
-        this.cssRule.style.maxWidth = String(this.maxSize.width);
-        this.cssRule.style.maxHeight = String(this.maxSize.height);
+        this.cssRule.style.maxWidth = this.maxSize.width === Number.MAX_VALUE ? "none" : this.maxSize.width + "px";
+        this.cssRule.style.maxHeight = this.maxSize.height === Number.MAX_VALUE ? "none" : this.maxSize.height + "px";
 
         this.setAttribute("maxSize", this.maxSize.width + " " + this.maxSize.height);
     }
@@ -670,8 +670,8 @@ export class Component extends BaseObject {
         }
 
         this.setElementStyles({
-            "width": String(size.width),
-            "height": String(size.height)
+            "width": size.width + "px",
+            "height": size.height + "px"
         });
 
         this.doLayout();
@@ -694,7 +694,7 @@ export class Component extends BaseObject {
             return;
         }
 
-        this.setElementStyle("width", String(this.width));
+        this.setElementStyle("width", this.width + "px");
     }
 
     getHeight() {
@@ -714,7 +714,7 @@ export class Component extends BaseObject {
             return;
         }
 
-        this.setElementStyle("height", String(this.height));
+        this.setElementStyle("height", this.height + "px");
     }
 
     getX() {
@@ -729,7 +729,7 @@ export class Component extends BaseObject {
             return;
         }
 
-        this.setElementStyle("left", String(this.left));
+        this.setElementStyle("left", this.left + "px");
     }
 
     getY() {
@@ -744,7 +744,7 @@ export class Component extends BaseObject {
             return;
         }
 
-        this.setElementStyle("top", String(this.top));
+        this.setElementStyle("top", this.top + "px");
     }
 
     getPosition() {
@@ -836,29 +836,29 @@ export class Component extends BaseObject {
         }
 
         if (this.width) {
-            element.style.width = String(this.width);
+            element.style.width = this.width + "px";
         }
 
         if (this.top) {
-            element.style.top = String(this.top);
+            element.style.top = this.top + "px";
         }
 
         if (this.left) {
-            element.style.left = String(this.left);
+            element.style.left = this.left + "px";
         }
 
         if (this.height) {
-            element.style.height = String(this.height);
+            element.style.height = this.height + "px";
         }
 
         if (this.minSize) {
-            this.cssRule.style.minWidth = String(this.minSize.width);
-            this.cssRule.style.minHeight = String(this.minSize.height);
+            this.cssRule.style.minWidth = this.minSize.width + "px";
+            this.cssRule.style.minHeight = this.minSize.height + "px";
         }
 
         if (this.maxSize) {
-            this.cssRule.style.maxWidth = String(this.maxSize.width);
-            this.cssRule.style.maxHeight = String(this.maxSize.height);
+            this.cssRule.style.maxWidth = this.maxSize.width === Number.MAX_VALUE ? "none" : this.maxSize.width + "px";
+            this.cssRule.style.maxHeight = this.maxSize.height === Number.MAX_VALUE ? "none" : this.maxSize.height + "px";
             this.setAttribute("maxSize", this.maxSize.width + " " + this.maxSize.height);
         }
 

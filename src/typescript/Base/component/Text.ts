@@ -122,7 +122,7 @@ export class Text extends Component {
     setFontSize(value: number) {
         this.fontSize = value;
 
-        this.setElementCSSRule("fontSize", value);
+        this.setElementCSSRule("fontSize", value + "px");
 
         this.calculateSize();
     }
@@ -186,7 +186,7 @@ export class Text extends Component {
     setLineHeight(value: number) {
         this.lineHeight = value;
 
-        this.setElementCSSRule("lineHeight", value);
+        this.setElementCSSRule("lineHeight", value + "px");
     }
 
     select(start?: number, end?: number) {
@@ -217,7 +217,7 @@ export class Text extends Component {
         rule.style.textAlign = this.textAlign ? this.textAlign : "";
         rule.style.textShadow = this.textShadow ? this.textShadow : "";
         rule.style.fontKerning = this.fontKerning ? this.fontKerning : "";
-        rule.style.fontSize = this.fontSize ? String(this.fontSize) : "";
+        rule.style.fontSize = this.fontSize ? this.fontSize + "px" : "";
         rule.style.fontSizeAdjust = this.fontSizeAdjust ? this.fontSizeAdjust : "";
         rule.style.fontStretch = this.fontStretch ? this.fontStretch : "";
         rule.style.fontStyle = this.fontStyle ? this.fontStyle : "";

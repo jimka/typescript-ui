@@ -56,6 +56,6 @@ export class Insets extends BaseObject {
     }
 
     render() {
-        return this.getTop() + " " + this.getRight() + " " + this.getBottom() + " " + this.getLeft();
+        return this.getTop() + "px " + this.getRight() + "px " + this.getBottom() + "px " + this.getLeft() + "px";
     }
 };
