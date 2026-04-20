@@ -35,8 +35,8 @@ export class Text extends Component {
         this.calculateSize();
     }
 
-    getElement(createIfMissing: boolean = false): HTMLInputElement {
-        return <HTMLInputElement>super.getElement(createIfMissing);
+    getElement(createIfMissing: boolean = false): HTMLElement {
+        return super.getElement(createIfMissing) as HTMLElement;
     }
 
     private calculateSize() {
@@ -205,7 +205,7 @@ export class Text extends Component {
             end = text.length + 1;
         }
 
-        element.setSelectionRange(start, end);
+        (element as HTMLInputElement).setSelectionRange(start, end);
     }
 
     applyStyle(element: HTMLElement) {

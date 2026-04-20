@@ -45,5 +45,5 @@ body.addComponent(gridPanel, { name: "Grid" });
 
 // body.setLayoutManager(new Fit());
 let complexPanel = new ComplexUIPanel();
-debugger;
+
 body.addComponent(complexPanel, { name: "Complex" });

@@ -17,12 +17,12 @@ export class Label extends Text {
     public setForId(id : string) {
         this.forId = id;
 
-        let element = this.getElement();
+        let element = this.getElement() as HTMLLabelElement;
         if (!element) {
             return;
         }
 
-        element.textContent = id;
+        element.htmlFor = id;
     }
 
     protected render() {

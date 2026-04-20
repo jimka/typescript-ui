@@ -13,6 +13,10 @@ export class PasswordField extends Text { // TODO: Don't inherit from Text!
         this.setBackgroundColor("rgb(255, 255, 255");
     }
 
+    getElement(createIfMissing: boolean = false): HTMLInputElement {
+        return super.getElement(createIfMissing) as HTMLInputElement;
+    }
+
     setText(text: String) {
         super.setText(text);
 
