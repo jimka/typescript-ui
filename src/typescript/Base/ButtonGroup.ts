@@ -35,6 +35,6 @@ export class ButtonGroup {
             return;
         }
 
-        this.buttons.slice(idx);
+        this.buttons.splice(idx);
     }
 }

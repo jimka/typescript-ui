@@ -18,7 +18,7 @@ export namespace Util {
     }
 
     export function isInteger(value: Object) {
-        return Number(value) != NaN;
+        return Number.isInteger(value);
     }
 
     export function select(selector: string): HTMLElement {
