@@ -1,6 +1,6 @@
 import { LayoutManager } from "./layout/LayoutManager.js";
 import { Absolute } from "./layout/Absolute.js";
-import { Border } from "./Border.js";
+import { Border, BorderOptions } from "./Border.js";
 import { Size } from "./Size.js";
 import { Insets } from "./Insets.js";
 import { BaseObject } from "./BaseObject.js";
@@ -8,7 +8,6 @@ import { LayoutConstraints } from "./layout/LayoutConstraints.js";
 import { Type } from "./Type.js";
 import { Util } from "./Util.js";
 import { CSS } from "./CSS.js";
-import { BorderStyle } from "./BorderStyle.js";
 import { Position } from "./Position.js";
 //import { FastDom } from "./FastDom.js";
 
@@ -394,17 +393,8 @@ export class Component extends BaseObject {
         return this.border;
     }
 
-    // TODO: Fix this mess and make it easier to call.
-    setBorder(topBorderStyle?: BorderStyle, topWidth?: number, topColor?: string,
-        rightBorderStyle?: BorderStyle, rightWidth?: number, rightColor?: string,
-        bottomBorderStyle?: BorderStyle, bottomWidth?: number, bottomColor?: string,
-        leftBorderStyle?: BorderStyle, leftWidth?: number, leftColor?: string) {
-
-        this.border = new Border(topBorderStyle, topWidth, topColor,
-            rightBorderStyle, rightWidth, rightColor,
-            bottomBorderStyle, bottomWidth, bottomColor,
-            leftBorderStyle, leftWidth, leftColor
-        );
+    setBorder(options?: BorderOptions) {
+        this.border = new Border(options);
 
         if (this.border) {
             this.border.applyOnCSSRule(this.cssRule);

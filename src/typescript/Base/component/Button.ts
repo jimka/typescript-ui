@@ -6,7 +6,7 @@ import { FillType } from "../layout/FillType.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { AnchorType } from "../layout/AnchorType.js";
 import { CSS } from "../CSS.js";
-import { Border } from "../Border.js";
+import { Border, BorderOptions } from "../Border.js";
 
 export class Button extends Component {
 
@@ -40,9 +40,7 @@ export class Button extends Component {
         });
 
         this.setCursor("pointer");
-        this.setBorder(
-            BorderStyle.RIDGE, 2, "rgb(200, 200, 200)"
-        );
+        this.setBorder({ style: BorderStyle.RIDGE, width: 2, color: "rgb(200, 200, 200)" });
         this.setBorderRadius("4px");
         this.setShadow("1px 2px 5px 0 rgba(0, 0, 0, 0.2)");
         this.setBackgroundImage("linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))");
@@ -92,17 +90,8 @@ export class Button extends Component {
         return this.pressedBorder;
     }
 
-    // TODO: Fix this mess and make it easier to call.
-    setPressedBorder(topBorderStyle?: BorderStyle, topWidth?: number, topColor?: string,
-        rightBorderStyle?: BorderStyle, rightWidth?: number, rightColor?: string,
-        bottomBorderStyle?: BorderStyle, bottomWidth?: number, bottomColor?: string,
-        leftBorderStyle?: BorderStyle, leftWidth?: number, leftColor?: string) {
-
-        this.pressedBorder = new Border(topBorderStyle, topWidth, topColor,
-            rightBorderStyle, rightWidth, rightColor,
-            bottomBorderStyle, bottomWidth, bottomColor,
-            leftBorderStyle, leftWidth, leftColor
-        );
+    setPressedBorder(options?: BorderOptions) {
+        this.pressedBorder = new Border(options);
 
         if (this.pressedBorder) {
             this.pressedBorder.applyOnCSSRule(this.pressedCSSRule);

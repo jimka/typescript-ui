@@ -1,6 +1,22 @@
 import { BorderLine } from "./BorderLine.js";
 import { BorderStyle } from "./BorderStyle.js";
 
+export interface BorderSideOptions {
+    style?: BorderStyle;
+    width?: number;
+    color?: string;
+}
+
+export interface BorderOptions {
+    style?: BorderStyle;
+    width?: number;
+    color?: string;
+    top?: BorderSideOptions;
+    right?: BorderSideOptions;
+    bottom?: BorderSideOptions;
+    left?: BorderSideOptions;
+}
+
 export class Border extends Object {
 
     private top: BorderLine;
@@ -8,40 +24,19 @@ export class Border extends Object {
     private bottom: BorderLine;
     private left: BorderLine;
 
-    constructor(topBorderStyle?: BorderStyle, topWidth?: number, topColor?: string,
-                rightBorderStyle?: BorderStyle, rightWidth?: number, rightColor?: string,
-                bottomBorderStyle?: BorderStyle, bottomWidth?: number, bottomColor?: string,
-                leftBorderStyle?: BorderStyle, leftWidth?: number, leftColor?: string) {
+    constructor(options?: BorderOptions) {
         super();
 
-        if (topBorderStyle && (!rightBorderStyle && !bottomBorderStyle && !leftBorderStyle)) {
-            rightBorderStyle = topBorderStyle;
-            rightWidth = topWidth;
-            rightColor = topColor;
+        const fallback: BorderSideOptions = { style: options?.style, width: options?.width, color: options?.color };
+        const top = options?.top ?? fallback;
+        const right = options?.right ?? fallback;
+        const bottom = options?.bottom ?? fallback;
+        const left = options?.left ?? fallback;
 
-            bottomBorderStyle = topBorderStyle;
-            bottomWidth = topWidth;
-            bottomColor = topColor;
-
-            leftBorderStyle = topBorderStyle;
-            leftWidth = topWidth;
-            leftColor = topColor;
-        }
-
-        if (topBorderStyle && rightBorderStyle && (!bottomBorderStyle && !leftBorderStyle)) {
-            bottomBorderStyle = topBorderStyle;
-            bottomWidth = topWidth;
-            bottomColor = topColor;
-
-            leftBorderStyle = rightBorderStyle;
-            leftWidth = rightWidth;
-            leftColor = rightColor;
-        }
-
-        this.top = new BorderLine("border-top", topBorderStyle, topWidth, topColor);
-        this.right = new BorderLine("border-right", rightBorderStyle as BorderStyle, rightWidth as number, rightColor as string);
-        this.bottom = new BorderLine("border-bottom", bottomBorderStyle as BorderStyle, bottomWidth as number, bottomColor as string);
-        this.left = new BorderLine("border-left", leftBorderStyle as BorderStyle, leftWidth as number, leftColor as string);
+        this.top = new BorderLine("border-top", top.style, top.width, top.color);
+        this.right = new BorderLine("border-right", right.style as BorderStyle, right.width as number, right.color as string);
+        this.bottom = new BorderLine("border-bottom", bottom.style as BorderStyle, bottom.width as number, bottom.color as string);
+        this.left = new BorderLine("border-left", left.style as BorderStyle, left.width as number, left.color as string);
     }
 
     getTop() {
