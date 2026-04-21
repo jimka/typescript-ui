@@ -74,14 +74,14 @@ export class Text extends Component {
     setText(text: String) {
         this.text = text || "";
 
+        this.calculateSize();
+
         let element = this.getElement();
         if (!element) {
             return;
         }
 
         element.textContent = text.valueOf();
-
-        this.calculateSize();
     }
 
     getTextAlign() {

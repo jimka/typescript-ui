@@ -48,6 +48,7 @@ export class Component extends BaseObject {
     private backgroundColor: string | null;
     private backgroundImage: string | null;
     private preferredSize: Size | null = null;
+    private onPreferredSizeChange: (() => void) | null = null;
     private minSize: Size | null;
     private maxSize: Size;
     private overflow: string | null;
@@ -457,12 +458,14 @@ export class Component extends BaseObject {
     }
 
     setPreferredSize(width: number, height: number) {
-        this.preferredSize = {
-            width: width,
-            height: height
-        };
+        const prev = this.preferredSize;
+        if (prev && prev.width === width && prev.height === height) {
+            return;
+        }
 
+        this.preferredSize = { width, height };
         this.setAttribute("preferredSize", this.preferredSize.width + " " + this.preferredSize.height);
+        this.onPreferredSizeChange?.();
     }
 
     getMinSize() {
@@ -909,6 +912,7 @@ export class Component extends BaseObject {
     addComponent(component: Component, constraints?: LayoutConstraints) {
         this.components.push(component);
         this.setLayoutConstraints(component, constraints);
+        component.onPreferredSizeChange = () => this.doLayout();
 
         let element = this.getElement();
         if (!element) {
@@ -937,6 +941,7 @@ export class Component extends BaseObject {
 
         let constraints = this.delLayoutConstraints(component);
 
+        component.onPreferredSizeChange = null;
         component.removeElement();
         this.doLayout();
 
@@ -946,6 +951,7 @@ export class Component extends BaseObject {
     removeAllComponents() {
         for (let idx in this.components) {
             let component = this.components[idx];
+            component.onPreferredSizeChange = null;
             component.removeElement();
         }
 
