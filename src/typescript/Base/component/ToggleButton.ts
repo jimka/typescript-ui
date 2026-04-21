@@ -1,18 +1,24 @@
+import { CSS } from "../CSS.js";
 import { Event } from "../Event.js";
 import { Button } from "./Button.js";
 
-// TODO: Need to make this component into a proper toggle button, it's currently a bit of a hack.
-
 export class ToggleButton extends Button {
 
-    private selected: boolean;
+    private selected: boolean = false;
+    private selectedCSSRule: CSSStyleRule;
 
     constructor(text: string) {
         super(text);
 
-        this.selected = false;
+        this.selectedCSSRule = CSS.createComponentRule(this.getId() + ".selected") as CSSStyleRule;
+        this.selectedCSSRule.style.boxShadow = "2px 2px 1px inset grey";
+        this.selectedCSSRule.style.backgroundImage = "linear-gradient(rgb(200, 200, 200), rgb(200, 200, 200))";
 
-        Event.addListener(this, "click", this.onAction);
+        Event.addListener(this, "click", () => this.onAction());
+    }
+
+    addActionListener(listener: Function) {
+        Event.addListener(this, "change", listener);
     }
 
     isSelected() {
@@ -22,20 +28,21 @@ export class ToggleButton extends Button {
     setSelected(value: boolean) {
         this.selected = value;
 
-        if (value) {
-            this.setShadow("2px 2px 1px inset grey");
-        } else {
-            this.setShadow("none");
+        let element = this.getElement();
+        if (element) {
+            element.classList.toggle("selected", value);
         }
     }
 
-    onAction() {
+    private onAction() {
         this.setSelected(!this.selected);
+
+        Event.fireEvent(this, "change");
     }
 
     render() {
         let element = super.render();
-
+        element.classList.toggle("selected", this.selected);
         return element;
     }
 }
