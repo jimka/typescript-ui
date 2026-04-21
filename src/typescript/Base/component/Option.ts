@@ -2,10 +2,10 @@ import { Text } from "./Text.js";
 
 export class Option extends Text {
 
-    private key: String;
-    private value: String;
+    private key: string;
+    private value: string;
 
-    constructor(key: String, value: String) {
+    constructor(key: string, value: string) {
         super("option", value);
 
         this.key = key;
@@ -13,15 +13,14 @@ export class Option extends Text {
     }
 
     applyStyle() {
-        // The component styles messes with the browser rendering too much here, so we skip them.
-        // TODO: Fix!
+        // Framework styles (absolute positioning etc.) break native option rendering inside <select>.
     }
 
     render() {
         let element = <HTMLOptionElement>super.render();
 
-        element.value = this.key.valueOf();
-        element.textContent = this.value.valueOf();
+        element.value = this.key;
+        element.textContent = this.value;
 
         return element;
     }
