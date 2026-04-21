@@ -6,7 +6,8 @@
       "Bash(command -v nvm)",
       "Bash(nvm list *)",
       "Bash(npx vite *)",
-      "Bash(curl -s http://localhost:8015/)"
+      "Bash(curl -s http://localhost:8015/)",
+      "Bash(npm run *)"
     ]
   }
 }
