@@ -137,11 +137,11 @@ None atm.
 
 6. ~~**Re-layout parent when a `Text` component's preferred size changes**~~ — calling `setText()` with longer text updates the preferred size but does not trigger `doLayout()` on the parent container, causing text to be clipped. The fix likely belongs in `calculateSize()` or `setText()`, propagating a size-change notification up to the nearest layout manager.
 
-7. **Introduce virtual scrolling for `Table`** — the current implementation renders all rows into the DOM. For large datasets this will become slow; a windowed renderer would address that.
+7. **Introduce virtual scrolling for `Table`** — the current implementation renders all rows into the DOM. For large datasets this will become slow; a windowed renderer would address that. *(Initial render and resize performance fixed by caching CSS rules in `CSS.ts` — O(N²) stylesheet scans replaced with O(1) map lookups.)*
 
 8. **Add a test suite** — the project has no automated tests. Adding unit tests for the pure logic in `Util`, `Type`, layout constraint resolution, and `ButtonGroup` would catch regressions quickly and is a natural starting point before larger refactors.
 
-9. **Remove or extract the 550-line commented block in `MiscPanel.ts`** — move large test datasets to fixture files so the panel code stays readable.
+9. ~~**Remove or extract the 550-line commented block in `MiscPanel.ts`** — move large test datasets to fixture files so the panel code stays readable.~~
 
 10. ~~**Upgrade Vite** — the project uses Vite 2.9 (released 2022). Upgrading to Vite 5+ would bring faster cold starts, better HMR, and security fixes.~~
 
