@@ -1,5 +1,7 @@
 
 export namespace CSS {
+    const ruleCache = new Map<string, CSSStyleRule>();
+
     function getStyle(name: String): CSSStyleSheet {
         let head = document.getElementsByTagName("head")[0] as HTMLHeadElement;
         if (!head) {
@@ -32,12 +34,18 @@ export namespace CSS {
     }
 
     export function getRule(name: string): CSSStyleRule | null {
+        const cached = ruleCache.get(name);
+        if (cached) {
+            return cached;
+        }
+
         let sheet = getMainStyle();
 
         for (let idx in sheet.cssRules) {
             let rule = sheet.cssRules[idx] as CSSStyleRule;
 
             if (rule.selectorText === name) {
+                ruleCache.set(name, rule);
                 return rule;
             }
         }
@@ -54,15 +62,16 @@ export namespace CSS {
     }
 
     export function createRule(name: string): CSSStyleRule | null {
-        let rule = getClassRule(name);
-        if (rule) {
+        if (ruleCache.has(name)) {
             return null;
         }
 
         let sheet = getMainStyle();
         sheet.insertRule(name + "{}");
 
-        return getRule(name);
+        const rule = sheet.cssRules[0] as CSSStyleRule;
+        ruleCache.set(name, rule);
+        return rule;
     }
 
     export function createClassRule(name: string): CSSStyleRule | null {
