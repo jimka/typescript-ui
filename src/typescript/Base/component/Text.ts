@@ -1,5 +1,4 @@
 import { Component } from "../Component.js";
-import { Body } from "../Body.js";
 
 export class Text extends Component {
 
@@ -41,16 +40,28 @@ export class Text extends Component {
 
     private calculateSize() {
         if (this.text) {
-            let canvas = Body.getInstance().getCanvas();
-            canvas.font = this.fontWeight + " " + this.getFontSize() + "px " + this.getFontFamily();
-            canvas.fillStyle = this.getForegroundColor() || "black";
+            let probe = document.createElement("span");
 
-            let textSize = canvas.measureText(this.text ? this.text.toString() : "");
+            probe.style.cssText = [
+                "position:fixed",
+                "visibility:hidden",
+                "white-space:nowrap",
+                `font-family:${this.fontFamily}`,
+                `font-size:${this.fontSize}px`,
+                `font-weight:${this.fontWeight}`,
+                `font-style:${this.fontStyle}`,
+                `font-variant:${this.fontVariant}`,
+                `font-stretch:${this.fontStretch}`,
+            ].join(";");
 
-            let width = textSize.width;
-            let height = (this.fontSize || 0) + textSize.actualBoundingBoxDescent;
+            probe.textContent = this.text.toString();
+            document.body.appendChild(probe);
 
-            this.setPreferredSize(width, height);
+            let rect = probe.getBoundingClientRect();
+
+            document.body.removeChild(probe);
+
+            this.setPreferredSize(rect.width, rect.height);
         } else {
             this.setPreferredSize(0, 0);
         }
