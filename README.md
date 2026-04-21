@@ -135,7 +135,7 @@ None atm.
 
 5. ~~**Add cross-browser support** — currently Chrome-only. Audit layout calculations that rely on Chrome-specific DOM behavior (especially text measurement via canvas) and add compatibility for Firefox and Safari.~~
 
-6. **Re-layout parent when a `Text` component's preferred size changes** — calling `setText()` with longer text updates the preferred size but does not trigger `doLayout()` on the parent container, causing text to be clipped. The fix likely belongs in `calculateSize()` or `setText()`, propagating a size-change notification up to the nearest layout manager.
+6. ~~**Re-layout parent when a `Text` component's preferred size changes**~~ — calling `setText()` with longer text updates the preferred size but does not trigger `doLayout()` on the parent container, causing text to be clipped. The fix likely belongs in `calculateSize()` or `setText()`, propagating a size-change notification up to the nearest layout manager.
 
 7. **Introduce virtual scrolling for `Table`** — the current implementation renders all rows into the DOM. For large datasets this will become slow; a windowed renderer would address that.
 
@@ -143,6 +143,6 @@ None atm.
 
 9. **Remove or extract the 550-line commented block in `MiscPanel.ts`** — move large test datasets to fixture files so the panel code stays readable.
 
-10. **Upgrade Vite** — the project uses Vite 2.9 (released 2022). Upgrading to Vite 5+ would bring faster cold starts, better HMR, and security fixes.
+10. ~~**Upgrade Vite** — the project uses Vite 2.9 (released 2022). Upgrading to Vite 5+ would bring faster cold starts, better HMR, and security fixes.~~
 
 11. **Consider publishing as a library** — the framework is self-contained. Adding a library build entry in `vite.config.ts` would let it be consumed as an npm package by other projects.
