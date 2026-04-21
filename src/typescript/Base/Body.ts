@@ -14,7 +14,6 @@ import { Size } from "./Size.js";
 export class Body extends Component {
 
     private static readonly INSTANCE: Body = new Body();
-    private canvas: CanvasRenderingContext2D | null = null;
 
     static getInstance() {
         return this.INSTANCE;
@@ -32,19 +31,6 @@ export class Body extends Component {
         return Util.select("body");
     }
 
-    getCanvas() {
-        return this.canvas as CanvasRenderingContext2D;
-    }
-
-    private initCanvas() {
-        let canvas = document.createElement("canvas") as HTMLCanvasElement
-        canvas.style.display = "none";
-
-        this.getElement().appendChild(canvas);
-
-        this.canvas = canvas.getContext("2d");
-    }
-
     protected init() {
         super.init();
 
@@ -56,7 +42,5 @@ export class Body extends Component {
         Event.addViewportResizeListener(function (size: Size) {
             me.setSize(size);
         });
-
-        this.initCanvas();
     }
 }
