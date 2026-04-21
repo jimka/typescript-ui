@@ -31,9 +31,9 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
         Event.addListener(this, "change", listener);
     }
 
-    getSelectedComponent() {
+    getSelectedValue() {
         let element = this.getElement();
-        return element[element.selectedIndex].textContent;
+        return (<HTMLElement>element[element.selectedIndex]).dataset.key;
     }
 
     getSelectedIndex() {

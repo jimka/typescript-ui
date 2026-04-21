@@ -2,8 +2,8 @@ import { Component } from "../Component.js";
 
 export class ListItem extends Component {
 
-    private key: String;
-    private value: String;
+    private key: string;
+    private value: string;
 
     constructor(key: string, value: string) {
         super("li");
@@ -13,15 +13,18 @@ export class ListItem extends Component {
     }
 
     applyStyle() {
-        // The component styles messes with the browser rendering too much here, so we skip them.
-        // TODO: Fix!
+        // Framework styles (absolute positioning etc.) break native list rendering.
+    }
+
+    getKey() {
+        return this.key;
     }
 
     render() {
-        let element = <HTMLOptionElement>super.render();
+        let element = super.render();
 
-        element.value = this.key.valueOf();
-        element.textContent = this.value.valueOf();
+        element.dataset.key = this.key;
+        element.textContent = this.value;
 
         return element;
     }
