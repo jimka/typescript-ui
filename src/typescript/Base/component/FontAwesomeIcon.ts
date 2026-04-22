@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Component } from "../Component.js";
 // import "../script/fontawesome/js/all.js"; -- For now, we require this import to be made in the index-page.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Component } from "../../../../Component.js";
 import { Fit } from "../../../../layout/Fit.js";
 import { Insets } from "../../../../Insets.js";

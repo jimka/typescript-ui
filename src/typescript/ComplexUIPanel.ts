@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Component } from "./Base/Component.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { Label } from "./Base/component/Label.js";

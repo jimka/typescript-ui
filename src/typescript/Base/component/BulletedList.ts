@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { AbstractListComponent } from "./AbstractListComponent.js";
 import { BulletedListItemStyle } from "./BulletedListItemStyle.js";
 

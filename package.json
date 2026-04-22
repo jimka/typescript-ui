@@ -2,6 +2,7 @@
   "name": "base-typescript",
   "version": "1.0.0",
   "description": "",
+  "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

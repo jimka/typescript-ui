@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Component } from "../Component.js";
 import { Legend } from "./Legend.js";
 import { BorderStyle } from "../BorderStyle.js";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 
 export namespace CSS {
     const ruleCache = new Map<string, CSSStyleRule>();

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { DefaultCell } from "./Default.js";
 
 export class HeaderCell extends DefaultCell {

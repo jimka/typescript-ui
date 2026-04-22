@@ -113,6 +113,10 @@ Each tab in the running app corresponds to a `*Panel.ts` file that demonstrates 
 
 `MiscPanel` is the most feature-rich: it shows floating `Window`s, a data `Table`, an `Image`, and various form components.
 
+## License
+
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Free for personal and educational use; commercial use is not permitted.
+
 ## Known bugs
 
 None atm.

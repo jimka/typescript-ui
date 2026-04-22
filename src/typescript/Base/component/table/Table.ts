@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Component } from "../../Component.js";
 import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
 import { Table as TableLayout } from "../../layout/Table.js";

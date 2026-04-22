@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Component } from "./Base/Component.js"
 import { Button } from "./Base/component/Button.js";
 import { Checkbox } from "./Base/component/Checkbox.js";

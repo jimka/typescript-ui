@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Component } from "../Component.js";
 import { Option } from "./Option.js";
 import { Event } from "../Event.js";

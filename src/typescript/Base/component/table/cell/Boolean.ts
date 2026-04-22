@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { BooleanEditor } from "./editor/Boolean.js";
 import { Cell } from "./Cell.js";
 import { FillType } from "../../../layout/FillType.js";
