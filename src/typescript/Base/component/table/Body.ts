@@ -11,9 +11,11 @@ export class Body extends Component {
     private model: Model;
     private allData: Map<String, any>[] = [];
     private rowPool: Row[] = [];
+    private boundIndices: number[] = [];
     private phantom: HTMLElement | null = null;
     private lastBodyWidth: number = 0;
     private lastColumnWidth: number = 0;
+    private layoutInProgress = false;
 
     constructor(model: Model) {
         super("tbody");
@@ -37,7 +39,10 @@ export class Body extends Component {
         this.phantom.style.height = this.allData.length * ROW_HEIGHT + "px";
         el.appendChild(this.phantom);
 
-        Event.addListener(this, "scroll", () => this.renderWindow());
+        Event.addListener(this, "scroll", () => {
+            if (this.layoutInProgress) return;
+            this.renderWindow();
+        });
 
         this.renderWindow();
     }
@@ -67,16 +72,20 @@ export class Body extends Component {
         );
         const windowSize = lastRow - firstRow + 1 > 0 ? lastRow - firstRow + 1 : 0;
 
+        if (bodyWidth !== undefined) {
+            this.lastBodyWidth = bodyWidth;
+            this.lastColumnWidth = columnWidth!;
+            this.layoutInProgress = true;
+        }
+
         // Grow pool if needed
         while (this.rowPool.length < windowSize) {
             const row = new Row(this.model);
             const rowEl = row.getElement(true);
             element.appendChild(rowEl);
             this.rowPool.push(row);
+            this.boundIndices.push(-1);
         }
-
-        if (bodyWidth !== undefined) this.lastBodyWidth = bodyWidth;
-        if (columnWidth !== undefined) this.lastColumnWidth = columnWidth;
 
         const rowWidth = this.lastBodyWidth;
         const colWidth = this.lastColumnWidth || (rowWidth / this.model.getFields().length);
@@ -86,7 +95,10 @@ export class Body extends Component {
             const row = this.rowPool[i];
             const dataIndex = firstRow + i;
 
-            row.setData(this.allData[dataIndex]);
+            if (this.boundIndices[i] !== dataIndex) {
+                row.setData(this.allData[dataIndex]);
+                this.boundIndices[i] = dataIndex;
+            }
             row.setAutoCommitStyle(false);
             row.setX(0);
             row.setY(dataIndex * ROW_HEIGHT);
@@ -114,12 +126,15 @@ export class Body extends Component {
         // Hide excess pool rows
         for (let i = windowSize; i < this.rowPool.length; i++) {
             this.rowPool[i].setDisplayed(false);
+            this.boundIndices[i] = -1;
         }
 
         // Keep phantom height in sync
         if (this.phantom) {
             this.phantom.style.height = this.allData.length * ROW_HEIGHT + "px";
         }
+
+        this.layoutInProgress = false;
     }
 
     sortColumns() {
