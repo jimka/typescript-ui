@@ -112,6 +112,10 @@ export class Cell<T> extends Component {
         this.doLayout();
     }
 
+    setValue(value: T) {
+        this.renderer.setValue(value);
+    }
+
     getRenderer() {
         return this.renderer;
     }
