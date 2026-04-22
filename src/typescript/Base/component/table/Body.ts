@@ -6,6 +6,30 @@ import { Event } from "../../Event.js";
 const ROW_HEIGHT = 16;
 const SCROLL_BUFFER = 2;
 
+/**
+ * Virtual-scrolling body for the Table component.
+ *
+ * Only the rows visible in the viewport plus SCROLL_BUFFER rows above and below
+ * are ever in the DOM. The full dataset is stored in `allData`; a phantom <div>
+ * gives the <tbody> the correct total scroll height so the scrollbar behaves as
+ * if all rows were rendered.
+ *
+ * A fixed pool of Row components (`rowPool`) is reused as the user scrolls.
+ * Each pool slot is tracked in `boundIndices`: when a slot is mapped to a new
+ * data index, `row.setData()` is called to rebind cell values; if the index
+ * hasn't changed (e.g. during a pure resize) the call is skipped, avoiding the
+ * text-measurement reflow inside `setText()`.
+ *
+ * `renderWindow()` is the single entry point for both layout-manager-driven
+ * updates (resize) and scroll-event-driven updates. The `layoutInProgress` flag
+ * suppresses the spurious scroll event that the browser fires when the body
+ * height changes during layout.
+ *
+ * Known limitation: the browser's GPU compositor scrolls content visually
+ * before the JS scroll event reaches the main thread, causing a one-frame
+ * flicker during fast scrolling. Eliminating it would require a transform-based
+ * positioning strategy rather than `position: absolute; top: dataIndex * ROW_HEIGHT`.
+ */
 export class Body extends Component {
 
     private model: Model;
