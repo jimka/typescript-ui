@@ -101,10 +101,6 @@ export class Table extends LayoutManager {
         }
 
         if (container.isBodyVisible() && body) {
-            let bodyComponents = body ? body.getComponents() : null;
-
-            let columnHeight = 16;
-
             body.setAutoCommitStyle(false);
             body.setX(containerInsets.getLeft());
             body.setY(containerInsets.getTop() + (header ? header.getHeight() : 0));
@@ -112,39 +108,7 @@ export class Table extends LayoutManager {
             body.setHeight(containerSize.height - (header ? header.getHeight() : 0) - (footer ? footer.getHeight() : 0));
             body.setAutoCommitStyle(true);
 
-            let x = 0;
-            let y = 0;
-
-            if (bodyComponents) {
-                for (let row of bodyComponents) {
-                    row.setAutoCommitStyle(false);
-                    row.setX(0);
-                    row.setY(y);
-                    row.setWidth(containerSize.width - Util.getScrollBarWidth());
-                    row.setHeight(columnHeight);
-                    row.setAutoCommitStyle(true);
-
-                    let columns = row.getComponents();
-
-                    for (let jdx in columns) {
-                        let column = columns[jdx];
-
-                        column.setAutoCommitStyle(false);
-                        column.setX(x);
-                        column.setY(0);
-                        column.setWidth(columnWidth);
-                        column.setHeight(columnHeight);
-                        column.setAutoCommitStyle(true);
-
-                        column.doLayout();
-
-                        x += columnWidth;
-                    }
-
-                    x = 0;
-                    y += columnHeight;
-                }
-            }
+            body.renderWindow(containerSize.width - Util.getScrollBarWidth(), columnWidth);
         }
     }
 }

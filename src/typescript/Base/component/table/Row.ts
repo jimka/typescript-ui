@@ -18,13 +18,13 @@ export class Row extends Component {
         this.model = model;
         this.data = data;
 
-        if (this.model && this.data) {
+        if (this.model) {
             let fields = this.model.getFields();
             fields.sort((f1, f2) => f1.getOrder() - f2.getOrder());
 
             for (let idx in fields) {
                 let field = fields[idx];
-                let value = this.data.get(field.getId());
+                let value = this.data ? this.data.get(field.getId()) : undefined;
 
                 let cell;
                 switch (field.getType()) {
@@ -52,6 +52,16 @@ export class Row extends Component {
 
     getData() {
         return this.data;
+    }
+
+    setData(data: Map<String, any>) {
+        this.data = data;
+        const fields = this.model!.getFields().sort((f1, f2) => f1.getOrder() - f2.getOrder());
+        const cells = this.getComponents() as Cell<any>[];
+
+        fields.forEach((field, i) => {
+            cells[i].setValue(data.get(field.getId()));
+        });
     }
 
     addColumn(cell: Cell<any>, constraints?: LayoutConstraints) {
