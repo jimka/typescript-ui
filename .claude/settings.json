@@ -8,7 +8,12 @@
       "Bash(npx vite *)",
       "Bash(curl -s http://localhost:8015/)",
       "Bash(npm run *)",
-      "Bash(npx --version)"
+      "Bash(npx --version)",
+      "Read(//home/jika/.claude/plans/**)",
+      "Bash(echo \"Started PID $!\")",
+      "Read(//tmp/**)",
+      "WebFetch(domain:localhost)",
+      "Bash(curl -s http://localhost:8016/)"
     ]
   }
 }
