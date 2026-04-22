@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Border } from "./Base/layout/Border.js";
 import { Component } from "./Base/Component.js";
 import { List } from "./Base/component/List.js";

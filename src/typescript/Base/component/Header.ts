@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Component } from "../Component.js";
 import { Border as BorderLayout } from "../layout/Border.js";
 import { Label } from "./Label.js";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { LayoutManager } from "./LayoutManager.js";
 import { SplitGutter } from "../component/SplitGutter.js";
 import { Component } from "../Component.js";

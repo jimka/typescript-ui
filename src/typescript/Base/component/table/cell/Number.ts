@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Cell } from "./Cell.js";
 import { NumberRenderer } from "./renderer/Number.js";
 import { NumberEditor } from "./editor/Number.js";

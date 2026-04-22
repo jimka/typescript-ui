@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { CellRenderer } from "./CellRenderer.js";
 import { Label } from "../../../Label.js";
 import { AnchorType } from "../../../../layout/AnchorType.js";

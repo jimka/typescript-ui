@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { CellEditor } from "./CellEditor.js";
 import { Checkbox } from "../../../../component/Checkbox.js";
 

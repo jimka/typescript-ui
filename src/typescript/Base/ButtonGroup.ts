@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { RadioButton } from "./component/RadioButton";
 import { ToggleButton } from "./component/ToggleButton";
 

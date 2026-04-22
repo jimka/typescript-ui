@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { LayoutManager } from "./layout/LayoutManager.js";
 import { Absolute } from "./layout/Absolute.js";
 import { Border, BorderOptions } from "./Border.js";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Split } from "./Base/layout/Split.js";
 import { Component } from "./Base/Component.js";
 import { TextArea } from "./Base/component/TextArea.js";

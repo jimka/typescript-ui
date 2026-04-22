@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { FillType } from "./FillType.js";
 import { AnchorType } from "./AnchorType.js";
 import { LayoutConstraints } from "./LayoutConstraints";

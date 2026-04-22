@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Header } from "./Header.js";
 import { Button } from "./Button.js";
 import { FontAwesomeIcon } from "./FontAwesomeIcon.js";

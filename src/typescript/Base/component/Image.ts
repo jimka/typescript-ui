@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Component } from "../Component.js";
 
 export class Image extends Component {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Text } from "./Text.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";

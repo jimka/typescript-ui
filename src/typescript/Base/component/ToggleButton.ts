@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { CSS } from "../CSS.js";
 import { Event } from "../Event.js";
 import { Button } from "./Button.js";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Table } from "./Base/component/table/Table.js";
 import { Window } from "./Base/Window.js";
 import { Image } from "./Base/component/Image.js";

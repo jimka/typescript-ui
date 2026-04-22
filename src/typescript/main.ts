@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
 import { Body } from "./Base/Body.js";
 import { Tab } from "./Base/layout/Tab.js";
 import { VBoxPanel } from "./VBoxPanel.js";
