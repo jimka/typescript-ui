@@ -92,6 +92,8 @@ Located in `Base/component/`:
 - Pluggable cell editors and renderers
 - `Model` / `Field` for data binding
 
+`Body` uses **virtual scrolling**: only the rows visible in the viewport plus a small buffer are in the DOM at any time. A phantom `<div>` gives the scroll container its full height without rendering every row. A fixed pool of `Row` components is reused as the user scrolls — pool slots are rebound to new data via `setData()` only when their data index changes, avoiding redundant DOM work on resize. See `Body.ts` for the full implementation.
+
 ### Utilities
 
 | File | Purpose |
@@ -137,7 +139,7 @@ None atm.
 
 6. ~~**Re-layout parent when a `Text` component's preferred size changes**~~ — calling `setText()` with longer text updates the preferred size but does not trigger `doLayout()` on the parent container, causing text to be clipped. The fix likely belongs in `calculateSize()` or `setText()`, propagating a size-change notification up to the nearest layout manager.
 
-7. **Introduce virtual scrolling for `Table`** — the current implementation renders all rows into the DOM. For large datasets this will become slow; a windowed renderer would address that. *(Initial render and resize performance fixed by caching CSS rules in `CSS.ts` — O(N²) stylesheet scans replaced with O(1) map lookups.)*
+7. ~~**Introduce virtual scrolling for `Table`**~~ — implemented: only the visible rows ± a small buffer are rendered; a phantom element provides the correct scroll height; the row pool is reused as the user scrolls. Resize is fast (data rebinding is skipped when the scroll position hasn't changed). A minor scroll flicker remains — inherent to compositor-driven scrolling in the browser; fixing it would require a transform-based positioning strategy.
 
 8. **Add a test suite** — the project has no automated tests. Adding unit tests for the pure logic in `Util`, `Type`, layout constraint resolution, and `ButtonGroup` would catch regressions quickly and is a natural starting point before larger refactors.
 
