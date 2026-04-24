@@ -57,7 +57,7 @@ export class Window extends Component {
         //this.modal = false;
         this.setVisible(false);
         this.setZIndex(zIndex || 9999);
-        this.setBorder(BorderStyle.SOLID, 1, "black");
+        this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "black" });
         this.setBorderRadius("4px");
         this.setShadow("3px 3px 2px rgba(0, 0, 0, 0.4)");
         this.setBackgroundColor("rgb(241, 241, 241)");

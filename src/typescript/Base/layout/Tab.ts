@@ -28,7 +28,7 @@ export class Tab extends LayoutManager {
         this.toolbar.setLayoutManager(columnLayout);
         this.toolbar.setBackgroundColor("#eee");
         this.toolbar.setInsets(new Insets(0, 4, 0, 4));
-        this.toolbar.setBorder(BorderStyle.SOLID, 1, "#e1e1e8");
+        this.toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "#e1e1e8" });
         this.toolbar.setPreferredSize(0, 30);
         this.selectedTabIndex = 0;
     }
