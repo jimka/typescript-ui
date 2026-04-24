@@ -131,24 +131,6 @@ None atm.
 
 ## Suggestions for next steps
 
-1. ~~**Correct the inheritance of `TextField` and `PasswordField`** — move them from `Text` to `Input` to reflect that they are form inputs, not text renderers. This will likely surface other API inconsistencies to clean up.~~
+1. **Add a test suite** — the project has no automated tests. Adding unit tests for the pure logic in `Util`, `Type`, layout constraint resolution, and `ButtonGroup` would catch regressions quickly and is a natural starting point before larger refactors.
 
-2. ~~**Replace positional border/button constructors with option objects** — large constructor signatures are fragile; switching to `{ width, style, color }` objects would improve readability and prevent argument-order mistakes.~~
-
-3. ~~**Implement `ToggleButton` properly** — remove the "hack" and give it a clean selected-state model consistent with `RadioButton`.~~
-
-4. ~~**Resolve `ListItem` and `Option` TODOs** — clarify what is broken and fix or remove these components.~~
-
-5. ~~**Add cross-browser support** — currently Chrome-only. Audit layout calculations that rely on Chrome-specific DOM behavior (especially text measurement via canvas) and add compatibility for Firefox and Safari.~~
-
-6. ~~**Re-layout parent when a `Text` component's preferred size changes**~~ — calling `setText()` with longer text updates the preferred size but does not trigger `doLayout()` on the parent container, causing text to be clipped. The fix likely belongs in `calculateSize()` or `setText()`, propagating a size-change notification up to the nearest layout manager.
-
-7. ~~**Introduce virtual scrolling for `Table`**~~ — implemented: only the visible rows ± a small buffer are rendered; a phantom element provides the correct scroll height; the row pool is reused as the user scrolls. Resize is fast (data rebinding is skipped when the scroll position hasn't changed). A minor scroll flicker remains — inherent to compositor-driven scrolling in the browser; fixing it would require a transform-based positioning strategy.
-
-8. **Add a test suite** — the project has no automated tests. Adding unit tests for the pure logic in `Util`, `Type`, layout constraint resolution, and `ButtonGroup` would catch regressions quickly and is a natural starting point before larger refactors.
-
-9. ~~**Remove or extract the 550-line commented block in `MiscPanel.ts`** — move large test datasets to fixture files so the panel code stays readable.~~
-
-10. ~~**Upgrade Vite** — the project uses Vite 2.9 (released 2022). Upgrading to Vite 5+ would bring faster cold starts, better HMR, and security fixes.~~
-
-11. **Consider publishing as a library** — the framework is self-contained. Adding a library build entry in `vite.config.ts` would let it be consumed as an npm package by other projects.
+2. **Consider publishing as a library** — the framework is self-contained. Adding a library build entry in `vite.config.ts` would let it be consumed as an npm package by other projects.
