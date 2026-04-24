@@ -1,15 +1,37 @@
 {
-  "name": "base-typescript",
+  "name": "@jika/typescript-ui",
   "version": "1.0.0",
-  "description": "",
+  "description": "A web-based layout manager and UI component framework written in TypeScript.",
   "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
+  "main": "dist/lib/typescript-ui.umd.js",
+  "module": "dist/lib/typescript-ui.es.js",
+  "types": "dist/lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/lib/typescript-ui.es.js",
+      "require": "./dist/lib/typescript-ui.umd.js"
+    }
+  },
+  "files": [
+    "dist/lib"
+  ],
+  "sideEffects": false,
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:lib": "tsc -p tsconfig.lib.json && vite build --config vite.lib.config.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "doc": "typedoc --out dist/docs src/typescript",
     "clean": "rimraf dist/*"
+  },
+  "peerDependencies": {
+    "@fortawesome/fontawesome-free": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@fortawesome/fontawesome-free": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "concurrently": "^6.3.0",

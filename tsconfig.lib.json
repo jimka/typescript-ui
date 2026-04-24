@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationDir": "dist/lib/types",
+    "emitDeclarationOnly": true,
+    "rootDir": "src/typescript/Base"
+  },
+  "include": ["src/typescript/Base/**/*"]
+}
