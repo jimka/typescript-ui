@@ -26,7 +26,7 @@ export class TextArea extends Text {
 
     onInput() {
         let element = this.getElement();
-        this.setText(element.value);
+        this.setText((element as HTMLTextAreaElement).value);
     }
 
     addActionListener(listener: Function) {

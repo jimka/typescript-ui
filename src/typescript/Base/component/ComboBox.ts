@@ -62,7 +62,7 @@ export class ComboBox extends Component {
         for (let idx in items) {
             let value = items[idx];
 
-            let item = new Option(idx, value);
+            let item = new Option(idx, value as string);
             this.items.push(item);
         }
 
@@ -81,7 +81,7 @@ export class ComboBox extends Component {
     }
 
     addItem(item: String) {
-        let listItem = new Option((this.items.length + 1).toString(), item);
+        let listItem = new Option((this.items.length + 1).toString(), item as string);
         this.items.push(listItem);
 
         let element = this.getElement();
