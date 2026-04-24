@@ -13,7 +13,9 @@
       "Bash(echo \"Started PID $!\")",
       "Read(//tmp/**)",
       "WebFetch(domain:localhost)",
-      "Bash(curl -s http://localhost:8016/)"
+      "Bash(curl -s http://localhost:8016/)",
+      "Bash(npx tsc *)",
+      "Read(//home/jika/.nvm/versions/node/**)"
     ]
   }
 }
