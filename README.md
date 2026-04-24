@@ -132,5 +132,3 @@ None atm.
 ## Suggestions for next steps
 
 1. **Add a test suite** — the project has no automated tests. Adding unit tests for the pure logic in `Util`, `Type`, layout constraint resolution, and `ButtonGroup` would catch regressions quickly and is a natural starting point before larger refactors.
-
-2. **Consider publishing as a library** — the framework is self-contained. Adding a library build entry in `vite.config.ts` would let it be consumed as an npm package by other projects.
