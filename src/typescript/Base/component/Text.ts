@@ -202,25 +202,6 @@ export class Text extends Component {
         this.setElementCSSRule("lineHeight", value + "px");
     }
 
-    select(start?: number, end?: number) {
-        let element = this.getElement();
-        if (!element) {
-            //console.warn("Component #" + this.id + " is not yet in the DOM, unable to select.");
-            return;
-        }
-
-        if (!start || start < 0) {
-            start = 0;
-        }
-
-        let text = this.getText();
-        if (!end || end > text.length) {
-            end = text.length + 1;
-        }
-
-        (element as HTMLInputElement).setSelectionRange(start, end);
-    }
-
     applyStyle(element: HTMLElement) {
         super.applyStyle(element);
 

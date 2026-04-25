@@ -123,11 +123,8 @@ None atm.
 
 ### Design / TODO items noted in source
 
-- `TextField` and `PasswordField` inherit from `Text` but should inherit from `Input`.
-- `ToggleButton` is marked as a "hack" and needs a proper implementation.
-- `ListItem` and `Option` are both marked `TODO: Fix!`.
 - `Split` layout has open questions about gutter listener cleanup.
-- Border/button constructors accept too many positional parameters — a builder pattern would improve call sites.
+- `Tab` layout has a TODO to fix a naming issue in the tab button creation path.
 
 ## Suggestions for next steps
 

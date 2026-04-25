@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Text } from "./Text.js";
+import { TextInput } from "./TextInput.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 
-export class TextArea extends Text {
+export class TextArea extends TextInput {
 
     constructor(text: string = "") {
         super("textarea");
@@ -27,7 +27,7 @@ export class TextArea extends Text {
 
     onInput() {
         let element = this.getElement();
-        this.setText((element as HTMLTextAreaElement).value);
+        this.setText(element.value);
     }
 
     addActionListener(listener: Function) {

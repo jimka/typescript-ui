@@ -4,13 +4,25 @@ import { Component } from "../Component.js";
 
 export class Input extends Component {
 
-    constructor() {
-        super("input");
+    constructor(tag: string = "input") {
+        super(tag);
 
         this.setBackgroundColor("rgb(255, 255, 255)");
     }
 
     getElement(createIfMissing: boolean = false) {
-        return <HTMLInputElement>super.getElement(createIfMissing);
+        return super.getElement(createIfMissing) as HTMLInputElement & HTMLTextAreaElement;
+    }
+
+    applyStyle(element: HTMLElement) {
+        super.applyStyle(element);
+
+        let rule = this.getCSSRule();
+        rule.style.fontFamily = "sans-serif";
+        rule.style.fontSize = "12px";
+    }
+
+    protected render() {
+        return super.render() as HTMLInputElement & HTMLTextAreaElement;
     }
 }

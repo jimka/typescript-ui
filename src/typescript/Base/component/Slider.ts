@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Input } from "./Input.js";
 import { Event } from "../Event.js";
 
-export class Slider extends Component {
+export class Slider extends Input {
 
     private minValue: number;
     private maxValue: number;
@@ -11,7 +11,7 @@ export class Slider extends Component {
     private step: number;
 
     constructor() {
-        super("input");
+        super();
 
         let me = this;
 

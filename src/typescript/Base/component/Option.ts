@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Text } from "./Text.js";
+import { Component } from "../Component.js";
 
-export class Option extends Text {
+export class Option extends Component {
 
     private key: string;
     private value: string;
 
     constructor(key: string, value: string) {
-        super("option", value);
+        super("option");
 
         this.key = key;
         this.value = value;
@@ -19,7 +19,7 @@ export class Option extends Text {
     }
 
     render() {
-        let element = <HTMLOptionElement>super.render();
+        let element = super.render() as HTMLOptionElement;
 
         element.value = this.key;
         element.textContent = this.value;
