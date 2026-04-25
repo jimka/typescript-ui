@@ -15,7 +15,18 @@
       "WebFetch(domain:localhost)",
       "Bash(curl -s http://localhost:8016/)",
       "Bash(npx tsc *)",
-      "Read(//home/jika/.nvm/versions/node/**)"
+      "Read(//home/jika/.nvm/versions/node/**)",
+      "Bash(npm --version)",
+      "Bash(~/.nvm/versions/node/v20.10.0/bin/node ~/.nvm/versions/node/v20.10.0/bin/npx --prefix /home/jika/typescript/typescript tsc --noEmit)",
+      "Bash(~/.nvm/versions/node/v20.10.0/bin/node --version)",
+      "Bash(~/.nvm/versions/node/v20.10.0/bin/node /home/jika/typescript/typescript/node_modules/typescript/lib/tsc.js --noEmit --project /home/jika/typescript/typescript/tsconfig.json)",
+      "Bash(~/.nvm/versions/node/v25.9.0/bin/node ~/.nvm/versions/node/v25.9.0/bin/npx vite --port 8015)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8015)",
+      "Bash(~/.nvm/versions/node/v20.10.0/bin/npm run *)",
+      "Bash(~/.nvm/versions/node/v20.10.0/bin/node ./node_modules/vite/bin/vite.js)",
+      "Bash(~/.nvm/versions/node/v25.9.0/bin/node ./node_modules/vite/bin/vite.js --host)",
+      "Bash(curl -s http://localhost:8015/src/typescript/Base/Theme.ts)",
+      "Bash(pkill -f \"vite/bin/vite.js\")"
     ]
   }
 }
