@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Text } from "./Text.js";
+import { TextInput } from "./TextInput.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 
-export class TextField extends Text { // TODO: Don't inherit from Text!
+export class TextField extends TextInput {
 
     constructor() {
-        super("input");
+        super();
 
         this.setCursor("text");
         this.setPreferredSize(200, 20);
@@ -23,24 +23,9 @@ export class TextField extends Text { // TODO: Don't inherit from Text!
         //Util.removeListener("input", this.onInput);
     }
 
-    getElement(createIfMissing: boolean = false) {
-        return <HTMLInputElement>super.getElement(createIfMissing);
-    }
-
     onInput() {
         let element = this.getElement();
         this.setText(element.value);
-    }
-
-    setText(text: String) {
-        super.setText(text);
-
-        let element = this.getElement();
-        if (!element) {
-            return;
-        }
-
-        element.value = text.valueOf();
     }
 
     addActionListener(listener: Function) {
@@ -48,11 +33,9 @@ export class TextField extends Text { // TODO: Don't inherit from Text!
     }
 
     render() {
-        let element = <HTMLInputElement>super.render();
+        let element = super.render();
 
         element.setAttribute("type", "text");
-        element.textContent = null;
-        element.value = this.getText().valueOf();
 
         return element;
     }

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Text } from "./Text.js";
+import { TextInput } from "./TextInput.js";
 import { Insets } from "../Insets.js";
 
-export class PasswordField extends Text { // TODO: Don't inherit from Text!
+export class PasswordField extends TextInput {
 
     constructor() {
-        super("input");
+        super();
 
         this.setPreferredSize(200, 20);
         this.setPadding(new Insets(3, 3, 3, 3));
@@ -16,29 +16,10 @@ export class PasswordField extends Text { // TODO: Don't inherit from Text!
         this.setForegroundColor("var(--ts-ui-text-color, black)");
     }
 
-    getElement(createIfMissing: boolean = false): HTMLInputElement {
-        return super.getElement(createIfMissing) as HTMLInputElement;
-    }
-
-    setText(text: String) {
-        super.setText(text);
-
-        let element = this.getElement();
-        if (!element) {
-            return;
-        }
-
-        element.textContent = null;
-        element.value = text.valueOf();
-    }
-
     render() {
-        let element = <HTMLInputElement>super.render();
+        let element = super.render();
 
         element.setAttribute("type", "password");
-
-        element.textContent = null;
-        element.value = this.getText().valueOf();
 
         return element;
     }
