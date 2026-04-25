@@ -5,9 +5,20 @@ import { Input } from "./Input.js";
 export class TextInput extends Input {
 
     private text: String = "";
+    private textAlign: string | null = null;
 
     constructor(tag: string = "input") {
         super(tag);
+    }
+
+    getTextAlign() {
+        return this.textAlign;
+    }
+
+    setTextAlign(align: string) {
+        this.textAlign = align;
+
+        this.setElementCSSRule("textAlign", align);
     }
 
     getText(): String {
@@ -40,6 +51,13 @@ export class TextInput extends Input {
         }
 
         element.setSelectionRange(start, end);
+    }
+
+    applyStyle(element: HTMLElement) {
+        super.applyStyle(element);
+
+        let rule = this.getCSSRule();
+        rule.style.textAlign = this.textAlign ? this.textAlign : "";
     }
 
     protected render() {
