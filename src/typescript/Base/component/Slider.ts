@@ -22,7 +22,7 @@ export class Slider extends Component {
 
         this.setPreferredSize(200, 20);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, 20);
-        this.setBackgroundColor("rgb(255, 255, 255");
+        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
 
         this.addActionListener(function (evnt: UIEvent) {
             let target = <HTMLInputElement>evnt.target;

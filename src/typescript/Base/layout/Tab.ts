@@ -26,9 +26,9 @@ export class Tab extends LayoutManager {
         //columnLayout.setGap(true);
         columnLayout.setGap(0);
         this.toolbar.setLayoutManager(columnLayout);
-        this.toolbar.setBackgroundColor("#eee");
+        this.toolbar.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
         this.toolbar.setInsets(new Insets(0, 4, 0, 4));
-        this.toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "#e1e1e8" });
+        this.toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
         this.toolbar.setPreferredSize(0, 30);
         this.selectedTabIndex = 0;
     }
@@ -172,7 +172,7 @@ export class Tab extends LayoutManager {
         // TODO: Fix name
         let toggleButton = new ToggleButton(name);
 
-        toggleButton.setBackgroundColor("#b8b8c3");
+        toggleButton.setBackgroundColor("var(--ts-ui-tab-button-bg, #b8b8c3)");
         toggleButton.setBorder();
         toggleButton.setBorderRadius();
         toggleButton.setShadow(null);

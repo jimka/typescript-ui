@@ -132,3 +132,5 @@ None atm.
 ## Suggestions for next steps
 
 1. **Add a test suite** — the project has no automated tests. Adding unit tests for the pure logic in `Util`, `Type`, layout constraint resolution, and `ButtonGroup` would catch regressions quickly and is a natural starting point before larger refactors.
+
+3. **Extend theme support** — the current `Theme` interface covers colors and shadows. A natural next step is adding tokens for fonts (family, size, weight) and spacing (padding, margins, gaps). Consider also restructuring the key naming convention from flat camelCase (e.g. `tabToolbarBorder`) to a namespaced dot format (e.g. `tab.toolbar.border`) to better reflect component hierarchy and make the API easier to discover and extend. **Implementation note:** when setting CSS rule properties that contain `var()` references, always use `cssRule.style.setProperty('property-name', value)` rather than the camelCase shorthand setter (e.g. `cssRule.style.boxShadow = value`) — Chrome's shorthand setters perform eager value parsing and silently discard `var()` tokens, while `setProperty` stores the value as a raw token sequence and defers resolution to computed-value time.

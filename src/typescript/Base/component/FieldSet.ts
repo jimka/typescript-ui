@@ -13,7 +13,7 @@ export class FieldSet extends Component {
         super("fieldset");
 
         this.legend.setText(title);
-        this.setBorder({ style: BorderStyle.GROOVE, width: 1, color: "BLACK" });
+        this.setBorder({ style: BorderStyle.GROOVE, width: 1, color: "var(--ts-ui-border-color, black)" });
         this.setPadding(new Insets(15, 3, 3, 3));
         this.setInsets(new Insets(5, 5, 15, 5));
     }

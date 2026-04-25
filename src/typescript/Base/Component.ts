@@ -371,7 +371,12 @@ export class Component extends BaseObject {
 
     setBackgroundColor(backgroundColor: string | null) {
         this.backgroundColor = backgroundColor;
-        this.cssRule.style.backgroundColor = this.backgroundColor ? this.backgroundColor : "";
+
+        if (backgroundColor) {
+            this.cssRule.style.setProperty('background-color', backgroundColor);
+        } else {
+            this.cssRule.style.removeProperty('background-color');
+        }
     }
 
     getBackgroundImage() {
@@ -380,7 +385,12 @@ export class Component extends BaseObject {
 
     setBackgroundImage(backgroundImage: string | null) {
         this.backgroundImage = backgroundImage;
-        this.cssRule.style.backgroundImage = this.backgroundImage ? this.backgroundImage : "";
+
+        if (backgroundImage) {
+            this.cssRule.style.setProperty('background-image', backgroundImage);
+        } else {
+            this.cssRule.style.removeProperty('background-image');
+        }
     }
 
     getForegroundColor() {
@@ -389,7 +399,12 @@ export class Component extends BaseObject {
 
     setForegroundColor(foregroundColor: string | null) {
         this.foregroundColor = foregroundColor;
-        this.cssRule.style.color = this.foregroundColor ? this.foregroundColor : "";
+
+        if (foregroundColor) {
+            this.cssRule.style.setProperty('color', foregroundColor);
+        } else {
+            this.cssRule.style.removeProperty('color');
+        }
     }
 
     getBorder() {
@@ -430,7 +445,8 @@ export class Component extends BaseObject {
 
     setShadow(shadow: string | null) {
         this.shadow = shadow;
-        this.cssRule.style.boxShadow = this.shadow ? this.shadow : "none";
+
+        this.cssRule.style.setProperty('box-shadow', this.shadow || 'none');
     }
 
     getSize(): Size | null {
@@ -819,15 +835,15 @@ export class Component extends BaseObject {
         }
 
         if (this.foregroundColor) {
-            this.cssRule.style.color = this.foregroundColor;
+            this.cssRule.style.setProperty('color', this.foregroundColor);
         }
 
         if (this.backgroundColor) {
-            this.cssRule.style.backgroundColor = this.backgroundColor;
+            this.cssRule.style.setProperty('background-color', this.backgroundColor);
         }
 
         if (this.backgroundImage) {
-            this.cssRule.style.backgroundImage = this.backgroundImage;
+            this.cssRule.style.setProperty('background-image', this.backgroundImage);
         }
 
         if (this.width) {
@@ -876,7 +892,7 @@ export class Component extends BaseObject {
         }
 
         if (this.shadow) {
-            this.cssRule.style.boxShadow = this.shadow;
+            this.cssRule.style.setProperty('box-shadow', this.shadow);
         }
 
         if (this.pointerEvents) {

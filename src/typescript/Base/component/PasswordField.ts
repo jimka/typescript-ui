@@ -12,7 +12,8 @@ export class PasswordField extends Text { // TODO: Don't inherit from Text!
         this.setPadding(new Insets(3, 3, 3, 3));
         this.setMaxSize(Number.MAX_SAFE_INTEGER, 20);
         this.setCursor("text");
-        this.setBackgroundColor("rgb(255, 255, 255");
+        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
+        this.setForegroundColor("var(--ts-ui-text-color, black)");
     }
 
     getElement(createIfMissing: boolean = false): HTMLInputElement {

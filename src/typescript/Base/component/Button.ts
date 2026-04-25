@@ -42,15 +42,16 @@ export class Button extends Component {
         });
 
         this.setCursor("pointer");
-        this.setBorder({ style: BorderStyle.RIDGE, width: 2, color: "rgb(200, 200, 200)" });
+        this.setForegroundColor("var(--ts-ui-text-color, black)");
+        this.setBorder({ style: BorderStyle.RIDGE, width: 2, color: "var(--ts-ui-button-border, rgb(200, 200, 200))" });
         this.setBorderRadius("4px");
-        this.setShadow("1px 2px 5px 0 rgba(0, 0, 0, 0.2)");
-        this.setBackgroundImage("linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))");
+        this.setShadow("var(--ts-ui-button-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2))");
+        this.setBackgroundImage("linear-gradient(var(--ts-ui-button-bg-top, rgb(241, 241, 241)), var(--ts-ui-button-bg-bottom, rgb(200, 200, 200)))");
 
-        this.setPressedForegroundColor("rgb(150, 150, 150)");
-        this.setPressedBackgroundColor("rgb(200, 200, 200)");
-        this.setPressedBackgroundImage("linear-gradient(rgb(200, 200, 200), rgb(200, 200, 200))");
-        this.setPressedShadow("1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset");
+        this.setPressedForegroundColor("var(--ts-ui-button-pressed-fg, rgb(150, 150, 150))");
+        this.setPressedBackgroundColor("var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))");
+        this.setPressedBackgroundImage("linear-gradient(var(--ts-ui-button-pressed-bg, rgb(200, 200, 200)), var(--ts-ui-button-pressed-bg, rgb(200, 200, 200)))");
+        this.setPressedShadow("var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset)");
     }
 
     getLabel() {
