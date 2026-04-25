@@ -12,7 +12,8 @@ export class TextArea extends Text {
         this.setCursor("text");
         this.setPadding(new Insets(3, 3, 3, 3));
         this.setPreferredSize(200, 200);
-        this.setBackgroundColor("rgb(255, 255, 255");
+        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
+        this.setForegroundColor("var(--ts-ui-text-color, black)");
         if (text) {
             this.setText(text);
         }

@@ -47,7 +47,7 @@ export class Body extends Component {
         super("tbody");
 
         this.setOverflow("auto");
-        this.setBackgroundColor("rgb(255, 255, 255)");
+        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
 
         this.model = model;
     }

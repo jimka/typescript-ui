@@ -9,6 +9,7 @@ import { Component } from "./Base/Component.js";
 import { Button } from "./Base/component/Button.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { FieldSet } from "./Base/component/FieldSet.js";
+import { ThemeManager, DefaultTheme, DarkTheme } from "./Base/Theme.js";
 
 export class MiscPanel extends Component {
 
@@ -891,6 +892,15 @@ export class MiscPanel extends Component {
             win2.show();
         });
         this.addComponent(buttonWindowTable);
+
+        let isDark = false;
+        let buttonTheme = new Button("Switch to dark theme");
+        buttonTheme.addActionListener(function () {
+            isDark = !isDark;
+            ThemeManager.setTheme(isDark ? DarkTheme : DefaultTheme);
+            buttonTheme.getLabel().setText(isDark ? "Switch to default theme" : "Switch to dark theme");
+        });
+        this.addComponent(buttonTheme);
 
         let fieldSet = new FieldSet("Hello World fieldset!");
         this.addComponent(fieldSet);

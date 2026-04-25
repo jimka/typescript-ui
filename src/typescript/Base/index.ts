@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+// Theming
+export { ThemeManager, DefaultTheme, DarkTheme } from './Theme.js';
+export type { Theme } from './Theme.js';
+
 // Core
 export { BaseObject } from './BaseObject.js';
 export { Component } from './Component.js';

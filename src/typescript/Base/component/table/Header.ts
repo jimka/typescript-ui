@@ -14,8 +14,8 @@ export class Header extends Component {
     constructor(model: Model) {
         super("thead");
 
-        this.setBorder({ bottom: { style: BorderStyle.SOLID, width: 1, color: "black" } });
-        this.setBackgroundImage("linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))");
+        this.setBorder({ bottom: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-table-header-border, black)" } });
+        this.setBackgroundImage("linear-gradient(var(--ts-ui-button-bg-top, rgb(241, 241, 241)), var(--ts-ui-button-bg-bottom, rgb(200, 200, 200)))");
 
         let row = new Row();
         this.addRow(row);

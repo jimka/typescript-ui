@@ -83,4 +83,11 @@ export namespace CSS {
     export function createComponentRule(name: string): CSSStyleRule | null {
         return createRule("#" + name);
     }
+
+    export function setRootVariables(vars: Record<string, string>) {
+        const root = document.documentElement;
+        for (const [name, value] of Object.entries(vars)) {
+            root.style.setProperty(name, value);
+        }
+    }
 }

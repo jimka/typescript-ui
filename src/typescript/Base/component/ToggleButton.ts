@@ -13,8 +13,8 @@ export class ToggleButton extends Button {
         super(text);
 
         this.selectedCSSRule = CSS.createComponentRule(this.getId() + ".selected") as CSSStyleRule;
-        this.selectedCSSRule.style.boxShadow = "2px 2px 1px inset grey";
-        this.selectedCSSRule.style.backgroundImage = "linear-gradient(rgb(200, 200, 200), rgb(200, 200, 200))";
+        this.selectedCSSRule.style.setProperty('box-shadow', 'var(--ts-ui-toggle-selected-shadow, 2px 2px 1px inset grey)');
+        this.selectedCSSRule.style.setProperty('background-image', 'linear-gradient(var(--ts-ui-toggle-selected-bg, rgb(200, 200, 200)), var(--ts-ui-toggle-selected-bg, rgb(200, 200, 200)))');
 
         Event.addListener(this, "click", () => this.onAction());
     }

@@ -12,7 +12,7 @@ export class SplitGutter extends Component {
     constructor(direction: String) {
         super();
 
-        this.setBackgroundColor("#AAAAAA");
+        this.setBackgroundColor("var(--ts-ui-gutter-bg, #AAAAAA)");
         this.direction = direction || "horizontal";
         this.dragListeners = [];
 
