@@ -29,11 +29,11 @@ export class Cell<T> extends Component {
         if (editor) {
             this.addComponent(editor, editorContraints);
 
-            Event.addListener(editor, 'blur', this.commitEdit.bind(this));
-            Event.addListener(editor, 'keydown', this.onKeyDown.bind(this));
+            Event.addListener(editor, 'blur', () => this.commitEdit());
+            Event.addListener(editor, 'keydown', (e: KeyboardEvent) => this.onKeyDown(e));
         }
 
-        Event.addListener(renderer, 'dblclick', this.startEdit.bind(this));
+        Event.addListener(renderer, 'dblclick', () => this.startEdit());
     }
 
     isReadOnly() {

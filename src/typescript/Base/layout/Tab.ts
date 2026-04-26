@@ -178,7 +178,7 @@ export class Tab extends LayoutManager {
         tabButton.setInsets(new Insets(0, 4, 0, 4));
         tabButton.getLabel().setInsets(new Insets(0, 4, 0, 4));
 
-        tabButton.addActionListener(this.onTabPressed.bind(this, tabButton));
+        tabButton.addActionListener(() => this.onTabPressed(tabButton));
 
         this.tabs.push(tabButton);
 
