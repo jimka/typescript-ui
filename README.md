@@ -183,12 +183,125 @@ Each tab in the running app corresponds to a `*Panel.ts` file that demonstrates 
 
 This project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Free for personal and educational use; commercial use is not permitted.
 
+## Data layer
+
+The framework includes a data package (`Base/data/`) with three concepts: a `Model` defines the shape of a record, a `Proxy` handles transport, and a `Store` orchestrates loading, sorting, and filtering.
+
+### Define a model
+
+```typescript
+import { DataField, DataModel } from './Base/index.js';
+
+const PersonModel = new DataModel([
+    new DataField({ name: 'id',   type: 'number' }),
+    new DataField({ name: 'name', type: 'string' }),
+    new DataField({ name: 'age',  type: 'number', defaultValue: 0 }),
+]);
+```
+
+### Load from memory
+
+```typescript
+import { MemoryProxy, Store } from './Base/index.js';
+
+const store = new Store(PersonModel, new MemoryProxy({
+    data: [
+        { id: 1, name: 'Alice', age: 30 },
+        { id: 2, name: 'Bob',   age: 25 },
+    ]
+}));
+
+store.on('load', () => {
+    console.log(store.getCount());              // 2
+    console.log(store.getAt(0)?.get('name'));   // 'Alice'
+});
+
+await store.load();
+```
+
+### Load from a REST endpoint
+
+```typescript
+import { AjaxProxy, Store } from './Base/index.js';
+
+const store = new Store(PersonModel, new AjaxProxy({
+    url: '/api/people',
+    root: 'data',       // extracts response.data array
+}));
+
+await store.load();
+```
+
+### Typed subclass
+
+Extend `AbstractStore` to bake in the model and proxy, and add domain-specific methods:
+
+```typescript
+import { AbstractStore, AjaxProxy } from './Base/index.js';
+
+class PersonStore extends AbstractStore {
+    readonly model = PersonModel;
+    readonly proxy = new AjaxProxy({ url: '/api/people' });
+
+    findByName(name: string) {
+        return this.find('name', name);
+    }
+}
+
+const personStore = new PersonStore();
+await personStore.load();
+personStore.findByName('Alice');
+```
+
+### Sort and filter
+
+```typescript
+store.sort('age', 'asc');
+
+store.filter('age', 25);                        // exact match
+store.filterBy(r => r.get('age') > 20);         // custom predicate
+store.clearFilter();
+```
+
+Multiple `filter`/`filterBy` calls stack — all must pass. `clearFilter()` removes all at once.
+
+### Add and remove records
+
+```typescript
+const [newPerson] = store.add({ id: 3, name: 'Carol', age: 28 });
+
+store.on('datachanged', () => console.log('store changed'));
+
+store.remove(newPerson);
+```
+
+### Mutate a record
+
+```typescript
+const rec = store.find('id', 1);
+rec?.set('age', 31);
+console.log(rec?.isDirty());  // true
+rec?.commit();                // clears dirty flag
+// rec?.reject()              // reverts to last commit
+```
+
+### Field mapping
+
+Use `mapping` when the incoming JSON key differs from the field name:
+
+```typescript
+new DataField({ name: 'firstName', type: 'string', mapping: 'first_name' })
+// incoming { first_name: 'Alice' } → record.get('firstName') === 'Alice'
+```
+
 ## Suggestions for next steps
 
 * **Add a test suite** — the project has no automated tests. Adding unit tests for the pure logic in `Util`, `Type`, layout constraint resolution, and `ButtonGroup` would catch regressions quickly and is a natural starting point before larger refactors.
 
 * **Create an initialisation package** — add a separate `create-typescript-ui` (or similar) package whose sole purpose is to scaffold new projects. Running `npm create typescript-ui` (or `npx create-typescript-ui`) would generate a minimal project wired up with the library, a working `tsconfig.json`, and a Vite dev server, so consumers can get started without manually configuring dependencies or entry-point boilerplate.
 
-* **Implement a Store / Model / Proxy data layer** — introduce an ExtJS-style data package where a `Model` defines the shape of a record (fields and types), a `Proxy` handles the transport concern (REST, WebSocket, local memory), and a `Store` orchestrates loading, caching, sorting, and filtering of model instances. Components such as `Table`, `List`, and `ComboBox` would bind to a store and react to its change events, decoupling data-fetching logic from rendering and making it straightforward to swap backends or add offline support without touching component code.
+* **Wire the data layer to components** — the `Store` / `Model` / `Proxy` data package is implemented (see [Data layer](#data-layer) above). The next step is binding components such as `Table`, `List`, and `ComboBox` to a store so they react to its change events, decoupling data-fetching logic from rendering.
+
+* **Add full CRUD support to the data layer** — the current `Proxy` interface only defines `read()`. Extending it with `create(record)`, `update(record)`, and `destroy(record)` methods would allow the `Store` to sync dirty records back to the server automatically. The `AjaxProxy` would map each operation to the appropriate HTTP verb (`POST`, `PUT`/`PATCH`, `DELETE`), while `MemoryProxy` would handle them in-memory. The `Store` could then expose a `sync()` method that batches all dirty and removed records and delegates to the proxy, committing each record on success.
 
 * **Extend theme support** — the current `Theme` interface covers colors and shadows. A natural next step is adding tokens for fonts (family, size, weight) and spacing (padding, margins, gaps). Consider also restructuring the key naming convention from flat camelCase (e.g. `tabToolbarBorder`) to a namespaced dot format (e.g. `tab.toolbar.border`) to better reflect component hierarchy and make the API easier to discover and extend. **Implementation note:** when setting CSS rule properties that contain `var()` references, always use `cssRule.style.setProperty('property-name', value)` rather than the camelCase shorthand setter (e.g. `cssRule.style.boxShadow = value`) — Chrome's shorthand setters perform eager value parsing and silently discard `var()` tokens, while `setProperty` stores the value as a raw token sequence and defers resolution to computed-value time.

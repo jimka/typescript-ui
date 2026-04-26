@@ -72,6 +72,19 @@ export { ListItem } from './component/ListItem.js';
 export { FieldSet } from './component/FieldSet.js';
 export { Legend } from './component/Legend.js';
 
+// Data layer
+export { Field as DataField } from './data/Field.js';
+export type { FieldConfig, FieldType } from './data/Field.js';
+export { Model as DataModel } from './data/Model.js';
+export { ModelRecord } from './data/ModelRecord.js';
+export { AbstractStore } from './data/AbstractStore.js';
+export { Store } from './data/Store.js';
+export { Proxy } from './data/proxy/Proxy.js';
+export { MemoryProxy } from './data/proxy/MemoryProxy.js';
+export type { MemoryProxyConfig } from './data/proxy/MemoryProxy.js';
+export { AjaxProxy } from './data/proxy/AjaxProxy.js';
+export type { AjaxProxyConfig } from './data/proxy/AjaxProxy.js';
+
 // Table subsystem
 export { Table } from './component/table/Table.js';
 export { Header as TableHeader } from './component/table/Header.js';
