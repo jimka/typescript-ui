@@ -16,12 +16,12 @@ Open your browser at `http://localhost:8015`. The app renders a tabbed demo show
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start Vite dev server on port 8015 with hot reload |
 | `npm run build` | Production bundle to `dist/` |
+| `npm run clean` | Delete `dist/` contents |
+| `npm run dev` | Start Vite dev server on port 8015 with hot reload |
+| `npm run doc` | Generate TypeDoc documentation to `dist/docs/` |
 | `npm run preview` | Preview the production build locally |
 | `npm run typecheck` | Run strict TypeScript type check (no emit) |
-| `npm run doc` | Generate TypeDoc documentation to `dist/docs/` |
-| `npm run clean` | Delete `dist/` contents |
 
 ## Architecture overview
 
@@ -54,58 +54,124 @@ A `LayoutManager` is attached to a container component and positions its childre
 | Manager | Description |
 |---|---|
 | `Absolute` | No-op — children are positioned manually |
-| `Fit` | Expands one child to fill the entire container |
-| `Tab` | Tabbed interface with a button toolbar |
 | `Border` | Five-region layout: north, south, east, west, center |
-| `HBox` | Horizontal stack with configurable spacing |
-| `VBox` | Vertical stack with configurable spacing |
-| `Row` | Vertical sequence with gap control |
-| `Column` | Horizontal sequence with gap control |
-| `Grid` | Two-dimensional grid |
-| `Split` | Two panes with a draggable resize gutter |
 | `Card` | Stacked layers — one visible at a time |
+| `Column` | Horizontal sequence with gap control |
+| `Fit` | Expands one child to fill the entire container |
+| `Grid` | Two-dimensional grid |
+| `HBox` | Horizontal stack with configurable spacing |
+| `Row` | Vertical sequence with gap control |
+| `Split` | Two panes with a draggable resize gutter |
+| `Tab` | Tabbed interface with a button toolbar |
+| `VBox` | Vertical stack with configurable spacing |
 
 ### UI components
 
 Located in `Base/component/`:
 
 **Text and input**
-- `Text`, `Label`, `TextField`, `PasswordField`, `TextArea`
-- `Input`, `Checkbox`, `RadioButton`, `Slider`, `ComboBox`
+- `Label`, `PasswordField`, `Text`, `TextArea`, `TextField`
+- `Checkbox`, `ComboBox`, `Input`, `RadioButton`, `Slider`
 
 **Buttons**
-- `Button`, `ToggleButton`, `RadioButton`
+- `Button`, `RadioButton`, `ToggleButton`
 - `ButtonGroup` — enforces single selection across radio/toggle buttons
 
 **Display**
-- `Image`, `Header`, `FontAwesomeIcon`
-- `List`, `BulletedList`, `NumberedList`, `ListItem`
+- `FontAwesomeIcon`, `Header`, `Image`
+- `BulletedList`, `List`, `ListItem`, `NumberedList`
 - `FieldSet`, `Legend`
 
 **Containers**
-- `Window` — draggable and resizable floating window
 - `SplitGutter` — drag handle for the Split layout
+- `Window` — draggable and resizable floating window
 
 **Table subsystem** (`Base/component/table/`):
-- `Table`, `Header`, `Body`, `Footer`, `Row`
-- Cell types: `String`, `Boolean`, `Number`, `Header`
+- `Body`, `Footer`, `Header`, `Row`, `Table`
+- Cell types: `Boolean`, `Header`, `Number`, `String`
 - Pluggable cell editors and renderers
 - `Model` / `Field` for data binding
 
-`Body` uses **virtual scrolling**: only the rows visible in the viewport plus a small buffer are in the DOM at any time. A phantom `<div>` gives the scroll container its full height without rendering every row. A fixed pool of `Row` components is reused as the user scrolls — pool slots are rebound to new data via `setData()` only when their data index changes, avoiding redundant DOM work on resize. See `Body.ts` for the full implementation.
+> `Body` uses **virtual scrolling**: only the rows visible in the viewport plus a small buffer are in the DOM at any time. A phantom `<div>` gives the scroll container its full height without rendering every row. A fixed pool of `Row` components is reused as the user scrolls — pool slots are rebound to new data via `setData()` only when their data index changes, avoiding redundant DOM work on resize. See `Body.ts` for the full implementation.
 
 ### Utilities
 
 | File | Purpose |
 |---|---|
-| `Util.ts` | UUID generation, viewport size, scrollbar width |
-| `Type.ts` | Type-checking utilities (`isBoolean`, `isInteger`, etc.) |
+| `AnchorType.ts`, `FillType.ts`, `Placement.ts`, `Position.ts` | Enums |
+| `Border.ts`, `BorderLine.ts` | Four-sided border management |
 | `CSS.ts` | Dynamic CSS rule creation and lookup |
 | `Event.ts` | Event delegation — centralized per-type listener map |
 | `Insets.ts` | Padding/margin abstraction (top/right/bottom/left) |
-| `Border.ts`, `BorderLine.ts` | Four-sided border management |
 | `Point.ts`, `Size.ts` | Geometric primitives |
-| `Position.ts`, `Placement.ts`, `AnchorType.ts`, `FillType.ts` | Enums |
+| `Type.ts` | Type-checking utilities (`isBoolean`, `isInteger`, etc.) |
+| `Util.ts` | UUID generation, viewport size, scrollbar width |
+
+## Theming
+
+The framework includes a `ThemeManager` (`Base/Theme.ts`) that applies a set of design tokens to the entire UI at once via CSS custom properties.
+
+### Switching themes
+
+```typescript
+import { ThemeManager, DarkTheme, DefaultTheme } from './Base/Theme.js';
+
+ThemeManager.setTheme(DarkTheme);   // dark
+ThemeManager.setTheme(DefaultTheme); // back to light
+```
+
+Two built-in themes are provided: `DefaultTheme` (light) and `DarkTheme`. Custom themes can be created by implementing the `Theme` interface and passing them to `setTheme`.
+
+### How it works
+
+`setTheme` does three things:
+
+1. Writes each token as a CSS custom property on `:root` (e.g. `--ts-ui-body-bg`). Because CSS variables cascade, any component that references a variable in its style rule updates automatically — no re-render needed.
+2. Sets `color-scheme` on `:root` so the browser renders native form elements (checkboxes, scrollbars, `<select>`) in the matching light or dark style.
+3. Sets `color` and `background-color` on both `<html>` and `<body>`. The `<html>` target is necessary because `Window` components are appended to `document.documentElement` rather than `document.body`, so text inside floating windows must inherit from `<html>`.
+
+### Theme keys
+
+| Key | CSS variable | Affects |
+|---|---|---|
+| `bodyBg` | `--ts-ui-body-bg` | Page background; also the background of `Window` |
+| `borderColor` | `--ts-ui-border-color` | Default border color for `Window` and other bordered components |
+| `buttonBgBottom` | `--ts-ui-button-bg-bottom` | Bottom color of the button gradient; also used as the scrollbar thumb color |
+| `buttonBgTop` | `--ts-ui-button-bg-top` | Top color of the button gradient; also used as the top of the table header gradient |
+| `buttonBorderColor` | `--ts-ui-button-border` | Outline of `Button` and `ToggleButton` |
+| `buttonPressedBg` | `--ts-ui-button-pressed-bg` | Background of a button while it is held down |
+| `buttonPressedFg` | `--ts-ui-button-pressed-fg` | Text color of a button while it is held down |
+| `buttonPressedShadow` | `--ts-ui-button-pressed-shadow` | Inset shadow on a pressed button |
+| `buttonShadow` | `--ts-ui-button-shadow` | Drop shadow on unpressed buttons |
+| `colorScheme` | *(set directly as `color-scheme`)* | Tells the browser to render native controls (checkboxes, scrollbars) in light or dark style. Use `'light'` or `'dark'`. |
+| `gutterBg` | `--ts-ui-gutter-bg` | Background of the `Split` layout drag gutter; also used as the scrollbar track color |
+| `inputBg` | `--ts-ui-input-bg` | Background of text inputs, password fields, text areas, checkboxes, and the table body |
+| `tabButtonBg` | `--ts-ui-tab-button-bg` | Background of inactive tab buttons |
+| `tableHeaderBorder` | `--ts-ui-table-header-border` | Bottom border separating the table header from the body |
+| `tabToolbarBg` | `--ts-ui-tab-toolbar-bg` | Background of the tab button toolbar in the `Tab` layout |
+| `tabToolbarBorder` | `--ts-ui-tab-toolbar-border` | Bottom border of the tab button toolbar |
+| `textColor` | `--ts-ui-text-color` | Default text color for all components |
+| `toggleSelectedBg` | `--ts-ui-toggle-selected-bg` | Background of a selected `ToggleButton` or `RadioButton` |
+| `toggleSelectedShadow` | `--ts-ui-toggle-selected-shadow` | Inset shadow on a selected `ToggleButton` or `RadioButton` |
+
+### Custom themes
+
+Implement the `Theme` interface and pass it to `setTheme`:
+
+```typescript
+import { Theme, ThemeManager } from './Base/Theme.js';
+
+const MyTheme: Theme = {
+    ...DefaultTheme,
+    bodyBg   : 'rgb(240, 248, 255)',
+    textColor: 'rgb(10, 30, 60)',
+    colorScheme: 'light',
+};
+
+ThemeManager.setTheme(MyTheme);
+```
+
+Components that need a theme value at construction time (rather than via a CSS variable) can call `ThemeManager.getTheme()` to read the currently active theme.
 
 ## Demo panels
 
