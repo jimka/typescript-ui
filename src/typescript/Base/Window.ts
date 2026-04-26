@@ -38,21 +38,21 @@ export class Window extends Component {
             southwest: new WindowBorder(Direction.SOUTHWEST),
         };
 
-        this.borderComponents.west.addDragListener(this.onResize.bind(this));
-        this.borderComponents.northwest.addDragListener(this.onResize.bind(this));
-        this.borderComponents.north.addDragListener(this.onResize.bind(this));
-        this.borderComponents.northeast.addDragListener(this.onResize.bind(this));
-        this.borderComponents.east.addDragListener(this.onResize.bind(this));
-        this.borderComponents.southeast.addDragListener(this.onResize.bind(this));
-        this.borderComponents.south.addDragListener(this.onResize.bind(this));
-        this.borderComponents.southwest.addDragListener(this.onResize.bind(this));
+        this.borderComponents.west.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this.borderComponents.northwest.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this.borderComponents.north.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this.borderComponents.northeast.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this.borderComponents.east.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this.borderComponents.southeast.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this.borderComponents.south.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this.borderComponents.southwest.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
 
         this.header = new WindowHeader(headerText || "Window");
         this.addComponent(this.header, {
             placement: Placement.NORTH,
             ignoreParentInsets: true
         });
-        this.header.addExitButtonListener(this.onExitAction.bind(this));
+        this.header.addExitButtonListener(() => this.onExitAction());
 
         //this.modal = false;
         this.setVisible(false);
@@ -62,7 +62,7 @@ export class Window extends Component {
         this.setShadow("3px 3px 2px rgba(0, 0, 0, 0.4)");
         this.setBackgroundColor("var(--ts-ui-body-bg, rgb(241, 241, 241))");
 
-        Event.addListener(this.header, "mousedown", this.onMouseDown.bind(this));
+        Event.addListener(this.header, "mousedown", () => this.onMouseDown());
     }
 
     show() {
@@ -86,10 +86,8 @@ export class Window extends Component {
     }
 
     onMouseDown() {
-        var me = this;
-
-        document.onmouseup = this.onMouseUp.bind(me);
-        document.onmousemove = this.onDrag.bind(me);
+        document.onmouseup = () => this.onMouseUp();
+        document.onmousemove = (e) => this.onDrag(e);
     }
 
     onResize(border: WindowBorder, e: MouseEvent) {
