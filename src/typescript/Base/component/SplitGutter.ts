@@ -41,7 +41,12 @@ export class SplitGutter extends Component {
             return;
         }
 
-        this.dragListeners.push(listener);
+        this.dragListeners.splice(idx, 1);
+    }
+
+    destroy() {
+        Event.removeListener(this, 'mousedown', this.onDragStart);
+        this.dragListeners = [];
     }
 
     fireDragListeners(movement: number) {

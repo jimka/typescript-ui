@@ -183,15 +183,6 @@ Each tab in the running app corresponds to a `*Panel.ts` file that demonstrates 
 
 This project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Free for personal and educational use; commercial use is not permitted.
 
-## Known bugs
-
-None atm.
-
-### Design / TODO items noted in source
-
-- `Split` layout has open questions about gutter listener cleanup.
-- `Tab` layout has a TODO to fix a naming issue in the tab button creation path.
-
 ## Suggestions for next steps
 
 * **Add a test suite** — the project has no automated tests. Adding unit tests for the pure logic in `Util`, `Type`, layout constraint resolution, and `ButtonGroup` would catch regressions quickly and is a natural starting point before larger refactors.
