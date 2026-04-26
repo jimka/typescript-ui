@@ -62,9 +62,10 @@ export class Split extends LayoutManager {
 
             let gutterElement = gutter.getElement();
             (gutterElement.parentNode as Node).removeChild(gutterElement);
+            gutter.destroy();
         }
 
-        // TODO: Remove gutter listeners?
+        this.gutters = [];
     }
 
     doLayout() {
@@ -87,8 +88,6 @@ export class Split extends LayoutManager {
         let gutterSize = 4;
         let gutterCount = componentCount - 1;
 
-        // TODO: Might need to move existing gutters to the current element
-        // if the layout manager has been previously used by another container.
         for (let i = this.gutters.length; i < gutterCount; i += 1) {
             let gutter = new SplitGutter(this.direction);
             gutter.addDragListener(function (dragAmount: number) {
