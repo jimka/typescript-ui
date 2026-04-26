@@ -21,6 +21,7 @@ export interface Theme {
     tabToolbarBorder    : string;
     tabButtonBg         : string;
     tableHeaderBorder   : string;
+    colorScheme         : string;
 }
 
 export const DefaultTheme: Theme = {
@@ -42,6 +43,7 @@ export const DefaultTheme: Theme = {
     tabToolbarBorder    : '#e1e1e8',
     tabButtonBg         : '#b8b8c3',
     tableHeaderBorder   : 'black',
+    colorScheme         : 'light',
 };
 
 export const DarkTheme: Theme = {
@@ -63,6 +65,7 @@ export const DarkTheme: Theme = {
     tabToolbarBorder    : '#444',
     tabButtonBg         : '#3a3a3a',
     tableHeaderBorder   : '#555',
+    colorScheme         : 'dark',
 };
 
 function themeToVars(theme: Theme): Record<string, string> {
@@ -94,6 +97,8 @@ export class ThemeManager {
     static setTheme(theme: Theme) {
         ThemeManager.current = theme;
         CSS.setRootVariables(themeToVars(theme));
+        document.documentElement.style.colorScheme = theme.colorScheme;
+        document.documentElement.style.color = theme.textColor;
         document.body.style.backgroundColor = theme.bodyBg;
         document.body.style.color = theme.textColor;
     }

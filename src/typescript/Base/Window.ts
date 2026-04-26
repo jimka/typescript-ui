@@ -57,10 +57,10 @@ export class Window extends Component {
         //this.modal = false;
         this.setVisible(false);
         this.setZIndex(zIndex || 9999);
-        this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "black" });
+        this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" });
         this.setBorderRadius("4px");
         this.setShadow("3px 3px 2px rgba(0, 0, 0, 0.4)");
-        this.setBackgroundColor("rgb(241, 241, 241)");
+        this.setBackgroundColor("var(--ts-ui-body-bg, rgb(241, 241, 241))");
 
         Event.addListener(this.header, "mousedown", this.onMouseDown.bind(this));
     }

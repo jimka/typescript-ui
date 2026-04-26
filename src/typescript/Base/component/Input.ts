@@ -7,7 +7,7 @@ export class Input extends Component {
     constructor(tag: string = "input") {
         super(tag);
 
-        this.setBackgroundColor("rgb(255, 255, 255)");
+        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
     }
 
     getElement(createIfMissing: boolean = false) {
