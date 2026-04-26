@@ -182,8 +182,12 @@ export class Tab extends LayoutManager {
         toggleButton.addActionListener(this.onTabPressed.bind(this, toggleButton));
 
         this.tabs.push(toggleButton);
-        this.buttonGroup.addButton(toggleButton);
 
+        if (this.tabs.length - 1 === this.selectedTabIndex) {
+            toggleButton.setSelected(true);
+        }
+
+        this.buttonGroup.addButton(toggleButton);
         this.toolbar.addComponent(toggleButton);
     }
 
