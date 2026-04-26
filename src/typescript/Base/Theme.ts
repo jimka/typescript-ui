@@ -96,11 +96,13 @@ export class ThemeManager {
 
     static setTheme(theme: Theme) {
         ThemeManager.current = theme;
+
         CSS.setRootVariables(themeToVars(theme));
+
         document.documentElement.style.colorScheme = theme.colorScheme;
-        document.documentElement.style.color = theme.textColor;
-        document.body.style.backgroundColor = theme.bodyBg;
-        document.body.style.color = theme.textColor;
+        document.documentElement.style.color       = theme.textColor;
+        document.body.style.backgroundColor        = theme.bodyBg;
+        document.body.style.color                  = theme.textColor;
     }
 
     static getTheme(): Theme {
