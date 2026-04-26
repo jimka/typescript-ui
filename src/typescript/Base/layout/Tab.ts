@@ -169,26 +169,25 @@ export class Tab extends LayoutManager {
             name = component.getId();
         }
 
-        // TODO: Fix name
-        let toggleButton = new ToggleButton(name);
+        let tabButton = new ToggleButton(name);
 
-        toggleButton.setBackgroundColor("var(--ts-ui-tab-button-bg, #b8b8c3)");
-        toggleButton.setBorder();
-        toggleButton.setBorderRadius();
-        toggleButton.setShadow(null);
-        toggleButton.setInsets(new Insets(0, 4, 0, 4));
-        toggleButton.getLabel().setInsets(new Insets(0, 4, 0, 4));
+        tabButton.setBackgroundColor("var(--ts-ui-tab-button-bg, #b8b8c3)");
+        tabButton.setBorder();
+        tabButton.setBorderRadius();
+        tabButton.setShadow(null);
+        tabButton.setInsets(new Insets(0, 4, 0, 4));
+        tabButton.getLabel().setInsets(new Insets(0, 4, 0, 4));
 
-        toggleButton.addActionListener(this.onTabPressed.bind(this, toggleButton));
+        tabButton.addActionListener(this.onTabPressed.bind(this, tabButton));
 
-        this.tabs.push(toggleButton);
+        this.tabs.push(tabButton);
 
         if (this.tabs.length - 1 === this.selectedTabIndex) {
-            toggleButton.setSelected(true);
+            tabButton.setSelected(true);
         }
 
-        this.buttonGroup.addButton(toggleButton);
-        this.toolbar.addComponent(toggleButton);
+        this.buttonGroup.addButton(tabButton);
+        this.toolbar.addComponent(tabButton);
     }
 
     doLayout() {
