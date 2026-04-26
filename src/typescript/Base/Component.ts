@@ -929,8 +929,14 @@ export class Component extends BaseObject {
 
     addComponent(component: Component, constraints?: LayoutConstraints) {
         this.components.push(component);
+
         this.setLayoutConstraints(component, constraints);
-        component.onPreferredSizeChange = () => this.doLayout();
+
+        component.onPreferredSizeChange = () => {
+            this.doLayout();
+
+            this.onPreferredSizeChange?.();
+        };
 
         let element = this.getElement();
         if (!element) {
