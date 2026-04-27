@@ -90,7 +90,7 @@ Located in `Base/component/`:
 - `Body`, `Footer`, `Header`, `Row`, `Table`
 - Cell types: `Boolean`, `Header`, `Number`, `String`
 - Pluggable cell editors and renderers
-- `Model` / `Field` for data binding
+- Column definitions come from the data layer `Model` passed to the `Table` constructor
 
 > `Body` uses **virtual scrolling**: only the rows visible in the viewport plus a small buffer are in the DOM at any time. A phantom `<div>` gives the scroll container its full height without rendering every row. A fixed pool of `Row` components is reused as the user scrolls — pool slots are rebound to new data via `setData()` only when their data index changes, avoiding redundant DOM work on resize. See `Body.ts` for the full implementation.
 
@@ -189,27 +189,47 @@ The framework includes a data package (`Base/data/`) with three concepts: a `Mod
 
 ### Define a model
 
-```typescript
-import { DataField, DataModel } from './Base/index.js';
+Pass an array of field configs to `Model`:
 
-const PersonModel = new DataModel([
-    new DataField({ name: 'id',   type: 'number' }),
-    new DataField({ name: 'name', type: 'string' }),
-    new DataField({ name: 'age',  type: 'number', defaultValue: 0 }),
+```typescript
+import { Model } from './Base/index.js';
+
+const PersonModel = new Model([
+    { name: 'id',   type: 'number' },
+    { name: 'name', type: 'string' },
+    { name: 'age',  type: 'number', defaultValue: 0 },
 ]);
 ```
 
-### Load from memory
+Or extend `AbstractModel` to give the schema a named class, mirroring the `AbstractStore` pattern:
 
 ```typescript
-import { MemoryProxy, Store } from './Base/index.js';
+import { AbstractModel } from './Base/index.js';
 
-const store = new Store(PersonModel, new MemoryProxy({
-    data: [
-        { id: 1, name: 'Alice', age: 30 },
-        { id: 2, name: 'Bob',   age: 25 },
-    ]
-}));
+class PersonModel extends AbstractModel {
+    readonly fields = [
+        { name: 'id',   type: 'number' },
+        { name: 'name', type: 'string' },
+        { name: 'age',  type: 'number', defaultValue: 0 },
+    ];
+}
+
+const personModel = new PersonModel();
+```
+
+Both forms are accepted everywhere a `Model` is expected.
+
+### Load from memory
+
+`MemoryStore` is a convenience subclass that wires a `MemoryProxy` internally:
+
+```typescript
+import { MemoryStore } from './Base/index.js';
+
+const store = new MemoryStore(PersonModel, [
+    { id: 1, name: 'Alice', age: 30 },
+    { id: 2, name: 'Bob',   age: 25 },
+]);
 
 store.on('load', () => {
     console.log(store.getCount());              // 2
@@ -232,15 +252,23 @@ const store = new Store(PersonModel, new AjaxProxy({
 await store.load();
 ```
 
-### Typed subclass
+### Typed subclasses
 
-Extend `AbstractStore` to bake in the model and proxy, and add domain-specific methods:
+Extend `AbstractStore` to bake in the model and proxy, and add domain-specific methods. Combine with an `AbstractModel` subclass to keep the schema self-contained:
 
 ```typescript
-import { AbstractStore, AjaxProxy } from './Base/index.js';
+import { AbstractModel, AbstractStore, AjaxProxy } from './Base/index.js';
+
+class PersonModel extends AbstractModel {
+    readonly fields = [
+        { name: 'id',   type: 'number' },
+        { name: 'name', type: 'string' },
+        { name: 'age',  type: 'number', defaultValue: 0 },
+    ];
+}
 
 class PersonStore extends AbstractStore {
-    readonly model = PersonModel;
+    readonly model = new PersonModel();
     readonly proxy = new AjaxProxy({ url: '/api/people' });
 
     findByName(name: string) {
@@ -290,7 +318,7 @@ rec?.commit();                // clears dirty flag
 Use `mapping` when the incoming JSON key differs from the field name:
 
 ```typescript
-new DataField({ name: 'firstName', type: 'string', mapping: 'first_name' })
+{ name: 'firstName', type: 'string', mapping: 'first_name' }
 // incoming { first_name: 'Alice' } → record.get('firstName') === 'Alice'
 ```
 
