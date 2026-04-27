@@ -2,9 +2,9 @@
 
 import { Component } from "../../Component.js";
 import { Row } from "./Row.js";
-import { Model } from "./model/Model.js";
+import { Model } from "../../data/Model.js";
+import { Field } from "../../data/Field.js";
 import { HeaderCell } from "./cell/Header.js";
-import { Field } from "./model/Field.js";
 import { BorderStyle } from "../../BorderStyle.js";
 
 export class Header extends Component {

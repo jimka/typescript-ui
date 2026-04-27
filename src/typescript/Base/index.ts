@@ -93,8 +93,7 @@ export { Header as TableHeader } from './component/table/Header.js';
 export { Body as TableBody } from './component/table/Body.js';
 export { FooterRow as TableFooter } from './component/table/Footer.js';
 export { Row as TableRow } from './component/table/Row.js';
-export { Model } from './component/table/model/Model.js';
-export { Field } from './component/table/model/Field.js';
+
 export { Cell } from './component/table/cell/Cell.js';
 export { DefaultCell } from './component/table/cell/Default.js';
 export { HeaderCell } from './component/table/cell/Header.js';
