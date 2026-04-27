@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Model } from './Model.js';
+import { AbstractModel } from './AbstractModel.js';
 
 export class ModelRecord {
 
-    private model: Model;
+    private model: AbstractModel;
     private data: Record<string, any>;
     private original: Record<string, any>;
     private dirty: boolean = false;
 
-    constructor(model: Model, data: Record<string, any>) {
+    constructor(model: AbstractModel, data: Record<string, any>) {
         this.model = model;
         this.data = { ...data };
         this.original = { ...data };
@@ -42,7 +42,7 @@ export class ModelRecord {
         this.dirty = false;
     }
 
-    getModel(): Model {
+    getModel(): AbstractModel {
         return this.model;
     }
 }

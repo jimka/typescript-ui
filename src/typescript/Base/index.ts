@@ -73,12 +73,14 @@ export { FieldSet } from './component/FieldSet.js';
 export { Legend } from './component/Legend.js';
 
 // Data layer
-export { Field as DataField } from './data/Field.js';
+export { AbstractModel } from './data/AbstractModel.js';
+export { Field } from './data/Field.js';
 export type { FieldConfig, FieldType } from './data/Field.js';
-export { Model as DataModel } from './data/Model.js';
+export { Model } from './data/Model.js';
 export { ModelRecord } from './data/ModelRecord.js';
 export { AbstractStore } from './data/AbstractStore.js';
 export { Store } from './data/Store.js';
+export { MemoryStore } from './data/MemoryStore.js';
 export { Proxy } from './data/proxy/Proxy.js';
 export { MemoryProxy } from './data/proxy/MemoryProxy.js';
 export type { MemoryProxyConfig } from './data/proxy/MemoryProxy.js';
