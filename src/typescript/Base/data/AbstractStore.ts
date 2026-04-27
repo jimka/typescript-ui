@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Model } from './Model.js';
+import { AbstractModel } from './AbstractModel.js';
 import { ModelRecord } from './ModelRecord.js';
 import { Proxy } from './proxy/Proxy.js';
 
@@ -14,7 +14,7 @@ interface SorterConfig {
 
 export abstract class AbstractStore {
 
-    abstract readonly model: Model;
+    abstract readonly model: AbstractModel;
     abstract readonly proxy: Proxy | undefined;
 
     private allRecords: ModelRecord[] = [];

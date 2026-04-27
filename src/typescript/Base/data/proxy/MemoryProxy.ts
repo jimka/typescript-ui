@@ -10,8 +10,9 @@ export class MemoryProxy extends Proxy {
 
     private data: any[];
 
-    constructor(config: MemoryProxyConfig) {
+    constructor(config: MemoryProxyConfig = { data: [] }) {
         super();
+
         this.data = config.data.slice();
     }
 

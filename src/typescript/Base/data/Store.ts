@@ -11,6 +11,7 @@ export class Store extends AbstractStore {
 
     constructor(model: Model, proxy?: Proxy) {
         super();
+
         this.model = model;
         this.proxy = proxy;
     }
