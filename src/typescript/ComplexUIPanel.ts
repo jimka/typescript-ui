@@ -12,8 +12,8 @@ import { Button } from "./Base/component/Button.js";
 import { TextField } from "./Base/component/TextField.js";
 import { TextArea } from "./Base/component/TextArea.js";
 import { Table } from "./Base/component/table/Table.js";
-import { Model } from "./Base/component/table/model/Model.js";
-import { Field } from "./Base/component/table/model/Field.js";
+import { Model } from "./Base/data/Model.js";
+import { Field } from "./Base/data/Field.js";
 import { BorderStyle } from "./Base/BorderStyle.js";
 
 export class ComplexUIPanel extends Component {
@@ -146,11 +146,11 @@ export class ComplexUIPanel extends Component {
 
     private buildPanel5() {
         let tableModel = new Model([
-            new Field("street1", "string", "Street1", 1),
-            new Field("street2", "string", "Street2", 2),
-            new Field("city", "string", "City", 3),
-            new Field("state_province", "string", "StateProvince", 4),
-            new Field("country_region", "string", "CountryRegion", 5),
+            { name: "street1",        type: "string", description: "Street1",       order: 1 },
+            { name: "street2",        type: "string", description: "Street2",       order: 2 },
+            { name: "city",           type: "string", description: "City",          order: 3 },
+            { name: "state_province", type: "string", description: "StateProvince", order: 4 },
+            { name: "country_region", type: "string", description: "CountryRegion", order: 5 },
         ]);
         
         let comp = new Table(tableModel);
@@ -160,9 +160,9 @@ export class ComplexUIPanel extends Component {
 
     private buildPanel6() {
         let tableModel = new Model([
-            new Field("reservation_date", "string", "ReservationDate", 1),
-            new Field("trip", "string", "Trip", 2),
-            new Field("balance", "string", "Balance", 3),
+            { name: "reservation_date", type: "string", description: "ReservationDate", order: 1 },
+            { name: "trip",             type: "string", description: "Trip",            order: 2 },
+            { name: "balance",          type: "string", description: "Balance",         order: 3 },
         ]);
 
         let comp = new Table(tableModel);

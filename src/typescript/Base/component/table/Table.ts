@@ -6,7 +6,7 @@ import { Table as TableLayout } from "../../layout/Table.js";
 import { Header } from "./Header.js";
 import { Body } from "./Body.js";
 import { FooterRow } from "./Footer.js";
-import { Model } from "./model/Model.js";
+import { Model } from "../../data/Model.js";
 import { BorderStyle } from "../../BorderStyle.js";
 import { Insets } from "../../Insets.js";
 
@@ -20,7 +20,7 @@ export class Table extends Component {
     private footer: FooterRow;
     private footerVisible: boolean;
 
-    constructor(model: Model, rows?: Map<String, any> | Array<Map<String, any>>) {
+    constructor(model: Model, rows?: Record<string, any> | Array<Record<string, any>>) {
         super("table");
 
         this.setLayoutManager(new TableLayout());
@@ -74,19 +74,27 @@ export class Table extends Component {
         return this.footerVisible;
     }
 
-    addRow(row: Map<String, any>) {
-        this.body.addRow(row);
+    addRow(data: Record<string, any> | any[]) {
+        this.body.addRow(this.model.createRecord(this.normalizeRow(data)));
     }
 
-    addRows(rows: Map<String, any> | Array<Map<String, any>>) {
-        if (!(rows instanceof Array)) {
-            rows = new Array<Map<String, any>>(rows);
+    addRows(rows: Record<string, any> | Array<Record<string, any> | any[]>) {
+        const rowArray = Array.isArray(rows) ? rows : [rows];
+        for (const row of rowArray) {
+            this.addRow(row);
         }
+    }
 
-        for (let idx in rows) {
-            let row = rows[idx];
-            this.body.addRow(row);
+    private normalizeRow(data: Record<string, any> | any[]): Record<string, any> {
+        if (!Array.isArray(data)) {
+            return data;
         }
+        const fields = this.model.getFields().slice().sort((a, b) => a.getOrder() - b.getOrder());
+        const record: Record<string, any> = {};
+        fields.forEach((field, i) => {
+            record[field.getName()] = data[i];
+        });
+        return record;
     }
 
     addComponent(row: Header | Body | FooterRow, constraints?: LayoutConstraints) {

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "../../Component.js";
-import { Model } from "./model/Model.js";
+import { Model } from "../../data/Model.js";
+import { ModelRecord } from "../../data/ModelRecord.js";
 import { Row } from "./Row.js";
 import { Event } from "../../Event.js";
 
@@ -35,7 +36,7 @@ const SCROLL_BUFFER = 2;
 export class Body extends Component {
 
     private model: Model;
-    private allData: Map<String, any>[] = [];
+    private allData: ModelRecord[] = [];
     private rowPool: Row[] = [];
     private boundIndices: number[] = [];
     private phantom: HTMLElement | null = null;
@@ -73,8 +74,8 @@ export class Body extends Component {
         this.renderWindow();
     }
 
-    addRow(data: Map<String, any>) {
-        this.allData.push(data);
+    addRow(record: ModelRecord) {
+        this.allData.push(record);
 
         if (this.phantom) {
             this.phantom.style.height = this.allData.length * ROW_HEIGHT + "px";
