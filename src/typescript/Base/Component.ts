@@ -468,10 +468,6 @@ export class Component extends BaseObject {
             preferredSize = layoutManager.getPreferredSize();
         }
 
-        if (!preferredSize) {
-            console.warn("Component does not have a preferred size, (" + this.getId() + ")");
-        }
-
         return preferredSize;
     }
 
