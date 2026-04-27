@@ -13,6 +13,8 @@ import { MiscPanel } from "./MiscPanel.js";
 import { ComplexUIPanel } from "./ComplexUIPanel.js";
 import { GridPanel } from "./GridPanel.js";
 
+import { Model, MemoryStore } from "./Base/index.js";
+
 let body = Body.getInstance();
 
 let layoutManager = new Tab();
@@ -45,7 +47,24 @@ body.addComponent(vboxPanel, { name: "VBox" });
 let gridPanel = new GridPanel();
 body.addComponent(gridPanel, { name: "Grid" });
 
-// body.setLayoutManager(new Fit());
 let complexPanel = new ComplexUIPanel();
-
 body.addComponent(complexPanel, { name: "Complex" });
+
+const PersonModel = new Model([
+    { name: 'id',   type: 'number'                  },
+    { name: 'name', type: 'string'                  },
+    { name: 'age',  type: 'number', defaultValue: 0 },
+]);
+
+const store = new MemoryStore(PersonModel, [
+    { id: 1, name: 'Alice', age: 30 },
+    { id: 2, name: 'Bob'  , age: 25 },
+]);
+
+store.on('load', () => {
+    for (let obj of store.getAll()) {
+        console.log(obj);
+    }
+});
+
+await store.load();
