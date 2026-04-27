@@ -54,7 +54,7 @@ export class ComplexUIPanel extends Component {
     private buildPanel1() {
         let comp = new Component();
         comp.setLayoutManager(new HBox());
-        comp.setBorder(BorderStyle.SOLID, 1, "black")
+        comp.setBorder({ style: BorderStyle.SOLID, width: 1, color: "black" })
 
         let panel11 = new Component();
         panel11.setLayoutManager(new VBox());
