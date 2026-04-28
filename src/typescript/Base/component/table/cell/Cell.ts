@@ -13,6 +13,7 @@ export class Cell<T> extends Component {
     private readOnly: Boolean;
     private renderer: CellRenderer<T>;
     private editor: CellEditor<T> | undefined;
+    private onCommit: ((value: T) => void) | undefined;
 
     constructor(tag: string, renderer: CellRenderer<T>, editor?: CellEditor<T>, rendererConstraints?: LayoutConstraints, editorContraints?: LayoutConstraints) {
         super(tag || "td");
@@ -34,6 +35,10 @@ export class Cell<T> extends Component {
         }
 
         Event.addListener(renderer, 'dblclick', () => this.startEdit());
+    }
+
+    setOnCommit(fn: (value: T) => void): void {
+        this.onCommit = fn;
     }
 
     isReadOnly() {
@@ -92,6 +97,7 @@ export class Cell<T> extends Component {
 
         let text = editor.getValue();
         renderer.setValue(text);
+        this.onCommit?.(text as T);
 
         layoutManager.setVisibleComponentId(renderer.getId());
         this.doLayout();

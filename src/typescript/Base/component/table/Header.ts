@@ -2,16 +2,16 @@
 
 import { Component } from "../../Component.js";
 import { Row } from "./Row.js";
-import { Model } from "../../data/Model.js";
+import { AbstractModel } from "../../data/AbstractModel.js";
 import { Field } from "../../data/Field.js";
 import { HeaderCell } from "./cell/Header.js";
 import { BorderStyle } from "../../BorderStyle.js";
 
 export class Header extends Component {
 
-    private model: Model;
+    private model: AbstractModel;
 
-    constructor(model: Model) {
+    constructor(model: AbstractModel) {
         super("thead");
 
         this.setBorder({ bottom: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-table-header-border, black)" } });
@@ -39,6 +39,38 @@ export class Header extends Component {
 
     getModel() {
         return this.model;
+    }
+
+    setModel(model: AbstractModel): void {
+        const oldNames = this.model.getFields()
+                                   .slice()
+                                   .sort((a, b) => a.getOrder() - b.getOrder())
+                                   .map(f => f.getName());
+
+        const newNames = model.getFields()
+                              .slice()
+                              .sort((a, b) => a.getOrder() - b.getOrder())
+                              .map(f => f.getName());
+
+        const same = oldNames.length === newNames.length
+                     && oldNames.every((n, i) => n === newNames[i]);
+
+        if (same) {
+            return;
+        }
+
+        this.model = model;
+
+        const row = this.getComponents()[0] as Row;
+        row.removeAllComponents();
+
+        const fields = model.getFields()
+                            .slice()
+                            .sort((a, b) => a.getOrder() - b.getOrder());
+
+        for (const field of fields) {
+            row.addComponent(new HeaderCell(field.getDescription()), { data: field });
+        }
     }
 
     getColumns() {

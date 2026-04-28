@@ -62,6 +62,14 @@ export abstract class AbstractStore {
         return this.records[index];
     }
 
+    getById(id: any): ModelRecord | undefined {
+        if (!this.model.getPrimaryKeyField()) {
+            return undefined;
+        }
+
+        return this.allRecords.find(r => r.getId() === id);
+    }
+
     find(property: string, value: any): ModelRecord | undefined {
         return this.records.find(r => r.get(property) === value);
     }
@@ -75,10 +83,12 @@ export abstract class AbstractStore {
     add(data: any | any[]): ModelRecord[] {
         const items = Array.isArray(data) ? data : [data];
         const added = items.map(item => this.model.createRecord(item));
+
         this.allRecords.push(...added);
         this.applyView();
         this.emit('add', { records: added });
         this.emit('datachanged', {});
+
         return added;
     }
 
@@ -87,7 +97,9 @@ export abstract class AbstractStore {
         if (allIdx > -1) {
             this.allRecords.splice(allIdx, 1);
         }
+
         this.applyView();
+
         this.emit('remove', { record });
         this.emit('datachanged', {});
     }
@@ -103,12 +115,14 @@ export abstract class AbstractStore {
     sort(property: string, direction: 'asc' | 'desc' = 'asc'): void {
         this.activeSorter = { property, direction };
         this.applyView();
+
         this.emit('datachanged', {});
     }
 
     clearSort(): void {
         this.activeSorter = null;
         this.applyView();
+
         this.emit('datachanged', {});
     }
 
@@ -117,18 +131,21 @@ export abstract class AbstractStore {
     filter(property: string, value: any): void {
         this.activeFilterFns.push(r => r.get(property) === value);
         this.applyView();
+
         this.emit('datachanged', {});
     }
 
     filterBy(fn: (record: ModelRecord) => boolean): void {
         this.activeFilterFns.push(fn);
         this.applyView();
+
         this.emit('datachanged', {});
     }
 
     clearFilter(): void {
         this.activeFilterFns = [];
         this.applyView();
+
         this.emit('datachanged', {});
     }
 
@@ -138,8 +155,10 @@ export abstract class AbstractStore {
         let bucket = this.listenerMap.get(event);
         if (!bucket) {
             bucket = [];
+
             this.listenerMap.set(event, bucket);
         }
+
         bucket.push(listener);
     }
 
@@ -148,6 +167,7 @@ export abstract class AbstractStore {
         if (!bucket) {
             return;
         }
+
         const idx = bucket.indexOf(listener);
         if (idx > -1) {
             bucket.splice(idx, 1);
@@ -159,6 +179,7 @@ export abstract class AbstractStore {
         if (!bucket) {
             return;
         }
+
         for (const listener of bucket) {
             listener(payload);
         }
@@ -175,13 +196,17 @@ export abstract class AbstractStore {
 
         if (this.activeSorter) {
             const { property, direction } = this.activeSorter;
+
             view.sort((a, b) => {
                 const av = a.get(property);
                 const bv = b.get(property);
+
                 if (av == null && bv == null) return 0;
                 if (av == null) return 1;
                 if (bv == null) return -1;
+
                 const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+
                 return direction === 'asc' ? cmp : -cmp;
             });
         }

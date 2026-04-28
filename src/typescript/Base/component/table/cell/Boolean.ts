@@ -20,6 +20,10 @@ export class BooleanCell extends Cell<Boolean> {
         );
     }
 
+    setOnCommit(fn: (value: Boolean) => void): void {
+        (this.getRenderer() as BooleanEditor).setOnChange(fn);
+    }
+
     startEdit() { }
 
     setValue(value: Boolean) {

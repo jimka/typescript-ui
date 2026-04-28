@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "../../Component.js";
-import { Model } from "../../data/Model.js";
+import { AbstractModel } from "../../data/AbstractModel.js";
 import { ModelRecord } from "../../data/ModelRecord.js";
 import { Cell } from "./cell/Cell.js";
 import { DefaultCell } from "./cell/Default.js";
@@ -12,10 +12,10 @@ import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
 
 export class Row extends Component {
 
-    private model?: Model;
+    private model?: AbstractModel;
     private data?: ModelRecord;
 
-    constructor(model?: Model, data?: ModelRecord) {
+    constructor(model?: AbstractModel, data?: ModelRecord) {
         super("tr");
 
         this.model = model;
@@ -28,8 +28,8 @@ export class Row extends Component {
             for (let idx in fields) {
                 let field = fields[idx];
                 let value = this.data ? this.data.get(field.getName()) : undefined;
-
                 let cell;
+
                 switch (field.getType()) {
                     case "string":
                         cell = new StringCell();
@@ -46,6 +46,8 @@ export class Row extends Component {
                 }
 
                 cell.setValue(value);
+                cell.setOnCommit((newValue) => { this.data?.set(field.getName(), newValue); });
+
                 this.addComponent(cell, {
                     data: field
                 });
@@ -59,7 +61,9 @@ export class Row extends Component {
 
     setData(record: ModelRecord) {
         this.data = record;
-        const fields = this.model!.getFields().sort((f1, f2) => f1.getOrder() - f2.getOrder());
+        const fields = this.model!.getFields()
+                                  .sort((f1, f2) => f1.getOrder() - f2.getOrder());
+
         const cells = this.getComponents() as Cell<any>[];
 
         fields.forEach((field, i) => {
