@@ -42,6 +42,12 @@ export class ModelRecord {
         this.dirty = false;
     }
 
+    getId(): any {
+        const pkField = this.model.getPrimaryKeyField();
+
+        return pkField ? this.data[pkField.getName()] : undefined;
+    }
+
     getModel(): AbstractModel {
         return this.model;
     }

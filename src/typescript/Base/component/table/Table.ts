@@ -6,13 +6,13 @@ import { Table as TableLayout } from "../../layout/Table.js";
 import { Header } from "./Header.js";
 import { Body } from "./Body.js";
 import { FooterRow } from "./Footer.js";
-import { Model } from "../../data/Model.js";
+import { AbstractStore } from "../../data/AbstractStore.js";
 import { BorderStyle } from "../../BorderStyle.js";
 import { Insets } from "../../Insets.js";
 
 export class Table extends Component {
 
-    private model: Model;
+    private store: AbstractStore;
     private headerVisible: boolean;
     private header: Header;
     private body: Body;
@@ -20,34 +20,40 @@ export class Table extends Component {
     private footer: FooterRow;
     private footerVisible: boolean;
 
-    constructor(model: Model, rows?: Record<string, any> | Array<Record<string, any>>) {
+    constructor(store: AbstractStore) {
         super("table");
 
         this.setLayoutManager(new TableLayout());
         this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "rgb(0, 0, 0)" });
         this.setInsets(new Insets(0, 0, 0, 0));
 
-        this.model = model;
+        this.store = store;
         this.headerVisible = true;
         this.bodyVisible = true;
         this.footerVisible = false;
 
-        this.header = new Header(model);
+        this.header = new Header(store.model);
         this.addComponent(this.header);
 
-        this.body = new Body(model);
+        this.body = new Body(store);
         this.addComponent(this.body);
 
         this.footer = new FooterRow();
         this.addComponent(this.footer);
+    }
 
-        if (rows) {
-            this.addRows(rows);
-        }
+    getStore(): AbstractStore {
+        return this.store;
     }
 
     getModel() {
-        return this.model;
+        return this.store.model;
+    }
+
+    setStore(store: AbstractStore): void {
+        this.store = store;
+        this.body.setStore(store);
+        this.header.setModel(store.model);
     }
 
     getHeader() {
@@ -74,29 +80,6 @@ export class Table extends Component {
         return this.footerVisible;
     }
 
-    addRow(data: Record<string, any> | any[]) {
-        this.body.addRow(this.model.createRecord(this.normalizeRow(data)));
-    }
-
-    addRows(rows: Record<string, any> | Array<Record<string, any> | any[]>) {
-        const rowArray = Array.isArray(rows) ? rows : [rows];
-        for (const row of rowArray) {
-            this.addRow(row);
-        }
-    }
-
-    private normalizeRow(data: Record<string, any> | any[]): Record<string, any> {
-        if (!Array.isArray(data)) {
-            return data;
-        }
-        const fields = this.model.getFields().slice().sort((a, b) => a.getOrder() - b.getOrder());
-        const record: Record<string, any> = {};
-        fields.forEach((field, i) => {
-            record[field.getName()] = data[i];
-        });
-        return record;
-    }
-
     addComponent(row: Header | Body | FooterRow, constraints?: LayoutConstraints) {
         if (row instanceof Header) {
             this.header = row;
@@ -104,11 +87,6 @@ export class Table extends Component {
             this.body = row;
         } else if (row instanceof FooterRow) {
             this.footer = row;
-        } else {
-            // The constraints is the model.
-            this.addRow(row);
-
-            return;
         }
 
         super.addComponent(row, constraints);

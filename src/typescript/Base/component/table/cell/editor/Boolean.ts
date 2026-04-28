@@ -6,12 +6,21 @@ import { Checkbox } from "../../../../component/Checkbox.js";
 export class BooleanEditor extends CellEditor<Boolean> {
 
     private checkBox: Checkbox = new Checkbox();
+    private onChange: ((value: Boolean) => void) | undefined;
 
     constructor() {
         super();
 
         this.checkBox.setSelected(false);
         this.addComponent(this.checkBox);
+
+        this.checkBox.addActionListener(() => {
+            this.onChange?.(this.getValue());
+        });
+    }
+
+    setOnChange(fn: (value: Boolean) => void): void {
+        this.onChange = fn;
     }
 
     getValue() {

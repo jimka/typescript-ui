@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "../../Component.js";
-import { Model } from "../../data/Model.js";
-import { ModelRecord } from "../../data/ModelRecord.js";
+import { AbstractStore } from "../../data/AbstractStore.js";
 import { Row } from "./Row.js";
 import { Event } from "../../Event.js";
 
@@ -13,9 +12,8 @@ const SCROLL_BUFFER = 2;
  * Virtual-scrolling body for the Table component.
  *
  * Only the rows visible in the viewport plus SCROLL_BUFFER rows above and below
- * are ever in the DOM. The full dataset is stored in `allData`; a phantom <div>
- * gives the <tbody> the correct total scroll height so the scrollbar behaves as
- * if all rows were rendered.
+ * are ever in the DOM. The store is queried on every render so the body always
+ * reflects current store state without maintaining a duplicate data array.
  *
  * A fixed pool of Row components (`rowPool`) is reused as the user scrolls.
  * Each pool slot is tracked in `boundIndices`: when a slot is mapped to a new
@@ -35,35 +33,70 @@ const SCROLL_BUFFER = 2;
  */
 export class Body extends Component {
 
-    private model: Model;
-    private allData: ModelRecord[] = [];
+    private store: AbstractStore;
     private rowPool: Row[] = [];
     private boundIndices: number[] = [];
     private phantom: HTMLElement | null = null;
     private lastBodyWidth: number = 0;
     private lastColumnWidth: number = 0;
     private layoutInProgress = false;
+    private storeRefresh: (() => void) | null = null;
 
-    constructor(model: Model) {
+    constructor(store: AbstractStore) {
         super("tbody");
 
         this.setOverflow("auto");
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
 
-        this.model = model;
+        this.store = store;
+        this.bindStore(store);
+    }
+
+    private bindStore(store: AbstractStore): void {
+        const refresh = () => { this.boundIndices.fill(-1); this.renderWindow(); };
+
+        this.storeRefresh = refresh;
+
+        store.on('load', refresh);
+        store.on('add', refresh);
+        store.on('remove', refresh);
+        store.on('datachanged', refresh);
+    }
+
+    setStore(store: AbstractStore): void {
+        if (this.storeRefresh) {
+            const old = this.store;
+
+            (['load', 'add', 'remove', 'datachanged'] as const).forEach(e =>
+                old.off(e, this.storeRefresh!)
+            );
+        }
+
+        this.store = store;
+        this.bindStore(store);
+        this.boundIndices.fill(-1);
+
+        if (this.getElement()) {
+            this.renderWindow();
+        }
     }
 
     protected init(element?: HTMLElement) {
         super.init(element);
 
         const el = element || this.getElement();
-        if (!el) return;
+        if (!el) {
+            return;
+        }
+
+        const records = this.store.getRecords();
 
         this.phantom = document.createElement("div");
         this.phantom.style.position = "absolute";
         this.phantom.style.top = "0";
         this.phantom.style.width = "1px";
-        this.phantom.style.height = this.allData.length * ROW_HEIGHT + "px";
+        this.phantom.style.height = records.length * ROW_HEIGHT + "px";
+
         el.appendChild(this.phantom);
 
         Event.addListener(this, "scroll", () => {
@@ -74,27 +107,18 @@ export class Body extends Component {
         this.renderWindow();
     }
 
-    addRow(record: ModelRecord) {
-        this.allData.push(record);
-
-        if (this.phantom) {
-            this.phantom.style.height = this.allData.length * ROW_HEIGHT + "px";
-        }
-
-        if (this.getElement()) {
-            this.renderWindow();
-        }
-    }
-
     renderWindow(bodyWidth?: number, columnWidth?: number) {
         const element = this.getElement();
         if (!element) return;
+
+        const records = this.store.getRecords();
+        const totalRows = records.length;
 
         const scrollTop = element.scrollTop;
         const visibleHeight = this.getHeight() || 0;
         const firstRow = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - SCROLL_BUFFER);
         const lastRow = Math.min(
-            this.allData.length - 1,
+            totalRows - 1,
             Math.ceil((scrollTop + visibleHeight) / ROW_HEIGHT) + SCROLL_BUFFER
         );
         const windowSize = lastRow - firstRow + 1 > 0 ? lastRow - firstRow + 1 : 0;
@@ -107,7 +131,7 @@ export class Body extends Component {
 
         // Grow pool if needed
         while (this.rowPool.length < windowSize) {
-            const row = new Row(this.model);
+            const row = new Row(this.store.model);
             const rowEl = row.getElement(true);
             element.appendChild(rowEl);
             this.rowPool.push(row);
@@ -115,7 +139,7 @@ export class Body extends Component {
         }
 
         const rowWidth = this.lastBodyWidth;
-        const colWidth = this.lastColumnWidth || (rowWidth / this.model.getFields().length);
+        const colWidth = this.lastColumnWidth || (rowWidth / this.store.model.getFields().length);
 
         // Bind and position visible rows
         for (let i = 0; i < windowSize; i++) {
@@ -123,9 +147,10 @@ export class Body extends Component {
             const dataIndex = firstRow + i;
 
             if (this.boundIndices[i] !== dataIndex) {
-                row.setData(this.allData[dataIndex]);
+                row.setData(records[dataIndex]);
                 this.boundIndices[i] = dataIndex;
             }
+
             row.setAutoCommitStyle(false);
             row.setX(0);
             row.setY(dataIndex * ROW_HEIGHT);
@@ -158,7 +183,7 @@ export class Body extends Component {
 
         // Keep phantom height in sync
         if (this.phantom) {
-            this.phantom.style.height = this.allData.length * ROW_HEIGHT + "px";
+            this.phantom.style.height = totalRows * ROW_HEIGHT + "px";
         }
 
         this.layoutInProgress = false;

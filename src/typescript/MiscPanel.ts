@@ -4,6 +4,7 @@ import { Table } from "./Base/component/table/Table.js";
 import { Window } from "./Base/Window.js";
 import { Image } from "./Base/component/Image.js";
 import { Model } from "./Base/data/Model.js";
+import { MemoryStore } from "./Base/data/MemoryStore.js";
 import { Component } from "./Base/Component.js";
 import { Button } from "./Base/component/Button.js";
 import { VBox } from "./Base/layout/VBox.js";
@@ -35,6 +36,7 @@ export class MiscPanel extends Component {
         let buttonWindowTable = new Button("Show window with table (slow)!");
         buttonWindowTable.addActionListener(function () {
             let win2 = new Window("blaah!");
+
             win2.setX(50);
             win2.setY(200);
             win2.setWidth(800);
@@ -48,7 +50,8 @@ export class MiscPanel extends Component {
                 { name: "col5", type: "string",  description: "desc5", order: 0 },
             ]);
 
-            let table = new Table(tableModel);
+            let tableStore = new MemoryStore(tableModel);
+            let table = new Table(tableStore);
 
             const rows = [
                 // Declare rows with arrays. Array index is matched by the column order value;
@@ -69,7 +72,7 @@ export class MiscPanel extends Component {
                 { col1: "Hello", col2: false                                , col5: "World" },
                 { col1: "Hello", col2: true,  col3: 2      , col4: "Goodbye", col5: "World" },
                 { col1: "Hello",              col3: 9      , col4: "Goodbye"                },
-                { col1: "Hello", col2: false, col5: "World"                                 },
+                { col1: "Hello", col2: false                                , col5: "World" },
                 { col1: "Hello", col2: false, col3: 4      , col4: "Goodbye", col5: "World" },
                 { col1: "Hello",              col3: 11     , col4: "Goodbye"                },
                 { col1: "Hello", col2: false                                , col5: "World" },
@@ -78,7 +81,7 @@ export class MiscPanel extends Component {
                 { col1: "Hello", col2: false                                , col5: "World" },
             ];
 
-            table.addRows([
+            tableStore.add([
                 ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows,
                 ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows
             ]);

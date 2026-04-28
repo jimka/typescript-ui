@@ -7,8 +7,10 @@ export class Model extends AbstractModel {
 
     readonly fields: (Field | FieldConfig)[];
 
-    constructor(fields: Array<Field | FieldConfig>) {
+    constructor(fields: Array<Field | FieldConfig>, primaryKey?: string) {
         super();
+
         this.fields = fields;
+        this._primaryKey = primaryKey;
     }
 }
