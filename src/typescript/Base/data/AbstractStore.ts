@@ -5,7 +5,7 @@ import { ModelRecord } from './ModelRecord.js';
 import { Proxy } from './proxy/Proxy.js';
 
 type StoreListener<T = any> = (payload: T) => void;
-type StoreEvent = 'load' | 'datachanged' | 'add' | 'remove';
+export type StoreEvent = 'load' | 'datachanged' | 'add' | 'remove' | 'beforesync' | 'sync';
 
 interface SorterConfig {
     property: string;
@@ -19,6 +19,7 @@ export abstract class AbstractStore {
 
     private allRecords: ModelRecord[] = [];
     private records: ModelRecord[] = [];
+    private pendingRemoved: ModelRecord[] = [];
     private activeFilterFns: Array<(r: ModelRecord) => boolean> = [];
     private activeSorter: SorterConfig | null = null;
     private listenerMap: Map<string, StoreListener[]> = new Map();
@@ -82,10 +83,17 @@ export abstract class AbstractStore {
 
     add(data: any | any[]): ModelRecord[] {
         const items = Array.isArray(data) ? data : [data];
-        const added = items.map(item => this.model.createRecord(item));
+        const added = items.map(item => {
+            const record = this.model.createRecord(item);
+
+            record.markAsNew();
+
+            return record;
+        });
 
         this.allRecords.push(...added);
         this.applyView();
+
         this.emit('add', { records: added });
         this.emit('datachanged', {});
 
@@ -94,8 +102,14 @@ export abstract class AbstractStore {
 
     remove(record: ModelRecord): void {
         const allIdx = this.allRecords.indexOf(record);
-        if (allIdx > -1) {
-            this.allRecords.splice(allIdx, 1);
+        if (allIdx === -1) {
+            return;
+        }
+
+        this.allRecords.splice(allIdx, 1);
+
+        if (!record.isNew()) {
+            this.pendingRemoved.push(record);
         }
 
         this.applyView();
@@ -105,8 +119,48 @@ export abstract class AbstractStore {
     }
 
     removeAll(): void {
+        this.pendingRemoved.push(...this.allRecords.filter(r => !r.isNew()));
+
         this.allRecords = [];
         this.records = [];
+
+        this.emit('datachanged', {});
+    }
+
+    async sync(): Promise<void> {
+        if (!this.proxy) {
+            return;
+        }
+
+        this.emit('beforesync', {});
+
+        for (const record of this.allRecords.filter(r => r.isNew())) {
+            const serverData = await this.proxy.create(record);
+
+            for (const [k, v] of Object.entries(serverData)) {
+                record.set(k, v);
+            }
+
+            record.commit();
+        }
+
+        for (const record of this.allRecords.filter(r => r.isDirty() && !r.isNew())) {
+            const serverData = await this.proxy.update(record);
+
+            for (const [k, v] of Object.entries(serverData)) {
+                record.set(k, v);
+            }
+
+            record.commit();
+        }
+
+        for (const record of this.pendingRemoved) {
+            await this.proxy.destroy(record);
+        }
+
+        this.pendingRemoved = [];
+
+        this.emit('sync', {});
         this.emit('datachanged', {});
     }
 
@@ -201,9 +255,17 @@ export abstract class AbstractStore {
                 const av = a.get(property);
                 const bv = b.get(property);
 
-                if (av == null && bv == null) return 0;
-                if (av == null) return 1;
-                if (bv == null) return -1;
+                if (av == null && bv == null) {
+                    return 0;
+                }
+
+                if (av == null) {
+                    return 1;
+                }
+
+                if (bv == null) {
+                    return -1;
+                }
 
                 const cmp = av < bv ? -1 : av > bv ? 1 : 0;
 

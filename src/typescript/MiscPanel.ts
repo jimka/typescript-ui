@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Table } from "./Base/component/table/Table.js";
 import { Window } from "./Base/Window.js";
 import { Image } from "./Base/component/Image.js";
 import { Model } from "./Base/data/Model.js";
@@ -10,6 +9,7 @@ import { Button } from "./Base/component/Button.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { FieldSet } from "./Base/component/FieldSet.js";
 import { ThemeManager, DefaultTheme, DarkTheme } from "./Base/Theme.js";
+import { TablePanel } from "./Base/index.js";
 
 export class MiscPanel extends Component {
 
@@ -51,7 +51,7 @@ export class MiscPanel extends Component {
             ]);
 
             let tableStore = new MemoryStore(tableModel);
-            let table = new Table(tableStore);
+            let tablePanel = new TablePanel(tableStore)
 
             const rows = [
                 // Declare rows with arrays. Array index is matched by the column order value;
@@ -86,7 +86,10 @@ export class MiscPanel extends Component {
                 ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows
             ]);
 
-            win2.addComponent(table);
+            // TODO: Will this lead to a race condition if we don't 'await'?
+            tableStore.sync()
+
+            win2.addComponent(tablePanel);
 
             win2.show();
         });

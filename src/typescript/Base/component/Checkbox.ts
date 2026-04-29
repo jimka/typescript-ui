@@ -24,10 +24,6 @@ export class Checkbox extends Input {
         this.selected = element.checked;
     }
 
-    getElement(createIfMissing: boolean = false) {
-        return <HTMLInputElement>super.getElement(createIfMissing);
-    }
-
     addActionListener(listener: Function) {
         Event.addListener(this, "click", listener);
     }
@@ -48,7 +44,7 @@ export class Checkbox extends Input {
     }
 
     render() {
-        let element = <HTMLInputElement>super.render();
+        let element = super.render();
 
         element.setAttribute("type", "checkbox");
         element.checked = this.isSelected();

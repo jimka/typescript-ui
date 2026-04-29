@@ -7,6 +7,7 @@ import { Header } from "./Header.js";
 import { Body } from "./Body.js";
 import { FooterRow } from "./Footer.js";
 import { AbstractStore } from "../../data/AbstractStore.js";
+import { ModelRecord } from "../../data/ModelRecord.js";
 import { BorderStyle } from "../../BorderStyle.js";
 import { Insets } from "../../Insets.js";
 
@@ -78,6 +79,32 @@ export class Table extends Component {
 
     isFooterVisible() {
         return this.footerVisible;
+    }
+
+    addRow(defaults: Record<string, any> = {}): ModelRecord {
+        const [record] = this.store.add(defaults);
+        this.body.scrollToRecord(record);
+        this.body.selectRecord(record);
+        return record;
+    }
+
+    removeSelectedRow(): void {
+        const record = this.body.getSelectedRecord();
+
+        if (!record) {
+            return;
+        }
+
+        this.body.selectRecord(null);
+        this.store.remove(record);
+    }
+
+    async sync(): Promise<void> {
+        return this.store.sync();
+    }
+
+    getSelectedRecord(): ModelRecord | null {
+        return this.body.getSelectedRecord();
     }
 
     addComponent(row: Header | Body | FooterRow, constraints?: LayoutConstraints) {

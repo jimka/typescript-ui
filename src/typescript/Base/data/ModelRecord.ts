@@ -8,6 +8,7 @@ export class ModelRecord {
     private data: Record<string, any>;
     private original: Record<string, any>;
     private dirty: boolean = false;
+    private _isNew: boolean = false;
 
     constructor(model: AbstractModel, data: Record<string, any>) {
         this.model = model;
@@ -32,9 +33,18 @@ export class ModelRecord {
         return this.dirty;
     }
 
+    isNew(): boolean {
+        return this._isNew;
+    }
+
+    markAsNew(): void {
+        this._isNew = true;
+    }
+
     commit(): void {
         this.original = { ...this.data };
         this.dirty = false;
+        this._isNew = false;
     }
 
     reject(): void {

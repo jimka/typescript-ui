@@ -2,6 +2,7 @@
 
 import { Component } from "../../Component.js";
 import { AbstractStore } from "../../data/AbstractStore.js";
+import { ModelRecord } from "../../data/ModelRecord.js";
 import { Row } from "./Row.js";
 import { Event } from "../../Event.js";
 
@@ -41,6 +42,7 @@ export class Body extends Component {
     private lastColumnWidth: number = 0;
     private layoutInProgress = false;
     private storeRefresh: (() => void) | null = null;
+    private selectedRecord: ModelRecord | null = null;
 
     constructor(store: AbstractStore) {
         super("tbody");
@@ -61,13 +63,15 @@ export class Body extends Component {
         store.on('add', refresh);
         store.on('remove', refresh);
         store.on('datachanged', refresh);
+        store.on('beforesync', refresh);
+        store.on('sync', refresh);
     }
 
     setStore(store: AbstractStore): void {
         if (this.storeRefresh) {
             const old = this.store;
 
-            (['load', 'add', 'remove', 'datachanged'] as const).forEach(e =>
+            (['load', 'add', 'remove', 'datachanged', 'beforesync', 'sync'] as const).forEach(e =>
                 old.off(e, this.storeRefresh!)
             );
         }
@@ -133,7 +137,11 @@ export class Body extends Component {
         while (this.rowPool.length < windowSize) {
             const row = new Row(this.store.model);
             const rowEl = row.getElement(true);
+
             element.appendChild(rowEl);
+
+            rowEl.addEventListener('click', () => this.selectRecord(row.getData() ?? null));
+
             this.rowPool.push(row);
             this.boundIndices.push(-1);
         }
@@ -148,7 +156,9 @@ export class Body extends Component {
 
             if (this.boundIndices[i] !== dataIndex) {
                 row.setData(records[dataIndex]);
+
                 this.boundIndices[i] = dataIndex;
+                this.updateRowVisualState(i);
             }
 
             row.setAutoCommitStyle(false);
@@ -187,6 +197,62 @@ export class Body extends Component {
         }
 
         this.layoutInProgress = false;
+    }
+
+    selectRecord(record: ModelRecord | null): void {
+        const prev = this.selectedRecord;
+        const records = this.store.getRecords();
+
+        this.selectedRecord = record;
+
+        this.boundIndices.forEach((dataIdx, i) => {
+            if (dataIdx === -1) {
+                return;
+            }
+
+            const r = records[dataIdx];
+
+            if (r === prev || r === record) {
+                this.updateRowVisualState(i);
+            }
+        });
+    }
+
+    getSelectedRecord(): ModelRecord | null {
+        return this.selectedRecord;
+    }
+
+    scrollToRecord(record: ModelRecord): void {
+        const idx = this.store.getRecords().indexOf(record);
+        if (idx === -1) {
+            return;
+        }
+
+        const el = this.getElement() as HTMLElement;
+
+        if (!el) {
+            return;
+        }
+
+        el.scrollTop = idx * ROW_HEIGHT;
+    }
+
+    private updateRowVisualState(i: number): void {
+        const dataIdx = this.boundIndices[i];
+        if (dataIdx === -1) {
+            return;
+        }
+
+        const record = this.store.getRecords()[dataIdx];
+        if (!record) {
+            return;
+        }
+
+        if (record === this.selectedRecord) {
+            (this.rowPool[i].getElement() as HTMLElement).style.backgroundColor = 'rgba(30, 100, 200, 0.15)';
+        } else {
+            this.rowPool[i].updateVisualState();
+        }
     }
 
     sortColumns() {

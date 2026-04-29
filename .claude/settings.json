@@ -28,7 +28,12 @@
       "Bash(curl -s http://localhost:8015/src/typescript/Base/Theme.ts)",
       "Bash(pkill -f \"vite/bin/vite.js\")",
       "Read(//usr/local/bin/**)",
-      "Bash(nvm ls *)"
+      "Bash(nvm ls *)",
+      "Bash(xargs cat *)",
+      "Read(//home/jika/.nvm/**)",
+      "Bash(node -e \"process.exit\\(0\\)\")",
+      "Bash(nvm use *)",
+      "Read(//usr/bin/**)"
     ]
   }
 }
