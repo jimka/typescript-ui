@@ -46,7 +46,10 @@ export class Row extends Component {
                 }
 
                 cell.setValue(value);
-                cell.setOnCommit((newValue) => { this.data?.set(field.getName(), newValue); });
+                cell.setOnCommit((newValue) => {
+                    this.data?.set(field.getName(), newValue);
+                    this.updateVisualState();
+                });
 
                 this.addComponent(cell, {
                     data: field
@@ -69,6 +72,23 @@ export class Row extends Component {
         fields.forEach((field, i) => {
             cells[i].setValue(record.get(field.getName()));
         });
+
+        this.updateVisualState();
+    }
+
+    updateVisualState(): void {
+        const el = this.getElement() as HTMLElement;
+        if (!el) {
+            return;
+        }
+
+        if (this.data?.isNew()) {
+             el.style.backgroundColor = 'rgba(70, 200, 70, 0.15)';
+        } else if (this.data?.isDirty()) {
+            el.style.backgroundColor = 'rgba(255, 165, 0, 0.15)';
+        } else {
+            el.style.backgroundColor = '';
+        }
     }
 
     addColumn(cell: Cell<any>, constraints?: LayoutConstraints) {

@@ -7,10 +7,10 @@ export type { Theme } from './Theme.js';
 // Core
 export { BaseObject } from './BaseObject.js';
 export { Component } from './Component.js';
-export type { PerimeterSize } from './Component.js';
 export { Body } from './Body.js';
 export { ButtonGroup } from './ButtonGroup.js';
 export { Window } from './Window.js';
+export type { PerimeterSize } from './Component.js';
 
 // Primitives
 export { Border } from './Border.js';
@@ -19,8 +19,8 @@ export { BorderLine } from './BorderLine.js';
 export { BorderStyle } from './BorderStyle.js';
 export { Insets } from './Insets.js';
 export { Point } from './Point.js';
-export type { Size } from './Size.js';
 export { Placement } from './Placement.js';
+export type { Size } from './Size.js';
 
 // Layout managers
 export { LayoutManager } from './layout/LayoutManager.js';
@@ -75,7 +75,6 @@ export { Legend } from './component/Legend.js';
 // Data layer
 export { AbstractModel } from './data/AbstractModel.js';
 export { Field } from './data/Field.js';
-export type { FieldConfig, FieldType } from './data/Field.js';
 export { Model } from './data/Model.js';
 export { ModelRecord } from './data/ModelRecord.js';
 export { AbstractStore } from './data/AbstractStore.js';
@@ -83,12 +82,15 @@ export { Store } from './data/Store.js';
 export { MemoryStore } from './data/MemoryStore.js';
 export { Proxy } from './data/proxy/Proxy.js';
 export { MemoryProxy } from './data/proxy/MemoryProxy.js';
-export type { MemoryProxyConfig } from './data/proxy/MemoryProxy.js';
 export { AjaxProxy } from './data/proxy/AjaxProxy.js';
+export type { FieldConfig, FieldType } from './data/Field.js';
+export type { StoreEvent } from './data/AbstractStore.js';
+export type { MemoryProxyConfig } from './data/proxy/MemoryProxy.js';
 export type { AjaxProxyConfig } from './data/proxy/AjaxProxy.js';
 
 // Table subsystem
 export { Table } from './component/table/Table.js';
+export { TablePanel } from './component/table/TablePanel.js';
 export { Header as TableHeader } from './component/table/Header.js';
 export { Body as TableBody } from './component/table/Body.js';
 export { FooterRow as TableFooter } from './component/table/Footer.js';
