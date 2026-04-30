@@ -2,6 +2,7 @@
 
 import { Event } from "../Event.js";
 import { Input } from "./Input.js";
+import { Bindable } from "../Bindable.js";
 
 /**
  * A checkbox input component.
@@ -9,7 +10,7 @@ import { Input } from "./Input.js";
  * Wraps an `<input type="checkbox">` element and tracks checked state internally,
  * keeping it synchronised with the DOM after each click.
  */
-export class Checkbox extends Input {
+export class Checkbox extends Input implements Bindable<boolean> {
 
     private selected: boolean;
 
@@ -40,6 +41,18 @@ export class Checkbox extends Input {
      */
     addActionListener(listener: Function) {
         Event.addListener(this, "click", listener);
+    }
+
+    setValue(value: boolean): void {
+        this.setSelected(value);
+    }
+
+    getValue(): boolean {
+        return this.isSelected();
+    }
+
+    addBindingListener(fn: () => void): void {
+        this.addActionListener(fn);
     }
 
     /**
