@@ -28,6 +28,13 @@ export class Window extends Component {
         southwest: WindowBorder,
     };
 
+    private rafId: number | null = null;
+    private pendingDX: number = 0;
+    private pendingDY: number = 0;
+    private pendingBorder: WindowBorder | null = null;
+    private resizeFps: number = 6;
+    private lastFlushTime: number = 0;
+
     constructor(headerText: string, zIndex: number = 9999) {
         super();
 
@@ -88,6 +95,11 @@ export class Window extends Component {
      * Hides the window and destroys its DOM element when the close button is clicked.
      */
     onExitAction() {
+        if (this.rafId !== null) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
+
         this.setVisible(false);
         this.destructor();
     }
@@ -123,46 +135,92 @@ export class Window extends Component {
         e = e || window.event as MouseEvent;
         e.preventDefault();
 
+        this.pendingDX += e.movementX;
+        this.pendingDY += e.movementY;
+        this.pendingBorder = border;
+
+        if (this.rafId === null) {
+            this.rafId = requestAnimationFrame((ts) => this.flushResize(ts));
+        }
+    }
+
+    /**
+     * Sets the maximum number of layout passes per second during a resize drag.
+     *
+     * @param fps - Frames per second cap (e.g. 30 or 20). Defaults to 60.
+     */
+    setResizeFps(fps: number) {
+        this.resizeFps = fps;
+    }
+
+    private flushResize(timestamp: number) {
+        if (timestamp - this.lastFlushTime < 1000 / this.resizeFps) {
+            this.rafId = requestAnimationFrame((ts) => this.flushResize(ts));
+            return;
+        }
+
+        this.lastFlushTime = timestamp;
+        this.rafId = null;
+
+        const dx = this.pendingDX;
+        const dy = this.pendingDY;
+        const border = this.pendingBorder;
+
+        this.pendingDX = 0;
+        this.pendingDY = 0;
+        this.pendingBorder = null;
+
+        if (!border) {
+            return;
+        }
+
         this.setAutoCommitStyle(false);
         switch (border.getDirection()) {
             case Direction.NORTHWEST:
-                this.setX(this.getX() + e.movementX);
-                this.setY(this.getY() + e.movementY);
-                this.setWidth(this.getWidth() - e.movementX);
-                this.setHeight(this.getHeight() - e.movementY);
+                this.setX(this.getX() + dx);
+                this.setY(this.getY() + dy);
+                this.setWidth(this.getWidth() - dx);
+                this.setHeight(this.getHeight() - dy);
+
                 break;
             case Direction.NORTH:
-                this.setY(this.getY() + e.movementY);
-                this.setHeight(this.getHeight() - e.movementY);
+                this.setY(this.getY() + dy);
+                this.setHeight(this.getHeight() - dy);
+
                 break;
             case Direction.NORTHEAST:
-                this.setY(this.getY() + e.movementY);
-                this.setWidth(this.getWidth() + e.movementX);
-                this.setHeight(this.getHeight() - e.movementY);
+                this.setY(this.getY() + dy);
+                this.setWidth(this.getWidth() + dx);
+                this.setHeight(this.getHeight() - dy);
+
                 break;
             case Direction.EAST:
-                this.setWidth(this.getWidth() + e.movementX);
+                this.setWidth(this.getWidth() + dx);
+
                 break;
             case Direction.SOUTHEAST:
-                this.setWidth(this.getWidth() + e.movementX);
-                this.setHeight(this.getHeight() + e.movementY);
+                this.setWidth(this.getWidth() + dx);
+                this.setHeight(this.getHeight() + dy);
+
                 break;
             case Direction.SOUTH:
-                this.setHeight(this.getHeight() + e.movementY);
+                this.setHeight(this.getHeight() + dy);
+
                 break;
             case Direction.SOUTHWEST:
-                this.setX(this.getX() + e.movementX);
-                this.setWidth(this.getWidth() - e.movementX);
-                this.setHeight(this.getHeight() + e.movementY);
+                this.setX(this.getX() + dx);
+                this.setWidth(this.getWidth() - dx);
+                this.setHeight(this.getHeight() + dy);
+
                 break;
             case Direction.WEST:
-                this.setX(this.getX() + e.movementX);
-                this.setWidth(this.getWidth() - e.movementX);
+                this.setX(this.getX() + dx);
+                this.setWidth(this.getWidth() - dx);
+
                 break;
         }
 
         this.doLayout();
-
         this.setAutoCommitStyle(true);
     }
 
