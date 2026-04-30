@@ -28,9 +28,9 @@ export class Window extends Component {
         southwest: WindowBorder,
     };
 
-    private rafId: number | null = null;
-    private pendingDX: number = 0;
-    private pendingDY: number = 0;
+    private animationFrameId: number | null = null;
+    private pendingMouseDX: number = 0;
+    private pendingMouseDY: number = 0;
     private pendingBorder: WindowBorder | null = null;
     private resizeFps: number = 6;
     private lastFlushTime: number = 0;
@@ -95,9 +95,9 @@ export class Window extends Component {
      * Hides the window and destroys its DOM element when the close button is clicked.
      */
     onExitAction() {
-        if (this.rafId !== null) {
-            cancelAnimationFrame(this.rafId);
-            this.rafId = null;
+        if (this.animationFrameId !== null) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
         }
 
         this.setVisible(false);
@@ -135,12 +135,12 @@ export class Window extends Component {
         e = e || window.event as MouseEvent;
         e.preventDefault();
 
-        this.pendingDX += e.movementX;
-        this.pendingDY += e.movementY;
+        this.pendingMouseDX += e.movementX;
+        this.pendingMouseDY += e.movementY;
         this.pendingBorder = border;
 
-        if (this.rafId === null) {
-            this.rafId = requestAnimationFrame((ts) => this.flushResize(ts));
+        if (this.animationFrameId === null) {
+            this.animationFrameId = requestAnimationFrame((ts) => this.flushResize(ts));
         }
     }
 
@@ -155,19 +155,19 @@ export class Window extends Component {
 
     private flushResize(timestamp: number) {
         if (timestamp - this.lastFlushTime < 1000 / this.resizeFps) {
-            this.rafId = requestAnimationFrame((ts) => this.flushResize(ts));
+            this.animationFrameId = requestAnimationFrame((ts) => this.flushResize(ts));
             return;
         }
 
         this.lastFlushTime = timestamp;
-        this.rafId = null;
+        this.animationFrameId = null;
 
-        const dx = this.pendingDX;
-        const dy = this.pendingDY;
+        const dx = this.pendingMouseDX;
+        const dy = this.pendingMouseDY;
         const border = this.pendingBorder;
 
-        this.pendingDX = 0;
-        this.pendingDY = 0;
+        this.pendingMouseDX = 0;
+        this.pendingMouseDY = 0;
         this.pendingBorder = null;
 
         if (!border) {
