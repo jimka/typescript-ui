@@ -118,10 +118,12 @@ export namespace CSS {
         }
 
         let sheet = getMainStyle();
-        sheet.insertRule(name + "{}");
 
-        const rule = sheet.cssRules[0] as CSSStyleRule;
+        const idx = sheet.insertRule(name + "{}", sheet.cssRules.length);
+        const rule = sheet.cssRules[idx] as CSSStyleRule;
+
         ruleCache.set(name, rule);
+
         return rule;
     }
 
