@@ -75,9 +75,12 @@ export class Window extends Component {
      * Appends the window element to the document root, triggers layout, and makes it visible.
      */
     show() {
-        document.documentElement.appendChild(this.getElement(true));
+        const el = this.getElement(true);
 
         this.doLayout();
+
+        document.documentElement.appendChild(el);
+
         this.setVisible(true);
     }
 
