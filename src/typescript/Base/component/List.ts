@@ -63,6 +63,20 @@ export class List extends ComboBox {
     }
 
     /**
+     * Updates the select element's size after rebuilding options from the bound store.
+     */
+    protected refreshFromStore(): void {
+        super.refreshFromStore();
+
+        let element = this.getElement();
+        if (!element) {
+            return;
+        }
+
+        element.size = this.getItems().length + 1;
+    }
+
+    /**
      * Renders the select element and sets its initial size to accommodate all items.
      *
      * @returns The created HTMLSelectElement with its size attribute initialised.
