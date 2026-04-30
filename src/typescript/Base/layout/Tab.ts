@@ -9,6 +9,12 @@ import { FillType } from "./FillType.js";
 import { ButtonGroup } from "../ButtonGroup.js";
 import { Column } from "./Column.js"
 
+/**
+ * A layout manager that renders a row of tab buttons above the container content area
+ * and shows exactly one child component at a time based on the selected tab.
+ * Tab button labels are taken from `LayoutConstraints.name` when available,
+ * otherwise from the component's ID.
+ */
 export class Tab extends LayoutManager {
 
     private toolbar: Component;
@@ -33,11 +39,21 @@ export class Tab extends LayoutManager {
         this.selectedTabIndex = 0;
     }
 
+    /**
+     * Updates the selected tab index and triggers a re-layout when a tab button is clicked.
+     *
+     * @param tab - The tab button component that was pressed.
+     */
     onTabPressed(tab: Component) {
         this.selectedTabIndex = this.tabs.indexOf(tab);
         this.doLayout();
     }
 
+    /**
+     * Attaches to a container and appends the tab toolbar element to it.
+     *
+     * @param container - The container component to attach to.
+     */
     attach(container: Component) {
         super.attach(container);
 
@@ -45,13 +61,20 @@ export class Tab extends LayoutManager {
         container.getElement().appendChild(element);
     }
 
+    /**
+     * Detaches from the container and removes the tab toolbar element from the DOM.
+     */
     detach() {
         super.detach();
 
         this.toolbar.getElement().remove();
     }
 
-
+    /**
+     * Returns the child component at the currently selected tab index.
+     *
+     * @returns The visible component, or `null` if the container is empty or not attached.
+     */
     getVisibleComponent() {
         let container = this.getContainer();
         if (!container) {
@@ -63,6 +86,11 @@ export class Tab extends LayoutManager {
         return components[this.selectedTabIndex];
     }
 
+    /**
+     * Returns the preferred size: the visible component's preferred size plus the toolbar height.
+     *
+     * @returns The preferred `{width, height}`, or `null` if there is no container or visible component.
+     */
     getPreferredSize() {
         let container = this.getContainer();
         if (!container) {
@@ -95,6 +123,11 @@ export class Tab extends LayoutManager {
         };
     }
 
+    /**
+     * Returns the minimum size: the visible component's minimum size plus the toolbar minimum height.
+     *
+     * @returns The minimum `{width, height}`, or `null` if there is no container or visible component.
+     */
     getMinSize() {
         let container = this.getContainer();
         if (!container) {
@@ -127,6 +160,11 @@ export class Tab extends LayoutManager {
         };
     }
 
+    /**
+     * Returns the maximum size: the visible component's maximum size plus the toolbar maximum height.
+     *
+     * @returns The maximum `{width, height}`, or `null` if there is no container or visible component.
+     */
     getMaxSize() {
         let container = this.getContainer();
         if (!container) {
@@ -159,6 +197,15 @@ export class Tab extends LayoutManager {
         };
     }
 
+    /**
+     * Creates a `ToggleButton` for a component and adds it to the tab toolbar.
+     *
+     * @param component - The content component for which a tab button should be created.
+     *
+     * @remarks The button label is taken from `LayoutConstraints.name` when available;
+     * otherwise the component's ID is used. The button is automatically selected
+     * if it corresponds to the current `selectedTabIndex`.
+     */
     createTab(component: Component) {
         let constraints = this.getLayoutConstraints(component);
         let name: string;
@@ -190,6 +237,14 @@ export class Tab extends LayoutManager {
         this.toolbar.addComponent(tabButton);
     }
 
+    /**
+     * Creates tab buttons for new components, hides all but the selected child,
+     * and positions the toolbar and the visible component.
+     *
+     * @remarks Tab buttons are created lazily: only components that do not yet have
+     * a corresponding button receive one. The toolbar is positioned at the top of the
+     * container and the visible component occupies the remaining space beneath it.
+     */
     doLayout() {
         let container = this.getContainer();
         if (!container) {

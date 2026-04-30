@@ -6,8 +6,9 @@ import { Event } from "./Event.js";
 import { Size } from "./Size.js";
 
 /**
- * A [[Component]] used to access the page main body element.
- * For example:
+ * A {@link Component} that wraps the page's `<body>` element.
+ *
+ * Use the singleton accessor to add top-level components to the page:
  * ```
  * let body = Body.getInstance();
  * body.addComponent(....);
@@ -17,6 +18,11 @@ export class Body extends Component {
 
     private static readonly INSTANCE: Body = new Body();
 
+    /**
+     * Returns the singleton Body instance.
+     *
+     * @returns The single shared Body component for this page.
+     */
     static getInstance() {
         return this.INSTANCE;
     }
@@ -29,10 +35,18 @@ export class Body extends Component {
         this.setBackgroundColor("rgb(241, 241, 241)");
     }
 
+    /**
+     * Returns the document body element.
+     *
+     * @returns The `<body>` HTMLElement.
+     */
     getElement() {
         return Util.select("body");
     }
 
+    /**
+     * Initializes the body size from the viewport and registers a resize listener to keep it in sync.
+     */
     protected init() {
         super.init();
 

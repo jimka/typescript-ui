@@ -8,6 +8,12 @@ import { WindowBorder, Direction } from "./component/WindowBorder.js";
 import { Event } from "./Event.js";
 import { Placement } from "./Placement.js";
 
+/**
+ * A floating, resizable, and draggable window component.
+ *
+ * Renders a titled panel with eight border-handle strips that the user can
+ * drag to resize the window from any edge or corner.
+ */
 export class Window extends Component {
 
     private header: WindowHeader;
@@ -65,6 +71,9 @@ export class Window extends Component {
         Event.addListener(this.header, "mousedown", () => this.onMouseDown());
     }
 
+    /**
+     * Appends the window element to the document root, triggers layout, and makes it visible.
+     */
     show() {
         document.documentElement.appendChild(this.getElement(true));
 
@@ -72,11 +81,19 @@ export class Window extends Component {
         this.setVisible(true);
     }
 
+    /**
+     * Hides the window and destroys its DOM element when the close button is clicked.
+     */
     onExitAction() {
         this.setVisible(false);
         this.destructor();
     }
 
+    /**
+     * Updates the text shown in the window's title bar.
+     *
+     * @param text - The new header label text.
+     */
     setHeaderText(text: string) {
         if (!this.header) {
             throw new Error("Window does not have a header.");
@@ -85,11 +102,20 @@ export class Window extends Component {
         this.header.getLabel().setText(text);
     }
 
+    /**
+     * Attaches document-level move and mouseup listeners to begin dragging the window.
+     */
     onMouseDown() {
         document.onmouseup = () => this.onMouseUp();
         document.onmousemove = (e) => this.onDrag(e);
     }
 
+    /**
+     * Adjusts the window's position and size based on the dragged border direction.
+     *
+     * @param border - The border handle that triggered the resize.
+     * @param e - The mouse event carrying the movement delta.
+     */
     onResize(border: WindowBorder, e: MouseEvent) {
         e = e || window.event as MouseEvent;
         e.preventDefault();
@@ -137,6 +163,11 @@ export class Window extends Component {
         this.setAutoCommitStyle(true);
     }
 
+    /**
+     * Moves the window by the mouse movement delta while dragging.
+     *
+     * @param e - The mouse event carrying the movement delta.
+     */
     onDrag(e: MouseEvent) {
         e = e || window.event as MouseEvent;
         e.preventDefault();
@@ -145,11 +176,17 @@ export class Window extends Component {
         this.setY(this.getY() + e.movementY);
     }
 
+    /**
+     * Detaches the document-level drag listeners when the mouse button is released.
+     */
     onMouseUp() {
         document.onmouseup = null;
         document.onmousemove = null;
     }
 
+    /**
+     * Runs the border layout and positions all eight resize-handle strips around the window.
+     */
     doLayout() {
         super.doLayout();
 
@@ -226,6 +263,11 @@ export class Window extends Component {
         this.borderComponents.southwest.setAutoCommitStyle(true);
     }
 
+    /**
+     * Creates the window element and appends all eight resize-handle border elements.
+     *
+     * @returns The root HTMLElement for this window.
+     */
     render() {
         let element = super.render();
 

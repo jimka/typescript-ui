@@ -15,6 +15,13 @@ export enum Direction {
     NORTHEAST
 }
 
+/**
+ * A resizable window border strip component.
+ *
+ * Each instance represents one edge or corner of a resizable window. It listens for
+ * mouse/touch drag events and notifies registered listeners with the mouse event so
+ * the parent window can compute and apply the new size.
+ */
 export class WindowBorder extends Component {
 
     private direction: Direction;
@@ -36,10 +43,20 @@ export class WindowBorder extends Component {
         Event.addListener(this, 'mousedown', this.dragStartListener);
     }
 
+    /**
+     * Returns the resize direction of this border strip.
+     *
+     * @returns The Direction enum value for this border.
+     */
     getDirection() {
         return this.direction;
     }
 
+    /**
+     * Sets the resize direction, defaulting to NORTH if not provided.
+     *
+     * @param direction - The Direction enum value. Defaults to NORTH if falsy.
+     */
     setDirection(direction: Direction) {
         if (!direction) {
             direction = Direction.NORTH;
@@ -48,10 +65,20 @@ export class WindowBorder extends Component {
         this.direction = direction;
     }
 
+    /**
+     * Registers a listener to receive drag events with (border, mouseEvent) arguments.
+     *
+     * @param listener - The callback invoked with this WindowBorder and the MouseEvent on each drag.
+     */
     addDragListener(listener: Function) {
         this.dragListeners.push(listener);
     }
 
+    /**
+     * Removes a previously registered drag listener.
+     *
+     * @param listener - The callback to remove.
+     */
     removeDragListener(listener: Function) {
         let idx = this.dragListeners.indexOf(listener);
         if (idx < 0) {
@@ -61,6 +88,11 @@ export class WindowBorder extends Component {
         this.dragListeners.push(listener);
     }
 
+    /**
+     * Invokes all registered drag listeners with this border and the mouse event.
+     *
+     * @param e - The MouseEvent to pass to each listener.
+     */
     fireDragListeners(e: MouseEvent) {
         let me = this;
 
@@ -71,6 +103,9 @@ export class WindowBorder extends Component {
         }
     }
 
+    /**
+     * Attaches viewport mouse/touch move and stop listeners and disables body pointer events.
+     */
     onDragStart() {
         Event.addViewportListener(this, 'mouseup', this.dragStopListener);
         Event.addViewportListener(this, 'touchend', this.dragStopListener);
@@ -81,6 +116,9 @@ export class WindowBorder extends Component {
         Util.select("body").style.pointerEvents = "none";
     }
 
+    /**
+     * Removes viewport listeners and restores body pointer events when drag ends.
+     */
     onDragStop() {
         Event.removeViewportListener(this, 'mouseup', this.dragStopListener);
         Event.removeViewportListener(this, 'touchend', this.dragStopListener);
@@ -91,6 +129,11 @@ export class WindowBorder extends Component {
         Util.select("body").style.pointerEvents = "";
     }
 
+    /**
+     * Renders the border element and sets the appropriate resize cursor based on direction.
+     *
+     * @returns The created element with the correct resize cursor applied.
+     */
     render() {
         let element = super.render();
 

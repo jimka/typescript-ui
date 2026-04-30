@@ -3,6 +3,12 @@
 import { Event } from "../Event.js";
 import { Input } from "./Input.js";
 
+/**
+ * A checkbox input component.
+ *
+ * Wraps an `<input type="checkbox">` element and tracks checked state internally,
+ * keeping it synchronised with the DOM after each click.
+ */
 export class Checkbox extends Input {
 
     private selected: boolean;
@@ -19,15 +25,28 @@ export class Checkbox extends Input {
         this.addActionListener(this.onAction);
     }
 
+    /**
+     * Syncs the selected state from the DOM element's checked property after a click.
+     */
     onAction() {
         let element = this.getElement();
         this.selected = element.checked;
     }
 
+    /**
+     * Registers a click event listener on this checkbox.
+     *
+     * @param listener - The callback to invoke on each click.
+     */
     addActionListener(listener: Function) {
         Event.addListener(this, "click", listener);
     }
 
+    /**
+     * Sets the selected state and updates the checkbox element's checked property.
+     *
+     * @param value - True to check the box, false to uncheck it.
+     */
     setSelected(value: boolean) {
         this.selected = !!value;
 
@@ -39,10 +58,20 @@ export class Checkbox extends Input {
         element.checked = this.isSelected();
     }
 
+    /**
+     * Returns whether the checkbox is currently checked.
+     *
+     * @returns True if the checkbox is checked.
+     */
     isSelected() {
         return this.selected;
     }
 
+    /**
+     * Renders the input element with type="checkbox" and initial checked state.
+     *
+     * @returns The created HTMLInputElement with type and checked initialised.
+     */
     render() {
         let element = super.render();
 

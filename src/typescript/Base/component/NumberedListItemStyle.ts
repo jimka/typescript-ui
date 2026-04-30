@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+/**
+ * CSS list-style-type values for numbered (ordered) lists.
+ */
 export enum NumberedListItemStyle {
     NONE = "none",
     DECIMAL = "decimal",

@@ -8,6 +8,12 @@ import { AnchorType } from "../layout/AnchorType.js";
 import { FillType } from "../layout/FillType.js";
 import { Placement } from "../Placement.js";
 
+/**
+ * A header bar component containing a left-aligned text label.
+ *
+ * Renders a `<header>` element with a Border layout manager and a bold label
+ * anchored to the west side.
+ */
 export class Header extends Component {
 
     private label: Label;
@@ -40,6 +46,11 @@ export class Header extends Component {
         });
     }
 
+    /**
+     * Returns the Label child used to display the header text.
+     *
+     * @returns The internal Label instance.
+     */
     getLabel() {
         return this.label;
     }

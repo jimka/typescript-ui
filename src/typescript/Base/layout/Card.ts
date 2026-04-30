@@ -3,14 +3,29 @@
 import { LayoutManager } from "./LayoutManager.js"
 import { FillType } from "./FillType.js";
 
+/**
+ * A layout manager that shows exactly one child component at a time,
+ * sizing it to fill the container's inner bounds.
+ * The visible child is selected by component ID; all others are hidden.
+ */
 export class Card extends LayoutManager {
 
     private visibleComponentId: String | null = null;
 
+    /**
+     * Returns the ID of the currently visible child component, or `null` if none is set.
+     *
+     * @returns The visible component ID, or `null`.
+     */
     getVisibleComponentId() {
         return this.visibleComponentId;
     }
 
+    /**
+     * Returns the preferred size of the visible child plus the container perimeter.
+     *
+     * @returns The preferred `{width, height}`, or `null` if there is no container or no visible component.
+     */
     getPreferredSize() {
         let container = this.getContainer();
         if (!container) {
@@ -41,6 +56,11 @@ export class Card extends LayoutManager {
         };
     }
 
+    /**
+     * Returns the minimum size of the visible child plus the container perimeter.
+     *
+     * @returns The minimum `{width, height}`, or `null` if there is no container or no visible component.
+     */
     getMinSize() {
         let container = this.getContainer();
         if (!container) {
@@ -71,6 +91,11 @@ export class Card extends LayoutManager {
         };
     }
 
+    /**
+     * Returns the maximum size of the visible child plus the container perimeter.
+     *
+     * @returns The maximum `{width, height}`, or `null` if there is no container or no visible component.
+     */
     getMaxSize() {
         let container = this.getContainer();
         if (!container) {
@@ -101,10 +126,23 @@ export class Card extends LayoutManager {
         };
     }
 
+    /**
+     * Sets the ID of the child component to show; all others will be hidden on the next layout pass.
+     *
+     * @param id - The ID of the child component to make visible.
+     */
     setVisibleComponentId(id: String) {
         this.visibleComponentId = id;
     }
 
+    /**
+     * Returns the child component matching `visibleComponentId`, or the first child if no ID is set.
+     *
+     * @returns The resolved visible component, or `undefined` if the container is empty.
+     *
+     * @remarks Logs a console warning when `visibleComponentId` is set but no matching child is found,
+     * then falls back to the first child.
+     */
     getVisibleComponent() {
         let container = this.getContainer();
         if (!container) {
@@ -135,6 +173,9 @@ export class Card extends LayoutManager {
         return component;
     }
 
+    /**
+     * Hides all children and sizes the visible component to fill the container's inner bounds.
+     */
     doLayout() {
         let container = this.getContainer();
         if (!container) {

@@ -54,6 +54,11 @@ export class Body extends Component {
         this.bindStore(store);
     }
 
+    /**
+     * Subscribes to all relevant store events to trigger a renderWindow refresh.
+     *
+     * @param store - The store whose events to subscribe to.
+     */
     private bindStore(store: AbstractStore): void {
         const refresh = () => { this.boundIndices.fill(-1); this.renderWindow(); };
 
@@ -67,6 +72,11 @@ export class Body extends Component {
         store.on('sync', refresh);
     }
 
+    /**
+     * Swaps the store, unsubscribing from the old one and rebinding to the new one.
+     *
+     * @param store - The new store to bind to the body.
+     */
     setStore(store: AbstractStore): void {
         if (this.storeRefresh) {
             const old = this.store;
@@ -85,6 +95,11 @@ export class Body extends Component {
         }
     }
 
+    /**
+     * Initializes the body element, creates the phantom height div, and attaches the scroll listener.
+     *
+     * @param element - Optional. The HTMLElement to initialize with; falls back to `getElement()`.
+     */
     protected init(element?: HTMLElement) {
         super.init(element);
 
@@ -111,6 +126,15 @@ export class Body extends Component {
         this.renderWindow();
     }
 
+    /**
+     * Recomputes the visible row window, rebinds changed rows from the pool, and hides excess rows.
+     *
+     * @param bodyWidth - Optional. The total body width in pixels; cached and reused on scroll updates.
+     * @param columnWidth - Optional. The per-column width in pixels; derived from bodyWidth when omitted.
+     *
+     * @remarks When called with width arguments (layout pass) the `layoutInProgress` flag is set to
+     * suppress the spurious scroll event the browser fires when the phantom element's height changes.
+     */
     renderWindow(bodyWidth?: number, columnWidth?: number) {
         const element = this.getElement();
         if (!element) return;
@@ -199,6 +223,11 @@ export class Body extends Component {
         this.layoutInProgress = false;
     }
 
+    /**
+     * Sets the selected record and updates the visual state of affected pool rows.
+     *
+     * @param record - The record to select, or null to clear the selection.
+     */
     selectRecord(record: ModelRecord | null): void {
         const prev = this.selectedRecord;
         const records = this.store.getRecords();
@@ -218,10 +247,20 @@ export class Body extends Component {
         });
     }
 
+    /**
+     * Returns the currently selected record, or null if none is selected.
+     *
+     * @returns The selected {@link ModelRecord}, or null.
+     */
     getSelectedRecord(): ModelRecord | null {
         return this.selectedRecord;
     }
 
+    /**
+     * Scrolls the body so the given record is visible at the top.
+     *
+     * @param record - The record to scroll into view.
+     */
     scrollToRecord(record: ModelRecord): void {
         const idx = this.store.getRecords().indexOf(record);
         if (idx === -1) {
@@ -237,6 +276,11 @@ export class Body extends Component {
         el.scrollTop = idx * ROW_HEIGHT;
     }
 
+    /**
+     * Applies selection highlight or normal visual state to the pool row at index i.
+     *
+     * @param i - The zero-based index into the row pool.
+     */
     private updateRowVisualState(i: number): void {
         const dataIdx = this.boundIndices[i];
         if (dataIdx === -1) {
@@ -255,10 +299,16 @@ export class Body extends Component {
         }
     }
 
+    /**
+     * No-op; column order is fixed by field order in renderWindow.
+     */
     sortColumns() {
         // No longer applicable — column order is fixed by field order in renderWindow
     }
 
+    /**
+     * Not yet implemented; throws an error if called.
+     */
     sortRows() {
         throw Error("Not implemented yet.");
     }

@@ -5,6 +5,12 @@ import { TextField } from "../../../../component/TextField.js";
 import { AnchorType } from "../../../../layout/AnchorType.js";
 import { Event } from "../../../../Event.js";
 
+/**
+ * An in-place editor for numeric cell values.
+ *
+ * Wraps a right-aligned {@link TextField} and proxies blur and keydown events
+ * up to the parent cell so the standard commit/cancel lifecycle works.
+ */
 export class NumberEditor extends CellEditor<Number> {
 
     private textField: TextField = new TextField();
@@ -27,14 +33,27 @@ export class NumberEditor extends CellEditor<Number> {
         });
     }
 
+    /**
+     * Returns the text field value parsed as a number.
+     *
+     * @returns The current numeric value from the text field.
+     */
     getValue() {
         return Number(this.textField.getText());
     }
 
+    /**
+     * Populates the text field with the number as a string.
+     *
+     * @param value - The numeric value to set in the text field.
+     */
     setValue(value: Number) {
         this.textField.setText(String(value) || "");
     }
 
+    /**
+     * Focuses the text field and selects all its content.
+     */
     focus() {
         this.textField.focus();
         this.textField.select();

@@ -4,8 +4,18 @@ import { LayoutManager } from "./LayoutManager.js";
 import { Size } from "../Size.js";
 import { FillType } from "./FillType.js";
 
+/**
+ * A layout manager that expects exactly one child component and sizes it to
+ * fill the container's entire inner bounds.
+ * Throws if the container holds more than one component.
+ */
 export class Fit extends LayoutManager {
 
+    /**
+     * Returns the preferred size of the single child component plus the container perimeter.
+     *
+     * @returns The preferred `{width, height}`, or `null` if there is no container or no child.
+     */
     getPreferredSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
@@ -33,6 +43,11 @@ export class Fit extends LayoutManager {
         };
     }
 
+    /**
+     * Returns the minimum size of the single child component plus the container perimeter.
+     *
+     * @returns The minimum `{width, height}`, or `null` if there is no container or no child.
+     */
     getMinSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
@@ -60,6 +75,11 @@ export class Fit extends LayoutManager {
         };
     }
 
+    /**
+     * Returns the maximum size of the single child component plus the container perimeter.
+     *
+     * @returns The maximum `{width, height}`, or `null` if there is no container or no child.
+     */
     getMaxSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
@@ -87,6 +107,13 @@ export class Fit extends LayoutManager {
         };
     }
 
+    /**
+     * Returns the single child component of the container, or `undefined` if the container is empty.
+     *
+     * @returns The child component, or `undefined`.
+     *
+     * @remarks Throws if the container holds more than one component.
+     */
     getComponent() {
         let container = this.getContainer();
         if (!container) {
@@ -108,6 +135,11 @@ export class Fit extends LayoutManager {
         return component;
     }
 
+    /**
+     * Sizes the single child component to fill the container's inner bounds.
+     *
+     * @remarks Throws if the container holds more than one component.
+     */
     doLayout() {
         let container = this.getContainer();
         if (!container) {

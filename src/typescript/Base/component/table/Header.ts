@@ -7,6 +7,12 @@ import { Field } from "../../data/Field.js";
 import { HeaderCell } from "./cell/Header.js";
 import { BorderStyle } from "../../BorderStyle.js";
 
+/**
+ * The header section of a table, rendered as a `<thead>` element.
+ *
+ * Builds one {@link HeaderCell} per field from the supplied model and delegates
+ * width/height changes to the inner row.
+ */
 export class Header extends Component {
 
     private model: AbstractModel;
@@ -37,10 +43,23 @@ export class Header extends Component {
         this.model = model;
     }
 
+    /**
+     * Returns the model driving this header's columns.
+     *
+     * @returns The {@link AbstractModel} currently bound to this header.
+     */
     getModel() {
         return this.model;
     }
 
+    /**
+     * Replaces the model, rebuilding header cells only when the field list changes.
+     *
+     * @param model - The new model to bind to the header.
+     *
+     * @remarks If the new model has the same fields in the same order as the current model,
+     * the existing cells are left in place and no DOM work is performed.
+     */
     setModel(model: AbstractModel): void {
         const oldNames = this.model.getFields()
                                    .slice()
@@ -73,10 +92,18 @@ export class Header extends Component {
         }
     }
 
+    /**
+     * Returns the header cell components in column order.
+     *
+     * @returns An array of cell components from the header's inner row.
+     */
     getColumns() {
         return this.getComponents()[0].getComponents();
     }
 
+    /**
+     * Reorders header cells by field order using their layout constraints.
+     */
     sortColumns() {
         let row = this.getComponents()[0];
 
@@ -96,20 +123,40 @@ export class Header extends Component {
         });
     }
 
+    /**
+     * Appends a row to the header.
+     *
+     * @param row - The row to append.
+     */
     addRow(row: Row) {
         this.addComponent(row);
     }
 
+    /**
+     * Adds a row as a child component of the header.
+     *
+     * @param row - The row component to add.
+     */
     addComponent(row: Row) {
         super.addComponent(row);
     }
 
+    /**
+     * Sets the header width and propagates it to the inner row.
+     *
+     * @param width - The width in pixels.
+     */
     setWidth(width: number) {
         super.setWidth(width);
 
         this.getComponents()[0].setWidth(width);
     }
 
+    /**
+     * Sets the header height and propagates it to the inner row.
+     *
+     * @param height - The height in pixels.
+     */
     setHeight(height: number) {
         super.setHeight(height);
 

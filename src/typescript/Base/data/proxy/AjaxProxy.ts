@@ -3,6 +3,9 @@
 import { ModelRecord } from '../ModelRecord.js';
 import { Proxy } from './Proxy.js';
 
+/**
+ * Configuration object for constructing an AjaxProxy.
+ */
 export interface AjaxProxyConfig {
     url: string;
     root?: string;
@@ -12,6 +15,15 @@ export interface AjaxProxyConfig {
     headers?: Record<string, string>;
 }
 
+/**
+ * A proxy that communicates with a remote HTTP/REST endpoint using the Fetch API.
+ * Supports configurable HTTP methods and an optional root key for unwrapping responses.
+ *
+ * @remarks
+ * Update and destroy requests are sent to `{url}/{id}` where `id` is the record's
+ * primary key value. All four CRUD methods throw an `Error` when the server responds
+ * with a non-OK status code.
+ */
 export class AjaxProxy extends Proxy {
 
     private url: string;
@@ -21,6 +33,11 @@ export class AjaxProxy extends Proxy {
     private updateMethod: 'PUT' | 'PATCH';
     private headers: Record<string, string>;
 
+    /**
+     * Constructs an AjaxProxy from the given configuration.
+     *
+     * @param config - The configuration object specifying the endpoint URL and HTTP options.
+     */
     constructor(config: AjaxProxyConfig) {
         super();
         this.url = config.url;
@@ -31,6 +48,16 @@ export class AjaxProxy extends Proxy {
         this.headers = config.headers ?? {};
     }
 
+    /**
+     * Fetches all records from the configured URL, optionally extracting from a root key.
+     *
+     * @returns A promise that resolves to an array of raw data objects from the server.
+     *
+     * @remarks
+     * When `root` is configured the response JSON is expected to be an object and the
+     * array is read from `json[root]`. Without `root` the response must be a top-level
+     * array. An `Error` is thrown for non-OK responses or unexpected response shapes.
+     */
     async read(): Promise<any[]> {
         const response = await fetch(this.url, {
             method: this.method,
@@ -58,6 +85,14 @@ export class AjaxProxy extends Proxy {
         return json;
     }
 
+    /**
+     * Posts a new record to the server and returns the server response data.
+     *
+     * @param record - The new ModelRecord to send to the server.
+     *
+     * @returns A promise that resolves to the server response object, unwrapped from
+     *   `root` if configured.
+     */
     async create(record: ModelRecord): Promise<Record<string, any>> {
         const response = await fetch(this.url, {
             method: this.createMethod,
@@ -74,6 +109,14 @@ export class AjaxProxy extends Proxy {
         return this.root ? json[this.root] : json;
     }
 
+    /**
+     * Sends an update request for an existing record to `{url}/{id}` and returns the server response.
+     *
+     * @param record - The dirty ModelRecord to update on the server.
+     *
+     * @returns A promise that resolves to the server response object, unwrapped from
+     *   `root` if configured.
+     */
     async update(record: ModelRecord): Promise<Record<string, any>> {
         const response = await fetch(`${this.url}/${record.getId()}`, {
             method: this.updateMethod,
@@ -90,6 +133,13 @@ export class AjaxProxy extends Proxy {
         return this.root ? json[this.root] : json;
     }
 
+    /**
+     * Sends a DELETE request for the record to `{url}/{id}`.
+     *
+     * @param record - The ModelRecord to delete on the server.
+     *
+     * @returns A promise that resolves when the server confirms the deletion.
+     */
     async destroy(record: ModelRecord): Promise<void> {
         const response = await fetch(`${this.url}/${record.getId()}`, {
             method: 'DELETE',

@@ -2,6 +2,12 @@
 
 import { Component } from "../Component.js";
 
+/**
+ * A text-displaying component with comprehensive font and layout controls.
+ *
+ * Uses an off-screen probe element to measure text dimensions and automatically
+ * updates the preferred size whenever the text or a font property changes.
+ */
 export class Text extends Component {
 
     private text: String | null | undefined = null;
@@ -36,10 +42,23 @@ export class Text extends Component {
         this.calculateSize();
     }
 
+    /**
+     * Returns the DOM element cast to HTMLElement.
+     *
+     * @param createIfMissing - Optional. When true, renders the element if it does not yet exist.
+     *
+     * @returns The component's HTMLElement.
+     */
     getElement(createIfMissing: boolean = false): HTMLElement {
         return super.getElement(createIfMissing) as HTMLElement;
     }
 
+    /**
+     * Measures the text using an off-screen probe element and sets the preferred size.
+     *
+     * @remarks Creates a temporary fixed-positioned invisible `<span>`, appends it to the body
+     * to obtain its bounding rect, then removes it. Sets preferred size to (0, 0) when no text is set.
+     */
     private calculateSize() {
         if (this.text) {
             let probe = document.createElement("span");
@@ -69,10 +88,20 @@ export class Text extends Component {
         }
     }
 
+    /**
+     * Returns the current text content, or an empty string if none is set.
+     *
+     * @returns The current text string, or "" if no text is set.
+     */
     getText() {
         return this.text || "";
     }
 
+    /**
+     * Sets the text content, recalculates the preferred size, and updates the DOM element.
+     *
+     * @param text - The new text to display.
+     */
     setText(text: String) {
         this.text = text || "";
 
@@ -86,30 +115,60 @@ export class Text extends Component {
         element.textContent = text.valueOf();
     }
 
+    /**
+     * Returns the current CSS text-align value.
+     *
+     * @returns The CSS text-align string, or null if not set.
+     */
     getTextAlign() {
         return this.textAlign;
     }
 
+    /**
+     * Sets the CSS text-align and updates the component's CSS rule.
+     *
+     * @param align - A CSS text-align value (e.g. "left", "center", "right").
+     */
     setTextAlign(align: string) {
         this.textAlign = align;
 
         this.setElementCSSRule("textAlign", align);
     }
 
+    /**
+     * Returns the CSS text-shadow value.
+     *
+     * @returns The CSS text-shadow string, or null if not set.
+     */
     getTextShadow() {
         return this.textShadow;
     }
 
+    /**
+     * Sets the CSS text-shadow and updates the component's CSS rule.
+     *
+     * @param shadow - A CSS text-shadow value.
+     */
     setTextShadow(shadow: string) {
         this.textShadow = shadow;
 
         this.setElementCSSRule("textShadow", shadow);
     }
 
+    /**
+     * Returns the CSS font-family value.
+     *
+     * @returns The CSS font-family string, or null if not set.
+     */
     getFontFamily() {
         return this.fontFamily;
     }
 
+    /**
+     * Sets the CSS font-family, updates the rule, and recalculates preferred size.
+     *
+     * @param value - The CSS font-family string (e.g. "sans-serif", "'Arial', sans-serif").
+     */
     setFontFamily(value: string) {
         this.fontFamily = value;
 
@@ -118,20 +177,40 @@ export class Text extends Component {
         this.calculateSize();
     }
 
+    /**
+     * Returns the CSS font-kerning value.
+     *
+     * @returns The CSS font-kerning string, or null if not set.
+     */
     getFontKerning() {
         return this.fontKerning;
     }
 
+    /**
+     * Sets the CSS font-kerning and updates the component's CSS rule.
+     *
+     * @param value - A CSS font-kerning value (e.g. "auto", "normal", "none").
+     */
     setFontKerning(value: string) {
         this.fontKerning = value;
 
         this.setElementCSSRule("fontKerning", value);
     }
 
+    /**
+     * Returns the font size in pixels.
+     *
+     * @returns The font size as a number, or null if not set.
+     */
     getFontSize() {
         return this.fontSize;
     }
 
+    /**
+     * Sets the font size in pixels, updates the CSS rule, and recalculates preferred size.
+     *
+     * @param value - The font size in pixels.
+     */
     setFontSize(value: number) {
         this.fontSize = value;
 
@@ -140,50 +219,100 @@ export class Text extends Component {
         this.calculateSize();
     }
 
+    /**
+     * Returns the CSS font-size-adjust value.
+     *
+     * @returns The CSS font-size-adjust string, or null if not set.
+     */
     getFontSizeAdjust() {
         return this.fontSizeAdjust;
     }
 
+    /**
+     * Sets the CSS font-size-adjust and updates the component's CSS rule.
+     *
+     * @param value - A CSS font-size-adjust value.
+     */
     setFontSizeAdjust(value: string) {
         this.fontSizeAdjust = value;
 
         this.setElementCSSRule("fontSizeAdjust", value);
     }
 
+    /**
+     * Returns the CSS font-stretch value.
+     *
+     * @returns The CSS font-stretch string, or null if not set.
+     */
     getFontStretch() {
         return this.fontStretch;
     }
 
+    /**
+     * Sets the CSS font-stretch and updates the component's CSS rule.
+     *
+     * @param value - A CSS font-stretch value (e.g. "normal", "condensed", "expanded").
+     */
     setFontStretch(value: string) {
         this.fontStretch = value;
 
         this.setElementCSSRule("fontStretch", value);
     }
 
+    /**
+     * Returns the CSS font-style value (e.g. "normal", "italic").
+     *
+     * @returns The CSS font-style string, or null if not set.
+     */
     getFontStyle() {
         return this.fontStyle;
     }
 
+    /**
+     * Sets the CSS font-style and updates the component's CSS rule.
+     *
+     * @param value - A CSS font-style value (e.g. "normal", "italic", "oblique").
+     */
     setFontStyle(value: string) {
         this.fontStyle = value;
 
         this.setElementCSSRule("fontStyle", value);
     }
 
+    /**
+     * Returns the CSS font-variant value.
+     *
+     * @returns The CSS font-variant string, or null if not set.
+     */
     getFontVariant() {
         return this.fontVariant;
     }
 
+    /**
+     * Sets the CSS font-variant and updates the component's CSS rule.
+     *
+     * @param value - A CSS font-variant value (e.g. "normal", "small-caps").
+     */
     setFontVariant(value: string) {
         this.fontVariant = value;
 
         this.setElementCSSRule("fontVariant", value);
     }
 
+    /**
+     * Returns the CSS font-weight value.
+     *
+     * @returns The CSS font-weight string, or null if not set.
+     */
     getFontWeight() {
         return this.fontWeight;
     }
 
+    /**
+     * Sets the CSS font-weight, updates the rule, and recalculates preferred size.
+     *
+     * @param value - A CSS font-weight value (e.g. "normal", "bold", "700").
+     */
     setFontWeight(value: string) {
         this.fontWeight = value;
 
@@ -192,16 +321,31 @@ export class Text extends Component {
         this.calculateSize();
     }
 
+    /**
+     * Returns the line height in pixels, or null if not set.
+     *
+     * @returns The line height as a number, or null if not set.
+     */
     getLineHeight() {
         return this.lineHeight;
     }
 
+    /**
+     * Sets the line height in pixels and updates the component's CSS rule.
+     *
+     * @param value - The line height in pixels.
+     */
     setLineHeight(value: number) {
         this.lineHeight = value;
 
         this.setElementCSSRule("lineHeight", value + "px");
     }
 
+    /**
+     * Applies all text-specific style properties to the element's CSS rule in addition to base styles.
+     *
+     * @param element - The HTMLElement to apply styles to.
+     */
     applyStyle(element: HTMLElement) {
         super.applyStyle(element);
 
@@ -219,6 +363,11 @@ export class Text extends Component {
         rule.style.fontWeight = this.fontWeight ? this.fontWeight : "";
     }
 
+    /**
+     * Renders the element and sets its text content.
+     *
+     * @returns The created element with textContent initialised.
+     */
     protected render() {
         let element = super.render();
 

@@ -2,6 +2,10 @@
 
 import { Component } from "./Component.js";
 
+/**
+ * Event routing system that manages DOM event listeners on behalf of components.
+ * Uses a single window-level capture handler per event type to avoid per-element listeners.
+ */
 export namespace Event {
     interface CompFunc {
         component: Component,
@@ -56,10 +60,22 @@ export namespace Event {
         }
     };
 
+    /**
+     * Initialises the event system (currently a no-op).
+     */
     export function init() {
 
     }
 
+    /**
+     * Dispatches a CustomEvent of the given type on the component's DOM element.
+     *
+     * @param component - The component whose DOM element will dispatch the event.
+     * @param type - The event type string (e.g. `"click"`).
+     * @param payload - Optional. Arbitrary data attached as the CustomEvent detail.
+     *
+     * @remarks Throws an error if the component has no associated DOM element at the time of the call.
+     */
     export function fireEvent(component: Component, type: string, payload?: any) {
         let element = component.getElement();
         if (!element) {
@@ -70,6 +86,16 @@ export namespace Event {
         element.dispatchEvent(event);
     }
 
+    /**
+     * Registers a listener for a DOM event type on the given component, using a single window-level handler per type.
+     *
+     * @param component - The component to associate the listener with.
+     * @param type - The DOM event type string to listen for.
+     * @param listener - The callback function to invoke when the event fires on this component.
+     *
+     * @remarks A capture-phase window listener is installed the first time a given event type is registered,
+     * and removed automatically when the last listener for that type is unregistered.
+     */
     export function addListener(component: Component, type: string, listener: Function) {
         if (!listener || !component) {
             return;
@@ -96,6 +122,16 @@ export namespace Event {
         compFunc.listeners.push(listener);
     }
 
+    /**
+     * Removes a previously registered component event listener.
+     *
+     * @param component - The component whose listener should be removed.
+     * @param type - The DOM event type string the listener was registered for.
+     * @param listener - The exact callback function reference that was passed to `addListener`.
+     *
+     * @remarks If removing the listener leaves a component or event type with no remaining listeners,
+     * the corresponding map entries and the window-level handler are cleaned up automatically.
+     */
     export function removeListener(component: Component, type: string, listener: Function) {
         if (!listener || !component) {
             return;
@@ -124,6 +160,17 @@ export namespace Event {
         }
     }
 
+    /**
+     * Registers a viewport-level listener that fires for all matching events regardless of target element.
+     *
+     * @param component - The component to associate the listener with.
+     * @param type - The DOM event type string to listen for globally.
+     * @param listener - The callback function to invoke on every matching event.
+     *
+     * @remarks Unlike `addListener`, viewport listeners are not filtered by element id — every
+     * registered component receives the event. Logs a console trace and returns early if
+     * either argument is falsy.
+     */
     export function addViewportListener(component: Component, type: string, listener: Function) {
         if (!listener || !component) {
             console.trace();
@@ -151,6 +198,16 @@ export namespace Event {
         compFunc.listeners.push(listener);
     }
 
+    /**
+     * Removes a previously registered viewport-level listener.
+     *
+     * @param component - The component whose viewport listener should be removed.
+     * @param type - The DOM event type string the listener was registered for.
+     * @param listener - The exact callback function reference that was passed to `addViewportListener`.
+     *
+     * @remarks Cleans up empty map entries and the window-level handler when no listeners remain
+     * for a given event type, mirroring the behaviour of `removeListener`.
+     */
     export function removeViewportListener(component: Component, type: string, listener: Function) {
         if (!listener || !component) {
             return;
@@ -179,6 +236,12 @@ export namespace Event {
         }
     }
 
+    /**
+     * Registers a window resize listener that receives a `{width, height}` size object.
+     *
+     * @param listener - The callback function invoked on every window resize event,
+     * called with `{ width: number, height: number }` as its argument.
+     */
     export function addViewportResizeListener(this: any, listener: Function) {
         var me = this;
 

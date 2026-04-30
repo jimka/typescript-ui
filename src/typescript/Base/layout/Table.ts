@@ -5,12 +5,24 @@ import { Table as TableComponent } from "../component/table/Table.js";
 import { Component } from "../Component.js";
 import { Util } from "../Util.js";
 
+/**
+ * A layout manager dedicated to the `Table` component.
+ * Positions the header, body, and footer sections within the container and
+ * triggers virtual-scroll rendering on the body after each layout pass.
+ */
 export class Table extends LayoutManager {
 
     constructor() {
         super();
     }
 
+    /**
+     * Attaches to a container, throwing if it is not a `Table` component.
+     *
+     * @param container - The container component to attach to.
+     *
+     * @remarks This layout manager is only valid for containers whose class name is `"Table"`.
+     */
     attach(container: Component) {
         if (container.getClassName() != "Table") {
             throw new Error("Container must be a Table.");
@@ -19,6 +31,12 @@ export class Table extends LayoutManager {
         super.attach(container);
     }
 
+    /**
+     * Positions the header, body, and footer sections and triggers body virtual scroll rendering.
+     *
+     * @remarks Column width is calculated by dividing the available width (minus the scrollbar)
+     * evenly across all model fields. The footer is pinned to the bottom of the container.
+     */
     doLayout() {
         let container = <TableComponent>this.getContainer();
         if (!container) {
