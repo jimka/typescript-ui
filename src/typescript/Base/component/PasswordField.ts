@@ -3,6 +3,9 @@
 import { TextInput } from "./TextInput.js";
 import { Insets } from "../Insets.js";
 
+/**
+ * A password input component that renders an `<input type="password">` element.
+ */
 export class PasswordField extends TextInput {
 
     constructor() {
@@ -16,6 +19,11 @@ export class PasswordField extends TextInput {
         this.setForegroundColor("var(--ts-ui-text-color, black)");
     }
 
+    /**
+     * Renders the input element with type="password".
+     *
+     * @returns The created input element with its type attribute set to "password".
+     */
     render() {
         let element = super.render();
 

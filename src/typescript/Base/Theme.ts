@@ -2,6 +2,9 @@
 
 import { CSS } from './CSS.js';
 
+/**
+ * Defines the full set of color tokens that make up a UI theme.
+ */
 export interface Theme {
     textColor           : string;
     bodyBg              : string;
@@ -24,6 +27,9 @@ export interface Theme {
     colorScheme         : string;
 }
 
+/**
+ * Light-mode theme using white backgrounds and black text.
+ */
 export const DefaultTheme: Theme = {
     textColor           : 'rgb(0, 0, 0)',
     bodyBg              : 'rgb(255, 255, 255)',
@@ -46,6 +52,9 @@ export const DefaultTheme: Theme = {
     colorScheme         : 'light',
 };
 
+/**
+ * Dark-mode theme using dark backgrounds and light text.
+ */
 export const DarkTheme: Theme = {
     textColor           : 'rgb(220, 220, 220)',
     bodyBg              : 'rgb(30, 30, 30)',
@@ -68,6 +77,13 @@ export const DarkTheme: Theme = {
     colorScheme         : 'dark',
 };
 
+/**
+ * Converts a Theme object into a map of CSS custom property names to values.
+ *
+ * @param theme - The theme whose token values should be converted.
+ *
+ * @returns A record mapping `--ts-ui-*` CSS variable names to their corresponding theme values.
+ */
 function themeToVars(theme: Theme): Record<string, string> {
     return {
         '--ts-ui-text-color'            : theme.textColor,
@@ -91,9 +107,22 @@ function themeToVars(theme: Theme): Record<string, string> {
     };
 }
 
+/**
+ * Singleton manager that applies a theme by writing CSS custom properties and
+ * inline styles onto the document root and body elements.
+ */
 export class ThemeManager {
     private static current: Theme = DefaultTheme;
 
+    /**
+     * Applies a theme by writing CSS variables onto `:root` and updating body/html styles.
+     *
+     * @param theme - The theme object to activate.
+     *
+     * @remarks Sets `document.documentElement.style.colorScheme`, `color`, and
+     * `document.body.style.backgroundColor` / `color` in addition to the CSS custom properties,
+     * so both CSS-variable consumers and direct inline-style consumers are updated.
+     */
     static setTheme(theme: Theme) {
         ThemeManager.current = theme;
 
@@ -105,6 +134,11 @@ export class ThemeManager {
         document.body.style.color                  = theme.textColor;
     }
 
+    /**
+     * Returns the currently active theme.
+     *
+     * @returns The `Theme` object that was last passed to `setTheme`, defaulting to `DefaultTheme`.
+     */
     static getTheme(): Theme {
         return ThemeManager.current;
     }

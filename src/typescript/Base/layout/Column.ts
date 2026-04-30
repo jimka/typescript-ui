@@ -3,6 +3,10 @@
 import { LayoutManager } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 
+/**
+ * A layout manager that divides the container width equally among all children
+ * and places them left-to-right with a configurable gap.
+ */
 export class Column extends LayoutManager {
 
     private gap: number = 5;
@@ -11,15 +15,31 @@ export class Column extends LayoutManager {
         super()
     }
 
+    /**
+     * Returns the pixel gap between columns.
+     *
+     * @returns The current gap in pixels.
+     */
     getGap() {
         return this.gap;
     }
 
+    /**
+     * Sets the pixel gap between columns and triggers a re-layout.
+     *
+     * @param gap - Gap size in pixels.
+     */
     setGap(gap : number) {
         this.gap = gap;
         this.doLayout();
     }
 
+    /**
+     * Computes the preferred size as the maximum child preferred dimensions
+     * arranged horizontally with gaps.
+     *
+     * @returns The preferred `{width, height}`, or `null` if no container is attached.
+     */
     getPreferredSize() {
         let container = this.getContainer();
         if (!container) {
@@ -54,6 +74,12 @@ export class Column extends LayoutManager {
         };
     }
 
+    /**
+     * Computes the minimum size as the maximum child minimum dimensions
+     * arranged horizontally with gaps.
+     *
+     * @returns The minimum `{width, height}`, or `null` if no container is attached.
+     */
     getMinSize() {
         let container = this.getContainer();
         if (!container) {
@@ -88,6 +114,12 @@ export class Column extends LayoutManager {
         };
     }
 
+    /**
+     * Computes the maximum size as the minimum child maximum dimensions
+     * arranged horizontally with gaps.
+     *
+     * @returns The maximum `{width, height}`, or `null` if no container is attached.
+     */
     getMaxSize() {
         let container = this.getContainer();
         if (!container) {
@@ -122,6 +154,10 @@ export class Column extends LayoutManager {
         };
     }
 
+    /**
+     * Divides the container width equally among children and places them
+     * left-to-right with gaps.
+     */
     doLayout() {
         let container = this.getContainer();
         if (!container) {

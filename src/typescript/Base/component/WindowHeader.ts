@@ -6,6 +6,11 @@ import { FontAwesomeIcon } from "./FontAwesomeIcon.js";
 import { FillType } from "../layout/FillType.js";
 import { Placement } from "../Placement.js";
 
+/**
+ * A window title bar component with a close button.
+ *
+ * Extends Header by adding a Font Awesome "times" exit button anchored to the east side.
+ */
 export class WindowHeader extends Header {
 
     private exitButton: Button;
@@ -29,6 +34,11 @@ export class WindowHeader extends Header {
         this.addComponent(this.exitButton, { placement: Placement.EAST });
     }
 
+    /**
+     * Registers a click listener on the window close button.
+     *
+     * @param listener - The callback to invoke when the close button is clicked.
+     */
     addExitButtonListener(listener: Function) {
         this.exitButton.addActionListener(listener);
     }

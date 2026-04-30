@@ -3,6 +3,10 @@
 import { LayoutManager } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 
+/**
+ * A layout manager that places children in a single vertical column,
+ * using each child's preferred height and an optional width-stretching mode.
+ */
 export class VBox extends LayoutManager {
 
     private spacing: number;
@@ -16,22 +20,47 @@ export class VBox extends LayoutManager {
         this.stretching = false;
     }
 
+    /**
+     * Returns the pixel spacing between child components.
+     *
+     * @returns The current spacing in pixels.
+     */
     getComponentSpacing() {
         return this.spacing || 0;
     }
 
+    /**
+     * Sets the pixel spacing between child components.
+     *
+     * @param spacing - Spacing in pixels.
+     */
     setComponentSpacing(spacing: number) {
         this.spacing = spacing;
     }
 
+    /**
+     * Returns whether children stretch to fill the container width.
+     *
+     * @returns `true` if stretching is enabled.
+     */
     isStretching() {
         return this.stretching || false;
     }
 
+    /**
+     * Sets whether children stretch to fill the container width.
+     *
+     * @param stretching - Pass `true` to enable width stretching.
+     */
     setStretching(stretching: boolean) {
         this.stretching = !!stretching;
     }
 
+    /**
+     * Returns the preferred size: the widest child width and the sum of child heights plus spacing.
+     *
+     * @returns The preferred `{width, height}`, or `null` if no container is attached.
+     */
     getPreferredSize() {
         let container = this.getContainer();
         if (!container) {
@@ -63,6 +92,11 @@ export class VBox extends LayoutManager {
         };
     }
 
+    /**
+     * Returns the minimum size: the widest child minimum width and the sum of child minimum heights plus spacing.
+     *
+     * @returns The minimum `{width, height}`, or `null` if no container is attached.
+     */
     getMinSize() {
         let container = this.getContainer();
         if (!container) {
@@ -94,6 +128,11 @@ export class VBox extends LayoutManager {
         };
     }
 
+    /**
+     * Returns the maximum size: the narrowest child maximum width and the sum of child maximum heights plus spacing.
+     *
+     * @returns The maximum `{width, height}`, or `null` if no container is attached.
+     */
     getMaxSize() {
         let container = this.getContainer();
         if (!container) {
@@ -125,6 +164,12 @@ export class VBox extends LayoutManager {
         };
     }
 
+    /**
+     * Places children top-to-bottom using their preferred heights, with optional width stretching.
+     *
+     * @remarks When `stretching` is enabled, each child's width is clamped to its max size rather
+     * than its preferred size. Children without a preferred size fall back to `defaultComponentHeight`.
+     */
     doLayout() {
         let container = this.getContainer();
         if (!container) {

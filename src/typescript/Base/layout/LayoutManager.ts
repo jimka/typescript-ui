@@ -7,6 +7,11 @@ import { Size } from "../Size.js";
 import { Component } from "../Component.js";
 import { BaseObject } from "../BaseObject.js";
 
+/**
+ * Abstract base class for all layout managers.
+ * A layout manager is attached to a container component and is responsible for
+ * computing size hints and positioning child components within the container.
+ */
 export abstract class LayoutManager extends BaseObject {
 
     private container: Component | null = null;
@@ -31,30 +36,75 @@ export abstract class LayoutManager extends BaseObject {
         };
     }
 
+    /**
+     * Associates this layout manager with a container component.
+     *
+     * @param container - The container component to attach to.
+     */
     attach(container: Component) {
         this.container = container;
     }
 
+    /**
+     * Dissociates this layout manager from its container.
+     */
     detach() {
         this.container = null;
     }
 
+    /**
+     * Returns the container component this layout manager is attached to.
+     *
+     * @returns The attached container, or `null` if not attached.
+     */
     getContainer(): Component | null {
         return this.container;
     }
 
+    /**
+     * Returns the default preferred size.
+     * Subclasses may override this method to compute the preferred size dynamically.
+     *
+     * @returns The preferred size, or `null` if not set.
+     */
     getPreferredSize(): Size | null {
         return this.defaultPreferredSize;
     }
 
+    /**
+     * Returns the minimum size this layout can produce.
+     *
+     * @returns The minimum size.
+     */
     getMinSize(): Size | null {
         return this.defaultMinSize;
     }
 
+    /**
+     * Returns the maximum size this layout can produce.
+     *
+     * @returns The maximum size.
+     */
     getMaxSize(): Size | null {
         return this.defaultMaxSize;
     }
 
+    /**
+     * Positions and sizes a child component within the given bounds,
+     * respecting fill and anchor constraints.
+     *
+     * @param component - The child component to position.
+     * @param x - Left edge of the cell in the container's coordinate space.
+     * @param y - Top edge of the cell in the container's coordinate space.
+     * @param maxWidth - Available width for the component.
+     * @param maxHeight - Available height for the component.
+     * @param fill - Optional. Fill strategy overriding the component's own constraints.
+     * @param anchor - Optional. Anchor point overriding the component's own constraints.
+     *
+     * @remarks The method checks the component's stored `LayoutConstraints` first;
+     * the `fill` and `anchor` parameters serve as fallbacks. After positioning,
+     * `doLayout` is called on the child so nested layouts are updated in a single pass.
+     */
     placeComponent(component: Component, x: number, y: number, maxWidth: number, maxHeight: number, fill?: FillType | null, anchor?: AnchorType | null) {
         let layoutConstraints = this.getLayoutConstraints(component);
         let preferredSize = component.getPreferredSize();
@@ -181,6 +231,14 @@ export abstract class LayoutManager extends BaseObject {
         component.setAutoCommitStyle(true);
     }
 
+    /**
+     * Stores layout constraints for a component, or removes them if `constraints` is `undefined`.
+     *
+     * @param component - The component whose constraints are being set.
+     * @param constraints - Optional. The constraints to store; omit to delete existing constraints.
+     *
+     * @returns The stored constraints, or `undefined` if they were deleted.
+     */
     setLayoutConstraints(component: Component, constraints?: LayoutConstraints): LayoutConstraints | undefined {
         if (!constraints) {
             return this.delLayoutConstraints(component);
@@ -190,6 +248,13 @@ export abstract class LayoutManager extends BaseObject {
         }
     }
 
+    /**
+     * Removes and returns the stored layout constraints for a component.
+     *
+     * @param component - The component whose constraints should be removed.
+     *
+     * @returns The removed constraints, or `undefined` if none were stored.
+     */
     delLayoutConstraints(component: Component) {
         let constraints = this.layoutConstraints.get(component.getId());
 
@@ -198,6 +263,13 @@ export abstract class LayoutManager extends BaseObject {
         return constraints;
     }
 
+    /**
+     * Returns the stored layout constraints for a component.
+     *
+     * @param component - The component to look up.
+     *
+     * @returns The stored constraints, or `undefined` if none are set.
+     */
     getLayoutConstraints(component: Component) {
         return this.layoutConstraints.get(component.getId());
     }

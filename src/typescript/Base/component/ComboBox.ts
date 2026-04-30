@@ -5,6 +5,12 @@ import { Option } from "./Option.js";
 import { Event } from "../Event.js";
 import { Type } from "../Type.js";
 
+/**
+ * A drop-down combo box component backed by a `<select>` element.
+ *
+ * Manages an internal list of Option items and keeps the DOM element in sync
+ * when items are added or replaced.
+ */
 export class ComboBox extends Component {
 
     private items: Array<Option>;
@@ -20,24 +26,52 @@ export class ComboBox extends Component {
         this.items = [];
     }
 
+    /**
+     * Registers a listener for the select element's 'change' event.
+     *
+     * @param listener - The callback to invoke when the selection changes.
+     */
     addActionListener(listener: Function) {
         Event.addListener(this, "change", listener);
     }
 
+    /**
+     * Returns the text content of the currently selected option.
+     *
+     * @returns The text content of the selected option element.
+     */
     getSelectedItem() {
         let element = this.getElement();
         return element[element.selectedIndex].textContent;
     }
 
+    /**
+     * Returns the DOM element cast to HTMLSelectElement.
+     *
+     * @param createIfMissing - Optional. When true, renders the element if it does not yet exist.
+     *
+     * @returns The component's HTMLSelectElement.
+     */
     getElement(createIfMissing: boolean = false) {
         return <HTMLSelectElement>super.getElement(createIfMissing);
     }
 
+    /**
+     * Returns the zero-based index of the currently selected option.
+     *
+     * @returns The selected index.
+     */
     getSelectedIndex() {
         let element = this.getElement();
         return element.selectedIndex;
     }
 
+    /**
+     * Sets the selected index and optionally fires a 'change' event.
+     *
+     * @param idx - The zero-based index to select.
+     * @param fireEvent - Optional. When true (default), fires the 'change' event after updating.
+     */
     setSelectedIndex(idx: number, fireEvent = true) {
         let element = this.getElement();
         if (!element) {
@@ -51,10 +85,22 @@ export class ComboBox extends Component {
         }
     }
 
+    /**
+     * Returns a copy of the current Option items array.
+     *
+     * @returns A shallow copy of the internal Option array.
+     */
     getItems() {
         return this.items.slice();
     }
 
+    /**
+     * Replaces all options with the given string values and re-renders the select element's content.
+     *
+     * @param items - A single string or an array of strings to use as option labels.
+     *
+     * @remarks Clears the existing DOM options before appending the new ones.
+     */
     setItems(items: String | Array<String>) {
         if (!Type.isArray(items)) {
             items = [<String>items];
@@ -81,6 +127,11 @@ export class ComboBox extends Component {
         }
     }
 
+    /**
+     * Appends a new option to the end of the list and to the select element.
+     *
+     * @param item - The string label for the new option.
+     */
     addItem(item: String) {
         let listItem = new Option((this.items.length + 1).toString(), item as string);
         this.items.push(listItem);
@@ -93,6 +144,11 @@ export class ComboBox extends Component {
         element.appendChild(listItem.getElement(true));
     }
 
+    /**
+     * Renders the select element and appends all option child elements.
+     *
+     * @returns The created HTMLSelectElement with all options appended.
+     */
     render() {
         let element = super.render();
 

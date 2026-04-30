@@ -5,6 +5,11 @@ import { SplitGutter } from "../component/SplitGutter.js";
 import { Component } from "../Component.js";
 import { FillType } from "./FillType.js";
 
+/**
+ * A layout manager that splits the container into two or more resizable panels
+ * separated by draggable gutter elements.
+ * The split direction can be `'horizontal'` (panels side by side) or `'vertical'` (panels stacked).
+ */
 export class Split extends LayoutManager {
 
     private direction: String;
@@ -19,14 +24,34 @@ export class Split extends LayoutManager {
         this.gutters = [];
     }
 
+    /**
+     * Returns the split direction.
+     *
+     * @returns `'horizontal'` or `'vertical'`.
+     */
     getDirection() {
         return this.direction;
     }
 
+    /**
+     * Sets the split direction.
+     *
+     * @param direction - `'horizontal'` for side-by-side panels, `'vertical'` for stacked panels.
+     */
     setDirection(direction: String) {
         this.direction = direction;
     }
 
+    /**
+     * Adjusts the sizes of the two panels adjacent to a gutter when it is dragged.
+     *
+     * @param container - The container component that owns the panels.
+     * @param gutter - The gutter being dragged.
+     * @param dragAmount - The number of pixels the gutter was moved (negative moves left/up).
+     *
+     * @remarks The stored sizes for both affected panels are updated so the next `doLayout`
+     * call preserves the user-defined split ratio.
+     */
     onDrag(container: Component, gutter: SplitGutter, dragAmount: number) {
         let gutterIdx = this.gutters.indexOf(gutter);
         let lhs = container.getComponents()[gutterIdx];
@@ -54,6 +79,9 @@ export class Split extends LayoutManager {
         rhs.doLayout();
     }
 
+    /**
+     * Detaches from the container and removes all gutter elements from the DOM.
+     */
     detach() {
         super.detach();
 
@@ -68,6 +96,12 @@ export class Split extends LayoutManager {
         this.gutters = [];
     }
 
+    /**
+     * Creates missing gutters, computes panel sizes, and positions all panels and gutters.
+     *
+     * @remarks New `SplitGutter` instances are appended to the container's DOM element on first layout.
+     * Existing gutters are reused on subsequent layouts.
+     */
     doLayout() {
         let me = this;
         let container = this.getContainer();
@@ -154,6 +188,13 @@ export class Split extends LayoutManager {
         }
     }
 
+    /**
+     * Assigns initial sizes to any components that do not yet have a stored size.
+     *
+     * @remarks When some panels already have stored sizes and a new panel is added,
+     * its size is taken proportionally from the existing panels so the total remains constant.
+     * When no panels have stored sizes the available container dimension is divided equally.
+     */
     recalculateSizes() {
         let container = this.getContainer();
         if (!container) {

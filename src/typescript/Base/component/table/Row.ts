@@ -10,6 +10,13 @@ import { BooleanCell } from "./cell/Boolean.js";
 import { NumberCell } from "./cell/Number.js";
 import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
 
+/**
+ * A single data row in the table, rendered as a `<tr>` element.
+ *
+ * Creates one typed cell ({@link StringCell}, {@link NumberCell}, {@link BooleanCell},
+ * or {@link DefaultCell}) per model field and binds each cell's commit callback to the
+ * corresponding field on the bound {@link ModelRecord}.
+ */
 export class Row extends Component {
 
     private model?: AbstractModel;
@@ -58,10 +65,20 @@ export class Row extends Component {
         }
     }
 
+    /**
+     * Returns the ModelRecord currently bound to this row.
+     *
+     * @returns The bound {@link ModelRecord}, or undefined if none has been set.
+     */
     getData() {
         return this.data;
     }
 
+    /**
+     * Rebinds all cells to a new record, updating their displayed values.
+     *
+     * @param record - The new record to bind to this row.
+     */
     setData(record: ModelRecord) {
         this.data = record;
         const fields = this.model!.getFields()
@@ -76,6 +93,11 @@ export class Row extends Component {
         this.updateVisualState();
     }
 
+    /**
+     * Applies a background color based on the record's new/dirty/clean state.
+     *
+     * @remarks New records get a green tint, dirty records an orange tint, and clean records no tint.
+     */
     updateVisualState(): void {
         const el = this.getElement() as HTMLElement;
         if (!el) {
@@ -91,13 +113,28 @@ export class Row extends Component {
         }
     }
 
+    /**
+     * Appends a cell component to this row.
+     *
+     * @param cell - The cell to append.
+     * @param constraints - Optional. Layout constraints for the cell.
+     */
     addColumn(cell: Cell<any>, constraints?: LayoutConstraints) {
         this.addComponent(cell, constraints);
     }
 
+    /**
+     * Adds a cell as a child component of this row.
+     *
+     * @param cell - The cell component to add.
+     * @param constraints - Optional. Layout constraints for the cell.
+     */
     addComponent(cell: Cell<any>, constraints?: LayoutConstraints) {
         super.addComponent(cell, constraints);
     }
 
+    /**
+     * No-op; cell layout is driven by the Body's renderWindow.
+     */
     doLayout() { }
 }

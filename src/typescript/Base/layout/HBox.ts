@@ -3,6 +3,10 @@
 import { LayoutManager } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 
+/**
+ * A layout manager that places children in a single horizontal row,
+ * using each child's preferred width and an optional height-stretching mode.
+ */
 export class HBox extends LayoutManager {
 
     private spacing: number;
@@ -16,22 +20,47 @@ export class HBox extends LayoutManager {
         this.stretching = false;
     }
 
+    /**
+     * Returns the pixel spacing between child components.
+     *
+     * @returns The current spacing in pixels.
+     */
     getComponentSpacing() {
         return this.spacing || 0;
     }
 
+    /**
+     * Sets the pixel spacing between child components.
+     *
+     * @param spacing - Spacing in pixels.
+     */
     setComponentSpacing(spacing: number) {
         this.spacing = spacing || 0;
     }
 
+    /**
+     * Returns whether children stretch to fill the container height.
+     *
+     * @returns `true` if stretching is enabled.
+     */
     isStretching() {
         return this.stretching || false;
     }
 
+    /**
+     * Sets whether children stretch to fill the container height.
+     *
+     * @param stretching - Pass `true` to enable height stretching.
+     */
     setStretching(stretching: boolean) {
         this.stretching = stretching;
     }
 
+    /**
+     * Returns the preferred size: the sum of child widths plus spacing, and the tallest child height.
+     *
+     * @returns The preferred `{width, height}`, or `null` if no container is attached.
+     */
     getPreferredSize() {
         let container = this.getContainer();
         if (!container) {
@@ -63,6 +92,11 @@ export class HBox extends LayoutManager {
         };
     }
 
+    /**
+     * Returns the minimum size: the sum of child minimum widths plus spacing, and the tallest child minimum height.
+     *
+     * @returns The minimum `{width, height}`, or `null` if no container is attached.
+     */
     getMinSize() {
         let container = this.getContainer();
         if (!container) {
@@ -94,6 +128,11 @@ export class HBox extends LayoutManager {
         };
     }
 
+    /**
+     * Returns the maximum size: the sum of child widths plus spacing, and the minimum of child maximum heights.
+     *
+     * @returns The maximum `{width, height}`, or `null` if no container is attached.
+     */
     getMaxSize() {
         let container = this.getContainer();
         if (!container) {
@@ -125,6 +164,12 @@ export class HBox extends LayoutManager {
         };
     }
 
+    /**
+     * Places children left-to-right using their preferred widths, with optional height stretching.
+     *
+     * @remarks When `stretching` is enabled, each child's height is clamped to its max size rather
+     * than its preferred size. Children without a preferred size fall back to `defaultComponentWidth`.
+     */
     doLayout() {
         let container = this.getContainer();
         if (!container) {

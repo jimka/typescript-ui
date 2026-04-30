@@ -6,6 +6,11 @@ import { LayoutConstraints } from "./LayoutConstraints.js";
 import { FillType } from "./FillType.js";
 import { Placement } from "../Placement.js";
 
+/**
+ * A layout manager that divides a container into five named regions:
+ * north, south, east, west, and center.
+ * North and south regions span the full width; east and west regions flank the center.
+ */
 export class Border extends LayoutManager {
 
     private northComponent: Component | null = null;
@@ -15,6 +20,18 @@ export class Border extends LayoutManager {
     private centerComponent: Component | null = null;
     private gap: number = 5;
 
+    /**
+     * Registers a component in the north, south, east, west, or center slot
+     * based on `constraints.placement`.
+     *
+     * @param component - The component to register.
+     * @param constraints - Optional. Layout constraints specifying the target placement slot.
+     *
+     * @returns The resolved constraints object, or `undefined` if none were provided.
+     *
+     * @remarks When `constraints` or `constraints.placement` is absent the component
+     * defaults to the center slot.
+     */
     setLayoutConstraints(component: Component, constraints?: LayoutConstraints): LayoutConstraints | undefined {
         if (!constraints) {
             constraints = new LayoutConstraints();
@@ -46,14 +63,29 @@ export class Border extends LayoutManager {
         return super.setLayoutConstraints(component, constraints);
     }
 
+    /**
+     * Returns the pixel gap between adjacent border regions.
+     *
+     * @returns The current gap in pixels.
+     */
     getComponentGap() {
         return this.gap;
     }
 
+    /**
+     * Sets the pixel gap between adjacent border regions.
+     *
+     * @param gap - Gap size in pixels.
+     */
     setComponentGap(gap: number) {
         this.gap = gap;
     }
 
+    /**
+     * Computes the preferred size by summing the preferred sizes of all occupied border regions.
+     *
+     * @returns The preferred `{width, height}` or `null` if no container is attached.
+     */
     getPreferredSize() {
         let container = this.getContainer();
         if (!container) {
@@ -120,6 +152,11 @@ export class Border extends LayoutManager {
         };
     }
 
+    /**
+     * Computes the minimum size by summing the minimum sizes of all occupied border regions.
+     *
+     * @returns The minimum `{width, height}` or `null` if no container is attached.
+     */
     getMinSize() {
         let container = this.getContainer();
         if (!container) {
@@ -186,6 +223,11 @@ export class Border extends LayoutManager {
         };
     }
 
+    /**
+     * Computes the maximum size from the occupied border regions.
+     *
+     * @returns The maximum `{width, height}` or `null` if no container is attached.
+     */
     getMaxSize() {
         let container = this.getContainer();
         if (!container) {
@@ -252,6 +294,12 @@ export class Border extends LayoutManager {
         };
     }
 
+    /**
+     * Positions north, south, east, west, and center children within the container's inner bounds.
+     *
+     * @remarks The north component may opt out of parent insets via `constraints.ignoreParentInsets`,
+     * which is useful for components such as toolbars that should span the full container width.
+     */
     doLayout() {
         let container = this.getContainer();
         if (!container) {
