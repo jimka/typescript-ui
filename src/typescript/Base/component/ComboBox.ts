@@ -6,6 +6,7 @@ import { Event } from "../Event.js";
 import { Type } from "../Type.js";
 import { AbstractStore } from "../data/AbstractStore.js";
 import { ModelRecord } from "../data/ModelRecord.js";
+import { Bindable } from "../Bindable.js";
 
 /**
  * A drop-down combo box component backed by a `<select>` element.
@@ -13,7 +14,7 @@ import { ModelRecord } from "../data/ModelRecord.js";
  * Manages an internal list of Option items and keeps the DOM element in sync
  * when items are added or replaced.
  */
-export class ComboBox extends Component {
+export class ComboBox extends Component implements Bindable<string> {
 
     private items: Array<Option>;
     private store: AbstractStore | null = null;
@@ -39,6 +40,21 @@ export class ComboBox extends Component {
      */
     addActionListener(listener: Function) {
         Event.addListener(this, "change", listener);
+    }
+
+    setValue(value: string): void {
+        const element = this.getElement();
+        if (!element) return;
+        element.value = value;
+    }
+
+    getValue(): string {
+        const element = this.getElement();
+        return element ? element.value : '';
+    }
+
+    addBindingListener(fn: () => void): void {
+        this.addActionListener(fn);
     }
 
     /**

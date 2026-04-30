@@ -10,6 +10,7 @@ import { ColumnPanel } from "./ColumnPanel.js";
 import { FitPanel } from "./FitPanel.js";
 import { SplitPanel } from "./SplitPanel.js";
 import { MiscPanel } from "./MiscPanel.js";
+import { BindingPanel } from "./BindingPanel.js";
 import { ComplexUIPanel } from "./ComplexUIPanel.js";
 import { GridPanel } from "./GridPanel.js";
 
@@ -22,6 +23,9 @@ body.setLayoutManager(layoutManager);
 
 let miscPanel = new MiscPanel();
 body.addComponent(miscPanel, { name: "Misc." });
+
+let bindingPanel = new BindingPanel();
+body.addComponent(bindingPanel, { name: "Binding" });
 
 let rowPanel = new RowPanel();
 body.addComponent(rowPanel, { name: "Row" });

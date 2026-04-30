@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+// Binding
+export { Binding } from './Binding.js';
+export type { Bindable, BindingAccessors } from './Bindable.js';
+
 // Theming
 export { ThemeManager, DefaultTheme, DarkTheme } from './Theme.js';
 export type { Theme } from './Theme.js';

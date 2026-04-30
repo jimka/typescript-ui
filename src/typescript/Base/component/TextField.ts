@@ -3,13 +3,14 @@
 import { TextInput } from "./TextInput.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
+import { Bindable } from "../Bindable.js";
 
 /**
  * A single-line text field component backed by an `<input type="text">` element.
  *
  * Keeps internal text state in sync with the DOM on every input event.
  */
-export class TextField extends TextInput {
+export class TextField extends TextInput implements Bindable<string> {
 
     constructor() {
         super();
@@ -46,6 +47,18 @@ export class TextField extends TextInput {
      */
     addActionListener(listener: Function) {
         Event.addListener(this, "input", listener);
+    }
+
+    setValue(value: string): void {
+        this.setText(value);
+    }
+
+    getValue(): string {
+        return String(this.getText());
+    }
+
+    addBindingListener(fn: () => void): void {
+        this.addActionListener(fn);
     }
 
     /**
