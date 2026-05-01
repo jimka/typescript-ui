@@ -293,7 +293,7 @@ export class Body extends Component {
         }
 
         if (record === this.selectedRecord) {
-            (this.rowPool[i].getElement() as HTMLElement).style.backgroundColor = 'rgba(30, 100, 200, 0.15)';
+            (this.rowPool[i].getElement() as HTMLElement).style.setProperty('background-color', 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))');
         } else {
             this.rowPool[i].updateVisualState();
         }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "../Component.js";
+import { ThemeManager } from "../Theme.js";
 
 /**
  * A text-displaying component with comprehensive font and layout controls.
@@ -16,6 +17,9 @@ export class Text extends Component {
     private fontFamily: string | null = null;
     private fontKerning: string | null = null;
     private fontSize: number | null = null;
+    private fontSizeCSSVar : string | null = null;
+    private fontSizeCSSRule: string | null = null;
+    private readonly unsubscribeTheme: () => void;
     private fontSizeAdjust: string | null = null;
     private fontStretch: string | null = null;
     private fontStyle: string | null = null;
@@ -28,9 +32,11 @@ export class Text extends Component {
 
         this.text = text;
         this.textAlign = "left";
-        this.fontFamily = "sans-serif";
+        this.fontFamily = "var(--ts-ui-font-family, system-ui, sans-serif)";
         this.fontKerning = "auto";
-        this.fontSize = 12;
+        this.fontSize = 14;
+        this.fontSizeCSSVar  = "--ts-ui-font-size";
+        this.fontSizeCSSRule = "var(--ts-ui-font-size, 14px)";
         this.fontSizeAdjust = "none";
         this.fontStretch = "normal";
         this.fontStyle = "normal";
@@ -38,6 +44,18 @@ export class Text extends Component {
         this.fontWeight = "normal";
 
         this.setInsets(null);
+
+        this.unsubscribeTheme = ThemeManager.onThemeChange(() => {
+            if (this.fontSizeCSSVar) {
+                const raw    = getComputedStyle(document.documentElement)
+                                   .getPropertyValue(this.fontSizeCSSVar).trim();
+                const parsed = parseFloat(raw);
+                if (!isNaN(parsed)) {
+                    this.fontSize = parsed;
+                }
+            }
+            this.calculateSize();
+        });
 
         this.calculateSize();
     }
@@ -68,7 +86,7 @@ export class Text extends Component {
                 "visibility:hidden",
                 "white-space:nowrap",
                 `font-family:${this.fontFamily}`,
-                `font-size:${this.fontSize}px`,
+                `font-size:${this.fontSizeCSSRule ?? (this.fontSize !== null ? `${this.fontSize}px` : '')}`,
                 `font-weight:${this.fontWeight}`,
                 `font-style:${this.fontStyle}`,
                 `font-variant:${this.fontVariant}`,
@@ -207,14 +225,29 @@ export class Text extends Component {
     }
 
     /**
-     * Sets the font size in pixels, updates the CSS rule, and recalculates preferred size.
+     * Sets the font size. Pass a number for an explicit pixel value, or a CSS variable name
+     * (e.g. `"--ts-ui-header-font-size"`) to bind to a theme token.
      *
-     * @param value - The font size in pixels.
+     * @param value - Pixel size as a number, or a CSS custom property name as a string.
      */
-    setFontSize(value: number) {
-        this.fontSize = value;
+    setFontSize(value: number | string) {
+        if (typeof value === 'number') {
+            this.fontSize        = value;
+            this.fontSizeCSSVar  = null;
+            this.fontSizeCSSRule = null;
+            this.setElementCSSRule("fontSize", value + "px");
+        } else {
+            const raw    = getComputedStyle(document.documentElement).getPropertyValue(value).trim();
+            const parsed = parseFloat(raw);
 
-        this.setElementCSSRule("fontSize", value + "px");
+            if (!isNaN(parsed)) {
+                this.fontSize = parsed;
+            }
+
+            this.fontSizeCSSVar  = value;
+            this.fontSizeCSSRule = `var(${value}, ${this.fontSize ?? 14}px)`;
+            this.setElementCSSRule("fontSize", this.fontSizeCSSRule);
+        }
 
         this.calculateSize();
     }
@@ -351,16 +384,24 @@ export class Text extends Component {
 
         let rule = this.getCSSRule();
 
-        rule.style.fontFamily = this.fontFamily ? this.fontFamily : "";
+        rule.style.setProperty('font-family', this.fontFamily ?? '');
         rule.style.textAlign = this.textAlign ? this.textAlign : "";
         rule.style.textShadow = this.textShadow ? this.textShadow : "";
         rule.style.fontKerning = this.fontKerning ? this.fontKerning : "";
-        rule.style.fontSize = this.fontSize ? this.fontSize + "px" : "";
+        rule.style.setProperty('font-size',
+            this.fontSizeCSSRule ?? (this.fontSize !== null ? `${this.fontSize}px` : ''));
         rule.style.fontSizeAdjust = this.fontSizeAdjust ? this.fontSizeAdjust : "";
         rule.style.fontStretch = this.fontStretch ? this.fontStretch : "";
         rule.style.fontStyle = this.fontStyle ? this.fontStyle : "";
         rule.style.fontVariant = this.fontVariant ? this.fontVariant : "";
         rule.style.fontWeight = this.fontWeight ? this.fontWeight : "";
+    }
+
+    /**
+     * Removes the theme-change listener. Call when the component is permanently removed.
+     */
+    dispose() {
+        this.unsubscribeTheme();
     }
 
     /**

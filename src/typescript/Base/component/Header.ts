@@ -36,7 +36,7 @@ export class Header extends Component {
         this.label.setInsets(labelInsets);
 
         this.label.setFontWeight("bold");
-        this.label.setFontSize(12);
+        this.label.setFontSize("--ts-ui-header-font-size");
         this.label.setPointerEvents("none");
 
         this.addComponent(this.label, {

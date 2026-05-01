@@ -41,6 +41,7 @@ export class Button extends Component {
 
         this.label.setTextAlign("center");
         this.label.setFontWeight("bold");
+        this.label.setFontSize("--ts-ui-button-font-size");
 
         this.addComponent(this.label, {
             fill: FillType.NONE,
@@ -50,13 +51,13 @@ export class Button extends Component {
         this.setCursor("pointer");
         this.setForegroundColor("var(--ts-ui-text-color, black)");
         this.setBorder({ style: BorderStyle.RIDGE, width: 2, color: "var(--ts-ui-button-border, rgb(200, 200, 200))" });
-        this.setBorderRadius("4px");
+        this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-button-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2))");
-        this.setBackgroundImage("linear-gradient(var(--ts-ui-button-bg-top, rgb(241, 241, 241)), var(--ts-ui-button-bg-bottom, rgb(200, 200, 200)))");
+        this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
 
         this.setPressedForegroundColor("var(--ts-ui-button-pressed-fg, rgb(150, 150, 150))");
         this.setPressedBackgroundColor("var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))");
-        this.setPressedBackgroundImage("linear-gradient(var(--ts-ui-button-pressed-bg, rgb(200, 200, 200)), var(--ts-ui-button-pressed-bg, rgb(200, 200, 200)))");
+        this.setPressedBackgroundImage("var(--ts-ui-button-pressed-bg, none)");
         this.setPressedShadow("var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset)");
     }
 
@@ -94,7 +95,11 @@ export class Button extends Component {
      */
     setPressedBackgroundColor(backgroundColor: string | null) {
         this.pressedBackgroundColor = backgroundColor;
-        this.pressedCSSRule.style.backgroundColor = this.pressedBackgroundColor ? this.pressedBackgroundColor : "";
+        if (this.pressedBackgroundColor) {
+            this.pressedCSSRule.style.setProperty('background-color', this.pressedBackgroundColor);
+        } else {
+            this.pressedCSSRule.style.removeProperty('background-color');
+        }
     }
 
     /**
@@ -113,7 +118,11 @@ export class Button extends Component {
      */
     setPressedBackgroundImage(backgroundImage: string | null = null) {
         this.pressedBackgroundImage = backgroundImage;
-        this.pressedCSSRule.style.backgroundImage = this.pressedBackgroundImage ? this.pressedBackgroundImage : "";
+        if (this.pressedBackgroundImage) {
+            this.pressedCSSRule.style.setProperty('background-image', this.pressedBackgroundImage);
+        } else {
+            this.pressedCSSRule.style.removeProperty('background-image');
+        }
     }
 
     /**
@@ -132,7 +141,11 @@ export class Button extends Component {
      */
     setPressedForegroundColor(foregroundColor: string | null) {
         this.pressedForegroundColor = foregroundColor;
-        this.pressedCSSRule.style.color = this.pressedForegroundColor ? this.pressedForegroundColor : "";
+        if (this.pressedForegroundColor) {
+            this.pressedCSSRule.style.setProperty('color', this.pressedForegroundColor);
+        } else {
+            this.pressedCSSRule.style.removeProperty('color');
+        }
     }
 
     /**
@@ -175,7 +188,11 @@ export class Button extends Component {
      */
     setPressedBorderRadius(borderRadius: string | null = null) {
         this.pressedBorderRadius = borderRadius;
-        this.pressedCSSRule.style.borderRadius = this.pressedBorderRadius ? this.pressedBorderRadius : "none";
+        if (this.pressedBorderRadius) {
+            this.pressedCSSRule.style.setProperty('border-radius', this.pressedBorderRadius);
+        } else {
+            this.pressedCSSRule.style.removeProperty('border-radius');
+        }
     }
 
     /**
@@ -194,6 +211,10 @@ export class Button extends Component {
      */
     setPressedShadow(shadow: string | null) {
         this.pressedShadow = shadow;
-        this.pressedCSSRule.style.boxShadow = this.pressedShadow ? this.pressedShadow : "none";
+        if (this.pressedShadow) {
+            this.pressedCSSRule.style.setProperty('box-shadow', this.pressedShadow);
+        } else {
+            this.pressedCSSRule.style.removeProperty('box-shadow');
+        }
     }
 }

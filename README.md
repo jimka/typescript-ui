@@ -132,46 +132,78 @@ Two built-in themes are provided: `DefaultTheme` (light) and `DarkTheme`. Custom
 
 ### Theme keys
 
-| Key | CSS variable | Affects |
+The `Theme` interface uses nested objects grouped by component. All keys are required; spread `DefaultTheme` and override only what you need (see [Custom themes](#custom-themes) below).
+
+| Key path | CSS variable | Affects |
 |---|---|---|
-| `bodyBg` | `--ts-ui-body-bg` | Page background; also the background of `Window` |
-| `borderColor` | `--ts-ui-border-color` | Default border color for `Window` and other bordered components |
-| `buttonBgBottom` | `--ts-ui-button-bg-bottom` | Bottom color of the button gradient; also used as the scrollbar thumb color |
-| `buttonBgTop` | `--ts-ui-button-bg-top` | Top color of the button gradient; also used as the top of the table header gradient |
-| `buttonBorderColor` | `--ts-ui-button-border` | Outline of `Button` and `ToggleButton` |
-| `buttonPressedBg` | `--ts-ui-button-pressed-bg` | Background of a button while it is held down |
-| `buttonPressedFg` | `--ts-ui-button-pressed-fg` | Text color of a button while it is held down |
-| `buttonPressedShadow` | `--ts-ui-button-pressed-shadow` | Inset shadow on a pressed button |
-| `buttonShadow` | `--ts-ui-button-shadow` | Drop shadow on unpressed buttons |
 | `colorScheme` | *(set directly as `color-scheme`)* | Tells the browser to render native controls (checkboxes, scrollbars) in light or dark style. Use `'light'` or `'dark'`. |
-| `gutterBg` | `--ts-ui-gutter-bg` | Background of the `Split` layout drag gutter; also used as the scrollbar track color |
-| `inputBg` | `--ts-ui-input-bg` | Background of text inputs, password fields, text areas, checkboxes, and the table body |
-| `tabButtonBg` | `--ts-ui-tab-button-bg` | Background of inactive tab buttons |
-| `tableHeaderBorder` | `--ts-ui-table-header-border` | Bottom border separating the table header from the body |
-| `tabToolbarBg` | `--ts-ui-tab-toolbar-bg` | Background of the tab button toolbar in the `Tab` layout |
-| `tabToolbarBorder` | `--ts-ui-tab-toolbar-border` | Bottom border of the tab button toolbar |
-| `textColor` | `--ts-ui-text-color` | Default text color for all components |
-| `toggleSelectedBg` | `--ts-ui-toggle-selected-bg` | Background of a selected `ToggleButton` or `RadioButton` |
-| `toggleSelectedShadow` | `--ts-ui-toggle-selected-shadow` | Inset shadow on a selected `ToggleButton` or `RadioButton` |
+| `font.family` | `--ts-ui-font-family` | Font family for the entire UI (cascades from `<html>`) |
+| `font.size` | `--ts-ui-font-size` | Base font size for the entire UI (cascades from `<html>`) |
+| `text.color` | `--ts-ui-text-color` | Default text color for all components |
+| `body.background` | `--ts-ui-body-bg` | Page background; also the background of `Window` |
+| `border.color` | `--ts-ui-border-color` | Default border color for `Window` and other bordered components |
+| `border.radius` | `--ts-ui-border-radius` | Corner radius applied to `Button` and text-input components |
+| `button.background` | `--ts-ui-button-bg` | Background of `Button`, window title bars, and table headers. Accepts any CSS `background-image` value (gradient or solid colour — see note below). |
+| `button.border` | `--ts-ui-button-border` | Outline of `Button` and `ToggleButton` |
+| `button.shadow` | `--ts-ui-button-shadow` | Drop shadow on unpressed buttons |
+| `button.padding` | `--ts-ui-button-padding` | Padding inside `Button` |
+| `button.font.size` | `--ts-ui-button-font-size` | Font size of `Button` labels |
+| `button.pressed.background` | `--ts-ui-button-pressed-bg` | Background of a button while it is held down. Accepts a colour or gradient (see note below). |
+| `button.pressed.foreground` | `--ts-ui-button-pressed-fg` | Text color of a button while it is held down |
+| `button.pressed.shadow` | `--ts-ui-button-pressed-shadow` | Inset shadow on a pressed button |
+| `toggle.selected.background` | `--ts-ui-toggle-selected-bg` | Background of a selected `ToggleButton` or `RadioButton`. Accepts a colour or gradient (see note below). |
+| `toggle.selected.shadow` | `--ts-ui-toggle-selected-shadow` | Inset shadow on a selected `ToggleButton` or `RadioButton` |
+| `input.background` | `--ts-ui-input-bg` | Background of text inputs, password fields, text areas, checkboxes, and the table body |
+| `gutter.background` | `--ts-ui-gutter-bg` | Background of the `Split` layout drag gutter; also used as the scrollbar track color |
+| `tab.toolbar.background` | `--ts-ui-tab-toolbar-bg` | Background of the tab button toolbar in the `Tab` layout |
+| `tab.toolbar.border` | `--ts-ui-tab-toolbar-border` | Bottom border of the tab button toolbar |
+| `tab.button.background` | `--ts-ui-tab-button-bg` | Background of inactive tab buttons |
+| `window.shadow` | `--ts-ui-window-shadow` | Drop shadow on floating `Window` components |
+| `header.font.size` | `--ts-ui-header-font-size` | Font size of window and panel title-bar labels (`Header` component) |
+| `table.header.border` | `--ts-ui-table-header-border` | Bottom border separating the table header from the body |
+| `table.header.font.size` | `--ts-ui-table-header-font-size` | Font size of table column header cells |
+| `table.row.selected` | `--ts-ui-table-row-selected` | Background tint of the currently selected table row |
+| `table.row.new` | `--ts-ui-table-row-new` | Background tint of unsaved new records in the table |
+| `table.row.dirty` | `--ts-ui-table-row-dirty` | Background tint of locally modified (dirty) records in the table |
+
+> **Background tokens** (`button.background`, `button.pressed.background`, `toggle.selected.background`) accept either a plain colour (`rgb(200, 200, 200)`) or any CSS `background-image` value (`linear-gradient(...)`, `radial-gradient(...)`, etc.). The framework applies the token to both `background-color` and `background-image`; CSS's "invalid at computed-value time" rule routes the value to whichever property it is valid for.
 
 ### Custom themes
 
 Implement the `Theme` interface and pass it to `setTheme`:
 
 ```typescript
-import { Theme, ThemeManager } from './Base/Theme.js';
+import { Theme, ThemeManager, DefaultTheme } from './Base/Theme.js';
 
 const MyTheme: Theme = {
     ...DefaultTheme,
-    bodyBg   : 'rgb(240, 248, 255)',
-    textColor: 'rgb(10, 30, 60)',
-    colorScheme: 'light',
+    body  : { background: 'rgb(240, 248, 255)' },
+    text  : { color: 'rgb(10, 30, 60)' },
+    button: {
+        ...DefaultTheme.button,
+        background: 'linear-gradient(rgb(200, 220, 255), rgb(160, 190, 240))',
+    },
 };
 
 ThemeManager.setTheme(MyTheme);
 ```
 
 Components that need a theme value at construction time (rather than via a CSS variable) can call `ThemeManager.getTheme()` to read the currently active theme.
+
+### Theme change listeners
+
+`ThemeManager.onThemeChange(listener)` subscribes a callback that fires after every `setTheme` call, once all CSS variables have been written. `Text`-based components (`Label`, `Header` labels, table column headers) automatically recalculate their preferred size on each theme change so that layout managers see updated dimensions.
+
+```typescript
+const unsubscribe = ThemeManager.onThemeChange(() => {
+    console.log('theme changed:', ThemeManager.getTheme().colorScheme);
+});
+
+// Later, to stop listening:
+unsubscribe();
+```
+
+Custom components that create `Text` instances and are removed from the page should call `text.dispose()` to detach the listener and avoid memory leaks.
 
 ## Demo panels
 
@@ -328,4 +360,3 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Create an initialisation package** — add a separate `create-typescript-ui` (or similar) package whose sole purpose is to scaffold new projects. Running `npm create typescript-ui` (or `npx create-typescript-ui`) would generate a minimal project wired up with the library, a working `tsconfig.json`, and a Vite dev server, so consumers can get started without manually configuring dependencies or entry-point boilerplate.
 
-* **Extend theme support** — the current `Theme` interface covers colors and shadows. A natural next step is adding tokens for fonts (family, size, weight) and spacing (padding, margins, gaps). Consider also restructuring the key naming convention from flat camelCase (e.g. `tabToolbarBorder`) to a namespaced dot format (e.g. `tab.toolbar.border`) to better reflect component hierarchy and make the API easier to discover and extend. **Implementation note:** when setting CSS rule properties that contain `var()` references, always use `cssRule.style.setProperty('property-name', value)` rather than the camelCase shorthand setter (e.g. `cssRule.style.boxShadow = value`) — Chrome's shorthand setters perform eager value parsing and silently discard `var()` tokens, while `setProperty` stores the value as a raw token sequence and defers resolution to computed-value time.

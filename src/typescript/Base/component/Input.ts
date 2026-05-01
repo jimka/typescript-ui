@@ -13,6 +13,7 @@ export class Input extends Component {
         super(tag);
 
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
+        this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
     }
 
     /**
@@ -35,8 +36,8 @@ export class Input extends Component {
         super.applyStyle(element);
 
         let rule = this.getCSSRule();
-        rule.style.fontFamily = "sans-serif";
-        rule.style.fontSize = "12px";
+        rule.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
+        rule.style.fontSize   = "var(--ts-ui-font-size, 12px)";
     }
 
     /**

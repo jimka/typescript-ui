@@ -19,7 +19,7 @@ export class HeaderCell extends DefaultCell {
         super("th");
 
         let renderer = this.getRenderer();
-        renderer.getLabel().setFontSize(13);
+        renderer.getLabel().setFontSize("--ts-ui-table-header-font-size");
         renderer.getLabel().setFontWeight("bold");
         renderer.getLabel().setText(text);
     }

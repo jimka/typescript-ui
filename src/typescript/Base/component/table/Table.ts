@@ -32,7 +32,7 @@ export class Table extends Component {
         super("table");
 
         this.setLayoutManager(new TableLayout());
-        this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "rgb(0, 0, 0)" });
+        this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" });
         this.setInsets(new Insets(0, 0, 0, 0));
 
         this.store = store;
