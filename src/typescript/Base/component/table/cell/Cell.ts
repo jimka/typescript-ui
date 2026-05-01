@@ -7,6 +7,7 @@ import { Card } from "../../../layout/Card.js";
 import { CellRenderer } from "./renderer/CellRenderer.js";
 import { CellEditor } from "./editor/CellEditor.js";
 import { LayoutConstraints } from "../../../layout/LayoutConstraints.js";
+import { ThemeManager } from "../../../Theme.js";
 
 /**
  * Base class for table cells that support both a display renderer and an optional in-place editor.
@@ -30,6 +31,12 @@ export class Cell<T> extends Component {
         this.renderer = renderer;
         this.editor = editor;
         this.setInsets(new Insets(0, 0, 0, 0));
+
+        this.setBackgroundColor('var(--ts-ui-table-cell-bg, transparent)');
+        this.setForegroundColor('var(--ts-ui-table-cell-color, inherit)');
+        this.setBorder('var(--ts-ui-table-cell-border, none)');
+
+        ThemeManager.onThemeChange(() => this.setBorder('var(--ts-ui-table-cell-border, none)'));
 
         this.addComponent(renderer, rendererConstraints);
 

@@ -3,6 +3,7 @@
 import { Event } from "../Event.js";
 import { Input } from "./Input.js";
 import { Bindable } from "../Bindable.js";
+import { ThemeManager } from "../Theme.js";
 
 /**
  * A checkbox input component.
@@ -22,6 +23,9 @@ export class Checkbox extends Input implements Bindable<boolean> {
         this.setPreferredSize(16, 16);
         this.setMaxSize(16, 16);
         this.setCursor("pointer");
+        this.setColorScheme(ThemeManager.getTheme().colorScheme);
+
+        ThemeManager.onThemeChange(() => this.setColorScheme(ThemeManager.getTheme().colorScheme));
 
         this.addActionListener(this.onAction);
     }

@@ -5,8 +5,8 @@ import { AbstractStore } from "../../data/AbstractStore.js";
 import { ModelRecord } from "../../data/ModelRecord.js";
 import { Row } from "./Row.js";
 import { Event } from "../../Event.js";
+import { ThemeManager } from "../../Theme.js";
 
-const ROW_HEIGHT = 16;
 const SCROLL_BUFFER = 2;
 
 /**
@@ -40,9 +40,11 @@ export class Body extends Component {
     private phantom: HTMLElement | null = null;
     private lastBodyWidth: number = 0;
     private lastColumnWidth: number = 0;
+    private rowHeight: number;
     private layoutInProgress = false;
     private storeRefresh: (() => void) | null = null;
-    private selectedRecord: ModelRecord | null = null;
+    private selectedRecords: Set<ModelRecord> = new Set();
+    private anchorRecord: ModelRecord | null = null;
 
     constructor(store: AbstractStore) {
         super("tbody");
@@ -52,6 +54,14 @@ export class Body extends Component {
 
         this.store = store;
         this.bindStore(store);
+
+        this.rowHeight = parseFloat(ThemeManager.getTheme().table.cell.height) || 22;
+
+        ThemeManager.onThemeChange(() => {
+            this.rowHeight = parseFloat(ThemeManager.getTheme().table.cell.height) || 22;
+            this.boundIndices.fill(-1);
+            this.renderWindow();
+        });
     }
 
     /**
@@ -114,7 +124,7 @@ export class Body extends Component {
         this.phantom.style.position = "absolute";
         this.phantom.style.top = "0";
         this.phantom.style.width = "1px";
-        this.phantom.style.height = records.length * ROW_HEIGHT + "px";
+        this.phantom.style.height = records.length * this.rowHeight + "px";
 
         el.appendChild(this.phantom);
 
@@ -137,17 +147,20 @@ export class Body extends Component {
      */
     renderWindow(bodyWidth?: number, columnWidth?: number) {
         const element = this.getElement();
-        if (!element) return;
+        if (!element) {
+            return;
+        }
 
+        const rowHeight = this.rowHeight;
         const records = this.store.getRecords();
         const totalRows = records.length;
 
         const scrollTop = element.scrollTop;
         const visibleHeight = this.getHeight() || 0;
-        const firstRow = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - SCROLL_BUFFER);
+        const firstRow = Math.max(0, Math.floor(scrollTop / rowHeight) - SCROLL_BUFFER);
         const lastRow = Math.min(
             totalRows - 1,
-            Math.ceil((scrollTop + visibleHeight) / ROW_HEIGHT) + SCROLL_BUFFER
+            Math.ceil((scrollTop + visibleHeight) / rowHeight) + SCROLL_BUFFER
         );
         const windowSize = lastRow - firstRow + 1 > 0 ? lastRow - firstRow + 1 : 0;
 
@@ -164,7 +177,7 @@ export class Body extends Component {
 
             element.appendChild(rowEl);
 
-            rowEl.addEventListener('click', () => this.selectRecord(row.getData() ?? null));
+            rowEl.addEventListener('click', (e: MouseEvent) => this.onRowClick(row, e));
 
             this.rowPool.push(row);
             this.boundIndices.push(-1);
@@ -187,9 +200,9 @@ export class Body extends Component {
 
             row.setAutoCommitStyle(false);
             row.setX(0);
-            row.setY(dataIndex * ROW_HEIGHT);
+            row.setY(dataIndex * rowHeight);
             row.setWidth(rowWidth);
-            row.setHeight(ROW_HEIGHT);
+            row.setHeight(rowHeight);
             row.setAutoCommitStyle(true);
             row.setDisplayed(true);
 
@@ -201,7 +214,7 @@ export class Body extends Component {
                 cell.setX(x);
                 cell.setY(0);
                 cell.setWidth(colWidth);
-                cell.setHeight(ROW_HEIGHT);
+                cell.setHeight(rowHeight);
                 cell.setAutoCommitStyle(true);
                 cell.doLayout();
 
@@ -217,43 +230,94 @@ export class Body extends Component {
 
         // Keep phantom height in sync
         if (this.phantom) {
-            this.phantom.style.height = totalRows * ROW_HEIGHT + "px";
+            this.phantom.style.height = totalRows * rowHeight + "px";
         }
 
         this.layoutInProgress = false;
     }
 
     /**
-     * Sets the selected record and updates the visual state of affected pool rows.
+     * Handles a row click, updating selection with support for ctrl/cmd and shift modifiers.
      *
-     * @param record - The record to select, or null to clear the selection.
+     * @param row - The pool row that was clicked.
+     * @param e - The mouse event.
      */
-    selectRecord(record: ModelRecord | null): void {
-        const prev = this.selectedRecord;
+    private onRowClick(row: Row, e: MouseEvent): void {
+        const record = row.getData() ?? null;
+        if (!record) return;
+
         const records = this.store.getRecords();
 
-        this.selectedRecord = record;
+        if (e.shiftKey && this.anchorRecord) {
+            // Range select from anchor to clicked record
+            const anchorIdx = records.indexOf(this.anchorRecord);
+            const clickIdx  = records.indexOf(record);
+            const lo = Math.min(anchorIdx, clickIdx);
+            const hi = Math.max(anchorIdx, clickIdx);
+
+            if (!e.ctrlKey && !e.metaKey) {
+                this.selectedRecords.clear();
+            }
+
+            for (let i = lo; i <= hi; i++) {
+                this.selectedRecords.add(records[i]);
+            }
+        } else if (e.ctrlKey || e.metaKey) {
+            // Toggle individual record
+            if (this.selectedRecords.has(record)) {
+                this.selectedRecords.delete(record);
+            } else {
+                this.selectedRecords.add(record);
+            }
+            this.anchorRecord = record;
+        } else {
+            // Plain click — replace selection
+            this.selectedRecords.clear();
+            this.selectedRecords.add(record);
+            this.anchorRecord = record;
+        }
 
         this.boundIndices.forEach((dataIdx, i) => {
-            if (dataIdx === -1) {
-                return;
-            }
-
-            const r = records[dataIdx];
-
-            if (r === prev || r === record) {
-                this.updateRowVisualState(i);
-            }
+            if (dataIdx !== -1) this.updateRowVisualState(i);
         });
     }
 
     /**
-     * Returns the currently selected record, or null if none is selected.
+     * Sets the selected record set to contain exactly the given record (or clears selection).
      *
-     * @returns The selected {@link ModelRecord}, or null.
+     * @param record - The record to select, or null to clear the selection.
+     */
+    selectRecord(record: ModelRecord | null): void {
+        this.selectedRecords.clear();
+        this.anchorRecord = record;
+
+        if (record) {
+            this.selectedRecords.add(record);
+        }
+
+        this.boundIndices.forEach((dataIdx, i) => {
+            if (dataIdx !== -1) this.updateRowVisualState(i);
+        });
+    }
+
+    /**
+     * Returns the most recently anchored selected record, or null if the selection is empty.
+     *
+     * @returns The anchor {@link ModelRecord}, or null.
      */
     getSelectedRecord(): ModelRecord | null {
-        return this.selectedRecord;
+        return this.anchorRecord && this.selectedRecords.has(this.anchorRecord)
+            ? this.anchorRecord
+            : (this.selectedRecords.size > 0 ? [...this.selectedRecords][0] : null);
+    }
+
+    /**
+     * Returns all currently selected records.
+     *
+     * @returns An array of selected {@link ModelRecord} instances.
+     */
+    getSelectedRecords(): ModelRecord[] {
+        return [...this.selectedRecords];
     }
 
     /**
@@ -273,7 +337,7 @@ export class Body extends Component {
             return;
         }
 
-        el.scrollTop = idx * ROW_HEIGHT;
+        el.scrollTop = idx * this.rowHeight;
     }
 
     /**
@@ -292,9 +356,13 @@ export class Body extends Component {
             return;
         }
 
-        if (record === this.selectedRecord) {
-            (this.rowPool[i].getElement() as HTMLElement).style.setProperty('background-color', 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))');
+        const rowEl = this.rowPool[i].getElement() as HTMLElement;
+
+        if (this.selectedRecords.has(record)) {
+            rowEl.style.setProperty('background-color', 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))');
+            rowEl.style.setProperty('box-shadow', 'var(--ts-ui-table-row-selected-border, none)');
         } else {
+            rowEl.style.removeProperty('box-shadow');
             this.rowPool[i].updateVisualState();
         }
     }

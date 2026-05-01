@@ -80,6 +80,7 @@ export interface Theme {
         font: {
             size: string;
         };
+        padding: number;
     };
 
     table: {
@@ -90,9 +91,18 @@ export interface Theme {
             };
         };
         row: {
-            selected: string;
-            new     : string;
-            dirty   : string;
+            selected      : string;
+            selectedBorder: string;
+            new           : string;
+            dirty         : string;
+        };
+        cell: {
+            height           : string;
+            padding          : number;
+            background       : string;
+            color            : string;
+            border           : string;
+            editorBorderColor: string;
         };
     };
 }
@@ -131,13 +141,22 @@ export const DefaultTheme: Theme = {
         button : { background: '#b8b8c3' },
     },
     window: { shadow: '3px 3px 2px rgba(0, 0, 0, 0.4)' },
-    header: { font: { size: '12px' } },
+    header: { font: { size: '12px' }, padding: 4 },
     table : {
         header: { border: 'black', font: { size: '13px' } },
         row   : {
-            selected: 'rgba(30, 100, 200, 0.15)',
-            new     : 'rgba(70, 200, 70, 0.15)',
-            dirty   : 'rgba(255, 165, 0, 0.15)',
+            selected      : 'rgba(30, 100, 200, 0.15)',
+            selectedBorder: 'inset 0 0 0 1px rgba(30, 100, 200, 0.6)',
+            new           : 'rgba(70, 200, 70, 0.15)',
+            dirty         : 'rgba(255, 165, 0, 0.15)',
+        },
+        cell  : {
+            height           : '22px',
+            padding          : 2,
+            background       : 'transparent',
+            color            : 'inherit',
+            border           : 'none',
+            editorBorderColor: 'rgba(30, 100, 200, 0.6)',
         },
     },
 };
@@ -176,13 +195,22 @@ export const DarkTheme: Theme = {
         button : { background: '#3a3a3a' },
     },
     window    : { shadow: '3px 3px 2px rgba(0, 0, 0, 0.6)' },
-    header    : { font: { size: '12px' } },
+    header    : { font: { size: '12px' }, padding: 4 },
     table     : {
         header: { border: '#555', font: { size: '13px' } },
         row   : {
-            selected: 'rgba(30, 100, 200, 0.25)',
-            new     : 'rgba(70, 200, 70, 0.2)',
-            dirty   : 'rgba(255, 165, 0, 0.2)',
+            selected      : 'rgba(30, 100, 200, 0.25)',
+            selectedBorder: 'inset 0 0 0 1px rgba(30, 100, 200, 0.8)',
+            new           : 'rgba(70, 200, 70, 0.2)',
+            dirty         : 'rgba(255, 165, 0, 0.2)',
+        },
+        cell  : {
+            height           : '22px',
+            padding          : 2,
+            background       : 'transparent',
+            color            : 'inherit',
+            border           : 'none',
+            editorBorderColor: 'rgba(30, 100, 200, 0.8)',
         },
     },
 };
@@ -213,13 +241,20 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-tab-toolbar-bg'        : theme.tab.toolbar.background,
         '--ts-ui-tab-toolbar-border'    : theme.tab.toolbar.border,
         '--ts-ui-tab-button-bg'         : theme.tab.button.background,
-        '--ts-ui-window-shadow'         : theme.window.shadow,
-        '--ts-ui-header-font-size'       : theme.header.font.size,
-        '--ts-ui-table-header-border'   : theme.table.header.border,
-        '--ts-ui-table-header-font-size': theme.table.header.font.size,
-        '--ts-ui-table-row-selected'    : theme.table.row.selected,
-        '--ts-ui-table-row-new'         : theme.table.row.new,
-        '--ts-ui-table-row-dirty'       : theme.table.row.dirty,
+        '--ts-ui-window-shadow'              : theme.window.shadow,
+        '--ts-ui-header-font-size'           : theme.header.font.size,
+        '--ts-ui-table-header-border'        : theme.table.header.border,
+        '--ts-ui-table-header-font-size'     : theme.table.header.font.size,
+        '--ts-ui-table-row-selected'         : theme.table.row.selected,
+        '--ts-ui-table-row-selected-border'  : theme.table.row.selectedBorder,
+        '--ts-ui-table-row-new'              : theme.table.row.new,
+        '--ts-ui-table-row-dirty'            : theme.table.row.dirty,
+        '--ts-ui-table-cell-height'           : theme.table.cell.height,
+        '--ts-ui-table-cell-bg'              : theme.table.cell.background,
+        '--ts-ui-table-cell-color'           : theme.table.cell.color,
+        '--ts-ui-table-cell-border'          : theme.table.cell.border,
+        '--ts-ui-table-cell-editor-border'   : theme.table.cell.editorBorderColor,
+        '--ts-ui-color-scheme'               : theme.colorScheme,
     };
 }
 

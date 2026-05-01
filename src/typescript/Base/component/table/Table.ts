@@ -180,6 +180,15 @@ export class Table extends Component {
     }
 
     /**
+     * Returns all currently selected records.
+     *
+     * @returns An array of selected {@link ModelRecord} instances.
+     */
+    getSelectedRecords(): ModelRecord[] {
+        return this.body.getSelectedRecords();
+    }
+
+    /**
      * Adds a header, body, or footer section component, updating the stored reference.
      *
      * @param row - The section component to add.

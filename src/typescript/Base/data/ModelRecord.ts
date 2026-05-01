@@ -49,8 +49,9 @@ export class ModelRecord {
      * @param value - The new value to assign to the field.
      */
     set(field: string, value: any): void {
+        if (this.data[field] === value) return;
         this.data[field] = value;
-        this.dirty = true;
+        this.dirty = this._isNew || Object.keys(this.original).some(k => this.data[k] !== this.original[k]);
     }
 
     /**

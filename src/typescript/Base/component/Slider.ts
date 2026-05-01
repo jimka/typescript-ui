@@ -2,6 +2,7 @@
 
 import { Input } from "./Input.js";
 import { Event } from "../Event.js";
+import { ThemeManager } from "../Theme.js";
 
 /**
  * A range slider input component backed by an `<input type="range">` element.
@@ -29,6 +30,9 @@ export class Slider extends Input {
         this.setPreferredSize(200, 20);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, 20);
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
+        this.setColorScheme(ThemeManager.getTheme().colorScheme);
+
+        ThemeManager.onThemeChange(() => this.setColorScheme(ThemeManager.getTheme().colorScheme));
 
         this.addActionListener(function (evnt: UIEvent) {
             let target = <HTMLInputElement>evnt.target;

@@ -3,12 +3,13 @@
 import { Component } from "../../../../Component.js";
 import { Fit } from "../../../../layout/Fit.js";
 import { Insets } from "../../../../Insets.js";
+import { ThemeManager } from "../../../../Theme.js";
 
 /**
  * Abstract base class for cell editors.
  *
  * Subclasses allow in-place editing of a typed value inside a table cell using a
- * Fit layout with zero insets.
+ * Fit layout with theme-driven padding.
  */
 export abstract class CellEditor<T> extends Component {
 
@@ -16,7 +17,13 @@ export abstract class CellEditor<T> extends Component {
         super();
 
         this.setLayoutManager(new Fit());
-        this.setInsets(new Insets(0, 0, 0, 0));
+        this.applyThemePadding();
+        ThemeManager.onThemeChange(() => this.applyThemePadding());
+    }
+
+    private applyThemePadding(): void {
+        const p = ThemeManager.getTheme().table.cell.padding;
+        this.setInsets(new Insets(0, p, 0, p));
     }
 
     /**
