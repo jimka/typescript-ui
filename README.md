@@ -359,3 +359,17 @@ Use `mapping` when the incoming JSON key differs from the field name:
 * **Add a test suite** — the project has no automated tests. Adding unit tests for the pure logic in `Util`, `Type`, layout constraint resolution, and `ButtonGroup` would catch regressions quickly and is a natural starting point before larger refactors.
 
 * **Create an initialisation package** — add a separate `create-typescript-ui` (or similar) package whose sole purpose is to scaffold new projects. Running `npm create typescript-ui` (or `npx create-typescript-ui`) would generate a minimal project wired up with the library, a working `tsconfig.json`, and a Vite dev server, so consumers can get started without manually configuring dependencies or entry-point boilerplate.
+
+* **Column sorting and resizing in `Table`** — clicking a header cell could toggle the store's `sort()` call and render an arrow indicator. Draggable column edges (similar to `SplitGutter`) would let users resize columns at runtime. Both are natural extensions of the existing `Header`, `Body`, and `Split` code.
+
+* **Tree component** — a hierarchical data view is the main gap in the component set. A `Tree` with collapsible nodes would share the virtual-scrolling approach already used in `Body`, flattening the visible subtree into a single scrollable list and re-rendering only as nodes expand or collapse.
+
+* **Context menus and tooltips** — desktop-style applications rely on right-click menus and hover hints. A `ContextMenu` component appended to `document.documentElement` (same pattern as `Window`) with a `show(x, y, items[])` API would complement the existing `Window` and `ButtonGroup` infrastructure.
+
+* **Keyboard navigation and ARIA roles** — the framework targets a desktop-style feel but has no keyboard focus management. Adding `tabIndex` propagation, arrow-key navigation inside `Tab`, `Split`, `Table`, and `ComboBox`, and the appropriate ARIA roles (`role="grid"`, `role="tablist"`, etc.) would make the library usable without a mouse and comply with baseline accessibility standards.
+
+* **Date and time input components** — `DateField` and `TimeField` wrapping `<input type="date">` and `<input type="time">`, implementing `Bindable<Date>`, would fill the most common gap in the form component set and integrate cleanly with the existing `Binding` system.
+
+* **Cross-browser support** — the library currently targets Chrome only. Auditing and fixing Firefox and Safari compatibility (particularly around scrollbar-width calculation, CSS custom-property fallbacks, and drag event behaviour) would significantly widen the potential user base with relatively contained effort.
+
+* **Notification / toast system** — async operations (store sync, AJAX proxy responses) have no built-in way to surface success or error feedback. A lightweight `Notification` singleton with `show(message, type, duration)` that appends a positioned overlay to `document.documentElement` would complement the existing `Window` pattern and give applications a standard feedback channel.
