@@ -4,6 +4,7 @@ import { Component } from "./Component.js";
 import { Util } from "./Util.js";
 import { Event } from "./Event.js";
 import { Size } from "./Size.js";
+import { ThemeManager, DefaultTheme } from "./Theme.js";
 
 /**
  * A {@link Component} that wraps the page's `<body>` element.
@@ -32,7 +33,9 @@ export class Body extends Component {
 
         this.init();
 
-        this.setBackgroundColor("rgb(241, 241, 241)");
+        this.setBackgroundColor("var(--ts-ui-body-bg, rgb(241, 241, 241))");
+
+        ThemeManager.setTheme(DefaultTheme);
     }
 
     /**

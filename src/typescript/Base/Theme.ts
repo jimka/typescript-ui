@@ -3,107 +3,223 @@
 import { CSS } from './CSS.js';
 
 /**
- * Defines the full set of color tokens that make up a UI theme.
+ * Defines the full set of design tokens that make up a UI theme.
+ *
+ * Background tokens (e.g. `button.bg`, `button.pressed.bg`, `toggle.selected.bg`) accept any
+ * CSS `background-image` value such as a gradient, or any CSS `background-color` value such as
+ * a plain colour. The framework applies the same variable to both `background-color` and
+ * `background-image`, so CSS's "invalid at computed-value time" rule routes automatically:
+ * a plain colour takes effect via `background-color`; a gradient via `background-image`.
  */
 export interface Theme {
-    textColor           : string;
-    bodyBg              : string;
-    buttonBorderColor   : string;
-    buttonBgTop         : string;
-    buttonBgBottom      : string;
-    buttonShadow        : string;
-    buttonPressedFg     : string;
-    buttonPressedBg     : string;
-    buttonPressedShadow : string;
-    toggleSelectedShadow: string;
-    toggleSelectedBg    : string;
-    inputBg             : string;
-    borderColor         : string;
-    gutterBg            : string;
-    tabToolbarBg        : string;
-    tabToolbarBorder    : string;
-    tabButtonBg         : string;
-    tableHeaderBorder   : string;
-    colorScheme         : string;
+    colorScheme: string;
+
+    font: {
+        family: string;
+        size  : string;
+    };
+
+    text: {
+        color: string;
+    };
+
+    body: {
+        background: string;
+    };
+
+    border: {
+        color : string;
+        radius: string;
+    };
+
+    button: {
+        background: string;
+        border    : string;
+        shadow    : string;
+        padding   : string;
+        font: {
+            size: string;
+        };
+        pressed: {
+            foreground: string;
+            background: string;
+            shadow    : string;
+        };
+    };
+
+    toggle: {
+        selected: {
+            background: string;
+            shadow    : string;
+        };
+    };
+
+    input: {
+        background: string;
+    };
+
+    gutter: {
+        background: string;
+    };
+
+    tab: {
+        toolbar: {
+            background: string;
+            border    : string;
+        };
+        button: {
+            background: string;
+        };
+    };
+
+    window: {
+        shadow: string;
+    };
+
+    header: {
+        font: {
+            size: string;
+        };
+    };
+
+    table: {
+        header: {
+            border: string;
+            font: {
+                size: string;
+            };
+        };
+        row: {
+            selected: string;
+            new     : string;
+            dirty   : string;
+        };
+    };
 }
 
 /**
  * Light-mode theme using white backgrounds and black text.
  */
 export const DefaultTheme: Theme = {
-    textColor           : 'rgb(0, 0, 0)',
-    bodyBg              : 'rgb(255, 255, 255)',
-    buttonBorderColor   : 'rgb(200, 200, 200)',
-    buttonBgTop         : 'rgb(241, 241, 241)',
-    buttonBgBottom      : 'rgb(200, 200, 200)',
-    buttonShadow        : '1px 2px 5px 0 rgba(0, 0, 0, 0.2)',
-    buttonPressedFg     : 'rgb(150, 150, 150)',
-    buttonPressedBg     : 'rgb(200, 200, 200)',
-    buttonPressedShadow : '1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset',
-    toggleSelectedShadow: '2px 2px 1px inset grey',
-    toggleSelectedBg    : 'rgb(200, 200, 200)',
-    inputBg             : 'rgb(255, 255, 255)',
-    borderColor         : 'black',
-    gutterBg            : '#AAAAAA',
-    tabToolbarBg        : '#eee',
-    tabToolbarBorder    : '#e1e1e8',
-    tabButtonBg         : '#b8b8c3',
-    tableHeaderBorder   : 'black',
-    colorScheme         : 'light',
+    colorScheme: 'light',
+    font       : { family: 'system-ui, sans-serif', size: '14px' },
+    text       : { color: 'rgb(0, 0, 0)' },
+    body       : { background: 'rgb(255, 255, 255)' },
+    border     : { color: 'black',                 radius: '4px' },
+    button     : {
+        background: 'linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))',
+        border    : 'rgb(200, 200, 200)',
+        shadow    : '1px 2px 5px 0 rgba(0, 0, 0, 0.2)',
+        padding   : '0',
+        font      : { size: '12px' },
+        pressed   : {
+            foreground: 'rgb(150, 150, 150)',
+            background: 'rgb(200, 200, 200)',
+            shadow    : '1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset',
+        },
+    },
+    toggle      : {
+        selected: {
+            background: 'rgb(200, 200, 200)',
+            shadow    : '2px 2px 1px inset grey',
+        },
+    },
+    input : { background: 'rgb(255, 255, 255)' },
+    gutter: { background: '#AAAAAA' },
+    tab   : {
+        toolbar: { background: '#eee',     border: '#e1e1e8' },
+        button : { background: '#b8b8c3' },
+    },
+    window: { shadow: '3px 3px 2px rgba(0, 0, 0, 0.4)' },
+    header: { font: { size: '12px' } },
+    table : {
+        header: { border: 'black', font: { size: '13px' } },
+        row   : {
+            selected: 'rgba(30, 100, 200, 0.15)',
+            new     : 'rgba(70, 200, 70, 0.15)',
+            dirty   : 'rgba(255, 165, 0, 0.15)',
+        },
+    },
 };
 
 /**
  * Dark-mode theme using dark backgrounds and light text.
  */
 export const DarkTheme: Theme = {
-    textColor           : 'rgb(220, 220, 220)',
-    bodyBg              : 'rgb(30, 30, 30)',
-    buttonBorderColor   : 'rgb(80, 80, 80)',
-    buttonBgTop         : 'rgb(70, 70, 70)',
-    buttonBgBottom      : 'rgb(50, 50, 50)',
-    buttonShadow        : '1px 2px 5px 0 rgba(0, 0, 0, 0.5)',
-    buttonPressedFg     : 'rgb(180, 180, 180)',
-    buttonPressedBg     : 'rgb(35, 35, 35)',
-    buttonPressedShadow : '1px 2px 5px 0 rgba(0, 0, 0, 0.5) inset',
-    toggleSelectedShadow: '2px 2px 1px inset #333',
-    toggleSelectedBg    : 'rgb(35, 35, 35)',
-    inputBg             : 'rgb(40, 40, 40)',
-    borderColor         : 'rgb(90, 90, 90)',
-    gutterBg            : '#555',
-    tabToolbarBg        : '#2a2a2a',
-    tabToolbarBorder    : '#444',
-    tabButtonBg         : '#3a3a3a',
-    tableHeaderBorder   : '#555',
-    colorScheme         : 'dark',
+    colorScheme: 'dark',
+    font       : { family: 'system-ui, sans-serif', size: '14px' },
+    text       : { color: 'rgb(220, 220, 220)' },
+    body       : { background: 'rgb(30, 30, 30)' },
+    border     : { color: 'rgb(90, 90, 90)',        radius: '4px' },
+    button     : {
+        background: 'linear-gradient(rgb(70, 70, 70), rgb(50, 50, 50))',
+        border    : 'rgb(80, 80, 80)',
+        shadow    : '1px 2px 5px 0 rgba(0, 0, 0, 0.5)',
+        padding   : '0',
+        font      : { size: '12px' },
+        pressed   : {
+            foreground: 'rgb(180, 180, 180)',
+            background: 'rgb(35, 35, 35)',
+            shadow    : '1px 2px 5px 0 rgba(0, 0, 0, 0.5) inset',
+        },
+    },
+    toggle      : {
+        selected: {
+            background: 'rgb(35, 35, 35)',
+            shadow    : '2px 2px 1px inset #333',
+        },
+    },
+    input : { background: 'rgb(40, 40, 40)' },
+    gutter: { background: '#555' },
+    tab   : {
+        toolbar: { background: '#2a2a2a', border: '#444' },
+        button : { background: '#3a3a3a' },
+    },
+    window    : { shadow: '3px 3px 2px rgba(0, 0, 0, 0.6)' },
+    header    : { font: { size: '12px' } },
+    table     : {
+        header: { border: '#555', font: { size: '13px' } },
+        row   : {
+            selected: 'rgba(30, 100, 200, 0.25)',
+            new     : 'rgba(70, 200, 70, 0.2)',
+            dirty   : 'rgba(255, 165, 0, 0.2)',
+        },
+    },
 };
 
 /**
  * Converts a Theme object into a map of CSS custom property names to values.
- *
- * @param theme - The theme whose token values should be converted.
- *
- * @returns A record mapping `--ts-ui-*` CSS variable names to their corresponding theme values.
  */
 function themeToVars(theme: Theme): Record<string, string> {
     return {
-        '--ts-ui-text-color'            : theme.textColor,
-        '--ts-ui-body-bg'               : theme.bodyBg,
-        '--ts-ui-button-border'         : theme.buttonBorderColor,
-        '--ts-ui-button-bg-top'         : theme.buttonBgTop,
-        '--ts-ui-button-bg-bottom'      : theme.buttonBgBottom,
-        '--ts-ui-button-shadow'         : theme.buttonShadow,
-        '--ts-ui-button-pressed-fg'     : theme.buttonPressedFg,
-        '--ts-ui-button-pressed-bg'     : theme.buttonPressedBg,
-        '--ts-ui-button-pressed-shadow' : theme.buttonPressedShadow,
-        '--ts-ui-toggle-selected-shadow': theme.toggleSelectedShadow,
-        '--ts-ui-toggle-selected-bg'    : theme.toggleSelectedBg,
-        '--ts-ui-input-bg'              : theme.inputBg,
-        '--ts-ui-border-color'          : theme.borderColor,
-        '--ts-ui-gutter-bg'             : theme.gutterBg,
-        '--ts-ui-tab-toolbar-bg'        : theme.tabToolbarBg,
-        '--ts-ui-tab-toolbar-border'    : theme.tabToolbarBorder,
-        '--ts-ui-tab-button-bg'         : theme.tabButtonBg,
-        '--ts-ui-table-header-border'   : theme.tableHeaderBorder,
+        '--ts-ui-font-family'           : theme.font.family,
+        '--ts-ui-font-size'             : theme.font.size,
+        '--ts-ui-text-color'            : theme.text.color,
+        '--ts-ui-body-bg'               : theme.body.background,
+        '--ts-ui-border-color'          : theme.border.color,
+        '--ts-ui-border-radius'         : theme.border.radius,
+        '--ts-ui-button-bg'             : theme.button.background,
+        '--ts-ui-button-border'         : theme.button.border,
+        '--ts-ui-button-shadow'         : theme.button.shadow,
+        '--ts-ui-button-padding'        : theme.button.padding,
+        '--ts-ui-button-font-size'      : theme.button.font.size,
+        '--ts-ui-button-pressed-fg'     : theme.button.pressed.foreground,
+        '--ts-ui-button-pressed-bg'     : theme.button.pressed.background,
+        '--ts-ui-button-pressed-shadow' : theme.button.pressed.shadow,
+        '--ts-ui-toggle-selected-bg'    : theme.toggle.selected.background,
+        '--ts-ui-toggle-selected-shadow': theme.toggle.selected.shadow,
+        '--ts-ui-input-bg'              : theme.input.background,
+        '--ts-ui-gutter-bg'             : theme.gutter.background,
+        '--ts-ui-tab-toolbar-bg'        : theme.tab.toolbar.background,
+        '--ts-ui-tab-toolbar-border'    : theme.tab.toolbar.border,
+        '--ts-ui-tab-button-bg'         : theme.tab.button.background,
+        '--ts-ui-window-shadow'         : theme.window.shadow,
+        '--ts-ui-header-font-size'       : theme.header.font.size,
+        '--ts-ui-table-header-border'   : theme.table.header.border,
+        '--ts-ui-table-header-font-size': theme.table.header.font.size,
+        '--ts-ui-table-row-selected'    : theme.table.row.selected,
+        '--ts-ui-table-row-new'         : theme.table.row.new,
+        '--ts-ui-table-row-dirty'       : theme.table.row.dirty,
     };
 }
 
@@ -113,15 +229,32 @@ function themeToVars(theme: Theme): Record<string, string> {
  */
 export class ThemeManager {
     private static current: Theme = DefaultTheme;
+    private static themeListeners: Array<() => void> = [];
+
+    /**
+     * Subscribes a listener that is called whenever the active theme changes.
+     *
+     * @param listener - Called after CSS variables have been updated, so `getComputedStyle` returns new values.
+     * @returns A cleanup function that removes the listener when called.
+     */
+    static onThemeChange(listener: () => void): () => void {
+        ThemeManager.themeListeners.push(listener);
+        return () => {
+            ThemeManager.themeListeners = ThemeManager.themeListeners.filter(l => l !== listener);
+        };
+    }
 
     /**
      * Applies a theme by writing CSS variables onto `:root` and updating body/html styles.
      *
      * @param theme - The theme object to activate.
      *
-     * @remarks Sets `document.documentElement.style.colorScheme`, `color`, and
-     * `document.body.style.backgroundColor` / `color` in addition to the CSS custom properties,
-     * so both CSS-variable consumers and direct inline-style consumers are updated.
+     * @remarks Sets `document.documentElement.style.colorScheme`, `color`, `fontFamily`,
+     * `fontSize`, and `document.body.style.backgroundColor` / `color` in addition to the CSS
+     * custom properties, so both CSS-variable consumers and direct inline-style consumers
+     * are updated. `<html>` is targeted (in addition to `<body>`) because `Window` components
+     * are appended to `document.documentElement`, so text in floating windows must inherit
+     * from `<html>`.
      */
     static setTheme(theme: Theme) {
         ThemeManager.current = theme;
@@ -129,9 +262,13 @@ export class ThemeManager {
         CSS.setRootVariables(themeToVars(theme));
 
         document.documentElement.style.colorScheme = theme.colorScheme;
-        document.documentElement.style.color       = theme.textColor;
-        document.body.style.backgroundColor        = theme.bodyBg;
-        document.body.style.color                  = theme.textColor;
+        document.documentElement.style.color       = theme.text.color;
+        document.documentElement.style.fontFamily  = theme.font.family;
+        document.documentElement.style.fontSize    = theme.font.size;
+        document.body.style.backgroundColor        = theme.body.background;
+        document.body.style.color                  = theme.text.color;
+
+        ThemeManager.themeListeners.forEach(l => l());
     }
 
     /**

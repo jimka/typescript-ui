@@ -105,11 +105,11 @@ export class Row extends Component {
         }
 
         if (this.data?.isNew()) {
-             el.style.backgroundColor = 'rgba(70, 200, 70, 0.15)';
+            el.style.setProperty('background-color', 'var(--ts-ui-table-row-new, rgba(70, 200, 70, 0.15))');
         } else if (this.data?.isDirty()) {
-            el.style.backgroundColor = 'rgba(255, 165, 0, 0.15)';
+            el.style.setProperty('background-color', 'var(--ts-ui-table-row-dirty, rgba(255, 165, 0, 0.15))');
         } else {
-            el.style.backgroundColor = '';
+            el.style.removeProperty('background-color');
         }
     }
 
