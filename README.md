@@ -360,3 +360,13 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Create an initialisation package** — add a separate `create-typescript-ui` (or similar) package whose sole purpose is to scaffold new projects. Running `npm create typescript-ui` (or `npx create-typescript-ui`) would generate a minimal project wired up with the library, a working `tsconfig.json`, and a Vite dev server, so consumers can get started without manually configuring dependencies or entry-point boilerplate.
 
+* **Minor fixes**
+  - Table cells should be able to be themed by their own tokens.
+  - The content of tables cells are currently being clipped at the bottom.
+  - We should perhaps introduce a 1px or 2px padding in table cells.
+  - When editing a table cell, even if no change is made, the field is being marked as dirty. If no change has been made after exiting editing, the field should not be marked as dirty.
+  - We should add the ability to select multiple table rows at the same time.
+  - The selected table row and cell should be highlighted by a border as well as the background color. If only one of the two are to be used, this should be set:able by some flag (can this already be done by setting the css rule to null or clearing it?).
+  - We should probably add some form of padding to the window element. The text is currently to close to the left edge. Perhaps add a 1px or 2px padding.
+  - CheckBox (when selected, non-selected works) and Slider component background and foreground does not change when switching to dark mode.
+  - Explicitly setting preferred size on a component (Maybe only text components) does not seem to work anymore. See BorderPanel.ts, setting the header and footer text does nothing right now. We should probably still support this somehow.  
