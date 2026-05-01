@@ -32,7 +32,7 @@ export class Window extends Component {
     private pendingMouseDX: number = 0;
     private pendingMouseDY: number = 0;
     private pendingBorder: WindowBorder | null = null;
-    private resizeFps: number = 6;
+    private resizeFps: number = 60;
     private lastFlushTime: number = 0;
 
     constructor(headerText: string, zIndex: number = 9999) {
