@@ -63,6 +63,7 @@ export class Component extends BaseObject {
     private overflow: string | null;
     private whiteSpace: string | null;
     private border: Border | null = null;
+    private borderCSS: string | null = null;
     private borderRadius: string | null = null;
     private shadow: string | null = null;
     private pointerEvents: string | null = null;
@@ -70,11 +71,13 @@ export class Component extends BaseObject {
     private displayed: Boolean | null;
     private display: string;
     private userSelect: string | null;
+    private verticalAlign: string | null;
     private cssRule: CSSStyleRule;
     private dirtyStyle: Style = {};
     private dirtyCSSRule: Style = {};
     private autoCommitStyle: boolean = true;
     private layoutPaused: boolean = false;
+    colorScheme: string;
 
     constructor(tag: string = "div") {
         super();
@@ -115,6 +118,7 @@ export class Component extends BaseObject {
         this.overflow = "hidden";
         this.whiteSpace = "nowrap";
         this.userSelect = "none";
+        this.verticalAlign = "baseline";
     }
 
     /**
@@ -603,6 +607,16 @@ export class Component extends BaseObject {
         }
     }
 
+    getColorScheme() {
+        return this.colorScheme;
+    }
+
+    setColorScheme(colorScheme: string) {
+        this.colorScheme = colorScheme;
+
+        this.cssRule.style.setProperty('color-scheme', colorScheme);
+    }
+
     /**
      * Returns the Border instance, or null if no border is set.
      *
@@ -617,13 +631,30 @@ export class Component extends BaseObject {
      *
      * @param options - Optional. Border configuration (style, width, color). Omit to apply a default border.
      */
-    setBorder(options?: BorderOptions) {
-        this.border = new Border(options);
+    setBorder(options?: BorderOptions | string) {
+        if (typeof options === 'string' && options.trimStart().startsWith('var(')) {
+            this.borderCSS = options;
+            this.cssRule.style.setProperty('border', options);
 
-        if (this.border) {
+            const varName  = options.match(/var\((--[^,)]+)/)?.[1];
+            const resolved = varName
+                ? getComputedStyle(document.documentElement).getPropertyValue(varName).trim()
+                : null;
+
+            this.border = resolved ? Border.fromString(resolved) : null;
+        } else if (typeof options === 'string') {
+            this.borderCSS = null;
+            this.border    = Border.fromString(options);
             this.border.applyOnCSSRule(this.cssRule);
         } else {
-            this.cssRule.style.removeProperty("border");
+            this.borderCSS = null;
+            this.border    = new Border(options);
+
+            if (this.border) {
+                this.border.applyOnCSSRule(this.cssRule);
+            } else {
+                this.cssRule.style.removeProperty('border');
+            }
         }
     }
 
@@ -683,6 +714,60 @@ export class Component extends BaseObject {
         this.shadow = shadow;
 
         this.cssRule.style.setProperty('box-shadow', this.shadow || 'none');
+    }
+
+    /**
+     * Sets the CSS outline on the element; null removes the property.
+     *
+     * @param outline - A CSS outline value (e.g. "none", "2px solid blue"), or null to inherit.
+     */
+    setOutline(outline: string | null) {
+        if (outline !== null) {
+            this.cssRule.style.setProperty('outline', outline);
+        } else {
+            this.cssRule.style.removeProperty('outline');
+        }
+    }
+
+    /**
+     * Sets the CSS appearance on the element; null removes the property.
+     *
+     * @param value - A CSS appearance value (e.g. "none", "auto"), or null to remove.
+     */
+    setAppearance(value: string | null) {
+        if (value !== null) {
+            this.cssRule.style.setProperty('-webkit-appearance', value);
+            this.cssRule.style.setProperty('appearance', value);
+        } else {
+            this.cssRule.style.removeProperty('-webkit-appearance');
+            this.cssRule.style.removeProperty('appearance');
+        }
+    }
+
+    /**
+     * Sets the CSS border-image shorthand on the element; null removes the property.
+     *
+     * @param value - A CSS border-image value (e.g. "none"), or null to remove.
+     */
+    setBorderImage(value: string | null) {
+        if (value !== null) {
+            this.cssRule.style.setProperty('border-image', value);
+        } else {
+            this.cssRule.style.removeProperty('border-image');
+        }
+    }
+
+    /**
+     * Sets the CSS transform on the element; null removes the property.
+     *
+     * @param value - A CSS transform value (e.g. "translateY(-1px)"), or null to remove.
+     */
+    setTransform(value: string | null) {
+        if (value !== null) {
+            this.cssRule.style.setProperty('transform', value);
+        } else {
+            this.cssRule.style.removeProperty('transform');
+        }
     }
 
     /**
@@ -888,10 +973,10 @@ export class Component extends BaseObject {
         };
 
         if (this.border) {
-            borderSize.top = this.border.getTop().getWidth();
-            borderSize.right = this.border.getRight().getWidth();
+            borderSize.top    = this.border.getTop().getWidth();
+            borderSize.right  = this.border.getRight().getWidth();
             borderSize.bottom = this.border.getBottom().getWidth();
-            borderSize.left = this.border.getLeft().getWidth();
+            borderSize.left   = this.border.getLeft().getWidth();
         }
 
         return borderSize;
@@ -928,6 +1013,16 @@ export class Component extends BaseObject {
         }
 
         return perimiterSize;
+    }
+
+    getVerticalAlign() {
+        return this.verticalAlign
+    }
+
+    setVerticalAlign(align: string) {
+        this.verticalAlign = align;
+
+        this.setElementCSSRule("verticalAlign", align);
     }
 
     // Currently commented out, probing if a scrollbar is visible or not seems to be unreliable with the below method.
@@ -1249,7 +1344,9 @@ export class Component extends BaseObject {
             this.cssRule.style.whiteSpace = this.whiteSpace;
         }
 
-        if (this.border) {
+        if (this.borderCSS) {
+            this.cssRule.style.setProperty('border', this.borderCSS);
+        } else if (this.border) {
             this.border.applyOnCSSRule(this.cssRule);
         } else {
             this.cssRule.style.removeProperty("border");

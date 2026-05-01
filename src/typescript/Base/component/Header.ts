@@ -7,6 +7,7 @@ import { Insets } from "../Insets.js";
 import { AnchorType } from "../layout/AnchorType.js";
 import { FillType } from "../layout/FillType.js";
 import { Placement } from "../Placement.js";
+import { ThemeManager } from "../Theme.js";
 
 /**
  * A header bar component containing a left-aligned text label.
@@ -22,19 +23,9 @@ export class Header extends Component {
         super("header");
 
         this.setPreferredSize(100, 20);
-        this.setInsets(new Insets(0, 0, 0, 0));
-
         this.setLayoutManager(new BorderLayout());
 
         this.label = new Label(text);
-        let labelInsets = this.label.getInsets();
-        if (labelInsets == null) {
-            labelInsets = new Insets(0, 0, 0, 20);
-        } else {
-            labelInsets.setLeft(20);
-        }
-        this.label.setInsets(labelInsets);
-
         this.label.setFontWeight("bold");
         this.label.setFontSize("--ts-ui-header-font-size");
         this.label.setPointerEvents("none");
@@ -44,6 +35,14 @@ export class Header extends Component {
             anchor: AnchorType.WEST,
             fill: FillType.HORIZONTAL
         });
+
+        this.applyThemePadding();
+        ThemeManager.onThemeChange(() => this.applyThemePadding());
+    }
+
+    private applyThemePadding(): void {
+        const pad = ThemeManager.getTheme().header.padding;
+        this.setInsets(new Insets(0, 0, 0, pad));
     }
 
     /**

@@ -12,6 +12,7 @@ import { ThemeManager } from "../Theme.js";
 export class Text extends Component {
 
     private text: String | null | undefined = null;
+    private hasExplicitPreferredSize = false;
     private textAlign: string | null = null;
     private textShadow: string | null = null;
     private fontFamily: string | null = null;
@@ -72,6 +73,23 @@ export class Text extends Component {
     }
 
     /**
+     * Sets the preferred size from an explicit caller, locking it against automatic recalculation.
+     */
+    setPreferredSize(width: number, height: number): void {
+        this.hasExplicitPreferredSize = true;
+        super.setPreferredSize(width, height);
+    }
+
+    /**
+     * Updates the preferred size from a measurement only when no explicit size has been set.
+     */
+    private setCalculatedSize(width: number, height: number): void {
+        if (!this.hasExplicitPreferredSize) {
+            super.setPreferredSize(width, height);
+        }
+    }
+
+    /**
      * Measures the text using an off-screen probe element and sets the preferred size.
      *
      * @remarks Creates a temporary fixed-positioned invisible `<span>`, appends it to the body
@@ -100,9 +118,9 @@ export class Text extends Component {
 
             document.body.removeChild(probe);
 
-            this.setPreferredSize(rect.width, rect.height);
+            this.setCalculatedSize(rect.width, rect.height);
         } else {
-            this.setPreferredSize(0, 0);
+            this.setCalculatedSize(0, 0);
         }
     }
 

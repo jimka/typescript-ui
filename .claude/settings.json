@@ -33,7 +33,8 @@
       "Read(//home/jika/.nvm/**)",
       "Bash(node -e \"process.exit\\(0\\)\")",
       "Bash(nvm use *)",
-      "Read(//usr/bin/**)"
+      "Read(//usr/bin/**)",
+      "Bash(node_modules/.bin/tsc --noEmit)"
     ]
   }
 }

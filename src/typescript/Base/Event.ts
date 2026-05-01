@@ -76,14 +76,31 @@ export namespace Event {
      *
      * @remarks Throws an error if the component has no associated DOM element at the time of the call.
      */
-    export function fireEvent(component: Component, type: string, payload?: any) {
-        let element = component.getElement();
+    export function fireEvent(component: Component, type: string, payload?: any): void;
+
+    /**
+     * Dispatches a pre-built event on the component's DOM element.
+     *
+     * @param component - The component whose DOM element will dispatch the event.
+     * @param event - A pre-built DOM event to dispatch as-is.
+     *
+     * @remarks Useful when the event type and its properties must be preserved exactly
+     * (e.g. proxying a KeyboardEvent). Throws an error if the component has no DOM element.
+     */
+    export function fireEvent(component: Component, event: globalThis.Event): void;
+
+    export function fireEvent(component: Component, typeOrEvent: string | globalThis.Event, payload?: any): void {
+        const element = component.getElement();
         if (!element) {
+            const type = typeof typeOrEvent === 'string' ? typeOrEvent : typeOrEvent.type;
             throw new Error("Cannot fire event '" + type + "'. Component '" + component.getId() + "' is not in the DOM.");
         }
 
-        var event = new CustomEvent(type, payload);
-        element.dispatchEvent(event);
+        if (typeof typeOrEvent === 'string') {
+            element.dispatchEvent(new CustomEvent(typeOrEvent, payload));
+        } else {
+            element.dispatchEvent(typeOrEvent);
+        }
     }
 
     /**

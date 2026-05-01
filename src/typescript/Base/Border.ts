@@ -45,15 +45,16 @@ export class Border extends Object {
         super();
 
         const fallback: BorderSideOptions = { style: options?.style, width: options?.width, color: options?.color };
-        const top = options?.top ?? fallback;
-        const right = options?.right ?? fallback;
-        const bottom = options?.bottom ?? fallback;
-        const left = options?.left ?? fallback;
 
-        this.top = new BorderLine("border-top", top.style, top.width, top.color);
-        this.right = new BorderLine("border-right", right.style as BorderStyle, right.width as number, right.color as string);
+        const top    = options?.top    ?? fallback;
+        const right  = options?.right  ?? fallback;
+        const bottom = options?.bottom ?? fallback;
+        const left   = options?.left   ?? fallback;
+
+        this.top    = new BorderLine("border-top"   , top.style, top.width, top.color);
+        this.right  = new BorderLine("border-right" , right.style as BorderStyle, right.width as number, right.color as string);
         this.bottom = new BorderLine("border-bottom", bottom.style as BorderStyle, bottom.width as number, bottom.color as string);
-        this.left = new BorderLine("border-left", left.style as BorderStyle, left.width as number, left.color as string);
+        this.left   = new BorderLine("border-left"  , left.style as BorderStyle, left.width as number, left.color as string);
     }
 
     /**
@@ -116,5 +117,38 @@ export class Border extends Object {
         this.right.applyOnCSSRule(rule);
         this.bottom.applyOnCSSRule(rule);
         this.left.applyOnCSSRule(rule);
+    }
+
+    /**
+     * Parses a CSS border shorthand string (e.g. `"1px solid #aaa"`) into a Border object.
+     * Tokens are classified as width (`<n>px`), style (any BorderStyle keyword), or color (everything else).
+     *
+     * @param css - A CSS border shorthand value.
+     * @returns A Border whose four sides share the parsed width, style, and color.
+     */
+    static fromString(css: string): Border {
+        const tokens = css.trim().split(/\s+/);
+        let width = 0;
+        let style: BorderStyle = BorderStyle.SOLID;
+        const colorParts: string[] = [];
+
+        for (const token of tokens) {
+            const widthMatch = token.match(/^([\d.]+)px$/i);
+            if (widthMatch) {
+                width = parseFloat(widthMatch[1]);
+                continue;
+            }
+
+            const key = token.toUpperCase();
+            if (key in BorderStyle && typeof (BorderStyle as Record<string, unknown>)[key] === 'number') {
+                style = (BorderStyle as Record<string, unknown>)[key] as BorderStyle;
+                continue;
+            }
+
+            colorParts.push(token);
+        }
+
+        const color = colorParts.length > 0 ? colorParts.join(' ') : 'black';
+        return new Border({ style, width, color });
     }
 }
