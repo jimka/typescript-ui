@@ -289,6 +289,15 @@ export abstract class AbstractStore {
     }
 
     /**
+     * Returns a copy of the active sorter config, or null if no sort is active.
+     *
+     * @returns The current sorter, or null.
+     */
+    getActiveSorter(): { property: string; direction: 'asc' | 'desc' } | null {
+        return this.activeSorter ? { ...this.activeSorter } : null;
+    }
+
+    /**
      * Removes any active sort and restores insertion order, firing 'datachanged'.
      */
     clearSort(): void {

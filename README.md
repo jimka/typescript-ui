@@ -360,7 +360,9 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Create an initialisation package** — add a separate `create-typescript-ui` (or similar) package whose sole purpose is to scaffold new projects. Running `npm create typescript-ui` (or `npx create-typescript-ui`) would generate a minimal project wired up with the library, a working `tsconfig.json`, and a Vite dev server, so consumers can get started without manually configuring dependencies or entry-point boilerplate.
 
-* **Column sorting and resizing in `Table`** — clicking a header cell could toggle the store's `sort()` call and render an arrow indicator. Draggable column edges (similar to `SplitGutter`) would let users resize columns at runtime. Both are natural extensions of the existing `Header`, `Body`, and `Split` code.
+* **Column visibility toggle in `Table`** — a menu button in the table header could let users show or hide individual columns at runtime. Depends on menu support being implemented first (see Context menus suggestion below).
+
+* **Column width constraints in `Table`** — column definitions should gain `minWidth` and `maxWidth` properties so that layout and resize logic can clamp column widths within author-specified bounds.
 
 * **Tree component** — a hierarchical data view is the main gap in the component set. A `Tree` with collapsible nodes would share the virtual-scrolling approach already used in `Body`, flattening the visible subtree into a single scrollable list and re-rendering only as nodes expand or collapse.
 

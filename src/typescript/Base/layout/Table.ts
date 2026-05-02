@@ -9,6 +9,10 @@ import { Util } from "../Util.js";
  * A layout manager dedicated to the `Table` component.
  * Positions the header, body, and footer sections within the container and
  * triggers virtual-scroll rendering on the body after each layout pass.
+ *
+ * Per-column widths are stored on the `Table` component. On first render (or after
+ * a model swap) widths are initialized to equal distribution. On container resize
+ * existing widths are scaled proportionally to maintain user-set column ratios.
  */
 export class Table extends LayoutManager {
 
@@ -34,34 +38,52 @@ export class Table extends LayoutManager {
     /**
      * Positions the header, body, and footer sections and triggers body virtual scroll rendering.
      *
-     * @remarks Column width is calculated by dividing the available width (minus the scrollbar)
-     * evenly across all model fields. The footer is pinned to the bottom of the container.
+     * @remarks Per-column widths are read from the Table component. If the stored widths do not
+     * match the current column count (first render or model swap) they are re-initialized to equal
+     * distribution. On a container resize the existing widths are scaled proportionally.
      */
     doLayout() {
-        let container = <TableComponent>this.getContainer();
+        const container = <TableComponent>this.getContainer();
         if (!container) {
             return;
         }
 
-        let containerSize = container.getInnerSize();
+        const containerSize = container.getInnerSize();
         if (!containerSize) {
             return;
         }
 
-        let containerInsets = container.getInsets();
+        const containerInsets = container.getInsets();
+        const model = container.getModel();
+        const columnCount = model.getFields().length;
+        const availableWidth = containerSize.width - Util.getScrollBarWidth();
 
-        let model = container.getModel();
-        let columnCount = model.getFields().length;
+        let columnWidths = container.getColumnWidths();
 
-        let header = container.getHeader();
-        let body = container.getBody();
-        let footer = container.getFooter();
+        if (columnWidths.length !== columnCount) {
+            // First render or model swap: equal distribution
+            const w = availableWidth / columnCount;
+            columnWidths = Array.from({ length: columnCount }, () => w);
 
-        let columnWidth = (containerSize.width - Util.getScrollBarWidth()) / columnCount;
+            container.setColumnWidths(columnWidths);
+        } else {
+            // Container resize: scale proportionally
+            const prevTotal = columnWidths.reduce((s, w) => s + w, 0);
+
+            if (prevTotal > 0 && Math.abs(prevTotal - availableWidth) > 0.5) {
+                const ratio = availableWidth / prevTotal;
+                columnWidths = columnWidths.map(w => w * ratio);
+
+                container.setColumnWidths(columnWidths);
+            }
+        }
+
+        const header = container.getHeader();
+        const body = container.getBody();
+        const footer = container.getFooter();
 
         if (container.isHeaderVisible() && header) {
-            let headerColumns = header.getColumns();
-            let columnHeight = 20;
+            const columnHeight = 20;
 
             header.setAutoCommitStyle(false);
             header.setX(containerInsets.getLeft());
@@ -70,29 +92,25 @@ export class Table extends LayoutManager {
             header.setHeight(columnHeight);
             header.setAutoCommitStyle(true);
 
+            const headerColumns = header.getColumns();
             let x = 0;
-            let y = 0;
 
-            for (let idx in headerColumns) {
-                let column = headerColumns[idx];
+            headerColumns.forEach((col, i) => {
+                col.setAutoCommitStyle(false);
+                col.setX(x);
+                col.setY(0);
+                col.setWidth(columnWidths[i]);
+                col.setHeight(columnHeight);
+                col.setAutoCommitStyle(true);
+                col.doLayout();
 
-                column.setAutoCommitStyle(false);
-                column.setX(x);
-                column.setY(y);
-                column.setWidth(columnWidth);
-                column.setHeight(columnHeight);
-                column.setAutoCommitStyle(true);
-
-                column.doLayout();
-
-                x += columnWidth;
-            }
+                x += columnWidths[i];
+            });
         }
 
-
         if (container.isFooterVisible() && footer) {
-            let footerColumns = footer.getColumns();
-            let columnHeight = 20;
+            const columnHeight = 20;
+            const footerColumns = footer.getColumns();
 
             footer.setAutoCommitStyle(false);
             footer.setX(containerInsets.getLeft());
@@ -102,33 +120,32 @@ export class Table extends LayoutManager {
             footer.setAutoCommitStyle(true);
 
             let x = 0;
-            let y = 0;
 
-            for (let idx in footerColumns) {
-                let column = footerColumns[idx];
+            footerColumns.forEach((col, i) => {
+                col.setAutoCommitStyle(false);
+                col.setX(x);
+                col.setY(0);
+                col.setWidth(columnWidths[i]);
+                col.setHeight(columnHeight);
+                col.setAutoCommitStyle(true);
+                col.doLayout();
 
-                column.setAutoCommitStyle(false);
-                column.setX(x);
-                column.setY(y);
-                column.setWidth(columnWidth);
-                column.setHeight(columnHeight);
-                column.setAutoCommitStyle(true);
-
-                column.doLayout();
-
-                x += columnWidth;
-            }
+                x += columnWidths[i];
+            });
         }
 
         if (container.isBodyVisible() && body) {
+            const headerHeight = container.isHeaderVisible() && header ? header.getHeight() : 0;
+            const footerHeight = container.isFooterVisible() && footer ? footer.getHeight() : 0;
+
             body.setAutoCommitStyle(false);
             body.setX(containerInsets.getLeft());
-            body.setY(containerInsets.getTop() + (header ? header.getHeight() : 0));
+            body.setY(containerInsets.getTop() + headerHeight);
             body.setWidth(containerSize.width);
-            body.setHeight(containerSize.height - (header ? header.getHeight() : 0) - (footer ? footer.getHeight() : 0));
+            body.setHeight(containerSize.height - headerHeight - footerHeight);
             body.setAutoCommitStyle(true);
 
-            body.renderWindow(containerSize.width - Util.getScrollBarWidth(), columnWidth);
+            body.renderWindow(availableWidth, columnWidths);
         }
     }
 }
