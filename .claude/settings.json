@@ -39,7 +39,8 @@
       "Bash(~/.nvm/versions/node/v20.10.0/bin/npx tsc *)",
       "Bash(~/.nvm/versions/node/v20.10.0/bin/node ./node_modules/.bin/tsc --noEmit)",
       "Bash(curl -s http://localhost:8015/src/typescript/Base/component/table/Header.ts)",
-      "Bash(curl -s http://localhost:8015/src/typescript/Base/layout/Table.ts)"
+      "Bash(curl -s http://localhost:8015/src/typescript/Base/layout/Table.ts)",
+      "Bash(node_modules/.bin/tsc --version)"
     ]
   }
 }
