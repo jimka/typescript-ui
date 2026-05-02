@@ -10,6 +10,9 @@ import { VBox } from "./Base/layout/VBox.js";
 import { FieldSet } from "./Base/component/FieldSet.js";
 import { ThemeManager, DefaultTheme, DarkTheme } from "./Base/Theme.js";
 import { TablePanel } from "./Base/index.js";
+import { ContextMenu } from "./Base/ContextMenu.js";
+import { Tooltip } from "./Base/Tooltip.js";
+import { Event } from "./Base/Event.js";
 
 export class MiscPanel extends Component {
 
@@ -106,5 +109,26 @@ export class MiscPanel extends Component {
 
         let fieldSet = new FieldSet("Hello World fieldset!");
         this.addComponent(fieldSet);
+
+        const contextMenu = new ContextMenu();
+
+        const buttonContextMenu = new Button("Right-click me for context menu");
+        Tooltip.attach(buttonContextMenu, "Right-click to open a context menu");
+        Event.addListener(buttonContextMenu, "contextmenu", (e: MouseEvent) => {
+            e.preventDefault();
+            Tooltip.hide();
+            contextMenu.show(e.clientX, e.clientY, [
+                { text: "Action 1", action: () => alert("Action 1 clicked!") },
+                { text: "Action 2", action: () => alert("Action 2 clicked!") },
+                { separator: true },
+                { text: "Disabled action", enabled: false },
+                { text: "Action 3", action: () => alert("Action 3 clicked!") },
+            ]);
+        });
+        this.addComponent(buttonContextMenu);
+
+        const buttonTooltip = new Button("Hover over me for a tooltip");
+        Tooltip.attach(buttonTooltip, "This tooltip appears after a short delay");
+        this.addComponent(buttonTooltip);
     }
 }
