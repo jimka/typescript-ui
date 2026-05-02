@@ -14,6 +14,7 @@ export { Component } from './Component.js';
 export { Body } from './Body.js';
 export { ButtonGroup } from './ButtonGroup.js';
 export { Window } from './Window.js';
+export { ContextMenu } from './ContextMenu.js';
 export type { PerimeterSize } from './Component.js';
 
 // Primitives
@@ -75,6 +76,9 @@ export { ListItem } from './component/ListItem.js';
 // Components — containers
 export { FieldSet } from './component/FieldSet.js';
 export { Legend } from './component/Legend.js';
+export { ContextMenuItem } from './component/ContextMenuItem.js';
+export type { ContextMenuItemConfig } from './component/ContextMenuItem.js';
+export { ContextMenuSeparator } from './component/ContextMenuSeparator.js';
 
 // Data layer
 export { AbstractModel } from './data/AbstractModel.js';
