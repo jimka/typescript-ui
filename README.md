@@ -85,6 +85,11 @@ Located in `Base/component/`:
 **Containers**
 - `SplitGutter` — drag handle for the Split layout
 - `Window` — draggable and resizable floating window
+- `ContextMenu` — floating right-click menu appended to `document.documentElement`; call `show(x, y, items[])` to display and it closes automatically on item click or outside click
+- `ContextMenuItem`, `ContextMenuSeparator` — building blocks used inside `ContextMenu`
+
+**Overlays**
+- `Tooltip` — singleton hover hint; use `Tooltip.attach(component, text)` to wire a 500 ms delay tooltip onto any component, or `Tooltip.show` / `Tooltip.hide` for manual control
 
 **Table subsystem** (`Base/component/table/`):
 - `Body`, `Footer`, `Header`, `Row`, `Table`
@@ -165,6 +170,16 @@ The `Theme` interface uses nested objects grouped by component. All keys are req
 | `table.row.selected` | `--ts-ui-table-row-selected` | Background tint of the currently selected table row |
 | `table.row.new` | `--ts-ui-table-row-new` | Background tint of unsaved new records in the table |
 | `table.row.dirty` | `--ts-ui-table-row-dirty` | Background tint of locally modified (dirty) records in the table |
+| `contextMenu.background` | `--ts-ui-context-menu-bg` | Background of the `ContextMenu` panel |
+| `contextMenu.border` | `--ts-ui-context-menu-border` | Border color of the `ContextMenu` panel |
+| `contextMenu.shadow` | `--ts-ui-context-menu-shadow` | Drop shadow of the `ContextMenu` panel |
+| `contextMenu.item.hoverBackground` | `--ts-ui-context-menu-item-hover-bg` | Background of a `ContextMenuItem` on hover |
+| `contextMenu.item.disabledColor` | `--ts-ui-context-menu-item-disabled-color` | Text color of a disabled `ContextMenuItem` |
+| `contextMenu.separatorColor` | `--ts-ui-context-menu-separator-color` | Color of the `ContextMenuSeparator` line |
+| `tooltip.background` | `--ts-ui-tooltip-bg` | Background of the `Tooltip` panel |
+| `tooltip.color` | `--ts-ui-tooltip-color` | Text color inside the `Tooltip` |
+| `tooltip.border` | `--ts-ui-tooltip-border` | Border color of the `Tooltip` panel |
+| `tooltip.shadow` | `--ts-ui-tooltip-shadow` | Drop shadow of the `Tooltip` panel |
 
 > **Background tokens** (`button.background`, `button.pressed.background`, `toggle.selected.background`) accept either a plain colour (`rgb(200, 200, 200)`) or any CSS `background-image` value (`linear-gradient(...)`, `radial-gradient(...)`, etc.). The framework applies the token to both `background-color` and `background-image`; CSS's "invalid at computed-value time" rule routes the value to whichever property it is valid for.
 
@@ -360,13 +375,13 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Create an initialisation package** — add a separate `create-typescript-ui` (or similar) package whose sole purpose is to scaffold new projects. Running `npm create typescript-ui` (or `npx create-typescript-ui`) would generate a minimal project wired up with the library, a working `tsconfig.json`, and a Vite dev server, so consumers can get started without manually configuring dependencies or entry-point boilerplate.
 
-* **Column visibility toggle in `Table`** — a menu button in the table header could let users show or hide individual columns at runtime. Depends on menu support being implemented first (see Context menus suggestion below).
+* **Hard coded size values** — Try to move away from the usage of hard coded size values in component constructors. If components have internal sub-components that have their own preferred size or some other size, we should take this into account when setting our size. If we don't do this, we'll eventually have problems when someone sets a theme value to something that's incompatible with our hard coded values.
+
+* **Column visibility toggle in `Table`** — a menu button in the table header could let users show or hide individual columns at runtime using the new `ContextMenu` component.
 
 * **Column width constraints in `Table`** — column definitions should gain `minWidth` and `maxWidth` properties so that layout and resize logic can clamp column widths within author-specified bounds.
 
 * **Tree component** — a hierarchical data view is the main gap in the component set. A `Tree` with collapsible nodes would share the virtual-scrolling approach already used in `Body`, flattening the visible subtree into a single scrollable list and re-rendering only as nodes expand or collapse.
-
-* **Context menus and tooltips** — desktop-style applications rely on right-click menus and hover hints. A `ContextMenu` component appended to `document.documentElement` (same pattern as `Window`) with a `show(x, y, items[])` API would complement the existing `Window` and `ButtonGroup` infrastructure.
 
 * **Keyboard navigation and ARIA roles** — the framework targets a desktop-style feel but has no keyboard focus management. Adding `tabIndex` propagation, arrow-key navigation inside `Tab`, `Split`, `Table`, and `ComboBox`, and the appropriate ARIA roles (`role="grid"`, `role="tablist"`, etc.) would make the library usable without a mouse and comply with baseline accessibility standards.
 
