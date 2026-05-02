@@ -27,6 +27,7 @@ export class Table extends Component {
     private bodyVisible: boolean;
     private footer: FooterRow;
     private footerVisible: boolean;
+    private columnWidths: number[] = [];
 
     constructor(store: AbstractStore) {
         super("table");
@@ -40,7 +41,8 @@ export class Table extends Component {
         this.bodyVisible = true;
         this.footerVisible = false;
 
-        this.header = new Header(store.model);
+        this.header = new Header(store.model, store);
+        this.header.setOnColumnResize((i, d) => this.onColumnResize(i, d));
         this.addComponent(this.header);
 
         this.body = new Body(store);
@@ -75,8 +77,59 @@ export class Table extends Component {
      */
     setStore(store: AbstractStore): void {
         this.store = store;
+        this.columnWidths = [];
         this.body.setStore(store);
         this.header.setModel(store.model);
+    }
+
+    /**
+     * Returns the per-column width array maintained by the layout manager.
+     *
+     * @returns The current column widths in pixels.
+     */
+    getColumnWidths(): number[] {
+        return this.columnWidths;
+    }
+
+    /**
+     * Stores the per-column width array (called by the layout manager on each layout pass).
+     *
+     * @param widths - The new column widths in pixels.
+     */
+    setColumnWidths(widths: number[]): void {
+        this.columnWidths = widths;
+    }
+
+    private onColumnResize(colIndex: number, delta: number): void {
+        const n = this.columnWidths.length;
+
+        if (n === 0 || colIndex >= n - 1) {
+            return; // last column: no-op
+        }
+
+        const MIN = 30;
+
+        let w0 = this.columnWidths[colIndex] + delta;
+        let w1 = this.columnWidths[colIndex + 1] - delta;
+
+        if (w0 < MIN) {
+            w1 += w0 - MIN;
+            w0 = MIN;
+        }
+
+        if (w1 < MIN) {
+            w0 += w1 - MIN;
+            w1 = MIN;
+        }
+
+        if (w0 < MIN) {
+            return;
+        }
+
+        this.columnWidths[colIndex]     = w0;
+        this.columnWidths[colIndex + 1] = w1;
+
+        this.doLayout();
     }
 
     /**

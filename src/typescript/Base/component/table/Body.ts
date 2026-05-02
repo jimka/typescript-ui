@@ -39,7 +39,7 @@ export class Body extends Component {
     private boundIndices: number[] = [];
     private phantom: HTMLElement | null = null;
     private lastBodyWidth: number = 0;
-    private lastColumnWidth: number = 0;
+    private lastColumnWidths: number[] = [];
     private rowHeight: number;
     private layoutInProgress = false;
     private storeRefresh: (() => void) | null = null;
@@ -145,7 +145,7 @@ export class Body extends Component {
      * @remarks When called with width arguments (layout pass) the `layoutInProgress` flag is set to
      * suppress the spurious scroll event the browser fires when the phantom element's height changes.
      */
-    renderWindow(bodyWidth?: number, columnWidth?: number) {
+    renderWindow(bodyWidth?: number, columnWidths?: number[]) {
         const element = this.getElement();
         if (!element) {
             return;
@@ -166,7 +166,7 @@ export class Body extends Component {
 
         if (bodyWidth !== undefined) {
             this.lastBodyWidth = bodyWidth;
-            this.lastColumnWidth = columnWidth!;
+            this.lastColumnWidths = columnWidths ?? [];
             this.layoutInProgress = true;
         }
 
@@ -184,7 +184,8 @@ export class Body extends Component {
         }
 
         const rowWidth = this.lastBodyWidth;
-        const colWidth = this.lastColumnWidth || (rowWidth / this.store.model.getFields().length);
+        const fieldCount = this.store.model.getFields().length;
+        const fallback = fieldCount > 0 ? rowWidth / fieldCount : rowWidth;
 
         // Bind and position visible rows
         for (let i = 0; i < windowSize; i++) {
@@ -209,16 +210,19 @@ export class Body extends Component {
             const cells = row.getComponents();
             let x = 0;
 
-            for (const cell of cells) {
+            for (let ci = 0; ci < cells.length; ci++) {
+                const cell = cells[ci];
+                const colW = this.lastColumnWidths[ci] ?? fallback;
+
                 cell.setAutoCommitStyle(false);
                 cell.setX(x);
                 cell.setY(0);
-                cell.setWidth(colWidth);
+                cell.setWidth(colW);
                 cell.setHeight(rowHeight);
                 cell.setAutoCommitStyle(true);
                 cell.doLayout();
 
-                x += colWidth;
+                x += colW;
             }
         }
 

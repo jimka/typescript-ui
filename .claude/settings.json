@@ -34,7 +34,12 @@
       "Bash(node -e \"process.exit\\(0\\)\")",
       "Bash(nvm use *)",
       "Read(//usr/bin/**)",
-      "Bash(node_modules/.bin/tsc --noEmit)"
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(~/.nvm/versions/node/v20.10.0/bin/node ~/.nvm/versions/node/v20.10.0/lib/node_modules/typescript/bin/tsc --version)",
+      "Bash(~/.nvm/versions/node/v20.10.0/bin/npx tsc *)",
+      "Bash(~/.nvm/versions/node/v20.10.0/bin/node ./node_modules/.bin/tsc --noEmit)",
+      "Bash(curl -s http://localhost:8015/src/typescript/Base/component/table/Header.ts)",
+      "Bash(curl -s http://localhost:8015/src/typescript/Base/layout/Table.ts)"
     ]
   }
 }
