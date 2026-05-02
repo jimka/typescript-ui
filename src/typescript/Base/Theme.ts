@@ -116,6 +116,13 @@ export interface Theme {
         };
         separatorColor: string;
     };
+
+    tooltip: {
+        background: string;
+        color     : string;
+        border    : string;
+        shadow    : string;
+    };
 }
 
 /**
@@ -179,6 +186,12 @@ export const DefaultTheme: Theme = {
             disabledColor  : 'rgb(170, 170, 170)',
         },
         separatorColor: 'rgb(220, 220, 220)',
+    },
+    tooltip: {
+        background: 'rgb(255, 255, 240)',
+        color     : 'rgb(0, 0, 0)',
+        border    : 'rgb(180, 180, 100)',
+        shadow    : '1px 2px 4px rgba(0, 0, 0, 0.2)',
     },
 };
 
@@ -244,6 +257,12 @@ export const DarkTheme: Theme = {
         },
         separatorColor: 'rgb(70, 70, 70)',
     },
+    tooltip: {
+        background: 'rgb(60, 60, 45)',
+        color     : 'rgb(220, 220, 180)',
+        border    : 'rgb(120, 110, 70)',
+        shadow    : '1px 2px 4px rgba(0, 0, 0, 0.5)',
+    },
 };
 
 /**
@@ -292,6 +311,10 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-context-menu-item-hover-bg'      : theme.contextMenu.item.hoverBackground,
         '--ts-ui-context-menu-item-disabled-color': theme.contextMenu.item.disabledColor,
         '--ts-ui-context-menu-separator-color'    : theme.contextMenu.separatorColor,
+        '--ts-ui-tooltip-bg'                      : theme.tooltip.background,
+        '--ts-ui-tooltip-color'                   : theme.tooltip.color,
+        '--ts-ui-tooltip-border'                  : theme.tooltip.border,
+        '--ts-ui-tooltip-shadow'                  : theme.tooltip.shadow,
     };
 }
 
