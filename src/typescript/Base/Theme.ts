@@ -105,6 +105,17 @@ export interface Theme {
             editorBorderColor: string;
         };
     };
+
+    contextMenu: {
+        background: string;
+        border    : string;
+        shadow    : string;
+        item: {
+            hoverBackground: string;
+            disabledColor  : string;
+        };
+        separatorColor: string;
+    };
 }
 
 /**
@@ -158,6 +169,16 @@ export const DefaultTheme: Theme = {
             border           : 'none',
             editorBorderColor: 'rgba(30, 100, 200, 0.6)',
         },
+    },
+    contextMenu: {
+        background    : 'rgb(255, 255, 255)',
+        border        : 'rgb(200, 200, 200)',
+        shadow        : '2px 4px 8px rgba(0, 0, 0, 0.15)',
+        item          : {
+            hoverBackground: 'rgba(30, 100, 200, 0.12)',
+            disabledColor  : 'rgb(170, 170, 170)',
+        },
+        separatorColor: 'rgb(220, 220, 220)',
     },
 };
 
@@ -213,6 +234,16 @@ export const DarkTheme: Theme = {
             editorBorderColor: 'rgba(30, 100, 200, 0.8)',
         },
     },
+    contextMenu: {
+        background    : 'rgb(45, 45, 45)',
+        border        : 'rgb(80, 80, 80)',
+        shadow        : '2px 4px 8px rgba(0, 0, 0, 0.5)',
+        item          : {
+            hoverBackground: 'rgba(100, 140, 220, 0.2)',
+            disabledColor  : 'rgb(100, 100, 100)',
+        },
+        separatorColor: 'rgb(70, 70, 70)',
+    },
 };
 
 /**
@@ -220,41 +251,47 @@ export const DarkTheme: Theme = {
  */
 function themeToVars(theme: Theme): Record<string, string> {
     return {
-        '--ts-ui-font-family'           : theme.font.family,
-        '--ts-ui-font-size'             : theme.font.size,
-        '--ts-ui-text-color'            : theme.text.color,
-        '--ts-ui-body-bg'               : theme.body.background,
-        '--ts-ui-border-color'          : theme.border.color,
-        '--ts-ui-border-radius'         : theme.border.radius,
-        '--ts-ui-button-bg'             : theme.button.background,
-        '--ts-ui-button-border'         : theme.button.border,
-        '--ts-ui-button-shadow'         : theme.button.shadow,
-        '--ts-ui-button-padding'        : theme.button.padding,
-        '--ts-ui-button-font-size'      : theme.button.font.size,
-        '--ts-ui-button-pressed-fg'     : theme.button.pressed.foreground,
-        '--ts-ui-button-pressed-bg'     : theme.button.pressed.background,
-        '--ts-ui-button-pressed-shadow' : theme.button.pressed.shadow,
-        '--ts-ui-toggle-selected-bg'    : theme.toggle.selected.background,
-        '--ts-ui-toggle-selected-shadow': theme.toggle.selected.shadow,
-        '--ts-ui-input-bg'              : theme.input.background,
-        '--ts-ui-gutter-bg'             : theme.gutter.background,
-        '--ts-ui-tab-toolbar-bg'        : theme.tab.toolbar.background,
-        '--ts-ui-tab-toolbar-border'    : theme.tab.toolbar.border,
-        '--ts-ui-tab-button-bg'         : theme.tab.button.background,
-        '--ts-ui-window-shadow'              : theme.window.shadow,
-        '--ts-ui-header-font-size'           : theme.header.font.size,
-        '--ts-ui-table-header-border'        : theme.table.header.border,
-        '--ts-ui-table-header-font-size'     : theme.table.header.font.size,
-        '--ts-ui-table-row-selected'         : theme.table.row.selected,
-        '--ts-ui-table-row-selected-border'  : theme.table.row.selectedBorder,
-        '--ts-ui-table-row-new'              : theme.table.row.new,
-        '--ts-ui-table-row-dirty'            : theme.table.row.dirty,
-        '--ts-ui-table-cell-height'           : theme.table.cell.height,
-        '--ts-ui-table-cell-bg'              : theme.table.cell.background,
-        '--ts-ui-table-cell-color'           : theme.table.cell.color,
-        '--ts-ui-table-cell-border'          : theme.table.cell.border,
-        '--ts-ui-table-cell-editor-border'   : theme.table.cell.editorBorderColor,
-        '--ts-ui-color-scheme'               : theme.colorScheme,
+        '--ts-ui-font-family'                     : theme.font.family,
+        '--ts-ui-font-size'                       : theme.font.size,
+        '--ts-ui-text-color'                      : theme.text.color,
+        '--ts-ui-body-bg'                         : theme.body.background,
+        '--ts-ui-border-color'                    : theme.border.color,
+        '--ts-ui-border-radius'                   : theme.border.radius,
+        '--ts-ui-button-bg'                       : theme.button.background,
+        '--ts-ui-button-border'                   : theme.button.border,
+        '--ts-ui-button-shadow'                   : theme.button.shadow,
+        '--ts-ui-button-padding'                  : theme.button.padding,
+        '--ts-ui-button-font-size'                : theme.button.font.size,
+        '--ts-ui-button-pressed-fg'               : theme.button.pressed.foreground,
+        '--ts-ui-button-pressed-bg'               : theme.button.pressed.background,
+        '--ts-ui-button-pressed-shadow'           : theme.button.pressed.shadow,
+        '--ts-ui-toggle-selected-bg'              : theme.toggle.selected.background,
+        '--ts-ui-toggle-selected-shadow'          : theme.toggle.selected.shadow,
+        '--ts-ui-input-bg'                        : theme.input.background,
+        '--ts-ui-gutter-bg'                       : theme.gutter.background,
+        '--ts-ui-tab-toolbar-bg'                  : theme.tab.toolbar.background,
+        '--ts-ui-tab-toolbar-border'              : theme.tab.toolbar.border,
+        '--ts-ui-tab-button-bg'                   : theme.tab.button.background,
+        '--ts-ui-window-shadow'                   : theme.window.shadow,
+        '--ts-ui-header-font-size'                : theme.header.font.size,
+        '--ts-ui-table-header-border'             : theme.table.header.border,
+        '--ts-ui-table-header-font-size'          : theme.table.header.font.size,
+        '--ts-ui-table-row-selected'              : theme.table.row.selected,
+        '--ts-ui-table-row-selected-border'       : theme.table.row.selectedBorder,
+        '--ts-ui-table-row-new'                   : theme.table.row.new,
+        '--ts-ui-table-row-dirty'                 : theme.table.row.dirty,
+        '--ts-ui-table-cell-height'               : theme.table.cell.height,
+        '--ts-ui-table-cell-bg'                   : theme.table.cell.background,
+        '--ts-ui-table-cell-color'                : theme.table.cell.color,
+        '--ts-ui-table-cell-border'               : theme.table.cell.border,
+        '--ts-ui-table-cell-editor-border'        : theme.table.cell.editorBorderColor,
+        '--ts-ui-color-scheme'                    : theme.colorScheme,
+        '--ts-ui-context-menu-bg'                 : theme.contextMenu.background,
+        '--ts-ui-context-menu-border'             : theme.contextMenu.border,
+        '--ts-ui-context-menu-shadow'             : theme.contextMenu.shadow,
+        '--ts-ui-context-menu-item-hover-bg'      : theme.contextMenu.item.hoverBackground,
+        '--ts-ui-context-menu-item-disabled-color': theme.contextMenu.item.disabledColor,
+        '--ts-ui-context-menu-separator-color'    : theme.contextMenu.separatorColor,
     };
 }
 
