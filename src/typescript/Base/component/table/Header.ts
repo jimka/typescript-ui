@@ -194,8 +194,9 @@ export class Header extends Component {
 
         for (let i = 0; i < fields.length; i++) {
             const field = fields[i];
-            const cell = new HeaderCell(field.getDescription(), field.getName());
+            const cell = new HeaderCell(field.getName(), field.getName());
 
+            cell.setTooltip(field.getDescription());
             row.addComponent(cell, { data: field });
             this.wireCell(cell, i);
         }
