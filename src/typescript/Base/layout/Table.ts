@@ -2,6 +2,7 @@
 
 import { LayoutManager } from "./LayoutManager.js";
 import { Table as TableComponent } from "../component/table/Table.js";
+import { Column } from "../component/table/Column.js";
 import { Component } from "../Component.js";
 import { Util } from "../Util.js";
 
@@ -17,13 +18,18 @@ const HEADER_PAD    = 16;
  * triggers virtual-scroll rendering on the body after each layout pass.
  *
  * Per-column widths are stored on the `Table` component. On first render (or after
- * a model swap) widths are initialized based on field type: compact types (`boolean`,
- * `number`, `date`) receive a fixed base width floored at the header text width; string
- * and auto columns share the remaining space equally. On container resize compact-type
- * columns keep their width unchanged; only flexible columns scale proportionally.
+ * a model swap) widths are initialized based on field type and any `minWidth` /
+ * `maxWidth` declared in the column spec: compact types (`boolean`, `number`, `date`)
+ * receive a fixed base width floored at the header text width; string and auto columns
+ * share the remaining space equally, clamped to their constraints. On container resize
+ * compact-type columns keep their width unchanged; only flexible columns scale
+ * proportionally, again clamped to their per-column constraints.
  */
 export class Table extends LayoutManager {
 
+    /**
+     * Constructs a Table layout manager.
+     */
     constructor() {
         super();
     }
@@ -48,70 +54,39 @@ export class Table extends LayoutManager {
      *
      * @remarks Per-column widths are read from the Table component. If the stored widths do not
      * match the current column count (first render or model swap) they are re-initialized using
-     * type-aware sizing. On a container resize the existing widths are scaled proportionally.
+     * type-aware sizing clamped to each column's `minWidth` / `maxWidth`. On a container resize
+     * the existing widths are scaled proportionally, again clamped to per-column constraints.
      */
     doLayout() {
         const container = <TableComponent>this.getContainer();
+
         if (!container) {
             return;
         }
 
         const containerSize = container.getInnerSize();
+
         if (!containerSize) {
             return;
         }
 
         const containerInsets = container.getInsets();
-        const columnCount = container.getHeader().getColumns().length;
-        const availableWidth = containerSize.width - Util.getScrollBarWidth();
+        const columns         = container.getColumns();
+        const columnCount     = container.getHeader().getColumns().length;
+        const availableWidth  = containerSize.width - Util.getScrollBarWidth();
 
         let columnWidths = container.getColumnWidths();
 
         if (columnWidths.length !== columnCount) {
-            const fields = container.getVisibleFields();
-
-            const intrinsic: (number | null)[] = fields.map(f => {
-                const headerMin = f.getDescription().length * CHAR_WIDTH + HEADER_PAD;
-
-                switch (f.getType()) {
-                    case 'boolean': return Math.max(BOOLEAN_WIDTH, headerMin);
-                    case 'number':  return Math.max(NUMBER_WIDTH,  headerMin);
-                    case 'date':    return Math.max(DATE_WIDTH,    headerMin);
-                    default:        return null;
-                }
-            });
-
-            const fixedTotal = intrinsic.reduce((s: number, w) => s + (w ?? 0), 0);
-            const flexCount  = intrinsic.filter(w => w === null).length;
-            const flexWidth  = flexCount > 0
-                ? Math.max(30, (availableWidth - fixedTotal) / flexCount)
-                : 0;
-
-            columnWidths = intrinsic.map(w => w ?? flexWidth);
+            columnWidths = this.initializeWidths(columns, availableWidth);
             container.setColumnWidths(columnWidths);
         } else {
-            // Container resize: fixed-type columns keep their width; flexible columns scale proportionally.
-            const fields = container.getVisibleFields();
-            const isFixed = fields.map(f => {
-                const t = f.getType();
-
-                return t === 'boolean' || t === 'number' || t === 'date';
-            });
-
-            const fixedTotal    = columnWidths.reduce((s: number, w, i) => s + (isFixed[i] ? w : 0), 0);
-            const prevFlexTotal = columnWidths.reduce((s: number, w, i) => s + (isFixed[i] ? 0 : w), 0);
-            const newFlexTotal  = availableWidth - fixedTotal;
-
-            if (prevFlexTotal > 0 && Math.abs(prevFlexTotal - newFlexTotal) > 0.5) {
-                const ratio = newFlexTotal / prevFlexTotal;
-                columnWidths = columnWidths.map((w, i) => isFixed[i] ? w : Math.max(30, w * ratio));
-
-                container.setColumnWidths(columnWidths);
-            }
+            columnWidths = this.rescaleWidths(columns, columnWidths, availableWidth);
+            container.setColumnWidths(columnWidths);
         }
 
         const header = container.getHeader();
-        const body = container.getBody();
+        const body   = container.getBody();
         const footer = container.getFooter();
 
         if (container.isHeaderVisible() && header) {
@@ -141,7 +116,7 @@ export class Table extends LayoutManager {
         }
 
         if (container.isFooterVisible() && footer) {
-            const columnHeight = 20;
+            const columnHeight  = 20;
             const footerColumns = footer.getColumns();
 
             footer.setAutoCommitStyle(false);
@@ -179,5 +154,99 @@ export class Table extends LayoutManager {
 
             body.renderWindow(availableWidth, columnWidths);
         }
+    }
+
+    /**
+     * Computes initial column widths from field types and column constraints.
+     *
+     * Fixed-type columns (boolean, number, date) get a type-based base width floored
+     * at their header text width and clamped to any declared min/max. Flexible columns
+     * (string, auto) share the remaining space equally, each clamped to its own min/max.
+     *
+     * @param columns        - The visible resolved columns.
+     * @param availableWidth - Total available pixel width for columns.
+     * @returns The computed width for each column.
+     */
+    private initializeWidths(columns: Column[], availableWidth: number): number[] {
+        const intrinsic: (number | null)[] = columns.map(col => {
+            const f         = col.getField();
+            const headerMin = f.getDescription().length * CHAR_WIDTH + HEADER_PAD;
+
+            switch (f.getType()) {
+                case 'boolean': return this.clamp(Math.max(BOOLEAN_WIDTH, headerMin), col);
+                case 'number':  return this.clamp(Math.max(NUMBER_WIDTH,  headerMin), col);
+                case 'date':    return this.clamp(Math.max(DATE_WIDTH,    headerMin), col);
+                default:        return null;
+            }
+        });
+
+        const fixedTotal = intrinsic.reduce((s: number, w) => s + (w ?? 0), 0);
+        const flexCount  = intrinsic.filter(w => w === null).length;
+        const rawFlex    = flexCount > 0
+            ? (availableWidth - fixedTotal) / flexCount
+            : 0;
+
+        return intrinsic.map((w, i) => {
+            if (w !== null) {
+                return w;
+            }
+
+            const col = columns[i];
+            const min = col.getMinWidth() ?? 30;
+            const max = col.getMaxWidth() ?? Infinity;
+
+            return Math.min(Math.max(rawFlex, min), max);
+        });
+    }
+
+    /**
+     * Rescales existing flexible column widths to fit the new available width,
+     * keeping fixed-type columns at their current size and clamping all columns
+     * to their per-column constraints.
+     *
+     * @param columns        - The visible resolved columns.
+     * @param columnWidths   - The existing width array from the previous layout.
+     * @param availableWidth - Total available pixel width for columns.
+     * @returns The updated width array, or the original if no rescaling was needed.
+     */
+    private rescaleWidths(columns: Column[], columnWidths: number[], availableWidth: number): number[] {
+        const isFixed = columns.map(col => {
+            const t = col.getField().getType();
+
+            return t === 'boolean' || t === 'number' || t === 'date';
+        });
+
+        const fixedTotal    = columnWidths.reduce((s: number, w, i) => s + (isFixed[i] ? w : 0), 0);
+        const prevFlexTotal = columnWidths.reduce((s: number, w, i) => s + (isFixed[i] ? 0 : w), 0);
+        const newFlexTotal  = availableWidth - fixedTotal;
+
+        if (prevFlexTotal <= 0 || Math.abs(prevFlexTotal - newFlexTotal) <= 0.5) {
+            return columnWidths;
+        }
+
+        const ratio = newFlexTotal / prevFlexTotal;
+
+        return columnWidths.map((w, i) => {
+            if (isFixed[i]) {
+                return w;
+            }
+
+            return this.clamp(w * ratio, columns[i]);
+        });
+    }
+
+    /**
+     * Clamps a width value to the `[minWidth, maxWidth]` range declared on a column,
+     * using 30 px as the default minimum and no upper bound when unconstrained.
+     *
+     * @param width  - The raw width to clamp.
+     * @param column - The column whose constraints apply.
+     * @returns The clamped width.
+     */
+    private clamp(width: number, column: Column): number {
+        const min = column.getMinWidth() ?? 30;
+        const max = column.getMaxWidth() ?? Infinity;
+
+        return Math.min(Math.max(width, min), max);
     }
 }

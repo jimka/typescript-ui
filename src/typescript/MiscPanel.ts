@@ -9,7 +9,7 @@ import { Button } from "./Base/component/Button.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { FieldSet } from "./Base/component/FieldSet.js";
 import { ThemeManager, DefaultTheme, DarkTheme } from "./Base/Theme.js";
-import { TablePanel } from "./Base/index.js";
+import { TablePanel, Table, ColumnSpec } from "./Base/index.js";
 import { ContextMenu } from "./Base/ContextMenu.js";
 import { Tooltip } from "./Base/Tooltip.js";
 import { Event } from "./Base/Event.js";
@@ -97,6 +97,53 @@ export class MiscPanel extends Component {
             win2.show();
         });
         this.addComponent(buttonWindowTable);
+
+        let buttonWindowTableSpec = new Button("Show window with table (column spec)!");
+        buttonWindowTableSpec.addActionListener(function () {
+            let win3 = new Window("Table with column spec");
+
+            win3.setX(100);
+            win3.setY(250);
+            win3.setWidth(600);
+            win3.setHeight(400);
+
+            let specModel = new Model([
+                { name: "col1", type: "string",  description: "Name",    order: 0 },
+                { name: "col2", type: "boolean", description: "Active",  order: 1 },
+                { name: "col3", type: "number",  description: "Score",   order: 2 },
+                { name: "col4", type: "string",  description: "Notes",   order: 3 },
+            ]);
+
+            let specStore = new MemoryStore(specModel);
+
+            specStore.add([
+                { col1: "Alice",   col2: true,  col3: 95,  col4: "Top performer"  },
+                { col1: "Bob",     col2: false, col3: 72,  col4: "Needs follow-up" },
+                { col1: "Carol",   col2: true,  col3: 88,  col4: "On track"        },
+                { col1: "David",   col2: true,  col3: 61,  col4: "Check in soon"   },
+                { col1: "Eve",     col2: false, col3: 45,  col4: "At risk"         },
+            ]);
+
+            // TODO: Will this lead to a race condition if we don't 'await'?
+            specStore.sync();
+
+            // Partial spec: Name gets a minWidth; Score gets a maxWidth.
+            // Notes is hidden initially. col2 (Active) is not listed but is
+            // auto-appended because appendUnlisted defaults to true.
+            const spec: ColumnSpec = {
+                columns: [
+                    { field: 'col1', minWidth: 150 },
+                    { field: 'col3', maxWidth: 100 },
+                    { field: 'col4', hidden: true  },
+                ],
+            };
+
+            let specTable = new Table(specStore, spec);
+
+            win3.addComponent(specTable);
+            win3.show();
+        });
+        this.addComponent(buttonWindowTableSpec);
 
         let isDark = false;
         let buttonTheme = new Button("Switch to dark theme");
