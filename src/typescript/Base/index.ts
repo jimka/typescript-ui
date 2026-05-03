@@ -100,6 +100,8 @@ export type { AjaxProxyConfig } from './data/proxy/AjaxProxy.js';
 // Table subsystem
 export { Table } from './component/table/Table.js';
 export { TablePanel } from './component/table/TablePanel.js';
+export { Column as TableColumn } from './component/table/Column.js';
+export type { ColumnConfig, ColumnSpec } from './component/table/ColumnConfig.js';
 export { Header as TableHeader } from './component/table/Header.js';
 export { Body as TableBody } from './component/table/Body.js';
 export { FooterRow as TableFooter } from './component/table/Footer.js';
