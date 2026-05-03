@@ -168,3 +168,13 @@ Keep descriptions concise — one sentence is often enough. Only add `@remarks` 
 All CSS changes must go through the Component's setter/getter API (`setBackgroundColor`, `setWidth`, `setBorder`, `setPosition`, etc.) rather than by writing to `element.style` directly. This allows `Component.ts` to batch-commit style changes via the `setAutoCommitStyle(false)` / `setAutoCommitStyle(true)` pattern when needed.
 
 If the needed property has no setter yet, add one rather than writing inline styles. Exception: properties on raw DOM helper elements (non-Component `<div>`s) may use `element.style` directly since they are not part of the Component style system.
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
+- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
