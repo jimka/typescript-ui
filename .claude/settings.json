@@ -40,7 +40,12 @@
       "Bash(~/.nvm/versions/node/v20.10.0/bin/node ./node_modules/.bin/tsc --noEmit)",
       "Bash(curl -s http://localhost:8015/src/typescript/Base/component/table/Header.ts)",
       "Bash(curl -s http://localhost:8015/src/typescript/Base/layout/Table.ts)",
-      "Bash(node_modules/.bin/tsc --version)"
+      "Bash(node_modules/.bin/tsc --version)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && wc -l {}')",
+      "Bash(git stash *)",
+      "Read(//opt/**)",
+      "Bash(/home/jika/.nvm/versions/node/v25.9.0/bin/node /home/jika/typescript/typescript/node_modules/typescript/lib/tsc.js --noEmit)"
     ]
   }
 }
