@@ -7,6 +7,7 @@ import { Header } from "./Header.js";
 import { Body } from "./Body.js";
 import { FooterRow } from "./Footer.js";
 import { AbstractStore } from "../../data/AbstractStore.js";
+import { Field } from "../../data/Field.js";
 import { ModelRecord } from "../../data/ModelRecord.js";
 import { BorderStyle } from "../../BorderStyle.js";
 import { Insets } from "../../Insets.js";
@@ -54,6 +55,18 @@ export class Table extends Component {
 
         this.footer = new FooterRow();
         this.addComponent(this.footer);
+    }
+
+    /**
+     * Returns the visible fields in display order, matching the header column sequence.
+     *
+     * @returns Visible {@link Field} instances sorted by their display order.
+     */
+    getVisibleFields(): Field[] {
+        return this.store.model
+            .getFields()
+            .filter(f => !this.hiddenColumns.has(f.getName()))
+            .sort((a, b) => a.getOrder() - b.getOrder());
     }
 
     /**
