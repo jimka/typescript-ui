@@ -35,6 +35,7 @@ const SCROLL_BUFFER = 2;
 export class Body extends Component {
 
     private store: AbstractStore;
+    private hiddenColumns: Set<string> = new Set();
     private rowPool: Row[] = [];
     private boundIndices: number[] = [];
     private phantom: HTMLElement | null = null;
@@ -80,6 +81,37 @@ export class Body extends Component {
         store.on('datachanged', refresh);
         store.on('beforesync', refresh);
         store.on('sync', refresh);
+    }
+
+    /**
+     * Updates the set of hidden column field names, clears the row pool, and re-renders.
+     *
+     * @param hidden - The new set of field names to hide.
+     */
+    setHiddenColumns(hidden: Set<string>): void {
+        this.hiddenColumns = new Set(hidden);
+        this.clearRowPool();
+        this.renderWindow();
+    }
+
+    /**
+     * Removes all pooled row elements from the DOM and resets the pool arrays.
+     */
+    private clearRowPool(): void {
+        const el = this.getElement();
+
+        if (el) {
+            for (const row of this.rowPool) {
+                const rowEl = row.getElement();
+
+                if (rowEl?.parentNode === el) {
+                    el.removeChild(rowEl);
+                }
+            }
+        }
+
+        this.rowPool = [];
+        this.boundIndices = [];
     }
 
     /**
@@ -172,7 +204,7 @@ export class Body extends Component {
 
         // Grow pool if needed
         while (this.rowPool.length < windowSize) {
-            const row = new Row(this.store.model);
+            const row = new Row(this.store.model, undefined, this.hiddenColumns);
             const rowEl = row.getElement(true);
 
             element.appendChild(rowEl);
@@ -184,7 +216,8 @@ export class Body extends Component {
         }
 
         const rowWidth = this.lastBodyWidth;
-        const fieldCount = this.store.model.getFields().length;
+        const fieldCount = this.store.model.getFields()
+            .filter(f => !this.hiddenColumns.has(f.getName())).length;
         const fallback = fieldCount > 0 ? rowWidth / fieldCount : rowWidth;
 
         // Bind and position visible rows

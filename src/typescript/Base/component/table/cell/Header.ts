@@ -20,6 +20,7 @@ export class HeaderCell extends DefaultCell {
     private text: String;
     private fieldName: string;
     private onSortClickCallback: ((fieldName: string) => void) | null = null;
+    private onContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
     private resizeDragCallback: ((delta: number) => void) | null = null;
     private isDragging = false;
 
@@ -64,6 +65,12 @@ export class HeaderCell extends DefaultCell {
         // Native listener so clicks on any child element (e.g. the Label) bubble up here.
         el.addEventListener('click', () => this.onSortClick());
 
+        el.addEventListener('contextmenu', (e: MouseEvent) => {
+            e.preventDefault();
+
+            this.onContextMenuCallback?.(this.fieldName, e.clientX, e.clientY);
+        });
+
         const handle = document.createElement('div');
 
         // Thin vertical bar (right 2 px of the 5 px hit area) as visual drag indicator.
@@ -93,6 +100,15 @@ export class HeaderCell extends DefaultCell {
      */
     setOnSortClick(fn: (fieldName: string) => void): void {
         this.onSortClickCallback = fn;
+    }
+
+    /**
+     * Registers the callback invoked when the user right-clicks this header cell.
+     *
+     * @param fn - Receives the field name, and the viewport x/y coordinates of the event.
+     */
+    setOnContextMenu(fn: (fieldName: string, x: number, y: number) => void): void {
+        this.onContextMenuCallback = fn;
     }
 
     /**

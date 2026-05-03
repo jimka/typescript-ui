@@ -21,16 +21,19 @@ export class Row extends Component {
 
     private model?: AbstractModel;
     private data?: ModelRecord;
+    private hiddenColumns: Set<string>;
 
-    constructor(model?: AbstractModel, data?: ModelRecord) {
+    constructor(model?: AbstractModel, data?: ModelRecord, hiddenColumns: Set<string> = new Set()) {
         super("tr");
 
         this.model = model;
         this.data = data;
+        this.hiddenColumns = hiddenColumns;
 
         if (this.model) {
-            let fields = this.model.getFields();
-            fields.sort((f1, f2) => f1.getOrder() - f2.getOrder());
+            let fields = this.model.getFields()
+                                   .filter(f => !hiddenColumns.has(f.getName()))
+                                   .sort((f1, f2) => f1.getOrder() - f2.getOrder());
 
             for (let idx in fields) {
                 let field = fields[idx];
@@ -82,6 +85,7 @@ export class Row extends Component {
     setData(record: ModelRecord) {
         this.data = record;
         const fields = this.model!.getFields()
+                                  .filter(f => !this.hiddenColumns.has(f.getName()))
                                   .sort((f1, f2) => f1.getOrder() - f2.getOrder());
 
         const cells = this.getComponents() as Cell<any>[];

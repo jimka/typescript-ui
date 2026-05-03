@@ -10,6 +10,7 @@ import { AbstractStore } from "../../data/AbstractStore.js";
 import { ModelRecord } from "../../data/ModelRecord.js";
 import { BorderStyle } from "../../BorderStyle.js";
 import { Insets } from "../../Insets.js";
+import { ContextMenu } from "../../ContextMenu.js";
 
 /**
  * A data-bound table component rendered as an HTML `<table>` element.
@@ -21,6 +22,8 @@ import { Insets } from "../../Insets.js";
 export class Table extends Component {
 
     private store: AbstractStore;
+    private hiddenColumns: Set<string> = new Set();
+    private columnContextMenu: ContextMenu = new ContextMenu();
     private headerVisible: boolean;
     private header: Header;
     private body: Body;
@@ -43,6 +46,7 @@ export class Table extends Component {
 
         this.header = new Header(store.model, store);
         this.header.setOnColumnResize((i, d) => this.onColumnResize(i, d));
+        this.header.setOnColumnContextMenu((_, x, y) => this.showColumnMenu(x, y));
         this.addComponent(this.header);
 
         this.body = new Body(store);
@@ -98,6 +102,43 @@ export class Table extends Component {
      */
     setColumnWidths(widths: number[]): void {
         this.columnWidths = widths;
+    }
+
+    /**
+     * Shows or hides the column identified by the given field name.
+     *
+     * @param fieldName - The model field name of the column to toggle.
+     * @param visible - True to show the column, false to hide it.
+     */
+    setColumnVisible(fieldName: string, visible: boolean): void {
+        if (visible) {
+            this.hiddenColumns.delete(fieldName);
+        } else {
+            this.hiddenColumns.add(fieldName);
+        }
+
+        this.columnWidths = [];
+
+        this.header.setHiddenColumns(this.hiddenColumns);
+        this.body.setHiddenColumns(this.hiddenColumns);
+        this.doLayout();
+    }
+
+    private showColumnMenu(x: number, y: number): void {
+        const fields = this.store.model.getFields()
+                                       .slice()
+                                       .sort((a, b) => a.getOrder() - b.getOrder());
+
+        const items = fields.map(field => {
+            const visible = !this.hiddenColumns.has(field.getName());
+
+            return {
+                text: (visible ? '✓ ' : '  ') + field.getDescription(),
+                action: () => this.setColumnVisible(field.getName(), !visible)
+            };
+        });
+
+        this.columnContextMenu.show(x, y, items);
     }
 
     private onColumnResize(colIndex: number, delta: number): void {

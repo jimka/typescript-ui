@@ -54,8 +54,7 @@ export class Table extends LayoutManager {
         }
 
         const containerInsets = container.getInsets();
-        const model = container.getModel();
-        const columnCount = model.getFields().length;
+        const columnCount = container.getHeader().getColumns().length;
         const availableWidth = containerSize.width - Util.getScrollBarWidth();
 
         let columnWidths = container.getColumnWidths();

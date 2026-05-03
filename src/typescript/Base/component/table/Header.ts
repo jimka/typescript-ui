@@ -11,15 +11,18 @@ import { BorderStyle } from "../../BorderStyle.js";
 /**
  * The header section of a table, rendered as a `<thead>` element.
  *
- * Builds one {@link HeaderCell} per field from the supplied model. Each cell is
- * wired with a sort-click callback (cycles asc → desc → clear) and a resize-drag
- * callback (forwarded to the owner via {@link setOnColumnResize}).
+ * Builds one {@link HeaderCell} per visible field from the supplied model. Each cell is
+ * wired with a sort-click callback (cycles asc → desc → clear), a resize-drag
+ * callback (forwarded to the owner via {@link setOnColumnResize}), and a context-menu
+ * callback (forwarded via {@link setOnColumnContextMenu}).
  */
 export class Header extends Component {
 
     private model: AbstractModel;
     private store: AbstractStore;
+    private hiddenColumns: Set<string> = new Set();
     private onResizeCallback: ((colIndex: number, delta: number) => void) | null = null;
+    private onColumnContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
 
     constructor(model: AbstractModel, store: AbstractStore) {
         super("thead");
@@ -30,23 +33,10 @@ export class Header extends Component {
         this.model = model;
         this.store = store;
 
-        let row = new Row();
+        const row = new Row();
         this.addRow(row);
 
-        if (model) {
-            let fields = model.getFields();
-            fields.sort((f1, f2) => f1.getOrder() - f2.getOrder());
-
-            for (let i = 0; i < fields.length; i++) {
-                let field = fields[i];
-                let cell = new HeaderCell(field.getDescription(), field.getName());
-
-                row.addComponent(cell, { data: field });
-                this.wireCell(cell, i);
-            }
-        }
-
-        this.syncSortIndicators();
+        this.rebuildCells();
     }
 
     /**
@@ -59,47 +49,44 @@ export class Header extends Component {
     }
 
     /**
-     * Replaces the model, rebuilding header cells only when the field list changes.
+     * Replaces the model, rebuilding header cells only when the visible field list changes.
      *
      * @param model - The new model to bind to the header.
      *
-     * @remarks If the new model has the same fields in the same order as the current model,
-     * the existing cells are left in place and sort indicators are re-synced.
+     * @remarks If the new model has the same visible fields in the same order as the current
+     * model, the existing cells are left in place and sort indicators are re-synced.
      */
     setModel(model: AbstractModel): void {
-        const oldNames = this.model.getFields()
-                                   .slice()
-                                   .sort((a, b) => a.getOrder() - b.getOrder())
-                                   .map(f => f.getName());
+        const toNames = (model: AbstractModel) =>
+            model.getFields()
+                 .slice()
+                 .filter(f => !this.hiddenColumns.has(f.getName()))
+                 .sort((a, b) => a.getOrder() - b.getOrder())
+                 .map(f => f.getName());
 
-        const newNames = model.getFields()
-                              .slice()
-                              .sort((a, b) => a.getOrder() - b.getOrder())
-                              .map(f => f.getName());
+        const oldNames = toNames(this.model);
+        const newNames = toNames(model);
 
         const same = oldNames.length === newNames.length
                      && oldNames.every((n, i) => n === newNames[i]);
 
         if (!same) {
             this.model = model;
-
-            const row = this.getComponents()[0] as Row;
-            row.removeAllComponents();
-
-            const fields = model.getFields()
-                                .slice()
-                                .sort((a, b) => a.getOrder() - b.getOrder());
-
-            for (let i = 0; i < fields.length; i++) {
-                const field = fields[i];
-                const cell = new HeaderCell(field.getDescription(), field.getName());
-
-                row.addComponent(cell, { data: field });
-                this.wireCell(cell, i);
-            }
+            this.rebuildCells();
         }
 
         this.syncSortIndicators();
+    }
+
+    /**
+     * Updates the set of hidden column field names and rebuilds header cells immediately.
+     *
+     * @param hidden - The new set of field names to hide.
+     */
+    setHiddenColumns(hidden: Set<string>): void {
+        this.hiddenColumns = new Set(hidden);
+
+        this.rebuildCells();
     }
 
     /**
@@ -109,6 +96,15 @@ export class Header extends Component {
      */
     setOnColumnResize(fn: (colIndex: number, delta: number) => void): void {
         this.onResizeCallback = fn;
+    }
+
+    /**
+     * Registers the callback invoked when the user right-clicks a header cell.
+     *
+     * @param fn - Receives the field name, and viewport x/y coordinates.
+     */
+    setOnColumnContextMenu(fn: (fieldName: string, x: number, y: number) => void): void {
+        this.onColumnContextMenuCallback = fn;
     }
 
     /**
@@ -124,11 +120,11 @@ export class Header extends Component {
      * Reorders header cells by field order using their layout constraints.
      */
     sortColumns() {
-        let row = this.getComponents()[0];
+        const row = this.getComponents()[0];
 
         row.sortComponents((c1, c2) => {
-            let lc1 = row.getLayoutConstraints(c1);
-            let lc2 = row.getLayoutConstraints(c2);
+            const lc1 = row.getLayoutConstraints(c1);
+            const lc2 = row.getLayoutConstraints(c2);
 
             if (!lc1) {
                 return -1;
@@ -182,9 +178,35 @@ export class Header extends Component {
         this.getComponents()[0].setHeight(height);
     }
 
+    /**
+     * Removes all existing header cells and recreates them from the visible fields of
+     * the current model, then re-syncs sort indicators.
+     */
+    private rebuildCells(): void {
+        const row = this.getComponents()[0] as Row;
+
+        row.removeAllComponents();
+
+        const fields = this.model.getFields()
+                                 .slice()
+                                 .filter(f => !this.hiddenColumns.has(f.getName()))
+                                 .sort((a, b) => a.getOrder() - b.getOrder());
+
+        for (let i = 0; i < fields.length; i++) {
+            const field = fields[i];
+            const cell = new HeaderCell(field.getDescription(), field.getName());
+
+            row.addComponent(cell, { data: field });
+            this.wireCell(cell, i);
+        }
+
+        this.syncSortIndicators();
+    }
+
     private wireCell(cell: HeaderCell, idx: number): void {
         cell.setOnSortClick((fieldName) => this.handleSortClick(fieldName));
         cell.setOnResizeDrag((delta) => this.onResizeCallback?.(idx, delta));
+        cell.setOnContextMenu((fieldName, x, y) => this.onColumnContextMenuCallback?.(fieldName, x, y));
     }
 
     private handleSortClick(fieldName: string): void {
@@ -204,8 +226,12 @@ export class Header extends Component {
         cells.forEach(c => c.setSortState(null));
 
         if (newDir !== null) {
-            const fields = this.model.getFields().slice().sort((a, b) => a.getOrder() - b.getOrder());
-            const idx = fields.findIndex(f => f.getName() === fieldName);
+            const visibleFields = this.model.getFields()
+                                            .slice()
+                                            .filter(f => !this.hiddenColumns.has(f.getName()))
+                                            .sort((a, b) => a.getOrder() - b.getOrder());
+
+            const idx = visibleFields.findIndex(f => f.getName() === fieldName);
 
             if (idx !== -1) {
                 cells[idx].setSortState(newDir);
@@ -224,14 +250,19 @@ export class Header extends Component {
             return;
         }
 
-        const fields = this.model.getFields().slice().sort((a, b) => a.getOrder() - b.getOrder());
-        const idx = fields.findIndex(f => f.getName() === sorter.property);
+        const visibleFields = this.model.getFields()
+                                        .slice()
+                                        .filter(f => !this.hiddenColumns.has(f.getName()))
+                                        .sort((a, b) => a.getOrder() - b.getOrder());
+
+        const idx = visibleFields.findIndex(f => f.getName() === sorter.property);
 
         if (idx === -1) {
             return;
         }
 
         const cells = this.getColumns() as HeaderCell[];
+
         cells[idx]?.setSortState(sorter.direction);
     }
 }
