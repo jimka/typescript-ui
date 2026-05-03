@@ -108,20 +108,20 @@ export class MiscPanel extends Component {
             win3.setHeight(400);
 
             let specModel = new Model([
-                { name: "col1", type: "string",  description: "Name",    order: 0 },
-                { name: "col2", type: "boolean", description: "Active",  order: 1 },
-                { name: "col3", type: "number",  description: "Score",   order: 2 },
-                { name: "col4", type: "string",  description: "Notes",   order: 3 },
+                { name: "Name"   , type: "string" , description: "col1", order: 0 },
+                { name: "Active" , type: "boolean", description: "col2", order: 1 },
+                { name: "Score"  , type: "number" , description: "col3", order: 2 },
+                { name: "Notes"  , type: "string" , description: "col4", order: 3 },
             ]);
 
             let specStore = new MemoryStore(specModel);
 
             specStore.add([
-                { col1: "Alice",   col2: true,  col3: 95,  col4: "Top performer"  },
-                { col1: "Bob",     col2: false, col3: 72,  col4: "Needs follow-up" },
-                { col1: "Carol",   col2: true,  col3: 88,  col4: "On track"        },
-                { col1: "David",   col2: true,  col3: 61,  col4: "Check in soon"   },
-                { col1: "Eve",     col2: false, col3: 45,  col4: "At risk"         },
+                { Name: "Alice", Active: true , Score: 95,  Notes: "Top performer"   },
+                { Name: "Bob"  , Active: false, Score: 72,  Notes: "Needs follow-up" },
+                { Name: "Carol", Active: true , Score: 88,  Notes: "On track"        },
+                { Name: "David", Active: true , Score: 61,  Notes: "Check in soon"   },
+                { Name: "Eve"  , Active: false, Score: 45,  Notes: "At risk"         },
             ]);
 
             // TODO: Will this lead to a race condition if we don't 'await'?
@@ -132,9 +132,9 @@ export class MiscPanel extends Component {
             // auto-appended because appendUnlisted defaults to true.
             const spec: ColumnSpec = {
                 columns: [
-                    { field: 'col1', minWidth: 150 },
-                    { field: 'col3', maxWidth: 100 },
-                    { field: 'col4', hidden: true  },
+                    { field: 'Name'  , minWidth: 150  },
+                    { field: 'Active', maxWidth: 100  },
+                    { field: 'Notes' , hidden  : true },
                 ],
             };
 
