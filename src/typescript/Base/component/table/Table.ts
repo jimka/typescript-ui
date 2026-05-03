@@ -7,11 +7,11 @@ import { Header } from "./Header.js";
 import { Body } from "./Body.js";
 import { FooterRow } from "./Footer.js";
 import { AbstractStore } from "../../data/AbstractStore.js";
-import { Field } from "../../data/Field.js";
 import { ModelRecord } from "../../data/ModelRecord.js";
 import { BorderStyle } from "../../BorderStyle.js";
 import { Insets } from "../../Insets.js";
 import { ContextMenu } from "../../ContextMenu.js";
+import { ContextMenuItemConfig } from "../../component/ContextMenuItem.js";
 import { Column } from "./Column.js";
 import { ColumnSpec } from "./ColumnConfig.js";
 
@@ -339,7 +339,7 @@ export class Table extends Component {
      */
     private defaultColumnWidth(col: Column): number {
         const f = col.getField();
-        const headerMin = f.getDescription().length * 8 + 16;
+        const headerMin = f.getName().length * 8 + 16;
 
         switch (f.getType()) {
             case 'boolean': return Math.max(60,  headerMin);
@@ -454,15 +454,20 @@ export class Table extends Component {
             .slice()
             .sort((a, b) => a.getField().getOrder() - b.getField().getOrder());
 
-        const items = columns.map(col => {
+        const items: ContextMenuItemConfig[] = columns.map(col => {
             const fieldName = col.getField().getName();
             const visible = !this.hiddenColumns.has(fieldName);
 
             return {
-                text: (visible ? '✓ ' : '  ') + col.getField().getDescription(),
+                text: (visible ? '✓ ' : '  ') + col.getField().getName(),
                 action: () => this.setColumnVisible(fieldName, !visible)
             };
         });
+
+        items.push(
+            { separator: true },
+            { text: 'Reset columns', action: () => this.resetColumns() }
+        );
 
         this.columnContextMenu.show(x, y, items);
     }
@@ -507,6 +512,25 @@ export class Table extends Component {
         this.columnWidths[colIndex]     = w0;
         this.columnWidths[colIndex + 1] = w1;
 
+        this.doLayout();
+    }
+
+    /**
+     * Resets column visibility and widths to their initial spec-defined state.
+     *
+     * Columns marked `hidden: true` in the spec are re-hidden; all others are shown.
+     * All manually resized widths are discarded and recomputed from defaults.
+     */
+    private resetColumns(): void {
+        this.hiddenColumns = new Set();
+        this.initHiddenFromSpec();
+        this.savedColumnWidths = new Map();
+        this.columnWidths = this.getColumns().map(col => this.defaultColumnWidth(col));
+
+        const effectiveHidden = this.getEffectiveHiddenSet();
+
+        this.header.setHiddenColumns(effectiveHidden);
+        this.body.setHiddenColumns(effectiveHidden);
         this.doLayout();
     }
 }
