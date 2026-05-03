@@ -377,9 +377,7 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Hard coded size values** — Try to move away from the usage of hard coded size values in component constructors. If components have internal sub-components that have their own preferred size or some other size, we should take this into account when setting our size. If we don't do this, we'll eventually have problems when someone sets a theme value to something that's incompatible with our hard coded values.
 
-* **Column visibility toggle in `Table`** — a menu button in the table header could let users show or hide individual columns at runtime using the new `ContextMenu` component.
-
-* **Column width constraints in `Table`** — column definitions should gain `minWidth` and `maxWidth` properties so that layout and resize logic can clamp column widths within author-specified bounds.
+* **Z-index of multiple floating windows** — Currently, when opening multiple open windows, there's no concept of what window is currently active and in focus. This leads to an issue when having multiple windows open where one overlaps the others. If we want to interact with a window that is currently displayed behind other windows, there is no way to move this window to the top. When clicking on a window, that window should be moved to the top so that it is guaranteed to be fully visible. We should also somehow indicate that a window currently has focus or not.
 
 * **Tree component** — a hierarchical data view is the main gap in the component set. A `Tree` with collapsible nodes would share the virtual-scrolling approach already used in `Body`, flattening the visible subtree into a single scrollable list and re-rendering only as nodes expand or collapse.
 
