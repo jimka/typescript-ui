@@ -168,6 +168,51 @@ export class Tooltip extends Component {
     }
 
     /**
+     * Wires native `mouseover`, `mousemove`, and `mouseout` listeners directly onto
+     * a raw DOM element so the tooltip shows after a 500 ms hover delay.
+     *
+     * @remarks Use this instead of {@link attach} when the element contains child nodes
+     * that would receive the event as `evnt.target` — the Event system's component
+     * listener only matches the exact target id, so `attach` would miss those cases.
+     *
+     * @param element - The raw DOM element to attach hover behaviour to.
+     * @param text - The tooltip text to display.
+     */
+    static attachToElement(element: HTMLElement, text: string): void {
+        let cursorX = 0;
+        let cursorY = 0;
+        let showTimer: ReturnType<typeof setTimeout> | null = null;
+
+        element.addEventListener('mouseover', (e: MouseEvent) => {
+            if (showTimer !== null) {
+                return;
+            }
+
+            cursorX = e.clientX;
+            cursorY = e.clientY;
+
+            showTimer = setTimeout(() => {
+                Tooltip.show(text, cursorX, cursorY);
+                showTimer = null;
+            }, 500);
+        });
+
+        element.addEventListener('mousemove', (e: MouseEvent) => {
+            cursorX = e.clientX;
+            cursorY = e.clientY;
+        });
+
+        element.addEventListener('mouseout', () => {
+            if (showTimer !== null) {
+                clearTimeout(showTimer);
+                showTimer = null;
+            }
+
+            Tooltip.hide();
+        });
+    }
+
+    /**
      * Positions the label to fill the tooltip body with uniform padding.
      */
     doLayout(): void {

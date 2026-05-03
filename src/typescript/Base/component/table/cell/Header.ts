@@ -4,6 +4,7 @@ import { DefaultCell } from "./Default.js";
 import { Event } from "../../../Event.js";
 import { Util } from "../../../Util.js";
 import { CSS } from "../../../CSS.js";
+import { Tooltip } from "../../../Tooltip.js";
 
 /**
  * A non-editable header cell rendered as a `<th>` element.
@@ -22,7 +23,8 @@ export class HeaderCell extends DefaultCell {
     private onSortClickCallback: ((fieldName: string) => void) | null = null;
     private onContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
     private resizeDragCallback: ((delta: number) => void) | null = null;
-    private isDragging = false;
+    private isDragging: boolean = false;
+    private tooltipText: string = '';
 
     /**
      * Creates a header cell with bold text and wires up the sort click listener.
@@ -80,6 +82,10 @@ export class HeaderCell extends DefaultCell {
         handle.addEventListener('click', (e: MouseEvent) => e.stopPropagation()); // never trigger sort
 
         el.appendChild(handle);
+
+        if (this.tooltipText) {
+            Tooltip.attachToElement(el, this.tooltipText);
+        }
     }
 
     /**
@@ -109,6 +115,20 @@ export class HeaderCell extends DefaultCell {
      */
     setOnContextMenu(fn: (fieldName: string, x: number, y: number) => void): void {
         this.onContextMenuCallback = fn;
+    }
+
+    /**
+     * Registers the callback invoked with the horizontal pixel delta on each drag move.
+     *
+     * @param fn - Receives movementX on each mousemove during a resize drag.
+     */
+    /**
+     * Sets the tooltip text shown when hovering this header cell.
+     *
+     * @param text - The text to display in the tooltip.
+     */
+    setTooltip(text: string): void {
+        this.tooltipText = text;
     }
 
     /**
