@@ -1,5 +1,13 @@
 # Coding Guidelines
 
+## Implementation Workflow
+
+- After making multi-file changes, always trigger doLayout() or equivalent re-render hooks where applicable
+- When refactoring, verify no regressions in dependent components (e.g., setBorder with no args should preserve, not clear)
+- Before declaring a fix complete, mentally trace the inheritance chain and check sibling/dependent components
+
+---
+
 ## Behavioral guidelines
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
@@ -60,7 +68,12 @@ For multi-step tasks, state a brief plan:
 3. [Step] → verify: [check]
 ```
 
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+### 5. Steps to avoid post-change problems
+
+- When debugging, Perform a root-cause investigation (reading the actual call chain for example) before trying to fix problems.
+- Explicitly enumerate call sites and edge cases before editing, or verify with type-checks/tests after refactors, to prevent regressions.
+- Write a self-review checklist and walk through it, or perform an explicit testing step before declaring done. This would reduce incomplete first-pass implementations.
+
 
 ---
 
@@ -79,6 +92,15 @@ a.setX(1); a.setY(2);
 a.setX(1);
 a.setY(2);
 ```
+
+---
+
+## Code Style
+
+- Use arrow functions instead of .bind(this) for callbacks; include explicit parameter types when the target signature is `Function`
+- Prefer separation of concerns: keep presentation/UI state out of data Models
+- Use JSDoc in multi-line format (not single-line) for all exported APIs
+- For TypeScript class member name collisions, use the underscore-prefix idiom for private backing fields
 
 ---
 
@@ -168,6 +190,14 @@ Keep descriptions concise — one sentence is often enough. Only add `@remarks` 
 All CSS changes must go through the Component's setter/getter API (`setBackgroundColor`, `setWidth`, `setBorder`, `setPosition`, etc.) rather than by writing to `element.style` directly. This allows `Component.ts` to batch-commit style changes via the `setAutoCommitStyle(false)` / `setAutoCommitStyle(true)` pattern when needed.
 
 If the needed property has no setter yet, add one rather than writing inline styles. Exception: properties on raw DOM helper elements (non-Component `<div>`s) may use `element.style` directly since they are not part of the Component style system.
+
+## Debugging Approach
+
+- Before pursuing CSS-based fixes for layout/sizing issues, first check for explicit size constraints (setMaxSize, setPreferredSize, fixed toolbar heights) that may be the root cause
+- Always append 'px' units to numeric DOM style values
+- For slow rendering, profile for O(N²) lookups (e.g., CSS insertRule) and live-DOM mutation overhead before optimizing elsewhere
+
+---
 
 ## graphify
 
