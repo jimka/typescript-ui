@@ -77,6 +77,9 @@ export class Component extends BaseObject {
     private dirtyCSSRule: Style = {};
     private autoCommitStyle: boolean = true;
     private layoutPaused: boolean = false;
+    private role: string | null = null;
+    private ariaAttributes: Map<string, string | null> = new Map();
+    private tabIndex: number | null = null;
     colorScheme: string;
 
     constructor(tag: string = "div") {
@@ -470,6 +473,70 @@ export class Component extends BaseObject {
     setZIndex(value: number) {
         this.zIndex = value;
         this.setElementStyle("zIndex", this.zIndex);
+    }
+
+    /**
+     * Sets the WAI-ARIA role attribute on the component's element.
+     *
+     * @param role - The ARIA role string (e.g. `"grid"`, `"tablist"`), or null to remove the attribute.
+     */
+    setRole(role: string | null): void {
+        this.role = role;
+
+        if (role !== null) {
+            this.setElementAttribute("role", role);
+        } else {
+            this.removeElementAttribute("role");
+        }
+    }
+
+    /**
+     * Returns the current ARIA role, or null if none is set.
+     *
+     * @returns The role string, or null.
+     */
+    getRole(): string | null {
+        return this.role;
+    }
+
+    /**
+     * Sets a WAI-ARIA attribute of the form `aria-<name>` on the component's element.
+     *
+     * @param name  - The ARIA attribute name without the `aria-` prefix (e.g. `"selected"`, `"rowcount"`).
+     * @param value - The attribute value, or null to remove the attribute.
+     */
+    setAriaAttribute(name: string, value: string | null): void {
+        if (value === null) {
+            this.ariaAttributes.delete(name);
+            this.removeElementAttribute("aria-" + name);
+        } else {
+            this.ariaAttributes.set(name, value);
+            this.setElementAttribute("aria-" + name, value);
+        }
+    }
+
+    /**
+     * Sets the `tabindex` attribute, controlling whether the element participates in keyboard focus order.
+     *
+     * @param value - The tabindex integer (0 = focusable in document order, -1 = focusable by script only), or null to remove the attribute.
+     */
+    setTabIndex(value: number | null): void {
+        this.tabIndex = value;
+
+        if (value !== null) {
+            this.setElementAttribute("tabindex", String(value));
+        } else {
+            this.removeElementAttribute("tabindex");
+        }
+    }
+
+    /**
+     * Returns the current tabindex value, or null if none is set.
+     *
+     * @returns The tabindex integer, or null.
+     */
+    getTabIndex(): number | null {
+        return this.tabIndex;
     }
 
     /**
@@ -1631,6 +1698,20 @@ export class Component extends BaseObject {
             let value = this.attributes.get(key);
             if (value != null) {
                 element.setAttribute(key, value.valueOf());
+            }
+        }
+
+        if (this.role !== null) {
+            element.setAttribute("role", this.role);
+        }
+
+        if (this.tabIndex !== null) {
+            element.setAttribute("tabindex", String(this.tabIndex));
+        }
+
+        for (const [name, value] of this.ariaAttributes) {
+            if (value !== null) {
+                element.setAttribute("aria-" + name, value);
             }
         }
 

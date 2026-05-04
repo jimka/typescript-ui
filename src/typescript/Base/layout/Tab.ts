@@ -3,6 +3,7 @@
 import { LayoutManager } from "./LayoutManager.js";
 import { ToggleButton } from "../component/ToggleButton.js";
 import { Component } from "../Component.js";
+import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { FillType } from "./FillType.js";
@@ -59,6 +60,10 @@ export class Tab extends LayoutManager {
 
         let element = this.toolbar.getElement(true);
         container.getElement().appendChild(element);
+
+        this.toolbar.setRole("tablist");
+
+        Event.addSubtreeListener(this.toolbar, "keydown", (e: KeyboardEvent) => this.onToolbarKeyDown(e));
     }
 
     /**
@@ -229,12 +234,20 @@ export class Tab extends LayoutManager {
 
         this.tabs.push(tabButton);
 
-        if (this.tabs.length - 1 === this.selectedTabIndex) {
+        const isSelected = this.tabs.length - 1 === this.selectedTabIndex;
+
+        if (isSelected) {
             tabButton.setSelected(true);
         }
 
         this.buttonGroup.addButton(tabButton);
         this.toolbar.addComponent(tabButton);
+
+        tabButton.setRole("tab");
+        tabButton.setAriaAttribute("selected", isSelected ? "true" : "false");
+
+        component.setRole("tabpanel");
+        component.setAriaAttribute("labelledby", tabButton.getId());
     }
 
     /**
@@ -265,6 +278,11 @@ export class Tab extends LayoutManager {
         for (let idx in components) {
             let component = components[idx];
             component.setVisible(false);
+            component.setAriaAttribute("hidden", "true");
+        }
+
+        for (let i = 0; i < this.tabs.length; i++) {
+            this.tabs[i].setAriaAttribute("selected", i === this.selectedTabIndex ? "true" : "false");
         }
 
         let component = this.getVisibleComponent();
@@ -288,6 +306,7 @@ export class Tab extends LayoutManager {
         }
 
         component.setVisible(true);
+        component.setAriaAttribute("hidden", "false");
 
         this.placeComponent(
             component,
@@ -297,5 +316,36 @@ export class Tab extends LayoutManager {
             containerSize ? containerSize.height - toolbarHeight : 0,
             FillType.BOTH
         );
+    }
+
+    /**
+     * Handles ArrowLeft / ArrowRight to move tab focus and activate the adjacent tab.
+     *
+     * @param e - The keyboard event fired on the toolbar element.
+     */
+    private onToolbarKeyDown(e: KeyboardEvent): void {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
+            return;
+        }
+
+        const tabCount = this.tabs.length;
+
+        if (tabCount === 0) {
+            return;
+        }
+
+        e.preventDefault();
+
+        const newIdx = e.key === 'ArrowRight'
+            ? (this.selectedTabIndex + 1) % tabCount
+            : (this.selectedTabIndex - 1 + tabCount) % tabCount;
+
+        const newTab = this.tabs[newIdx] as ToggleButton;
+
+        this.tabs.forEach(t => (t as ToggleButton).setSelected(false));
+        newTab.setSelected(true);
+
+        this.onTabPressed(newTab);
+        newTab.focus();
     }
 }

@@ -26,6 +26,8 @@ export class Row extends Component {
     constructor(model?: AbstractModel, data?: ModelRecord, hiddenColumns: Set<string> = new Set()) {
         super("tr");
 
+        this.setRole("row");
+
         this.model = model;
         this.data = data;
         this.hiddenColumns = hiddenColumns;

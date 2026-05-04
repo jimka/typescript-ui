@@ -52,6 +52,8 @@ export class Body extends Component {
 
         this.setOverflow("auto");
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
+        this.setTabIndex(0);
+        this.setRole("rowgroup");
 
         this.store = store;
         this.bindStore(store);
@@ -165,6 +167,8 @@ export class Body extends Component {
             this.renderWindow();
         });
 
+        Event.addListener(this, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
+
         this.renderWindow();
     }
 
@@ -232,6 +236,8 @@ export class Body extends Component {
                 this.updateRowVisualState(i);
             }
 
+            row.setAriaAttribute("rowindex", String(dataIndex + 2));
+
             row.setAutoCommitStyle(false);
             row.setX(0);
             row.setY(dataIndex * rowHeight);
@@ -269,6 +275,8 @@ export class Body extends Component {
         if (this.phantom) {
             this.phantom.style.height = totalRows * rowHeight + "px";
         }
+
+        this.setAriaAttribute("rowcount", String(totalRows));
 
         this.layoutInProgress = false;
     }
@@ -393,15 +401,19 @@ export class Body extends Component {
             return;
         }
 
-        const rowEl = this.rowPool[i].getElement() as HTMLElement;
+        const row = this.rowPool[i];
+        const rowEl = row.getElement() as HTMLElement;
+        const isSelected = this.selectedRecords.has(record);
 
-        if (this.selectedRecords.has(record)) {
+        if (isSelected) {
             rowEl.style.setProperty('background-color', 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))');
             rowEl.style.setProperty('box-shadow', 'var(--ts-ui-table-row-selected-border, none)');
         } else {
             rowEl.style.removeProperty('box-shadow');
-            this.rowPool[i].updateVisualState();
+            row.updateVisualState();
         }
+
+        row.setAriaAttribute("selected", isSelected ? "true" : "false");
     }
 
     /**
@@ -416,5 +428,72 @@ export class Body extends Component {
      */
     sortRows() {
         throw Error("Not implemented yet.");
+    }
+
+    /**
+     * Handles ArrowUp / ArrowDown / Home / End to move row selection via the keyboard.
+     *
+     * @param e - The keyboard event fired on the body element.
+     */
+    private onKeyDown(e: KeyboardEvent): void {
+        const records = this.store.getRecords();
+
+        if (records.length === 0) {
+            return;
+        }
+
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') {
+            return;
+        }
+
+        e.preventDefault();
+
+        const currentIdx = this.anchorRecord ? records.indexOf(this.anchorRecord) : -1;
+        let newIdx: number;
+
+        if (e.key === 'ArrowDown') {
+            newIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, records.length - 1);
+        } else if (e.key === 'ArrowUp') {
+            newIdx = currentIdx < 0 ? 0 : Math.max(currentIdx - 1, 0);
+        } else if (e.key === 'Home') {
+            newIdx = 0;
+        } else {
+            newIdx = records.length - 1;
+        }
+
+        const newAnchor = records[newIdx];
+
+        this.selectRecord(newAnchor);
+        this.scrollRecordIntoView(newAnchor);
+    }
+
+    /**
+     * Scrolls the body so the given record is visible, without moving the viewport unless necessary.
+     *
+     * @param record - The record to scroll into view.
+     */
+    private scrollRecordIntoView(record: ModelRecord): void {
+        const idx = this.store.getRecords().indexOf(record);
+
+        if (idx === -1) {
+            return;
+        }
+
+        const el = this.getElement() as HTMLElement;
+
+        if (!el) {
+            return;
+        }
+
+        const top = idx * this.rowHeight;
+        const bottom = top + this.rowHeight;
+        const scrollTop = el.scrollTop;
+        const visibleBottom = scrollTop + this.getHeight();
+
+        if (top < scrollTop) {
+            el.scrollTop = top;
+        } else if (bottom > visibleBottom) {
+            el.scrollTop = bottom - this.getHeight();
+        }
     }
 }
