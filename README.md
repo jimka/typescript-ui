@@ -2,7 +2,7 @@
 
 A web-based layout manager and UI component framework written in TypeScript. Provides desktop-style user interfaces in the browser using absolute positioning, with a rich set of reusable components and layout algorithms.
 
-> **Notice:** Developed and tested only on Chrome.
+> **Notice:** Developed and tested on Chrome and Firefox. Safari compatibility is not verified.
 
 ## Getting started
 
@@ -378,7 +378,5 @@ Use `mapping` when the incoming JSON key differs from the field name:
 * **Hard coded size values** — Try to move away from the usage of hard coded size values in component constructors. If components have internal sub-components that have their own preferred size or some other size, we should take this into account when setting our size. If we don't do this, we'll eventually have problems when someone sets a theme value to something that's incompatible with our hard coded values.
 
 * **Tree node renderers** — `TreeRow` currently renders each node as two plain `<span>` elements (a toggle icon and a label). The groundwork for custom renderers is already there: `TreeRow.layoutChildren()` positions sub-components by absolute coordinates, so replacing the default spans with arbitrary `Component` instances would be straightforward. A renderer API similar to the table's `CellRenderer` pattern — a factory passed to the `Tree` constructor or `setNodeRenderer()` — would let callers display icons, badges, or rich content per node.
-
-* **Cross-browser support** — the library currently targets Chrome only. Auditing and fixing Firefox and Safari compatibility (particularly around scrollbar-width calculation, CSS custom-property fallbacks, and drag event behaviour) would significantly widen the potential user base with relatively contained effort.
 
 * **Notification / toast system** — async operations (store sync, AJAX proxy responses) have no built-in way to surface success or error feedback. A lightweight `Notification` singleton with `show(message, type, duration)` that appends a positioned overlay to `document.documentElement` would complement the existing `Window` pattern and give applications a standard feedback channel.

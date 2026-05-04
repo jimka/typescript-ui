@@ -52,6 +52,8 @@ export class Window extends Component {
     private pendingBorder: WindowBorder | null = null;
     private resizeFps: number = 60;
     private lastFlushTime: number = 0;
+    private readonly boundOnDrag: (e: MouseEvent) => void = (e: MouseEvent) => this.onDrag(e);
+    private readonly boundOnMouseUp: () => void = () => this.onMouseUp();
 
     constructor(headerText: string) {
         super();
@@ -172,8 +174,8 @@ export class Window extends Component {
      * Attaches document-level move and mouseup listeners to begin dragging the window.
      */
     onMouseDown() {
-        document.onmouseup = () => this.onMouseUp();
-        document.onmousemove = (e) => this.onDrag(e);
+        document.addEventListener('mouseup', this.boundOnMouseUp);
+        document.addEventListener('mousemove', this.boundOnDrag);
     }
 
     /**
@@ -183,7 +185,6 @@ export class Window extends Component {
      * @param e - The mouse event carrying the movement delta.
      */
     onResize(border: WindowBorder, e: MouseEvent) {
-        e = e || window.event as MouseEvent;
         e.preventDefault();
 
         this.pendingMouseDX += e.movementX;
@@ -281,7 +282,6 @@ export class Window extends Component {
      * @param e - The mouse event carrying the movement delta.
      */
     onDrag(e: MouseEvent) {
-        e = e || window.event as MouseEvent;
         e.preventDefault();
 
         this.setX(this.getX() + e.movementX);
@@ -292,8 +292,8 @@ export class Window extends Component {
      * Detaches the document-level drag listeners when the mouse button is released.
      */
     onMouseUp() {
-        document.onmouseup = null;
-        document.onmousemove = null;
+        document.removeEventListener('mouseup', this.boundOnMouseUp);
+        document.removeEventListener('mousemove', this.boundOnDrag);
     }
 
     /**
