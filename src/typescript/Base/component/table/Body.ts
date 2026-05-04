@@ -52,8 +52,8 @@ export class Body extends Component {
 
         this.setOverflow("auto");
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
-        this.setTabIndex(0);
-        this.setRole("rowgroup");
+        this.getAria().setTabIndex(0);
+        this.getAria().setRole("rowgroup");
 
         this.store = store;
         this.bindStore(store);
@@ -236,7 +236,7 @@ export class Body extends Component {
                 this.updateRowVisualState(i);
             }
 
-            row.setAriaAttribute("rowindex", String(dataIndex + 2));
+            row.getAria().setRowIndex(dataIndex + 2);
 
             row.setAutoCommitStyle(false);
             row.setX(0);
@@ -276,7 +276,7 @@ export class Body extends Component {
             this.phantom.style.height = totalRows * rowHeight + "px";
         }
 
-        this.setAriaAttribute("rowcount", String(totalRows));
+        this.getAria().setRowCount(totalRows);
 
         this.layoutInProgress = false;
     }
@@ -413,7 +413,7 @@ export class Body extends Component {
             row.updateVisualState();
         }
 
-        row.setAriaAttribute("selected", isSelected ? "true" : "false");
+        row.getAria().setSelected(isSelected);
     }
 
     /**

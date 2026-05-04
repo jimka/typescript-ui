@@ -61,7 +61,7 @@ export class Tab extends LayoutManager {
         let element = this.toolbar.getElement(true);
         container.getElement().appendChild(element);
 
-        this.toolbar.setRole("tablist");
+        this.toolbar.getAria().setRole("tablist");
 
         Event.addSubtreeListener(this.toolbar, "keydown", (e: KeyboardEvent) => this.onToolbarKeyDown(e));
     }
@@ -243,11 +243,11 @@ export class Tab extends LayoutManager {
         this.buttonGroup.addButton(tabButton);
         this.toolbar.addComponent(tabButton);
 
-        tabButton.setRole("tab");
-        tabButton.setAriaAttribute("selected", isSelected ? "true" : "false");
+        tabButton.getAria().setRole("tab");
+        tabButton.getAria().setSelected(isSelected);
 
-        component.setRole("tabpanel");
-        component.setAriaAttribute("labelledby", tabButton.getId());
+        component.getAria().setRole("tabpanel");
+        component.getAria().setLabelledBy(tabButton.getId());
     }
 
     /**
@@ -278,11 +278,11 @@ export class Tab extends LayoutManager {
         for (let idx in components) {
             let component = components[idx];
             component.setVisible(false);
-            component.setAriaAttribute("hidden", "true");
+            component.getAria().setHidden(true);
         }
 
         for (let i = 0; i < this.tabs.length; i++) {
-            this.tabs[i].setAriaAttribute("selected", i === this.selectedTabIndex ? "true" : "false");
+            this.tabs[i].getAria().setSelected(i === this.selectedTabIndex);
         }
 
         let component = this.getVisibleComponent();
@@ -306,7 +306,7 @@ export class Tab extends LayoutManager {
         }
 
         component.setVisible(true);
-        component.setAriaAttribute("hidden", "false");
+        component.getAria().setHidden(false);
 
         this.placeComponent(
             component,
