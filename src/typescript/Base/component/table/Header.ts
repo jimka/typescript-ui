@@ -27,7 +27,7 @@ export class Header extends Component {
     constructor(model: AbstractModel, store: AbstractStore) {
         super("thead");
 
-        this.setRole("rowgroup");
+        this.getAria().setRole("rowgroup");
         this.setBorder({ bottom: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-table-header-border, black)" } });
         this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
 

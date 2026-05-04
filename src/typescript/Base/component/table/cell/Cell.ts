@@ -27,7 +27,7 @@ export class Cell<T> extends Component {
 
         this.setLayoutManager(new Card());
 
-        this.setRole("gridcell");
+        this.getAria().setRole("gridcell");
 
         this.readOnly = false;
         this.renderer = renderer;
