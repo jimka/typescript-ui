@@ -16,6 +16,9 @@ import { Placement } from "./Placement.js";
  */
 export class Window extends Component {
 
+    private static zIndexCounter: number = 9000;
+    private static activeWindow: Window | null = null;
+
     private header: WindowHeader;
     private borderComponents: {
         west: WindowBorder,
@@ -35,7 +38,7 @@ export class Window extends Component {
     private resizeFps: number = 60;
     private lastFlushTime: number = 0;
 
-    constructor(headerText: string, zIndex: number = 9999) {
+    constructor(headerText: string) {
         super();
 
         this.setLayoutManager(new Border());
@@ -67,24 +70,24 @@ export class Window extends Component {
         });
         this.header.addExitButtonListener(() => this.onExitAction());
 
-        //this.modal = false;
         this.setVisible(false);
-        this.setZIndex(zIndex || 9999);
         this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" });
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-window-shadow, 3px 3px 2px rgba(0, 0, 0, 0.4))");
         this.setBackgroundColor("var(--ts-ui-body-bg, rgb(241, 241, 241))");
 
         Event.addListener(this.header, "mousedown", () => this.onMouseDown());
+        Event.addSubtreeListener(this, "mousedown", () => this.bringToFront());
     }
 
     /**
      * Appends the window element to the document root, triggers layout, and makes it visible.
      */
-    show() {
+    show(): void {
         const el = this.getElement(true);
 
         this.doLayout();
+        this.bringToFront();
 
         document.documentElement.appendChild(el);
 
@@ -92,12 +95,33 @@ export class Window extends Component {
     }
 
     /**
+     * Raises this window above all other windows by assigning it the highest z-index,
+     * and marks it as the active window, updating the title bar appearance on both
+     * the previously active window and this one.
+     */
+    bringToFront(): void {
+        const prev = Window.activeWindow;
+
+        if (prev && prev !== this) {
+            prev.header.setActive(false);
+        }
+
+        Window.activeWindow = this;
+        this.setZIndex(++Window.zIndexCounter);
+        this.header.setActive(true);
+    }
+
+    /**
      * Hides the window and destroys its DOM element when the close button is clicked.
      */
-    onExitAction() {
+    onExitAction(): void {
         if (this.animationFrameId !== null) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
+        }
+
+        if (Window.activeWindow === this) {
+            Window.activeWindow = null;
         }
 
         this.setVisible(false);
