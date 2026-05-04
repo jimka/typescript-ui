@@ -7,6 +7,7 @@ import { Type } from "../Type.js";
 import { AbstractStore } from "../data/AbstractStore.js";
 import { ModelRecord } from "../data/ModelRecord.js";
 import { Bindable } from "../Bindable.js";
+import { ThemeManager } from "../Theme.js";
 
 /**
  * A drop-down combo box component backed by a `<select>` element.
@@ -25,12 +26,37 @@ export class ComboBox extends Component implements Bindable<string> {
     constructor() {
         super("select");
 
-        this.setPreferredSize(200, 20);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, 20);
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
         this.setForegroundColor("var(--ts-ui-text-color, black)");
 
         this.items = [];
+
+        this.updateHeight();
+        ThemeManager.onThemeChange(() => this.updateHeight());
+    }
+
+    /**
+     * Recalculates preferred and maximum height from a native `<select>` element's measured size.
+     *
+     * Uses an off-screen probe so the result tracks the theme font size automatically.
+     * Called at construction time and after each theme change.
+     */
+    protected updateHeight(): void {
+        const probe = document.createElement("select");
+
+        probe.style.position   = "fixed";
+        probe.style.visibility = "hidden";
+        probe.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
+        probe.style.fontSize   = "var(--ts-ui-font-size, 14px)";
+
+        document.body.appendChild(probe);
+
+        const h = Math.ceil(probe.getBoundingClientRect().height) || 20;
+
+        document.body.removeChild(probe);
+
+        this.setPreferredSize(200, h);
+        this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
     }
 
     /**
