@@ -469,7 +469,7 @@ export class Component extends BaseObject {
      */
     setZIndex(value: number) {
         this.zIndex = value;
-        this.setElementStyle("zindex", this.zIndex);
+        this.setElementStyle("zIndex", this.zIndex);
     }
 
     /**

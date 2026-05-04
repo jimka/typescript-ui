@@ -14,27 +14,41 @@ export namespace Event {
 
     let listenerMap = new Map<String, Map<String, CompFunc>>();
     let viewportListenerMap = new Map<String, Map<String, CompFunc>>();
+    let subtreeListenerMap = new Map<String, Map<String, CompFunc>>();
+    let installedListenerTypes = new Set<string>();
 
     let baseListener = function (evnt: Event) {
         let listeners = listenerMap.get(evnt.type);
-        if (!listeners) {
+        if (listeners) {
+            let elementId = (evnt.target as HTMLElement).id;
+            let compFunc = listeners.get(elementId);
+
+            if (compFunc) {
+                evnt.stopPropagation();
+
+                for (let listener of compFunc.listeners) {
+                    listener.apply(compFunc.component, [evnt]);
+                }
+            }
+        }
+
+        let subtreeListeners = subtreeListenerMap.get(evnt.type);
+        if (!subtreeListeners) {
             return;
         }
 
-        let elementId = (evnt.target as HTMLElement).id;
-        let compFunc = listeners.get(elementId);
+        let element: HTMLElement | null = evnt.target as HTMLElement;
+        while (element) {
+            if (element.id) {
+                let compFunc = subtreeListeners.get(element.id);
+                if (compFunc) {
+                    for (let listener of compFunc.listeners) {
+                        listener.apply(compFunc.component, [evnt]);
+                    }
+                }
+            }
 
-        if (!compFunc) {
-            return;
-        }
-
-        let component = compFunc.component;
-        let componentListeners = compFunc.listeners;
-
-        evnt.stopPropagation();
-
-        for (let listener of componentListeners) {
-            listener.apply(component, [evnt]);
+            element = element.parentElement;
         }
     };
 
@@ -122,7 +136,10 @@ export namespace Event {
         if (!typeMap) {
             typeMap = new Map<String, CompFunc>();
             listenerMap.set(type, typeMap);
+        }
 
+        if (!installedListenerTypes.has(type)) {
+            installedListenerTypes.add(type);
             window.addEventListener(type, baseListener, true);
         }
 
@@ -173,6 +190,92 @@ export namespace Event {
 
         if (typeMap.size == 0) {
             listenerMap.delete(type);
+        }
+
+        const subtreeMap = subtreeListenerMap.get(type);
+        const bothEmpty = !listenerMap.has(type) && (!subtreeMap || subtreeMap.size === 0);
+        if (bothEmpty && installedListenerTypes.has(type)) {
+            installedListenerTypes.delete(type);
+            window.removeEventListener(type, baseListener, true);
+        }
+    }
+
+    /**
+     * Registers a listener that fires whenever the given event type targets this component
+     * or any of its DOM descendants.
+     *
+     * @param component - The ancestor component to watch.
+     * @param type - The DOM event type string to listen for.
+     * @param listener - The callback invoked when a matching event bubbles through this component's subtree.
+     *
+     * @remarks Unlike `addListener`, which only matches the exact event target, this fires for
+     * any event whose target is a descendant of the component's element. Multiple components
+     * may register subtree listeners for the same event type; all matching ancestors are notified.
+     */
+    export function addSubtreeListener(component: Component, type: string, listener: Function): void {
+        if (!listener || !component) {
+            return;
+        }
+
+        let typeMap = subtreeListenerMap.get(type);
+        if (!typeMap) {
+            typeMap = new Map<String, CompFunc>();
+            subtreeListenerMap.set(type, typeMap);
+        }
+
+        if (!installedListenerTypes.has(type)) {
+            installedListenerTypes.add(type);
+            window.addEventListener(type, baseListener, true);
+        }
+
+        let compFunc = typeMap.get(component.getId());
+        if (!compFunc) {
+            compFunc = { component, listeners: [] };
+            typeMap.set(component.getId(), compFunc);
+        }
+
+        compFunc.listeners.push(listener);
+    }
+
+    /**
+     * Removes a previously registered subtree event listener.
+     *
+     * @param component - The component whose subtree listener should be removed.
+     * @param type - The DOM event type string the listener was registered for.
+     * @param listener - The exact callback function reference that was passed to `addSubtreeListener`.
+     */
+    export function removeSubtreeListener(component: Component, type: string, listener: Function): void {
+        if (!listener || !component) {
+            return;
+        }
+
+        let typeMap = subtreeListenerMap.get(type);
+        if (!typeMap) {
+            return;
+        }
+
+        let compFunc = typeMap.get(component.getId());
+        if (!compFunc) {
+            return;
+        }
+
+        let idx = compFunc.listeners.indexOf(listener);
+        if (idx >= 0) {
+            compFunc.listeners.splice(idx, 1);
+        }
+
+        if (compFunc.listeners.length === 0) {
+            typeMap.delete(component.getId());
+        }
+
+        if (typeMap.size === 0) {
+            subtreeListenerMap.delete(type);
+        }
+
+        const exactMap = listenerMap.get(type);
+        const bothEmpty = (!exactMap || exactMap.size === 0) && !subtreeListenerMap.has(type);
+        if (bothEmpty && installedListenerTypes.has(type)) {
+            installedListenerTypes.delete(type);
             window.removeEventListener(type, baseListener, true);
         }
     }
