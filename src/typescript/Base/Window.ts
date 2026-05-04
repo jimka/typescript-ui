@@ -18,6 +18,21 @@ export class Window extends Component {
 
     private static zIndexCounter: number = 9000;
     private static activeWindow: Window | null = null;
+    private static openWindows: Set<Window> = new Set<Window>();
+
+    private static readonly deactivateIfOutside: (e: MouseEvent) => void = (evnt: MouseEvent) => {
+        for (const win of Window.openWindows) {
+            const el = win.getElement();
+            if (el && el.contains(evnt.target as Node)) {
+                return;
+            }
+        }
+
+        if (Window.activeWindow) {
+            Window.activeWindow.header.setActive(false);
+            Window.activeWindow = null;
+        }
+    };
 
     private header: WindowHeader;
     private borderComponents: {
@@ -89,6 +104,12 @@ export class Window extends Component {
         this.doLayout();
         this.bringToFront();
 
+        if (Window.openWindows.size === 0) {
+            window.addEventListener('mousedown', Window.deactivateIfOutside, true);
+        }
+
+        Window.openWindows.add(this);
+
         document.documentElement.appendChild(el);
 
         this.setVisible(true);
@@ -122,6 +143,12 @@ export class Window extends Component {
 
         if (Window.activeWindow === this) {
             Window.activeWindow = null;
+        }
+
+        Window.openWindows.delete(this);
+
+        if (Window.openWindows.size === 0) {
+            window.removeEventListener('mousedown', Window.deactivateIfOutside, true);
         }
 
         this.setVisible(false);
