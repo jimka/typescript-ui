@@ -41,6 +41,32 @@ export class Input extends Component {
     }
 
     /**
+     * Measures the natural height of a native `<input>` element at the current theme font size.
+     *
+     * Uses an off-screen probe element, analogous to {@link Text.calculateSize}, so that
+     * the result reflects the browser's actual default styling at whatever font size the
+     * theme specifies. Returns 20 as a safe fallback if the measurement fails.
+     *
+     * @returns The measured height in pixels, rounded up to the nearest integer.
+     */
+    protected static measureNativeHeight(): number {
+        const probe = document.createElement("input");
+
+        probe.style.position   = "fixed";
+        probe.style.visibility = "hidden";
+        probe.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
+        probe.style.fontSize   = "var(--ts-ui-font-size, 14px)";
+
+        document.body.appendChild(probe);
+
+        const height = Math.ceil(probe.getBoundingClientRect().height);
+
+        document.body.removeChild(probe);
+
+        return height || 20;
+    }
+
+    /**
      * Renders the input element cast to HTMLInputElement & HTMLTextAreaElement.
      *
      * @returns The created element typed as both HTMLInputElement and HTMLTextAreaElement.

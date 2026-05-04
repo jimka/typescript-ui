@@ -14,9 +14,17 @@ export class List extends ComboBox {
     constructor() {
         super();
 
+        this.setOverflow("auto");
+        this.updateHeight();
+    }
+
+    /**
+     * Overrides the ComboBox sizing to give the list a large default preferred size
+     * and no maximum height constraint, so it can grow freely within its container.
+     */
+    protected updateHeight(): void {
         this.setPreferredSize(200, 200);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
-        this.setOverflow("auto");
     }
 
     /**

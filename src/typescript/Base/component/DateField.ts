@@ -4,6 +4,7 @@ import { Input } from "./Input.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 import { Bindable } from "../Bindable.js";
+import { ThemeManager } from "../Theme.js";
 
 /**
  * A date-picker input component backed by an `<input type="date">` element.
@@ -19,13 +20,27 @@ export class DateField extends Input implements Bindable<Date | null> {
         super();
 
         this.setCursor("text");
-        this.setPreferredSize(140, 20);
         this.setPadding(new Insets(3, 3, 3, 3));
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, 20);
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
         this.setForegroundColor("var(--ts-ui-text-color, black)");
 
+        this.updateHeight();
+        ThemeManager.onThemeChange(() => this.updateHeight());
+
         Event.addListener(this, "input", this.onInput);
+    }
+
+    /**
+     * Recalculates preferred and maximum height from the native input's measured size.
+     *
+     * Called at construction time and after each theme change so that font-size
+     * adjustments propagate to the layout hint automatically.
+     */
+    private updateHeight(): void {
+        const h = Input.measureNativeHeight();
+
+        this.setPreferredSize(140, h);
+        this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
     }
 
     /**

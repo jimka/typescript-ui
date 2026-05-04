@@ -22,7 +22,6 @@ export class Header extends Component {
     constructor(text: string) {
         super("header");
 
-        this.setPreferredSize(100, 20);
         this.setLayoutManager(new BorderLayout());
 
         this.label = new Label(text);
@@ -37,7 +36,25 @@ export class Header extends Component {
         });
 
         this.applyThemePadding();
-        ThemeManager.onThemeChange(() => this.applyThemePadding());
+        ThemeManager.onThemeChange(() => {
+            this.updatePreferredSize();
+            this.applyThemePadding();
+        });
+
+        this.updatePreferredSize();
+    }
+
+    /**
+     * Recalculates the preferred height from the label's measured preferred size.
+     *
+     * Called at construction time and after each theme change so that font-size
+     * adjustments propagate to the header's layout hint automatically.
+     */
+    private updatePreferredSize(): void {
+        const labelSize = this.label.getPreferredSize();
+        const labelHeight = labelSize ? labelSize.height : 20;
+
+        this.setPreferredSize(100, labelHeight);
     }
 
     private applyThemePadding(): void {
