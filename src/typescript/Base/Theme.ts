@@ -123,6 +123,26 @@ export interface Theme {
         border    : string;
         shadow    : string;
     };
+
+    notification: {
+        shadow : string;
+        info: {
+            background: string;
+            border    : string;
+        };
+        success: {
+            background: string;
+            border    : string;
+        };
+        warning: {
+            background: string;
+            border    : string;
+        };
+        error: {
+            background: string;
+            border    : string;
+        };
+    };
 }
 
 /**
@@ -192,6 +212,13 @@ export const DefaultTheme: Theme = {
         color     : 'rgb(0, 0, 0)',
         border    : 'rgb(180, 180, 100)',
         shadow    : '1px 2px 4px rgba(0, 0, 0, 0.2)',
+    },
+    notification: {
+        shadow : '2px 4px 8px rgba(0, 0, 0, 0.15)',
+        info   : { background: 'rgba(30, 100, 200, 0.1)',  border: 'rgb(30, 100, 200)'  },
+        success: { background: 'rgba(30, 180, 80, 0.1)',   border: 'rgb(30, 180, 80)'   },
+        warning: { background: 'rgba(220, 140, 0, 0.1)',   border: 'rgb(220, 140, 0)'   },
+        error  : { background: 'rgba(200, 50, 50, 0.1)',   border: 'rgb(200, 50, 50)'   },
     },
 };
 
@@ -263,6 +290,13 @@ export const DarkTheme: Theme = {
         border    : 'rgb(120, 110, 70)',
         shadow    : '1px 2px 4px rgba(0, 0, 0, 0.5)',
     },
+    notification: {
+        shadow : '2px 4px 8px rgba(0, 0, 0, 0.4)',
+        info   : { background: 'rgba(30, 100, 200, 0.2)',  border: 'rgb(30, 100, 200)'  },
+        success: { background: 'rgba(30, 180, 80, 0.2)',   border: 'rgb(30, 180, 80)'   },
+        warning: { background: 'rgba(220, 140, 0, 0.2)',   border: 'rgb(220, 140, 0)'   },
+        error  : { background: 'rgba(200, 50, 50, 0.2)',   border: 'rgb(200, 50, 50)'   },
+    },
 };
 
 /**
@@ -311,10 +345,19 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-context-menu-item-hover-bg'      : theme.contextMenu.item.hoverBackground,
         '--ts-ui-context-menu-item-disabled-color': theme.contextMenu.item.disabledColor,
         '--ts-ui-context-menu-separator-color'    : theme.contextMenu.separatorColor,
-        '--ts-ui-tooltip-bg'                      : theme.tooltip.background,
-        '--ts-ui-tooltip-color'                   : theme.tooltip.color,
-        '--ts-ui-tooltip-border'                  : theme.tooltip.border,
-        '--ts-ui-tooltip-shadow'                  : theme.tooltip.shadow,
+        '--ts-ui-tooltip-bg'                        : theme.tooltip.background,
+        '--ts-ui-tooltip-color'                     : theme.tooltip.color,
+        '--ts-ui-tooltip-border'                    : theme.tooltip.border,
+        '--ts-ui-tooltip-shadow'                    : theme.tooltip.shadow,
+        '--ts-ui-notification-shadow'               : theme.notification.shadow,
+        '--ts-ui-notification-info-bg'              : theme.notification.info.background,
+        '--ts-ui-notification-info-border'          : theme.notification.info.border,
+        '--ts-ui-notification-success-bg'           : theme.notification.success.background,
+        '--ts-ui-notification-success-border'       : theme.notification.success.border,
+        '--ts-ui-notification-warning-bg'           : theme.notification.warning.background,
+        '--ts-ui-notification-warning-border'       : theme.notification.warning.border,
+        '--ts-ui-notification-error-bg'             : theme.notification.error.background,
+        '--ts-ui-notification-error-border'         : theme.notification.error.border,
     };
 }
 
