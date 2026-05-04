@@ -15,6 +15,7 @@ import { Tooltip } from "./Base/Tooltip.js";
 import { Event } from "./Base/Event.js";
 import { Tree } from "./Base/component/tree/Tree.js";
 import type { TreeNode } from "./Base/component/tree/TreeNode.js";
+import { Notification } from "./Base/Notification.js";
 
 export class MiscPanel extends Component {
 
@@ -223,5 +224,38 @@ export class MiscPanel extends Component {
             win.show();
         });
         this.addComponent(buttonTree);
+
+        const buttonNotificationInfo = new Button("Notification — info");
+        buttonNotificationInfo.addActionListener(() => {
+            Notification.show("This is an informational message.", "info");
+        });
+        this.addComponent(buttonNotificationInfo);
+
+        const buttonNotificationSuccess = new Button("Notification — success");
+        buttonNotificationSuccess.addActionListener(() => {
+            Notification.show("Record saved successfully.", "success");
+        });
+        this.addComponent(buttonNotificationSuccess);
+
+        const buttonNotificationWarning = new Button("Notification — warning");
+        buttonNotificationWarning.addActionListener(() => {
+            Notification.show("Unsaved changes will be lost.", "warning");
+        });
+        this.addComponent(buttonNotificationWarning);
+
+        const buttonNotificationError = new Button("Notification — error");
+        buttonNotificationError.addActionListener(() => {
+            Notification.show("Connection failed. Please try again.", "error");
+        });
+        this.addComponent(buttonNotificationError);
+
+        const buttonNotificationStack = new Button("Notification — show all types");
+        buttonNotificationStack.addActionListener(() => {
+            Notification.show("This is an informational message.", "info");
+            Notification.show("Record saved successfully.", "success");
+            Notification.show("Unsaved changes will be lost.", "warning");
+            Notification.show("Connection failed. Please try again.", "error");
+        });
+        this.addComponent(buttonNotificationStack);
     }
 }

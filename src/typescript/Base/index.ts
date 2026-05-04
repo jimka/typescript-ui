@@ -16,6 +16,8 @@ export { ButtonGroup } from './ButtonGroup.js';
 export { Window } from './Window.js';
 export { ContextMenu } from './ContextMenu.js';
 export { Tooltip } from './Tooltip.js';
+export { Notification } from './Notification.js';
+export type { NotificationType } from './Notification.js';
 export type { PerimeterSize } from './Component.js';
 
 // Primitives
