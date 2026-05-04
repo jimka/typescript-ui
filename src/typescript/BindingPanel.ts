@@ -9,6 +9,8 @@ import { Checkbox } from "./Base/component/Checkbox.js";
 import { ComboBox } from "./Base/component/ComboBox.js";
 import { Button } from "./Base/component/Button.js";
 import { Binding } from "./Base/Binding.js";
+import { DateField } from "./Base/component/DateField.js";
+import { TimeField } from "./Base/component/TimeField.js";
 import { Model } from "./Base/data/Model.js";
 import { MemoryStore } from "./Base/data/MemoryStore.js";
 
@@ -22,15 +24,17 @@ export class BindingPanel extends Component {
         // ── Model and record ─────────────────────────────────────────────────
 
         const personModel = new Model([
-            { name: 'id',     type: 'number'  },
-            { name: 'name',   type: 'string'  },
-            { name: 'active', type: 'boolean' },
-            { name: 'role',   type: 'string'  },
+            { name: 'id',           type: 'number'  },
+            { name: 'name',         type: 'string'  },
+            { name: 'active',       type: 'boolean' },
+            { name: 'role',         type: 'string'  },
+            { name: 'birthDate',    type: 'string'  },
+            { name: 'reminderTime', type: 'string'  },
         ]);
 
         const personStore = new MemoryStore(personModel, [
-            { id: 1, name: 'Alice', active: true,  role: 'admin'  },
-            { id: 2, name: 'Bob',   active: false, role: 'editor' },
+            { id: 1, name: 'Alice', active: true,  role: 'admin',  birthDate: '1990-03-15', reminderTime: '09:00' },
+            { id: 2, name: 'Bob',   active: false, role: 'editor', birthDate: '1985-11-22', reminderTime: '14:30' },
         ]);
 
         // ── Role options store ───────────────────────────────────────────────
@@ -48,9 +52,11 @@ export class BindingPanel extends Component {
 
         // ── Components ───────────────────────────────────────────────────────
 
-        const nameField   = new TextField();
-        const activeCheck = new Checkbox();
-        const roleCombo   = new ComboBox();
+        const nameField     = new TextField();
+        const activeCheck   = new Checkbox();
+        const roleCombo     = new ComboBox();
+        const birthDateField    = new DateField();
+        const reminderTimeField = new TimeField();
 
         roleCombo.setStore(roleStore, 'label', 'value');
 
@@ -63,7 +69,32 @@ export class BindingPanel extends Component {
         const binding = new Binding()
             .bind('name',   nameField)
             .bind('active', activeCheck)
-            .bind('role',   roleCombo);
+            .bind('role',   roleCombo)
+            .bind('birthDate', birthDateField, {
+                get:    () => {
+                    const d = birthDateField.getValue();
+                    return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "";
+                },
+                set:    (v: unknown) => birthDateField.setValue(v ? new Date(String(v) + "T00:00:00") : null),
+                listen: (fn) => birthDateField.addBindingListener(fn),
+            })
+            .bind('reminderTime', reminderTimeField, {
+                get:    () => {
+                    const d = reminderTimeField.getValue();
+                    return d ? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}` : "";
+                },
+                set:    (v: unknown) => {
+                    if (!v) {
+                        reminderTimeField.setValue(null);
+                        return;
+                    }
+                    const [h, m] = String(v).split(":").map(Number);
+                    const d = new Date();
+                    d.setHours(h, m, 0, 0);
+                    reminderTimeField.setValue(d);
+                },
+                listen: (fn) => reminderTimeField.addBindingListener(fn),
+            });
 
         binding.addChangeListener((_field, _value) => {
             statusLabel.setText("Status: modified");
@@ -107,6 +138,18 @@ export class BindingPanel extends Component {
         roleRow.addComponent(new Label("Role:"));
         roleRow.addComponent(roleCombo);
         this.addComponent(roleRow);
+
+        const birthDateRow = new Component();
+        birthDateRow.setLayoutManager(new HBox());
+        birthDateRow.addComponent(new Label("Birth date:"));
+        birthDateRow.addComponent(birthDateField);
+        this.addComponent(birthDateRow);
+
+        const reminderTimeRow = new Component();
+        reminderTimeRow.setLayoutManager(new HBox());
+        reminderTimeRow.addComponent(new Label("Reminder time:"));
+        reminderTimeRow.addComponent(reminderTimeField);
+        this.addComponent(reminderTimeRow);
 
         this.addComponent(statusLabel);
 

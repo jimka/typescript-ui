@@ -379,8 +379,6 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Tree component** — a hierarchical data view is the main gap in the component set. A `Tree` with collapsible nodes would share the virtual-scrolling approach already used in `Body`, flattening the visible subtree into a single scrollable list and re-rendering only as nodes expand or collapse.
 
-* **Date and time input components** — `DateField` and `TimeField` wrapping `<input type="date">` and `<input type="time">`, implementing `Bindable<Date>`, would fill the most common gap in the form component set and integrate cleanly with the existing `Binding` system.
-
 * **Cross-browser support** — the library currently targets Chrome only. Auditing and fixing Firefox and Safari compatibility (particularly around scrollbar-width calculation, CSS custom-property fallbacks, and drag event behaviour) would significantly widen the potential user base with relatively contained effort.
 
 * **Notification / toast system** — async operations (store sync, AJAX proxy responses) have no built-in way to surface success or error feedback. A lightweight `Notification` singleton with `show(message, type, duration)` that appends a positioned overlay to `document.documentElement` would complement the existing `Window` pattern and give applications a standard feedback channel.

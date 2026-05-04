@@ -49,6 +49,8 @@ export { Card } from './layout/Card.js';
 export { Text } from './component/Text.js';
 export { Label } from './component/Label.js';
 export { TextField } from './component/TextField.js';
+export { DateField } from './component/DateField.js';
+export { TimeField } from './component/TimeField.js';
 export { PasswordField } from './component/PasswordField.js';
 export { TextArea } from './component/TextArea.js';
 export { Checkbox } from './component/Checkbox.js';
