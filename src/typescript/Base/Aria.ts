@@ -13,7 +13,10 @@ export type AriaRole =
     | 'columnheader'
     | 'tablist'
     | 'tab'
-    | 'tabpanel';
+    | 'tabpanel'
+    | 'tree'
+    | 'treeitem'
+    | 'group';
 
 /**
  * Valid values for the `aria-sort` attribute.
@@ -186,6 +189,51 @@ export class Aria {
      */
     getRowCount(): number | null {
         const v = this.attributes.get("rowcount");
+
+        return v !== undefined ? Number(v) : null;
+    }
+
+    /**
+     * Sets `aria-expanded`.
+     *
+     * @param value - `true` if the element is expanded, `false` if collapsed, `null` to remove the attribute (e.g. for leaf nodes).
+     */
+    setExpanded(value: boolean | null): void {
+        if (value !== null) {
+            this.setAttribute("expanded", String(value));
+        } else {
+            this.attributes.delete("expanded");
+            this.component.removeElementAttribute("aria-expanded");
+        }
+    }
+
+    /**
+     * Returns the current `aria-expanded` value, or null if not set.
+     *
+     * @returns The expanded state, or null.
+     */
+    getExpanded(): boolean | null {
+        const v = this.attributes.get("expanded");
+
+        return v !== undefined ? v === "true" : null;
+    }
+
+    /**
+     * Sets `aria-level` (1-based nesting depth of a tree item).
+     *
+     * @param value - The 1-based level number.
+     */
+    setLevel(value: number): void {
+        this.setAttribute("level", String(value));
+    }
+
+    /**
+     * Returns the current `aria-level`, or null if not set.
+     *
+     * @returns The level number, or null.
+     */
+    getLevel(): number | null {
+        const v = this.attributes.get("level");
 
         return v !== undefined ? Number(v) : null;
     }

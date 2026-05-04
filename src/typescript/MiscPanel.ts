@@ -13,6 +13,8 @@ import { TablePanel, Table, ColumnSpec } from "./Base/index.js";
 import { ContextMenu } from "./Base/ContextMenu.js";
 import { Tooltip } from "./Base/Tooltip.js";
 import { Event } from "./Base/Event.js";
+import { Tree } from "./Base/component/tree/Tree.js";
+import type { TreeNode } from "./Base/component/tree/TreeNode.js";
 
 export class MiscPanel extends Component {
 
@@ -177,5 +179,49 @@ export class MiscPanel extends Component {
         const buttonTooltip = new Button("Hover over me for a tooltip");
         Tooltip.attach(buttonTooltip, "This tooltip appears after a short delay");
         this.addComponent(buttonTooltip);
+
+        const buttonTree = new Button("Show tree component");
+        buttonTree.addActionListener(() => {
+            const win = new Window("Tree component");
+            win.setX(200);
+            win.setY(150);
+            win.setWidth(300);
+            win.setHeight(400);
+
+            const treeData: TreeNode[] = [
+                {
+                    label: "Animals", children: [
+                        {
+                            label: "Mammals", children: [
+                                { label: "Dog" },
+                                { label: "Cat" },
+                                { label: "Horse" },
+                            ],
+                        },
+                        {
+                            label: "Birds", children: [
+                                { label: "Eagle" },
+                                { label: "Parrot" },
+                            ],
+                        },
+                        { label: "Fish" },
+                    ],
+                },
+                {
+                    label: "Plants", children: [
+                        { label: "Trees" },
+                        { label: "Flowers" },
+                        { label: "Ferns" },
+                    ],
+                },
+                { label: "Fungi" },
+            ];
+
+            const tree = new Tree();
+            tree.setNodes(treeData);
+            win.addComponent(tree);
+            win.show();
+        });
+        this.addComponent(buttonTree);
     }
 }

@@ -68,6 +68,10 @@ export { Header } from './component/Header.js';
 export { Image } from './component/Image.js';
 export { FontAwesomeIcon } from './component/FontAwesomeIcon.js';
 
+// Components — tree
+export { Tree } from './component/tree/Tree.js';
+export type { TreeNode } from './component/tree/TreeNode.js';
+
 // Components — lists
 export { List } from './component/List.js';
 export { BulletedList } from './component/BulletedList.js';
