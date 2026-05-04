@@ -35,6 +35,9 @@ export class HeaderCell extends DefaultCell {
     constructor(text: String, fieldName: string) {
         super("th");
 
+        this.setRole("columnheader");
+        this.setAriaAttribute("sort", "none");
+
         this.text = text;
         this.fieldName = fieldName;
 
@@ -97,6 +100,7 @@ export class HeaderCell extends DefaultCell {
         const arrow = state === 'asc' ? ' ▲' : state === 'desc' ? ' ▼' : '';
 
         this.getRenderer().getLabel().setText(this.text + arrow);
+        this.setAriaAttribute("sort", state === 'asc' ? 'ascending' : state === 'desc' ? 'descending' : 'none');
     }
 
     /**

@@ -379,7 +379,7 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Tree component** — a hierarchical data view is the main gap in the component set. A `Tree` with collapsible nodes would share the virtual-scrolling approach already used in `Body`, flattening the visible subtree into a single scrollable list and re-rendering only as nodes expand or collapse.
 
-* **Keyboard navigation and ARIA roles** — the framework targets a desktop-style feel but has no keyboard focus management. Adding `tabIndex` propagation, arrow-key navigation inside `Tab`, `Split`, `Table`, and `ComboBox`, and the appropriate ARIA roles (`role="grid"`, `role="tablist"`, etc.) would make the library usable without a mouse and comply with baseline accessibility standards.
+* **Dedicated ARIA helper class** — ARIA attributes and roles are currently applied directly through `Component.setRole` / `setAriaAttribute`. As accessibility coverage grows it will be worth consolidating the logic into a separate `Aria` utility class (or `AriaBehaviour` mixin) that encapsulates the mapping from component semantics to ARIA attributes, keeps the attribute-name strings in one place, and makes it straightforward to audit coverage across the entire component set.
 
 * **Date and time input components** — `DateField` and `TimeField` wrapping `<input type="date">` and `<input type="time">`, implementing `Bindable<Date>`, would fill the most common gap in the form component set and integrate cleanly with the existing `Binding` system.
 
