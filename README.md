@@ -71,7 +71,7 @@ Located in `Base/component/`:
 
 **Text and input**
 - `Label`, `PasswordField`, `Text`, `TextArea`, `TextField`
-- `Checkbox`, `ComboBox`, `Input`, `RadioButton`, `Slider`
+- `Checkbox`, `ComboBox`, `DateField`, `Input`, `RadioButton`, `Slider`, `TimeField`
 
 **Buttons**
 - `Button`, `RadioButton`, `ToggleButton`
@@ -79,16 +79,18 @@ Located in `Base/component/`:
 
 **Display**
 - `FontAwesomeIcon`, `Header`, `Image`
-- `BulletedList`, `List`, `ListItem`, `NumberedList`
+- `BulletedList`, `BulletedListItemStyle`, `List`, `ListItem`, `NumberedList`, `NumberedListItemStyle`
 - `FieldSet`, `Legend`
 
 **Containers**
+- `Option` — `<option>` element wrapper; add to a `ComboBox` to populate its items
 - `SplitGutter` — drag handle for the Split layout
 - `Window` — draggable and resizable floating window
 - `ContextMenu` — floating right-click menu appended to `document.documentElement`; call `show(x, y, items[])` to display and it closes automatically on item click or outside click
 - `ContextMenuItem`, `ContextMenuSeparator` — building blocks used inside `ContextMenu`
 
 **Overlays**
+- `Notification` — static toast; call `Notification.show(message, type, duration?)` to display a timed overlay in the bottom-right corner. `type` is `'info'`, `'success'`, `'warning'`, or `'error'`; `duration` defaults to 3000 ms (pass `0` for a persistent notification). Multiple notifications stack upward and each has a manual dismiss button. The timer pauses while the pointer hovers over the notification.
 - `Tooltip` — singleton hover hint; use `Tooltip.attach(component, text)` to wire a 500 ms delay tooltip onto any component, or `Tooltip.show` / `Tooltip.hide` for manual control
 
 **Table subsystem** (`Base/component/table/`):
@@ -99,11 +101,27 @@ Located in `Base/component/`:
 
 > `Body` uses **virtual scrolling**: only the rows visible in the viewport plus a small buffer are in the DOM at any time. A phantom `<div>` gives the scroll container its full height without rendering every row. A fixed pool of `Row` components is reused as the user scrolls — pool slots are rebound to new data via `setData()` only when their data index changes, avoiding redundant DOM work on resize. See `Body.ts` for the full implementation.
 
+**Tree subsystem** (`Base/component/tree/`):
+- `Tree` — hierarchical data view with collapsible nodes and virtual scrolling; pass root nodes via `setNodes(nodes[])`.
+- `TreeNode` — data interface: `{ label: string; children?: TreeNode[] }`. Nodes with children are collapsible parents; nodes without are leaves.
+- `TreeRow` — internal row component recycled by `Tree`; not used directly.
+
+```typescript
+const tree = new Tree();
+tree.setNodes([
+    { label: 'Fruits', children: [
+        { label: 'Apple' },
+        { label: 'Banana' },
+    ]},
+    { label: 'Vegetables' },
+]);
+```
+
 ### Utilities
 
 | File | Purpose |
 |---|---|
-| `AnchorType.ts`, `FillType.ts`, `Placement.ts`, `Position.ts` | Enums |
+| `AnchorType.ts`, `BorderStyle.ts`, `FillType.ts`, `Placement.ts`, `Position.ts` | Enums |
 | `Border.ts`, `BorderLine.ts` | Four-sided border management |
 | `CSS.ts` | Dynamic CSS rule creation and lookup |
 | `Event.ts` | Event delegation — centralized per-type listener map |
@@ -180,6 +198,15 @@ The `Theme` interface uses nested objects grouped by component. All keys are req
 | `tooltip.color` | `--ts-ui-tooltip-color` | Text color inside the `Tooltip` |
 | `tooltip.border` | `--ts-ui-tooltip-border` | Border color of the `Tooltip` panel |
 | `tooltip.shadow` | `--ts-ui-tooltip-shadow` | Drop shadow of the `Tooltip` panel |
+| `notification.shadow` | `--ts-ui-notification-shadow` | Drop shadow applied to all `Notification` toasts |
+| `notification.info.background` | `--ts-ui-notification-info-bg` | Background of `'info'` notifications |
+| `notification.info.border` | `--ts-ui-notification-info-border` | Border color of `'info'` notifications |
+| `notification.success.background` | `--ts-ui-notification-success-bg` | Background of `'success'` notifications |
+| `notification.success.border` | `--ts-ui-notification-success-border` | Border color of `'success'` notifications |
+| `notification.warning.background` | `--ts-ui-notification-warning-bg` | Background of `'warning'` notifications |
+| `notification.warning.border` | `--ts-ui-notification-warning-border` | Border color of `'warning'` notifications |
+| `notification.error.background` | `--ts-ui-notification-error-bg` | Background of `'error'` notifications |
+| `notification.error.border` | `--ts-ui-notification-error-border` | Border color of `'error'` notifications |
 
 > **Background tokens** (`button.background`, `button.pressed.background`, `toggle.selected.background`) accept either a plain colour (`rgb(200, 200, 200)`) or any CSS `background-image` value (`linear-gradient(...)`, `radial-gradient(...)`, etc.). The framework applies the token to both `background-color` and `background-image`; CSS's "invalid at computed-value time" rule routes the value to whichever property it is valid for.
 
@@ -222,9 +249,13 @@ Custom components that create `Text` instances and are removed from the page sho
 
 ## Demo panels
 
-Each tab in the running app corresponds to a `*Panel.ts` file that demonstrates one layout manager. All panels extend `LayoutTestPanel`.
+Each tab in the running app corresponds to a `*Panel.ts` file that demonstrates one layout manager or feature set. All layout panels extend `LayoutTestPanel`.
 
-`MiscPanel` is the most feature-rich: it shows floating `Window`s, a data `Table`, an `Image`, and various form components.
+`MiscPanel` shows floating `Window`s, a data `Table`, an `Image`, and various form components.
+
+`BindingPanel` demonstrates the `Binding` system: a `Model` and `MemoryStore` are wired to form fields (`TextField`, `Checkbox`, `ComboBox`, `DateField`, `TimeField`) via a `Binding` instance, with commit/reject buttons.
+
+`ComplexUIPanel` is a general showcase combining `FieldSet`, `RadioButton`, `ButtonGroup`, `Table`, and other components in a realistic layout.
 
 ## License
 
@@ -360,6 +391,39 @@ rec?.commit();                // clears dirty flag
 // rec?.reject()              // reverts to last commit
 ```
 
+### Bind a record to UI components
+
+`Binding` synchronises a `ModelRecord` with a set of form components. Components that implement `Bindable` (`TextField`, `Checkbox`, `ComboBox`, `DateField`, `TimeField`) can be bound directly by field name. Any other component can be wired via explicit accessor callbacks.
+
+```typescript
+import { Binding } from './Base/index.js';
+
+const binding = new Binding()
+    .bind('name',   nameField)
+    .bind('active', activeCheckbox)
+    .bind('role',   roleCombo);
+
+// Populate all components from a record:
+binding.setRecord(store.getAt(0));
+
+// Commit or reject the edits:
+binding.commit();
+// binding.reject();
+```
+
+Use explicit accessors for components that do not implement `Bindable`:
+
+```typescript
+const binding = new Binding()
+    .bind('name', myWidget, {
+        get:    () => myWidget.getValue(),
+        set:    (v) => myWidget.setValue(v),
+        listen: (fn) => myWidget.addChangeListener(fn),
+    });
+```
+
+`Binding` also fires `onChange`, `onCommit`, and `onReject` listeners so callers can react to record mutations without polling.
+
 ### Field mapping
 
 Use `mapping` when the incoming JSON key differs from the field name:
@@ -375,4 +439,6 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Create an initialisation package** — add a separate `create-typescript-ui` (or similar) package whose sole purpose is to scaffold new projects. Running `npm create typescript-ui` (or `npx create-typescript-ui`) would generate a minimal project wired up with the library, a working `tsconfig.json`, and a Vite dev server, so consumers can get started without manually configuring dependencies or entry-point boilerplate.
 
-* **Tree node renderers** — `TreeRow` currently renders each node as two plain `<span>` elements (a toggle icon and a label). The groundwork for custom renderers is already there: `TreeRow.layoutChildren()` positions sub-components by absolute coordinates, so replacing the default spans with arbitrary `Component` instances would be straightforward. A renderer API similar to the table's `CellRenderer` pattern — a factory passed to the `Tree` constructor or `setNodeRenderer()` — would let callers display icons, badges, or rich content per node.
+* **Tree node renderers** — `TreeRow` currently renders each node as two plain `<span>` elements (a toggle icon and a label). A renderer API similar to the table's `CellRenderer` pattern — a factory passed to the `Tree` constructor or `setNodeRenderer()` — would let callers display icons, badges, or rich content per node.
+
+* ** Fix tab buttons ** — They are currently based on the `ToggleButton`s and can be 'unclicked', resulting in no tabs being pressed. Either extend `ToggleButton` to support this scenario (Perhaps by treating this as a bug in 'ButtonGroup') or by building a new `TabButton` component.
