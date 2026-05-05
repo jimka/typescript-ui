@@ -13,6 +13,7 @@ import { DateField } from "./Base/component/DateField.js";
 import { TimeField } from "./Base/component/TimeField.js";
 import { Model } from "./Base/data/Model.js";
 import { MemoryStore } from "./Base/data/MemoryStore.js";
+import { Notification } from "./Base/Notification.js";
 
 export class BindingPanel extends Component {
 
@@ -94,7 +95,20 @@ export class BindingPanel extends Component {
                     reminderTimeField.setValue(d);
                 },
                 listen: (fn) => reminderTimeField.addBindingListener(fn),
-            });
+            })
+            .addValidation('name', nameField, [
+                { type: 'required',  message: 'Name is required.' },
+                { type: 'minLength', min: 2,   message: 'Name must be at least 2 characters.' },
+                { type: 'maxLength', max: 50,  message: 'Name must be at most 50 characters.' },
+            ])
+            .addValidation('birthDate', birthDateField, [
+                { type: 'required', message: 'Birth date is required.' },
+            ])
+            .addValidation('reminderTime', reminderTimeField, [
+                { type: 'required', message: 'Reminder time is required.' },
+            ]);
+
+        binding.setValidateOnChange(true);
 
         binding.addChangeListener((_field, _value) => {
             statusLabel.setText("Status: modified");
@@ -164,7 +178,15 @@ export class BindingPanel extends Component {
 
         // ── Wire up interactions ─────────────────────────────────────────────
 
-        commitButton.addActionListener(() => binding.commit());
+        commitButton.addActionListener(() => {
+            if (binding.validate()) {
+                binding.commit();
+                Notification.show('Record saved.', 'success');
+            } else {
+                Notification.show('Please fix the highlighted fields before saving.', 'error');
+            }
+        });
+
         rejectButton.addActionListener(() => binding.reject());
 
         // Load stores then bind the first record

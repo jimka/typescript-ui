@@ -143,6 +143,17 @@ export interface Theme {
             border    : string;
         };
     };
+
+    validation: {
+        error: {
+            border : string;
+            tooltip: {
+                background: string;
+                color     : string;
+                border    : string;
+            };
+        };
+    };
 }
 
 /**
@@ -219,6 +230,16 @@ export const DefaultTheme: Theme = {
         success: { background: 'rgba(30, 180, 80, 0.1)',   border: 'rgb(30, 180, 80)'   },
         warning: { background: 'rgba(220, 140, 0, 0.1)',   border: 'rgb(220, 140, 0)'   },
         error  : { background: 'rgba(200, 50, 50, 0.1)',   border: 'rgb(200, 50, 50)'   },
+    },
+    validation: {
+        error: {
+            border : 'rgb(200, 50, 50)',
+            tooltip: {
+                background: 'rgb(180, 30, 30)',
+                color     : 'rgb(255, 255, 255)',
+                border    : 'rgb(140, 20, 20)',
+            },
+        },
     },
 };
 
@@ -297,6 +318,16 @@ export const DarkTheme: Theme = {
         warning: { background: 'rgba(220, 140, 0, 0.2)',   border: 'rgb(220, 140, 0)'   },
         error  : { background: 'rgba(200, 50, 50, 0.2)',   border: 'rgb(200, 50, 50)'   },
     },
+    validation: {
+        error: {
+            border : 'rgb(220, 80, 80)',
+            tooltip: {
+                background: 'rgb(160, 30, 30)',
+                color     : 'rgb(255, 220, 220)',
+                border    : 'rgb(120, 20, 20)',
+            },
+        },
+    },
 };
 
 /**
@@ -358,6 +389,10 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-notification-warning-border'       : theme.notification.warning.border,
         '--ts-ui-notification-error-bg'             : theme.notification.error.background,
         '--ts-ui-notification-error-border'         : theme.notification.error.border,
+        '--ts-ui-validation-error-border'           : theme.validation.error.border,
+        '--ts-ui-validation-error-tooltip-bg'       : theme.validation.error.tooltip.background,
+        '--ts-ui-validation-error-tooltip-color'    : theme.validation.error.tooltip.color,
+        '--ts-ui-validation-error-tooltip-border'   : theme.validation.error.tooltip.border,
     };
 }
 

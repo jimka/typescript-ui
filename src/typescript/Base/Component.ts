@@ -79,6 +79,12 @@ export class Component extends BaseObject {
     private autoCommitStyle: boolean = true;
     private layoutPaused: boolean = false;
     private _aria: Aria | null = null;
+    // Tracks the single parent this component belongs to. Exposed read-only via
+    // getParentComponent() for structural queries (e.g. FieldDecorator insertion).
+    // Do NOT use this reference to propagate information upward from child to parent —
+    // that direction of communication creates tight coupling and circular dependencies.
+    // Parent-to-child communication (layout, sizing) is the only intended flow.
+    private _parent: Component | null = null;
     colorScheme: string;
 
     constructor(tag: string = "div") {
@@ -1416,11 +1422,25 @@ export class Component extends BaseObject {
      * @param component - The child component to add.
      * @param constraints - Optional. Layout constraints to pass to the layout manager.
      */
+    /**
+     * Returns the parent component this component was added to, or null if it has no parent.
+     *
+     * @returns The parent {@link Component}, or null.
+     */
+    getParentComponent(): Component | null {
+        return this._parent;
+    }
+
     addComponent(component: Component, constraints?: LayoutConstraints) {
+        if (component._parent !== null) {
+            throw new Error(`Component ${component.getId()} already has a parent. Remove it first.`);
+        }
+
         this.components.push(component);
 
         this.setLayoutConstraints(component, constraints);
 
+        component._parent = this;
         component.onPreferredSizeChange = () => {
             this.doLayout();
 
@@ -1461,6 +1481,7 @@ export class Component extends BaseObject {
 
         let constraints = this.delLayoutConstraints(component);
 
+        component._parent = null;
         component.onPreferredSizeChange = null;
         component.removeElement();
         this.doLayout();
@@ -1474,6 +1495,7 @@ export class Component extends BaseObject {
     removeAllComponents() {
         for (let idx in this.components) {
             let component = this.components[idx];
+            component._parent = null;
             component.onPreferredSizeChange = null;
             component.removeElement();
         }

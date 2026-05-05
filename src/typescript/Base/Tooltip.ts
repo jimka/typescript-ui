@@ -7,6 +7,30 @@ import { BorderStyle } from "./BorderStyle.js";
 import { Label } from "./component/Label.js";
 
 /**
+ * Optional color overrides for a tooltip attachment.
+ *
+ * When provided to {@link Tooltip.attach}, these replace the default theme variables
+ * for the duration that the tooltip is shown for that component.
+ */
+export interface TooltipColors {
+    /** CSS color for the tooltip background. */
+    background?: string;
+    /** CSS color for the tooltip text. */
+    color?: string;
+    /** CSS color for the tooltip border. */
+    border?: string;
+}
+
+/** Internal record of a component's tooltip attachment. */
+interface TooltipAttachment {
+    text       : string;
+    colors     : TooltipColors | undefined;
+    mouseoverFn: Function;
+    mousemoveFn: Function;
+    mouseoutFn : Function;
+}
+
+/**
  * A singleton floating tooltip that appears near the cursor after a short delay.
  *
  * Use `Tooltip.attach(component, text)` to wire hover listeners onto any component.
@@ -21,6 +45,7 @@ export class Tooltip extends Component {
 
     private static instance: Tooltip | null = null;
     private static showTimer: ReturnType<typeof setTimeout> | null = null;
+    private static attachments: Map<string, TooltipAttachment> = new Map();
 
     /** Approximate character width in pixels for the 14 px system-ui font. */
     private static readonly CHAR_WIDTH: number = 7;
@@ -136,14 +161,22 @@ export class Tooltip extends Component {
      * because the Event system routes through a window-level capture handler, and
      * the non-bubbling enter/leave events are not reliably seen there in Chrome.
      *
+     * If `colors` is provided the tooltip uses those colors instead of the default
+     * theme variables while it is showing for this component.
+     *
+     * Calling `attach` on a component that already has an attachment replaces it.
+     *
      * @param component - The component to attach hover behaviour to.
      * @param text - The tooltip text to display.
+     * @param colors - Optional color overrides applied while this tooltip is visible.
      */
-    static attach(component: Component, text: string): void {
+    static attach(component: Component, text: string, colors?: TooltipColors): void {
+        Tooltip.detach(component);
+
         let cursorX = 0;
         let cursorY = 0;
 
-        Event.addListener(component, "mouseover", (e: MouseEvent) => {
+        const mouseoverFn = (e: MouseEvent) => {
             if (Tooltip.showTimer !== null) {
                 return;
             }
@@ -152,18 +185,71 @@ export class Tooltip extends Component {
             cursorY = e.clientY;
 
             Tooltip.showTimer = setTimeout(() => {
+                Tooltip._applyColors(colors);
                 Tooltip.show(text, cursorX, cursorY);
                 Tooltip.showTimer = null;
             }, 500);
-        });
+        };
 
-        Event.addListener(component, "mousemove", (e: MouseEvent) => {
+        const mousemoveFn = (e: MouseEvent) => {
             cursorX = e.clientX;
             cursorY = e.clientY;
-        });
+        };
 
-        Event.addListener(component, "mouseout", () => {
+        const mouseoutFn = () => {
             Tooltip.hide();
+        };
+
+        Event.addListener(component, "mouseover", mouseoverFn);
+        Event.addListener(component, "mousemove", mousemoveFn);
+        Event.addListener(component, "mouseout", mouseoutFn);
+
+        Tooltip.attachments.set(component.getId(), {
+            text, colors, mouseoverFn, mousemoveFn, mouseoutFn,
+        });
+    }
+
+    /**
+     * Removes the tooltip attachment from a component, cancelling any pending show
+     * and hiding the tooltip if it is currently visible for this component.
+     *
+     * @param component - The component whose attachment should be removed.
+     */
+    static detach(component: Component): void {
+        const id  = component.getId();
+        const att = Tooltip.attachments.get(id);
+
+        if (!att) {
+            return;
+        }
+
+        Event.removeListener(component, "mouseover", att.mouseoverFn);
+        Event.removeListener(component, "mousemove", att.mousemoveFn);
+        Event.removeListener(component, "mouseout",  att.mouseoutFn);
+
+        Tooltip.attachments.delete(id);
+        Tooltip.hide();
+    }
+
+    /**
+     * Applies optional color overrides to the singleton tooltip instance before it is shown.
+     * Resets to the default theme variables when no overrides are provided.
+     *
+     * @param colors - The color overrides to apply, or `undefined` to use defaults.
+     */
+    private static _applyColors(colors?: TooltipColors): void {
+        const inst = Tooltip.getInstance();
+
+        inst.setBackgroundColor(
+            colors?.background ?? 'var(--ts-ui-tooltip-bg, rgb(255, 255, 240))'
+        );
+        inst.setForegroundColor(
+            colors?.color ?? 'var(--ts-ui-tooltip-color, rgb(0, 0, 0))'
+        );
+        inst.setBorder({
+            style: BorderStyle.SOLID,
+            width: 1,
+            color: colors?.border ?? 'var(--ts-ui-tooltip-border, rgb(180, 180, 100))',
         });
     }
 
