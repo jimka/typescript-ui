@@ -441,4 +441,3 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Tree node renderers** — `TreeRow` currently renders each node as two plain `<span>` elements (a toggle icon and a label). A renderer API similar to the table's `CellRenderer` pattern — a factory passed to the `Tree` constructor or `setNodeRenderer()` — would let callers display icons, badges, or rich content per node.
 
-* ** Fix tab buttons ** — They are currently based on the `ToggleButton`s and can be 'unclicked', resulting in no tabs being pressed. Either extend `ToggleButton` to support this scenario (Perhaps by treating this as a bug in 'ButtonGroup') or by building a new `TabButton` component.
