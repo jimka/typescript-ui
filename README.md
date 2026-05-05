@@ -253,7 +253,7 @@ Each tab in the running app corresponds to a `*Panel.ts` file that demonstrates 
 
 `MiscPanel` shows floating `Window`s, a data `Table`, an `Image`, and various form components.
 
-`BindingPanel` demonstrates the `Binding` system: a `Model` and `MemoryStore` are wired to form fields (`TextField`, `Checkbox`, `ComboBox`, `DateField`, `TimeField`) via a `Binding` instance, with commit/reject buttons.
+`BindingPanel` demonstrates the `Binding` system: a `Model` and `MemoryStore` are wired to form fields (`TextField`, `Checkbox`, `ComboBox`, `DateField`, `TimeField`) via a `Binding` instance, with commit/reject buttons and live field validation (required, min/max length rules with red-outline error indicators and hover tooltips).
 
 `ComplexUIPanel` is a general showcase combining `FieldSet`, `RadioButton`, `ButtonGroup`, `Table`, and other components in a realistic layout.
 
@@ -433,11 +433,45 @@ Use `mapping` when the incoming JSON key differs from the field name:
 // incoming { first_name: 'Alice' } → record.get('firstName') === 'Alice'
 ```
 
-## Suggestions for next steps
+## TODO
+
+### High priority
+
+* **`Binding` record-change veto** — `setRecord()` has no way to abort a record switch. Add an `addBeforeRecordListener(fn: (next: ModelRecord | null) => boolean)` API: listeners return `false` to cancel the change. Useful for guarding against switching away from an invalid or dirty record. Async confirmation (e.g. a dialog) must be handled at the call site since `setRecord()` stays synchronous.
+
+* **Modal dialog** — `Window` is draggable but never blocking. A `Dialog` component (or a `modal` option on `Window`) should render a full-viewport backdrop, trap keyboard focus inside, and prevent interaction with content behind it. This is needed for confirmation prompts and multi-step forms.
+
+* **Drag-and-drop system** — no DnD primitive exists. A `DragSource` / `DropTarget` API built on top of the `Event` class would enable reordering list items, moving tree nodes, and rearranging tab order. Should expose drag data and drag-over feedback hooks rather than a single monolithic implementation.
+
+* **Progress / loading indicators** — no `ProgressBar` or `Spinner` component exists. The Table's virtual scroll has no "loading" state, and async `Store.load()` has no visual feedback. A `ProgressBar` (0–100 %, or indeterminate) and a `Spinner` overlay are the minimum needed to communicate async activity.
+
+* **Keyboard navigation and focus management** — ARIA roles are applied (`role="grid"`, `role="tree"`) but keyboard interaction is absent. Table rows, tree nodes, and list items should respond to arrow keys; `Tab` order inside composite widgets needs a `roving tabindex` implementation. This is the main accessibility gap.
+
+### Low priority
 
 * **Add a test suite** — the project has no automated tests. Adding unit tests for the pure logic in `Util`, `Type`, layout constraint resolution, and `ButtonGroup` would catch regressions quickly and is a natural starting point before larger refactors.
 
 * **Create an initialisation package** — add a separate `create-typescript-ui` (or similar) package whose sole purpose is to scaffold new projects. Running `npm create typescript-ui` (or `npx create-typescript-ui`) would generate a minimal project wired up with the library, a working `tsconfig.json`, and a Vite dev server, so consumers can get started without manually configuring dependencies or entry-point boilerplate.
 
 * **Tree node renderers** — `TreeRow` currently renders each node as two plain `<span>` elements (a toggle icon and a label). A renderer API similar to the table's `CellRenderer` pattern — a factory passed to the `Tree` constructor or `setNodeRenderer()` — would let callers display icons, badges, or rich content per node.
+
+* **Accordion layout manager** — a collapsible-section container is missing. An `Accordion` layout (or a standalone `AccordionPanel` component) with expand/collapse animation would cover the same design pattern as `Tab` but with vertically stacked, simultaneously openable sections.
+
+* **Menu bar** — `ContextMenu` covers right-click menus; there is no top-level horizontal menu bar with keyboard-navigable drop-down submenus. A `MenuBar` + `Menu` + `MenuItem` hierarchy would fill this gap for application-style UIs.
+
+* **Closeable tabs** — the `Tab` layout has no way to remove a tab at runtime. Adding an optional close button (×) per tab button, and a `onTabClose` callback on the layout, would allow dynamic tab management without reimplementing the entire `Tab` layout.
+
+* **Multi-select List** — `List` (and `ComboBox`) support only single selection. A `multiSelect` option with checkbox rendering per item and a `getValues() / setValues()` API would cover the common case of selecting several items from a fixed set.
+
+* **Autocomplete / typeahead** — `TextField` has no suggestion overlay. An `AutoCompleteField` (or an `AutoComplete` plugin for `TextField`) that shows a filtered dropdown as the user types, backed by a static array or a `Store`, is a frequently needed input pattern.
+
+* **Table column pinning** — there is no way to freeze one or more columns to the left while the rest scroll horizontally. Column pinning requires a dual-panel table (fixed + scrolling) sharing a single virtual-scroll position; this is the largest missing table feature.
+
+* **Table multi-column sort** — `Store.sort()` accepts one field at a time. Supporting an ordered sort descriptor array (e.g. `store.sort([{ field: 'lastName', dir: 'asc' }, { field: 'firstName', dir: 'asc' }])`) and surfacing the sort priority in column header indicators would match the expectation of most tabular UIs.
+
+* **Server-side pagination** — `AjaxProxy` loads all records in one request. Adding `page` / `pageSize` params, a `totalCount` field in the response contract, and `Store.nextPage()` / `prevPage()` methods would support large server-side datasets without requiring the client to hold all rows in memory.
+
+* **Number spinner input** — there is no `NumberField` or `Spinner` component with increment/decrement buttons and a numeric `Bindable` interface. The current `Slider` covers range selection but not free numeric entry with step controls.
+
+* **CSV / JSON export** — the `Table` has no export capability. A `Table.exportCSV()` and `Table.exportJSON()` utility (operating on the store's current filtered/sorted record set) would be a low-effort addition with high practical value.
 
