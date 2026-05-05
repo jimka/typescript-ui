@@ -21,6 +21,7 @@ export class ButtonGroup {
      */
     private updateButtonStates(initiatorButton: RadioButton | ToggleButton) {
         if (!initiatorButton.isSelected()) {
+            initiatorButton.setSelected(true);
             return;
         }
 
