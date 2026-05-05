@@ -4,6 +4,11 @@
 export { Binding } from './Binding.js';
 export type { Bindable, BindingAccessors } from './Bindable.js';
 
+// Validation
+export { FieldDecorator } from './validation/FieldDecorator.js';
+export type { ValidationRule } from './validation/ValidationRule.js';
+export type { FieldValidationResult } from './validation/ValidationResult.js';
+
 // Theming
 export { ThemeManager, DefaultTheme, DarkTheme } from './Theme.js';
 export type { Theme } from './Theme.js';

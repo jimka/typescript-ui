@@ -3,6 +3,10 @@
 import { BaseObject } from './BaseObject.js';
 import { ModelRecord } from './data/ModelRecord.js';
 import { Bindable, BindingAccessors } from './Bindable.js';
+import { Component } from './Component.js';
+import { ValidationRule, FieldValidationConfig } from './validation/ValidationRule.js';
+import { FieldDecorator } from './validation/FieldDecorator.js';
+import { applyRule } from './validation/Validator.js';
 
 interface BoundEntry {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -45,6 +49,8 @@ export class Binding extends BaseObject {
     private changeListeners:  Array<(fieldName: string, value: unknown) => void> = [];
     private commitListeners:  Array<() => void> = [];
     private rejectListeners:  Array<() => void> = [];
+    private validationConfigs: Map<string, FieldValidationConfig> = new Map();
+    private globalValidateOnChange: boolean = false;
 
     // ── Registration ────────────────────────────────────────────────────────
 
@@ -80,10 +86,18 @@ export class Binding extends BaseObject {
         this.entries.set(fieldName, entry);
 
         acc.listen(() => {
-            if (!entry.active || !this.record) return;
+            if (!entry.active || !this.record) {
+                return;
+            }
+
             const value = acc.get();
             this.record.set(fieldName, value);
-            for (const fn of this.changeListeners) fn(fieldName, value);
+
+            for (const fn of this.changeListeners) {
+                fn(fieldName, value);
+            }
+
+            this._validateFieldIfLive(fieldName);
         });
 
         if (this.record) {
@@ -103,8 +117,10 @@ export class Binding extends BaseObject {
         const entry = this.entries.get(fieldName);
         if (entry) {
             entry.active = false;
+
             this.entries.delete(fieldName);
         }
+
         return this;
     }
 
@@ -118,9 +134,19 @@ export class Binding extends BaseObject {
      */
     setRecord(record: ModelRecord | null): void {
         this.record = record;
-        if (!record) return;
+
+        this.clearValidation();
+
+        if (!record) {
+            return;
+        }
+
         for (const [fieldName, entry] of this.entries) {
             entry.accessors.set(record.get(fieldName));
+        }
+
+        for (const [fieldName] of this.validationConfigs) {
+            this._validateFieldIfLive(fieldName);
         }
     }
 
@@ -139,21 +165,31 @@ export class Binding extends BaseObject {
      */
     commit(): void {
         this.record?.commit();
-        for (const fn of this.commitListeners) fn();
+
+        for (const fn of this.commitListeners) {
+            fn();
+        }
     }
 
     /**
      * Rejects all changes on the current record and re-syncs every component
      * from the reverted field values. Fires all registered reject listeners.
+     * Also clears any active validation error decorations.
      */
     reject(): void {
         this.record?.reject();
+
         if (this.record) {
             for (const [fieldName, entry] of this.entries) {
                 entry.accessors.set(this.record.get(fieldName));
             }
         }
-        for (const fn of this.rejectListeners) fn();
+
+        this.clearValidation();
+
+        for (const fn of this.rejectListeners) {
+            fn();
+        }
     }
 
     // ── Listeners ────────────────────────────────────────────────────────────
@@ -179,5 +215,159 @@ export class Binding extends BaseObject {
      */
     addRejectListener(fn: () => void): void {
         this.rejectListeners.push(fn);
+    }
+
+    // ── Validation ───────────────────────────────────────────────────────────
+
+    /**
+     * Attaches one or more validation rules to a bound field.
+     *
+     * @param fieldName - The field name registered with {@link bind}.
+     * @param component - The Component instance to wrap with a {@link FieldDecorator} on error.
+     * @param rules - One or more {@link ValidationRule} objects to apply to this field.
+     *
+     * @returns this, for chaining.
+     */
+    addValidation(fieldName: string, component: Component, rules: ValidationRule | ValidationRule[]): this {
+        const ruleArray = Array.isArray(rules) ? rules : [rules];
+
+        this.validationConfigs.set(fieldName, {
+            rules           : ruleArray,
+            component,
+            validateOnChange: false,
+            decorator       : null,
+        });
+
+        return this;
+    }
+
+    /**
+     * Removes all validation rules for a field and clears any existing error decoration.
+     *
+     * @param fieldName - The field whose validation should be removed.
+     *
+     * @returns this, for chaining.
+     */
+    removeValidation(fieldName: string): this {
+        const config = this.validationConfigs.get(fieldName);
+
+        if (config?.decorator) {
+            config.decorator.clearError();
+        }
+
+        this.validationConfigs.delete(fieldName);
+
+        return this;
+    }
+
+    /**
+     * Runs all registered validation rules against the current field values.
+     * Applies or clears {@link FieldDecorator} error state for each validated field.
+     *
+     * @returns true if all fields pass; false if any field fails.
+     */
+    validate(): boolean {
+        let allValid = true;
+
+        for (const [fieldName] of this.validationConfigs) {
+            const valid = this._validateField(fieldName);
+
+            if (!valid) {
+                allValid = false;
+            }
+        }
+
+        return allValid;
+    }
+
+    /**
+     * Enables or disables live validation (validation on every field change).
+     *
+     * @param enabled - true to validate on every change event; false for explicit-only.
+     */
+    setValidateOnChange(enabled: boolean): void {
+        this.globalValidateOnChange = enabled;
+    }
+
+    /**
+     * Returns whether live validation is globally enabled.
+     *
+     * @returns true if live validation is active.
+     */
+    getValidateOnChange(): boolean {
+        return this.globalValidateOnChange;
+    }
+
+    /**
+     * Clears all error decorations without re-running rules.
+     * Called automatically by {@link reject}.
+     */
+    clearValidation(): void {
+        for (const [, config] of this.validationConfigs) {
+            if (config.decorator) {
+                config.decorator.clearError();
+            }
+        }
+    }
+
+    /**
+     * Validates a single field and updates its decorator.
+     *
+     * @param fieldName - The field to validate.
+     *
+     * @returns true if the field passes all rules.
+     */
+    private _validateField(fieldName: string): boolean {
+        const config = this.validationConfigs.get(fieldName);
+
+        if (!config) {
+            return true;
+        }
+
+        const entry = this.entries.get(fieldName);
+        const value = entry ? entry.accessors.get() : undefined;
+
+        for (const rule of config.rules) {
+            const result = applyRule(rule, value);
+
+            if (result.valid) {
+                continue;
+            }
+
+            if (!config.decorator) {
+                const parent = config.component.getParentComponent();
+
+                if (parent) {
+                    config.decorator = new FieldDecorator(config.component, parent);
+                }
+            }
+
+            config.decorator?.showError(result.message);
+
+            return false;
+        }
+
+        config.decorator?.clearError();
+
+        return true;
+    }
+
+    /**
+     * Calls {@link _validateField} only if live validation is active for this field.
+     *
+     * @param fieldName - The field to conditionally validate.
+     */
+    private _validateFieldIfLive(fieldName: string): void {
+        const config = this.validationConfigs.get(fieldName);
+
+        if (!config) {
+            return;
+        }
+
+        const live = config.validateOnChange || this.globalValidateOnChange;
+
+        if (live) {
+            this._validateField(fieldName);
+        }
     }
 }
