@@ -18,7 +18,10 @@ export type AriaRole =
     | 'treeitem'
     | 'group'
     | 'button'
-    | 'region';
+    | 'region'
+    | 'combobox'
+    | 'listbox'
+    | 'option';
 
 /**
  * Valid values for the `aria-sort` attribute.
@@ -274,6 +277,49 @@ export class Aria {
      */
     getControls(): string | null {
         return this.attributes.get("controls") ?? null;
+    }
+
+    /**
+     * Sets `aria-autocomplete`, describing the kind of inline completion the field offers.
+     *
+     * @param value - `'none'`, `'list'`, `'inline'`, or `'both'`.
+     */
+    setAutoComplete(value: 'none' | 'list' | 'inline' | 'both'): void {
+        this.setAttribute("autocomplete", value);
+    }
+
+    /**
+     * Returns the current `aria-autocomplete` value, or null if not set.
+     *
+     * @returns The autocomplete hint, or null.
+     */
+    getAutoComplete(): string | null {
+        return this.attributes.get("autocomplete") ?? null;
+    }
+
+    /**
+     * Sets `aria-activedescendant` to the ID of the currently active descendant element.
+     *
+     * Pass an empty string to clear the attribute.
+     *
+     * @param id - The element ID of the active descendant, or `""` to clear.
+     */
+    setActiveDescendant(id: string): void {
+        if (id === "") {
+            this.attributes.delete("activedescendant");
+            this.component.removeElementAttribute("aria-activedescendant");
+        } else {
+            this.setAttribute("activedescendant", id);
+        }
+    }
+
+    /**
+     * Returns the current `aria-activedescendant` value, or null if not set.
+     *
+     * @returns The active descendant ID, or null.
+     */
+    getActiveDescendant(): string | null {
+        return this.attributes.get("activedescendant") ?? null;
     }
 
     /**
