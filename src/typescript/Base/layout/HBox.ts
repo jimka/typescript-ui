@@ -169,6 +169,8 @@ export class HBox extends LayoutManager {
      *
      * @remarks When `stretching` is enabled, each child's height is clamped to its max size rather
      * than its preferred size. Children without a preferred size fall back to `defaultComponentWidth`.
+     * Children with a `weight` layout constraint share the remaining width (after unweighted children
+     * have taken their preferred widths) proportionally to their weight values.
      */
     doLayout() {
         let container = this.getContainer();
@@ -183,21 +185,52 @@ export class HBox extends LayoutManager {
 
         let containerInsets = container.getInsets();
         let components = container.getComponents();
+        let spacing = this.getComponentSpacing();
+
+        let totalWeight = 0;
+        let fixedWidth = spacing * (components.length - 1);
+
+        for (let idx in components) {
+            let component = components[idx];
+            let constraints = this.getLayoutConstraints(component);
+            let weight = constraints?.weight ?? 0;
+
+            if (weight > 0) {
+                totalWeight += weight;
+            } else {
+                let size = component.getPreferredSize();
+                let minSize = component.getMinSize();
+                fixedWidth += (size ? size.width : undefined)
+                    || (minSize ? minSize.width : undefined)
+                    || this.defaultComponentWidth;
+            }
+        }
+
+        let remainingWidth = Math.max(0, containerSize.width - fixedWidth);
 
         let x = containerInsets.getLeft();
         let y = containerInsets.getTop();
 
         for (let idx in components) {
             let component = components[idx];
+            let constraints = this.getLayoutConstraints(component);
+            let weight = constraints?.weight ?? 0;
 
             let size = component.getPreferredSize();
             let minSize = component.getMinSize();
             let maxSize = component.getMaxSize();
 
-            let width = (size ? size.width : undefined)
-                || (minSize ? minSize.width : undefined)
-                || this.defaultComponentWidth;
-            let height;
+            let width: number;
+
+            if (weight > 0 && totalWeight > 0) {
+                width = (weight / totalWeight) * remainingWidth;
+            } else {
+                width = (size ? size.width : undefined)
+                    || (minSize ? minSize.width : undefined)
+                    || this.defaultComponentWidth;
+            }
+
+            let height: number;
 
             if (!size || this.isStretching()) {
                 height = Math.min(maxSize.height, containerSize.height);
@@ -215,7 +248,7 @@ export class HBox extends LayoutManager {
             );
 
             x += component.getWidth();
-            x += this.getComponentSpacing();
+            x += spacing;
         }
     }
 }
