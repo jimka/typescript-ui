@@ -58,6 +58,6 @@ export class ButtonGroup {
             return;
         }
 
-        this.buttons.splice(idx);
+        this.buttons.splice(idx, 1);
     }
 }
