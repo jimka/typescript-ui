@@ -16,6 +16,7 @@ export class LayoutConstraints {
     placement?: Placement;
     ignoreParentInsets?: boolean = false;
     data?: any;
+    weight?: number;
 
     constructor() {
     }

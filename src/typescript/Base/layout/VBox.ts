@@ -169,6 +169,8 @@ export class VBox extends LayoutManager {
      *
      * @remarks When `stretching` is enabled, each child's width is clamped to its max size rather
      * than its preferred size. Children without a preferred size fall back to `defaultComponentHeight`.
+     * Children with a `weight` layout constraint share the remaining height (after unweighted children
+     * have taken their preferred heights) proportionally to their weight values.
      */
     doLayout() {
         let container = this.getContainer();
@@ -183,21 +185,51 @@ export class VBox extends LayoutManager {
 
         let containerInsets = container.getInsets();
         let components = container.getComponents();
+        let spacing = this.getComponentSpacing();
+
+        let totalWeight = 0;
+        let fixedHeight = spacing * (components.length - 1);
+
+        for (let idx in components) {
+            let component = components[idx];
+            let constraints = this.getLayoutConstraints(component);
+            let weight = constraints?.weight ?? 0;
+
+            if (weight > 0) {
+                totalWeight += weight;
+            } else {
+                let size = component.getPreferredSize();
+                let minSize = component.getMinSize();
+                fixedHeight += (size ? size.height : undefined)
+                    || (minSize ? minSize.height : undefined)
+                    || this.defaultComponentHeight;
+            }
+        }
+
+        let remainingHeight = Math.max(0, containerSize.height - fixedHeight);
 
         let x = containerInsets.getLeft();
         let y = containerInsets.getTop();
 
         for (let idx in components) {
             let component = components[idx];
+            let constraints = this.getLayoutConstraints(component);
+            let weight = constraints?.weight ?? 0;
 
             let size = component.getPreferredSize();
             let minSize = component.getMinSize();
             let maxSize = component.getMaxSize();
 
-            let width;
-            let height = (size ? size.height : undefined)
-                || (minSize ? minSize.height : undefined)
-                || this.defaultComponentHeight;
+            let width: number;
+            let height: number;
+
+            if (weight > 0 && totalWeight > 0) {
+                height = (weight / totalWeight) * remainingHeight;
+            } else {
+                height = (size ? size.height : undefined)
+                    || (minSize ? minSize.height : undefined)
+                    || this.defaultComponentHeight;
+            }
 
             if (!size || this.isStretching()) {
                 width = Math.min(maxSize.width, containerSize.width);
@@ -212,10 +244,10 @@ export class VBox extends LayoutManager {
                 width,
                 height,
                 FillType.BOTH
-            )
+            );
 
             y += component.getHeight();
-            y += this.getComponentSpacing();
+            y += spacing;
         }
     }
 }
