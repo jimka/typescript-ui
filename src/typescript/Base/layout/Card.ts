@@ -2,6 +2,7 @@
 
 import { LayoutManager } from "./LayoutManager.js"
 import { FillType } from "./FillType.js";
+import { Size } from "../Size.js";
 
 /**
  * A layout manager that shows exactly one child component at a time,
@@ -26,7 +27,7 @@ export class Card extends LayoutManager {
      *
      * @returns The preferred `{width, height}`, or `null` if there is no container or no visible component.
      */
-    getPreferredSize() {
+    getPreferredSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -61,7 +62,7 @@ export class Card extends LayoutManager {
      *
      * @returns The minimum `{width, height}`, or `null` if there is no container or no visible component.
      */
-    getMinSize() {
+    getMinSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -96,7 +97,7 @@ export class Card extends LayoutManager {
      *
      * @returns The maximum `{width, height}`, or `null` if there is no container or no visible component.
      */
-    getMaxSize() {
+    getMaxSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;

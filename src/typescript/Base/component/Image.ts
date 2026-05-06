@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "../Component.js";
+import { Size } from "../Size.js";
 
 /**
  * An image component backed by an `<img>` element.
@@ -35,7 +36,7 @@ export class Image extends Component {
      *
      * @returns A Size with the image's naturalWidth and naturalHeight.
      */
-    getPreferredSize() {
+    getPreferredSize(): Size | null {
         let element = this.getElement();
 
         return {

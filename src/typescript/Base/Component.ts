@@ -808,7 +808,7 @@ export class Component extends BaseObject {
      *
      * @returns The preferred Size, determined in priority order: explicit override, layout manager, then current size.
      */
-    getPreferredSize() {
+    getPreferredSize(): Size | null {
         let layoutManager = this.getLayoutManager();
         let preferredSize;
 
@@ -845,7 +845,7 @@ export class Component extends BaseObject {
      *
      * @returns A Size object whose width and height are the element-wise maximums of the component and layout manager minimums.
      */
-    getMinSize() {
+    getMinSize(): Size | null {
         let componentMinSize = this.minSize;;
         let layoutManager = this.getLayoutManager();
 
@@ -903,7 +903,7 @@ export class Component extends BaseObject {
      *
      * @returns A Size object whose width and height are the element-wise maximums of the component and layout manager maximums.
      */
-    getMaxSize() {
+    getMaxSize(): Size | null {
         let componentMaxSize = this.maxSize;;
         let layoutManager = this.getLayoutManager();
 
