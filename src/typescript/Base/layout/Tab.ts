@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutManager } from "./LayoutManager.js";
+import { Size } from "../Size.js";
 import { ToggleButton } from "../component/ToggleButton.js";
 import { Component } from "../Component.js";
 import { Event } from "../Event.js";
@@ -8,7 +9,16 @@ import { Insets } from "../Insets.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { FillType } from "./FillType.js";
 import { ButtonGroup } from "../ButtonGroup.js";
-import { Column } from "./Column.js"
+import { Column } from "./Column.js";
+import { HBox } from "./HBox.js";
+import { TabCloseButton } from "../component/TabCloseButton.js";
+
+/** Bookkeeping record for one tab slot. */
+interface TabEntry {
+    wrapper: Component;
+    button: ToggleButton;
+    closeButton?: TabCloseButton;
+}
 
 /**
  * A layout manager that renders a row of tab buttons above the container content area
@@ -19,22 +29,26 @@ import { Column } from "./Column.js"
 export class Tab extends LayoutManager {
 
     private toolbar: Component;
-    private tabs: Array<Component>;
+    private tabs: Array<TabEntry>;
     private buttonGroup: ButtonGroup;
     private selectedTabIndex: number;
+    private onTabClose: ((component: Component) => void) | null = null;
 
+    /**
+     * Creates a Tab layout manager with an empty toolbar.
+     */
     constructor() {
         super();
 
         this.tabs = [];
         this.buttonGroup = new ButtonGroup();
         this.toolbar = new Component();
+
         let columnLayout = new Column();
-        //columnLayout.setGap(true);
         columnLayout.setGap(0);
         this.toolbar.setLayoutManager(columnLayout);
         this.toolbar.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
-        this.toolbar.setInsets(new Insets(0, 4, 0, 4));
+        this.toolbar.setInsets(null);
         this.toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
         this.toolbar.setPreferredSize(0, 30);
         this.selectedTabIndex = 0;
@@ -45,8 +59,13 @@ export class Tab extends LayoutManager {
      *
      * @param tab - The tab button component that was pressed.
      */
-    onTabPressed(tab: Component) {
-        this.selectedTabIndex = this.tabs.indexOf(tab);
+    onTabPressed(tab: Component): void {
+        const idx = this.tabs.findIndex(entry => entry.button === tab);
+
+        if (idx >= 0) {
+            this.selectedTabIndex = idx;
+        }
+
         this.doLayout();
     }
 
@@ -55,11 +74,11 @@ export class Tab extends LayoutManager {
      *
      * @param container - The container component to attach to.
      */
-    attach(container: Component) {
+    attach(container: Component): void {
         super.attach(container);
 
         let element = this.toolbar.getElement(true);
-        container.getElement().appendChild(element);
+        container.getElement(true).appendChild(element);
 
         this.toolbar.getAria().setRole("tablist");
 
@@ -69,7 +88,7 @@ export class Tab extends LayoutManager {
     /**
      * Detaches from the container and removes the tab toolbar element from the DOM.
      */
-    detach() {
+    detach(): void {
         super.detach();
 
         this.toolbar.getElement().remove();
@@ -80,7 +99,7 @@ export class Tab extends LayoutManager {
      *
      * @returns The visible component, or `null` if the container is empty or not attached.
      */
-    getVisibleComponent() {
+    getVisibleComponent(): Component | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -96,7 +115,7 @@ export class Tab extends LayoutManager {
      *
      * @returns The preferred `{width, height}`, or `null` if there is no container or visible component.
      */
-    getPreferredSize() {
+    getPreferredSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -133,7 +152,7 @@ export class Tab extends LayoutManager {
      *
      * @returns The minimum `{width, height}`, or `null` if there is no container or visible component.
      */
-    getMinSize() {
+    getMinSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -170,7 +189,7 @@ export class Tab extends LayoutManager {
      *
      * @returns The maximum `{width, height}`, or `null` if there is no container or visible component.
      */
-    getMaxSize() {
+    getMaxSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -203,19 +222,19 @@ export class Tab extends LayoutManager {
     }
 
     /**
-     * Creates a `ToggleButton` for a component and adds it to the tab toolbar.
+     * Creates a tab entry for a component and adds it to the toolbar.
      *
-     * @param component - The content component for which a tab button should be created.
+     * @param component - The content component for which a tab entry should be created.
      *
      * @remarks The button label is taken from `LayoutConstraints.name` when available;
-     * otherwise the component's ID is used. The button is automatically selected
-     * if it corresponds to the current `selectedTabIndex`.
+     * otherwise the component's ID is used. When `constraints.closeable` is true, a
+     * `TabCloseButton` is appended to the wrapper after the toggle button.
      */
-    createTab(component: Component) {
+    createTab(component: Component): void {
         let constraints = this.getLayoutConstraints(component);
         let name: string;
 
-        if(constraints && constraints.name) {
+        if (constraints && constraints.name) {
             name = constraints.name;
         } else {
             name = component.getId();
@@ -232,7 +251,36 @@ export class Tab extends LayoutManager {
 
         tabButton.addActionListener(() => this.onTabPressed(tabButton));
 
-        this.tabs.push(tabButton);
+        const wrapperHBox = new HBox();
+        wrapperHBox.setComponentSpacing(0);
+        wrapperHBox.setStretching(true);
+
+        const wrapper = new Component();
+        wrapper.setLayoutManager(wrapperHBox);
+        wrapper.setBackgroundColor("transparent");
+        wrapper.setBorder();
+        wrapper.setShadow(null);
+        wrapper.setInsets(new Insets(0, 0, 0, 0));
+
+        wrapper.addComponent(tabButton, { weight: 1 });
+
+        let closeButton: TabCloseButton | undefined;
+
+        if (constraints?.closeable) {
+            closeButton = new TabCloseButton();
+            closeButton.setBorder();
+            closeButton.setBorderRadius();
+            closeButton.setShadow(null);
+            wrapper.addComponent(closeButton);
+        }
+
+        const entry: TabEntry = { wrapper, button: tabButton, closeButton };
+
+        if (closeButton) {
+            closeButton.addActionListener(() => this.closeTab(entry));
+        }
+
+        this.tabs.push(entry);
 
         const isSelected = this.tabs.length - 1 === this.selectedTabIndex;
 
@@ -241,7 +289,7 @@ export class Tab extends LayoutManager {
         }
 
         this.buttonGroup.addButton(tabButton);
-        this.toolbar.addComponent(tabButton);
+        this.toolbar.addComponent(wrapper);
 
         tabButton.getAria().setRole("tab");
         tabButton.getAria().setSelected(isSelected);
@@ -258,7 +306,7 @@ export class Tab extends LayoutManager {
      * a corresponding button receive one. The toolbar is positioned at the top of the
      * container and the visible component occupies the remaining space beneath it.
      */
-    doLayout() {
+    doLayout(): void {
         let container = this.getContainer();
         if (!container) {
             return;
@@ -282,7 +330,7 @@ export class Tab extends LayoutManager {
         }
 
         for (let i = 0; i < this.tabs.length; i++) {
-            this.tabs[i].getAria().setSelected(i === this.selectedTabIndex);
+            this.tabs[i].button.getAria().setSelected(i === this.selectedTabIndex);
         }
 
         let component = this.getVisibleComponent();
@@ -319,6 +367,68 @@ export class Tab extends LayoutManager {
     }
 
     /**
+     * Registers a callback invoked after a tab is closed.
+     *
+     * @param callback - Receives the content component that was removed.
+     */
+    setOnTabClose(callback: (component: Component) => void): void {
+        this.onTabClose = callback;
+    }
+
+    /**
+     * Removes a tab entry and its associated content component, then selects the next tab.
+     *
+     * @param entry - The tab entry to close.
+     */
+    private closeTab(entry: TabEntry): void {
+        const container = this.getContainer();
+        if (!container) {
+            return;
+        }
+
+        const entryIndex = this.tabs.indexOf(entry);
+        if (entryIndex < 0) {
+            return;
+        }
+
+        const components = container.getComponents();
+        const contentComponent = components[entryIndex];
+
+        this.buttonGroup.removeButton(entry.button);
+        this.tabs.splice(entryIndex, 1);
+        this.toolbar.removeComponent(entry.wrapper);
+        container.removeComponent(contentComponent);
+
+        if (this.onTabClose && contentComponent) {
+            this.onTabClose(contentComponent);
+        }
+
+        this.selectNextTab(entryIndex);
+        this.doLayout();
+    }
+
+    /**
+     * Selects an appropriate tab after the tab at `closedIndex` has been removed.
+     *
+     * @param closedIndex - The index that was just spliced out.
+     */
+    private selectNextTab(closedIndex: number): void {
+        const count = this.tabs.length;
+
+        if (count === 0) {
+            this.selectedTabIndex = 0;
+
+            return;
+        }
+
+        const newIndex = closedIndex > 0 ? closedIndex - 1 : 0;
+        this.selectedTabIndex = newIndex;
+
+        this.tabs.forEach(e => e.button.setSelected(false));
+        this.tabs[newIndex].button.setSelected(true);
+    }
+
+    /**
      * Handles ArrowLeft / ArrowRight to move tab focus and activate the adjacent tab.
      *
      * @param e - The keyboard event fired on the toolbar element.
@@ -340,9 +450,9 @@ export class Tab extends LayoutManager {
             ? (this.selectedTabIndex + 1) % tabCount
             : (this.selectedTabIndex - 1 + tabCount) % tabCount;
 
-        const newTab = this.tabs[newIdx] as ToggleButton;
+        const newTab = this.tabs[newIdx].button;
 
-        this.tabs.forEach(t => (t as ToggleButton).setSelected(false));
+        this.tabs.forEach(entry => entry.button.setSelected(false));
         newTab.setSelected(true);
 
         this.onTabPressed(newTab);

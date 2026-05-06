@@ -457,8 +457,6 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Menu bar** — `ContextMenu` covers right-click menus; there is no top-level horizontal menu bar with keyboard-navigable drop-down submenus. A `MenuBar` + `Menu` + `MenuItem` hierarchy would fill this gap for application-style UIs.
 
-* **Closeable tabs** — the `Tab` layout has no way to remove a tab at runtime. Adding an optional close button (×) per tab button, and a `onTabClose` callback on the layout, would allow dynamic tab management without reimplementing the entire `Tab` layout.
-
 * **Multi-select List** — `List` (and `ComboBox`) support only single selection. A `multiSelect` option with checkbox rendering per item and a `getValues() / setValues()` API would cover the common case of selecting several items from a fixed set.
 
 * **Table column pinning** — there is no way to freeze one or more columns to the left while the rest scroll horizontally. Column pinning requires a dual-panel table (fixed + scrolling) sharing a single virtual-scroll position; this is the largest missing table feature.
