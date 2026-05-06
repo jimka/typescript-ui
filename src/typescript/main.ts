@@ -13,6 +13,7 @@ import { MiscPanel } from "./MiscPanel.js";
 import { BindingPanel } from "./BindingPanel.js";
 import { ComplexUIPanel } from "./ComplexUIPanel.js";
 import { GridPanel } from "./GridPanel.js";
+import { AccordionPanel } from "./AccordionPanel.js";
 
 import { Model, MemoryStore } from "./Base/index.js";
 
@@ -53,6 +54,9 @@ body.addComponent(gridPanel, { name: "Grid" });
 
 let complexPanel = new ComplexUIPanel();
 body.addComponent(complexPanel, { name: "Complex" });
+
+let accordionPanel = new AccordionPanel();
+body.addComponent(accordionPanel, { name: "Accordion" });
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number'                  },

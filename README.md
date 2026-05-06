@@ -455,8 +455,6 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Tree node renderers** — `TreeRow` currently renders each node as two plain `<span>` elements (a toggle icon and a label). A renderer API similar to the table's `CellRenderer` pattern — a factory passed to the `Tree` constructor or `setNodeRenderer()` — would let callers display icons, badges, or rich content per node.
 
-* **Accordion layout manager** — a collapsible-section container is missing. An `Accordion` layout (or a standalone `AccordionPanel` component) with expand/collapse animation would cover the same design pattern as `Tab` but with vertically stacked, simultaneously openable sections.
-
 * **Menu bar** — `ContextMenu` covers right-click menus; there is no top-level horizontal menu bar with keyboard-navigable drop-down submenus. A `MenuBar` + `Menu` + `MenuItem` hierarchy would fill this gap for application-style UIs.
 
 * **Closeable tabs** — the `Tab` layout has no way to remove a tab at runtime. Adding an optional close button (×) per tab button, and a `onTabClose` callback on the layout, would allow dynamic tab management without reimplementing the entire `Tab` layout.
