@@ -168,6 +168,18 @@ export interface Theme {
             };
         };
     };
+
+    autoComplete: {
+        background: string;
+        border    : string;
+        shadow    : string;
+        item: {
+            hoverBackground    : string;
+            highlightBackground: string;
+            highlightColor     : string;
+            disabledColor      : string;
+        };
+    };
 }
 
 /**
@@ -262,6 +274,17 @@ export const DefaultTheme: Theme = {
                 color     : 'rgb(255, 255, 255)',
                 border    : 'rgb(140, 20, 20)',
             },
+        },
+    },
+    autoComplete: {
+        background: 'rgb(255, 255, 255)',
+        border    : 'rgb(200, 200, 200)',
+        shadow    : '2px 4px 8px rgba(0,0,0,0.15)',
+        item: {
+            hoverBackground    : 'rgba(30, 100, 200, 0.08)',
+            highlightBackground: 'rgba(30, 100, 200, 0.18)',
+            highlightColor     : 'inherit',
+            disabledColor      : 'rgb(170, 170, 170)',
         },
     },
 };
@@ -360,6 +383,17 @@ export const DarkTheme: Theme = {
             },
         },
     },
+    autoComplete: {
+        background: 'rgb(45, 45, 45)',
+        border    : 'rgb(80, 80, 80)',
+        shadow    : '2px 4px 8px rgba(0,0,0,0.5)',
+        item: {
+            hoverBackground    : 'rgba(100, 140, 220, 0.12)',
+            highlightBackground: 'rgba(100, 140, 220, 0.28)',
+            highlightColor     : 'rgb(220, 220, 255)',
+            disabledColor      : 'rgb(100, 100, 100)',
+        },
+    },
 };
 
 /**
@@ -426,10 +460,17 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-notification-warning-border'       : theme.notification.warning.border,
         '--ts-ui-notification-error-bg'             : theme.notification.error.background,
         '--ts-ui-notification-error-border'         : theme.notification.error.border,
-        '--ts-ui-validation-error-border'           : theme.validation.error.border,
-        '--ts-ui-validation-error-tooltip-bg'       : theme.validation.error.tooltip.background,
-        '--ts-ui-validation-error-tooltip-color'    : theme.validation.error.tooltip.color,
-        '--ts-ui-validation-error-tooltip-border'   : theme.validation.error.tooltip.border,
+        '--ts-ui-validation-error-border'                  : theme.validation.error.border,
+        '--ts-ui-validation-error-tooltip-bg'              : theme.validation.error.tooltip.background,
+        '--ts-ui-validation-error-tooltip-color'           : theme.validation.error.tooltip.color,
+        '--ts-ui-validation-error-tooltip-border'          : theme.validation.error.tooltip.border,
+        '--ts-ui-autocomplete-bg'                          : theme.autoComplete.background,
+        '--ts-ui-autocomplete-border'                      : theme.autoComplete.border,
+        '--ts-ui-autocomplete-shadow'                      : theme.autoComplete.shadow,
+        '--ts-ui-autocomplete-item-hover-bg'               : theme.autoComplete.item.hoverBackground,
+        '--ts-ui-autocomplete-item-highlight-bg'           : theme.autoComplete.item.highlightBackground,
+        '--ts-ui-autocomplete-item-highlight-color'        : theme.autoComplete.item.highlightColor,
+        '--ts-ui-autocomplete-item-disabled-color'         : theme.autoComplete.item.disabledColor,
     };
 }
 

@@ -6,7 +6,11 @@ import { Model } from "./Base/data/Model.js";
 import { MemoryStore } from "./Base/data/MemoryStore.js";
 import { Component } from "./Base/Component.js";
 import { Button } from "./Base/component/Button.js";
+import { Label } from "./Base/component/Label.js";
+import { RadioButton } from "./Base/component/RadioButton.js";
+import { ButtonGroup } from "./Base/ButtonGroup.js";
 import { VBox } from "./Base/layout/VBox.js";
+import { HBox } from "./Base/layout/HBox.js";
 import { FieldSet } from "./Base/component/FieldSet.js";
 import { ThemeManager, DefaultTheme, DarkTheme } from "./Base/Theme.js";
 import { TablePanel, Table, ColumnSpec } from "./Base/index.js";
@@ -16,6 +20,7 @@ import { Event } from "./Base/Event.js";
 import { Tree } from "./Base/component/tree/Tree.js";
 import type { TreeNode } from "./Base/component/tree/TreeNode.js";
 import { Notification } from "./Base/Notification.js";
+import { AutoCompleteField } from "./Base/component/AutoCompleteField.js";
 
 export class MiscPanel extends Component {
 
@@ -257,5 +262,55 @@ export class MiscPanel extends Component {
             Notification.show("Connection failed. Please try again.", "error");
         });
         this.addComponent(buttonNotificationStack);
+
+        const fruits = [
+            "Apple", "Apricot", "Avocado", "Banana", "Blackberry", "Blueberry",
+            "Cherry", "Clementine", "Coconut", "Date", "Fig", "Grape", "Grapefruit",
+            "Guava", "Kiwi", "Lemon", "Lime", "Lychee", "Mango", "Melon",
+            "Nectarine", "Orange", "Papaya", "Peach", "Pear", "Pineapple",
+            "Plum", "Pomegranate", "Raspberry", "Strawberry", "Tangerine", "Watermelon",
+        ];
+
+        const autoCompleteField = new AutoCompleteField({
+            suggestions   : fruits,
+            placeholder   : "Type a fruit…",
+            maxSuggestions: 8,
+        });
+
+        const selectedLabel = new Label("Selected: (none)");
+
+        autoCompleteField.addSelectListener(value => {
+            selectedLabel.setText("Selected: " + value);
+        });
+
+        const radioContains    = new RadioButton("Contains");
+        const radioStartsWith  = new RadioButton("Starts with");
+        radioContains.setSelected(true);
+
+        const modeGroup = new ButtonGroup();
+        modeGroup.addButton(radioContains);
+        modeGroup.addButton(radioStartsWith);
+
+        radioContains.addActionListener(() => {
+            autoCompleteField.setMatchMode('contains');
+        });
+
+        radioStartsWith.addActionListener(() => {
+            autoCompleteField.setMatchMode('startsWith');
+        });
+
+        const modeRow = new Component();
+        modeRow.setLayoutManager(new HBox());
+        modeRow.addComponent(new Label("Match mode:"));
+        modeRow.addComponent(radioContains);
+        modeRow.addComponent(radioStartsWith);
+
+        const autoCompleteRow = new Component();
+        autoCompleteRow.setLayoutManager(new HBox());
+        autoCompleteRow.addComponent(new Label("AutoComplete:"));
+        autoCompleteRow.addComponent(autoCompleteField);
+        this.addComponent(modeRow);
+        this.addComponent(autoCompleteRow);
+        this.addComponent(selectedLabel);
     }
 }
