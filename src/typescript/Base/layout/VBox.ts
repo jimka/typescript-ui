@@ -2,6 +2,7 @@
 
 import { LayoutManager } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
+import { Size } from "../Size.js";
 
 /**
  * A layout manager that places children in a single vertical column,
@@ -61,7 +62,7 @@ export class VBox extends LayoutManager {
      *
      * @returns The preferred `{width, height}`, or `null` if no container is attached.
      */
-    getPreferredSize() {
+    getPreferredSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -97,7 +98,7 @@ export class VBox extends LayoutManager {
      *
      * @returns The minimum `{width, height}`, or `null` if no container is attached.
      */
-    getMinSize() {
+    getMinSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -133,7 +134,7 @@ export class VBox extends LayoutManager {
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
-    getMaxSize() {
+    getMaxSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;

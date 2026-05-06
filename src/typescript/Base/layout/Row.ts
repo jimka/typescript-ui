@@ -2,6 +2,7 @@
 
 import { LayoutManager } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
+import { Size } from "../Size.js";
 
 /**
  * A layout manager that divides the container height equally among all children
@@ -40,7 +41,7 @@ export class Row extends LayoutManager {
      *
      * @returns The preferred `{width, height}`, or `null` if no container is attached.
      */
-    getPreferredSize() {
+    getPreferredSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -80,7 +81,7 @@ export class Row extends LayoutManager {
      *
      * @returns The minimum `{width, height}`, or `null` if no container is attached.
      */
-    getMinSize() {
+    getMinSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -120,7 +121,7 @@ export class Row extends LayoutManager {
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
-    getMaxSize() {
+    getMaxSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;

@@ -5,6 +5,7 @@ import { Component } from "../Component.js"
 import { LayoutConstraints } from "./LayoutConstraints.js";
 import { FillType } from "./FillType.js";
 import { Placement } from "../Placement.js";
+import { Size } from "../Size.js";
 
 /**
  * A layout manager that divides a container into five named regions:
@@ -86,7 +87,7 @@ export class Border extends LayoutManager {
      *
      * @returns The preferred `{width, height}` or `null` if no container is attached.
      */
-    getPreferredSize() {
+    getPreferredSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -157,7 +158,7 @@ export class Border extends LayoutManager {
      *
      * @returns The minimum `{width, height}` or `null` if no container is attached.
      */
-    getMinSize() {
+    getMinSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
@@ -228,7 +229,7 @@ export class Border extends LayoutManager {
      *
      * @returns The maximum `{width, height}` or `null` if no container is attached.
      */
-    getMaxSize() {
+    getMaxSize(): Size | null {
         let container = this.getContainer();
         if (!container) {
             return null;
