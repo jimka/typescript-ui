@@ -16,7 +16,9 @@ export type AriaRole =
     | 'tabpanel'
     | 'tree'
     | 'treeitem'
-    | 'group';
+    | 'group'
+    | 'button'
+    | 'region';
 
 /**
  * Valid values for the `aria-sort` attribute.
@@ -254,6 +256,24 @@ export class Aria {
      */
     getLabelledBy(): string | null {
         return this.attributes.get("labelledby") ?? null;
+    }
+
+    /**
+     * Sets `aria-controls` to the ID of the element this one controls.
+     *
+     * @param id - The ID of the controlled element.
+     */
+    setControls(id: string): void {
+        this.setAttribute("controls", id);
+    }
+
+    /**
+     * Returns the current `aria-controls` value, or null if not set.
+     *
+     * @returns The controlled element ID, or null.
+     */
+    getControls(): string | null {
+        return this.attributes.get("controls") ?? null;
     }
 
     /**

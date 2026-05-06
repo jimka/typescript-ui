@@ -144,6 +144,20 @@ export interface Theme {
         };
     };
 
+    accordion: {
+        header: {
+            background: string;
+            border    : string;
+            color     : string;
+        };
+        panel: {
+            border: string;
+        };
+        indicator: {
+            color: string;
+        };
+    };
+
     validation: {
         error: {
             border : string;
@@ -185,6 +199,15 @@ export const DefaultTheme: Theme = {
     },
     input : { background: 'rgb(255, 255, 255)' },
     gutter: { background: '#AAAAAA' },
+    accordion: {
+        header   : {
+            background: 'linear-gradient(rgb(230,230,230),rgb(210,210,210))',
+            border    : 'rgb(190,190,190)',
+            color     : 'inherit',
+        },
+        panel    : { border: 'rgb(210,210,210)' },
+        indicator: { color: 'rgb(100,100,100)' },
+    },
     tab   : {
         toolbar: { background: '#eee',     border: '#e1e1e8' },
         button : { background: '#b8b8c3' },
@@ -272,6 +295,15 @@ export const DarkTheme: Theme = {
     },
     input : { background: 'rgb(40, 40, 40)' },
     gutter: { background: '#555' },
+    accordion: {
+        header   : {
+            background: 'linear-gradient(rgb(60,60,60),rgb(45,45,45))',
+            border    : 'rgb(80,80,80)',
+            color     : 'inherit',
+        },
+        panel    : { border: 'rgb(70,70,70)' },
+        indicator: { color: 'rgb(160,160,160)' },
+    },
     tab   : {
         toolbar: { background: '#2a2a2a', border: '#444' },
         button : { background: '#3a3a3a' },
@@ -353,6 +385,11 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-toggle-selected-shadow'          : theme.toggle.selected.shadow,
         '--ts-ui-input-bg'                        : theme.input.background,
         '--ts-ui-gutter-bg'                       : theme.gutter.background,
+        '--ts-ui-accordion-header-bg'             : theme.accordion.header.background,
+        '--ts-ui-accordion-header-border'         : theme.accordion.header.border,
+        '--ts-ui-accordion-header-color'          : theme.accordion.header.color,
+        '--ts-ui-accordion-panel-border'          : theme.accordion.panel.border,
+        '--ts-ui-accordion-indicator-color'       : theme.accordion.indicator.color,
         '--ts-ui-tab-toolbar-bg'                  : theme.tab.toolbar.background,
         '--ts-ui-tab-toolbar-border'              : theme.tab.toolbar.border,
         '--ts-ui-tab-button-bg'                   : theme.tab.button.background,
