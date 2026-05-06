@@ -75,6 +75,7 @@ export type { AutoCompleteFieldConfig, AutoCompleteMatchMode } from './component
 // Components — buttons
 export { Button } from './component/Button.js';
 export { ToggleButton } from './component/ToggleButton.js';
+export { TabCloseButton } from './component/TabCloseButton.js';
 
 // Components — display
 export { Header } from './component/Header.js';
