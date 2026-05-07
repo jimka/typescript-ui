@@ -45,12 +45,14 @@ export class ToggleButton extends Button {
     }
 
     /**
-     * Sets the selected state and toggles the 'selected' CSS class on the element.
+     * Sets the selected state, toggles the 'selected' CSS class, and updates `aria-pressed`.
      *
      * @param value - True to select the button, false to deselect it.
      */
     setSelected(value: boolean) {
         this.selected = value;
+
+        this.getAria().setPressed(value);
 
         let element = this.getElement();
         if (element) {

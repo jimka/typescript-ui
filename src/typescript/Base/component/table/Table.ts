@@ -84,6 +84,8 @@ export class Table extends Component {
             this.header.setHiddenColumns(effectiveHidden);
             this.body.setHiddenColumns(effectiveHidden);
         }
+
+        this.getAria().setColCount(this.getColumns().length);
     }
 
     /**
@@ -133,6 +135,7 @@ export class Table extends Component {
         this.body.setStore(store);
         this.header.setModel(store.model);
         this.header.setHiddenColumns(this.getEffectiveHiddenSet());
+        this.getAria().setColCount(this.getColumns().length);
     }
 
     /**
@@ -201,6 +204,7 @@ export class Table extends Component {
 
         this.header.setHiddenColumns(effectiveHidden);
         this.body.setHiddenColumns(effectiveHidden);
+        this.getAria().setColCount(this.getColumns().length);
         this.doLayout();
     }
 

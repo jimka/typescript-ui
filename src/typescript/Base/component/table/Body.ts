@@ -4,6 +4,7 @@ import { Component } from "../../Component.js";
 import { AbstractStore } from "../../data/AbstractStore.js";
 import { ModelRecord } from "../../data/ModelRecord.js";
 import { Row } from "./Row.js";
+import { Cell } from "./cell/Cell.js";
 import { Event } from "../../Event.js";
 import { ThemeManager } from "../../Theme.js";
 
@@ -46,6 +47,7 @@ export class Body extends Component {
     private storeRefresh: (() => void) | null = null;
     private selectedRecords: Set<ModelRecord> = new Set();
     private anchorRecord: ModelRecord | null = null;
+    private _focusedColIndex: number = 0;
 
     constructor(store: AbstractStore) {
         super("tbody");
@@ -167,6 +169,11 @@ export class Body extends Component {
             this.renderWindow();
         });
 
+        Event.addListener(this, "focus", () => {
+            this._updateActiveDescendant();
+            this._updateFocusStyle();
+        });
+
         Event.addListener(this, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
 
         this.renderWindow();
@@ -259,6 +266,7 @@ export class Body extends Component {
                 cell.setWidth(colW);
                 cell.setHeight(rowHeight);
                 cell.setAutoCommitStyle(true);
+                cell.getAria().setColIndex(ci + 1);
                 cell.doLayout();
 
                 x += colW;
@@ -277,6 +285,7 @@ export class Body extends Component {
         }
 
         this.getAria().setRowCount(totalRows);
+        this._updateFocusStyle();
 
         this.layoutInProgress = false;
     }
@@ -325,6 +334,22 @@ export class Body extends Component {
         this.boundIndices.forEach((dataIdx, i) => {
             if (dataIdx !== -1) this.updateRowVisualState(i);
         });
+
+        // Determine which column was clicked and update focused cell
+        const cells = row.getComponents();
+
+        for (let ci = 0; ci < cells.length; ci++) {
+            const cellEl = cells[ci].getElement();
+
+            if (cellEl && (cellEl === e.target || cellEl.contains(e.target as Node))) {
+                this._focusedColIndex = ci;
+                break;
+            }
+        }
+
+        this.focus();
+        this._updateFocusStyle();
+        this._updateActiveDescendant();
     }
 
     /**
@@ -431,7 +456,80 @@ export class Body extends Component {
     }
 
     /**
-     * Handles ArrowUp / ArrowDown / Home / End to move row selection via the keyboard.
+     * Applies a focus ring to the cell at `_focusedColIndex` in the anchor row, clearing it from all other cells.
+     *
+     * @remarks Called after every navigation and after `renderWindow` re-binds pool slots.
+     */
+    private _updateFocusStyle(): void {
+        for (const row of this.rowPool) {
+            for (const cell of row.getComponents()) {
+                const el = cell.getElement() as HTMLElement | null;
+
+                if (el) {
+                    el.style.removeProperty("outline");
+                    el.style.removeProperty("outline-offset");
+                }
+            }
+        }
+
+        if (!this.anchorRecord) {
+            return;
+        }
+
+        const anchorIdx = this.store.getRecords().indexOf(this.anchorRecord);
+        const poolSlotIdx = this.boundIndices.indexOf(anchorIdx);
+
+        if (poolSlotIdx < 0) {
+            return;
+        }
+
+        const cells = this.rowPool[poolSlotIdx].getComponents();
+        const cell = cells[this._focusedColIndex];
+
+        if (cell) {
+            const el = cell.getElement() as HTMLElement | null;
+
+            if (el) {
+                el.style.setProperty("outline", "2px solid var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))");
+                el.style.setProperty("outline-offset", "-2px");
+            }
+        }
+    }
+
+    /**
+     * Sets `aria-activedescendant` on the body container to point at the focused cell (or row).
+     *
+     * @remarks Must be called after `renderWindow()` so the pool slot for the anchor record is guaranteed in the DOM.
+     */
+    private _updateActiveDescendant(): void {
+        if (!this.anchorRecord) {
+            this.getAria().setActiveDescendant("");
+
+            return;
+        }
+
+        const anchorIdx = this.store.getRecords().indexOf(this.anchorRecord);
+        const poolSlotIdx = this.boundIndices.indexOf(anchorIdx);
+
+        if (poolSlotIdx < 0) {
+            this.getAria().setActiveDescendant("");
+
+            return;
+        }
+
+        const cells = this.rowPool[poolSlotIdx].getComponents();
+        const cell = cells[this._focusedColIndex];
+
+        if (cell) {
+            this.getAria().setActiveDescendant(cell.getId());
+        } else {
+            this.getAria().setActiveDescendant(this.rowPool[poolSlotIdx].getId());
+        }
+    }
+
+    /**
+     * Handles keyboard navigation: ArrowUp/Down/Home/End move row selection; ArrowLeft/Right
+     * move column focus; PageUp/Down move by a viewport-height page; Enter starts cell edit.
      *
      * @param e - The keyboard event fired on the body element.
      */
@@ -442,19 +540,77 @@ export class Body extends Component {
             return;
         }
 
-        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') {
+        const navigable = new Set([
+            'ArrowDown', 'ArrowUp', 'Home', 'End',
+            'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Enter'
+        ]);
+
+        if (!navigable.has(e.key)) {
             return;
         }
 
         e.preventDefault();
 
+        // Column navigation — no row change needed
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            const visibleColCount = this.store.model.getFields()
+                .filter(f => !this.hiddenColumns.has(f.getName())).length;
+
+            if (e.key === 'ArrowLeft') {
+                this._focusedColIndex = Math.max(0, this._focusedColIndex - 1);
+            } else {
+                this._focusedColIndex = Math.min(visibleColCount - 1, this._focusedColIndex + 1);
+            }
+
+            this._updateActiveDescendant();
+            this._updateFocusStyle();
+
+            return;
+        }
+
+        // Enter — start editing the focused cell
+        if (e.key === 'Enter') {
+            if (!this.anchorRecord) {
+                return;
+            }
+
+            const anchorIdx = records.indexOf(this.anchorRecord);
+            const poolSlotIdx = this.boundIndices.indexOf(anchorIdx);
+
+            if (poolSlotIdx < 0) {
+                return;
+            }
+
+            const cells = this.rowPool[poolSlotIdx].getComponents();
+            const cell = cells[this._focusedColIndex];
+
+            if (cell instanceof Cell) {
+                const typedCell = cell as Cell<unknown>;
+
+                typedCell.setOnEditEnd(() => {
+                    this.focus();
+                    this._updateFocusStyle();
+                    this._updateActiveDescendant();
+                });
+                typedCell.startEdit();
+            }
+
+            return;
+        }
+
+        // Row navigation
         const currentIdx = this.anchorRecord ? records.indexOf(this.anchorRecord) : -1;
+        const pageSize = Math.max(1, Math.floor((this.getHeight() || this.rowHeight) / this.rowHeight));
         let newIdx: number;
 
         if (e.key === 'ArrowDown') {
             newIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, records.length - 1);
         } else if (e.key === 'ArrowUp') {
             newIdx = currentIdx < 0 ? 0 : Math.max(currentIdx - 1, 0);
+        } else if (e.key === 'PageDown') {
+            newIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + pageSize, records.length - 1);
+        } else if (e.key === 'PageUp') {
+            newIdx = currentIdx < 0 ? 0 : Math.max(currentIdx - pageSize, 0);
         } else if (e.key === 'Home') {
             newIdx = 0;
         } else {
@@ -465,6 +621,8 @@ export class Body extends Component {
 
         this.selectRecord(newAnchor);
         this.scrollRecordIntoView(newAnchor);
+        this.renderWindow();
+        this._updateActiveDescendant();
     }
 
     /**

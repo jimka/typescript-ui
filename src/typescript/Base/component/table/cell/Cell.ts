@@ -21,6 +21,7 @@ export class Cell<T> extends Component {
     private renderer: CellRenderer<T>;
     private editor: CellEditor<T> | undefined;
     private onCommit: ((value: T) => void) | undefined;
+    private _onEditEnd: (() => void) | undefined;
 
     constructor(tag: string, renderer: CellRenderer<T>, editor?: CellEditor<T>, rendererConstraints?: LayoutConstraints, editorContraints?: LayoutConstraints) {
         super(tag || "td");
@@ -62,6 +63,17 @@ export class Cell<T> extends Component {
     }
 
     /**
+     * Registers a callback invoked when an edit ends via keyboard (Enter or Escape), but NOT on blur.
+     *
+     * @remarks Use this to return focus to the container after a keyboard-triggered edit exit,
+     * without stealing focus from wherever the user clicked when a blur triggered the commit.
+     * @param fn - Called after the cell returns to renderer view via keyboard action.
+     */
+    setOnEditEnd(fn: () => void): void {
+        this._onEditEnd = fn;
+    }
+
+    /**
      * Returns true if the cell cannot be edited.
      *
      * @returns True if the cell is read-only.
@@ -71,15 +83,17 @@ export class Cell<T> extends Component {
     }
 
     /**
-     * Commits on Enter and cancels on Escape while editing.
+     * Commits on Enter and cancels on Escape while editing, then fires `_onEditEnd` to return focus to the container.
      *
      * @param evnt - The keyboard event to handle.
      */
-    onKeyDown(evnt: KeyboardEvent) {
+    onKeyDown(evnt: KeyboardEvent): void {
         if (evnt.keyCode == 13) { // Enter
             this.commitEdit();
+            this._onEditEnd?.();
         } else if (evnt.keyCode == 27) { // Escape
             this.cancelEdit();
+            this._onEditEnd?.();
         }
     }
 
