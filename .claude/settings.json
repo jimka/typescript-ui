@@ -53,7 +53,8 @@
       "Bash(xargs -I {} basename {} .ts)",
       "Bash(graphify update *)",
       "Bash(graphify --help)",
-      "Edit(/.claude/skills/implement/**)"
+      "Edit(/.claude/skills/implement/**)",
+      "Bash(grep -v \".js$\")"
     ],
     "additionalDirectories": [
       "/home/jika"
