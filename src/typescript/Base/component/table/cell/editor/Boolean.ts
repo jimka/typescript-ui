@@ -51,4 +51,12 @@ export class BooleanEditor extends CellEditor<Boolean> {
     setValue(value: boolean) {
         this.checkBox.setSelected(value);
     }
+
+    /**
+     * Toggles the checkbox and fires the onChange callback.
+     */
+    toggle() {
+        this.checkBox.setSelected(!this.checkBox.isSelected());
+        this.onChange?.(this.getValue());
+    }
 }

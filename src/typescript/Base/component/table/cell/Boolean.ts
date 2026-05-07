@@ -39,9 +39,11 @@ export class BooleanCell extends Cell<Boolean> {
     }
 
     /**
-     * No-op; boolean cells are always directly interactive via checkbox.
+     * Toggles the checkbox value and fires the commit callback.
      */
-    startEdit() { }
+    startEdit() {
+        (this.getRenderer() as BooleanEditor).toggle();
+    }
 
     /**
      * Sets the checkbox checked state.
