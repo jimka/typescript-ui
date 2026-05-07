@@ -7,6 +7,7 @@ import { Row } from "./Row.js";
 import { Cell } from "./cell/Cell.js";
 import { Event } from "../../Event.js";
 import { ThemeManager } from "../../Theme.js";
+import type { ColumnConfig } from "./ColumnConfig.js";
 
 const SCROLL_BUFFER = 2;
 
@@ -35,19 +36,20 @@ const SCROLL_BUFFER = 2;
  */
 export class Body extends Component {
 
-    private store: AbstractStore;
-    private hiddenColumns: Set<string> = new Set();
-    private rowPool: Row[] = [];
-    private boundIndices: number[] = [];
-    private phantom: HTMLElement | null = null;
-    private lastBodyWidth: number = 0;
-    private lastColumnWidths: number[] = [];
-    private rowHeight: number;
-    private layoutInProgress = false;
-    private storeRefresh: (() => void) | null = null;
-    private selectedRecords: Set<ModelRecord> = new Set();
-    private anchorRecord: ModelRecord | null = null;
-    private _focusedColIndex: number = 0;
+    private store           : AbstractStore;
+    private hiddenColumns   : Set<string>               = new Set();
+    private columnConfigs   : Map<string, ColumnConfig> = new Map();
+    private rowPool         : Row[]                     = [];
+    private boundIndices    : number[]                  = [];
+    private phantom         : HTMLElement | null        = null;
+    private lastBodyWidth   : number                    = 0;
+    private lastColumnWidths: number[]                  = [];
+    private rowHeight       : number;
+    private layoutInProgress: boolean                   = false;
+    private storeRefresh    : (() => void) | null       = null;
+    private selectedRecords : Set<ModelRecord>          = new Set();
+    private anchorRecord    : ModelRecord | null        = null;
+    private _focusedColIndex: number                    = 0;
 
     constructor(store: AbstractStore) {
         super("tbody");
@@ -94,6 +96,12 @@ export class Body extends Component {
      */
     setHiddenColumns(hidden: Set<string>): void {
         this.hiddenColumns = new Set(hidden);
+        this.clearRowPool();
+        this.renderWindow();
+    }
+
+    setColumnConfigs(configs: Map<string, ColumnConfig>): void {
+        this.columnConfigs = configs;
         this.clearRowPool();
         this.renderWindow();
     }
@@ -215,7 +223,7 @@ export class Body extends Component {
 
         // Grow pool if needed
         while (this.rowPool.length < windowSize) {
-            const row = new Row(this.store.model, undefined, this.hiddenColumns);
+            const row = new Row(this.store.model, undefined, this.hiddenColumns, this.columnConfigs);
             const rowEl = row.getElement(true);
 
             element.appendChild(rowEl);
@@ -347,7 +355,12 @@ export class Body extends Component {
             }
         }
 
-        this.focus();
+        // Don't steal focus from an active cell editor (e.g. <input type="date">).
+        const targetTag = (e.target as HTMLElement).tagName;
+        if (targetTag !== 'INPUT' && targetTag !== 'TEXTAREA' && targetTag !== 'SELECT') {
+            this.focus();
+        }
+
         this._updateFocusStyle();
         this._updateActiveDescendant();
     }

@@ -13,6 +13,7 @@ import { Insets } from "../../Insets.js";
 import { ContextMenu } from "../../ContextMenu.js";
 import { ContextMenuItemConfig } from "../../component/ContextMenuItem.js";
 import { Column } from "./Column.js";
+import type { ColumnConfig } from "./ColumnConfig.js";
 import { ColumnSpec } from "./ColumnConfig.js";
 
 /**
@@ -83,6 +84,10 @@ export class Table extends Component {
         if (effectiveHidden.size > 0) {
             this.header.setHiddenColumns(effectiveHidden);
             this.body.setHiddenColumns(effectiveHidden);
+        }
+
+        if (spec) {
+            this.body.setColumnConfigs(this.buildColumnConfigs(spec));
         }
 
         this.getAria().setColCount(this.getColumns().length);
@@ -420,6 +425,16 @@ export class Table extends Component {
      * Populates `hiddenColumns` from columns declared `hidden: true` in the spec,
      * so they start hidden but remain user-toggleable via the context menu.
      */
+    private buildColumnConfigs(spec: ColumnSpec): Map<string, ColumnConfig> {
+        const map = new Map<string, ColumnConfig>();
+
+        for (const col of spec.columns) {
+            map.set(col.field, col);
+        }
+
+        return map;
+    }
+
     private initHiddenFromSpec(): void {
         for (const col of this.resolvedColumns) {
             if (col.isInitiallyHidden()) {

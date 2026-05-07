@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'auto';
+export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'time' | 'datetime' | 'auto';
 
 /**
  * Configuration object used to define a field on a model.
