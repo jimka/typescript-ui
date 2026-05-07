@@ -47,8 +47,6 @@ export class Tooltip extends Component {
     private static showTimer: ReturnType<typeof setTimeout> | null = null;
     private static attachments: Map<string, TooltipAttachment> = new Map();
 
-    /** Approximate character width in pixels for the 14 px system-ui font. */
-    private static readonly CHAR_WIDTH: number = 7;
     private static readonly H_PADDING: number = 16;
     private static readonly V_PADDING: number = 8;
     private static readonly MIN_WIDTH: number = 80;
@@ -113,7 +111,7 @@ export class Tooltip extends Component {
 
         const tooltipWidth = Math.min(
             Tooltip.MAX_WIDTH,
-            Math.max(Tooltip.MIN_WIDTH, text.length * Tooltip.CHAR_WIDTH + Tooltip.H_PADDING)
+            Math.max(Tooltip.MIN_WIDTH, Util.measureTextWidth(text) + Tooltip.H_PADDING)
         );
         const tooltipHeight = Tooltip.ITEM_HEIGHT + Tooltip.V_PADDING;
 
