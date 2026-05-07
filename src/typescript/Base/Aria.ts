@@ -21,7 +21,11 @@ export type AriaRole =
     | 'region'
     | 'combobox'
     | 'listbox'
-    | 'option';
+    | 'option'
+    | 'menubar'
+    | 'menuitem'
+    | 'menu'
+    | 'separator';
 
 /**
  * Valid values for the `aria-sort` attribute.
@@ -420,6 +424,62 @@ export class Aria {
         const v = this.attributes.get("pressed");
 
         return v !== undefined ? v === "true" : null;
+    }
+
+    /**
+     * Sets `aria-haspopup`, indicating the element opens a popup.
+     *
+     * @param value - The popup type, or `false` to indicate no popup.
+     */
+    setHasPopup(value: 'false' | 'true' | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog'): void {
+        this.setAttribute("haspopup", value);
+    }
+
+    /**
+     * Returns the current `aria-haspopup` value, or null if not set.
+     *
+     * @returns The popup type string, or null.
+     */
+    getHasPopup(): string | null {
+        return this.attributes.get("haspopup") ?? null;
+    }
+
+    /**
+     * Sets `aria-disabled`.
+     *
+     * @param value - Whether the element is disabled.
+     */
+    setDisabled(value: boolean): void {
+        this.setAttribute("disabled", String(value));
+    }
+
+    /**
+     * Returns the current `aria-disabled` value, or null if not set.
+     *
+     * @returns The disabled state, or null.
+     */
+    getDisabled(): boolean | null {
+        const v = this.attributes.get("disabled");
+
+        return v !== undefined ? v === "true" : null;
+    }
+
+    /**
+     * Sets `aria-label`, providing an accessible label for the element.
+     *
+     * @param value - The label text.
+     */
+    setLabel(value: string): void {
+        this.setAttribute("label", value);
+    }
+
+    /**
+     * Returns the current `aria-label` value, or null if not set.
+     *
+     * @returns The label text, or null.
+     */
+    getLabel(): string | null {
+        return this.attributes.get("label") ?? null;
     }
 
     /**

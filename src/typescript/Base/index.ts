@@ -102,6 +102,14 @@ export { ContextMenuItem } from './component/ContextMenuItem.js';
 export type { ContextMenuItemConfig } from './component/ContextMenuItem.js';
 export { ContextMenuSeparator } from './component/ContextMenuSeparator.js';
 
+// Components — menu bar
+export { MenuBar } from './component/menubar/MenuBar.js';
+export { MenuBarButton } from './component/menubar/MenuBarButton.js';
+export { MenuPanel } from './component/menubar/MenuPanel.js';
+export { MenuItem } from './component/menubar/MenuItem.js';
+export type { MenuItemConfig, MenuConfig } from './component/menubar/MenuItem.js';
+export { MenuSeparator } from './component/menubar/MenuSeparator.js';
+
 // Data layer
 export { AbstractModel } from './data/AbstractModel.js';
 export { Field } from './data/Field.js';
