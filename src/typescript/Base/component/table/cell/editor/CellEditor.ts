@@ -13,8 +13,8 @@ import { ThemeManager } from "../../../../Theme.js";
  */
 export abstract class CellEditor<T> extends Component {
 
-    constructor() {
-        super();
+    constructor(tag: string = "div") {
+        super(tag);
 
         this.setLayoutManager(new Fit());
         this.applyThemePadding();

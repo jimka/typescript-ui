@@ -49,9 +49,21 @@ export class ModelRecord {
      * @param value - The new value to assign to the field.
      */
     set(field: string, value: any): void {
-        if (this.data[field] === value) return;
+        if (ModelRecord.isEqual(this.data[field], value)) {
+            return;
+        }
+
         this.data[field] = value;
-        this.dirty = this._isNew || Object.keys(this.original).some(k => this.data[k] !== this.original[k]);
+        this.dirty = this._isNew || Object.keys(this.original)
+                                          .some(k => !ModelRecord.isEqual(this.data[k], this.original[k]));
+    }
+
+    private static isEqual(a: any, b: any): boolean {
+        if (a instanceof Date && b instanceof Date) {
+            return a.getTime() === b.getTime();
+        }
+
+        return a === b;
     }
 
     /**

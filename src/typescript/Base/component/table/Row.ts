@@ -8,6 +8,10 @@ import { DefaultCell } from "./cell/Default.js";
 import { StringCell } from "./cell/String.js";
 import { BooleanCell } from "./cell/Boolean.js";
 import { NumberCell } from "./cell/Number.js";
+import { DateCell } from "./cell/Date.js";
+import { TimeCell } from "./cell/Time.js";
+import { DateTimeCell } from "./cell/DateTime.js";
+import type { ColumnConfig } from "./ColumnConfig.js";
 import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
 
 /**
@@ -23,7 +27,7 @@ export class Row extends Component {
     private data?: ModelRecord;
     private hiddenColumns: Set<string>;
 
-    constructor(model?: AbstractModel, data?: ModelRecord, hiddenColumns: Set<string> = new Set()) {
+    constructor(model?: AbstractModel, data?: ModelRecord, hiddenColumns: Set<string> = new Set(), columnConfigs: Map<string, ColumnConfig> = new Map()) {
         super("tr");
 
         this.getAria().setRole("row");
@@ -51,6 +55,15 @@ export class Row extends Component {
                         break;
                     case "boolean":
                         cell = new BooleanCell();
+                        break;
+                    case "date":
+                        cell = new DateCell();
+                        break;
+                    case "time":
+                        cell = new TimeCell(columnConfigs.get(field.getName())?.showSeconds ?? false);
+                        break;
+                    case "datetime":
+                        cell = new DateTimeCell(columnConfigs.get(field.getName())?.showSeconds ?? false);
                         break;
                     default:
                         cell = new DefaultCell();

@@ -5,7 +5,6 @@ import { Util } from "./Util.js";
 import { Event } from "./Event.js";
 import { Size } from "./Size.js";
 import { ThemeManager, DefaultTheme } from "./Theme.js";
-import { Insets } from "./Insets.js";
 
 /**
  * A {@link Component} that wraps the page's `<body>` element.

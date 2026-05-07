@@ -112,24 +112,27 @@ export class MiscPanel extends Component {
 
             win3.setX(100);
             win3.setY(250);
-            win3.setWidth(600);
+            win3.setWidth(800);
             win3.setHeight(400);
 
             let specModel = new Model([
-                { name: "Name"   , type: "string" , description: "col1", order: 0 },
-                { name: "Active" , type: "boolean", description: "col2", order: 1 },
-                { name: "Score"  , type: "number" , description: "col3", order: 2 },
-                { name: "Notes"  , type: "string" , description: "col4", order: 3 },
+                { name: "Name"      , type: "string"  , description: "col1", order: 0 },
+                { name: "Active"    , type: "boolean" , description: "col2", order: 1 },
+                { name: "Score"     , type: "number"  , description: "col3", order: 2 },
+                { name: "Joined"    , type: "date"    , description: "col5", order: 3 },
+                { name: "Meeting"   , type: "time"    , description: "col6", order: 4 },
+                { name: "LastSeen"  , type: "datetime", description: "col7", order: 5 },
+                { name: "Notes"     , type: "string"  , description: "col4", order: 6 },
             ]);
 
             let specStore = new MemoryStore(specModel);
 
             specStore.add([
-                { Name: "Alice", Active: true , Score: 95,  Notes: "Top performer"   },
-                { Name: "Bob"  , Active: false, Score: 72,  Notes: "Needs follow-up" },
-                { Name: "Carol", Active: true , Score: 88,  Notes: "On track"        },
-                { Name: "David", Active: true , Score: 61,  Notes: "Check in soon"   },
-                { Name: "Eve"  , Active: false, Score: 45,  Notes: "At risk"         },
+                { Name: "Alice", Active: true , Score: 95, Joined: new Date(2021,  2, 15), Meeting: new Date(1970, 0, 1,  9, 30, 20), LastSeen: new Date(2024,  0, 10, 14, 25), Notes: "Top performer"   },
+                { Name: "Bob"  , Active: false, Score: 72, Joined: new Date(2022,  7,  3), Meeting: new Date(1970, 0, 1, 14,  0, 30), LastSeen: new Date(2024,  3, 22,  8, 10), Notes: "Needs follow-up" },
+                { Name: "Carol", Active: true , Score: 88, Joined: new Date(2020, 11, 20), Meeting: null                        , LastSeen: new Date(2023, 11,  5, 17, 45)    , Notes: "On track"        },
+                { Name: "David", Active: true , Score: 61, Joined: null                  , Meeting: new Date(1970, 0, 1, 11, 15, 40), LastSeen: null                          , Notes: "Check in soon"   },
+                { Name: "Eve"  , Active: false, Score: 45, Joined: new Date(2023,  4,  9), Meeting: new Date(1970, 0, 1, 16, 45, 50), LastSeen: new Date(2024,  5,  1,  9,  0), Notes: "At risk"         },
             ]);
 
             // TODO: Will this lead to a race condition if we don't 'await'?
@@ -140,9 +143,12 @@ export class MiscPanel extends Component {
             // auto-appended because appendUnlisted defaults to true.
             const spec: ColumnSpec = {
                 columns: [
-                    { field: 'Name'  , minWidth: 150  },
-                    { field: 'Active', maxWidth: 100  },
-                    { field: 'Notes' , hidden  : true },
+                    { field: 'Name'    , minWidth: 150                    },
+                    { field: 'Active'  , maxWidth: 100                    },
+                    { field: 'Joined'  , minWidth: 120                    },
+                    { field: 'Meeting' , minWidth: 100, showSeconds: true },
+                    { field: 'LastSeen', minWidth: 160                    },
+                    { field: 'Notes'   , hidden  : true                   },
                 ],
             };
 

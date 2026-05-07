@@ -15,7 +15,12 @@ export interface ColumnConfig {
     /** Maximum width in pixels. The column cannot be dragged wider than this value. */
     maxWidth ?: number;
     /** When `true` the column starts hidden; the user can still reveal it via the context menu. */
-    hidden   ?: boolean;
+    hidden      ?: boolean;
+    /**
+     * For `time` and `datetime` columns: when `true` the editor and renderer include seconds.
+     * Defaults to `false` (hours and minutes only).
+     */
+    showSeconds ?: boolean;
 }
 
 /**
