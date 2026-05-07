@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Input } from "./Input.js";
+import { Util } from "../Util.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 import { Bindable } from "../Bindable.js";
@@ -38,7 +39,7 @@ export class TimeField extends Input implements Bindable<Date | null> {
      * adjustments propagate to the layout hint automatically.
      */
     private updateHeight(): void {
-        const h = Input.measureNativeHeight();
+        const h = Util.measureInputHeight();
 
         this.setPreferredSize(110, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);

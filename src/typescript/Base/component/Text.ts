@@ -2,6 +2,7 @@
 
 import { Component } from "../Component.js";
 import { ThemeManager } from "../Theme.js";
+import { Util } from "../Util.js";
 
 /**
  * A text-displaying component with comprehensive font and layout controls.
@@ -97,28 +98,16 @@ export class Text extends Component {
      */
     private calculateSize() {
         if (this.text) {
-            let probe = document.createElement("span");
+            const { width, height } = Util.measureTextSize(this.text.toString(), {
+                fontFamily  : this.fontFamily  ?? undefined,
+                fontSize    : this.fontSizeCSSRule ?? (this.fontSize !== null ? `${this.fontSize}px` : undefined),
+                fontWeight  : this.fontWeight  ?? undefined,
+                fontStyle   : this.fontStyle   ?? undefined,
+                fontVariant : this.fontVariant ?? undefined,
+                fontStretch : this.fontStretch ?? undefined,
+            });
 
-            probe.style.cssText = [
-                "position:fixed",
-                "visibility:hidden",
-                "white-space:nowrap",
-                `font-family:${this.fontFamily}`,
-                `font-size:${this.fontSizeCSSRule ?? (this.fontSize !== null ? `${this.fontSize}px` : '')}`,
-                `font-weight:${this.fontWeight}`,
-                `font-style:${this.fontStyle}`,
-                `font-variant:${this.fontVariant}`,
-                `font-stretch:${this.fontStretch}`,
-            ].join(";");
-
-            probe.textContent = this.text.toString();
-            document.body.appendChild(probe);
-
-            let rect = probe.getBoundingClientRect();
-
-            document.body.removeChild(probe);
-
-            this.setCalculatedSize(rect.width, rect.height);
+            this.setCalculatedSize(width, height);
         } else {
             this.setCalculatedSize(0, 0);
         }

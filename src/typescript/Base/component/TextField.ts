@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { TextInput } from "./TextInput.js";
-import { Input } from "./Input.js";
+import { Util } from "../Util.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 import { Bindable } from "../Bindable.js";
@@ -35,7 +35,7 @@ export class TextField extends TextInput implements Bindable<string> {
      * adjustments propagate to the layout hint automatically.
      */
     private updateHeight(): void {
-        const h = Input.measureNativeHeight();
+        const h = Util.measureInputHeight();
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
