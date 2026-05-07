@@ -439,8 +439,6 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **`Binding` record-change veto** — `setRecord()` has no way to abort a record switch. Add an `addBeforeRecordListener(fn: (next: ModelRecord | null) => boolean)` API: listeners return `false` to cancel the change. Useful for guarding against switching away from an invalid or dirty record. Async confirmation (e.g. a dialog) must be handled at the call site since `setRecord()` stays synchronous.
 
-* **Modal dialog** — `Window` is draggable but never blocking. A `Dialog` component (or a `modal` option on `Window`) should render a full-viewport backdrop, trap keyboard focus inside, and prevent interaction with content behind it. This is needed for confirmation prompts and multi-step forms.
-
 * **Drag-and-drop system** — no DnD primitive exists. A `DragSource` / `DropTarget` API built on top of the `Event` class would enable reordering list items, moving tree nodes, and rearranging tab order. Should expose drag data and drag-over feedback hooks rather than a single monolithic implementation.
 
 * **Progress / loading indicators** — no `ProgressBar` or `Spinner` component exists. The Table's virtual scroll has no "loading" state, and async `Store.load()` has no visual feedback. A `ProgressBar` (0–100 %, or indeterminate) and a `Spinner` overlay are the minimum needed to communicate async activity.

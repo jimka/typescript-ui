@@ -1261,6 +1261,17 @@ export class Component extends BaseObject {
     }
 
     /**
+     * Sets the CSS user-select property on the element.
+     *
+     * @param value - A CSS user-select value (e.g. "none", "auto", "text").
+     */
+    setUserSelect(value: string) {
+        this.userSelect = value;
+
+        this.cssRule.style.userSelect = value;
+    }
+
+    /**
      * Moves browser focus to this component's DOM element.
      */
     focus() {

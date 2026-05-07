@@ -382,6 +382,24 @@ export class Text extends Component {
     }
 
     /**
+     * Sets the CSS text-overflow property and updates the component's CSS rule.
+     *
+     * @param value - A CSS text-overflow value (e.g. "clip", "ellipsis").
+     */
+    setTextOverflow(value: string): void {
+        this.setElementCSSRule("textOverflow", value);
+    }
+
+    /**
+     * Sets the CSS white-space property and updates the component's CSS rule.
+     *
+     * @param value - A CSS white-space value (e.g. "nowrap", "normal", "pre").
+     */
+    setWhiteSpace(value: string): void {
+        this.setElementCSSRule("whiteSpace", value);
+    }
+
+    /**
      * Applies all text-specific style properties to the element's CSS rule in addition to base styles.
      *
      * @param element - The HTMLElement to apply styles to.

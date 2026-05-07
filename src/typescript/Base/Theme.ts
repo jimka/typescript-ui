@@ -166,6 +166,14 @@ export interface Theme {
         };
     };
 
+    dialog: {
+        backdrop: {
+            background: string;
+        };
+        border: string;
+        shadow: string;
+    };
+
     accordion: {
         header: {
             background: string;
@@ -330,6 +338,11 @@ export const DefaultTheme: Theme = {
             disabledColor      : 'rgb(170, 170, 170)',
         },
     },
+    dialog: {
+        backdrop: { background: 'rgba(0, 0, 0, 0.45)' },
+        border  : 'rgb(220, 220, 220)',
+        shadow  : '4px 8px 24px rgba(0, 0, 0, 0.35)',
+    },
 };
 
 /**
@@ -458,6 +471,11 @@ export const DarkTheme: Theme = {
             disabledColor      : 'rgb(100, 100, 100)',
         },
     },
+    dialog: {
+        backdrop: { background: 'rgba(0, 0, 0, 0.65)' },
+        border  : 'rgb(70, 70, 70)',
+        shadow  : '4px 8px 24px rgba(0, 0, 0, 0.6)',
+    },
 };
 
 /**
@@ -548,6 +566,9 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-menu-bar-item-disabled-color'             : theme.menuBar.item.disabledColor,
         '--ts-ui-menu-bar-item-shortcut-color'             : theme.menuBar.item.shortcutColor,
         '--ts-ui-menu-bar-separator-color'                 : theme.menuBar.separatorColor,
+        '--ts-ui-dialog-backdrop-bg'                       : theme.dialog.backdrop.background,
+        '--ts-ui-dialog-border'                            : theme.dialog.border,
+        '--ts-ui-dialog-shadow'                            : theme.dialog.shadow,
     };
 }
 
