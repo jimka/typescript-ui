@@ -15,6 +15,7 @@ import { ComplexUIPanel } from "./ComplexUIPanel.js";
 import { GridPanel } from "./GridPanel.js";
 import { AccordionPanel } from "./AccordionPanel.js";
 import { TabPanel } from "./TabPanel.js";
+import { MenuBarPanel } from "./MenuBarPanel.js";
 
 import { Model, MemoryStore } from "./Base/index.js";
 
@@ -61,6 +62,9 @@ body.addComponent(accordionPanel, { name: "Accordion" });
 
 let tabPanel = new TabPanel();
 body.addComponent(tabPanel, { name: "Tab" });
+
+let menuBarPanel = new MenuBarPanel();
+body.addComponent(menuBarPanel, { name: "MenuBar" });
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number'                  },

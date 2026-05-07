@@ -117,6 +117,28 @@ export interface Theme {
         separatorColor: string;
     };
 
+    menuBar: {
+        background: string;
+        border    : string;
+        button: {
+            background     : string;
+            hoverBackground: string;
+            foreground     : string;
+        };
+        panel: {
+            background: string;
+            border    : string;
+            shadow    : string;
+            minWidth  : string;
+        };
+        item: {
+            hoverBackground: string;
+            disabledColor  : string;
+            shortcutColor  : string;
+        };
+        separatorColor: string;
+    };
+
     tooltip: {
         background: string;
         color     : string;
@@ -253,6 +275,27 @@ export const DefaultTheme: Theme = {
         },
         separatorColor: 'rgb(220, 220, 220)',
     },
+    menuBar: {
+        background    : 'transparent',
+        border        : 'rgb(220, 220, 220)',
+        button        : {
+            background     : 'transparent',
+            hoverBackground: 'rgba(30, 100, 200, 0.10)',
+            foreground     : 'inherit',
+        },
+        panel         : {
+            background: 'rgb(255, 255, 255)',
+            border    : 'rgb(200, 200, 200)',
+            shadow    : '2px 4px 8px rgba(0, 0, 0, 0.15)',
+            minWidth  : '160px',
+        },
+        item          : {
+            hoverBackground: 'rgba(30, 100, 200, 0.12)',
+            disabledColor  : 'rgb(170, 170, 170)',
+            shortcutColor  : 'rgb(140, 140, 140)',
+        },
+        separatorColor: 'rgb(220, 220, 220)',
+    },
     tooltip: {
         background: 'rgb(255, 255, 240)',
         color     : 'rgb(0, 0, 0)',
@@ -357,6 +400,27 @@ export const DarkTheme: Theme = {
         item          : {
             hoverBackground: 'rgba(100, 140, 220, 0.2)',
             disabledColor  : 'rgb(100, 100, 100)',
+        },
+        separatorColor: 'rgb(70, 70, 70)',
+    },
+    menuBar: {
+        background    : 'transparent',
+        border        : 'rgb(70, 70, 70)',
+        button        : {
+            background     : 'transparent',
+            hoverBackground: 'rgba(100, 140, 220, 0.15)',
+            foreground     : 'inherit',
+        },
+        panel         : {
+            background: 'rgb(45, 45, 45)',
+            border    : 'rgb(80, 80, 80)',
+            shadow    : '2px 4px 8px rgba(0, 0, 0, 0.5)',
+            minWidth  : '160px',
+        },
+        item          : {
+            hoverBackground: 'rgba(100, 140, 220, 0.2)',
+            disabledColor  : 'rgb(100, 100, 100)',
+            shortcutColor  : 'rgb(140, 140, 140)',
         },
         separatorColor: 'rgb(70, 70, 70)',
     },
@@ -471,6 +535,19 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-autocomplete-item-highlight-bg'           : theme.autoComplete.item.highlightBackground,
         '--ts-ui-autocomplete-item-highlight-color'        : theme.autoComplete.item.highlightColor,
         '--ts-ui-autocomplete-item-disabled-color'         : theme.autoComplete.item.disabledColor,
+        '--ts-ui-menu-bar-bg'                              : theme.menuBar.background,
+        '--ts-ui-menu-bar-border'                          : theme.menuBar.border,
+        '--ts-ui-menu-bar-btn-bg'                          : theme.menuBar.button.background,
+        '--ts-ui-menu-bar-btn-hover-bg'                    : theme.menuBar.button.hoverBackground,
+        '--ts-ui-menu-bar-btn-fg'                          : theme.menuBar.button.foreground,
+        '--ts-ui-menu-bar-panel-bg'                        : theme.menuBar.panel.background,
+        '--ts-ui-menu-bar-panel-border'                    : theme.menuBar.panel.border,
+        '--ts-ui-menu-bar-panel-shadow'                    : theme.menuBar.panel.shadow,
+        '--ts-ui-menu-bar-panel-min-width'                 : theme.menuBar.panel.minWidth,
+        '--ts-ui-menu-bar-item-hover-bg'                   : theme.menuBar.item.hoverBackground,
+        '--ts-ui-menu-bar-item-disabled-color'             : theme.menuBar.item.disabledColor,
+        '--ts-ui-menu-bar-item-shortcut-color'             : theme.menuBar.item.shortcutColor,
+        '--ts-ui-menu-bar-separator-color'                 : theme.menuBar.separatorColor,
     };
 }
 
