@@ -52,7 +52,8 @@
       "Bash(ln -sfn ~/.nvm/versions/node/v25.9.0 ~/.nvm/current)",
       "Bash(xargs -I {} basename {} .ts)",
       "Bash(graphify update *)",
-      "Bash(graphify --help)"
+      "Bash(graphify --help)",
+      "Edit(/.claude/skills/implement/**)"
     ],
     "additionalDirectories": [
       "/home/jika"
