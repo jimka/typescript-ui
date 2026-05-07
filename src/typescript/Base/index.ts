@@ -91,6 +91,7 @@ export type { TreeNode } from './component/tree/TreeNode.js';
 
 // Components — lists
 export { List } from './component/List.js';
+export { MultiSelectList } from './component/MultiSelectList.js';
 export { BulletedList } from './component/BulletedList.js';
 export { BulletedListItemStyle } from './component/BulletedListItemStyle.js';
 export { NumberedList } from './component/NumberedList.js';
