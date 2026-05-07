@@ -452,8 +452,6 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Tree node renderers** — `TreeRow` currently renders each node as two plain `<span>` elements (a toggle icon and a label). A renderer API similar to the table's `CellRenderer` pattern — a factory passed to the `Tree` constructor or `setNodeRenderer()` — would let callers display icons, badges, or rich content per node.
 
-* **Multi-select List** — `List` (and `ComboBox`) support only single selection. A `multiSelect` option with checkbox rendering per item and a `getValues() / setValues()` API would cover the common case of selecting several items from a fixed set.
-
 * **Table column pinning** — there is no way to freeze one or more columns to the left while the rest scroll horizontally. Column pinning requires a dual-panel table (fixed + scrolling) sharing a single virtual-scroll position; this is the largest missing table feature.
 
 * **Table multi-column sort** — `Store.sort()` accepts one field at a time. Supporting an ordered sort descriptor array (e.g. `store.sort([{ field: 'lastName', dir: 'asc' }, { field: 'firstName', dir: 'asc' }])`) and surfacing the sort priority in column header indicators would match the expectation of most tabular UIs.
