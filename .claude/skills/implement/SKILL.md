@@ -111,31 +111,30 @@ Keep descriptions concise — one sentence is often enough. Only add `@remarks` 
 
 ---
 
-### All ARIA attributes must go through the `Aria` utility class
+### All attributes and styles go through the framework's typed API
 
-All WAI-ARIA attributes must be set via `this.getAria()`, never by calling `setElementAttribute("aria-*", ...)` or `element.setAttribute("aria-*", ...)` directly. The `Aria` class provides typed setters for every attribute the framework supports:
+Never write to the DOM directly for attributes or styles. The framework provides a typed layer for every category:
+
+**CSS styles** — use the Component setter/getter API (`setBackgroundColor`, `setWidth`, `setBorder`, `setPosition`, etc.) rather than `element.style`. This lets `Component.ts` batch-commit changes via the `setAutoCommitStyle(false)` / `setAutoCommitStyle(true)` pattern. If the needed property has no setter yet, add one. Exception: raw DOM helper elements (non-Component `<div>`s) may use `element.style` directly since they are outside the Component style system.
+
+**ARIA attributes** — use `this.getAria()`, never `setElementAttribute("aria-*", ...)` or `element.setAttribute("aria-*", ...)`. The `Aria` class provides typed setters for every supported attribute. If one is missing, add it to `Aria.ts` rather than falling back to raw access. `role` and `tabindex` also go through `Aria`.
+
+**All other HTML attributes** — determine scope first, then pick the right home:
+- Attribute that applies to all elements → typed setter/getter in `Component.ts`.
+- Attribute specific to one component (e.g. `name` on a radio input) → private backing field plus typed setter/getter in that component class; use `component.setElementAttribute(name, value)` internally to write to the DOM.
+- Never call `element.setAttribute(...)` or `element.getAttribute(...)` directly from component code.
 
 ```typescript
 // Never
-this.setElementAttribute("aria-selected", "true");
-element.setAttribute("aria-expanded", "false");
+element.setAttribute("aria-selected", "true");
+element.style.color = "red";
+element.setAttribute("name", groupId);
 
 // Always
-this.getAria().setSelected(true);
-this.getAria().setExpanded(false);
+this.getAria().setSelected(true);       // ARIA → Aria class
+this.setForegroundColor("red");         // CSS  → Component setter
+this.setRadioName(groupId);             // HTML attr → typed setter → setElementAttribute internally
 ```
-
-If the required attribute has no typed setter yet (e.g. `aria-valuemin`), add one to `Aria.ts` rather than falling back to raw `setElementAttribute`.
-
-`role` and `tabindex` also go through `Aria`: `this.getAria().setRole("listbox")`, `this.getAria().setTabIndex(0)`.
-
----
-
-### CSS manipulation via setter/getter methods
-
-All CSS changes must go through the Component's setter/getter API (`setBackgroundColor`, `setWidth`, `setBorder`, `setPosition`, etc.) rather than by writing to `element.style` directly. This allows `Component.ts` to batch-commit style changes via the `setAutoCommitStyle(false)` / `setAutoCommitStyle(true)` pattern when needed.
-
-If the needed property has no setter yet, add one rather than writing inline styles. Exception: properties on raw DOM helper elements (non-Component `<div>`s) may use `element.style` directly since they are not part of the Component style system.
 
 ## Work Instructions
 
