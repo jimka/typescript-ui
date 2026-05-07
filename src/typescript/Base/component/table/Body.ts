@@ -542,7 +542,7 @@ export class Body extends Component {
 
         const navigable = new Set([
             'ArrowDown', 'ArrowUp', 'Home', 'End',
-            'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Enter'
+            'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Enter', ' '
         ]);
 
         if (!navigable.has(e.key)) {
@@ -568,8 +568,8 @@ export class Body extends Component {
             return;
         }
 
-        // Enter — start editing the focused cell
-        if (e.key === 'Enter') {
+        // Enter/Space — start editing the focused cell
+        if (e.key === 'Enter' || e.key === ' ') {
             if (!this.anchorRecord) {
                 return;
             }
