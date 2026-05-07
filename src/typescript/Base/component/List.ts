@@ -14,6 +14,7 @@ export class List extends ComboBox {
     constructor() {
         super();
 
+        this.getAria().setRole("listbox");
         this.setOverflow("auto");
         this.updateHeight();
     }

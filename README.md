@@ -445,7 +445,6 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Progress / loading indicators** — no `ProgressBar` or `Spinner` component exists. The Table's virtual scroll has no "loading" state, and async `Store.load()` has no visual feedback. A `ProgressBar` (0–100 %, or indeterminate) and a `Spinner` overlay are the minimum needed to communicate async activity.
 
-* **Keyboard navigation and focus management** — ARIA roles are applied (`role="grid"`, `role="tree"`) but keyboard interaction is absent. Table rows, tree nodes, and list items should respond to arrow keys; `Tab` order inside composite widgets needs a `roving tabindex` implementation. This is the main accessibility gap.
 
 ### Low priority
 

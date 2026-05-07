@@ -16,6 +16,7 @@ export type { Theme } from './Theme.js';
 // Core
 export { BaseObject } from './BaseObject.js';
 export { Component } from './Component.js';
+export { RovingTabIndex } from './RovingTabIndex.js';
 export { Body } from './Body.js';
 export { ButtonGroup } from './ButtonGroup.js';
 export { Window } from './Window.js';

@@ -23,6 +23,8 @@ const SELECTED_BG = "var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))";
 interface FlatRow {
     node: TreeNode;
     depth: number;
+    siblingCount: number;
+    posInSet: number;
 }
 
 /**
@@ -130,14 +132,19 @@ export class Tree extends Component {
     }
 
     /**
-     * Rebuilds the flat visible-row list from the current root nodes and expanded set.
+     * Rebuilds the flat visible-row list from the current root nodes and expanded set,
+     * computing `siblingCount` and `posInSet` (1-based) for each entry.
      */
     private _flatten(): void {
         this._flatRows = [];
 
         const recurse = (nodes: TreeNode[], depth: number): void => {
-            for (const node of nodes) {
-                this._flatRows.push({ node, depth });
+            const siblingCount = nodes.length;
+
+            for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+
+                this._flatRows.push({ node, depth, siblingCount, posInSet: i + 1 });
 
                 if (node.children && node.children.length > 0 && this._expandedNodes.has(node)) {
                     recurse(node.children, depth + 1);
@@ -212,6 +219,8 @@ export class Tree extends Component {
 
         this._updateSelectionStyle();
         this._scrollIntoView(index);
+        this._renderWindow();
+        this._updateActiveDescendant();
         this._fireSelectionListeners();
     }
 
@@ -234,6 +243,8 @@ export class Tree extends Component {
 
         this._updateSelectionStyle();
         this._scrollIntoView(index);
+        this._renderWindow();
+        this._updateActiveDescendant();
         this._fireSelectionListeners();
     }
 
@@ -408,16 +419,19 @@ export class Tree extends Component {
     }
 
     /**
-     * Applies or removes the selection highlight and aria-selected on all currently bound pool rows.
+     * Applies or removes the selection highlight, focus ring, and aria-selected on all bound pool rows.
      */
     private _updateSelectionStyle(): void {
         for (const row of this._rowPool) {
             const rowEl = row.getElement() as HTMLElement | undefined;
+
             if (!rowEl) {
                 continue;
             }
 
-            const isSelected = row.getNode() !== null && this._selectedNodes.has(row.getNode()!);
+            const node = row.getNode();
+            const isSelected = node !== null && this._selectedNodes.has(node!);
+            const isFocused = node !== null && node === this._focusNode;
 
             if (isSelected) {
                 rowEl.style.setProperty("background-color", SELECTED_BG);
@@ -425,8 +439,39 @@ export class Tree extends Component {
                 rowEl.style.removeProperty("background-color");
             }
 
+            if (isFocused) {
+                rowEl.style.setProperty("outline", "2px solid var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))");
+                rowEl.style.setProperty("outline-offset", "-2px");
+            } else {
+                rowEl.style.removeProperty("outline");
+                rowEl.style.removeProperty("outline-offset");
+            }
+
             row.getAria().setSelected(isSelected);
         }
+    }
+
+    /**
+     * Sets `aria-activedescendant` on the tree container to the pool row bound to `_focusNode`.
+     *
+     * @remarks Must be called after `_renderWindow()` so the pool slot is guaranteed in the DOM.
+     */
+    private _updateActiveDescendant(): void {
+        if (!this._focusNode) {
+            this.getAria().setActiveDescendant("");
+
+            return;
+        }
+
+        for (const row of this._rowPool) {
+            if (row.getNode() === this._focusNode) {
+                this.getAria().setActiveDescendant(row.getId());
+
+                return;
+            }
+        }
+
+        this.getAria().setActiveDescendant("");
     }
 
     /**
@@ -475,7 +520,7 @@ export class Tree extends Component {
             const expanded = this._expandedNodes.has(flatRow.node);
 
             if (this._boundIndices[i] !== dataIndex) {
-                row.setRowData(flatRow.node, flatRow.depth, hasChildren, expanded);
+                row.setRowData(flatRow.node, flatRow.depth, hasChildren, expanded, flatRow.siblingCount, flatRow.posInSet);
                 this._boundIndices[i] = dataIndex;
             }
 

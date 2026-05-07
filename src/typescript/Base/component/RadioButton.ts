@@ -17,6 +17,7 @@ export class RadioButton extends Component {
     private selected: boolean;
     private label: Label;
     private radio: Input;
+    private _radioName: string | null = null;
 
     constructor(text? : string) {
         super();
@@ -63,6 +64,25 @@ export class RadioButton extends Component {
     }
 
     /**
+     * Assigns a shared `name` attribute to the underlying radio input, grouping it with other radio buttons.
+     *
+     * @param name - The name to set on the radio input element.
+     */
+    setRadioName(name: string): void {
+        this._radioName = name;
+        this.radio.setElementAttribute("name", name);
+    }
+
+    /**
+     * Returns the radio group name, or null if none has been set.
+     *
+     * @returns The name string, or null.
+     */
+    getRadioName(): string | null {
+        return this._radioName;
+    }
+
+    /**
      * Sets the selected state and updates the radio input's checked property.
      *
      * @param value - True to select the radio button, false to deselect it.
@@ -94,10 +114,13 @@ export class RadioButton extends Component {
      */
     render() {
         let element = <HTMLInputElement>super.render();
-        let radioElement = this.radio.getElement();
 
-        radioElement.setAttribute("type", "radio");
-        radioElement.checked = this.isSelected();
+        this.radio.setElementAttribute("type", "radio");
+        this.radio.getElement().checked = this.isSelected();
+
+        if (this._radioName !== null) {
+            this.radio.setElementAttribute("name", this._radioName);
+        }
 
         return element;
     }

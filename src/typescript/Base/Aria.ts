@@ -323,6 +323,106 @@ export class Aria {
     }
 
     /**
+     * Sets `aria-colindex` (1-based column position of a cell within a grid row).
+     *
+     * @param value - The 1-based column index.
+     */
+    setColIndex(value: number): void {
+        this.setAttribute("colindex", String(value));
+    }
+
+    /**
+     * Returns the current `aria-colindex`, or null if not set.
+     *
+     * @returns The column index, or null.
+     */
+    getColIndex(): number | null {
+        const v = this.attributes.get("colindex");
+
+        return v !== undefined ? Number(v) : null;
+    }
+
+    /**
+     * Sets `aria-colcount` (total number of columns in a grid).
+     *
+     * @param value - The total column count.
+     */
+    setColCount(value: number): void {
+        this.setAttribute("colcount", String(value));
+    }
+
+    /**
+     * Returns the current `aria-colcount`, or null if not set.
+     *
+     * @returns The column count, or null.
+     */
+    getColCount(): number | null {
+        const v = this.attributes.get("colcount");
+
+        return v !== undefined ? Number(v) : null;
+    }
+
+    /**
+     * Sets `aria-setsize` (total number of items in the set this element belongs to).
+     *
+     * @param value - The total set size.
+     */
+    setSetSize(value: number): void {
+        this.setAttribute("setsize", String(value));
+    }
+
+    /**
+     * Returns the current `aria-setsize`, or null if not set.
+     *
+     * @returns The set size, or null.
+     */
+    getSetSize(): number | null {
+        const v = this.attributes.get("setsize");
+
+        return v !== undefined ? Number(v) : null;
+    }
+
+    /**
+     * Sets `aria-posinset` (1-based position of this element within its set).
+     *
+     * @param value - The 1-based position.
+     */
+    setPosInSet(value: number): void {
+        this.setAttribute("posinset", String(value));
+    }
+
+    /**
+     * Returns the current `aria-posinset`, or null if not set.
+     *
+     * @returns The position in set, or null.
+     */
+    getPosInSet(): number | null {
+        const v = this.attributes.get("posinset");
+
+        return v !== undefined ? Number(v) : null;
+    }
+
+    /**
+     * Sets `aria-pressed` on a toggle button.
+     *
+     * @param value - Whether the button is currently pressed.
+     */
+    setPressed(value: boolean): void {
+        this.setAttribute("pressed", String(value));
+    }
+
+    /**
+     * Returns the current `aria-pressed` value, or null if not set.
+     *
+     * @returns The pressed state, or null.
+     */
+    getPressed(): boolean | null {
+        const v = this.attributes.get("pressed");
+
+        return v !== undefined ? v === "true" : null;
+    }
+
+    /**
      * Flushes all stored ARIA state to the given DOM element.
      *
      * @remarks Called by {@link Component.init} when the element is first created, ensuring

@@ -28,6 +28,7 @@ export class ComboBox extends Component implements Bindable<string> {
 
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
         this.setForegroundColor("var(--ts-ui-text-color, black)");
+        this.getAria().setRole("combobox");
 
         this.items = [];
 

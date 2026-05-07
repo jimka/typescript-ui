@@ -9,6 +9,7 @@ import { Insets } from "../Insets.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { FillType } from "./FillType.js";
 import { ButtonGroup } from "../ButtonGroup.js";
+import { RovingTabIndex } from "../RovingTabIndex.js";
 import { Column } from "./Column.js";
 import { HBox } from "./HBox.js";
 import { TabCloseButton } from "../component/TabCloseButton.js";
@@ -31,6 +32,7 @@ export class Tab extends LayoutManager {
     private toolbar: Component;
     private tabs: Array<TabEntry>;
     private buttonGroup: ButtonGroup;
+    private rovingTabIndex: RovingTabIndex;
     private selectedTabIndex: number;
     private onTabClose: ((component: Component) => void) | null = null;
 
@@ -42,6 +44,7 @@ export class Tab extends LayoutManager {
 
         this.tabs = [];
         this.buttonGroup = new ButtonGroup();
+        this.rovingTabIndex = new RovingTabIndex();
         this.toolbar = new Component();
 
         let columnLayout = new Column();
@@ -55,7 +58,7 @@ export class Tab extends LayoutManager {
     }
 
     /**
-     * Updates the selected tab index and triggers a re-layout when a tab button is clicked.
+     * Updates the selected tab index, syncs the roving tabindex, and triggers a re-layout when a tab button is clicked.
      *
      * @param tab - The tab button component that was pressed.
      */
@@ -64,6 +67,7 @@ export class Tab extends LayoutManager {
 
         if (idx >= 0) {
             this.selectedTabIndex = idx;
+            this.rovingTabIndex.moveTo(idx);
         }
 
         this.doLayout();
@@ -289,12 +293,15 @@ export class Tab extends LayoutManager {
         }
 
         this.buttonGroup.addButton(tabButton);
+        this.rovingTabIndex.add(tabButton);
         this.toolbar.addComponent(wrapper);
 
         tabButton.getAria().setRole("tab");
         tabButton.getAria().setSelected(isSelected);
+        tabButton.getAria().setControls(component.getId());
 
         component.getAria().setRole("tabpanel");
+        component.getAria().setTabIndex(-1);
         component.getAria().setLabelledBy(tabButton.getId());
     }
 
@@ -395,6 +402,7 @@ export class Tab extends LayoutManager {
         const contentComponent = components[entryIndex];
 
         this.buttonGroup.removeButton(entry.button);
+        this.rovingTabIndex.remove(entry.button);
         this.tabs.splice(entryIndex, 1);
         this.toolbar.removeComponent(entry.wrapper);
         container.removeComponent(contentComponent);
@@ -456,6 +464,5 @@ export class Tab extends LayoutManager {
         newTab.setSelected(true);
 
         this.onTabPressed(newTab);
-        newTab.focus();
     }
 }

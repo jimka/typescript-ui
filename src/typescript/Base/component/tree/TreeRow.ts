@@ -79,14 +79,16 @@ export class TreeRow extends Component {
     }
 
     /**
-     * Binds this pool slot to a new node, updating the toggle icon and label text.
+     * Binds this pool slot to a new node, updating the toggle icon, label text, and ARIA positional attributes.
      *
      * @param node - The tree node to display.
      * @param depth - The zero-based nesting depth (controls indentation).
      * @param hasChildren - Whether the node has child nodes (determines toggle visibility).
      * @param expanded - Whether the node is currently expanded.
+     * @param siblingCount - Total number of siblings at this level under the same parent.
+     * @param posInSet - 1-based position of this node among its siblings.
      */
-    setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean): void {
+    setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number): void {
         this._node = node;
         this._depth = depth;
 
@@ -95,6 +97,8 @@ export class TreeRow extends Component {
 
         this.getAria().setLevel(depth + 1);
         this.getAria().setExpanded(hasChildren ? expanded : null);
+        this.getAria().setSetSize(siblingCount);
+        this.getAria().setPosInSet(posInSet);
     }
 
     /**
