@@ -291,12 +291,8 @@ export class MiscPanel extends Component {
         modeGroup.addButton(radioContains);
         modeGroup.addButton(radioStartsWith);
 
-        radioContains.addActionListener(() => {
-            autoCompleteField.setMatchMode('contains');
-        });
-
-        radioStartsWith.addActionListener(() => {
-            autoCompleteField.setMatchMode('startsWith');
+        modeGroup.addSelectionListener((button) => {
+            autoCompleteField.setMatchMode(button === radioContains ? 'contains' : 'startsWith');
         });
 
         const modeRow = new Component();

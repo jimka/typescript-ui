@@ -19,6 +19,7 @@ export class ButtonGroup {
 
     private _groupId: string = 'bg-' + Math.random().toString(36).slice(2, 10);
     private _rovingTabIndex: RovingTabIndex | null = null;
+    private _selectionListeners: Array<(button: RadioButton | ToggleButton) => void> = [];
 
     /**
      * Creates an empty ButtonGroup.
@@ -34,16 +35,24 @@ export class ButtonGroup {
     private updateButtonStates(initiatorButton: RadioButton | ToggleButton): void {
         if (!initiatorButton.isSelected()) {
             initiatorButton.setSelected(true);
-            return;
+        } else {
+            this.buttons.forEach((button) => {
+                if (button !== initiatorButton) {
+                    button.setSelected(false);
+                }
+            });
         }
 
-        this.buttons.forEach((button) => {
-            if (button == initiatorButton) {
-                return;
-            }
+        this._selectionListeners.forEach((listener) => listener(initiatorButton));
+    }
 
-            button.setSelected(false);
-        });
+    /**
+     * Registers a listener that is called whenever the selected button in the group changes.
+     *
+     * @param listener - Callback receiving the newly selected button.
+     */
+    addSelectionListener(listener: (button: RadioButton | ToggleButton) => void): void {
+        this._selectionListeners.push(listener);
     }
 
     /**
