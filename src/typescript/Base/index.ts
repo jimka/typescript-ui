@@ -24,6 +24,8 @@ export { ContextMenu } from './ContextMenu.js';
 export { Tooltip } from './Tooltip.js';
 export { Notification } from './Notification.js';
 export type { NotificationType } from './Notification.js';
+export { Dialog } from './Dialog.js';
+export type { DialogConfig, DialogButtonConfig, DialogResult } from './Dialog.js';
 export type { PerimeterSize } from './Component.js';
 
 // Primitives

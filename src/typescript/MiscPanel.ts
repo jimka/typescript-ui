@@ -20,6 +20,7 @@ import { Event } from "./Base/Event.js";
 import { Tree } from "./Base/component/tree/Tree.js";
 import type { TreeNode } from "./Base/component/tree/TreeNode.js";
 import { Notification } from "./Base/Notification.js";
+import { Dialog } from "./Base/Dialog.js";
 import { AutoCompleteField } from "./Base/component/AutoCompleteField.js";
 
 export class MiscPanel extends Component {
@@ -314,5 +315,37 @@ export class MiscPanel extends Component {
         this.addComponent(modeRow);
         this.addComponent(autoCompleteRow);
         this.addComponent(selectedLabel);
+
+        const buttonDialogConfirm = new Button("Dialog — confirm/cancel");
+        buttonDialogConfirm.addActionListener(async () => {
+            const confirmed = await Dialog.confirm(
+                'Confirm action',
+                'Are you sure you want to proceed with this action?'
+            );
+
+            Notification.show(`Dialog closed with: ${confirmed ? 'confirm' : 'cancel'}`, confirmed ? 'success' : 'info');
+        });
+        this.addComponent(buttonDialogConfirm);
+
+        const buttonDialogOk = new Button("Dialog — OK only");
+        buttonDialogOk.addActionListener(async () => {
+            await Dialog.show({
+                title  : 'Information',
+                message: 'This is a simple informational dialog with a single OK button.',
+            });
+        });
+        this.addComponent(buttonDialogOk);
+
+        const buttonDialogBackdrop = new Button("Dialog — close on backdrop click");
+        buttonDialogBackdrop.addActionListener(async () => {
+            const result = await Dialog.show({
+                title          : 'Click outside to close',
+                message        : 'You can dismiss this dialog by clicking the backdrop or pressing Escape.',
+                closeOnBackdrop: true,
+            });
+
+            Notification.show(`Dialog closed with: ${result}`, 'info');
+        });
+        this.addComponent(buttonDialogBackdrop);
     }
 }
