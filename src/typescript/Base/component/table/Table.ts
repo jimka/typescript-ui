@@ -59,6 +59,7 @@ export class Table extends Component {
         this.getAria().setRole("grid");
         this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" });
         this.setInsets(new Insets(0, 0, 0, 0));
+        this.setOverflow("hidden");
 
         this.store = store;
         this.spec = spec;

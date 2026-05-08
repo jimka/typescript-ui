@@ -104,11 +104,10 @@ export class TreeRow extends Component {
     /**
      * Positions the toggle and label sub-components within the row's bounds.
      *
-     * @param rowWidth - The current width of this row in pixels.
      * @param rowHeight - The current height of this row in pixels.
      * @param indentPx - Pixels of indentation per depth level.
      */
-    layoutChildren(rowWidth: number, rowHeight: number, indentPx: number): void {
+    layoutChildren(rowHeight: number, indentPx: number): void {
         const indent = this._depth * indentPx;
 
         this._toggle.setAutoCommitStyle(false);
@@ -119,13 +118,27 @@ export class TreeRow extends Component {
         this._toggle.setAutoCommitStyle(true);
 
         const labelX = indent + TOGGLE_WIDTH;
+        const labelWidth = this._nodeLabel.getPreferredSize()?.width ?? 0;
 
         this._nodeLabel.setAutoCommitStyle(false);
         this._nodeLabel.setX(labelX);
         this._nodeLabel.setY(0);
-        this._nodeLabel.setWidth(Math.max(0, rowWidth - labelX));
+        this._nodeLabel.setWidth(labelWidth);
         this._nodeLabel.setHeight(rowHeight);
         this._nodeLabel.setAutoCommitStyle(true);
+    }
+
+    /**
+     * Returns the natural pixel width needed to display this row's full content
+     * (indent + toggle + label text) without horizontal clipping.
+     *
+     * @param indentPx - Pixels of indentation per depth level.
+     */
+    getContentWidth(indentPx: number): number {
+        const indent = this._depth * indentPx;
+        const labelWidth = this._nodeLabel.getPreferredSize()?.width ?? 0;
+
+        return indent + TOGGLE_WIDTH + labelWidth;
     }
 
     /**

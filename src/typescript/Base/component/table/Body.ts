@@ -275,7 +275,8 @@ export class Body extends Component {
             this.cellGeom.push([]);
         }
 
-        const rowWidth = this.lastBodyWidth;
+        const totalColumnWidth = this.lastColumnWidths.reduce((s, w) => s + w, 0);
+        const rowWidth = Math.max(this.lastBodyWidth, totalColumnWidth);
         const fieldCount = this.store.model.getFields()
             .filter(f => !this.hiddenColumns.has(f.getName())).length;
         const fallback = fieldCount > 0 ? rowWidth / fieldCount : rowWidth;
