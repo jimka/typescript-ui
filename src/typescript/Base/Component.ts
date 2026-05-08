@@ -1261,6 +1261,15 @@ export class Component extends BaseObject {
     }
 
     /**
+     * Sets the CSS opacity property on the element.
+     *
+     * @param value - A number between `0` (fully transparent) and `1` (fully opaque), or `null` to clear the property.
+     */
+    setOpacity(value: number | null): void {
+        this.setElementStyle("opacity", value === null ? null : String(value));
+    }
+
+    /**
      * Sets the CSS user-select property on the element.
      *
      * @param value - A CSS user-select value (e.g. "none", "auto", "text").
