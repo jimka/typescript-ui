@@ -11,6 +11,15 @@ import type { ColumnConfig } from "./ColumnConfig.js";
 
 const SCROLL_BUFFER = 2;
 
+function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
+    if (!b) return a.length === 0;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
 /**
  * Virtual-scrolling body for the Table component.
  *
@@ -41,6 +50,8 @@ export class Body extends Component {
     private columnConfigs   : Map<string, ColumnConfig> = new Map();
     private rowPool         : Row[]                     = [];
     private boundIndices    : number[]                  = [];
+    private rowGeom         : Array<{ ty: number, w: number, h: number } | null> = [];
+    private cellGeom        : Array<Array<{ x: number, w: number, h: number } | null>> = [];
     private phantom         : HTMLElement | null        = null;
     private lastBodyWidth   : number                    = 0;
     private lastColumnWidths: number[]                  = [];
@@ -67,6 +78,7 @@ export class Body extends Component {
         ThemeManager.onThemeChange(() => {
             this.rowHeight = parseFloat(ThemeManager.getTheme().table.cell.height) || 22;
             this.boundIndices.fill(-1);
+            this.invalidateGeom();
             this.renderWindow();
         });
     }
@@ -87,6 +99,19 @@ export class Body extends Component {
         store.on('datachanged', refresh);
         store.on('beforesync', refresh);
         store.on('sync', refresh);
+    }
+
+    /**
+     * Clears the cached row/cell geometry so the next renderWindow re-applies
+     * positions and sizes for every visible row.
+     */
+    private invalidateGeom(): void {
+        for (let i = 0; i < this.rowGeom.length; i++) {
+            this.rowGeom[i] = null;
+        }
+        for (let i = 0; i < this.cellGeom.length; i++) {
+            this.cellGeom[i] = [];
+        }
     }
 
     /**
@@ -124,6 +149,8 @@ export class Body extends Component {
 
         this.rowPool = [];
         this.boundIndices = [];
+        this.rowGeom = [];
+        this.cellGeom = [];
     }
 
     /**
@@ -143,6 +170,7 @@ export class Body extends Component {
         this.store = store;
         this.bindStore(store);
         this.boundIndices.fill(-1);
+        this.invalidateGeom();
 
         if (this.getElement()) {
             this.renderWindow();
@@ -216,9 +244,16 @@ export class Body extends Component {
         const windowSize = lastRow - firstRow + 1 > 0 ? lastRow - firstRow + 1 : 0;
 
         if (bodyWidth !== undefined) {
+            const widthsChanged = this.lastBodyWidth !== bodyWidth
+                || !columnWidthsEqual(this.lastColumnWidths, columnWidths);
+
             this.lastBodyWidth = bodyWidth;
             this.lastColumnWidths = columnWidths ?? [];
             this.layoutInProgress = true;
+
+            if (widthsChanged) {
+                this.invalidateGeom();
+            }
         }
 
         // Grow pool if needed
@@ -230,8 +265,14 @@ export class Body extends Component {
 
             rowEl.addEventListener('click', (e: MouseEvent) => this.onRowClick(row, e));
 
+            // Pin row's static top to 0 once. Per-frame Y offset comes from translateY,
+            // which is composite-only (avoids layout/paint per scroll tick).
+            row.setY(0);
+
             this.rowPool.push(row);
             this.boundIndices.push(-1);
+            this.rowGeom.push(null);
+            this.cellGeom.push([]);
         }
 
         const rowWidth = this.lastBodyWidth;
@@ -243,8 +284,9 @@ export class Body extends Component {
         for (let i = 0; i < windowSize; i++) {
             const row = this.rowPool[i];
             const dataIndex = firstRow + i;
+            const wasRebound = this.boundIndices[i] !== dataIndex;
 
-            if (this.boundIndices[i] !== dataIndex) {
+            if (wasRebound) {
                 row.setData(records[dataIndex]);
 
                 this.boundIndices[i] = dataIndex;
@@ -253,29 +295,43 @@ export class Body extends Component {
 
             row.getAria().setRowIndex(dataIndex + 2);
 
-            row.setAutoCommitStyle(false);
-            row.setX(0);
-            row.setY(dataIndex * rowHeight);
-            row.setWidth(rowWidth);
-            row.setHeight(rowHeight);
-            row.setAutoCommitStyle(true);
+            const targetY = dataIndex * rowHeight;
+            const prev = this.rowGeom[i];
+            if (!prev || prev.ty !== targetY || prev.w !== rowWidth || prev.h !== rowHeight) {
+                row.setAutoCommitStyle(false);
+                row.setX(0);
+                row.setTranslate(0, targetY);
+                row.setWidth(rowWidth);
+                row.setHeight(rowHeight);
+                row.setAutoCommitStyle(true);
+                this.rowGeom[i] = { ty: targetY, w: rowWidth, h: rowHeight };
+            }
             row.setDisplayed(true);
 
             const cells = row.getComponents();
+            const cellRow = this.cellGeom[i];
             let x = 0;
 
             for (let ci = 0; ci < cells.length; ci++) {
                 const cell = cells[ci];
                 const colW = this.lastColumnWidths[ci] ?? fallback;
+                const prevCell = cellRow[ci];
+                const cellChanged = !prevCell || prevCell.x !== x || prevCell.w !== colW || prevCell.h !== rowHeight;
 
-                cell.setAutoCommitStyle(false);
-                cell.setX(x);
-                cell.setY(0);
-                cell.setWidth(colW);
-                cell.setHeight(rowHeight);
-                cell.setAutoCommitStyle(true);
+                if (cellChanged) {
+                    cell.setAutoCommitStyle(false);
+                    cell.setX(x);
+                    cell.setY(0);
+                    cell.setWidth(colW);
+                    cell.setHeight(rowHeight);
+                    cell.setAutoCommitStyle(true);
+                    cellRow[ci] = { x: x, w: colW, h: rowHeight };
+                }
                 cell.getAria().setColIndex(ci + 1);
-                cell.doLayout();
+
+                if (wasRebound || cellChanged) {
+                    cell.doLayout();
+                }
 
                 x += colW;
             }
@@ -285,6 +341,7 @@ export class Body extends Component {
         for (let i = windowSize; i < this.rowPool.length; i++) {
             this.rowPool[i].setDisplayed(false);
             this.boundIndices[i] = -1;
+            this.rowGeom[i] = null;
         }
 
         // Keep phantom height in sync
@@ -659,12 +716,17 @@ export class Body extends Component {
         const top = idx * this.rowHeight;
         const bottom = top + this.rowHeight;
         const scrollTop = el.scrollTop;
-        const visibleBottom = scrollTop + this.getHeight();
+        const viewportHeight = this.getHeight();
+        const visibleBottom = scrollTop + viewportHeight;
 
+        let target = scrollTop;
         if (top < scrollTop) {
-            el.scrollTop = top;
+            target = top;
         } else if (bottom > visibleBottom) {
-            el.scrollTop = bottom - this.getHeight();
+            target = bottom - viewportHeight;
+        }
+        if (target !== scrollTop) {
+            el.scrollTop = target;
         }
     }
 }

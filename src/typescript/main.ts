@@ -19,6 +19,11 @@ import { MenuBarPanel } from "./MenuBarPanel.js";
 import { MultiSelectListPanel } from "./MultiSelectListPanel.js";
 
 import { Model, MemoryStore } from "./Base/index.js";
+import { Util } from "./Base/Util.js";
+import { Benchmark } from "./perf/Benchmark.js";
+
+Util.getScrollBarWidth();
+(window as any).bench = Benchmark;
 
 let body = Body.getInstance();
 
@@ -88,3 +93,7 @@ store.on('load', () => {
 });
 
 await store.load();
+
+if (true) {
+    Benchmark.benchAll();
+}
