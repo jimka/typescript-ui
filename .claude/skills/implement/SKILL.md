@@ -136,9 +136,21 @@ this.setForegroundColor("red");         // CSS  → Component setter
 this.setRadioName(groupId);             // HTML attr → typed setter → setElementAttribute internally
 ```
 
+### Documentation updates
+
+When the implementation changes consumer-visible behaviour, update the matching doc surfaces under `docs/`:
+
+- **New public API symbol** (class, type, enum, exported function): re-export from `src/typescript/Base/index.ts`, add a `@category` tag to its TSDoc (Core / Components / Layouts / Data / Theme / Validation / Util), and verify it appears in the right section of `docs/api/index.md` after build.
+- **New component / layout / data class / concept**: add a curated page under the matching `docs/<group>/` folder, link it in the sidebar (`docs/.vitepress/config.mts`), and add it to that group's `index.md` catalog.
+- **New recipe-worthy pattern**: add a page under `docs/recipes/`, link it in both the sidebar and `docs/recipes/index.md`.
+- **Behaviour change visible to consumers**: update the matching concept page in `docs/concepts/`, and update `docs/reference/faq.md` or `troubleshooting.md` if the change resolves or introduces a footgun.
+
+Run `npm run docs:build` and confirm 0 errors before declaring the implementation done. Bug fixes and internal refactors that don't change the public API surface usually need no doc edits.
+
 ## Work Instructions
 
 1. Locate and read the referenced implementation plan in the {workspace}/plans folder.
 2. Perform the implementation.
 3. If applicable, extend the demo panel(s) to show off the implemented feature.
 4. When done, move the implementation plan to the {workspace}/plans/implemented folder.
+5. Update the documentation in `docs/` per _Documentation updates_ above.
