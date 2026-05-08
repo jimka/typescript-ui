@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { Slider, Event } from '@jika/typescript-ui';
+import { Slider, Event } from '@jimka/typescript-ui';
 
 const volume = new Slider();
 volume.setMin(0);

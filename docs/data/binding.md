@@ -7,7 +7,7 @@
 ## Quick start
 
 ```typescript
-import { Binding } from '@jika/typescript-ui';
+import { Binding } from '@jimka/typescript-ui';
 
 const binding = new Binding()
     .bind('name',   nameField)

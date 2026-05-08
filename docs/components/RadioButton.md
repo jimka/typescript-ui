@@ -7,7 +7,7 @@
 ## Usage
 
 ```typescript
-import { RadioButton, ButtonGroup, Event } from '@jika/typescript-ui';
+import { RadioButton, ButtonGroup, Event } from '@jimka/typescript-ui';
 
 const small  = new RadioButton('Small');
 const medium = new RadioButton('Medium');

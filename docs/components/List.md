@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { List, Option, Event } from '@jika/typescript-ui';
+import { List, Option, Event } from '@jimka/typescript-ui';
 
 const fruits = new List();
 fruits.addItem(new Option('apple',  'Apple'));

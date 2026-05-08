@@ -18,7 +18,7 @@ import { ThemeManager } from "../Theme.js";
  *
  * @example
  * ```typescript
- * import { ComboBox, Option } from '@jika/typescript-ui';
+ * import { ComboBox, Option } from '@jimka/typescript-ui';
  *
  * const combo = new ComboBox();
  * combo.addItem(new Option('admin', 'Admin'));

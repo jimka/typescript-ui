@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { PasswordField } from '@jika/typescript-ui';
+import { PasswordField } from '@jimka/typescript-ui';
 
 const password = new PasswordField();
 password.setPreferredSize(240, 28);

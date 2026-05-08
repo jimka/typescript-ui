@@ -23,7 +23,7 @@ There is none. The framework's first published version is `1.0.0`. Earlier devel
 When a new major version is released:
 
 1. Read this page from top to bottom for breaking changes that affect your code.
-2. Update the dependency version: `npm install @jika/typescript-ui@^X.0.0`.
+2. Update the dependency version: `npm install @jimka/typescript-ui@^X.0.0`.
 3. Run `npm run typecheck` (or your equivalent) to surface signature mismatches.
 4. Address each error using the corresponding migration note below.
 5. Run your test suite or manually exercise the app.

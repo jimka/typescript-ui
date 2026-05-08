@@ -2,7 +2,7 @@
 
 ## Overview
 
-`@jika/typescript-ui` ships as an npm package (ESM + UMD + `.d.ts`) but has no consumer-facing documentation site. The current [README.md](../README.md) is a strong single-page reference and TypeDoc is wired up via `npm run doc`, but a developer installing the package via npm has no getting-started flow, no per-component pages, no live examples, and no searchable API browser.
+`@jimka/typescript-ui` ships as an npm package (ESM + UMD + `.d.ts`) but has no consumer-facing documentation site. The current [README.md](../README.md) is a strong single-page reference and TypeDoc is wired up via `npm run doc`, but a developer installing the package via npm has no getting-started flow, no per-component pages, no live examples, and no searchable API browser.
 
 The goal is to build a complete, hosted documentation site for developers consuming the framework as a dependency. Decisions locked in:
 
@@ -97,7 +97,7 @@ Top navbar: Guide · Components · API · GitHub.
 ### Guide (`docs/guide/`)
 
 - `index.md` — what the framework is, when to use it, when not to.
-- `installation.md` — `npm install @jika/typescript-ui`, FontAwesome peer dep, `moduleResolution: "bundler"` requirement, Vite/Webpack/Rollup notes.
+- `installation.md` — `npm install @jimka/typescript-ui`, FontAwesome peer dep, `moduleResolution: "bundler"` requirement, Vite/Webpack/Rollup notes.
 - `first-app.md` — bootstrap `Body`, attach a `Window` with a `Button`, run dev server. Output screenshot.
 - `mental-model.md` — **critical**: absolute positioning, the component tree, `doLayout()`, deferred DOM via `getElement()`, why this is not React.
 
@@ -211,7 +211,7 @@ Every component / layout page should have a runnable code block. For v1, code bl
 - `npm run docs:build` produces `docs/.vitepress/dist` with no broken-link warnings (VitePress flags these by default).
 - TypeDoc-generated API pages render under `/api/` with no missing-export warnings.
 - The GitHub Action runs end-to-end on a feature branch (manual `workflow_dispatch`) before being wired to `master`.
-- Manual smoke test: walk the getting-started flow against a fresh `npm install @jika/typescript-ui` in a scratch project — every code snippet should compile and run.
+- Manual smoke test: walk the getting-started flow against a fresh `npm install @jimka/typescript-ui` in a scratch project — every code snippet should compile and run.
 - Spot-check three component pages and three recipes by copying their code into the demo and confirming behaviour matches description.
 - Run `npm run typecheck` after the TSDoc pass — comments must not break the build.
 

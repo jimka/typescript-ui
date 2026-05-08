@@ -25,7 +25,7 @@ For form-based editing, [`Binding`](/api/classes/Binding) gives you two-way sync
 ## Quickest tour
 
 ```typescript
-import { Model, MemoryStore, Binding } from '@jika/typescript-ui';
+import { Model, MemoryStore, Binding } from '@jimka/typescript-ui';
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number' },

@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { Button, Event } from '@jika/typescript-ui';
+import { Button, Event } from '@jimka/typescript-ui';
 
 const saveButton = new Button('Save');
 Event.addListener(saveButton, 'click', () => save());

@@ -9,7 +9,7 @@ The Font Awesome script must be included separately in the host page or installe
 ## Usage
 
 ```typescript
-import { FontAwesomeIcon, Button } from '@jika/typescript-ui';
+import { FontAwesomeIcon, Button } from '@jimka/typescript-ui';
 
 const closeIcon = new FontAwesomeIcon('fas', 'times');
 closeIcon.setPreferredSize(16, 16);

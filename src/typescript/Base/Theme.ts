@@ -599,7 +599,7 @@ function themeToVars(theme: Theme): Record<string, string> {
  *
  * @example
  * ```typescript
- * import { ThemeManager, DefaultTheme, DarkTheme } from '@jika/typescript-ui';
+ * import { ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui';
  *
  * ThemeManager.setTheme(DefaultTheme); // light
  * ThemeManager.setTheme(DarkTheme);    // dark

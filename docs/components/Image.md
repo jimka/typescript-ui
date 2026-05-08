@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { Image } from '@jika/typescript-ui';
+import { Image } from '@jimka/typescript-ui';
 
 const logo = new Image();
 logo.setSrc('/assets/logo.png');

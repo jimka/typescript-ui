@@ -7,7 +7,7 @@ A [`Model`](/api/classes/Model) defines the shape of a record — its field name
 Pass an array of field configs to `Model`:
 
 ```typescript
-import { Model } from '@jika/typescript-ui';
+import { Model } from '@jimka/typescript-ui';
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number' },
@@ -19,7 +19,7 @@ const PersonModel = new Model([
 Or extend [`AbstractModel`](/api/classes/AbstractModel) to give the schema a named class — useful when you want to attach domain logic or pair it with a typed store:
 
 ```typescript
-import { AbstractModel } from '@jika/typescript-ui';
+import { AbstractModel } from '@jimka/typescript-ui';
 
 class PersonModel extends AbstractModel {
     readonly fields = [

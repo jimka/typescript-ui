@@ -7,7 +7,7 @@ Has no [`Button`](/components/Button) inheritance to avoid the ridge border and 
 ## Usage
 
 ```typescript
-import { MenuBarButton, MenuPanel } from '@jika/typescript-ui';
+import { MenuBarButton, MenuPanel } from '@jimka/typescript-ui';
 
 const filePanel = new MenuPanel(
     [{ text: 'Save', shortcut: 'Ctrl+S', action: () => save() }],

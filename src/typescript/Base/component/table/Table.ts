@@ -31,7 +31,7 @@ import { ColumnSpec } from "./ColumnConfig.js";
  *
  * @example
  * ```typescript
- * import { Model, MemoryStore, Table } from '@jika/typescript-ui';
+ * import { Model, MemoryStore, Table } from '@jimka/typescript-ui';
  *
  * const PersonModel = new Model([
  *     { name: 'id',   type: 'number' },

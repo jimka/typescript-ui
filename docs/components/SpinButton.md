@@ -7,7 +7,7 @@ You usually use this indirectly via `NumberSpinner`. Reach for `SpinButton` dire
 ## Usage
 
 ```typescript
-import { SpinButton } from '@jika/typescript-ui';
+import { SpinButton } from '@jimka/typescript-ui';
 
 const upButton = new SpinButton('up');
 upButton.addTickListener(() => increment());

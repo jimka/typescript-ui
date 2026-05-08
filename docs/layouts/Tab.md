@@ -15,7 +15,7 @@
 ## Usage
 
 ```typescript
-import { Component, Tab } from '@jika/typescript-ui';
+import { Component, Tab } from '@jimka/typescript-ui';
 
 const tabbed = new Component();
 tabbed.setLayoutManager(new Tab());

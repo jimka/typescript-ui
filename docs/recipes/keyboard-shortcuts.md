@@ -21,7 +21,7 @@ const actions = {
 ## Build the menu
 
 ```typescript
-import { Body, MenuBar } from '@jika/typescript-ui';
+import { Body, MenuBar } from '@jimka/typescript-ui';
 
 const bar = new MenuBar([
     { label: 'File', items: [

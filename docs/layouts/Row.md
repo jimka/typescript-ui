@@ -18,7 +18,7 @@ Despite the name, `Row` lays children out **vertically**. The name describes the
 ## Usage
 
 ```typescript
-import { Component, Row, Button } from '@jika/typescript-ui';
+import { Component, Row, Button } from '@jimka/typescript-ui';
 
 const sidebar = new Component();
 const layout  = new Row();

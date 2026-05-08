@@ -7,7 +7,7 @@ In day-to-day code you will usually reach for [`Label`](/components/Label) or [`
 ## Usage
 
 ```typescript
-import { Text } from '@jika/typescript-ui';
+import { Text } from '@jimka/typescript-ui';
 
 const status = new Text('span', 'Connected');
 status.setFontWeight('bold');

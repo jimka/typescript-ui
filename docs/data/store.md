@@ -7,7 +7,7 @@ A [`Store`](/api/classes/Store) holds an ordered collection of [records](/data/r
 [`MemoryStore`](/api/classes/MemoryStore) is a convenience subclass that wires a [`MemoryProxy`](/api/classes/MemoryProxy) internally:
 
 ```typescript
-import { MemoryStore } from '@jika/typescript-ui';
+import { MemoryStore } from '@jimka/typescript-ui';
 
 const store = new MemoryStore(PersonModel, [
     { id: 1, name: 'Alice', age: 30 },
@@ -25,7 +25,7 @@ await store.load();
 ## Load from a REST endpoint
 
 ```typescript
-import { AjaxProxy, Store } from '@jika/typescript-ui';
+import { AjaxProxy, Store } from '@jimka/typescript-ui';
 
 const store = new Store(PersonModel, new AjaxProxy({
     url:  '/api/people',
@@ -42,7 +42,7 @@ See [Proxy](/data/proxy) for the full set of [`AjaxProxy`](/api/classes/AjaxProx
 Extend [`AbstractStore`](/api/classes/AbstractStore) to bake in the model and proxy, and add domain-specific methods. Combine with an `AbstractModel` subclass to keep the schema self-contained:
 
 ```typescript
-import { AbstractModel, AbstractStore, AjaxProxy } from '@jika/typescript-ui';
+import { AbstractModel, AbstractStore, AjaxProxy } from '@jimka/typescript-ui';
 
 class PersonModel extends AbstractModel {
     readonly fields = [

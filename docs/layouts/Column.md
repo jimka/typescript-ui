@@ -14,7 +14,7 @@ Despite the name, `Column` lays children out **horizontally**. The name describe
 ## Usage
 
 ```typescript
-import { Component, Column, Button } from '@jika/typescript-ui';
+import { Component, Column, Button } from '@jimka/typescript-ui';
 
 const tabs = new Component();
 const layout = new Column();

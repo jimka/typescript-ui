@@ -10,7 +10,7 @@ const apiSidebar: DefaultTheme.SidebarItem[] = existsSync(sidebarPath)
     : [];
 
 export default defineConfig({
-    title:       '@jika/typescript-ui',
+    title:       '@jimka/typescript-ui',
     description: 'A web-based layout manager and UI component framework written in TypeScript.',
     base:        '/typescript-ui/',
     cleanUrls:   true,

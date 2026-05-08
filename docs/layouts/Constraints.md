@@ -37,7 +37,7 @@ Each manager subclasses this to add its own fields:
 | `BOTH` | Fill the entire cell. |
 
 ```typescript
-import { FillType } from '@jika/typescript-ui';
+import { FillType } from '@jimka/typescript-ui';
 
 container.addComponent(input, { fill: FillType.HORIZONTAL });
 ```
@@ -53,7 +53,7 @@ SOUTHWEST  SOUTH  SOUTHEAST
 ```
 
 ```typescript
-import { AnchorType } from '@jika/typescript-ui';
+import { AnchorType } from '@jimka/typescript-ui';
 
 container.addComponent(label, {
     fill:   FillType.NONE,

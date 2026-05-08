@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-    name: "@jika/typescript-ui"
+    name: "@jimka/typescript-ui"
     text: "Layout-driven UI for the browser"
     tagline: A TypeScript framework for desktop-style web apps. Absolute positioning, virtual scrolling, and a rich component library — no flex, no grid.
     actions:

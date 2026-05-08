@@ -22,7 +22,7 @@ A [`LayoutManager`](/api/classes/LayoutManager) is attached to a container [`Com
 ## Attach a layout
 
 ```typescript
-import { Component, Border } from '@jika/typescript-ui';
+import { Component, Border } from '@jimka/typescript-ui';
 
 const panel = new Component();
 panel.setLayoutManager(new Border());

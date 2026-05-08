@@ -7,7 +7,7 @@ Used internally by [`MenuBar`](/components/MenuBar). You usually don't construct
 ## Usage
 
 ```typescript
-import { MenuPanel } from '@jika/typescript-ui';
+import { MenuPanel } from '@jimka/typescript-ui';
 
 const panel = new MenuPanel(
     [

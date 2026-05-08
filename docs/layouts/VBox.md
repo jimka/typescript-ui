@@ -16,7 +16,7 @@
 ## Usage
 
 ```typescript
-import { Component, VBox, Label, TextField } from '@jika/typescript-ui';
+import { Component, VBox, Label, TextField } from '@jimka/typescript-ui';
 
 const form = new Component();
 const layout = new VBox();
@@ -37,7 +37,7 @@ form.addComponent(new TextField());
 - `anchor` — [`AnchorType`](/api/enumerations/AnchorType).
 
 ```typescript
-import { FillType } from '@jika/typescript-ui';
+import { FillType } from '@jimka/typescript-ui';
 
 form.addComponent(textField, { fill: FillType.HORIZONTAL });
 ```

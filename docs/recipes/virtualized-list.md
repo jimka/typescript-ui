@@ -7,7 +7,7 @@ Both [`Table`](/components/Table) and [`Tree`](/components/Tree) render only the
 ```typescript
 import {
     Model, MemoryStore, Table, Body,
-} from '@jika/typescript-ui';
+} from '@jimka/typescript-ui';
 
 const ItemModel = new Model([
     { name: 'id',    type: 'number' },

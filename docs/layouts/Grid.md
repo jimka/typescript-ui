@@ -14,7 +14,7 @@
 ## Usage
 
 ```typescript
-import { Component, Grid, Button } from '@jika/typescript-ui';
+import { Component, Grid, Button } from '@jimka/typescript-ui';
 
 const keypad = new Component();
 const layout = new Grid();

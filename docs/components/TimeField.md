@@ -9,7 +9,7 @@ It implements [`Bindable<Date | null>`](/api/interfaces/Bindable).
 ## Usage
 
 ```typescript
-import { TimeField, Event } from '@jika/typescript-ui';
+import { TimeField, Event } from '@jimka/typescript-ui';
 
 const startTime = new TimeField();
 const morning = new Date();

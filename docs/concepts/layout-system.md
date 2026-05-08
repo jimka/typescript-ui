@@ -74,7 +74,7 @@ For most code, `setPreferredSize` and friends do the right thing automatically.
 If none of the built-in managers fit, subclass [`LayoutManager`](/api/classes/LayoutManager):
 
 ```typescript
-import { LayoutManager, Component } from '@jika/typescript-ui';
+import { LayoutManager, Component } from '@jimka/typescript-ui';
 
 class FlowLayout extends LayoutManager {
     private hgap = 8;

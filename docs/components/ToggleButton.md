@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { ToggleButton, Event } from '@jika/typescript-ui';
+import { ToggleButton, Event } from '@jimka/typescript-ui';
 
 const boldButton = new ToggleButton('Bold');
 

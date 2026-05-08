@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { FieldSet, VBox, TextField, Label } from '@jika/typescript-ui';
+import { FieldSet, VBox, TextField, Label } from '@jimka/typescript-ui';
 
 const profile = new FieldSet();
 profile.setLegendText('Profile');

@@ -12,7 +12,7 @@ Two proxies ship with the package:
 Use this when you have data already in JavaScript (test fixtures, static lists, embedded JSON). For convenience, you can usually skip it and use [`MemoryStore`](/api/classes/MemoryStore) directly.
 
 ```typescript
-import { MemoryProxy, Store } from '@jika/typescript-ui';
+import { MemoryProxy, Store } from '@jimka/typescript-ui';
 
 const proxy = new MemoryProxy({
     data: [
@@ -32,7 +32,7 @@ See [`MemoryProxyConfig`](/api/interfaces/MemoryProxyConfig) for the full option
 Fetches JSON over HTTP via the browser's `fetch` API.
 
 ```typescript
-import { AjaxProxy, Store } from '@jika/typescript-ui';
+import { AjaxProxy, Store } from '@jimka/typescript-ui';
 
 const proxy = new AjaxProxy({
     url:    '/api/people',
@@ -57,7 +57,7 @@ See [`AjaxProxyConfig`](/api/interfaces/AjaxProxyConfig) for the complete option
 Subclass [`Proxy`](/api/classes/Proxy) and implement `load()`. This is the path for GraphQL, WebSocket, IndexedDB, or any other transport.
 
 ```typescript
-import { Proxy } from '@jika/typescript-ui';
+import { Proxy } from '@jimka/typescript-ui';
 
 class GraphQLProxy extends Proxy {
     constructor(private query: string) { super(); }

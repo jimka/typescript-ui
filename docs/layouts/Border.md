@@ -23,7 +23,7 @@ import {
     Component, BorderLayout,
     Header, MenuBar, Table,
     Placement,
-} from '@jika/typescript-ui';
+} from '@jimka/typescript-ui';
 
 const app = new Component();
 app.setLayoutManager(new BorderLayout());

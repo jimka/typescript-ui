@@ -9,7 +9,7 @@ Right-clicking a list item opens a menu with Cut / Copy / Paste / Delete. The me
 ## Create a single menu instance
 
 ```typescript
-import { ContextMenu, Event } from '@jika/typescript-ui';
+import { ContextMenu, Event } from '@jimka/typescript-ui';
 
 const menu = new ContextMenu();
 ```
