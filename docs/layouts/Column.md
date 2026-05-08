@@ -1,0 +1,50 @@
+# Column
+
+[`Column`](/api/classes/Column) divides the container width equally among all children and places them left-to-right with a configurable gap. Unlike [`HBox`](/layouts/HBox) (which honours each child's preferred width), `Column` allocates equal slots regardless.
+
+Despite the name, `Column` lays children out **horizontally**. The name describes the column of equally sized slots that result.
+
+```
++--------+--------+--------+
+|  [A]   |  [B]   |  [C]   |   ← 1/N width each
++--------+--------+--------+
+   each child gets the same width
+```
+
+## Usage
+
+```typescript
+import { Component, Column, Button } from '@jika/typescript-ui';
+
+const tabs = new Component();
+const layout = new Column();
+layout.setGap(2);
+tabs.setLayoutManager(layout);
+
+tabs.addComponent(new Button('Files'));
+tabs.addComponent(new Button('Edit'));
+tabs.addComponent(new Button('Help'));
+```
+
+## Per-child constraints
+
+[`LayoutConstraints`](/layouts/Constraints) — `fill` and `anchor` apply when a child's preferred size is smaller than its slot.
+
+## Common methods
+
+| Method | Purpose |
+| --- | --- |
+| `setGap(px)` | Horizontal gap between children. |
+
+## When to use it
+
+- A horizontal strip of equally sized buttons or tabs.
+- A grid where you only need one row of equal-width cells.
+
+For preferred-width-driven sequencing, use [`HBox`](/layouts/HBox).
+
+## See also
+
+- [API: Column](/api/classes/Column)
+- [`Row`](/layouts/Row) — vertical counterpart
+- [`HBox`](/layouts/HBox) — horizontal, preferred-width-driven

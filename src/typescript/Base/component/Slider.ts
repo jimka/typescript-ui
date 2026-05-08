@@ -9,6 +9,8 @@ import { ThemeManager } from "../Theme.js";
  *
  * Tracks min, max, step, and current value internally and keeps the DOM element
  * synchronised on every input event.
+ *
+ * @category Components
  */
 export class Slider extends Input {
 

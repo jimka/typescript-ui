@@ -8,6 +8,8 @@ import { ComboBox } from "./ComboBox.js";
  *
  * Extends ComboBox to display all options simultaneously by sizing the select element
  * to fit its item count.
+ *
+ * @category Components
  */
 export class List extends ComboBox {
 

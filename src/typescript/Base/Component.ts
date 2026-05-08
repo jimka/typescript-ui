@@ -14,14 +14,33 @@ import { Position } from "./Position.js";
 import { Aria } from "./Aria.js";
 //import { FastDom } from "./FastDom.js";
 
-interface Comparator<V, U> {
+/**
+ * Generic two-argument comparator returning a sort-order number.
+ *
+ * @category Core
+ */
+export interface Comparator<V, U> {
     (a: V, b: U): number;
 }
 
-interface Style {
+/**
+ * Map of CSS property names to string values (or `null` to clear). Used by
+ * `Component.setElementCSSRules` for bulk style updates.
+ *
+ * @category Core
+ */
+export interface Style {
     [key: string]: string | null
 }
 
+/**
+ * Width of a component's outer perimeter on each side, in pixels.
+ *
+ * Returned by {@link Component.getPerimiterSize} — the sum of border width and
+ * padding for each edge.
+ *
+ * @category Core
+ */
 export interface PerimeterSize {
     top: number,
     right: number,
@@ -71,7 +90,13 @@ function flushPendingLayouts() {
  *
  * Manages the component's DOM element lifecycle, CSS style rule, layout manager,
  * child component tree, and all visual properties (size, position, color, border, etc.).
- * Subclasses override render() and init() to produce specialised elements.
+ * Subclasses override `render()` and `init()` to produce specialised elements.
+ *
+ * Components are positioned absolutely. Sizes are explicit (preferred / min / max);
+ * positions are computed by the parent's {@link LayoutManager} on each `doLayout()` pass.
+ * See the Mental model guide on the documentation site for the architectural overview.
+ *
+ * @category Core
  */
 export class Component extends BaseObject {
 

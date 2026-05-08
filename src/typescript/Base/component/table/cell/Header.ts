@@ -15,6 +15,8 @@ import { Tooltip } from "../../../Tooltip.js";
  * The resize handle is a raw `<div>` (not a Component) appended in `init()`. Native
  * listeners are used on the div; `Event.addViewportListener` is used for the
  * mousemove/mouseup drag phase so they route through the framework's event system.
+ *
+ * @category Components
  */
 export class HeaderCell extends DefaultCell {
 

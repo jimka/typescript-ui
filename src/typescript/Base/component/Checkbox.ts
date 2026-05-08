@@ -10,6 +10,8 @@ import { ThemeManager } from "../Theme.js";
  *
  * Wraps an `<input type="checkbox">` element and tracks checked state internally,
  * keeping it synchronised with the DOM after each click.
+ *
+ * @category Components
  */
 export class Checkbox extends Input implements Bindable<boolean> {
 

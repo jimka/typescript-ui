@@ -12,8 +12,21 @@ import { ThemeManager } from "../Theme.js";
 /**
  * A drop-down combo box component backed by a `<select>` element.
  *
- * Manages an internal list of Option items and keeps the DOM element in sync
- * when items are added or replaced.
+ * Manages an internal list of {@link Option} items and keeps the DOM element in
+ * sync when items are added or replaced. Also accepts an {@link AbstractStore} via
+ * {@link setStore} to populate options from the data layer.
+ *
+ * @example
+ * ```typescript
+ * import { ComboBox, Option } from '@jika/typescript-ui';
+ *
+ * const combo = new ComboBox();
+ * combo.addItem(new Option('admin', 'Admin'));
+ * combo.addItem(new Option('user',  'User'));
+ * panel.addComponent(combo);
+ * ```
+ *
+ * @category Components
  */
 export class ComboBox extends Component implements Bindable<string> {
 

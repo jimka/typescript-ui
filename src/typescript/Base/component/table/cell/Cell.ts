@@ -14,6 +14,12 @@ import { ThemeManager } from "../../../Theme.js";
  *
  * A {@link Card} layout toggles between the renderer and editor views. Double-clicking the
  * renderer starts an edit; blur or Enter commits it; Escape cancels it.
+ *
+ * Subclasses ({@link BooleanCell}, {@link NumberCell}, {@link StringCell}, {@link HeaderCell})
+ * wire a typed renderer and editor pair. Custom cell types extend this class with your own
+ * renderer / editor classes.
+ *
+ * @category Components
  */
 export class Cell<T> extends Component {
 

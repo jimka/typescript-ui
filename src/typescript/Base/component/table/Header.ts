@@ -13,8 +13,12 @@ import { BorderStyle } from "../../BorderStyle.js";
  *
  * Builds one {@link HeaderCell} per visible field from the supplied model. Each cell is
  * wired with a sort-click callback (cycles asc → desc → clear), a resize-drag
- * callback (forwarded to the owner via {@link setOnColumnResize}), and a context-menu
- * callback (forwarded via {@link setOnColumnContextMenu}).
+ * callback (forwarded to the owner via {@link Header.setOnColumnResize}), and a context-menu
+ * callback (forwarded via {@link Header.setOnColumnContextMenu}).
+ *
+ * Re-exported as `TableHeader` from the package barrel.
+ *
+ * @category Components
  */
 export class Header extends Component {
 

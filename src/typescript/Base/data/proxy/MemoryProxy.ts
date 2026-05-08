@@ -5,6 +5,8 @@ import { Proxy } from './Proxy.js';
 
 /**
  * Configuration object for constructing a MemoryProxy.
+ *
+ * @category Data
  */
 export interface MemoryProxyConfig {
     data: any[];
@@ -18,6 +20,8 @@ export interface MemoryProxyConfig {
  * Because this proxy holds no external state, data is lost when the page is
  * refreshed or the proxy instance is discarded. It is primarily intended for
  * testing and for stores that manage transient, client-only data.
+ *
+ * @category Data
  */
 export class MemoryProxy extends Proxy {
 

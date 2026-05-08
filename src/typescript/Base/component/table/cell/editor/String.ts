@@ -10,6 +10,8 @@ import { Event } from "../../../../Event.js";
  *
  * Wraps a {@link TextField} and proxies blur and keydown events up to the parent
  * cell so the standard commit/cancel lifecycle works.
+ *
+ * @category Components
  */
 export class StringEditor extends CellEditor<String> {
 

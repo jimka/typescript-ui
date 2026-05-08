@@ -15,6 +15,8 @@ import { Tooltip } from '../Tooltip.js';
  * @remarks Due to the framework's append-only `addComponent` API the decorator is
  * placed at the end of the parent's children rather than in the field's original slot.
  * A future `addComponentAt(index, component)` enhancement could address this.
+ *
+ * @category Validation
  */
 export class FieldDecorator extends Component {
 

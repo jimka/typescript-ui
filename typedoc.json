@@ -1,0 +1,29 @@
+{
+    "$schema": "https://typedoc.org/schema.json",
+    "entryPoints": ["src/typescript/Base/index.ts"],
+    "tsconfig": "tsconfig.lib.json",
+    "plugin": ["typedoc-plugin-markdown", "typedoc-vitepress-theme"],
+    "out": "docs/api",
+    "docsRoot": "docs",
+    "readme": "none",
+    "excludePrivate": true,
+    "excludeProtected": true,
+    "excludeInternal": true,
+    "hideGenerator": true,
+    "githubPages": false,
+    "useCodeBlocks": true,
+    "expandObjects": true,
+    "expandParameters": true,
+    "categorizeByGroup": false,
+    "categoryOrder": [
+        "Core",
+        "Components",
+        "Layouts",
+        "Data",
+        "Theme",
+        "Validation",
+        "Util",
+        "*",
+        "Other"
+    ]
+}

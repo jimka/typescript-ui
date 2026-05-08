@@ -2,6 +2,8 @@
 
 /**
  * CSS list-style-type values for numbered (ordered) lists.
+ *
+ * @category Components
  */
 export enum NumberedListItemStyle {
     NONE = "none",

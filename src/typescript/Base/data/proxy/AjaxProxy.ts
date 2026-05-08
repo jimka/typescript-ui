@@ -5,6 +5,8 @@ import { Proxy } from './Proxy.js';
 
 /**
  * Configuration object for constructing an AjaxProxy.
+ *
+ * @category Data
  */
 export interface AjaxProxyConfig {
     url: string;
@@ -23,6 +25,8 @@ export interface AjaxProxyConfig {
  * Update and destroy requests are sent to `{url}/{id}` where `id` is the record's
  * primary key value. All four CRUD methods throw an `Error` when the server responds
  * with a non-OK status code.
+ *
+ * @category Data
  */
 export class AjaxProxy extends Proxy {
 

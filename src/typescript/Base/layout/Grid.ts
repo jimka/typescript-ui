@@ -7,6 +7,8 @@ import { Size } from "../Size.js";
 /**
  * A layout manager that tiles children in a uniform grid of equal-sized cells.
  * Row and column counts can be configured explicitly or left at `0` for auto-calculation.
+ *
+ * @category Layouts
  */
 export class Grid extends LayoutManager {
 

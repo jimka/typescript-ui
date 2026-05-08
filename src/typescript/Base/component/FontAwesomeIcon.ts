@@ -10,6 +10,8 @@ import { Component } from "../Component.js";
  * so that the Font Awesome library can resolve the correct glyph.
  *
  * @remarks The Font Awesome script must be included separately in the host page.
+ *
+ * @category Components
  */
 export class FontAwesomeIcon extends Component {
 

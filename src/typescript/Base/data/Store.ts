@@ -7,6 +7,8 @@ import { AbstractStore } from './AbstractStore.js';
 /**
  * A general-purpose concrete store that pairs a Model with an optional Proxy.
  * Use this class when you do not need a dedicated store subclass.
+ *
+ * @category Data
  */
 export class Store extends AbstractStore {
 

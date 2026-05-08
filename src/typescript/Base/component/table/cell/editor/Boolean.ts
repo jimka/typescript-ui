@@ -8,6 +8,8 @@ import { Checkbox } from "../../../../component/Checkbox.js";
  *
  * Used directly as the renderer in {@link BooleanCell}; changes fire the onChange
  * callback immediately without a separate commit step.
+ *
+ * @category Components
  */
 export class BooleanEditor extends CellEditor<Boolean> {
 

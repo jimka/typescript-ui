@@ -3,6 +3,8 @@
 /**
  * Enumeration of compass-point placement positions plus center,
  * used to describe the relative position of a child within a container.
+ *
+ * @category Util
  */
 export enum Placement {
     CENTER = "center",

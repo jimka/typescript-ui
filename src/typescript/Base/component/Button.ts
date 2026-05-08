@@ -13,8 +13,19 @@ import { Border, BorderOptions } from "../Border.js";
 /**
  * A push button component with a text label and configurable pressed-state appearance.
  *
- * Maintains separate CSS rules for the normal and :active states, allowing
+ * Maintains separate CSS rules for the normal and `:active` states, allowing
  * independent control of border, shadow, background, and foreground color when pressed.
+ *
+ * @example
+ * ```typescript
+ * import { Button, Event } from '@jika/typescript-ui';
+ *
+ * const button = new Button('Save');
+ * Event.addListener(button, 'click', () => save());
+ * panel.addComponent(button);
+ * ```
+ *
+ * @category Components
  */
 export class Button extends Component {
 

@@ -9,6 +9,8 @@ import { Position } from "./Position.js";
 
 /**
  * The visual severity of a notification.
+ *
+ * @category Core
  */
 export type NotificationType = 'info' | 'success' | 'warning' | 'error';
 
@@ -24,6 +26,8 @@ export type NotificationType = 'info' | 'success' | 'warning' | 'error';
  * Notification.show('Record saved.', 'success');
  * Notification.show('Connection lost.', 'error', 0); // persistent
  * ```
+ *
+ * @category Core
  */
 export class Notification extends Component {
 

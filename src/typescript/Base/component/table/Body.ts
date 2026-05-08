@@ -42,6 +42,10 @@ function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
  * before the JS scroll event reaches the main thread, causing a one-frame
  * flicker during fast scrolling. Eliminating it would require a transform-based
  * positioning strategy rather than `position: absolute; top: dataIndex * ROW_HEIGHT`.
+ *
+ * Re-exported as `TableBody` from the package barrel.
+ *
+ * @category Components
  */
 export class Body extends Component {
 
@@ -219,7 +223,7 @@ export class Body extends Component {
      * Recomputes the visible row window, rebinds changed rows from the pool, and hides excess rows.
      *
      * @param bodyWidth - Optional. The total body width in pixels; cached and reused on scroll updates.
-     * @param columnWidth - Optional. The per-column width in pixels; derived from bodyWidth when omitted.
+     * @param columnWidths - Optional. The per-column widths in pixels; derived from bodyWidth when omitted.
      *
      * @remarks When called with width arguments (layout pass) the `layoutInProgress` flag is set to
      * suppress the spurious scroll event the browser fires when the phantom element's height changes.

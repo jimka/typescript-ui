@@ -10,6 +10,8 @@ import { Insets } from "../Insets.js";
  * Extends {@link Button} with a triangular expand/collapse indicator appended as a
  * raw `<span>` inside the button element (analogous to the resize handle in HeaderCell).
  * The indicator rotates 90° when the section is expanded via a CSS class toggle.
+ *
+ * @category Components
  */
 export class AccordionHeader extends Button {
 

@@ -10,6 +10,8 @@ import { CSS } from './CSS.js';
  * a plain colour. The framework applies the same variable to both `background-color` and
  * `background-image`, so CSS's "invalid at computed-value time" rule routes automatically:
  * a plain colour takes effect via `background-color`; a gradient via `background-image`.
+ *
+ * @category Theme
  */
 export interface Theme {
     colorScheme: string;
@@ -219,6 +221,8 @@ export interface Theme {
 
 /**
  * Light-mode theme using white backgrounds and black text.
+ *
+ * @category Theme
  */
 export const DefaultTheme: Theme = {
     colorScheme: 'light',
@@ -356,6 +360,8 @@ export const DefaultTheme: Theme = {
 
 /**
  * Dark-mode theme using dark backgrounds and light text.
+ *
+ * @category Theme
  */
 export const DarkTheme: Theme = {
     colorScheme: 'dark',
@@ -590,6 +596,16 @@ function themeToVars(theme: Theme): Record<string, string> {
 /**
  * Singleton manager that applies a theme by writing CSS custom properties and
  * inline styles onto the document root and body elements.
+ *
+ * @example
+ * ```typescript
+ * import { ThemeManager, DefaultTheme, DarkTheme } from '@jika/typescript-ui';
+ *
+ * ThemeManager.setTheme(DefaultTheme); // light
+ * ThemeManager.setTheme(DarkTheme);    // dark
+ * ```
+ *
+ * @category Theme
  */
 export class ThemeManager {
     private static current: Theme = DefaultTheme;

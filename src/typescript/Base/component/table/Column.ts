@@ -6,9 +6,13 @@ import { ColumnConfig, ColumnSpec } from "./ColumnConfig.js";
 /**
  * Resolved presentation descriptor for a single table column.
  *
- * Created internally by {@link Column.resolve} — not constructed directly by
+ * Created internally by `Column.resolve` — not constructed directly by
  * application code. Wraps a {@link Field} and carries optional width constraints
  * and an initial visibility flag derived from a {@link ColumnSpec}.
+ *
+ * Re-exported as `TableColumn` from the package barrel.
+ *
+ * @category Components
  */
 export class Column {
 

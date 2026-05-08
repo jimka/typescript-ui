@@ -8,6 +8,8 @@ import { Insets } from "../Insets.js";
  * A multi-line text area component backed by a `<textarea>` element.
  *
  * Keeps internal text state in sync with the DOM on every input event.
+ *
+ * @category Components
  */
 export class TextArea extends TextInput {
 

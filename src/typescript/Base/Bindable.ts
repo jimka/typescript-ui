@@ -3,6 +3,8 @@
 /**
  * Explicit getter/setter/listener callbacks used by {@link Binding} when a component
  * does not implement the {@link Bindable} interface.
+ *
+ * @category Data
  */
 export interface BindingAccessors<T = unknown> {
     get:    () => T;
@@ -13,6 +15,8 @@ export interface BindingAccessors<T = unknown> {
 /**
  * Implemented by components that want to participate in {@link Binding} without
  * supplying explicit accessor callbacks.
+ *
+ * @category Data
  */
 export interface Bindable<T> {
     /** Populate the component with a value from the bound record. */

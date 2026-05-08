@@ -8,6 +8,8 @@ import { Size } from "../Size.js";
  * A layout manager that shows exactly one child component at a time,
  * sizing it to fill the container's inner bounds.
  * The visible child is selected by component ID; all others are hidden.
+ *
+ * @category Layouts
  */
 export class Card extends LayoutManager {
 

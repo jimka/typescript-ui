@@ -10,6 +10,8 @@ import { ModelRecord } from '../ModelRecord.js';
  * AbstractStore calls these methods during `load()` and `sync()`. Each method
  * receives or returns plain data objects so that the proxy layer remains
  * decoupled from the store's record management logic.
+ *
+ * @category Data
  */
 export abstract class Proxy {
 

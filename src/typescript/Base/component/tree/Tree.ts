@@ -30,10 +30,10 @@ interface FlatRow {
 /**
  * A hierarchical data view with collapsible nodes and virtual scrolling.
  *
- * Pass root nodes via {@link setNodes}. The tree flattens the currently visible
- * subtree into a single scrollable list and recycles a fixed pool of
- * {@link TreeRow} components — rebinding rows only when their data index
- * changes, mirroring the approach used in `table/Body.ts`.
+ * Pass root nodes via {@link Tree.setNodes}. The tree flattens the currently visible
+ * subtree into a single scrollable list and recycles a fixed pool of internal
+ * row components — rebinding rows only when their data index changes, mirroring
+ * the approach used in `table/Body.ts`.
  *
  * @example
  * ```typescript
@@ -47,6 +47,8 @@ interface FlatRow {
  * ]);
  * container.addComponent(tree);
  * ```
+ *
+ * @category Components
  */
 export class Tree extends Component {
 

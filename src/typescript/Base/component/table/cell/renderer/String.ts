@@ -7,6 +7,8 @@ import { Label } from "../../../../component/Label.js";
  * A read-only renderer for string cell values.
  *
  * Displays the value via a {@link Label}.
+ *
+ * @category Components
  */
 export class StringRenderer extends CellRenderer<String> {
 

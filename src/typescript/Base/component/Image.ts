@@ -7,6 +7,8 @@ import { Size } from "../Size.js";
  * An image component backed by an `<img>` element.
  *
  * Reports its preferred size from the image's natural intrinsic dimensions once loaded.
+ *
+ * @category Components
  */
 export class Image extends Component {
 

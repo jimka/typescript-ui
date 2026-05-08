@@ -2,6 +2,8 @@
 
 /**
  * Enumeration of the standard CSS border-style keyword values.
+ *
+ * @category Util
  */
 export enum BorderStyle {
     NONE,

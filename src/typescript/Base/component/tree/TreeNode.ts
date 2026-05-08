@@ -6,6 +6,8 @@
  * Pass an array of `TreeNode` objects to {@link Tree.setNodes} to populate the tree.
  * Nodes with a non-empty `children` array render as expandable parents; nodes
  * without children (or with an empty array) render as leaves.
+ *
+ * @category Components
  */
 export interface TreeNode {
 

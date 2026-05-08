@@ -7,6 +7,8 @@ import { Component } from "../Component.js";
  *
  * Stores a key/value pair and suppresses framework positioning styles so
  * the browser can render the item natively inside a list.
+ *
+ * @category Components
  */
 export class ListItem extends Component {
 

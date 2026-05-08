@@ -7,6 +7,8 @@ import { NumberedListItemStyle } from "./NumberedListItemStyle.js";
  * An ordered (numbered) list component.
  *
  * Renders an `<ol>` element and defaults to the DECIMAL numbering style.
+ *
+ * @category Components
  */
 export class NumberedList extends AbstractListComponent<NumberedListItemStyle> {
 

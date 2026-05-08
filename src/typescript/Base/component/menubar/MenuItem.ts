@@ -10,6 +10,8 @@ import { Label } from "../Label.js";
  * @remarks When `separator` is true all other fields are ignored; the item renders as
  * a thin horizontal rule. When `submenu` is set the item opens a child `MenuPanel`
  * instead of calling `action`.
+ *
+ * @category Components
  */
 export interface MenuItemConfig {
     /** Display label shown in the menu row. */
@@ -30,6 +32,8 @@ export interface MenuItemConfig {
 
 /**
  * Describes one top-level entry in a `MenuBar`.
+ *
+ * @category Components
  */
 export interface MenuConfig {
     /** Label shown in the bar button (e.g. `"File"`). */
@@ -47,6 +51,8 @@ export interface MenuConfig {
  *
  * Mouse hover triggers the submenu open callback after a 150 ms delay.
  * Keyboard focus is applied programmatically via `setFocused`.
+ *
+ * @category Components
  */
 export class MenuItem extends Component {
 

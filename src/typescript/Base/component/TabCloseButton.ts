@@ -5,6 +5,8 @@ import { Insets } from "../Insets.js";
 
 /**
  * A compact close button displaying a "×" glyph, sized to sit flush inside a tab header.
+ *
+ * @category Components
  */
 export class TabCloseButton extends Button {
 

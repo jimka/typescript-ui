@@ -11,7 +11,9 @@ import { ToggleButton } from "./component/ToggleButton.js";
  *
  * When a button in the group becomes selected, all other buttons in the group are automatically deselected.
  * For `RadioButton` groups, a shared `name` attribute is applied so the browser handles keyboard navigation
- * natively. For `ToggleButton` groups, call {@link setContainer} to enable roving tabindex keyboard nav.
+ * natively. For `ToggleButton` groups, call `setContainer` to enable roving tabindex keyboard nav.
+ *
+ * @category Core
  */
 export class ButtonGroup {
 

@@ -13,11 +13,15 @@ import { AutoCompleteDropdown } from "./AutoCompleteDropdown.js";
  *
  * - `'contains'` — matches anywhere in the string (default).
  * - `'startsWith'` — matches only from the beginning of the string.
+ *
+ * @category Components
  */
 export type AutoCompleteMatchMode = 'contains' | 'startsWith';
 
 /**
  * Configuration passed to the `AutoCompleteField` constructor.
+ *
+ * @category Components
  */
 export interface AutoCompleteFieldConfig {
     /** Static list of suggestion strings. */
@@ -54,6 +58,8 @@ export interface AutoCompleteFieldConfig {
  * panel.addComponent(field);
  * field.addSelectListener(value => console.log('Selected:', value));
  * ```
+ *
+ * @category Components
  */
 export class AutoCompleteField extends Component implements Bindable<string> {
 

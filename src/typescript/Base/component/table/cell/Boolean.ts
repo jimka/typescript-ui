@@ -10,6 +10,8 @@ import { AnchorType } from "../../../layout/AnchorType.js";
  *
  * Unlike text-based cells, the {@link BooleanEditor} doubles as the renderer; there is
  * no separate renderer or edit-mode toggle — the checkbox is always interactive.
+ *
+ * @category Components
  */
 export class BooleanCell extends Cell<Boolean> {
 

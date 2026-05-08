@@ -9,6 +9,8 @@ import { Insets } from "../Insets.js";
  * A fieldset component with an embedded legend title.
  *
  * Renders a `<fieldset>` element and prepends a Legend child for the group title.
+ *
+ * @category Components
  */
 export class FieldSet extends Component {
 

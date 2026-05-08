@@ -6,6 +6,8 @@ import { Component } from "../Component.js";
  * A horizontal separator rule used inside a `ContextMenu` to visually group menu items.
  *
  * Renders as a thin border line. Width is set externally by `ContextMenu.doLayout()`.
+ *
+ * @category Components
  */
 export class ContextMenuSeparator extends Component {
 

@@ -11,6 +11,8 @@ import { BaseObject } from "../BaseObject.js";
  * Abstract base class for all layout managers.
  * A layout manager is attached to a container component and is responsible for
  * computing size hints and positioning child components within the container.
+ *
+ * @category Layouts
  */
 export abstract class LayoutManager extends BaseObject {
 

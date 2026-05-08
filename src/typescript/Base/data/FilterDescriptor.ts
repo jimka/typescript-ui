@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 /**
- * Serializable filter algebra for AbstractStore. Descriptors are plain objects so
+ * Serializable filter algebra for {@link AbstractStore}. Descriptors are plain objects so
  * they can cross the worker boundary via structured clone (unlike arbitrary filter
  * functions, which can't). The same evaluator runs on either side.
+ *
+ * @category Data
  */
 export type FilterDescriptor =
     | { type: 'eq';         field: string; value: any }

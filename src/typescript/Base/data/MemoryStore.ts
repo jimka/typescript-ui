@@ -5,6 +5,8 @@ import { MemoryProxy } from "./proxy/MemoryProxy";
 /**
  * A store backed entirely by in-memory data.
  * Useful for testing or for static datasets that do not require server persistence.
+ *
+ * @category Data
  */
 export class MemoryStore extends AbstractStore {
 

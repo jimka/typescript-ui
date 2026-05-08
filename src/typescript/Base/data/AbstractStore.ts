@@ -14,7 +14,17 @@ import { StoreWorkerClient } from './StoreWorkerClient.js';
 const WORKER_THRESHOLD = 1000;
 let nextStoreId = 1;
 
-type StoreListener<T = any> = (payload: T) => void;
+/**
+ * Callback fired when a store event ({@link StoreEvent}) is emitted.
+ *
+ * @category Data
+ */
+export type StoreListener<T = any> = (payload: T) => void;
+/**
+ * Names of the events fired by an {@link AbstractStore}.
+ *
+ * @category Data
+ */
 export type StoreEvent = 'load' | 'datachanged' | 'add' | 'remove' | 'beforesync' | 'sync';
 
 interface SorterConfig {
@@ -32,6 +42,8 @@ interface SorterConfig {
  * (the filtered and sorted view). Mutations always target `allRecords` and then rebuild
  * the view by calling `applyView()`. Consumers should read from `getRecords()` or
  * `getAt()` rather than accessing the raw arrays directly.
+ *
+ * @category Data
  */
 export abstract class AbstractStore {
 

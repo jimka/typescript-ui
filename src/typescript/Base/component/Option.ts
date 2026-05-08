@@ -6,6 +6,8 @@ import { Component } from "../Component.js";
  * An option component backed by an `<option>` element for use inside a ComboBox or List.
  *
  * Suppresses framework positioning styles so the browser renders the option natively.
+ *
+ * @category Components
  */
 export class Option extends Component {
 

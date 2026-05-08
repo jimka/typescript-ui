@@ -4,6 +4,8 @@ import { Component } from "./Component.js";
 
 /**
  * Valid WAI-ARIA landmark and widget roles used by this framework.
+ *
+ * @category Core
  */
 export type AriaRole =
     | 'grid'
@@ -30,6 +32,8 @@ export type AriaRole =
 
 /**
  * Valid values for the `aria-sort` attribute.
+ *
+ * @category Core
  */
 export type AriaSort = 'none' | 'ascending' | 'descending';
 
@@ -47,6 +51,8 @@ export type AriaSort = 'none' | 'ascending' | 'descending';
  * row.getAria().setSelected(true);
  * header.getAria().setSort("ascending");
  * ```
+ *
+ * @category Core
  */
 export class Aria {
 
@@ -556,7 +562,7 @@ export class Aria {
     /**
      * Flushes all stored ARIA state to the given DOM element.
      *
-     * @remarks Called by {@link Component.init} when the element is first created, ensuring
+     * @remarks Called by {@link Component} during element initialisation, ensuring
      * attributes set before render are applied to the real DOM node.
      * @param element - The component's root DOM element.
      */

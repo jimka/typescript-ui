@@ -1,0 +1,120 @@
+# Theming
+
+The framework includes a [`ThemeManager`](/api/classes/ThemeManager) that applies a set of design tokens to the entire UI at once via CSS custom properties. Theme switches happen in a single function call and take effect immediately — no re-render needed.
+
+## Quick start
+
+```typescript
+import { ThemeManager, DefaultTheme, DarkTheme } from '@jika/typescript-ui';
+
+ThemeManager.setTheme(DefaultTheme); // light
+ThemeManager.setTheme(DarkTheme);    // dark
+```
+
+Two built-in themes ship with the package: `DefaultTheme` (light) and `DarkTheme`. Custom themes are created by spreading one of them and overriding tokens — see [Custom themes](#custom-themes) below.
+
+## How it works
+
+[`setTheme`](/api/classes/ThemeManager#settheme) does three things:
+
+1. **Writes each token as a CSS custom property on `:root`** (e.g. `--ts-ui-body-bg`). Because CSS variables cascade, any component that references a variable in its style rule updates automatically — no re-render needed.
+2. **Sets `color-scheme` on `:root`** so the browser renders native form elements (checkboxes, scrollbars, `<select>`) in the matching light or dark style.
+3. **Sets `color` and `background-color` on both `<html>` and `<body>`.** The `<html>` target is necessary because [`Window`](/api/classes/Window) components are appended to `document.documentElement` rather than `document.body`, so text inside floating windows must inherit from `<html>`.
+
+## Theme keys
+
+The [`Theme`](/api/interfaces/Theme) interface uses nested objects grouped by component. All keys are required; spread `DefaultTheme` and override only what you need (see [Custom themes](#custom-themes) below).
+
+| Key path | CSS variable | Affects |
+| --- | --- | --- |
+| `colorScheme` | *(set directly as `color-scheme`)* | Browser rendering of native controls (checkboxes, scrollbars). Use `'light'` or `'dark'`. |
+| `font.family` | `--ts-ui-font-family` | Font family for the entire UI (cascades from `<html>`) |
+| `font.size` | `--ts-ui-font-size` | Base font size for the entire UI |
+| `text.color` | `--ts-ui-text-color` | Default text color for all components |
+| `body.background` | `--ts-ui-body-bg` | Page background; also the background of [`Window`](/api/classes/Window) |
+| `border.color` | `--ts-ui-border-color` | Default border color for [`Window`](/api/classes/Window) and other bordered components |
+| `border.radius` | `--ts-ui-border-radius` | Corner radius applied to [`Button`](/api/classes/Button) and text-input components |
+| `button.background` | `--ts-ui-button-bg` | Background of [`Button`](/api/classes/Button), window title bars, and table headers |
+| `button.border` | `--ts-ui-button-border` | Outline of [`Button`](/api/classes/Button) and [`ToggleButton`](/api/classes/ToggleButton) |
+| `button.shadow` | `--ts-ui-button-shadow` | Drop shadow on unpressed buttons |
+| `button.padding` | `--ts-ui-button-padding` | Padding inside [`Button`](/api/classes/Button) |
+| `button.font.size` | `--ts-ui-button-font-size` | Font size of [`Button`](/api/classes/Button) labels |
+| `button.pressed.background` | `--ts-ui-button-pressed-bg` | Background while a button is held down |
+| `button.pressed.foreground` | `--ts-ui-button-pressed-fg` | Text color while a button is held down |
+| `button.pressed.shadow` | `--ts-ui-button-pressed-shadow` | Inset shadow on a pressed button |
+| `toggle.selected.background` | `--ts-ui-toggle-selected-bg` | Background of a selected [`ToggleButton`](/api/classes/ToggleButton) or [`RadioButton`](/api/classes/RadioButton) |
+| `toggle.selected.shadow` | `--ts-ui-toggle-selected-shadow` | Inset shadow on a selected toggle / radio |
+| `input.background` | `--ts-ui-input-bg` | Background of text inputs, password fields, text areas, checkboxes, and the table body |
+| `gutter.background` | `--ts-ui-gutter-bg` | Background of the [`Split`](/api/classes/Split) drag gutter; also used as the scrollbar track color |
+| `tab.toolbar.background` | `--ts-ui-tab-toolbar-bg` | Background of the tab button toolbar in the [`Tab`](/api/classes/Tab) layout |
+| `tab.toolbar.border` | `--ts-ui-tab-toolbar-border` | Bottom border of the tab button toolbar |
+| `tab.button.background` | `--ts-ui-tab-button-bg` | Background of inactive tab buttons |
+| `window.shadow` | `--ts-ui-window-shadow` | Drop shadow on floating [`Window`](/api/classes/Window) components |
+| `header.font.size` | `--ts-ui-header-font-size` | Font size of window and panel title-bar labels |
+| `table.header.border` | `--ts-ui-table-header-border` | Bottom border separating the table header from the body |
+| `table.header.font.size` | `--ts-ui-table-header-font-size` | Font size of table column header cells |
+| `table.row.selected` | `--ts-ui-table-row-selected` | Background tint of the currently selected table row |
+| `table.row.new` | `--ts-ui-table-row-new` | Background tint of unsaved new records |
+| `table.row.dirty` | `--ts-ui-table-row-dirty` | Background tint of locally modified records |
+| `contextMenu.background` | `--ts-ui-context-menu-bg` | Background of the [`ContextMenu`](/api/classes/ContextMenu) panel |
+| `contextMenu.border` | `--ts-ui-context-menu-border` | Border color of the `ContextMenu` panel |
+| `contextMenu.shadow` | `--ts-ui-context-menu-shadow` | Drop shadow of the `ContextMenu` panel |
+| `contextMenu.item.hoverBackground` | `--ts-ui-context-menu-item-hover-bg` | Background of a [`ContextMenuItem`](/api/classes/ContextMenuItem) on hover |
+| `contextMenu.item.disabledColor` | `--ts-ui-context-menu-item-disabled-color` | Text color of a disabled `ContextMenuItem` |
+| `contextMenu.separatorColor` | `--ts-ui-context-menu-separator-color` | Color of the [`ContextMenuSeparator`](/api/classes/ContextMenuSeparator) line |
+| `tooltip.background` | `--ts-ui-tooltip-bg` | Background of the [`Tooltip`](/api/classes/Tooltip) panel |
+| `tooltip.color` | `--ts-ui-tooltip-color` | Text color inside the `Tooltip` |
+| `tooltip.border` | `--ts-ui-tooltip-border` | Border color of the `Tooltip` panel |
+| `tooltip.shadow` | `--ts-ui-tooltip-shadow` | Drop shadow of the `Tooltip` panel |
+| `notification.shadow` | `--ts-ui-notification-shadow` | Drop shadow applied to all [`Notification`](/api/classes/Notification) toasts |
+| `notification.info.background` | `--ts-ui-notification-info-bg` | Background of `'info'` notifications |
+| `notification.info.border` | `--ts-ui-notification-info-border` | Border color of `'info'` notifications |
+| `notification.success.background` | `--ts-ui-notification-success-bg` | Background of `'success'` notifications |
+| `notification.success.border` | `--ts-ui-notification-success-border` | Border color of `'success'` notifications |
+| `notification.warning.background` | `--ts-ui-notification-warning-bg` | Background of `'warning'` notifications |
+| `notification.warning.border` | `--ts-ui-notification-warning-border` | Border color of `'warning'` notifications |
+| `notification.error.background` | `--ts-ui-notification-error-bg` | Background of `'error'` notifications |
+| `notification.error.border` | `--ts-ui-notification-error-border` | Border color of `'error'` notifications |
+
+::: tip Background tokens accept gradients
+`button.background`, `button.pressed.background`, and `toggle.selected.background` accept either a plain colour (`rgb(200, 200, 200)`) or any CSS `background-image` value (`linear-gradient(...)`, `radial-gradient(...)`, etc.). The framework applies the token to both `background-color` and `background-image`; CSS's "invalid at computed-value time" rule routes the value to whichever property it is valid for.
+:::
+
+## Custom themes
+
+Implement the [`Theme`](/api/interfaces/Theme) interface and pass it to `setTheme`. Spread `DefaultTheme` and override only the keys you care about:
+
+```typescript
+import { Theme, ThemeManager, DefaultTheme } from '@jika/typescript-ui';
+
+const MyTheme: Theme = {
+    ...DefaultTheme,
+    body: { background: 'rgb(240, 248, 255)' },
+    text: { color: 'rgb(10, 30, 60)' },
+    button: {
+        ...DefaultTheme.button,
+        background: 'linear-gradient(rgb(200, 220, 255), rgb(160, 190, 240))',
+    },
+};
+
+ThemeManager.setTheme(MyTheme);
+```
+
+Components that need a theme value at construction time (rather than via a CSS variable) can call `ThemeManager.getTheme()` to read the currently active theme.
+
+## Theme change listeners
+
+[`ThemeManager.onThemeChange`](/api/classes/ThemeManager#onthemechange) subscribes a callback that fires after every `setTheme` call, once all CSS variables have been written. `Text`-based components ([`Label`](/api/classes/Label), `Header` labels, table column headers) automatically recalculate their preferred size on each theme change so layout managers see updated dimensions.
+
+```typescript
+const unsubscribe = ThemeManager.onThemeChange(() => {
+    console.log('theme changed:', ThemeManager.getTheme().colorScheme);
+});
+
+// Later, to stop listening:
+unsubscribe();
+```
+
+::: warning Memory leaks
+Custom components that create [`Text`](/api/classes/Text) instances and are removed from the page should call `text.dispose()` to detach the listener and avoid memory leaks. The framework does this automatically for built-in components, but a `Text` you create yourself is your responsibility.
+:::

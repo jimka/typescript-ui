@@ -12,7 +12,9 @@ import { ThemeManager } from "../Theme.js";
  *
  * Implements {@link Bindable} so it can participate in a {@link Binding} directly.
  * The Date value uses the local date for its date portion; only hours and minutes
- * are meaningful. Returns `null` from {@link getValue} when the field is empty.
+ * are meaningful. Returns `null` from `getValue` when the field is empty.
+ *
+ * @category Components
  */
 export class TimeField extends Input implements Bindable<Date | null> {
 
@@ -95,7 +97,7 @@ export class TimeField extends Input implements Bindable<Date | null> {
 
     /**
      * Returns a Date representing the currently entered time, or null if empty.
-     * The date portion reflects the moment {@link onInput} last fired.
+     * The date portion reflects the moment of the most recent input event.
      *
      * @returns The selected time as a Date, or null.
      */

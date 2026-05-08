@@ -8,6 +8,8 @@ import { NumberEditor } from "./editor/Number.js";
  * A table cell for numeric values.
  *
  * Uses a {@link NumberRenderer} for display and a {@link NumberEditor} for in-place editing.
+ *
+ * @category Components
  */
 export class NumberCell extends Cell<Number> {
 

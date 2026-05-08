@@ -13,6 +13,8 @@ import { Placement } from "./Placement.js";
  *
  * Renders a titled panel with eight border-handle strips that the user can
  * drag to resize the window from any edge or corner.
+ *
+ * @category Core
  */
 export class Window extends Component {
 

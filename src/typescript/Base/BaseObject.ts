@@ -5,6 +5,8 @@ import { Util } from "./Util.js"
 /**
  * Base class for all library objects.
  * Automatically assigns a unique identifier on construction.
+ *
+ * @category Core
  */
 export class BaseObject {
 

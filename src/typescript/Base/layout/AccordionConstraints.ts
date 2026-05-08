@@ -5,6 +5,8 @@ import { LayoutConstraints } from "./LayoutConstraints.js";
 /**
  * Layout constraints for child components added to an {@link Accordion} container.
  * Provides the header label and initial open state for each collapsible section.
+ *
+ * @category Layouts
  */
 export class AccordionConstraints extends LayoutConstraints {
 

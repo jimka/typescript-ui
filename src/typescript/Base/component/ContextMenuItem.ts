@@ -10,6 +10,8 @@ import { Label } from "./Label.js";
  *
  * @remarks When `separator` is true the other fields are ignored; set only
  * `separator: true` to insert a horizontal rule between groups of items.
+ *
+ * @category Components
  */
 export interface ContextMenuItemConfig {
     /** Display text shown in the menu row. */
@@ -27,6 +29,8 @@ export interface ContextMenuItemConfig {
  *
  * Displays a text label, highlights on hover, and calls the configured action
  * followed by hiding the parent menu when clicked.
+ *
+ * @category Components
  */
 export class ContextMenuItem extends Component {
 

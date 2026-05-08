@@ -7,6 +7,8 @@ import { Size } from "../Size.js";
 /**
  * A layout manager that places children in a single vertical column,
  * using each child's preferred height and an optional width-stretching mode.
+ *
+ * @category Layouts
  */
 export class VBox extends LayoutManager {
 

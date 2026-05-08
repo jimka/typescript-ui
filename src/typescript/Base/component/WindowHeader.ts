@@ -10,6 +10,8 @@ import { Placement } from "../Placement.js";
  * A window title bar component with a close button.
  *
  * Extends Header by adding a Font Awesome "times" exit button anchored to the east side.
+ *
+ * @category Components
  */
 export class WindowHeader extends Header {
 

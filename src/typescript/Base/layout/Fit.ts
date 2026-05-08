@@ -8,6 +8,8 @@ import { FillType } from "./FillType.js";
  * A layout manager that expects exactly one child component and sizes it to
  * fill the container's entire inner bounds.
  * Throws if the container holds more than one component.
+ *
+ * @category Layouts
  */
 export class Fit extends LayoutManager {
 

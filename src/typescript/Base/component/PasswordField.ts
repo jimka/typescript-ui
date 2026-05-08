@@ -7,6 +7,8 @@ import { ThemeManager } from "../Theme.js";
 
 /**
  * A password input component that renders an `<input type="password">` element.
+ *
+ * @category Components
  */
 export class PasswordField extends TextInput {
 
