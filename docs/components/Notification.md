@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { Notification } from '@jika/typescript-ui';
+import { Notification } from '@jimka/typescript-ui';
 
 Notification.show('Record saved.', 'success');
 Notification.show('Connection lost.', 'error', 0);   // 0 = persistent

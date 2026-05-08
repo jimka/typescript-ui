@@ -13,7 +13,7 @@ import {
     Body, Window, BorderLayout, Placement,
     VBox, HBox, Label, TextField, Button,
     Event,
-} from '@jika/typescript-ui';
+} from '@jimka/typescript-ui';
 
 const settingsWin = new Window();
 settingsWin.setHeaderText('Settings');

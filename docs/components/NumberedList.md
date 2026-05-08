@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { NumberedList, ListItem, NumberedListItemStyle } from '@jika/typescript-ui';
+import { NumberedList, ListItem, NumberedListItemStyle } from '@jimka/typescript-ui';
 
 const list = new NumberedList();
 list.setItemStyle(NumberedListItemStyle.UPPER_ROMAN);

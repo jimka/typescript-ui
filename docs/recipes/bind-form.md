@@ -12,7 +12,7 @@ Edit a person record across `TextField`, `Checkbox`, and `ComboBox` inputs. The 
 import {
     Model, MemoryStore,
     Binding, Event,
-} from '@jika/typescript-ui';
+} from '@jimka/typescript-ui';
 
 const PersonModel = new Model([
     { name: 'name',   type: 'string'  },
@@ -33,7 +33,7 @@ await store.load();
 import {
     Component, VBox, HBox,
     Label, TextField, Checkbox, ComboBox, Option, Button,
-} from '@jika/typescript-ui';
+} from '@jimka/typescript-ui';
 
 const form = new Component();
 form.setLayoutManager(new VBox());

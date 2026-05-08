@@ -14,7 +14,7 @@
 ## Usage
 
 ```typescript
-import { Component, Card, Button } from '@jika/typescript-ui';
+import { Component, Card, Button } from '@jimka/typescript-ui';
 
 const stack = new Component();
 const card = new Card();

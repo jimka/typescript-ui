@@ -12,7 +12,7 @@
 ## Usage
 
 ```typescript
-import { Component, HBox, Button } from '@jika/typescript-ui';
+import { Component, HBox, Button } from '@jimka/typescript-ui';
 
 const toolbar = new Component();
 const layout  = new HBox();
@@ -32,7 +32,7 @@ toolbar.addComponent(new Button('Paste'));
 - `anchor` — [`AnchorType`](/api/enumerations/AnchorType): used when the cell is larger than the child.
 
 ```typescript
-import { FillType, AnchorType } from '@jika/typescript-ui';
+import { FillType, AnchorType } from '@jimka/typescript-ui';
 
 toolbar.addComponent(button, {
     fill:   FillType.VERTICAL,    // stretch to row height

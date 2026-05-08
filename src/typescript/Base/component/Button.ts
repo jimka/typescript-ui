@@ -18,7 +18,7 @@ import { Border, BorderOptions } from "../Border.js";
  *
  * @example
  * ```typescript
- * import { Button, Event } from '@jika/typescript-ui';
+ * import { Button, Event } from '@jimka/typescript-ui';
  *
  * const button = new Button('Save');
  * Event.addListener(button, 'click', () => save());

@@ -13,7 +13,7 @@ A [`CellRenderer<T>`](/api/classes/CellRenderer) is responsible for the display 
 ```typescript
 import {
     CellRenderer, Label, AnchorType, FillType,
-} from '@jika/typescript-ui';
+} from '@jimka/typescript-ui';
 
 class CurrencyRenderer extends CellRenderer<number> {
     private label: Label = new Label();
@@ -44,7 +44,7 @@ A [`CellEditor<T>`](/api/classes/CellEditor) takes over on double-click. Wrap a 
 ```typescript
 import {
     CellEditor, TextField, Event,
-} from '@jika/typescript-ui';
+} from '@jimka/typescript-ui';
 
 class CurrencyEditor extends CellEditor<number> {
     private input: TextField = new TextField();
@@ -71,7 +71,7 @@ class CurrencyEditor extends CellEditor<number> {
 A [`Cell<T>`](/api/classes/Cell) glues the renderer and editor together:
 
 ```typescript
-import { Cell } from '@jika/typescript-ui';
+import { Cell } from '@jimka/typescript-ui';
 
 class CurrencyCell extends Cell<number> {
     constructor() {
@@ -85,7 +85,7 @@ class CurrencyCell extends Cell<number> {
 The simplest route is to subclass [`Row`](/api/classes/TableRow) and pick `CurrencyCell` for fields whose name matches a "money" pattern:
 
 ```typescript
-import { Row as TableRow } from '@jika/typescript-ui';
+import { Row as TableRow } from '@jimka/typescript-ui';
 
 class MoneyAwareRow extends TableRow {
     protected createCellForField(fieldName: string, type: string): Cell<unknown> {

@@ -145,7 +145,7 @@ Use **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
 
 Tag releases in git with `v1.0.0` etc. and maintain a `CHANGELOG.md`.
 
-For a scoped package (`@jika/typescript-ui`), `npm publish --access public` is required on the first publish (scoped packages default to private on npm).
+For a scoped package (`@jimka/typescript-ui`), `npm publish --access public` is required on the first publish (scoped packages default to private on npm).
 
 ---
 
@@ -166,7 +166,7 @@ For a scoped package (`@jika/typescript-ui`), `npm publish --access public` is r
 5. **Create `.npmignore`.** Exclude source dirs, config files, and tooling dirs.
 
 6. **Update `README.md`.** Add a "Getting Started" section covering:
-   - `npm install @jika/typescript-ui`
+   - `npm install @jimka/typescript-ui`
    - The mandatory `ThemeManager.setTheme(DefaultTheme)` call
    - A minimal usage example with `Body`, `HBox`, and `Button`
    - TypeScript version requirements (5+ recommended; 4.7+ minimum with `"moduleResolution": "node16"`)
@@ -181,7 +181,7 @@ For a scoped package (`@jika/typescript-ui`), `npm publish --access public` is r
 
 ```json
 {
-  "name": "@jika/typescript-ui",
+  "name": "@jimka/typescript-ui",
   "version": "1.0.0",
   "description": "A web-based layout manager and UI component framework written in TypeScript.",
   "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",

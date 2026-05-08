@@ -7,7 +7,7 @@ The same `ContextMenu` instance can be reused across multiple invocations.
 ## Usage
 
 ```typescript
-import { ContextMenu, Event } from '@jika/typescript-ui';
+import { ContextMenu, Event } from '@jimka/typescript-ui';
 
 const menu = new ContextMenu();
 

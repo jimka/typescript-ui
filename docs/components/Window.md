@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { Body, Window, Label } from '@jika/typescript-ui';
+import { Body, Window, Label } from '@jimka/typescript-ui';
 
 const win = new Window();
 win.setHeaderText('Settings');

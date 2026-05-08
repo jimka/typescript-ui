@@ -6,7 +6,7 @@ This page covers the structural sub-components of [`Table`](/components/Table) �
 
 [`TableHeader`](/api/classes/TableHeader) renders the column-header strip as a `<thead>` element. It builds one [`HeaderCell`](/api/classes/HeaderCell) per visible field from the model, wired with sort-click, resize-drag, and context-menu callbacks.
 
-Re-exported as `TableHeader` from `@jika/typescript-ui` (the source class is `Header` in `Base/component/table/`).
+Re-exported as `TableHeader` from `@jimka/typescript-ui` (the source class is `Header` in `Base/component/table/`).
 
 ## TableBody
 
@@ -47,7 +47,7 @@ The framework ships with four typed cells:
 Subclass [`Cell<T>`](/api/classes/Cell) with your own [`CellRenderer`](/api/classes/CellRenderer) and optional [`CellEditor`](/api/classes/CellEditor). The renderer displays the value; the editor takes over on double-click, commits on blur or Enter, and reverts on Escape.
 
 ```typescript
-import { Cell, CellRenderer, CellEditor } from '@jika/typescript-ui';
+import { Cell, CellRenderer, CellEditor } from '@jimka/typescript-ui';
 
 class CurrencyRenderer extends CellRenderer<number> { /* … */ }
 class CurrencyEditor   extends CellEditor<number>   { /* … */ }

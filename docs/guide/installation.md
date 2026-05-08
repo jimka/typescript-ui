@@ -1,11 +1,11 @@
 # Installation
 
-`@jika/typescript-ui` is published on npm and ships ESM, UMD, and `.d.ts` declarations. The package has zero runtime npm dependencies; FontAwesome is an optional peer for [FontAwesomeIcon](/api/classes/FontAwesomeIcon).
+`@jimka/typescript-ui` is published on npm and ships ESM, UMD, and `.d.ts` declarations. The package has zero runtime npm dependencies; FontAwesome is an optional peer for [FontAwesomeIcon](/api/classes/FontAwesomeIcon).
 
 ## Install
 
 ```bash
-npm install @jika/typescript-ui
+npm install @jimka/typescript-ui
 ```
 
 For [FontAwesomeIcon](/api/classes/FontAwesomeIcon) glyphs, also install:
@@ -39,7 +39,7 @@ The library is bundler-agnostic. Verified configurations:
 Theming uses runtime-injected CSS custom properties. There is **no `.css` file to import**. Call [`ThemeManager.setTheme`](/api/classes/ThemeManager) once on startup before mounting any component:
 
 ```typescript
-import { ThemeManager, DefaultTheme } from '@jika/typescript-ui';
+import { ThemeManager, DefaultTheme } from '@jimka/typescript-ui';
 
 ThemeManager.setTheme(DefaultTheme);
 ```

@@ -1,6 +1,6 @@
 # Mental model
 
-`@jika/typescript-ui` is **not** like React or any HTML-flow framework. It is closer to Java Swing or Win32: every component has an absolute position and size, computed in JavaScript and applied as pixel values. There is no flexbox, no CSS Grid, no document flow.
+`@jimka/typescript-ui` is **not** like React or any HTML-flow framework. It is closer to Java Swing or Win32: every component has an absolute position and size, computed in JavaScript and applied as pixel values. There is no flexbox, no CSS Grid, no document flow.
 
 If you have only ever built UIs with HTML+CSS, the model below is the most important page in this site. The API will mislead you without it.
 

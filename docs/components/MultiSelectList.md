@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { MultiSelectList, Option, Event } from '@jika/typescript-ui';
+import { MultiSelectList, Option, Event } from '@jimka/typescript-ui';
 
 const tags = new MultiSelectList();
 tags.addItem(new Option('urgent',     'Urgent'));

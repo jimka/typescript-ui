@@ -16,7 +16,7 @@ A scrollable, editable table of people. The user can:
 ```typescript
 import {
     AbstractModel, AbstractStore, AjaxProxy,
-} from '@jika/typescript-ui';
+} from '@jimka/typescript-ui';
 
 class PersonModel extends AbstractModel {
     readonly fields = [
@@ -44,7 +44,7 @@ await store.load();
 [`TablePanel`](/components/TablePanel) gives you the toolbar (Add / Remove / Sync) for free:
 
 ```typescript
-import { TablePanel, Body } from '@jika/typescript-ui';
+import { TablePanel, Body } from '@jimka/typescript-ui';
 
 const panel = new TablePanel(store);
 Body.getInstance().addComponent(panel);
@@ -65,7 +65,7 @@ If you need different buttons (e.g. an Export action), drop the `TablePanel` and
 import {
     Component, BorderLayout, Placement,
     HBox, Button, Table, Event, Notification,
-} from '@jika/typescript-ui';
+} from '@jimka/typescript-ui';
 
 const root = new Component();
 root.setLayoutManager(new BorderLayout());

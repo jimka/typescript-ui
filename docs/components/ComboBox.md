@@ -7,7 +7,7 @@ It implements [`Bindable<string>`](/api/interfaces/Bindable), so it can particip
 ## Static items
 
 ```typescript
-import { ComboBox, Option, Event } from '@jika/typescript-ui';
+import { ComboBox, Option, Event } from '@jimka/typescript-ui';
 
 const role = new ComboBox();
 role.addItem(new Option('admin', 'Admin'));
@@ -24,7 +24,7 @@ panel.addComponent(role);
 ## Backed by a store
 
 ```typescript
-import { ComboBox, MemoryStore, Model } from '@jika/typescript-ui';
+import { ComboBox, MemoryStore, Model } from '@jimka/typescript-ui';
 
 const RoleModel = new Model([
     { name: 'id',   type: 'string' },

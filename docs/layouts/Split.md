@@ -14,7 +14,7 @@
 ## Usage
 
 ```typescript
-import { Component, Split, Tree, Table } from '@jika/typescript-ui';
+import { Component, Split, Tree, Table } from '@jimka/typescript-ui';
 
 const workspace = new Component();
 const layout = new Split();

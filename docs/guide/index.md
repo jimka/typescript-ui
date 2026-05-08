@@ -1,19 +1,19 @@
 # Getting Started
 
-Welcome to the documentation for `@jika/typescript-ui`.
+Welcome to the documentation for `@jimka/typescript-ui`.
 
 This site is under construction. The single-page reference in the project [README](https://github.com/jimka/typescript-ui#readme) covers everything until guide pages are migrated here.
 
 ## Installation
 
 ```bash
-npm install @jika/typescript-ui
+npm install @jimka/typescript-ui
 ```
 
 ## Bootstrap
 
 ```typescript
-import { Body, Window, Button, ThemeManager, DefaultTheme } from '@jika/typescript-ui';
+import { Body, Window, Button, ThemeManager, DefaultTheme } from '@jimka/typescript-ui';
 
 ThemeManager.setTheme(DefaultTheme);
 

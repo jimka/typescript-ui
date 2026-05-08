@@ -7,7 +7,7 @@ This is the convenience component for CRUD UIs that don't need a custom toolbar 
 ## Usage
 
 ```typescript
-import { TablePanel } from '@jika/typescript-ui';
+import { TablePanel } from '@jimka/typescript-ui';
 
 const panel = new TablePanel(store);
 container.addComponent(panel);

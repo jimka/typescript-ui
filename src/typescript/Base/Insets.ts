@@ -8,7 +8,7 @@ import { BaseObject } from "./BaseObject.js";
  *
  * @example
  * ```typescript
- * import { Insets } from '@jika/typescript-ui';
+ * import { Insets } from '@jimka/typescript-ui';
  *
  * component.setInsets(new Insets(8, 12, 8, 12)); // top, right, bottom, left
  * ```

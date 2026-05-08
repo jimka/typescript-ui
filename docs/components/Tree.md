@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { Tree } from '@jika/typescript-ui';
+import { Tree } from '@jimka/typescript-ui';
 
 const tree = new Tree();
 tree.setNodes([

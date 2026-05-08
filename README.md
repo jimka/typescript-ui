@@ -16,7 +16,7 @@ npm run docs:dev
 
 Highlights:
 
-- [Installation & TypeScript setup](https://jimka.github.io/typescript-ui/guide/installation) — `npm install @jika/typescript-ui` plus `moduleResolution: "bundler"` notes.
+- [Installation & TypeScript setup](https://jimka.github.io/typescript-ui/guide/installation) — `npm install @jimka/typescript-ui` plus `moduleResolution: "bundler"` notes.
 - [Mental model](https://jimka.github.io/typescript-ui/guide/mental-model) — absolute positioning, `doLayout()`, why this is not React.
 - [Components](https://jimka.github.io/typescript-ui/components/) — full catalog (50+).
 - [Layouts](https://jimka.github.io/typescript-ui/layouts/) — `Border`, `Split`, `Tab`, `Grid`, and 13 more.
@@ -27,11 +27,11 @@ Highlights:
 ## Quick install
 
 ```bash
-npm install @jika/typescript-ui
+npm install @jimka/typescript-ui
 ```
 
 ```typescript
-import { Body, Window, Button, ThemeManager, DefaultTheme } from '@jika/typescript-ui';
+import { Body, Window, Button, ThemeManager, DefaultTheme } from '@jimka/typescript-ui';
 
 ThemeManager.setTheme(DefaultTheme);
 

@@ -5,7 +5,7 @@
 ## One-shot prompt
 
 ```typescript
-import { Dialog } from '@jika/typescript-ui';
+import { Dialog } from '@jimka/typescript-ui';
 
 const result = await Dialog.show({
     title:   'Confirm deletion',
@@ -26,7 +26,7 @@ if (result === 'confirm') {
 Replace `message` with `contentComponent` to render any component as the dialog body:
 
 ```typescript
-import { Dialog, TextField, VBox } from '@jika/typescript-ui';
+import { Dialog, TextField, VBox } from '@jimka/typescript-ui';
 
 const form = new VBox();
 const nameField = new TextField();

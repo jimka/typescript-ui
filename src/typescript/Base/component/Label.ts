@@ -9,7 +9,7 @@ import { Text } from "./Text.js";
  *
  * @example
  * ```typescript
- * import { Label, TextField } from '@jika/typescript-ui';
+ * import { Label, TextField } from '@jimka/typescript-ui';
  *
  * const field = new TextField();
  * const label = new Label('Name:', field.getId());

@@ -5,7 +5,7 @@
 ## Usage
 
 ```typescript
-import { TextField, Event } from '@jika/typescript-ui';
+import { TextField, Event } from '@jimka/typescript-ui';
 
 const nameField = new TextField();
 nameField.setValue('');
@@ -30,7 +30,7 @@ panel.addComponent(nameField);
 ## Binding
 
 ```typescript
-import { Binding } from '@jika/typescript-ui';
+import { Binding } from '@jimka/typescript-ui';
 
 const binding = new Binding().bind('name', nameField);
 binding.setRecord(store.getAt(0));

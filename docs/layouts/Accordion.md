@@ -17,7 +17,7 @@
 import {
     Component, Accordion, AccordionConstraints,
     Label,
-} from '@jika/typescript-ui';
+} from '@jimka/typescript-ui';
 
 const sidebar = new Component();
 const accordion = new Accordion();
@@ -46,7 +46,7 @@ accordion.setSingleOpen(true);  // optional: only one section open at a time
 ## Toggle callback
 
 ```typescript
-import { SectionToggleCallback } from '@jika/typescript-ui';
+import { SectionToggleCallback } from '@jimka/typescript-ui';
 
 const onToggle: SectionToggleCallback = (index, open) => {
     console.log(`section ${index} now ${open ? 'open' : 'closed'}`);

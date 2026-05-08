@@ -7,7 +7,7 @@ You usually don't construct it directly — set `separator: true` on a [`MenuIte
 ## Usage
 
 ```typescript
-import { MenuBar } from '@jika/typescript-ui';
+import { MenuBar } from '@jimka/typescript-ui';
 
 const bar = new MenuBar([
     { label: 'File', items: [

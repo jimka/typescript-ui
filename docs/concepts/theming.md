@@ -5,7 +5,7 @@ The framework includes a [`ThemeManager`](/api/classes/ThemeManager) that applie
 ## Quick start
 
 ```typescript
-import { ThemeManager, DefaultTheme, DarkTheme } from '@jika/typescript-ui';
+import { ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui';
 
 ThemeManager.setTheme(DefaultTheme); // light
 ThemeManager.setTheme(DarkTheme);    // dark
@@ -85,7 +85,7 @@ The [`Theme`](/api/interfaces/Theme) interface uses nested objects grouped by co
 Implement the [`Theme`](/api/interfaces/Theme) interface and pass it to `setTheme`. Spread `DefaultTheme` and override only the keys you care about:
 
 ```typescript
-import { Theme, ThemeManager, DefaultTheme } from '@jika/typescript-ui';
+import { Theme, ThemeManager, DefaultTheme } from '@jimka/typescript-ui';
 
 const MyTheme: Theme = {
     ...DefaultTheme,
