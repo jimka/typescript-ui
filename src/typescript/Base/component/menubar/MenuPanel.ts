@@ -352,6 +352,7 @@ export class MenuPanel extends Component {
         this._openSubmenuItem = item;
         item.getAria().setExpanded(true);
 
+        submenuPanel.setExcludedElement(this.getElement(true)!);
         submenuPanel.open(item.getElement(true)!, this);
     }
 }
