@@ -29,6 +29,43 @@ export interface PerimeterSize {
     left: number
 }
 
+// Module-level state for the rAF-coalesced layout queue. Setters and event handlers call
+// `scheduleLayout()` instead of `doLayout()`; the queue flushes once per animation frame and
+// prunes any component whose ancestor is also dirty (the ancestor's layout will recurse into
+// it). `flushLayout()` provides a synchronous escape hatch for callers that need a layout
+// commit before reading layout-derived state.
+let pendingLayouts: Set<Component> = new Set();
+let rafHandle: number | null = null;
+
+function flushPendingLayouts() {
+    rafHandle = null;
+
+    if (pendingLayouts.size === 0) {
+        return;
+    }
+
+    // Snapshot and clear so re-entrant scheduleLayout calls (from doLayout side effects)
+    // queue into the next frame instead of mutating during iteration.
+    const dirty = Array.from(pendingLayouts);
+    pendingLayouts.clear();
+
+    for (const c of dirty) {
+        let hasDirtyAncestor = false;
+        let p = c.getParentComponent();
+        while (p) {
+            if (dirty.indexOf(p) !== -1) {
+                hasDirtyAncestor = true;
+                break;
+            }
+            p = p.getParentComponent();
+        }
+
+        if (!hasDirtyAncestor) {
+            c.doLayout();
+        }
+    }
+}
+
 /**
  * Base class for all UI components in the framework.
  *
@@ -49,6 +86,8 @@ export class Component extends BaseObject {
     private cursor: string | null;
     private left: number;
     private top: number;
+    private translateX: number = 0;
+    private translateY: number = 0;
     private width: number;
     private height: number;
     private visible: Boolean | null;
@@ -101,10 +140,13 @@ export class Component extends BaseObject {
         this.boxSizing = "border-box";
         this.position = Position.ABSOLUTE;
         this.cursor = "default";
-        this.top = 0;
-        this.left = 0;
-        this.width = 0;
-        this.height = 0;
+        // NaN sentinels for geometry: NaN === anything is always false, so the equality
+        // guards on setX/setY/setWidth/setHeight only short-circuit AFTER a real write
+        // — the first call always reaches the DOM, even when its target value is 0.
+        this.top = NaN;
+        this.left = NaN;
+        this.width = NaN;
+        this.height = NaN;
         this.zIndex = 0;
         this.displayed = true;
         this.display = "block";
@@ -476,6 +518,9 @@ export class Component extends BaseObject {
      * @param value - The z-index value.
      */
     setZIndex(value: number) {
+        if (this.zIndex === value) {
+            return;
+        }
         this.zIndex = value;
         this.setElementStyle("zIndex", this.zIndex);
     }
@@ -499,7 +544,12 @@ export class Component extends BaseObject {
      * @param value - True to show the component, false to set display to "none".
      */
     setDisplayed(value: boolean) {
-        this.displayed = !!value;
+        const v = !!value;
+        if (this.displayed === v && this.getElement()) {
+            return;
+        }
+
+        this.displayed = v;
 
         let element = this.getElement();
         if (!element) {
@@ -552,6 +602,15 @@ export class Component extends BaseObject {
      * @param padding - The new padding Insets, or null to reset to "0px 0px 0px 0px".
      */
     setPadding(padding: Insets | null) {
+        if (this.padding === padding ||
+            (this.padding && padding &&
+             this.padding.getTop()    === padding.getTop()    &&
+             this.padding.getRight()  === padding.getRight()  &&
+             this.padding.getBottom() === padding.getBottom() &&
+             this.padding.getLeft()   === padding.getLeft())) {
+            return;
+        }
+
         this.padding = padding;
         this.cssRule.style.padding = padding ? padding.render() as string : "0px 0px 0px 0px";
     }
@@ -571,6 +630,10 @@ export class Component extends BaseObject {
      * @param backgroundColor - A CSS color string, or null to remove the property and inherit.
      */
     setBackgroundColor(backgroundColor: string | null) {
+        if (this.backgroundColor === backgroundColor) {
+            return;
+        }
+
         this.backgroundColor = backgroundColor;
 
         if (backgroundColor) {
@@ -619,6 +682,10 @@ export class Component extends BaseObject {
      * @param foregroundColor - A CSS color string, or null to remove the property and inherit.
      */
     setForegroundColor(foregroundColor: string | null) {
+        if (this.foregroundColor === foregroundColor) {
+            return;
+        }
+
         this.foregroundColor = foregroundColor;
 
         if (foregroundColor) {
@@ -694,6 +761,9 @@ export class Component extends BaseObject {
      * @param cursor - A CSS cursor value (e.g. "pointer", "text", "default").
      */
     setCursor(cursor: string) {
+        if (this.cursor === cursor) {
+            return;
+        }
         this.cursor = cursor;
         this.setElementStyle("cursor", cursor);
     }
@@ -713,6 +783,9 @@ export class Component extends BaseObject {
      * @param borderRadius - Optional. A CSS border-radius string (e.g. "4px"), or null to clear.
      */
     setBorderRadius(borderRadius: string | null = null) {
+        if (this.borderRadius === borderRadius) {
+            return;
+        }
         this.borderRadius = borderRadius;
         this.setElementStyle("borderRadius", this.borderRadius);
     }
@@ -889,6 +962,10 @@ export class Component extends BaseObject {
      * @param height - The minimum height in pixels.
      */
     setMinSize(width: number, height: number) {
+        if (this.minSize && this.minSize.width === width && this.minSize.height === height) {
+            return;
+        }
+
         this.minSize = {
             width: width,
             height: height
@@ -947,6 +1024,10 @@ export class Component extends BaseObject {
      * @param height - The maximum height in pixels. Pass Number.MAX_VALUE to remove the constraint.
      */
     setMaxSize(width: number, height: number) {
+        if (this.maxSize && this.maxSize.width === width && this.maxSize.height === height) {
+            return;
+        }
+
         this.maxSize = {
             width: width,
             height: height
@@ -1091,7 +1172,7 @@ export class Component extends BaseObject {
             "height": size.height + "px"
         });
 
-        this.doLayout();
+        this.scheduleLayout();
     }
 
     /**
@@ -1114,6 +1195,10 @@ export class Component extends BaseObject {
      * @param width - The new width in pixels.
      */
     setWidth(width: number) {
+        if (this.width === width) {
+            return;
+        }
+
         this.width = width;
 
         let element = this.getElement();
@@ -1144,6 +1229,10 @@ export class Component extends BaseObject {
      * @param height - The new height in pixels.
      */
     setHeight(height: number) {
+        if (this.height === height) {
+            return;
+        }
+
         this.height = height;
 
         let element = this.getElement();
@@ -1169,6 +1258,10 @@ export class Component extends BaseObject {
      * @param x - The horizontal offset in pixels.
      */
     setX(x: number) {
+        if (this.left === x) {
+            return;
+        }
+
         this.left = x;
 
         let element = this.getElement();
@@ -1194,6 +1287,10 @@ export class Component extends BaseObject {
      * @param y - The vertical offset in pixels.
      */
     setY(y: number) {
+        if (this.top === y) {
+            return;
+        }
+
         this.top = y;
 
         let element = this.getElement();
@@ -1202,6 +1299,47 @@ export class Component extends BaseObject {
         }
 
         this.setElementStyle("top", this.top + "px");
+    }
+
+    /**
+     * Returns the cached translate-X component of the element's `transform` (pixels).
+     *
+     * @returns The translate-X value last passed to setTranslate, or 0.
+     */
+    getTranslateX() {
+        return this.translateX;
+    }
+
+    /**
+     * Returns the cached translate-Y component of the element's `transform` (pixels).
+     *
+     * @returns The translate-Y value last passed to setTranslate, or 0.
+     */
+    getTranslateY() {
+        return this.translateY;
+    }
+
+    /**
+     * Writes the element's `transform` to translate3d(x, y, 0). This positions on the
+     * compositor without triggering layout/paint, complementing setX/setY (left/top).
+     * Visual position of the element is `left + translateX, top + translateY`.
+     *
+     * @param x - Translate-X in pixels.
+     * @param y - Translate-Y in pixels.
+     */
+    setTranslate(x: number, y: number) {
+        if (this.translateX === x && this.translateY === y && this.getElement()) {
+            return;
+        }
+
+        this.translateX = x;
+        this.translateY = y;
+
+        if (x === 0 && y === 0) {
+            this.setElementStyle("transform", null);
+        } else {
+            this.setElementStyle("transform", "translate3d(" + x + "px," + y + "px,0)");
+        }
     }
 
     /**
@@ -1350,19 +1488,21 @@ export class Component extends BaseObject {
             this.cssRule.style.setProperty('background-image', this.backgroundImage);
         }
 
-        if (this.width) {
+        // NaN means "never assigned by a setter" — skip the DOM write for those.
+        // Any finite value (including 0) MUST be written so the DOM matches the cached field.
+        if (!Number.isNaN(this.width)) {
             element.style.width = this.width + "px";
         }
 
-        if (this.top) {
+        if (!Number.isNaN(this.top)) {
             element.style.top = this.top + "px";
         }
 
-        if (this.left) {
+        if (!Number.isNaN(this.left)) {
             element.style.left = this.left + "px";
         }
 
-        if (this.height) {
+        if (!Number.isNaN(this.height)) {
             element.style.height = this.height + "px";
         }
 
@@ -1462,7 +1602,7 @@ export class Component extends BaseObject {
 
         component._parent = this;
         component.onPreferredSizeChange = () => {
-            this.doLayout();
+            this.scheduleLayout();
 
             this.onPreferredSizeChange?.();
         };
@@ -1474,7 +1614,7 @@ export class Component extends BaseObject {
 
         let compElement = component.getElement(true);
         element.appendChild(compElement);
-        this.doLayout();
+        this.scheduleLayout();
     }
 
     /**
@@ -1504,7 +1644,7 @@ export class Component extends BaseObject {
         component._parent = null;
         component.onPreferredSizeChange = null;
         component.removeElement();
-        this.doLayout();
+        this.scheduleLayout();
 
         return constraints;
     }
@@ -1666,6 +1806,37 @@ export class Component extends BaseObject {
         }
 
         this.layoutManager.doLayout();
+    }
+
+    /**
+     * Queues a layout pass to run on the next animation frame. Multiple calls within
+     * the same frame coalesce into a single doLayout() call; if an ancestor is also
+     * scheduled, the ancestor's recursion subsumes this component and its scheduled
+     * pass is skipped.
+     *
+     * @remarks Honors `pauseLayout()`. Callers that need a synchronous layout commit
+     * (e.g. before reading getInnerSize) should call `flushLayout()` instead.
+     */
+    scheduleLayout() {
+        if (this.isLayoutPaused()) {
+            return;
+        }
+
+        pendingLayouts.add(this);
+
+        if (rafHandle === null) {
+            rafHandle = requestAnimationFrame(flushPendingLayouts);
+        }
+    }
+
+    /**
+     * Forces a synchronous layout pass on this component, removing it from the
+     * scheduled-layout queue if it was pending. Use when a layout-derived value must
+     * be read before the next animation frame.
+     */
+    flushLayout() {
+        pendingLayouts.delete(this);
+        this.doLayout();
     }
 
     /**

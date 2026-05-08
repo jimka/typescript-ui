@@ -155,9 +155,11 @@ export namespace CSS {
      * @param vars - A record mapping CSS custom property names (e.g. `"--my-color"`) to their values.
      */
     export function setRootVariables(vars: Record<string, string>) {
-        const root = document.documentElement;
+        const style = document.documentElement.style;
         for (const [name, value] of Object.entries(vars)) {
-            root.style.setProperty(name, value);
+            if (style.getPropertyValue(name) !== value) {
+                style.setProperty(name, value);
+            }
         }
     }
 }

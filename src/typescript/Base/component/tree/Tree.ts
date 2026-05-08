@@ -55,6 +55,8 @@ export class Tree extends Component {
     private _flatRows: FlatRow[] = [];
     private _rowPool: TreeRow[] = [];
     private _boundIndices: number[] = [];
+    private _rowGeom: Array<{ ty: number, w: number, h: number } | null> = [];
+    private _lastRowWidth: number = 0;
     private _phantom: HTMLElement | null = null;
     private _layoutInProgress: boolean = false;
     private _selectedNodes: Set<TreeNode> = new Set();
@@ -90,7 +92,14 @@ export class Tree extends Component {
 
         if (this.getElement()) {
             this._boundIndices.fill(-1);
+            this._invalidateGeom();
             this._renderWindow();
+        }
+    }
+
+    private _invalidateGeom(): void {
+        for (let i = 0; i < this._rowGeom.length; i++) {
+            this._rowGeom[i] = null;
         }
     }
 
@@ -169,6 +178,7 @@ export class Tree extends Component {
 
         this._flatten();
         this._boundIndices.fill(-1);
+        this._invalidateGeom();
         this._renderWindow();
     }
 
@@ -505,11 +515,20 @@ export class Tree extends Component {
 
             element.appendChild(rowEl);
 
+            // Pin row's static top to 0 once; per-frame Y offset comes from translateY.
+            row.setY(0);
+
             this._rowPool.push(row);
             this._boundIndices.push(-1);
+            this._rowGeom.push(null);
         }
 
         const rowWidth = this.getWidth() || 0;
+        const widthChanged = rowWidth !== this._lastRowWidth;
+        if (widthChanged) {
+            this._lastRowWidth = rowWidth;
+            this._invalidateGeom();
+        }
 
         // Bind and position visible rows
         for (let i = 0; i < windowSize; i++) {
@@ -518,27 +537,37 @@ export class Tree extends Component {
             const flatRow = this._flatRows[dataIndex];
             const hasChildren = !!(flatRow.node.children && flatRow.node.children.length > 0);
             const expanded = this._expandedNodes.has(flatRow.node);
+            const wasRebound = this._boundIndices[i] !== dataIndex;
 
-            if (this._boundIndices[i] !== dataIndex) {
+            if (wasRebound) {
                 row.setRowData(flatRow.node, flatRow.depth, hasChildren, expanded, flatRow.siblingCount, flatRow.posInSet);
                 this._boundIndices[i] = dataIndex;
             }
 
-            row.setAutoCommitStyle(false);
-            row.setX(0);
-            row.setY(dataIndex * ROW_HEIGHT);
-            row.setWidth(rowWidth);
-            row.setHeight(ROW_HEIGHT);
-            row.setAutoCommitStyle(true);
+            const targetY = dataIndex * ROW_HEIGHT;
+            const prev = this._rowGeom[i];
+            const geomChanged = !prev || prev.ty !== targetY || prev.w !== rowWidth || prev.h !== ROW_HEIGHT;
+            if (geomChanged) {
+                row.setAutoCommitStyle(false);
+                row.setX(0);
+                row.setTranslate(0, targetY);
+                row.setWidth(rowWidth);
+                row.setHeight(ROW_HEIGHT);
+                row.setAutoCommitStyle(true);
+                this._rowGeom[i] = { ty: targetY, w: rowWidth, h: ROW_HEIGHT };
+            }
             row.setDisplayed(true);
 
-            row.layoutChildren(rowWidth, ROW_HEIGHT, INDENT_PX);
+            if (wasRebound || geomChanged) {
+                row.layoutChildren(rowWidth, ROW_HEIGHT, INDENT_PX);
+            }
         }
 
         // Hide pool rows that fall outside the visible window
         for (let i = windowSize; i < this._rowPool.length; i++) {
             this._rowPool[i].setDisplayed(false);
             this._boundIndices[i] = -1;
+            this._rowGeom[i] = null;
         }
 
         // Keep phantom height in sync with total content height

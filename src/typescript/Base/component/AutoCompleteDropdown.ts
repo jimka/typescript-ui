@@ -47,6 +47,8 @@ export class AutoCompleteDropdown extends Component {
         });
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))");
+        // Dynamic dimensions from anchor + suggestion count — layout containment is safe.
+        this.setElementCSSRule("contain", "layout");
 
         const vbox = new VBox();
 
@@ -81,7 +83,7 @@ export class AutoCompleteDropdown extends Component {
         const itemCount = suggestions.length;
         const rect = anchorEl.getBoundingClientRect();
 
-        this.setWidth(anchorEl.offsetWidth);
+        this.setWidth(rect.width);
         this.setHeight(itemCount * HEIGHT + insets);
 
         const el = this.getElement(true);

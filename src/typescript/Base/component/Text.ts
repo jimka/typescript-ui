@@ -407,19 +407,18 @@ export class Text extends Component {
     applyStyle(element: HTMLElement) {
         super.applyStyle(element);
 
-        let rule = this.getCSSRule();
-
-        rule.style.setProperty('font-family', this.fontFamily ?? '');
-        rule.style.textAlign = this.textAlign ? this.textAlign : "";
-        rule.style.textShadow = this.textShadow ? this.textShadow : "";
-        rule.style.fontKerning = this.fontKerning ? this.fontKerning : "";
-        rule.style.setProperty('font-size',
-            this.fontSizeCSSRule ?? (this.fontSize !== null ? `${this.fontSize}px` : ''));
-        rule.style.fontSizeAdjust = this.fontSizeAdjust ? this.fontSizeAdjust : "";
-        rule.style.fontStretch = this.fontStretch ? this.fontStretch : "";
-        rule.style.fontStyle = this.fontStyle ? this.fontStyle : "";
-        rule.style.fontVariant = this.fontVariant ? this.fontVariant : "";
-        rule.style.fontWeight = this.fontWeight ? this.fontWeight : "";
+        this.setElementCSSRules({
+            fontFamily:     this.fontFamily ?? '',
+            textAlign:      this.textAlign     ? this.textAlign     : '',
+            textShadow:     this.textShadow    ? this.textShadow    : '',
+            fontKerning:    this.fontKerning   ? this.fontKerning   : '',
+            fontSize:       this.fontSizeCSSRule ?? (this.fontSize !== null ? `${this.fontSize}px` : ''),
+            fontSizeAdjust: this.fontSizeAdjust ? this.fontSizeAdjust : '',
+            fontStretch:    this.fontStretch   ? this.fontStretch   : '',
+            fontStyle:      this.fontStyle     ? this.fontStyle     : '',
+            fontVariant:    this.fontVariant   ? this.fontVariant   : '',
+            fontWeight:     this.fontWeight    ? this.fontWeight    : ''
+        });
     }
 
     /**

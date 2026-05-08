@@ -61,6 +61,8 @@ export class MenuPanel extends Component {
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-menu-bar-panel-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
         this.getAria().setRole("menu");
+        // Width fixed, height varies per item count — layout containment is safe.
+        this.setElementCSSRule("contain", "layout");
 
         const vbox = new VBox();
         vbox.setComponentSpacing(0);
@@ -128,8 +130,10 @@ export class MenuPanel extends Component {
                 y = vp.height - totalHeight;
             }
 
+            this.setAutoCommitStyle(false);
             this.setX(Math.max(0, x));
             this.setY(Math.max(0, y));
+            this.setAutoCommitStyle(true);
         } else {
             const anchorRect = anchorEl.getBoundingClientRect();
 
@@ -144,8 +148,10 @@ export class MenuPanel extends Component {
                 y = anchorRect.top - totalHeight;
             }
 
+            this.setAutoCommitStyle(false);
             this.setX(Math.max(0, x));
             this.setY(Math.max(0, y));
+            this.setAutoCommitStyle(true);
         }
 
         const anchorId = anchorEl.id;
