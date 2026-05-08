@@ -72,6 +72,9 @@ export class Tooltip extends Component {
         this.setShadow("var(--ts-ui-tooltip-shadow, 1px 2px 4px rgba(0, 0, 0, 0.2))");
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setPointerEvents("none");
+        // Top-level overlay, dynamic size — layout+paint containment scopes reflow without
+        // committing to a fixed size.
+        this.setElementCSSRule("contain", "layout paint");
 
         this.label = new Label();
         this.label.setPointerEvents("none");
@@ -127,7 +130,7 @@ export class Tooltip extends Component {
 
         const el = inst.getElement(true);
 
-        inst.doLayout();
+        inst.scheduleLayout();
 
         document.documentElement.appendChild(el);
 

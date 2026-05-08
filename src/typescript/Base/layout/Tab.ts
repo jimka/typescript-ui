@@ -70,7 +70,7 @@ export class Tab extends LayoutManager {
             this.rovingTabIndex.moveTo(idx);
         }
 
-        this.doLayout();
+        this.getContainer()?.scheduleLayout();
     }
 
     /**
@@ -412,7 +412,7 @@ export class Tab extends LayoutManager {
         }
 
         this.selectNextTab(entryIndex);
-        this.doLayout();
+        this.getContainer()?.scheduleLayout();
     }
 
     /**

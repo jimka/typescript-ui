@@ -390,10 +390,14 @@ export class AutoCompleteField extends Component implements Bindable<string> {
 
         if (this.store !== null && this.displayField !== null) {
             const field = this.displayField;
-            const lower = query.toLowerCase();
 
             this.store.clearFilter();
-            this.store.filterBy(r => this.matches(String(r.get(field)).toLowerCase(), lower));
+            this.store.filterBy({
+                type: this.matchMode === 'startsWith' ? 'startsWith' : 'contains',
+                field: field,
+                value: query,
+                caseSensitive: false,
+            });
 
             const results = this.store.getRecords()
                 .map(r => String(r.get(field)))

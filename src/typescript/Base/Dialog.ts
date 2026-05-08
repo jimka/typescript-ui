@@ -275,6 +275,8 @@ export class Dialog extends Component {
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-dialog-shadow)");
         this.setOverflow("hidden");
+        // Fixed dimensions, hidden overflow, no escaping descendants — full strict containment.
+        this.setElementCSSRule("contain", "strict");
 
         const layout = new BorderLayout();
         layout.setComponentGap(0);
@@ -355,7 +357,7 @@ export class Dialog extends Component {
         const dialogEl = this.getElement(true);
         document.documentElement.appendChild(dialogEl);
 
-        this.doLayout();
+        this.scheduleLayout();
         this.center();
 
         document.addEventListener('keydown', this.boundKeyHandler, true);

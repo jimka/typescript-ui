@@ -55,6 +55,9 @@ export class ContextMenu extends Component {
         });
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-context-menu-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
+        // Dynamic size on show() — layout containment is safe; size containment would assert
+        // dimensions before they're known.
+        this.setElementCSSRule("contain", "layout");
 
         const vbox = new VBox();
 
@@ -111,7 +114,7 @@ export class ContextMenu extends Component {
 
         const el = this.getElement(true);
 
-        this.doLayout();
+        this.scheduleLayout();
 
         const vp = Util.getViewportSize();
 
