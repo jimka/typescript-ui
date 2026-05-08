@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "../../Component.js";
+import { Event } from "../../Event.js";
 import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
 import { Table as TableLayout } from "../../layout/Table.js";
 import { Header } from "./Header.js";
@@ -91,6 +92,19 @@ export class Table extends Component {
         }
 
         this.getAria().setColCount(this.getColumns().length);
+
+        // Sync header horizontal scroll with body. The body has overflow:auto so the browser
+        // scrolls it natively; the header is outside that scroll container, so we mirror the
+        // body's scrollLeft into the header via transform on every scroll event.
+        Event.addListener(this.body, "scroll", () => {
+            const el = this.body.getElement();
+
+            if (!el) {
+                return;
+            }
+
+            this.header.setTranslate(-el.scrollLeft, 0);
+        });
     }
 
     /**
