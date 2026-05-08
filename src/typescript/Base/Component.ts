@@ -124,7 +124,7 @@ export class Component extends BaseObject {
     // that direction of communication creates tight coupling and circular dependencies.
     // Parent-to-child communication (layout, sizing) is the only intended flow.
     private _parent: Component | null = null;
-    colorScheme: string;
+    private colorScheme: string | null = null;
 
     constructor(tag: string = "div") {
         super();
