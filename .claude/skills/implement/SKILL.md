@@ -142,4 +142,3 @@ this.setRadioName(groupId);             // HTML attr → typed setter → setEle
 2. Perform the implementation.
 3. If applicable, extend the demo panel(s) to show off the implemented feature.
 4. When done, move the implementation plan to the {workspace}/plans/implemented folder.
-5. Open README.md and delete the matching TODO line for the implemented feature. TODO items appear as bullet points under a `## TODO` heading.
