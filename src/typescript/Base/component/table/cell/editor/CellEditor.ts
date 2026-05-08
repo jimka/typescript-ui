@@ -17,13 +17,18 @@ export abstract class CellEditor<T> extends Component {
         super(tag);
 
         this.setLayoutManager(new Fit());
-        this.applyThemePadding();
-        ThemeManager.onThemeChange(() => this.applyThemePadding());
-    }
 
-    private applyThemePadding(): void {
-        const p = ThemeManager.getTheme().table.cell.padding;
-        this.setInsets(new Insets(0, p, 0, p));
+        // Inlined (rather than a private method) so CellRenderer and CellEditor stay
+        // structurally compatible — BooleanCell relies on a CellEditor doubling as the
+        // renderer, which fails if both classes declare a private member of the same name.
+        const applyPadding = () => {
+            const p = ThemeManager.getTheme().table.cell.padding;
+            this.setInsets(new Insets(0, p, 0, p));
+        };
+
+        applyPadding();
+
+        ThemeManager.onThemeChange(applyPadding);
     }
 
     /**

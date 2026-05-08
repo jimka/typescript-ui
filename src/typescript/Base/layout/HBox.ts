@@ -234,7 +234,7 @@ export class HBox extends LayoutManager {
             let height: number;
 
             if (!size || this.isStretching()) {
-                height = Math.min(maxSize.height, containerSize.height);
+                height = maxSize ? Math.min(maxSize.height, containerSize.height) : containerSize.height;
             } else {
                 height = Math.min(size.height, containerSize.height);
             }

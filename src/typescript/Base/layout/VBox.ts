@@ -233,7 +233,7 @@ export class VBox extends LayoutManager {
             }
 
             if (!size || this.isStretching()) {
-                width = Math.min(maxSize.width, containerSize.width);
+                width = maxSize ? Math.min(maxSize.width, containerSize.width) : containerSize.width;
             } else {
                 width = Math.min(size.width, containerSize.width);
             }
