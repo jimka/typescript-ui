@@ -52,6 +52,10 @@ export class Window extends Component {
     private pendingBorder: WindowBorder | null = null;
     private resizeFps: number = 60;
     private lastFlushTime: number = 0;
+    private _dragStartLeft: number = 0;
+    private _dragStartTop: number = 0;
+    private _dragDX: number = 0;
+    private _dragDY: number = 0;
     private readonly boundOnDrag: (e: MouseEvent) => void = (e: MouseEvent) => this.onDrag(e);
     private readonly boundOnMouseUp: () => void = () => this.onMouseUp();
 
@@ -90,6 +94,8 @@ export class Window extends Component {
         this.setVisible(false);
         this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" });
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
+        // Resizable — size containment unsafe; layout containment scopes reflow to the window subtree.
+        this.setElementCSSRule("contain", "layout");
         this.setShadow("var(--ts-ui-window-shadow, 3px 3px 2px rgba(0, 0, 0, 0.4))");
         this.setBackgroundColor("var(--ts-ui-body-bg, rgb(241, 241, 241))");
 
@@ -174,8 +180,19 @@ export class Window extends Component {
      * Attaches document-level move and mouseup listeners to begin dragging the window.
      */
     onMouseDown() {
-        document.addEventListener('mouseup', this.boundOnMouseUp);
-        document.addEventListener('mousemove', this.boundOnDrag);
+        // Snapshot the current position so onDrag's accumulator runs from a fixed origin
+        // and onMouseUp can commit (origin + accumulated delta) back to left/top.
+        this._dragStartLeft = this.getX();
+        this._dragStartTop  = this.getY();
+        this._dragDX = 0;
+        this._dragDY = 0;
+
+        // Viewport listeners are required (rather than direct document listeners) because
+        // Event.baseViewportListener stops mouseup propagation at window capture phase
+        // whenever any viewport listener for the type exists (e.g. SpinButton registers
+        // one at construction), which would prevent document-level handlers from firing.
+        Event.addViewportListener(this, 'mouseup', this.boundOnMouseUp);
+        Event.addViewportListener(this, 'mousemove', this.boundOnDrag);
     }
 
     /**
@@ -284,16 +301,26 @@ export class Window extends Component {
     onDrag(e: MouseEvent) {
         e.preventDefault();
 
-        this.setX(this.getX() + e.movementX);
-        this.setY(this.getY() + e.movementY);
+        this._dragDX += e.movementX;
+        this._dragDY += e.movementY;
+
+        // Compositor-only translate during drag; the cached left/top stay at the start
+        // position so the field-DOM invariant holds (left === style.left throughout).
+        this.setTranslate(this._dragDX, this._dragDY);
     }
 
     /**
      * Detaches the document-level drag listeners when the mouse button is released.
      */
     onMouseUp() {
-        document.removeEventListener('mouseup', this.boundOnMouseUp);
-        document.removeEventListener('mousemove', this.boundOnDrag);
+        // Commit the in-progress translate back to left/top so subsequent layout passes
+        // operate from the new position. setTranslate(0, 0) frees the compositor layer.
+        this.setX(this._dragStartLeft + this._dragDX);
+        this.setY(this._dragStartTop  + this._dragDY);
+        this.setTranslate(0, 0);
+
+        Event.removeViewportListener(this, 'mouseup', this.boundOnMouseUp);
+        Event.removeViewportListener(this, 'mousemove', this.boundOnDrag);
     }
 
     /**
