@@ -54,7 +54,11 @@
       "Bash(graphify update *)",
       "Bash(graphify --help)",
       "Edit(/.claude/skills/implement/**)",
-      "Bash(grep -v \".js$\")"
+      "Bash(grep -v \".js$\")",
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(git mv *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ],
     "additionalDirectories": [
       "/home/jika"
