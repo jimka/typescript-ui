@@ -3,6 +3,16 @@
 import { AbstractModel } from './AbstractModel.js';
 import { ModelRecord } from './ModelRecord.js';
 import { Proxy } from './proxy/Proxy.js';
+import { FilterDescriptor, matchesFilter } from './FilterDescriptor.js';
+import { StoreWorkerClient } from './StoreWorkerClient.js';
+
+/**
+ * Datasets above this size are sorted/filtered on a Web Worker so the main
+ * thread stays responsive. Below the threshold, the round-trip overhead exceeds
+ * the work, so we run synchronously in-process.
+ */
+const WORKER_THRESHOLD = 1000;
+let nextStoreId = 1;
 
 type StoreListener<T = any> = (payload: T) => void;
 export type StoreEvent = 'load' | 'datachanged' | 'add' | 'remove' | 'beforesync' | 'sync';
@@ -31,9 +41,16 @@ export abstract class AbstractStore {
     private allRecords: ModelRecord[] = [];
     private records: ModelRecord[] = [];
     private pendingRemoved: ModelRecord[] = [];
-    private activeFilterFns: Array<(r: ModelRecord) => boolean> = [];
+    private activeFilters: FilterDescriptor[] = [];
     private activeSorter: SorterConfig | null = null;
     private listenerMap: Map<string, StoreListener[]> = new Map();
+
+    // Worker-offload state. Each store gets a unique id so the shared worker can
+    // keep snapshots from different stores apart. `snapshotDirty` flags whether
+    // the worker's copy of allRecords is stale (re-shipped on the next applyView
+    // when the dataset is over the threshold).
+    private storeId: string = 'store-' + (nextStoreId++);
+    private snapshotDirty: boolean = true;
 
     // ── Loading ──────────────────────────────────────────────────────────────
 
@@ -72,6 +89,7 @@ export abstract class AbstractStore {
      */
     private ingestRaw(data: any[]): void {
         this.allRecords = data.map(item => this.model.createRecord(item));
+        this.snapshotDirty = true;
         this.applyView();
     }
 
@@ -174,6 +192,7 @@ export abstract class AbstractStore {
         });
 
         this.allRecords.push(...added);
+        this.snapshotDirty = true;
         this.applyView();
 
         this.emit('add', { records: added });
@@ -199,6 +218,7 @@ export abstract class AbstractStore {
         }
 
         this.allRecords.splice(allIdx, 1);
+        this.snapshotDirty = true;
 
         if (!record.isNew()) {
             this.pendingRemoved.push(record);
@@ -222,6 +242,7 @@ export abstract class AbstractStore {
 
         this.allRecords = [];
         this.records = [];
+        this.snapshotDirty = true;
 
         this.emit('datachanged', {});
     }
@@ -281,11 +302,12 @@ export abstract class AbstractStore {
      * @param property - The field name to sort by.
      * @param direction - Optional. The sort direction; defaults to 'asc'.
      */
-    sort(property: string, direction: 'asc' | 'desc' = 'asc'): void {
+    sort(property: string, direction: 'asc' | 'desc' = 'asc'): Promise<void> {
         this.activeSorter = { property, direction };
-        this.applyView();
 
-        this.emit('datachanged', {});
+        return this.applyView().then(() => {
+            this.emit('datachanged', {});
+        });
     }
 
     /**
@@ -300,11 +322,12 @@ export abstract class AbstractStore {
     /**
      * Removes any active sort and restores insertion order, firing 'datachanged'.
      */
-    clearSort(): void {
+    clearSort(): Promise<void> {
         this.activeSorter = null;
-        this.applyView();
 
-        this.emit('datachanged', {});
+        return this.applyView().then(() => {
+            this.emit('datachanged', {});
+        });
     }
 
     // ── Filter ───────────────────────────────────────────────────────────────
@@ -315,33 +338,38 @@ export abstract class AbstractStore {
      * @param property - The field name to filter on.
      * @param value - The value a record's field must equal to pass the filter.
      */
-    filter(property: string, value: any): void {
-        this.activeFilterFns.push(r => r.get(property) === value);
-        this.applyView();
+    filter(property: string, value: any): Promise<void> {
+        this.activeFilters.push({ type: 'eq', field: property, value: value });
 
-        this.emit('datachanged', {});
+        return this.applyView().then(() => {
+            this.emit('datachanged', {});
+        });
     }
 
     /**
-     * Adds an arbitrary predicate filter and fires 'datachanged'.
+     * Adds a filter described by a serializable {@link FilterDescriptor}. Descriptors
+     * cross the worker boundary cleanly (unlike arbitrary predicate functions), so
+     * the same call works for in-process and worker-offloaded evaluation.
      *
-     * @param fn - A function that receives a ModelRecord and returns true to include it.
+     * @param descriptor - The filter descriptor to apply.
      */
-    filterBy(fn: (record: ModelRecord) => boolean): void {
-        this.activeFilterFns.push(fn);
-        this.applyView();
+    filterBy(descriptor: FilterDescriptor): Promise<void> {
+        this.activeFilters.push(descriptor);
 
-        this.emit('datachanged', {});
+        return this.applyView().then(() => {
+            this.emit('datachanged', {});
+        });
     }
 
     /**
      * Removes all active filters and fires 'datachanged'.
      */
-    clearFilter(): void {
-        this.activeFilterFns = [];
-        this.applyView();
+    clearFilter(): Promise<void> {
+        this.activeFilters = [];
 
-        this.emit('datachanged', {});
+        return this.applyView().then(() => {
+            this.emit('datachanged', {});
+        });
     }
 
     // ── Events ───────────────────────────────────────────────────────────────
@@ -407,11 +435,20 @@ export abstract class AbstractStore {
      * Null values sort to the end regardless of sort direction. All active filter
      * predicates must pass for a record to be included in the view.
      */
-    private applyView(): void {
+    /**
+     * Recomputes the filtered/sorted view from `allRecords`. Returns a Promise so a
+     * future worker-offload path can resolve after the worker round-trip completes;
+     * the current implementation runs synchronously and resolves immediately.
+     */
+    protected applyView(): Promise<void> {
+        if (this.allRecords.length >= WORKER_THRESHOLD && StoreWorkerClient.isAvailable()) {
+            return this.applyViewOnWorker();
+        }
+
         let view = this.allRecords.slice();
 
-        for (const fn of this.activeFilterFns) {
-            view = view.filter(fn);
+        for (const descriptor of this.activeFilters) {
+            view = view.filter(r => matchesFilter(r, descriptor));
         }
 
         if (this.activeSorter) {
@@ -440,5 +477,49 @@ export abstract class AbstractStore {
         }
 
         this.records = view;
+
+        return Promise.resolve();
+    }
+
+    /**
+     * Worker-offloaded view rebuild for stores above WORKER_THRESHOLD. Ships a fresh
+     * snapshot when allRecords has changed since the last dispatch, then asks the
+     * worker for sorted/filtered indices into the snapshot, and maps those indices
+     * back to the local ModelRecord array. The worker returns indices (not records)
+     * because ModelRecord instances can't survive structured clone.
+     */
+    private applyViewOnWorker(): Promise<void> {
+        const snapshot = this.snapshotDirty
+            ? StoreWorkerClient.snapshot(this.storeId, this.allRecords.map(r => r.getData()))
+            : Promise.resolve();
+
+        if (this.snapshotDirty) {
+            this.snapshotDirty = false;
+        }
+
+        const allRecordsRef = this.allRecords;
+
+        return snapshot
+            .then(() => StoreWorkerClient.sortFilter(
+                this.storeId,
+                this.activeSorter
+                    ? { field: this.activeSorter.property, direction: this.activeSorter.direction }
+                    : undefined,
+                this.activeFilters.length > 0
+                    ? (this.activeFilters.length === 1
+                        ? this.activeFilters[0]
+                        : { type: 'and', filters: this.activeFilters })
+                    : undefined,
+            ))
+            .then(indices => {
+                // Guard against allRecords having been replaced while the worker ran.
+                // If so, the indices reference stale data; trigger a fresh applyView.
+                if (allRecordsRef !== this.allRecords) {
+                    return this.applyView();
+                }
+
+                this.records = indices.map(i => this.allRecords[i]);
+                return undefined;
+            });
     }
 }

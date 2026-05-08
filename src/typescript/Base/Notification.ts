@@ -57,6 +57,8 @@ export class Notification extends Component {
         this.setWidth(Notification.WIDTH);
         this.setHeight(Notification.HEIGHT);
         this.setOverflow("hidden");
+        // Fixed size, fixed position, hidden overflow — full strict containment.
+        this.setElementCSSRule("contain", "strict");
 
         const bgVar     = `var(--ts-ui-notification-${type}-bg)`;
         const borderVar = `var(--ts-ui-notification-${type}-border)`;
@@ -118,7 +120,7 @@ export class Notification extends Component {
 
         const el = n.getElement(true);
 
-        n.doLayout();
+        n.scheduleLayout();
 
         document.documentElement.appendChild(el);
 

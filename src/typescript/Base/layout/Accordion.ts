@@ -94,7 +94,7 @@ export class Accordion extends LayoutManager {
             }
         }
 
-        this.doLayout();
+        this.getContainer()?.scheduleLayout();
     }
 
     /**
@@ -158,7 +158,7 @@ export class Accordion extends LayoutManager {
         this.headers[index].setExpanded(true);
         this.headers[index].getAria().setExpanded(true);
         this.onSectionToggleCallback?.(index, true);
-        this.doLayout();
+        this.getContainer()?.scheduleLayout();
     }
 
     /**
@@ -175,7 +175,7 @@ export class Accordion extends LayoutManager {
         this.headers[index].setExpanded(false);
         this.headers[index].getAria().setExpanded(false);
         this.onSectionToggleCallback?.(index, false);
-        this.doLayout();
+        this.getContainer()?.scheduleLayout();
     }
 
     /**
@@ -325,6 +325,9 @@ export class Accordion extends LayoutManager {
 
         wrapper.setPosition(Position.ABSOLUTE);
         wrapper.setOverflow('hidden');
+        // Animation wrapper clips content via overflow:hidden — layout+paint containment scopes
+        // reflow during the height transition without affecting the rest of the document.
+        wrapper.setElementCSSRule("contain", "layout paint");
 
         // CSS transitions have no Component API setter; element.style is necessary here.
         wrapper.getElement(true).style.transition = `height ${this._animationDuration}ms ease`;
@@ -458,6 +461,6 @@ export class Accordion extends LayoutManager {
         this.headers[index].setExpanded(nowOpen);
         this.headers[index].getAria().setExpanded(nowOpen);
         this.onSectionToggleCallback?.(index, nowOpen);
-        this.doLayout();
+        this.getContainer()?.scheduleLayout();
     }
 }
