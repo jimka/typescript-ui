@@ -41,6 +41,8 @@ interface BoundEntry {
  *         listen: (fn) => myWidget.addChangeListener(fn),
  *     });
  * ```
+ *
+ * @category Data
  */
 export class Binding extends BaseObject {
 

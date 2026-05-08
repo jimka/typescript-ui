@@ -8,6 +8,8 @@ import { FieldDecorator } from './FieldDecorator.js';
  *
  * Each variant carries a `message` override that is shown in the error tooltip
  * when the rule fails. If omitted, a sensible default message is used.
+ *
+ * @category Validation
  */
 export type ValidationRule =
     | { type: 'required';  message?: string }

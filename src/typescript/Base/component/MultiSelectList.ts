@@ -8,7 +8,9 @@ import { ModelRecord } from "../data/ModelRecord.js";
  *
  * Extends `List` with `getValues()` / `setValues()` for reading and writing
  * multi-selection state. Use explicit `BindingAccessors` when wiring to a
- * `Binding` instance (see `BindingPanel` for the pattern).
+ * `Binding` instance.
+ *
+ * @category Components
  */
 export class MultiSelectList extends List {
 

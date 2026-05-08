@@ -8,6 +8,10 @@ import { BorderStyle } from "../../BorderStyle.js";
  * The footer section of a table, rendered as a `<tfoot>` element.
  *
  * Contains a single {@link Row} and delegates width/height changes to it.
+ *
+ * Re-exported as `TableFooter` from the package barrel.
+ *
+ * @category Components
  */
 export class FooterRow extends Component {
 

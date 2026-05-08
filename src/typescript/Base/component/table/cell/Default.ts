@@ -8,6 +8,8 @@ import { Cell } from "./Cell.js";
  *
  * Used as the fallback cell type for fields whose type is not explicitly mapped,
  * and as the base for {@link HeaderCell}.
+ *
+ * @category Components
  */
 export class DefaultCell extends Cell<String> {
 

@@ -5,6 +5,8 @@ import { LayoutManager } from "./LayoutManager.js";
 /**
  * A layout manager that performs no automatic layout.
  * Children are expected to be positioned absolutely by the application.
+ *
+ * @category Layouts
  */
 export class Absolute extends LayoutManager {
 

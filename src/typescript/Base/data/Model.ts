@@ -6,6 +6,8 @@ import { AbstractModel } from './AbstractModel.js';
 /**
  * A concrete, configurable model created at runtime from a field array.
  * Use this class when you do not need a dedicated model subclass.
+ *
+ * @category Data
  */
 export class Model extends AbstractModel {
 

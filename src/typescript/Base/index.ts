@@ -16,12 +16,16 @@ export type { Theme } from './Theme.js';
 // Core
 export { BaseObject } from './BaseObject.js';
 export { Component } from './Component.js';
+export type { Comparator, Style } from './Component.js';
+export { Aria } from './Aria.js';
+export type { AriaRole, AriaSort } from './Aria.js';
 export { RovingTabIndex } from './RovingTabIndex.js';
 export { Body } from './Body.js';
 export { ButtonGroup } from './ButtonGroup.js';
 export { Window } from './Window.js';
 export { ContextMenu } from './ContextMenu.js';
 export { Tooltip } from './Tooltip.js';
+export type { TooltipColors } from './Tooltip.js';
 export { Notification } from './Notification.js';
 export type { NotificationType } from './Notification.js';
 export { Dialog } from './Dialog.js';
@@ -35,6 +39,7 @@ export { BorderLine } from './BorderLine.js';
 export { BorderStyle } from './BorderStyle.js';
 export { Insets } from './Insets.js';
 export { Point } from './Point.js';
+export { Position } from './Position.js';
 export { Placement } from './Placement.js';
 export type { Size } from './Size.js';
 
@@ -106,6 +111,8 @@ export { Legend } from './component/Legend.js';
 export { ContextMenuItem } from './component/ContextMenuItem.js';
 export type { ContextMenuItemConfig } from './component/ContextMenuItem.js';
 export { ContextMenuSeparator } from './component/ContextMenuSeparator.js';
+export { SplitGutter } from './component/SplitGutter.js';
+export { WindowBorder, Direction } from './component/WindowBorder.js';
 
 // Components — menu bar
 export { MenuBar } from './component/menubar/MenuBar.js';
@@ -127,7 +134,8 @@ export { Proxy } from './data/proxy/Proxy.js';
 export { MemoryProxy } from './data/proxy/MemoryProxy.js';
 export { AjaxProxy } from './data/proxy/AjaxProxy.js';
 export type { FieldConfig, FieldType } from './data/Field.js';
-export type { StoreEvent } from './data/AbstractStore.js';
+export type { FilterDescriptor } from './data/FilterDescriptor.js';
+export type { StoreEvent, StoreListener } from './data/AbstractStore.js';
 export type { MemoryProxyConfig } from './data/proxy/MemoryProxy.js';
 export type { AjaxProxyConfig } from './data/proxy/AjaxProxy.js';
 

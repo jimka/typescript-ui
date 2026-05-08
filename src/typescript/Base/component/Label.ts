@@ -6,6 +6,18 @@ import { Text } from "./Text.js";
  * A label component backed by a `<label>` element.
  *
  * Supports the HTML `for` attribute to associate the label with a form control by ID.
+ *
+ * @example
+ * ```typescript
+ * import { Label, TextField } from '@jika/typescript-ui';
+ *
+ * const field = new TextField();
+ * const label = new Label('Name:', field.getId());
+ * panel.addComponent(label);
+ * panel.addComponent(field);
+ * ```
+ *
+ * @category Components
  */
 export class Label extends Text {
 

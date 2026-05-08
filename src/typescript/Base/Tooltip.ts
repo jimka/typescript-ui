@@ -11,6 +11,8 @@ import { Label } from "./component/Label.js";
  *
  * When provided to {@link Tooltip.attach}, these replace the default theme variables
  * for the duration that the tooltip is shown for that component.
+ *
+ * @category Core
  */
 export interface TooltipColors {
     /** CSS color for the tooltip background. */
@@ -40,6 +42,8 @@ interface TooltipAttachment {
  * ```typescript
  * Tooltip.attach(myButton, 'Save the document');
  * ```
+ *
+ * @category Core
  */
 export class Tooltip extends Component {
 

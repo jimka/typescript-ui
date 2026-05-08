@@ -4,6 +4,12 @@ import { Component } from "../Component.js";
 import { Util } from "../Util.js";
 import { Event } from "../Event.js";
 
+/**
+ * The eight edge / corner positions used by {@link WindowBorder} to identify
+ * which border strip the user is dragging.
+ *
+ * @category Components
+ */
 export enum Direction {
     NORTH,
     SOUTH,
@@ -21,6 +27,8 @@ export enum Direction {
  * Each instance represents one edge or corner of a resizable window. It listens for
  * mouse/touch drag events and notifies registered listeners with the mouse event so
  * the parent window can compute and apply the new size.
+ *
+ * @category Components
  */
 export class WindowBorder extends Component {
 

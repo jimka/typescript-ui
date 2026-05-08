@@ -4,6 +4,8 @@ import { BaseObject } from "./BaseObject.js";
 
 /**
  * Represents a two-dimensional point with x and y coordinates.
+ *
+ * @category Util
  */
 export class Point extends BaseObject {
     private x: number;

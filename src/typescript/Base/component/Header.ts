@@ -14,6 +14,8 @@ import { ThemeManager } from "../Theme.js";
  *
  * Renders a `<header>` element with a Border layout manager and a bold label
  * anchored to the west side.
+ *
+ * @category Components
  */
 export class Header extends Component {
 

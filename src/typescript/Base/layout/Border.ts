@@ -11,6 +11,11 @@ import { Size } from "../Size.js";
  * A layout manager that divides a container into five named regions:
  * north, south, east, west, and center.
  * North and south regions span the full width; east and west regions flank the center.
+ *
+ * Re-exported as `BorderLayout` from the package barrel to disambiguate from the
+ * line-style `Border` utility.
+ *
+ * @category Layouts
  */
 export class Border extends LayoutManager {
 

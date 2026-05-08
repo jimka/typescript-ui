@@ -20,6 +20,8 @@ import { ThemeManager } from "../Theme.js";
  * configurable display precision, click and click-and-hold increment/decrement,
  * keyboard arrow keys, blur-on-invalid revert, and the framework `Bindable<number>`
  * interface.
+ *
+ * @category Components
  */
 export class NumberSpinner extends Component implements Bindable<number> {
 

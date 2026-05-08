@@ -20,6 +20,10 @@ import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
  * Creates one typed cell ({@link StringCell}, {@link NumberCell}, {@link BooleanCell},
  * or {@link DefaultCell}) per model field and binds each cell's commit callback to the
  * corresponding field on the bound {@link ModelRecord}.
+ *
+ * Re-exported as `TableRow` from the package barrel.
+ *
+ * @category Components
  */
 export class Row extends Component {
 

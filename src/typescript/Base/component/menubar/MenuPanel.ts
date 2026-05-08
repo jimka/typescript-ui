@@ -27,6 +27,8 @@ const PANEL_WIDTH = 220;
  * );
  * panel.open(buttonElement);
  * ```
+ *
+ * @category Components
  */
 export class MenuPanel extends Component {
 

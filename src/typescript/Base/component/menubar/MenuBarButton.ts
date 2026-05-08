@@ -14,6 +14,8 @@ import { Label } from "../Label.js";
  *
  * Communicates open/close intent back to `MenuBar` via callbacks passed at
  * construction time.
+ *
+ * @category Components
  */
 export class MenuBarButton extends Component {
 

@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+/**
+ * Built-in field types supported by {@link Model} and {@link AbstractModel}.
+ *
+ * @category Data
+ */
 export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'time' | 'datetime' | 'auto';
 
 /**
  * Configuration object used to define a field on a model.
  * Can be passed directly to `AbstractModel.fields` or used to construct a `Field` instance.
+ *
+ * @category Data
  */
 export interface FieldConfig {
     name: string;
@@ -18,6 +25,8 @@ export interface FieldConfig {
 /**
  * Represents a single typed field in a model's schema.
  * Encapsulates the field's name, type, default value, raw-data mapping, description, and display order.
+ *
+ * @category Data
  */
 export class Field {
 

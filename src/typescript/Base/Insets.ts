@@ -5,6 +5,15 @@ import { BaseObject } from "./BaseObject.js";
 /**
  * Represents the four directional inset (padding/margin) values for a rectangular area.
  * All values are expressed in pixels.
+ *
+ * @example
+ * ```typescript
+ * import { Insets } from '@jika/typescript-ui';
+ *
+ * component.setInsets(new Insets(8, 12, 8, 12)); // top, right, bottom, left
+ * ```
+ *
+ * @category Util
  */
 export class Insets extends BaseObject {
 

@@ -2,6 +2,8 @@
 
 /**
  * CSS list-style-type values for bulleted (unordered) lists.
+ *
+ * @category Components
  */
 export enum BulletedListItemStyle {
     NONE = "none",

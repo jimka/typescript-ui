@@ -1,0 +1,88 @@
+# Mental model
+
+`@jika/typescript-ui` is **not** like React or any HTML-flow framework. It is closer to Java Swing or Win32: every component has an absolute position and size, computed in JavaScript and applied as pixel values. There is no flexbox, no CSS Grid, no document flow.
+
+If you have only ever built UIs with HTML+CSS, the model below is the most important page in this site. The API will mislead you without it.
+
+## What the framework does
+
+A `Component` is a rectangle on the screen with a known `x`, `y`, `width`, `height`. A `LayoutManager` is attached to a container component and decides where each child rectangle goes. Layout runs in JavaScript and writes pixel values to inline styles. The DOM exists only because the browser needs something to paint.
+
+```
++--------------------------+
+|  Window                  |  ← Component (absolute x,y,w,h)
+|  +--------+-----------+  |
+|  | left   | center    |  |  ← children, positioned by Border layout
+|  +--------+-----------+  |
+|  |  bottom            |  |
+|  +--------------------+  |
++--------------------------+
+```
+
+## Why?
+
+- **Predictable layout.** Every component's position is the result of a single `doLayout()` pass. No reflow loops, no implicit sizing, no surprises from a sibling growing.
+- **Easy to reason about.** Sizes are explicit — `setPreferredSize`, `setMinSize`, `setMaxSize`. Position is explicit — `setPosition`, `setX`, `setY`.
+- **Native-feeling desktop apps.** Windows, dialogs, splits, tabs, virtualized tables — the patterns desktop UIs use, available without per-component custom CSS.
+
+## When **not** to use it
+
+- Content-driven sites where the UI grows with text (blogs, docs, marketing pages).
+- Apps that need responsive HTML-flow reflow on mobile.
+- Anywhere SEO matters — components render lazily into absolute-positioned divs.
+
+## The three layers
+
+```
+Entry point (your main.ts)
+  └─ Your panels / screens
+       └─ Component system (Base/)
+            ├─ Layout managers (Base/layout/)
+            └─ UI components (Base/component/)
+```
+
+### Component system
+
+Every UI element extends [`Component`](/api/classes/Component), which manages:
+
+- Absolute position and size (with min / max / preferred bounds).
+- CSS styling (colors, borders, shadow, opacity).
+- Child component tree and the layout manager attached to it.
+- Deferred DOM rendering via `getElement()` — the actual `<div>` is not created until needed.
+
+[`BaseObject`](/api/classes/BaseObject) sits above `Component` and provides UUID-based identity. [`Body`](/api/classes/Body) is a singleton wrapping `document.body` that bootstraps the framework and listens for viewport resize events.
+
+### Layout managers
+
+A [`LayoutManager`](/api/classes/LayoutManager) is attached to a container component and positions its children on each `doLayout()` call. All managers extend `LayoutManager`, which handles fill / anchor constraint resolution.
+
+See [Layouts](/layouts/) for the full list (Border, Card, Column, Fit, Grid, HBox, Row, Split, Tab, VBox, and more).
+
+### UI components
+
+`Base/component/` contains 50+ ready components — buttons, text inputs, lists, tables, trees, menus, dialogs. See [Components](/components/) for the catalog.
+
+## What runs when you call `setSize`
+
+1. You call `myComponent.setPreferredSize(200, 100)`.
+2. The component's preferred size is updated in memory.
+3. On the next `doLayout()` pass (triggered by viewport resize, an explicit call, or a parent's layout), the parent's layout manager reads `getPreferredSize()` and decides where to place the child.
+4. The layout manager calls `placeComponent(child, x, y, w, h)`, which writes pixel values to the child's inline styles.
+5. The browser paints.
+
+There is no auto-reflow when you change a child's preferred size. **You must call `doLayout()` on a container** (or trigger a parent re-layout) for the change to take effect.
+
+## Common gotchas
+
+- **Always include "px" units** when you write your own dimensional CSS values. The framework does this automatically; custom CSS does not.
+- **`moduleResolution: "bundler"`** is required in your `tsconfig.json`. The library imports its own modules with `.js` extensions that resolve to `.ts`.
+- **Use `mouseover` / `mouseout`**, not `mouseenter` / `mouseleave`, when wiring hover listeners through `addSubtreeListener`. The latter do not bubble and so do not reach delegated listeners.
+- **Call `dispose()`** on `Text`-derived components you remove dynamically, so theme-change listeners do not leak.
+- **Prefer `addSubtreeListener`** when catching events from child components. `addListener` only matches the exact target ID.
+
+## Next steps
+
+- [Component lifecycle](/concepts/component-lifecycle) — construction → render → layout → destroy.
+- [Layout system](/concepts/layout-system) — how a layout manager resolves constraints.
+- [Sizing](/concepts/sizing) — preferred / min / max / fixed sizes in detail.
+- [Theming](/concepts/theming) — runtime-switchable design tokens.

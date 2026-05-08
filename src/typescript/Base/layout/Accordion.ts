@@ -13,6 +13,8 @@ import { Size } from "../Size.js";
  *
  * @param index - Zero-based index of the toggled section.
  * @param open - True if the section is now open.
+ *
+ * @category Layouts
  */
 export type SectionToggleCallback = (index: number, open: boolean) => void;
 
@@ -44,6 +46,8 @@ export type SectionToggleCallback = (index: number, open: boolean) => void;
  *
  * panel.setLayoutManager(accordion);
  * ```
+ *
+ * @category Layouts
  */
 export class Accordion extends LayoutManager {
 

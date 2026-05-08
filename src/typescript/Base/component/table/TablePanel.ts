@@ -12,6 +12,8 @@ import { Table } from "./Table.js";
  * A composite panel that combines a {@link Table} with an add/remove/sync toolbar.
  *
  * The toolbar is docked to the north region; the table fills the center region.
+ *
+ * @category Components
  */
 export class TablePanel extends Component {
 

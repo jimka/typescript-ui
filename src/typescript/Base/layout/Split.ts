@@ -9,6 +9,8 @@ import { FillType } from "./FillType.js";
  * A layout manager that splits the container into two or more resizable panels
  * separated by draggable gutter elements.
  * The split direction can be `'horizontal'` (panels side by side) or `'vertical'` (panels stacked).
+ *
+ * @category Layouts
  */
 export class Split extends LayoutManager {
 

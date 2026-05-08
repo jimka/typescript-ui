@@ -15,6 +15,8 @@ import { Component } from "./Component.js";
  * group.add(buttonB);
  * group.moveTo(1); // focus buttonB
  * ```
+ *
+ * @category Core
  */
 export class RovingTabIndex {
 

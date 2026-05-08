@@ -31,6 +31,8 @@ import { MenuConfig } from "./MenuItem.js";
  * ]);
  * container.addComponent(bar);
  * ```
+ *
+ * @category Components
  */
 export class MenuBar extends Component {
 

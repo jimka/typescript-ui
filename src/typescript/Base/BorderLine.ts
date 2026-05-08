@@ -5,6 +5,8 @@ import { BorderStyle } from "./BorderStyle.js";
 /**
  * Represents a single side of a CSS border, holding its placement prefix,
  * style, width, and color.
+ *
+ * @category Util
  */
 export class BorderLine extends Object {
 

@@ -28,6 +28,28 @@ import { ColumnSpec } from "./ColumnConfig.js";
  * constraints (`minWidth`, `maxWidth`), and initial visibility. When no spec is
  * supplied the table auto-generates one column per model field — identical to the
  * pre-spec behaviour.
+ *
+ * @example
+ * ```typescript
+ * import { Model, MemoryStore, Table } from '@jika/typescript-ui';
+ *
+ * const PersonModel = new Model([
+ *     { name: 'id',   type: 'number' },
+ *     { name: 'name', type: 'string' },
+ *     { name: 'age',  type: 'number' },
+ * ]);
+ *
+ * const store = new MemoryStore(PersonModel, [
+ *     { id: 1, name: 'Alice', age: 30 },
+ *     { id: 2, name: 'Bob',   age: 25 },
+ * ]);
+ * await store.load();
+ *
+ * const table = new Table(store);
+ * panel.addComponent(table);
+ * ```
+ *
+ * @category Components
  */
 export class Table extends Component {
 

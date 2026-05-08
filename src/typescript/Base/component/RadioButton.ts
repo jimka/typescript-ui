@@ -11,6 +11,8 @@ import { Label } from "./Label.js";
  *
  * The label's `for` attribute is wired to the radio input's ID so clicking the label
  * toggles the radio. The selected state is kept in sync via a 'change' listener.
+ *
+ * @category Components
  */
 export class RadioButton extends Component {
 

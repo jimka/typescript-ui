@@ -13,11 +13,17 @@ import { Fit } from "./layout/Fit.js";
 import { Placement } from "./Placement.js";
 import { Insets } from "./Insets.js";
 
-/** The result produced when a dialog is dismissed. */
+/**
+ * The result produced when a dialog is dismissed.
+ *
+ * @category Core
+ */
 export type DialogResult = 'confirm' | 'cancel' | 'close';
 
 /**
  * Configuration for a single button in a dialog's button row.
+ *
+ * @category Core
  */
 export interface DialogButtonConfig {
     /** The label text displayed on the button. */
@@ -30,6 +36,8 @@ export interface DialogButtonConfig {
 
 /**
  * Configuration object passed to `new Dialog(config)` or `Dialog.show(config)`.
+ *
+ * @category Core
  */
 export interface DialogConfig {
     /** Text displayed in the dialog title bar. */
@@ -235,6 +243,8 @@ const DEFAULT_BUTTONS: DialogButtonConfig[] = [
  * });
  * if (result === 'confirm') { ... }
  * ```
+ *
+ * @category Core
  */
 export class Dialog extends Component {
 

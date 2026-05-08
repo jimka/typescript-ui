@@ -8,6 +8,8 @@ import { AnchorType } from "../../../../layout/AnchorType.js";
  * A read-only renderer for numeric cell values.
  *
  * Displays the value right-aligned via a {@link Label}.
+ *
+ * @category Components
  */
 export class NumberRenderer extends CellRenderer<Number> {
 

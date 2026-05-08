@@ -6,6 +6,8 @@
  * References a model field by name and carries optional display constraints.
  * Fields not mentioned in a {@link ColumnSpec} are auto-generated with default
  * sizing unless `appendUnlisted` is set to `false`.
+ *
+ * @category Components
  */
 export interface ColumnConfig {
     /** The model field name this column presents. */
@@ -39,6 +41,8 @@ export interface ColumnConfig {
  *     ],
  * })
  * ```
+ *
+ * @category Components
  */
 export interface ColumnSpec {
     /** Per-column presentation overrides, in preferred display order. */

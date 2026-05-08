@@ -10,6 +10,8 @@ import { ThemeManager } from "../../../../Theme.js";
  *
  * Subclasses allow in-place editing of a typed value inside a table cell using a
  * Fit layout with theme-driven padding.
+ *
+ * @category Components
  */
 export abstract class CellEditor<T> extends Component {
 

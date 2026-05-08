@@ -7,6 +7,8 @@ import { Size } from "../Size.js";
 /**
  * A layout manager that divides the container width equally among all children
  * and places them left-to-right with a configurable gap.
+ *
+ * @category Layouts
  */
 export class Column extends LayoutManager {
 

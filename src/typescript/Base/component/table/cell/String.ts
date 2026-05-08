@@ -8,6 +8,8 @@ import { StringEditor } from "./editor/String.js";
  * A table cell for string values.
  *
  * Uses a {@link StringRenderer} for display and a {@link StringEditor} for in-place editing.
+ *
+ * @category Components
  */
 export class StringCell extends Cell<String> {
 

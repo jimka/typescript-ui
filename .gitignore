@@ -1,3 +1,8 @@
 node_modules
 dist
 *:Zone.Identifier
+
+# Generated docs output
+docs/api
+docs/.vitepress/dist
+docs/.vitepress/cache

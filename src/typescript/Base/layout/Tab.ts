@@ -26,6 +26,8 @@ interface TabEntry {
  * and shows exactly one child component at a time based on the selected tab.
  * Tab button labels are taken from `LayoutConstraints.name` when available,
  * otherwise from the component's ID.
+ *
+ * @category Layouts
  */
 export class Tab extends LayoutManager {
 

@@ -7,6 +7,8 @@ import { Size } from "../Size.js";
 /**
  * A layout manager that places children in a single horizontal row,
  * using each child's preferred width and an optional height-stretching mode.
+ *
+ * @category Layouts
  */
 export class HBox extends LayoutManager {
 

@@ -10,6 +10,8 @@ import { ModelRecord } from './ModelRecord.js';
  * @remarks
  * Subclasses must declare the `fields` array. Field resolution and the name-to-field
  * index are built lazily on first access and cached for subsequent calls.
+ *
+ * @category Data
  */
 export abstract class AbstractModel {
 

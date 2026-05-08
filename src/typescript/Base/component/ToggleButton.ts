@@ -9,6 +9,8 @@ import { Button } from "./Button.js";
  *
  * Maintains a separate CSS rule for the `.selected` class to allow independent styling of
  * the active state, and fires a 'change' event whenever the selection state changes.
+ *
+ * @category Components
  */
 export class ToggleButton extends Button {
 

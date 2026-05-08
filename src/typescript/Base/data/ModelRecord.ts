@@ -4,12 +4,24 @@ import { AbstractModel } from './AbstractModel.js';
 
 /**
  * A single data record managed by a store.
- * Tracks current field values, dirty state, and new/committed status.
+ *
+ * Tracks current field values, dirty state, and new / committed status.
  *
  * @remarks
  * On construction the data snapshot is also stored as `original` so that
  * `reject()` can restore the record to its last committed state without
  * requiring a round-trip to the server.
+ *
+ * @example
+ * ```typescript
+ * const record = store.getAt(0);
+ * record?.set('age', 31);
+ * console.log(record?.isDirty()); // true
+ * record?.commit();               // clears dirty flag
+ * // record?.reject();            // reverts to last committed snapshot
+ * ```
+ *
+ * @category Data
  */
 export class ModelRecord {
 

@@ -9,6 +9,12 @@ import { Util } from "../Util.js";
  *
  * Uses an off-screen probe element to measure text dimensions and automatically
  * updates the preferred size whenever the text or a font property changes.
+ *
+ * `Text` subscribes to {@link ThemeManager} on construction so it re-measures itself
+ * on every theme change. Components that create `Text` instances dynamically and
+ * remove them from the page should call `text.dispose()` to detach the listener.
+ *
+ * @category Components
  */
 export class Text extends Component {
 

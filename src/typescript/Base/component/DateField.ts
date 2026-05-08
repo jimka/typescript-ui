@@ -11,7 +11,9 @@ import { ThemeManager } from "../Theme.js";
  * A date-picker input component backed by an `<input type="date">` element.
  *
  * Implements {@link Bindable} so it can participate in a {@link Binding} directly.
- * Returns `null` from {@link getValue} when the field is empty.
+ * Returns `null` from `getValue` when the field is empty.
+ *
+ * @category Components
  */
 export class DateField extends Input implements Bindable<Date | null> {
 

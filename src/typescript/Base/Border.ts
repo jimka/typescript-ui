@@ -5,6 +5,8 @@ import { BorderStyle } from "./BorderStyle.js";
 
 /**
  * Configuration options for a single border side.
+ *
+ * @category Util
  */
 export interface BorderSideOptions {
     style?: BorderStyle;
@@ -16,6 +18,8 @@ export interface BorderSideOptions {
  * Configuration options for all four sides of a border.
  * Top-level `style`, `width`, and `color` act as fallbacks for any side that does not
  * specify its own options.
+ *
+ * @category Util
  */
 export interface BorderOptions {
     style?: BorderStyle;
@@ -29,6 +33,8 @@ export interface BorderOptions {
 
 /**
  * Represents a complete CSS border composed of four individually configurable sides.
+ *
+ * @category Util
  */
 export class Border extends Object {
 

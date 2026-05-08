@@ -2,6 +2,8 @@
 
 /**
  * Enumeration of the standard CSS `position` property values.
+ *
+ * @category Util
  */
 export enum Position {
     INITIAL = "initial",

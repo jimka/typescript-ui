@@ -10,6 +10,8 @@ import { Util } from "../Util.js";
  * Listens for mouse/touch drag events on the viewport and notifies registered drag
  * listeners with the pixel delta on each move. Disables body pointer events during
  * a drag to prevent text selection.
+ *
+ * @category Components
  */
 export class SplitGutter extends Component {
 

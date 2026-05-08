@@ -2,6 +2,8 @@
 
 /**
  * Controls how a component fills its allocated cell within a layout.
+ *
+ * @category Layouts
  */
 export enum FillType {
     NONE = "none",

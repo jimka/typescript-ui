@@ -7,6 +7,8 @@ import { Placement } from "../Placement";
 /**
  * Holds per-component layout hints passed to a {@link LayoutManager}.
  * Fields are optional; unset fields cause the layout manager to apply its defaults.
+ *
+ * @category Layouts
  */
 export class LayoutConstraints {
     name?: string | null = null;

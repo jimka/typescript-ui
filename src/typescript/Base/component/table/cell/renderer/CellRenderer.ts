@@ -9,6 +9,8 @@ import { ThemeManager } from "../../../../Theme.js";
  * Abstract base class for cell renderers.
  *
  * Subclasses display a typed value inside a table cell using a Fit layout with theme-driven padding.
+ *
+ * @category Components
  */
 export abstract class CellRenderer<T> extends Component {
 

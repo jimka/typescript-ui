@@ -14,6 +14,8 @@ import { ThemeManager, DefaultTheme } from "./Theme.js";
  * let body = Body.getInstance();
  * body.addComponent(....);
  * ```
+ *
+ * @category Core
  */
 export class Body extends Component {
 

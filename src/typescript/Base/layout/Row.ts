@@ -7,6 +7,8 @@ import { Size } from "../Size.js";
 /**
  * A layout manager that divides the container height equally among all children
  * and places them top-to-bottom with a configurable gap.
+ *
+ * @category Layouts
  */
 export class Row extends LayoutManager {
 

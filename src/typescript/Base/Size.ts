@@ -2,6 +2,8 @@
 
 /**
  * Represents a two-dimensional size with width and height in pixels.
+ *
+ * @category Util
  */
 export interface Size {
     width: number,

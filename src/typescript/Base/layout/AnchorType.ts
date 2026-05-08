@@ -3,6 +3,8 @@
 /**
  * Specifies the anchor point within a cell used to position a component
  * when it does not fill its allocated space.
+ *
+ * @category Layouts
  */
 export enum AnchorType {
     NORTHWEST,

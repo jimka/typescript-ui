@@ -29,6 +29,8 @@ import { VBox } from "./layout/VBox.js";
  *     ]);
  * });
  * ```
+ *
+ * @category Core
  */
 export class ContextMenu extends Component {
 

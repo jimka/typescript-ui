@@ -13,6 +13,8 @@ import { Insets } from "../Insets.js";
  * Extends Button to inherit the pressed-state appearance and click handling, then
  * adds a hold-repeat gesture: pressing and holding fires `tick` events at an
  * accelerating cadence (initial 400 ms, multiplied by 0.75 per tick, floored at 40 ms).
+ *
+ * @category Components
  */
 export class SpinButton extends Button {
 
