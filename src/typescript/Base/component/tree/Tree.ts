@@ -523,14 +523,12 @@ export class Tree extends Component {
             this._rowGeom.push(null);
         }
 
-        const rowWidth = this.getWidth() || 0;
-        const widthChanged = rowWidth !== this._lastRowWidth;
-        if (widthChanged) {
-            this._lastRowWidth = rowWidth;
-            this._invalidateGeom();
-        }
+        // First pass: bind data so each label's preferred size reflects the current text,
+        // then take the widest content as the row width so horizontal overflow turns into
+        // a scrollbar via the tree's overflow:auto.
+        const reboundFlags: boolean[] = new Array(windowSize);
+        let maxContentWidth = 0;
 
-        // Bind and position visible rows
         for (let i = 0; i < windowSize; i++) {
             const row = this._rowPool[i];
             const dataIndex = firstRow + i;
@@ -543,6 +541,28 @@ export class Tree extends Component {
                 row.setRowData(flatRow.node, flatRow.depth, hasChildren, expanded, flatRow.siblingCount, flatRow.posInSet);
                 this._boundIndices[i] = dataIndex;
             }
+
+            reboundFlags[i] = wasRebound;
+
+            const cw = row.getContentWidth(INDENT_PX);
+            if (cw > maxContentWidth) {
+                maxContentWidth = cw;
+            }
+        }
+
+        const treeWidth = this.getWidth() || 0;
+        const rowWidth = Math.max(treeWidth, maxContentWidth);
+        const widthChanged = rowWidth !== this._lastRowWidth;
+        if (widthChanged) {
+            this._lastRowWidth = rowWidth;
+            this._invalidateGeom();
+        }
+
+        // Second pass: position rows and lay out their children
+        for (let i = 0; i < windowSize; i++) {
+            const row = this._rowPool[i];
+            const dataIndex = firstRow + i;
+            const wasRebound = reboundFlags[i];
 
             const targetY = dataIndex * ROW_HEIGHT;
             const prev = this._rowGeom[i];
@@ -559,7 +579,7 @@ export class Tree extends Component {
             row.setDisplayed(true);
 
             if (wasRebound || geomChanged) {
-                row.layoutChildren(rowWidth, ROW_HEIGHT, INDENT_PX);
+                row.layoutChildren(ROW_HEIGHT, INDENT_PX);
             }
         }
 
