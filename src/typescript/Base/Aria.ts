@@ -25,7 +25,8 @@ export type AriaRole =
     | 'menubar'
     | 'menuitem'
     | 'menu'
-    | 'separator';
+    | 'separator'
+    | 'spinbutton';
 
 /**
  * Valid values for the `aria-sort` attribute.
@@ -462,6 +463,76 @@ export class Aria {
         const v = this.attributes.get("disabled");
 
         return v !== undefined ? v === "true" : null;
+    }
+
+    /**
+     * Sets `aria-valuenow` (the current value of a range or spinbutton widget).
+     *
+     * @param value - The current numeric value.
+     */
+    setValueNow(value: number): void {
+        this.setAttribute("valuenow", String(value));
+    }
+
+    /**
+     * Returns the current `aria-valuenow`, or null if not set.
+     *
+     * @returns The current value, or null.
+     */
+    getValueNow(): number | null {
+        const v = this.attributes.get("valuenow");
+
+        return v !== undefined ? Number(v) : null;
+    }
+
+    /**
+     * Sets or clears `aria-valuemin` (the minimum value of a range or spinbutton widget).
+     *
+     * @param value - The minimum numeric value, or `null` to remove the attribute.
+     */
+    setValueMin(value: number | null): void {
+        if (value === null) {
+            this.attributes.delete("valuemin");
+            this.component.removeElementAttribute("aria-valuemin");
+        } else {
+            this.setAttribute("valuemin", String(value));
+        }
+    }
+
+    /**
+     * Returns the current `aria-valuemin`, or null if not set.
+     *
+     * @returns The minimum value, or null.
+     */
+    getValueMin(): number | null {
+        const v = this.attributes.get("valuemin");
+
+        return v !== undefined ? Number(v) : null;
+    }
+
+    /**
+     * Sets or clears `aria-valuemax` (the maximum value of a range or spinbutton widget).
+     *
+     * @param value - The maximum numeric value, or `null` to remove the attribute.
+     */
+    setValueMax(value: number | null): void {
+        if (value === null) {
+            this.attributes.delete("valuemax");
+            this.component.removeElementAttribute("aria-valuemax");
+        } else {
+            this.setAttribute("valuemax", String(value));
+        }
+    }
+
+    /**
+     * Returns the current `aria-valuemax`, or null if not set.
+     *
+     * @returns The maximum value, or null.
+     */
+    getValueMax(): number | null {
+        const v = this.attributes.get("valuemax");
+
+        return v !== undefined ? Number(v) : null;
     }
 
     /**

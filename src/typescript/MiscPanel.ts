@@ -22,6 +22,7 @@ import type { TreeNode } from "./Base/component/tree/TreeNode.js";
 import { Notification } from "./Base/Notification.js";
 import { Dialog } from "./Base/Dialog.js";
 import { AutoCompleteField } from "./Base/component/AutoCompleteField.js";
+import { NumberSpinner } from "./Base/component/NumberSpinner.js";
 
 export class MiscPanel extends Component {
 
@@ -347,5 +348,46 @@ export class MiscPanel extends Component {
             Notification.show(`Dialog closed with: ${result}`, 'info');
         });
         this.addComponent(buttonDialogBackdrop);
+
+        const integerSpinner = new NumberSpinner();
+        integerSpinner.setMin(0);
+        integerSpinner.setMax(10);
+        integerSpinner.setStep(1);
+        integerSpinner.setValue(3);
+
+        const decimalSpinner = new NumberSpinner();
+        decimalSpinner.setMin(-1);
+        decimalSpinner.setMax(1);
+        decimalSpinner.setStep(0.1);
+        decimalSpinner.setValue(0);
+
+        const unboundedSpinner = new NumberSpinner();
+        unboundedSpinner.setStep(5);
+        unboundedSpinner.setValue(100);
+
+        const spinnerLabel = new Label("Spinners — integer: 3, decimal: 0.0, unbounded: 100");
+        const updateSpinnerLabel = (): void => {
+            spinnerLabel.setText(
+                "Spinners — integer: " + integerSpinner.getValue()
+                + ", decimal: "  + decimalSpinner.getValue().toFixed(1)
+                + ", unbounded: " + unboundedSpinner.getValue()
+            );
+        };
+
+        integerSpinner.addChangeListener(updateSpinnerLabel);
+        decimalSpinner.addChangeListener(updateSpinnerLabel);
+        unboundedSpinner.addChangeListener(updateSpinnerLabel);
+
+        const spinnerRow = new Component();
+        spinnerRow.setLayoutManager(new HBox());
+        spinnerRow.addComponent(new Label("0–10:"));
+        spinnerRow.addComponent(integerSpinner);
+        spinnerRow.addComponent(new Label("-1..1 step 0.1:"));
+        spinnerRow.addComponent(decimalSpinner);
+        spinnerRow.addComponent(new Label("step 5:"));
+        spinnerRow.addComponent(unboundedSpinner);
+
+        this.addComponent(spinnerRow);
+        this.addComponent(spinnerLabel);
     }
 }

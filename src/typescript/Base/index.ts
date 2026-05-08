@@ -73,6 +73,8 @@ export { Slider } from './component/Slider.js';
 export { ComboBox } from './component/ComboBox.js';
 export { Option } from './component/Option.js';
 export { AutoCompleteField } from './component/AutoCompleteField.js';
+export { NumberSpinner } from './component/NumberSpinner.js';
+export { SpinButton } from './component/SpinButton.js';
 export type { AutoCompleteFieldConfig, AutoCompleteMatchMode } from './component/AutoCompleteField.js';
 
 // Components — buttons

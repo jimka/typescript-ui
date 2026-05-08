@@ -458,7 +458,5 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 * **Server-side pagination** — `AjaxProxy` loads all records in one request. Adding `page` / `pageSize` params, a `totalCount` field in the response contract, and `Store.nextPage()` / `prevPage()` methods would support large server-side datasets without requiring the client to hold all rows in memory.
 
-* **Number spinner input** — there is no `NumberField` or `Spinner` component with increment/decrement buttons and a numeric `Bindable` interface. The current `Slider` covers range selection but not free numeric entry with step controls.
-
 * **CSV / JSON export** — the `Table` has no export capability. A `Table.exportCSV()` and `Table.exportJSON()` utility (operating on the store's current filtered/sorted record set) would be a low-effort addition with high practical value.
 

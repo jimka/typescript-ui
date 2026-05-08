@@ -210,6 +210,11 @@ export interface Theme {
             disabledColor      : string;
         };
     };
+
+    spinner: {
+        buttonWidth : string;
+        dividerColor: string;
+    };
 }
 
 /**
@@ -342,6 +347,10 @@ export const DefaultTheme: Theme = {
         backdrop: { background: 'rgba(0, 0, 0, 0.45)' },
         border  : 'rgb(220, 220, 220)',
         shadow  : '4px 8px 24px rgba(0, 0, 0, 0.35)',
+    },
+    spinner: {
+        buttonWidth : '18px',
+        dividerColor: 'rgb(180, 180, 180)',
     },
 };
 
@@ -476,6 +485,10 @@ export const DarkTheme: Theme = {
         border  : 'rgb(70, 70, 70)',
         shadow  : '4px 8px 24px rgba(0, 0, 0, 0.6)',
     },
+    spinner: {
+        buttonWidth : '18px',
+        dividerColor: 'rgb(80, 80, 80)',
+    },
 };
 
 /**
@@ -569,6 +582,8 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-dialog-backdrop-bg'                       : theme.dialog.backdrop.background,
         '--ts-ui-dialog-border'                            : theme.dialog.border,
         '--ts-ui-dialog-shadow'                            : theme.dialog.shadow,
+        '--ts-ui-spinner-btn-width'                        : theme.spinner.buttonWidth,
+        '--ts-ui-spinner-divider'                          : theme.spinner.dividerColor,
     };
 }
 
