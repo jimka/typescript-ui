@@ -25,7 +25,7 @@ The full implementation lives in `src/typescript/Base/component/table/Body.ts` a
 
 ## TableRow
 
-[`TableRow`](/api/classes/TableRow) is a single data row rendered as a `<tr>`. It creates one typed cell per model field — [`StringCell`](/api/classes/StringCell), [`NumberCell`](/api/classes/NumberCell), [`BooleanCell`](/api/classes/BooleanCell), or [`DefaultCell`](/api/classes/DefaultCell) — and binds each cell's commit callback to the corresponding field on the bound [`ModelRecord`](/data/record).
+[`TableRow`](/api/classes/TableRow) is a single data row rendered as a `<tr>`. It creates one typed cell per model field — picked from [`StringCell`](/api/classes/StringCell), [`NumberCell`](/api/classes/NumberCell), [`BooleanCell`](/api/classes/BooleanCell), [`DateCell`](/api/classes/DateCell), [`TimeCell`](/api/classes/TimeCell), [`DateTimeCell`](/api/classes/DateTimeCell), or [`DefaultCell`](/api/classes/DefaultCell) — and binds each cell's commit callback to the corresponding field on the bound [`ModelRecord`](/data/record).
 
 ## TableColumn
 
@@ -33,12 +33,17 @@ The full implementation lives in `src/typescript/Base/component/table/Body.ts` a
 
 ## Cell types
 
-The framework ships with four typed cells:
+The framework ships with seven typed cells, selected by [`TableRow`](/api/classes/TableRow) based on each field's declared type:
 
 - [`StringCell`](/api/classes/StringCell) — read / write strings via [`StringRenderer`](/api/classes/StringRenderer) + [`StringEditor`](/api/classes/StringEditor).
 - [`NumberCell`](/api/classes/NumberCell) — right-aligned numbers via [`NumberRenderer`](/api/classes/NumberRenderer) + [`NumberEditor`](/api/classes/NumberEditor).
 - [`BooleanCell`](/api/classes/BooleanCell) — checkbox; the [`BooleanEditor`](/api/classes/BooleanEditor) doubles as the renderer.
+- [`DateCell`](/api/classes/DateCell) — calendar date via [`DateRenderer`](/api/classes/DateRenderer) + [`DateEditor`](/api/classes/DateEditor).
+- [`TimeCell`](/api/classes/TimeCell) — time-of-day via [`TimeRenderer`](/api/classes/TimeRenderer) + [`TimeEditor`](/api/classes/TimeEditor); honors the column's `showSeconds` flag.
+- [`DateTimeCell`](/api/classes/DateTimeCell) — combined date + time via [`DateTimeRenderer`](/api/classes/DateTimeRenderer) + [`DateTimeEditor`](/api/classes/DateTimeEditor); honors the column's `showSeconds` flag.
 - [`DefaultCell`](/api/classes/DefaultCell) — fallback for fields whose type is not explicitly mapped.
+
+For `DateCell`, `TimeCell`, and `DateTimeCell`, committing an empty editor writes `null`; committing an unparseable value reverts to the previous value rather than writing `null`.
 
 [`HeaderCell`](/api/classes/HeaderCell) extends `DefaultCell` with sort indicators, click-to-sort, and a resize drag handle.
 
