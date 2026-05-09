@@ -6,7 +6,7 @@ import { BorderStyle } from "../../../../BorderStyle.js";
 /**
  * An in-place editor for time cell values.
  *
- * Renders as {@code <input type="time">}. The value is represented as a {@link Date}
+ * Renders as `<input type="time">`. The value is represented as a `Date`
  * whose time portion is meaningful; the date portion is normalized to 1970-01-01 local.
  */
 export class TimeEditor extends CellEditor<Date | null> {

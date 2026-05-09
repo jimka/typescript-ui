@@ -6,7 +6,7 @@ import { BorderStyle } from "../../../../BorderStyle.js";
 /**
  * An in-place editor for date cell values.
  *
- * Renders directly as {@code <input type="date">} by passing the tag through to
+ * Renders directly as `<input type="date">` by passing the tag through to
  * {@link CellEditor}. This avoids the TextField inheritance chain, which forces
  * type="text" after render. Blur and keydown events reach the parent {@link Cell}
  * directly — no proxying needed.

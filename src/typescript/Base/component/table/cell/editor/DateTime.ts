@@ -6,7 +6,7 @@ import { BorderStyle } from "../../../../BorderStyle.js";
 /**
  * An in-place editor for date-time cell values.
  *
- * Renders as {@code <input type="datetime-local">}. Blur and keydown events reach the
+ * Renders as `<input type="datetime-local">`. Blur and keydown events reach the
  * parent {@link Cell} directly — no proxying needed.
  */
 export class DateTimeEditor extends CellEditor<Date | null> {
