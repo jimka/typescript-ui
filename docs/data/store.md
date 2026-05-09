@@ -24,13 +24,26 @@ await store.load();
 
 ## Load from a REST endpoint
 
+[`AjaxStore`](/api/classes/AjaxStore) is a convenience subclass that wires an [`AjaxProxy`](/api/classes/AjaxProxy) internally — pass the proxy config straight to the store:
+
+```typescript
+import { AjaxStore } from '@jimka/typescript-ui';
+
+const store = new AjaxStore(PersonModel, {
+    url:  '/api/people',
+    root: 'data',     // extracts response.data array
+});
+
+await store.load();
+```
+
+If you prefer to wire the proxy yourself (for example to share one `AjaxProxy` instance across stores), use [`Store`](/api/classes/Store) directly:
+
 ```typescript
 import { AjaxProxy, Store } from '@jimka/typescript-ui';
 
-const store = new Store(PersonModel, new AjaxProxy({
-    url:  '/api/people',
-    root: 'data',     // extracts response.data array
-}));
+const proxy = new AjaxProxy({ url: '/api/people', root: 'data' });
+const store = new Store(PersonModel, proxy);
 
 await store.load();
 ```

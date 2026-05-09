@@ -129,6 +129,7 @@ export { ModelRecord } from './data/ModelRecord.js';
 export { AbstractStore } from './data/AbstractStore.js';
 export { Store } from './data/Store.js';
 export { MemoryStore } from './data/MemoryStore.js';
+export { AjaxStore } from './data/AjaxStore.js';
 export { Proxy } from './data/proxy/Proxy.js';
 export { MemoryProxy } from './data/proxy/MemoryProxy.js';
 export { AjaxProxy } from './data/proxy/AjaxProxy.js';

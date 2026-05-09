@@ -29,7 +29,7 @@ See [`MemoryProxyConfig`](/api/interfaces/MemoryProxyConfig) for the full option
 
 ## AjaxProxy
 
-Fetches JSON over HTTP via the browser's `fetch` API.
+Fetches JSON over HTTP via the browser's `fetch` API. For convenience, you can usually skip the proxy and use [`AjaxStore`](/api/classes/AjaxStore) directly, which constructs the proxy from the same config.
 
 ```typescript
 import { AjaxProxy, Store } from '@jimka/typescript-ui';
