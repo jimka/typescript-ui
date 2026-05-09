@@ -28,7 +28,9 @@ export type AriaRole =
     | 'menuitem'
     | 'menu'
     | 'separator'
-    | 'spinbutton';
+    | 'spinbutton'
+    | 'progressbar'
+    | 'status';
 
 /**
  * Valid values for the `aria-sort` attribute.

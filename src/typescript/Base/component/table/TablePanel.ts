@@ -6,6 +6,7 @@ import { Border } from "../../layout/Border.js";
 import { HBox } from "../../layout/HBox.js";
 import { Placement } from "../../Placement.js";
 import { Button } from "../Button.js";
+import { ProgressSpinner } from "../ProgressSpinner.js";
 import { Table } from "./Table.js";
 
 /**
@@ -19,6 +20,7 @@ export class TablePanel extends Component {
 
     private table: Table;
     private toolbar: Component;
+    private _spinner: ProgressSpinner | null = null;
 
     constructor(store: AbstractStore) {
         super();
@@ -44,6 +46,18 @@ export class TablePanel extends Component {
 
         super.addComponent(this.toolbar, { placement: Placement.NORTH });
         super.addComponent(this.table,   { placement: Placement.CENTER });
+
+        store.on('loadingchanged', (payload: { loading: boolean }) => {
+            if (!this._spinner) {
+                this._spinner = new ProgressSpinner();
+            }
+
+            if (payload.loading) {
+                this._spinner.showOverlay(this.table);
+            } else {
+                this._spinner.hideOverlay();
+            }
+        });
     }
 
     /**

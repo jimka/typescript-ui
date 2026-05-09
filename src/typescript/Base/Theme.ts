@@ -217,6 +217,25 @@ export interface Theme {
         buttonWidth : string;
         dividerColor: string;
     };
+
+    progressBar: {
+        track: {
+            background  : string;
+            borderRadius: string;
+        };
+        fill: {
+            background: string;
+        };
+        indeterminate: {
+            background: string;
+        };
+    };
+
+    progressSpinner: {
+        color   : string;
+        backdrop: string;
+        size    : string;
+    };
 }
 
 /**
@@ -355,6 +374,16 @@ export const DefaultTheme: Theme = {
     spinner: {
         buttonWidth : '18px',
         dividerColor: 'rgb(180, 180, 180)',
+    },
+    progressBar: {
+        track        : { background: 'rgb(220, 220, 220)', borderRadius: '4px' },
+        fill         : { background: 'rgb(30, 100, 200)' },
+        indeterminate: { background: 'rgb(30, 100, 200)' },
+    },
+    progressSpinner: {
+        color   : 'rgb(30, 100, 200)',
+        backdrop: 'rgba(255, 255, 255, 0.6)',
+        size    : '32px',
     },
 };
 
@@ -495,6 +524,16 @@ export const DarkTheme: Theme = {
         buttonWidth : '18px',
         dividerColor: 'rgb(80, 80, 80)',
     },
+    progressBar: {
+        track        : { background: 'rgb(55, 55, 55)',  borderRadius: '4px' },
+        fill         : { background: 'rgb(60, 130, 220)' },
+        indeterminate: { background: 'rgb(60, 130, 220)' },
+    },
+    progressSpinner: {
+        color   : 'rgb(60, 130, 220)',
+        backdrop: 'rgba(20, 20, 20, 0.6)',
+        size    : '32px',
+    },
 };
 
 /**
@@ -590,6 +629,13 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-dialog-shadow'                            : theme.dialog.shadow,
         '--ts-ui-spinner-btn-width'                        : theme.spinner.buttonWidth,
         '--ts-ui-spinner-divider'                          : theme.spinner.dividerColor,
+        '--ts-ui-progress-track-bg'                        : theme.progressBar.track.background,
+        '--ts-ui-progress-track-radius'                    : theme.progressBar.track.borderRadius,
+        '--ts-ui-progress-fill-bg'                         : theme.progressBar.fill.background,
+        '--ts-ui-progress-indeterminate-bg'                : theme.progressBar.indeterminate.background,
+        '--ts-ui-progress-spinner-color'                   : theme.progressSpinner.color,
+        '--ts-ui-progress-spinner-backdrop'                : theme.progressSpinner.backdrop,
+        '--ts-ui-progress-spinner-size'                    : theme.progressSpinner.size,
     };
 }
 

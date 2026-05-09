@@ -91,6 +91,8 @@ export { TabCloseButton } from './component/TabCloseButton.js';
 export { Header } from './component/Header.js';
 export { Image } from './component/Image.js';
 export { FontAwesomeIcon } from './component/FontAwesomeIcon.js';
+export { ProgressBar } from './component/ProgressBar.js';
+export { ProgressSpinner } from './component/ProgressSpinner.js';
 
 // Components — tree
 export { Tree } from './component/tree/Tree.js';
