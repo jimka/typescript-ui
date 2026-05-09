@@ -13,7 +13,6 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Body`](/api/classes/Body) | Singleton wrapping `document.body`; bootstraps the framework |
 | [`Window`](/api/classes/Window) | Floating, draggable, resizable window |
 | [`Dialog`](/api/classes/Dialog) | Modal dialog with async result |
-| [`ContextMenu`](/api/classes/ContextMenu) | Right-click menu, opened via `show(x, y, items)` |
 | [`Tooltip`](/api/classes/Tooltip) | Singleton hover hint, attach via `Tooltip.attach(component, text)` |
 | [`Notification`](/api/classes/Notification) | Static toast — `Notification.show(message, type, duration?)` |
 
@@ -71,11 +70,9 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | --- | --- |
 | [`MenuBar`](/api/classes/MenuBar) | Top-of-window menu bar |
 | [`MenuBarButton`](/api/classes/MenuBarButton) | A button that opens a menu panel |
-| [`MenuPanel`](/api/classes/MenuPanel) | The drop-down panel itself |
+| [`Menu`](/api/classes/Menu) | Floating menu — right-click context menu (`new Menu()`) or `MenuBar` dropdown (`new Menu(items, onClose)`) |
 | [`MenuItem`](/api/classes/MenuItem) | Item inside a menu |
 | [`MenuSeparator`](/api/classes/MenuSeparator) | Divider line in a menu |
-| [`ContextMenuItem`](/api/classes/ContextMenuItem) | Item inside a [`ContextMenu`](/api/classes/ContextMenu) |
-| [`ContextMenuSeparator`](/api/classes/ContextMenuSeparator) | Divider inside a `ContextMenu` |
 
 ## Table
 

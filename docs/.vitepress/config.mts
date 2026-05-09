@@ -56,7 +56,6 @@ export default defineConfig({
                     { text: 'Body',         link: '/components/Body' },
                     { text: 'Window',       link: '/components/Window' },
                     { text: 'Dialog',       link: '/components/Dialog' },
-                    { text: 'ContextMenu',  link: '/components/ContextMenu' },
                     { text: 'Tooltip',      link: '/components/Tooltip' },
                     { text: 'Notification', link: '/components/Notification' },
                 ] },
@@ -100,11 +99,9 @@ export default defineConfig({
                 { text: 'Menus', collapsed: false, items: [
                     { text: 'MenuBar',              link: '/components/MenuBar' },
                     { text: 'MenuBarButton',        link: '/components/MenuBarButton' },
-                    { text: 'MenuPanel',            link: '/components/MenuPanel' },
+                    { text: 'Menu',                 link: '/components/Menu' },
                     { text: 'MenuItem',             link: '/components/MenuItem' },
                     { text: 'MenuSeparator',        link: '/components/MenuSeparator' },
-                    { text: 'ContextMenuItem',      link: '/components/ContextMenuItem' },
-                    { text: 'ContextMenuSeparator', link: '/components/ContextMenuSeparator' },
                 ] },
                 { text: 'Tree', collapsed: false, items: [
                     { text: 'Tree', link: '/components/Tree' },

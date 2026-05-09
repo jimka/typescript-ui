@@ -53,5 +53,4 @@ Each `MenuItemConfig` supports:
 
 - [API: MenuBar](/api/classes/MenuBar)
 - [API: MenuConfig](/api/interfaces/MenuConfig), [MenuItemConfig](/api/interfaces/MenuItemConfig)
-- [`MenuPanel`](/components/MenuPanel) — the dropdown panel
-- [`ContextMenu`](/components/ContextMenu) — right-click menu (separate component)
+- [`Menu`](/components/Menu) — the dropdown panel (also handles right-click context menus)

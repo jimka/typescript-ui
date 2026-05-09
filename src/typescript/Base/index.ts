@@ -23,7 +23,7 @@ export { RovingTabIndex } from './RovingTabIndex.js';
 export { Body } from './Body.js';
 export { ButtonGroup } from './ButtonGroup.js';
 export { Window } from './Window.js';
-export { ContextMenu } from './ContextMenu.js';
+export { Menu } from './Menu.js';
 export { Tooltip } from './Tooltip.js';
 export type { TooltipColors } from './Tooltip.js';
 export { Notification } from './Notification.js';
@@ -108,19 +108,15 @@ export { ListItem } from './component/ListItem.js';
 // Components — containers
 export { FieldSet } from './component/FieldSet.js';
 export { Legend } from './component/Legend.js';
-export { ContextMenuItem } from './component/ContextMenuItem.js';
-export type { ContextMenuItemConfig } from './component/ContextMenuItem.js';
-export { ContextMenuSeparator } from './component/ContextMenuSeparator.js';
+export { MenuItem } from './component/MenuItem.js';
+export type { MenuItemConfig, MenuConfig, MenuItemCSSVarPrefix } from './component/MenuItem.js';
+export { MenuSeparator } from './component/MenuSeparator.js';
 export { SplitGutter } from './component/SplitGutter.js';
 export { WindowBorder, Direction } from './component/WindowBorder.js';
 
 // Components — menu bar
 export { MenuBar } from './component/menubar/MenuBar.js';
 export { MenuBarButton } from './component/menubar/MenuBarButton.js';
-export { MenuPanel } from './component/menubar/MenuPanel.js';
-export { MenuItem } from './component/menubar/MenuItem.js';
-export type { MenuItemConfig, MenuConfig } from './component/menubar/MenuItem.js';
-export { MenuSeparator } from './component/menubar/MenuSeparator.js';
 
 // Data layer
 export { AbstractModel } from './data/AbstractModel.js';

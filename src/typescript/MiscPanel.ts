@@ -14,7 +14,7 @@ import { HBox } from "./Base/layout/HBox.js";
 import { FieldSet } from "./Base/component/FieldSet.js";
 import { ThemeManager, DefaultTheme, DarkTheme } from "./Base/Theme.js";
 import { TablePanel, Table, ColumnSpec } from "./Base/index.js";
-import { ContextMenu } from "./Base/ContextMenu.js";
+import { Menu } from "./Base/Menu.js";
 import { Tooltip } from "./Base/Tooltip.js";
 import { Event } from "./Base/Event.js";
 import { Tree } from "./Base/component/tree/Tree.js";
@@ -173,7 +173,7 @@ export class MiscPanel extends Component {
         let fieldSet = new FieldSet("Hello World fieldset!");
         this.addComponent(fieldSet);
 
-        const contextMenu = new ContextMenu();
+        const contextMenu = new Menu();
 
         const buttonContextMenu = new Button("Right-click me for context menu");
         Tooltip.attach(buttonContextMenu, "Right-click to open a context menu");
