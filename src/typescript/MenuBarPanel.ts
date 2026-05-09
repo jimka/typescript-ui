@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "./Base/Component.js";
-import { Label } from "./Base/component/Label.js";
+import { Text } from "./Base/component/Text.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { MenuBar } from "./Base/component/menubar/MenuBar.js";
 
@@ -22,10 +22,10 @@ export class MenuBarPanel extends Component {
         this.setLayoutManager(new VBox());
 
         const bar = new MenuBar();
-        const statusLabel = new Label("Click a menu item to see it here.");
+        const statusText = new Text("Click a menu item to see it here.");
 
         const status = (msg: string): void => {
-            statusLabel.setText("Last action: " + msg);
+            statusText.setText("Last action: " + msg);
         };
 
         bar.setMenus([
@@ -88,6 +88,6 @@ export class MenuBarPanel extends Component {
         ]);
 
         this.addComponent(bar);
-        this.addComponent(statusLabel);
+        this.addComponent(statusText);
     }
 }

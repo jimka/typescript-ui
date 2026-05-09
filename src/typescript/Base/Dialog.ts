@@ -5,7 +5,7 @@ import { Event } from "./Event.js";
 import { Position } from "./Position.js";
 import { Util } from "./Util.js";
 import { BorderStyle } from "./BorderStyle.js";
-import { Label } from "./component/Label.js";
+import { Text } from "./component/Text.js";
 import { Button } from "./component/Button.js";
 import { DialogBackdrop } from "./component/DialogBackdrop.js";
 import { Border as BorderLayout } from "./layout/Border.js";
@@ -81,8 +81,8 @@ const TITLE_H_PAD   : number = 12;
  */
 class DialogTitleBar extends Component {
 
-    private readonly titleLabel : Label;
-    private readonly closeButton: Label;
+    private readonly titleText : Text;
+    private readonly closeIcon: Text;
 
     /**
      * @param title - Text to display in the title bar.
@@ -100,22 +100,22 @@ class DialogTitleBar extends Component {
         });
         this.setPreferredSize(0, TITLE_HEIGHT);
 
-        this.titleLabel = new Label(title);
-        this.titleLabel.setFontWeight("bold");
-        this.titleLabel.setOverflow("hidden");
-        this.titleLabel.setTextOverflow("ellipsis");
-        this.titleLabel.setWhiteSpace("nowrap");
-        this.addComponent(this.titleLabel);
+        this.titleText = new Text(title);
+        this.titleText.setFontWeight("bold");
+        this.titleText.setOverflow("hidden");
+        this.titleText.setTextOverflow("ellipsis");
+        this.titleText.setWhiteSpace("nowrap");
+        this.addComponent(this.titleText);
 
-        this.closeButton = new Label("×");
-        this.closeButton.setCursor("pointer");
-        this.closeButton.setTextAlign("center");
-        this.closeButton.setLineHeight(CLOSE_SIZE);
-        this.closeButton.setUserSelect("none");
-        this.closeButton.setForegroundColor("var(--ts-ui-text-color)");
-        this.addComponent(this.closeButton);
+        this.closeIcon = new Text("×");
+        this.closeIcon.setCursor("pointer");
+        this.closeIcon.setTextAlign("center");
+        this.closeIcon.setLineHeight(CLOSE_SIZE);
+        this.closeIcon.setUserSelect("none");
+        this.closeIcon.setForegroundColor("var(--ts-ui-text-color)");
+        this.addComponent(this.closeIcon);
 
-        Event.addListener(this.closeButton, "click", onClose);
+        Event.addListener(this.closeIcon, "click", onClose);
     }
 
     /**
@@ -131,15 +131,15 @@ class DialogTitleBar extends Component {
         const labelWidth = closeX - TITLE_H_PAD - 4;
         const labelH     = h - 8;
 
-        this.titleLabel.setX(TITLE_H_PAD);
-        this.titleLabel.setY(4);
-        this.titleLabel.setWidth(labelWidth);
-        this.titleLabel.setHeight(labelH);
+        this.titleText.setX(TITLE_H_PAD);
+        this.titleText.setY(4);
+        this.titleText.setWidth(labelWidth);
+        this.titleText.setHeight(labelH);
 
-        this.closeButton.setX(closeX);
-        this.closeButton.setY(centerY);
-        this.closeButton.setWidth(CLOSE_SIZE);
-        this.closeButton.setHeight(CLOSE_SIZE);
+        this.closeIcon.setX(closeX);
+        this.closeIcon.setY(centerY);
+        this.closeIcon.setWidth(CLOSE_SIZE);
+        this.closeIcon.setHeight(CLOSE_SIZE);
     }
 }
 
@@ -302,11 +302,11 @@ export class Dialog extends Component {
         if (config.contentComponent) {
             this.contentContainer.addComponent(config.contentComponent);
         } else {
-            const msgLabel = new Label(config.message ?? '');
-            msgLabel.setElementCSSRule("whiteSpace", "normal");
-            msgLabel.setElementCSSRule("wordBreak", "break-word");
-            msgLabel.setPadding(new Insets(16, 16, 16, 16));
-            this.contentContainer.addComponent(msgLabel);
+            const messageText = new Text(config.message ?? '');
+            messageText.setElementCSSRule("whiteSpace", "normal");
+            messageText.setElementCSSRule("wordBreak", "break-word");
+            messageText.setPadding(new Insets(16, 16, 16, 16));
+            this.contentContainer.addComponent(messageText);
         }
 
         this.addComponent(this.contentContainer, { placement: Placement.CENTER });

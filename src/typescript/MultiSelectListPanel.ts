@@ -3,7 +3,7 @@
 import { Component } from "./Base/Component.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { HBox } from "./Base/layout/HBox.js";
-import { Label } from "./Base/component/Label.js";
+import { Text } from "./Base/component/Text.js";
 import { Button } from "./Base/component/Button.js";
 import { MultiSelectList } from "./Base/component/MultiSelectList.js";
 import { Binding } from "./Base/Binding.js";
@@ -32,11 +32,11 @@ export class MultiSelectListPanel extends Component {
         const staticList = new MultiSelectList();
         staticList.setItems(["Apple", "Banana", "Cherry", "Date", "Elderberry"]);
 
-        const selectionLabel = new Label("Selected: (none)");
+        const selectionText = new Text("Selected: (none)");
 
         staticList.addActionListener(() => {
             const vals = staticList.getValues();
-            selectionLabel.setText(`Selected: ${vals.length === 0 ? "(none)" : vals.join(", ")}`);
+            selectionText.setText(`Selected: ${vals.length === 0 ? "(none)" : vals.join(", ")}`);
         });
 
         const selectAllBtn  = new Button("Select All");
@@ -44,12 +44,12 @@ export class MultiSelectListPanel extends Component {
 
         selectAllBtn.addActionListener(() => {
             staticList.setValues(["0", "1", "2", "3", "4"]);
-            selectionLabel.setText(`Selected: ${staticList.getValues().join(", ")}`);
+            selectionText.setText(`Selected: ${staticList.getValues().join(", ")}`);
         });
 
         clearBtn.addActionListener(() => {
             staticList.setValues([]);
-            selectionLabel.setText("Selected: (none)");
+            selectionText.setText("Selected: (none)");
         });
 
         const staticBtnRow = new Component();
@@ -57,9 +57,9 @@ export class MultiSelectListPanel extends Component {
         staticBtnRow.addComponent(selectAllBtn);
         staticBtnRow.addComponent(clearBtn);
 
-        this.addComponent(new Label("Static items — select multiple with Ctrl/Shift:"));
+        this.addComponent(new Text("Static items — select multiple with Ctrl/Shift:"));
         this.addComponent(staticList);
-        this.addComponent(selectionLabel);
+        this.addComponent(selectionText);
         this.addComponent(staticBtnRow);
 
         // ── Section 2: Store-backed ──────────────────────────────────────────
@@ -80,17 +80,17 @@ export class MultiSelectListPanel extends Component {
         const storeList = new MultiSelectList();
         storeList.setStore(skillStore, 'label', 'id');
 
-        const storeLabel = new Label("Selected records: (none)");
+        const storeText = new Text("Selected records: (none)");
 
         storeList.addActionListener(() => {
             const recs = storeList.getSelectedRecords();
             const names = recs.map(r => String(r.get('label'))).join(", ");
-            storeLabel.setText(`Selected records: ${names || "(none)"}`);
+            storeText.setText(`Selected records: ${names || "(none)"}`);
         });
 
-        this.addComponent(new Label("Store-backed items:"));
+        this.addComponent(new Text("Store-backed items:"));
         this.addComponent(storeList);
-        this.addComponent(storeLabel);
+        this.addComponent(storeText);
 
         // ── Section 3: Binding integration ──────────────────────────────────
 
@@ -107,7 +107,7 @@ export class MultiSelectListPanel extends Component {
         const tagList = new MultiSelectList();
         tagList.setItems(["urgent", "review", "docs", "blocked", "wip"]);
 
-        const bindingStatusLabel = new Label("Binding status: clean");
+        const bindingStatusText = new Text("Binding status: clean");
 
         const binding = new Binding()
             .bind('tags', tagList, {
@@ -117,15 +117,15 @@ export class MultiSelectListPanel extends Component {
             });
 
         binding.addChangeListener(() => {
-            bindingStatusLabel.setText("Binding status: modified");
+            bindingStatusText.setText("Binding status: modified");
         });
 
         binding.addCommitListener(() => {
-            bindingStatusLabel.setText("Binding status: clean");
+            bindingStatusText.setText("Binding status: clean");
         });
 
         binding.addRejectListener(() => {
-            bindingStatusLabel.setText("Binding status: clean");
+            bindingStatusText.setText("Binding status: clean");
         });
 
         const commitBtn = new Button("Commit");
@@ -139,9 +139,9 @@ export class MultiSelectListPanel extends Component {
         bindingBtnRow.addComponent(commitBtn);
         bindingBtnRow.addComponent(rejectBtn);
 
-        this.addComponent(new Label("Binding integration (tags field):"));
+        this.addComponent(new Text("Binding integration (tags field):"));
         this.addComponent(tagList);
-        this.addComponent(bindingStatusLabel);
+        this.addComponent(bindingStatusText);
         this.addComponent(bindingBtnRow);
 
         // ── Load stores ──────────────────────────────────────────────────────

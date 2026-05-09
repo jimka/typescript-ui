@@ -4,7 +4,7 @@ import { Component } from "./Component.js";
 import { Event } from "./Event.js";
 import { Util } from "./Util.js";
 import { BorderStyle } from "./BorderStyle.js";
-import { Label } from "./component/Label.js";
+import { Text } from "./component/Text.js";
 import { Position } from "./Position.js";
 
 /**
@@ -41,8 +41,8 @@ export class Notification extends Component {
 
     private static activeNotifications: Notification[] = [];
 
-    private readonly messageLabel: Label;
-    private readonly closeLabel: Label;
+    private readonly messageText: Text;
+    private readonly closeIcon: Text;
     private dismissTimer: ReturnType<typeof setTimeout> | null = null;
     private remainingDuration: number = 0;
     private timerStartedAt: number    = 0;
@@ -73,20 +73,20 @@ export class Notification extends Component {
         this.setShadow(shadowVar);
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
 
-        this.messageLabel = new Label(message);
-        this.messageLabel.setElementCSSRule("whiteSpace", "normal");
-        this.messageLabel.setElementCSSRule("wordBreak", "break-word");
-        this.addComponent(this.messageLabel);
+        this.messageText = new Text(message);
+        this.messageText.setElementCSSRule("whiteSpace", "normal");
+        this.messageText.setElementCSSRule("wordBreak", "break-word");
+        this.addComponent(this.messageText);
 
-        this.closeLabel = new Label("×");
-        this.closeLabel.setCursor("pointer");
-        this.closeLabel.setElementCSSRule("textAlign", "center");
-        this.closeLabel.setElementCSSRule("lineHeight", `${Notification.CLOSE_SIZE}px`);
-        this.closeLabel.setElementCSSRule("userSelect", "none");
-        this.closeLabel.setForegroundColor("var(--ts-ui-text-color, rgb(0, 0, 0))");
-        this.addComponent(this.closeLabel);
+        this.closeIcon = new Text("×");
+        this.closeIcon.setCursor("pointer");
+        this.closeIcon.setElementCSSRule("textAlign", "center");
+        this.closeIcon.setElementCSSRule("lineHeight", `${Notification.CLOSE_SIZE}px`);
+        this.closeIcon.setElementCSSRule("userSelect", "none");
+        this.closeIcon.setForegroundColor("var(--ts-ui-text-color, rgb(0, 0, 0))");
+        this.addComponent(this.closeIcon);
 
-        Event.addListener(this.closeLabel, "click", () => this.dismiss());
+        Event.addListener(this.closeIcon, "click", () => this.dismiss());
 
         Event.addSubtreeListener(this, "mouseover", (e: MouseEvent) => {
             const el = this.getElement();
@@ -220,14 +220,14 @@ export class Notification extends Component {
         const msgWidth  = closeX - Notification.H_PADDING - 4;
         const msgHeight = Notification.HEIGHT - Notification.V_PADDING * 2;
 
-        this.messageLabel.setX(Notification.H_PADDING);
-        this.messageLabel.setY(Notification.V_PADDING);
-        this.messageLabel.setWidth(msgWidth);
-        this.messageLabel.setHeight(msgHeight);
+        this.messageText.setX(Notification.H_PADDING);
+        this.messageText.setY(Notification.V_PADDING);
+        this.messageText.setWidth(msgWidth);
+        this.messageText.setHeight(msgHeight);
 
-        this.closeLabel.setX(closeX);
-        this.closeLabel.setY(4);
-        this.closeLabel.setWidth(Notification.CLOSE_SIZE);
-        this.closeLabel.setHeight(Notification.CLOSE_SIZE);
+        this.closeIcon.setX(closeX);
+        this.closeIcon.setY(4);
+        this.closeIcon.setWidth(Notification.CLOSE_SIZE);
+        this.closeIcon.setHeight(Notification.CLOSE_SIZE);
     }
 }

@@ -4,7 +4,7 @@ import { Component } from "./Component.js";
 import { Event } from "./Event.js";
 import { Util } from "./Util.js";
 import { BorderStyle } from "./BorderStyle.js";
-import { Label } from "./component/Label.js";
+import { Text } from "./component/Text.js";
 
 /**
  * Optional color overrides for a tooltip attachment.
@@ -58,7 +58,7 @@ export class Tooltip extends Component {
     private static readonly ITEM_HEIGHT: number = 20;
     private static readonly CURSOR_OFFSET: number = 14;
 
-    private label: Label;
+    private text: Text;
 
     /** Private — use the static methods; only one instance is ever created. */
     private constructor() {
@@ -80,10 +80,10 @@ export class Tooltip extends Component {
         // committing to a fixed size.
         this.setElementCSSRule("contain", "layout paint");
 
-        this.label = new Label();
-        this.label.setPointerEvents("none");
-        this.label.setElementCSSRule("whiteSpace", "nowrap");
-        this.addComponent(this.label);
+        this.text = new Text();
+        this.text.setPointerEvents("none");
+        this.text.setElementCSSRule("whiteSpace", "nowrap");
+        this.addComponent(this.text);
     }
 
     /**
@@ -114,7 +114,7 @@ export class Tooltip extends Component {
 
         const inst = Tooltip.getInstance();
 
-        inst.label.setText(text);
+        inst.text.setText(text);
 
         const tooltipWidth = Math.min(
             Tooltip.MAX_WIDTH,
@@ -309,9 +309,9 @@ export class Tooltip extends Component {
     doLayout(): void {
         super.doLayout();
 
-        this.label.setX(Tooltip.H_PADDING / 2);
-        this.label.setY(Tooltip.V_PADDING / 2);
-        this.label.setWidth(Math.max(0, this.getWidth() - Tooltip.H_PADDING));
-        this.label.setHeight(Tooltip.ITEM_HEIGHT);
+        this.text.setX(Tooltip.H_PADDING / 2);
+        this.text.setY(Tooltip.V_PADDING / 2);
+        this.text.setWidth(Math.max(0, this.getWidth() - Tooltip.H_PADDING));
+        this.text.setHeight(Tooltip.ITEM_HEIGHT);
     }
 }

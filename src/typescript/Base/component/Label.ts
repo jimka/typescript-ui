@@ -5,7 +5,8 @@ import { Text } from "./Text.js";
 /**
  * A label component backed by a `<label>` element.
  *
- * Supports the HTML `for` attribute to associate the label with a form control by ID.
+ * Always associated with a form control via the HTML `for` attribute.
+ * For standalone text without a form-control association, use {@link Text} instead.
  *
  * @example
  * ```typescript
@@ -23,8 +24,12 @@ export class Label extends Text {
 
     forId: string;
 
-    constructor(text? : string, forId : string = "") {
-        super("label", text);
+    constructor(text: string, forId: string) {
+        if (!forId) {
+            throw new Error("Label requires a non-empty forId. Use Text for standalone text.");
+        }
+
+        super(text, "label");
 
         this.forId = forId;
     }
@@ -41,9 +46,13 @@ export class Label extends Text {
     /**
      * Sets the for/htmlFor association and updates the DOM element.
      *
-     * @param id - The ID of the form control this label should be associated with.
+     * @param id - The ID of the form control this label should be associated with. Must be non-empty.
      */
     public setForId(id : string) {
+        if (!id) {
+            throw new Error("Label forId must be non-empty.");
+        }
+
         this.forId = id;
 
         let element = this.getElement() as HTMLLabelElement;

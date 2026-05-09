@@ -44,9 +44,9 @@ export class HeaderCell extends DefaultCell {
         this.fieldName = fieldName;
 
         let renderer = this.getRenderer();
-        renderer.getLabel().setFontSize("--ts-ui-table-header-font-size");
-        renderer.getLabel().setFontWeight("bold");
-        renderer.getLabel().setText(text);
+        renderer.getText().setFontSize("--ts-ui-table-header-font-size");
+        renderer.getText().setFontWeight("bold");
+        renderer.getText().setText(text);
 
         const activeRule = CSS.createComponentRule(this.getId() + ':active');
 
@@ -101,7 +101,7 @@ export class HeaderCell extends DefaultCell {
     setSortState(state: 'asc' | 'desc' | null): void {
         const arrow = state === 'asc' ? ' ▲' : state === 'desc' ? ' ▼' : '';
 
-        this.getRenderer().getLabel().setText(this.text + arrow);
+        this.getRenderer().getText().setText(this.text + arrow);
         this.getAria().setSort(state === 'asc' ? 'ascending' : state === 'desc' ? 'descending' : 'none');
     }
 

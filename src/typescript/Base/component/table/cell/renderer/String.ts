@@ -1,51 +1,51 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellRenderer } from "./CellRenderer.js";
-import { Label } from "../../../../component/Label.js";
+import { Text } from "../../../../component/Text.js";
 
 /**
  * A read-only renderer for string cell values.
  *
- * Displays the value via a {@link Label}.
+ * Displays the value via a {@link Text}.
  *
  * @category Components
  */
 export class StringRenderer extends CellRenderer<String> {
 
-    private label: Label = new Label();
+    private text: Text = new Text();
 
     constructor() {
         super();
 
-        this.label.setText("");
-        this.label.setPointerEvents("none");
-        this.addComponent(this.label);
+        this.text.setText("");
+        this.text.setPointerEvents("none");
+        this.addComponent(this.text);
     }
 
     /**
-     * Returns the label component used to display text.
+     * Returns the text component used to display text.
      *
-     * @returns The underlying {@link Label}.
+     * @returns The underlying {@link Text}.
      */
-    getLabel() {
-        return this.label;
+    getText() {
+        return this.text;
     }
 
     /**
-     * Returns the current label text.
+     * Returns the current displayed text.
      *
      * @returns The displayed string value.
      */
     getValue() {
-        return this.label.getText();
+        return this.text.getText();
     }
 
     /**
-     * Sets the label text, defaulting to an empty string for falsy values.
+     * Sets the displayed text, defaulting to an empty string for falsy values.
      *
      * @param value - The string value to display.
      */
     setValue(value: String) {
-        this.label.setText(value || "");
+        this.text.setText(value || "");
     }
 }

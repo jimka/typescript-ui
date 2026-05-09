@@ -3,7 +3,7 @@
 import { Component } from "../../Component.js";
 import { CSS } from "../../CSS.js";
 import { Event } from "../../Event.js";
-import { Label } from "../Label.js";
+import { Text } from "../Text.js";
 
 /**
  * A single top-level button in a `MenuBar` (e.g. "File", "Edit").
@@ -19,7 +19,7 @@ import { Label } from "../Label.js";
  */
 export class MenuBarButton extends Component {
 
-    private readonly _label: Label;
+    private readonly _text: Text;
     private readonly _hoverRule: CSSStyleRule;
     private readonly _onClickHandler: () => void;
     private readonly _onMouseOverHandler: () => void;
@@ -46,11 +46,11 @@ export class MenuBarButton extends Component {
             "var(--ts-ui-menu-bar-btn-hover-bg, rgba(30, 100, 200, 0.10))"
         );
 
-        this._label = new Label(text);
-        this._label.setPointerEvents("none");
-        this._label.setElementCSSRule("userSelect", "none");
-        this._label.setElementCSSRule("whiteSpace", "nowrap");
-        this.addComponent(this._label);
+        this._text = new Text(text);
+        this._text.setPointerEvents("none");
+        this._text.setElementCSSRule("userSelect", "none");
+        this._text.setElementCSSRule("whiteSpace", "nowrap");
+        this.addComponent(this._text);
 
         this.getAria().setRole("menuitem");
         this.getAria().setHasPopup("menu");
@@ -95,9 +95,9 @@ export class MenuBarButton extends Component {
 
         const pad = 10;
 
-        this._label.setX(pad);
-        this._label.setY(0);
-        this._label.setWidth(Math.max(0, this.getWidth() - pad * 2));
-        this._label.setHeight(this.getHeight());
+        this._text.setX(pad);
+        this._text.setY(0);
+        this._text.setWidth(Math.max(0, this.getWidth() - pad * 2));
+        this._text.setHeight(this.getHeight());
     }
 }

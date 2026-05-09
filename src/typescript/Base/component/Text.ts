@@ -35,8 +35,8 @@ export class Text extends Component {
     private fontWeight: string | null = null;
     private lineHeight: number | null = null;
 
-    constructor(tag?: string, text?: String) {
-        super(tag || "span");
+    constructor(text?: String, tag: string = "span") {
+        super(tag);
 
         this.text = text;
         this.textAlign = "left";

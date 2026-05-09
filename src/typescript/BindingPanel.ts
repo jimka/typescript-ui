@@ -3,7 +3,7 @@
 import { Component } from "./Base/Component.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { HBox } from "./Base/layout/HBox.js";
-import { Label } from "./Base/component/Label.js";
+import { Text } from "./Base/component/Text.js";
 import { TextField } from "./Base/component/TextField.js";
 import { Checkbox } from "./Base/component/Checkbox.js";
 import { ComboBox } from "./Base/component/ComboBox.js";
@@ -63,7 +63,7 @@ export class BindingPanel extends Component {
 
         // ── Status label ─────────────────────────────────────────────────────
 
-        const statusLabel = new Label("Status: clean");
+        const statusText = new Text("Status: clean");
 
         // ── Binding ──────────────────────────────────────────────────────────
 
@@ -111,15 +111,15 @@ export class BindingPanel extends Component {
         binding.setValidateOnChange(true);
 
         binding.addChangeListener((_field, _value) => {
-            statusLabel.setText("Status: modified");
+            statusText.setText("Status: modified");
         });
 
         binding.addCommitListener(() => {
-            statusLabel.setText("Status: clean");
+            statusText.setText("Status: clean");
         });
 
         binding.addRejectListener(() => {
-            statusLabel.setText("Status: clean");
+            statusText.setText("Status: clean");
         });
 
         // ── Record selector ──────────────────────────────────────────────────
@@ -131,41 +131,41 @@ export class BindingPanel extends Component {
 
         const selectorRow = new Component();
         selectorRow.setLayoutManager(new HBox());
-        selectorRow.addComponent(new Label("Record:"));
+        selectorRow.addComponent(new Text("Record:"));
         selectorRow.addComponent(recordCombo);
         this.addComponent(selectorRow);
 
         const nameRow = new Component();
         nameRow.setLayoutManager(new HBox());
-        nameRow.addComponent(new Label("Name:"));
+        nameRow.addComponent(new Text("Name:"));
         nameRow.addComponent(nameField);
         this.addComponent(nameRow);
 
         const activeRow = new Component();
         activeRow.setLayoutManager(new HBox());
-        activeRow.addComponent(new Label("Active:"));
+        activeRow.addComponent(new Text("Active:"));
         activeRow.addComponent(activeCheck);
         this.addComponent(activeRow);
 
         const roleRow = new Component();
         roleRow.setLayoutManager(new HBox());
-        roleRow.addComponent(new Label("Role:"));
+        roleRow.addComponent(new Text("Role:"));
         roleRow.addComponent(roleCombo);
         this.addComponent(roleRow);
 
         const birthDateRow = new Component();
         birthDateRow.setLayoutManager(new HBox());
-        birthDateRow.addComponent(new Label("Birth date:"));
+        birthDateRow.addComponent(new Text("Birth date:"));
         birthDateRow.addComponent(birthDateField);
         this.addComponent(birthDateRow);
 
         const reminderTimeRow = new Component();
         reminderTimeRow.setLayoutManager(new HBox());
-        reminderTimeRow.addComponent(new Label("Reminder time:"));
+        reminderTimeRow.addComponent(new Text("Reminder time:"));
         reminderTimeRow.addComponent(reminderTimeField);
         this.addComponent(reminderTimeRow);
 
-        this.addComponent(statusLabel);
+        this.addComponent(statusText);
 
         const buttonRow = new Component();
         buttonRow.setLayoutManager(new HBox());

@@ -9,7 +9,7 @@ import { ModelRecord } from "./Base/data/ModelRecord.js";
 import { Proxy, ReadParams } from "./Base/data/proxy/Proxy.js";
 import { Component } from "./Base/Component.js";
 import { Button } from "./Base/component/Button.js";
-import { Label } from "./Base/component/Label.js";
+import { Text } from "./Base/component/Text.js";
 import { RadioButton } from "./Base/component/RadioButton.js";
 import { ButtonGroup } from "./Base/ButtonGroup.js";
 import { VBox } from "./Base/layout/VBox.js";
@@ -275,7 +275,7 @@ export class MiscPanel extends Component {
         buttonTheme.addActionListener(function () {
             isDark = !isDark;
             ThemeManager.setTheme(isDark ? DarkTheme : DefaultTheme);
-            buttonTheme.getLabel().setText(isDark ? "Switch to default theme" : "Switch to dark theme");
+            buttonTheme.getText().setText(isDark ? "Switch to default theme" : "Switch to dark theme");
         });
         this.addComponent(buttonTheme);
 
@@ -394,10 +394,10 @@ export class MiscPanel extends Component {
             maxSuggestions: 8,
         });
 
-        const selectedLabel = new Label("Selected: (none)");
+        const selectedText = new Text("Selected: (none)");
 
         autoCompleteField.addSelectListener(value => {
-            selectedLabel.setText("Selected: " + value);
+            selectedText.setText("Selected: " + value);
         });
 
         const radioContains    = new RadioButton("Contains");
@@ -414,17 +414,17 @@ export class MiscPanel extends Component {
 
         const modeRow = new Component();
         modeRow.setLayoutManager(new HBox());
-        modeRow.addComponent(new Label("Match mode:"));
+        modeRow.addComponent(new Text("Match mode:"));
         modeRow.addComponent(radioContains);
         modeRow.addComponent(radioStartsWith);
 
         const autoCompleteRow = new Component();
         autoCompleteRow.setLayoutManager(new HBox());
-        autoCompleteRow.addComponent(new Label("AutoComplete:"));
+        autoCompleteRow.addComponent(new Text("AutoComplete:"));
         autoCompleteRow.addComponent(autoCompleteField);
         this.addComponent(modeRow);
         this.addComponent(autoCompleteRow);
-        this.addComponent(selectedLabel);
+        this.addComponent(selectedText);
 
         const buttonDialogConfirm = new Button("Dialog — confirm/cancel");
         buttonDialogConfirm.addActionListener(async () => {
@@ -474,42 +474,42 @@ export class MiscPanel extends Component {
         unboundedSpinner.setStep(5);
         unboundedSpinner.setValue(100);
 
-        const spinnerLabel = new Label("Spinners — integer: 3, decimal: 0.0, unbounded: 100");
-        const updateSpinnerLabel = (): void => {
-            spinnerLabel.setText(
+        const spinnerText = new Text("Spinners — integer: 3, decimal: 0.0, unbounded: 100");
+        const updateSpinnerText = (): void => {
+            spinnerText.setText(
                 "Spinners — integer: " + integerSpinner.getValue()
                 + ", decimal: "  + decimalSpinner.getValue().toFixed(1)
                 + ", unbounded: " + unboundedSpinner.getValue()
             );
         };
 
-        integerSpinner.addChangeListener(updateSpinnerLabel);
-        decimalSpinner.addChangeListener(updateSpinnerLabel);
-        unboundedSpinner.addChangeListener(updateSpinnerLabel);
+        integerSpinner.addChangeListener(updateSpinnerText);
+        decimalSpinner.addChangeListener(updateSpinnerText);
+        unboundedSpinner.addChangeListener(updateSpinnerText);
 
         const spinnerRow = new Component();
         spinnerRow.setLayoutManager(new HBox());
-        spinnerRow.addComponent(new Label("0–10:"));
+        spinnerRow.addComponent(new Text("0–10:"));
         spinnerRow.addComponent(integerSpinner);
-        spinnerRow.addComponent(new Label("-1..1 step 0.1:"));
+        spinnerRow.addComponent(new Text("-1..1 step 0.1:"));
         spinnerRow.addComponent(decimalSpinner);
-        spinnerRow.addComponent(new Label("step 5:"));
+        spinnerRow.addComponent(new Text("step 5:"));
         spinnerRow.addComponent(unboundedSpinner);
 
         this.addComponent(spinnerRow);
-        this.addComponent(spinnerLabel);
+        this.addComponent(spinnerText);
 
         const progressBar = new ProgressBar(0);
         progressBar.setPreferredSize(300, 12);
         progressBar.setInsets(new Insets(0, 0, 0, 0));
 
-        const progressLabel = new Label("Progress: 0%");
+        const progressText = new Text("Progress: 0%");
 
         const progressBarRow = new Component();
         progressBarRow.setLayoutManager(new HBox());
-        progressBarRow.addComponent(new Label("ProgressBar:"));
+        progressBarRow.addComponent(new Text("ProgressBar:"));
         progressBarRow.addComponent(progressBar);
-        progressBarRow.addComponent(progressLabel);
+        progressBarRow.addComponent(progressText);
 
         this.addComponent(progressBarRow);
 
@@ -518,12 +518,12 @@ export class MiscPanel extends Component {
             progressBar.setIndeterminate(false);
             let v = 0;
             progressBar.setValue(0);
-            progressLabel.setText("Progress: 0%");
+            progressText.setText("Progress: 0%");
 
             const handle = setInterval(() => {
                 v += 5;
                 progressBar.setValue(v);
-                progressLabel.setText("Progress: " + v + "%");
+                progressText.setText("Progress: " + v + "%");
 
                 if (v >= 100) {
                     clearInterval(handle);
@@ -535,14 +535,14 @@ export class MiscPanel extends Component {
         const buttonProgressIndeterminate = new Button("Toggle indeterminate progress bar");
         buttonProgressIndeterminate.addActionListener(() => {
             progressBar.setIndeterminate(!progressBar.isIndeterminate());
-            progressLabel.setText(progressBar.isIndeterminate() ? "Progress: indeterminate" : "Progress: " + progressBar.getValue() + "%");
+            progressText.setText(progressBar.isIndeterminate() ? "Progress: indeterminate" : "Progress: " + progressBar.getValue() + "%");
         });
         this.addComponent(buttonProgressIndeterminate);
 
         const inlineSpinner = new ProgressSpinner(24);
         const spinnerDemoRow = new Component();
         spinnerDemoRow.setLayoutManager(new HBox());
-        spinnerDemoRow.addComponent(new Label("Inline ProgressSpinner:"));
+        spinnerDemoRow.addComponent(new Text("Inline ProgressSpinner:"));
         spinnerDemoRow.addComponent(inlineSpinner);
         this.addComponent(spinnerDemoRow);
 

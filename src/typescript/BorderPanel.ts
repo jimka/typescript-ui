@@ -3,7 +3,7 @@
 import { Border } from "./Base/layout/Border.js";
 import { Component } from "./Base/Component.js";
 import { List } from "./Base/component/List.js";
-import { Label } from "./Base/component/Label.js";
+import { Text } from "./Base/component/Text.js";
 import { TextArea } from "./Base/component/TextArea.js";
 import { BulletedList } from "./Base/component/BulletedList.js";
 import { ListItem } from "./Base/component/ListItem.js";
@@ -17,9 +17,9 @@ export class BorderPanel extends Component {
 
         this.setLayoutManager(new Border());
 
-        let label = new Label("Header!");
-        label.setPreferredSize(20, 100);
-        this.addComponent(label, { placement: Placement.NORTH });
+        let headerText = new Text("Header!");
+        headerText.setPreferredSize(20, 100);
+        this.addComponent(headerText, { placement: Placement.NORTH });
 
         let list = new List();
         this.addComponent(list, { placement: Placement.WEST });
@@ -41,9 +41,9 @@ export class BorderPanel extends Component {
         let centerTextArea = new TextArea("Center textarea!");
         this.addComponent(centerTextArea, { placement: Placement.CENTER });
 
-        let southLabel = new Label("Footer!1!!!");
-        southLabel.setPreferredSize(20, 50);
-        this.addComponent(southLabel, { placement: Placement.SOUTH });
+        let footerText = new Text("Footer!1!!!");
+        footerText.setPreferredSize(20, 50);
+        this.addComponent(footerText, { placement: Placement.SOUTH });
 
         let eastComponent = new Component();
         eastComponent.setLayoutManager(new Border());

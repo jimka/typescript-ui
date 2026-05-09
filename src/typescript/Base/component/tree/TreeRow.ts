@@ -33,12 +33,12 @@ export class TreeRow extends Component {
 
         this.getAria().setRole("treeitem");
 
-        this._toggle = new Text("span");
+        this._toggle = new Text();
         this._toggle.setCursor("pointer");
         this._toggle.setInsets(null);
         this._toggle.getAria().setHidden(true);
 
-        this._nodeLabel = new Text("span");
+        this._nodeLabel = new Text();
         this._nodeLabel.setInsets(null);
     }
 
