@@ -6,7 +6,7 @@ import { Label } from "../../../../component/Label.js";
 /**
  * A read-only renderer for date-time cell values.
  *
- * Displays a {@link Date} via a {@link Label} formatted with {@link Date.toLocaleString}.
+ * Displays a `Date` via a {@link Label} formatted with `Date.toLocaleString`.
  */
 export class DateTimeRenderer extends CellRenderer<Date | null> {
 

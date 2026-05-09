@@ -6,8 +6,8 @@ import { Label } from "../../../../component/Label.js";
 /**
  * A read-only renderer for time cell values.
  *
- * Displays the time portion of a {@link Date} via a {@link Label} formatted with
- * {@link Date.toLocaleTimeString}.
+ * Displays the time portion of a `Date` via a {@link Label} formatted with
+ * `Date.toLocaleTimeString`.
  */
 export class TimeRenderer extends CellRenderer<Date | null> {
 
