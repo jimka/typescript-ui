@@ -25,7 +25,7 @@ export type StoreListener<T = any> = (payload: T) => void;
  *
  * @category Data
  */
-export type StoreEvent = 'load' | 'datachanged' | 'add' | 'remove' | 'beforesync' | 'sync';
+export type StoreEvent = 'load' | 'datachanged' | 'add' | 'remove' | 'beforesync' | 'sync' | 'loadingchanged';
 
 interface SorterConfig {
     property: string;
@@ -63,6 +63,7 @@ export abstract class AbstractStore {
     // when the dataset is over the threshold).
     private storeId: string = 'store-' + (nextStoreId++);
     private snapshotDirty: boolean = true;
+    private _loading: boolean = false;
 
     // ── Loading ──────────────────────────────────────────────────────────────
 
@@ -79,9 +80,39 @@ export abstract class AbstractStore {
         if (!this.proxy) {
             throw new Error('Store.load() called but no proxy is configured');
         }
-        const raw = await this.proxy.read();
-        this.ingestRaw(raw);
-        this.emit('load', { records: this.records });
+
+        this.setLoading(true);
+
+        try {
+            const raw = await this.proxy.read();
+            this.ingestRaw(raw);
+            this.emit('load', { records: this.records });
+        } finally {
+            this.setLoading(false);
+        }
+    }
+
+    /**
+     * Returns whether the store is currently loading data.
+     *
+     * @returns True while `load()` is in-flight.
+     */
+    isLoading(): boolean {
+        return this._loading;
+    }
+
+    /**
+     * Sets the loading flag and fires `'loadingchanged'` only when the value actually changes.
+     *
+     * @param value - The new loading state.
+     */
+    private setLoading(value: boolean): void {
+        if (this._loading === value) {
+            return;
+        }
+
+        this._loading = value;
+        this.emit('loadingchanged', { loading: value });
     }
 
     /**

@@ -23,6 +23,9 @@ import { Notification } from "./Base/Notification.js";
 import { Dialog } from "./Base/Dialog.js";
 import { AutoCompleteField } from "./Base/component/AutoCompleteField.js";
 import { NumberSpinner } from "./Base/component/NumberSpinner.js";
+import { ProgressBar } from "./Base/component/ProgressBar.js";
+import { ProgressSpinner } from "./Base/component/ProgressSpinner.js";
+import { Insets } from "./Base/Insets.js";
 
 export class MiscPanel extends Component {
 
@@ -389,5 +392,61 @@ export class MiscPanel extends Component {
 
         this.addComponent(spinnerRow);
         this.addComponent(spinnerLabel);
+
+        const progressBar = new ProgressBar(0);
+        progressBar.setPreferredSize(300, 12);
+        progressBar.setInsets(new Insets(0, 0, 0, 0));
+
+        const progressLabel = new Label("Progress: 0%");
+
+        const progressBarRow = new Component();
+        progressBarRow.setLayoutManager(new HBox());
+        progressBarRow.addComponent(new Label("ProgressBar:"));
+        progressBarRow.addComponent(progressBar);
+        progressBarRow.addComponent(progressLabel);
+
+        this.addComponent(progressBarRow);
+
+        const buttonProgressStart = new Button("Animate progress bar");
+        buttonProgressStart.addActionListener(() => {
+            progressBar.setIndeterminate(false);
+            let v = 0;
+            progressBar.setValue(0);
+            progressLabel.setText("Progress: 0%");
+
+            const handle = setInterval(() => {
+                v += 5;
+                progressBar.setValue(v);
+                progressLabel.setText("Progress: " + v + "%");
+
+                if (v >= 100) {
+                    clearInterval(handle);
+                }
+            }, 100);
+        });
+        this.addComponent(buttonProgressStart);
+
+        const buttonProgressIndeterminate = new Button("Toggle indeterminate progress bar");
+        buttonProgressIndeterminate.addActionListener(() => {
+            progressBar.setIndeterminate(!progressBar.isIndeterminate());
+            progressLabel.setText(progressBar.isIndeterminate() ? "Progress: indeterminate" : "Progress: " + progressBar.getValue() + "%");
+        });
+        this.addComponent(buttonProgressIndeterminate);
+
+        const inlineSpinner = new ProgressSpinner(24);
+        const spinnerDemoRow = new Component();
+        spinnerDemoRow.setLayoutManager(new HBox());
+        spinnerDemoRow.addComponent(new Label("Inline ProgressSpinner:"));
+        spinnerDemoRow.addComponent(inlineSpinner);
+        this.addComponent(spinnerDemoRow);
+
+        const buttonOverlaySpinner = new Button("Overlay spinner on this panel for 2 s");
+        buttonOverlaySpinner.addActionListener(() => {
+            const overlay = new ProgressSpinner(48);
+            overlay.showOverlay(this);
+
+            setTimeout(() => overlay.hideOverlay(), 2000);
+        });
+        this.addComponent(buttonOverlaySpinner);
     }
 }

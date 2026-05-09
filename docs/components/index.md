@@ -52,6 +52,8 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Image`](/api/classes/Image) | `<img>` wrapper |
 | [`FontAwesomeIcon`](/api/classes/FontAwesomeIcon) | FontAwesome glyph (peer dep) |
 | [`FieldSet`](/api/classes/FieldSet) | Grouped form section with optional [`Legend`](/api/classes/Legend) |
+| [`ProgressBar`](/components/ProgressBar) | Horizontal progress indicator (determinate or indeterminate) |
+| [`ProgressSpinner`](/components/ProgressSpinner) | Circular loading spinner; supports inline and overlay use |
 
 ## Lists
 

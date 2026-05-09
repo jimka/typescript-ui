@@ -150,6 +150,30 @@ export namespace CSS {
     }
 
     /**
+     * Inserts a `@keyframes` block into the shared "Base" stylesheet if no rule with the
+     * given name already exists.
+     *
+     * @param name - The keyframe animation name (no `@keyframes` prefix).
+     * @param body - The keyframe body, e.g. `"from { transform: rotate(0deg) } to { transform: rotate(360deg) }"`.
+     *
+     * @remarks `createRule`/`getRule` only operate on selector-based `CSSStyleRule`s, so
+     * `@keyframes` rules need this dedicated helper. Idempotent: safe to call from
+     * module-level initialisers across hot-reloads.
+     */
+    export function ensureKeyframes(name: string, body: string): void {
+        let sheet = getMainStyle();
+
+        for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
+            let rule = sheet.cssRules[idx] as CSSKeyframesRule;
+            if (rule.type === CSSRule.KEYFRAMES_RULE && rule.name === name) {
+                return;
+            }
+        }
+
+        sheet.insertRule('@keyframes ' + name + ' { ' + body + ' }', sheet.cssRules.length);
+    }
+
+    /**
      * Writes a set of CSS custom properties onto the `:root` element.
      *
      * @param vars - A record mapping CSS custom property names (e.g. `"--my-color"`) to their values.

@@ -87,6 +87,8 @@ export default defineConfig({
                     { text: 'FontAwesomeIcon', link: '/components/FontAwesomeIcon' },
                     { text: 'FieldSet',        link: '/components/FieldSet' },
                     { text: 'Legend',          link: '/components/Legend' },
+                    { text: 'ProgressBar',     link: '/components/ProgressBar' },
+                    { text: 'ProgressSpinner', link: '/components/ProgressSpinner' },
                 ] },
                 { text: 'Lists', collapsed: false, items: [
                     { text: 'List',            link: '/components/List' },
