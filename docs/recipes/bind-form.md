@@ -47,13 +47,13 @@ roleCombo.addItem(new Option('admin', 'Admin'));
 roleCombo.addItem(new Option('user',  'User'));
 roleCombo.addItem(new Option('guest', 'Guest'));
 
-form.addComponent(new Label('Name'));
+form.addComponent(new Label('Name',   nameField.getId()));
 form.addComponent(nameField);
-form.addComponent(new Label('Email'));
+form.addComponent(new Label('Email',  emailField.getId()));
 form.addComponent(emailField);
-form.addComponent(new Label('Role'));
+form.addComponent(new Label('Role',   roleCombo.getId()));
 form.addComponent(roleCombo);
-form.addComponent(new Label('Active'));
+form.addComponent(new Label('Active', activeCheck.getId()));
 form.addComponent(activeCheck);
 ```
 

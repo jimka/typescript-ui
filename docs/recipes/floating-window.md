@@ -32,9 +32,9 @@ urlField.setValue('https://api.example.com');
 
 const keyField = new TextField();
 
-form.addComponent(new Label('Server URL:'));
+form.addComponent(new Label('Server URL:', urlField.getId()));
 form.addComponent(urlField);
-form.addComponent(new Label('API key:'));
+form.addComponent(new Label('API key:', keyField.getId()));
 form.addComponent(keyField);
 
 settingsWin.addComponent(form, { region: Placement.CENTER });

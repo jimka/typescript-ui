@@ -23,10 +23,13 @@ const layout = new VBox();
 layout.setSpacing(8);
 form.setLayoutManager(layout);
 
-form.addComponent(new Label('Name'));
-form.addComponent(new TextField());
-form.addComponent(new Label('Email'));
-form.addComponent(new TextField());
+const nameField  = new TextField();
+const emailField = new TextField();
+
+form.addComponent(new Label('Name',  nameField.getId()));
+form.addComponent(nameField);
+form.addComponent(new Label('Email', emailField.getId()));
+form.addComponent(emailField);
 ```
 
 ## Per-child constraints

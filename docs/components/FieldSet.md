@@ -10,11 +10,14 @@ import { FieldSet, VBox, TextField, Label } from '@jimka/typescript-ui';
 const profile = new FieldSet();
 profile.setLegendText('Profile');
 
+const nameField  = new TextField();
+const emailField = new TextField();
+
 const body = new VBox();
-body.addComponent(new Label('Name:'));
-body.addComponent(new TextField());
-body.addComponent(new Label('Email:'));
-body.addComponent(new TextField());
+body.addComponent(new Label('Name:',  nameField.getId()));
+body.addComponent(nameField);
+body.addComponent(new Label('Email:', emailField.getId()));
+body.addComponent(emailField);
 
 profile.addComponent(body);
 panel.addComponent(profile);

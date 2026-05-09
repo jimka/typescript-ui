@@ -16,7 +16,7 @@
 ```typescript
 import {
     Component, Accordion, AccordionConstraints,
-    Label,
+    Text,
 } from '@jimka/typescript-ui';
 
 const sidebar = new Component();
@@ -24,11 +24,11 @@ const accordion = new Accordion();
 sidebar.setLayoutManager(accordion);
 
 const section1 = new Component();
-section1.addComponent(new Label('Content of section 1'));
+section1.addComponent(new Text('Content of section 1'));
 sidebar.addComponent(section1, new AccordionConstraints('Section 1', true));
 
 const section2 = new Component();
-section2.addComponent(new Label('Content of section 2'));
+section2.addComponent(new Text('Content of section 2'));
 sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 
 accordion.setSingleOpen(true);  // optional: only one section open at a time

@@ -76,7 +76,7 @@ Most often a [`Text`](/components/Text)-derived listener leak. Custom components
 
 ```typescript
 class StatusBar extends Component {
-    private message: Label = new Label('');
+    private message: Text = new Text('');
 
     protected destructor(): void {
         this.message.dispose();
