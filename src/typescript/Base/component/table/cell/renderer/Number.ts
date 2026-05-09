@@ -1,28 +1,28 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellRenderer } from "./CellRenderer.js";
-import { Label } from "../../../Label.js";
+import { Text } from "../../../Text.js";
 import { AnchorType } from "../../../../layout/AnchorType.js";
 
 /**
  * A read-only renderer for numeric cell values.
  *
- * Displays the value right-aligned via a {@link Label}.
+ * Displays the value right-aligned via a {@link Text}.
  *
  * @category Components
  */
 export class NumberRenderer extends CellRenderer<Number> {
 
-    private label: Label = new Label();
+    private text: Text = new Text();
 
     constructor() {
         super();
 
-        this.label.setPointerEvents("none");
-        this.label.setTextAlign("right");
-        this.label.setText("");
+        this.text.setPointerEvents("none");
+        this.text.setTextAlign("right");
+        this.text.setText("");
 
-        this.addComponent(this.label, {
+        this.addComponent(this.text, {
             anchor: AnchorType.NORTHEAST
         });
     }
@@ -33,7 +33,7 @@ export class NumberRenderer extends CellRenderer<Number> {
      * @returns The current numeric value.
      */
     getValue() {
-        return Number(this.label.getText());
+        return Number(this.text.getText());
     }
 
     /**
@@ -42,6 +42,6 @@ export class NumberRenderer extends CellRenderer<Number> {
      * @param value - The numeric value to display.
      */
     setValue(value: Number) {
-        this.label.setText(String(value) || "");
+        this.text.setText(String(value) || "");
     }
 }

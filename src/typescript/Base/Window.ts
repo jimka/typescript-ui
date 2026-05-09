@@ -175,7 +175,7 @@ export class Window extends Component {
             throw new Error("Window does not have a header.");
         }
 
-        this.header.getLabel().setText(text);
+        this.header.getText().setText(text);
     }
 
     /**

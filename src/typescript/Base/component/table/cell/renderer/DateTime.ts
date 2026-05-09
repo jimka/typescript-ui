@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellRenderer } from "./CellRenderer.js";
-import { Label } from "../../../../component/Label.js";
+import { Text } from "../../../../component/Text.js";
 
 /**
  * A read-only renderer for date-time cell values.
  *
- * Displays a `Date` via a {@link Label} formatted with `Date.toLocaleString`.
+ * Displays a `Date` via a {@link Text} formatted with `Date.toLocaleString`.
  */
 export class DateTimeRenderer extends CellRenderer<Date | null> {
 
-    private label: Label = new Label();
+    private text: Text = new Text();
     private value: Date | null = null;
     private showSeconds: boolean;
 
@@ -18,9 +18,9 @@ export class DateTimeRenderer extends CellRenderer<Date | null> {
         super();
         this.showSeconds = showSeconds;
 
-        this.label.setText("");
-        this.label.setPointerEvents("none");
-        this.addComponent(this.label);
+        this.text.setText("");
+        this.text.setPointerEvents("none");
+        this.addComponent(this.text);
     }
 
     getValue(): Date | null {
@@ -32,6 +32,6 @@ export class DateTimeRenderer extends CellRenderer<Date | null> {
         const opts: Intl.DateTimeFormatOptions = this.showSeconds
             ? { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }
             : { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
-        this.label.setText(value ? value.toLocaleString(undefined, opts) : "");
+        this.text.setText(value ? value.toLocaleString(undefined, opts) : "");
     }
 }

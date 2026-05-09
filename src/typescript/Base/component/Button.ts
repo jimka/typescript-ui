@@ -3,7 +3,7 @@
 import { Component } from "../Component.js";
 import { Event } from "../Event.js";
 import { Fit } from "../layout/Fit.js";
-import { Label } from "./Label.js";
+import { Text } from "./Text.js";
 import { FillType } from "../layout/FillType.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { AnchorType } from "../layout/AnchorType.js";
@@ -29,7 +29,7 @@ import { Border, BorderOptions } from "../Border.js";
  */
 export class Button extends Component {
 
-    private label: Label;
+    private text: Text;
 
     private pressedCSSRule: CSSStyleRule;
 
@@ -49,15 +49,15 @@ export class Button extends Component {
         this.pressedCSSRule = CSS.createComponentRule(this.getId() + ":active") as CSSStyleRule;
 
         this.setLayoutManager(new Fit());
-        this.label = new Label(text);
+        this.text = new Text(text);
 
-        this.label.setPointerEvents("none");
+        this.text.setPointerEvents("none");
 
-        this.label.setTextAlign("center");
-        this.label.setFontWeight("bold");
-        this.label.setFontSize("--ts-ui-button-font-size");
+        this.text.setTextAlign("center");
+        this.text.setFontWeight("bold");
+        this.text.setFontSize("--ts-ui-button-font-size");
 
-        this.addComponent(this.label, {
+        this.addComponent(this.text, {
             fill: FillType.NONE,
             anchor: AnchorType.CENTER
         });
@@ -76,12 +76,12 @@ export class Button extends Component {
     }
 
     /**
-     * Returns the Label child component used to display the button text.
+     * Returns the Text child component used to display the button text.
      *
-     * @returns The internal Label instance.
+     * @returns The internal Text instance.
      */
-    getLabel() {
-        return this.label;
+    getText() {
+        return this.text;
     }
 
     /**

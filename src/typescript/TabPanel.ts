@@ -5,7 +5,7 @@ import { Tab } from "./Base/layout/Tab.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { HBox } from "./Base/layout/HBox.js";
 import { Fit } from "./Base/layout/Fit.js";
-import { Label } from "./Base/component/Label.js";
+import { Text } from "./Base/component/Text.js";
 import { Button } from "./Base/component/Button.js";
 import { Insets } from "./Base/Insets.js";
 
@@ -17,7 +17,7 @@ export class TabPanel extends Component {
 
     private tabContainer: Component;
     private tabLayout: Tab;
-    private logLabel: Label;
+    private logText: Text;
     private tabCounter: number;
 
     /**
@@ -55,7 +55,7 @@ export class TabPanel extends Component {
         this.tabContainer.setPreferredSize(0, 300);
 
         this.tabLayout.setOnTabClose((component: Component) => {
-            this.logLabel.setText(`Closed: ${component.getId()}`);
+            this.logText.setText(`Closed: ${component.getId()}`);
             this.doLayout();
         });
 
@@ -70,13 +70,13 @@ export class TabPanel extends Component {
         logRow.setLayoutManager(new HBox());
         logRow.setPreferredSize(0, 28);
 
-        const logHeading = new Label("Last closed:");
-        logHeading.setPreferredSize(90, 28);
-        logRow.addComponent(logHeading);
+        const logHeadingText = new Text("Last closed:");
+        logHeadingText.setPreferredSize(90, 28);
+        logRow.addComponent(logHeadingText);
 
-        this.logLabel = new Label("—");
-        this.logLabel.setPreferredSize(300, 28);
-        logRow.addComponent(this.logLabel);
+        this.logText = new Text("—");
+        this.logText.setPreferredSize(300, 28);
+        logRow.addComponent(this.logText);
 
         this.addComponent(logRow);
 
@@ -97,7 +97,7 @@ export class TabPanel extends Component {
     }
 
     /**
-     * Builds a simple content panel with a centered label.
+     * Builds a simple content panel with centered text.
      *
      * @param title - The text shown inside the tab content area.
      * @returns The content component.
@@ -106,10 +106,10 @@ export class TabPanel extends Component {
         const panel = new Component();
         panel.setLayoutManager(new Fit());
 
-        const label = new Label(`Content: ${title}`);
-        label.setPreferredSize(0, 24);
+        const text = new Text(`Content: ${title}`);
+        text.setPreferredSize(0, 24);
 
-        panel.addComponent(label, { anchor: 5 });
+        panel.addComponent(text, { anchor: 5 });
         panel.setInsets(new Insets(12, 12, 12, 12));
 
         return panel;

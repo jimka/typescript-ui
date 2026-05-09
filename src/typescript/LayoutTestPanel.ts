@@ -4,7 +4,7 @@ import { Component } from "./Base/Component.js"
 import { Button } from "./Base/component/Button.js";
 import { Checkbox } from "./Base/component/Checkbox.js";
 import { ComboBox } from "./Base/component/ComboBox.js";
-import { Label } from "./Base/component/Label.js";
+import { Text } from "./Base/component/Text.js";
 import { List } from "./Base/component/List.js";
 import { PasswordField } from "./Base/component/PasswordField.js";
 import { RadioButton } from "./Base/component/RadioButton.js";
@@ -32,8 +32,8 @@ export class LayoutTestPanel extends Component {
 
         comboBox.addItem("Zero in combobox!");
 
-        let label = new Label("I am a label!");
-        this.addComponent(label);
+        let helloText = new Text("I am a label!");
+        this.addComponent(helloText);
 
         let list = new List();
         this.addComponent(list);
@@ -76,13 +76,13 @@ export class LayoutTestPanel extends Component {
         radioButtonComponent.addComponent(radioButton5);
         this.addComponent(radioButtonComponent);
 
-        let sliderLabel = new Label("0%");
-        this.addComponent(sliderLabel);
+        let sliderText = new Text("0%");
+        this.addComponent(sliderText);
 
         let slider = new Slider();
-        sliderLabel.setText(slider.getValue().toString() + "%");
+        sliderText.setText(slider.getValue().toString() + "%");
         slider.addActionListener(() => {
-            sliderLabel.setText(slider.getValue().toString() + "%");
+            sliderText.setText(slider.getValue().toString() + "%");
         });
         this.addComponent(slider);
 
@@ -91,7 +91,7 @@ export class LayoutTestPanel extends Component {
 
         let textField = new TextField();
         textField.addActionListener(() => {
-            label.setText(textField.getText());
+            helloText.setText(textField.getText());
             textArea.setText(textField.getText());
         });
         this.addComponent(textField);

@@ -4,7 +4,7 @@ import { Component } from "../Component.js";
 import { AbstractStore } from "../data/AbstractStore.js";
 import { HBox } from "../layout/HBox.js";
 import { Button } from "./Button.js";
-import { Label } from "./Label.js";
+import { Text } from "./Text.js";
 
 /**
  * A horizontal navigation bar for stepping through pages of a paginated
@@ -40,7 +40,7 @@ export class PaginationBar extends Component {
     private prevBtn: Button;
     private nextBtn: Button;
     private lastBtn: Button;
-    private pageLabel: Label;
+    private pageText: Text;
 
     private readonly onStoreUpdate: () => void = () => this.refresh();
 
@@ -60,7 +60,7 @@ export class PaginationBar extends Component {
 
         this.firstBtn = new Button("<<");
         this.prevBtn  = new Button("<");
-        this.pageLabel = new Label("");
+        this.pageText = new Text("");
         this.nextBtn  = new Button(">");
         this.lastBtn  = new Button(">>");
 
@@ -74,7 +74,7 @@ export class PaginationBar extends Component {
 
         this.addComponent(this.firstBtn);
         this.addComponent(this.prevBtn);
-        this.addComponent(this.pageLabel);
+        this.addComponent(this.pageText);
         this.addComponent(this.nextBtn);
         this.addComponent(this.lastBtn);
 
@@ -121,7 +121,7 @@ export class PaginationBar extends Component {
             ? `Page ${page} of ${totalPages}`
             : `Page ${page}`;
 
-        this.pageLabel.setText(text);
+        this.pageText.setText(text);
         this.firstBtn.setEnabled(!dirty && page > 1);
         this.prevBtn.setEnabled(!dirty && page > 1);
         this.nextBtn.setEnabled(!dirty && (totalPages == null || page < totalPages));

@@ -59,8 +59,8 @@ export class AccordionHeader extends Button {
 
         AccordionHeader.createStyles();
 
-        this.getLabel().setTextAlign('left');
-        this.getLabel().setInsets(new Insets(0, 0, 0, 8));
+        this.getText().setTextAlign('left');
+        this.getText().setInsets(new Insets(0, 0, 0, 8));
     }
 
     /**

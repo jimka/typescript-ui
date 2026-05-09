@@ -253,7 +253,7 @@ export class Tab extends LayoutManager {
         tabButton.setBorderRadius();
         tabButton.setShadow(null);
         tabButton.setInsets(new Insets(0, 4, 0, 4));
-        tabButton.getLabel().setInsets(new Insets(0, 4, 0, 4));
+        tabButton.getText().setInsets(new Insets(0, 4, 0, 4));
 
         tabButton.addActionListener(() => this.onTabPressed(tabButton));
 

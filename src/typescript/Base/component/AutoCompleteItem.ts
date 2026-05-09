@@ -3,7 +3,7 @@
 import { Component } from "../Component.js";
 import { CSS } from "../CSS.js";
 import { Event } from "../Event.js";
-import { Label } from "./Label.js";
+import { Text } from "./Text.js";
 
 /**
  * A single row inside an `AutoCompleteDropdown`.
@@ -17,7 +17,7 @@ export class AutoCompleteItem extends Component {
     /** Fixed pixel height of every autocomplete item row. */
     static readonly HEIGHT: number = 24;
 
-    private label: Label;
+    private textComponent: Text;
     private hoverCSSRule: CSSStyleRule;
     private highlighted: boolean;
     private clickListener: (value: string) => void;
@@ -48,13 +48,13 @@ export class AutoCompleteItem extends Component {
         this.getAria().setRole("option");
         this.getAria().setSelected(false);
 
-        this.label = new Label(text);
-        this.label.setPointerEvents("none");
-        this.label.setElementCSSRule("lineHeight", AutoCompleteItem.HEIGHT + "px");
-        this.label.setElementCSSRule("whiteSpace", "nowrap");
-        this.label.setElementCSSRule("overflow", "hidden");
-        this.label.setElementCSSRule("textOverflow", "ellipsis");
-        this.addComponent(this.label);
+        this.textComponent = new Text(text);
+        this.textComponent.setPointerEvents("none");
+        this.textComponent.setElementCSSRule("lineHeight", AutoCompleteItem.HEIGHT + "px");
+        this.textComponent.setElementCSSRule("whiteSpace", "nowrap");
+        this.textComponent.setElementCSSRule("overflow", "hidden");
+        this.textComponent.setElementCSSRule("textOverflow", "ellipsis");
+        this.addComponent(this.textComponent);
 
         this.clickListener = () => {
             this.onSelect(this.text);
@@ -79,7 +79,7 @@ export class AutoCompleteItem extends Component {
      */
     update(text: string): void {
         this.text = text;
-        this.label.setText(text);
+        this.textComponent.setText(text);
     }
 
     /**
@@ -120,9 +120,9 @@ export class AutoCompleteItem extends Component {
     doLayout(): void {
         super.doLayout();
 
-        this.label.setX(8);
-        this.label.setY(0);
-        this.label.setWidth(Math.max(0, this.getWidth() - 16));
-        this.label.setHeight(AutoCompleteItem.HEIGHT);
+        this.textComponent.setX(8);
+        this.textComponent.setY(0);
+        this.textComponent.setWidth(Math.max(0, this.getWidth() - 16));
+        this.textComponent.setHeight(AutoCompleteItem.HEIGHT);
     }
 }

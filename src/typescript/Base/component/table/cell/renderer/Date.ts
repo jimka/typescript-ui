@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellRenderer } from "./CellRenderer.js";
-import { Label } from "../../../../component/Label.js";
+import { Text } from "../../../../component/Text.js";
 
 /**
  * A read-only renderer for date cell values.
  *
- * Displays the value via a {@link Label} formatted with `Date.toLocaleDateString`.
+ * Displays the value via a {@link Text} formatted with `Date.toLocaleDateString`.
  */
 export class DateRenderer extends CellRenderer<Date | null> {
 
-    private label: Label = new Label();
+    private text: Text = new Text();
     private value: Date | null = null;
 
     constructor() {
         super();
 
-        this.label.setText("");
-        this.label.setPointerEvents("none");
-        this.addComponent(this.label);
+        this.text.setText("");
+        this.text.setPointerEvents("none");
+        this.addComponent(this.text);
     }
 
     getValue(): Date | null {
@@ -27,6 +27,6 @@ export class DateRenderer extends CellRenderer<Date | null> {
 
     setValue(value: Date | null): void {
         this.value = value ?? null;
-        this.label.setText(value ? value.toLocaleDateString() : "");
+        this.text.setText(value ? value.toLocaleDateString() : "");
     }
 }

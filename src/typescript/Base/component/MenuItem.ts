@@ -2,7 +2,7 @@
 
 import { Component } from "../Component.js";
 import { Event } from "../Event.js";
-import { Label } from "./Label.js";
+import { Text } from "./Text.js";
 
 /**
  * Selects which CSS-variable family a `MenuItem` reads its colours from.
@@ -79,10 +79,10 @@ export class MenuItem extends Component {
     private readonly _onOpenSubmenu: (item: MenuItem) => void;
     private readonly _cssVarPrefix: MenuItemCSSVarPrefix;
 
-    private _iconLabel: Label | null = null;
-    private _textLabel: Label | null = null;
-    private _shortcutLabel: Label | null = null;
-    private _chevronLabel: Label | null = null;
+    private _iconText: Text | null = null;
+    private _titleText: Text | null = null;
+    private _shortcutText: Text | null = null;
+    private _chevronText: Text | null = null;
 
     private _submenuTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -145,40 +145,40 @@ export class MenuItem extends Component {
             this.getAria().setDisabled(true);
         }
 
-        this._iconLabel = new Label(config.icon ?? "");
-        this._iconLabel.setPointerEvents("none");
-        this._iconLabel.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
-        this._iconLabel.setVisible(!!config.icon);
-        this.addComponent(this._iconLabel);
+        this._iconText = new Text(config.icon ?? "");
+        this._iconText.setPointerEvents("none");
+        this._iconText.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
+        this._iconText.setVisible(!!config.icon);
+        this.addComponent(this._iconText);
 
-        this._textLabel = new Label(config.text ?? "");
-        this._textLabel.setPointerEvents("none");
-        this._textLabel.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
-        this._textLabel.setElementCSSRule("whiteSpace", "nowrap");
-        this._textLabel.setElementCSSRule("overflow", "hidden");
-        this._textLabel.setElementCSSRule("textOverflow", "ellipsis");
-        this.addComponent(this._textLabel);
+        this._titleText = new Text(config.text ?? "");
+        this._titleText.setPointerEvents("none");
+        this._titleText.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
+        this._titleText.setElementCSSRule("whiteSpace", "nowrap");
+        this._titleText.setElementCSSRule("overflow", "hidden");
+        this._titleText.setElementCSSRule("textOverflow", "ellipsis");
+        this.addComponent(this._titleText);
 
         if (config.shortcut) {
-            this._shortcutLabel = new Label(config.shortcut);
-            this._shortcutLabel.setPointerEvents("none");
-            this._shortcutLabel.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
-            this._shortcutLabel.setElementCSSRule("textAlign", "right");
-            this._shortcutLabel.setForegroundColor(
+            this._shortcutText = new Text(config.shortcut);
+            this._shortcutText.setPointerEvents("none");
+            this._shortcutText.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
+            this._shortcutText.setElementCSSRule("textAlign", "right");
+            this._shortcutText.setForegroundColor(
                 `var(--ts-ui-${cssVarPrefix}-item-shortcut-color, rgb(140, 140, 140))`
             );
-            this.addComponent(this._shortcutLabel);
+            this.addComponent(this._shortcutText);
         }
 
         if (this.hasSubmenu()) {
-            this._chevronLabel = new Label("▶");
-            this._chevronLabel.setPointerEvents("none");
-            this._chevronLabel.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
-            this._chevronLabel.setElementCSSRule("textAlign", "center");
-            this._chevronLabel.setForegroundColor(
+            this._chevronText = new Text("▶");
+            this._chevronText.setPointerEvents("none");
+            this._chevronText.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
+            this._chevronText.setElementCSSRule("textAlign", "center");
+            this._chevronText.setForegroundColor(
                 `var(--ts-ui-${cssVarPrefix}-item-shortcut-color, rgb(140, 140, 140))`
             );
-            this.addComponent(this._chevronLabel);
+            this.addComponent(this._chevronText);
             this.getAria().setHasPopup("menu");
             this.getAria().setExpanded(false);
         }
@@ -310,7 +310,7 @@ export class MenuItem extends Component {
         const H = MenuItem.HEIGHT;
         const totalWidth = this.getWidth();
         const hasIcon = !!this._config.icon;
-        const hasShortcut = !!this._config.shortcut && this._shortcutLabel !== null;
+        const hasShortcut = !!this._config.shortcut && this._shortcutText !== null;
         const hasSub = this.hasSubmenu();
 
         const textStart = hasIcon ? MenuItem.ICON_ZONE : 8;
@@ -321,28 +321,28 @@ export class MenuItem extends Component {
             totalWidth - textStart - MenuItem.RIGHT_PAD - chevronReserve - shortcutReserve
         );
 
-        if (this._iconLabel) {
-            this._iconLabel.setX(4);
-            this._iconLabel.setY(0);
-            this._iconLabel.setWidth(20);
-            this._iconLabel.setHeight(H);
+        if (this._iconText) {
+            this._iconText.setX(4);
+            this._iconText.setY(0);
+            this._iconText.setWidth(20);
+            this._iconText.setHeight(H);
         }
 
-        if (this._textLabel) {
-            this._textLabel.setX(textStart);
-            this._textLabel.setY(0);
-            this._textLabel.setWidth(textWidth);
-            this._textLabel.setHeight(H);
+        if (this._titleText) {
+            this._titleText.setX(textStart);
+            this._titleText.setY(0);
+            this._titleText.setWidth(textWidth);
+            this._titleText.setHeight(H);
         }
 
-        if (hasSub && this._chevronLabel) {
-            this._chevronLabel.setX(totalWidth - MenuItem.RIGHT_PAD - MenuItem.CHEVRON_ZONE);
-            this._chevronLabel.setY(0);
-            this._chevronLabel.setWidth(MenuItem.CHEVRON_ZONE);
-            this._chevronLabel.setHeight(H);
+        if (hasSub && this._chevronText) {
+            this._chevronText.setX(totalWidth - MenuItem.RIGHT_PAD - MenuItem.CHEVRON_ZONE);
+            this._chevronText.setY(0);
+            this._chevronText.setWidth(MenuItem.CHEVRON_ZONE);
+            this._chevronText.setHeight(H);
         }
 
-        if (hasShortcut && this._shortcutLabel) {
+        if (hasShortcut && this._shortcutText) {
             const shortcutX =
                 totalWidth
                 - MenuItem.RIGHT_PAD
@@ -350,10 +350,10 @@ export class MenuItem extends Component {
                 - (hasSub ? 4 : 0)
                 - MenuItem.SHORTCUT_ZONE;
 
-            this._shortcutLabel.setX(shortcutX);
-            this._shortcutLabel.setY(0);
-            this._shortcutLabel.setWidth(MenuItem.SHORTCUT_ZONE);
-            this._shortcutLabel.setHeight(H);
+            this._shortcutText.setX(shortcutX);
+            this._shortcutText.setY(0);
+            this._shortcutText.setWidth(MenuItem.SHORTCUT_ZONE);
+            this._shortcutText.setHeight(H);
         }
     }
 }

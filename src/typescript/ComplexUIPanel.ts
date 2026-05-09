@@ -2,7 +2,7 @@
 
 import { Component } from "./Base/Component.js";
 import { VBox } from "./Base/layout/VBox.js";
-import { Label } from "./Base/component/Label.js";
+import { Text } from "./Base/component/Text.js";
 import { HBox } from "./Base/layout/HBox.js";
 import { ComboBox } from "./Base/component/ComboBox.js";
 import { FieldSet } from "./Base/component/FieldSet.js";
@@ -59,8 +59,8 @@ export class ComplexUIPanel extends Component {
         let panel11 = new Component();
         panel11.setLayoutManager(new VBox());
 
-        let labelCustomerOrContact = new Label("Select Customer or Contact");
-        panel11.addComponent(labelCustomerOrContact);
+        let captionCustomerOrContact = new Text("Select Customer or Contact");
+        panel11.addComponent(captionCustomerOrContact);
 
         let comboCustomerOrContact = new ComboBox();
         comboCustomerOrContact.addItem("Alderson.George");
@@ -103,24 +103,24 @@ export class ComplexUIPanel extends Component {
         let comp = new Component();
         comp.setLayoutManager(new HBox());
 
-        let labelTitle = new Label("Title:");
+        let captionTitle = new Text("Title:");
         let textTitle = new TextField();
-        comp.addComponent(labelTitle);
+        comp.addComponent(captionTitle);
         comp.addComponent(textTitle);
 
-        let labelFirstName = new Label("First Name:");
+        let captionFirstName = new Text("First Name:");
         let textFirstName = new TextField();
-        comp.addComponent(labelFirstName);
+        comp.addComponent(captionFirstName);
         comp.addComponent(textFirstName);
 
-        let labelLastName = new Label("Last Name:");
+        let captionLastName = new Text("Last Name:");
         let textLastName = new TextField();
-        comp.addComponent(labelLastName);
+        comp.addComponent(captionLastName);
         comp.addComponent(textLastName);
 
-        let labelCustomerType = new Label("Customer Type:");
+        let captionCustomerType = new Text("Customer Type:");
         let textCustomerType = new TextField();
-        comp.addComponent(labelCustomerType);
+        comp.addComponent(captionCustomerType);
         comp.addComponent(textCustomerType);
 
         return comp;
@@ -136,9 +136,9 @@ export class ComplexUIPanel extends Component {
         let comp = new Component();
         comp.setLayoutManager(new HBox());
 
-        let labelNotes = new Label("Notes:");
+        let captionNotes = new Text("Notes:");
         let areaNotes = new TextArea();
-        comp.addComponent(labelNotes);
+        comp.addComponent(captionNotes);
         comp.addComponent(areaNotes);
 
         return comp
@@ -174,19 +174,19 @@ export class ComplexUIPanel extends Component {
         let comp = new Component();
         comp.setLayoutManager(new HBox());
 
-        let labelAddDate = new Label("Add Date:");
+        let captionAddDate = new Text("Add Date:");
         let textAddDate = new TextField();
-        comp.addComponent(labelAddDate);
+        comp.addComponent(captionAddDate);
         comp.addComponent(textAddDate);
 
-        let labelModifiedDate = new Label("Modified Date:");
+        let captionModifiedDate = new Text("Modified Date:");
         let textModifiedDate = new TextField();
-        comp.addComponent(labelModifiedDate);
+        comp.addComponent(captionModifiedDate);
         comp.addComponent(textModifiedDate);
 
-        let labelInitialDateAsCustomer = new Label("Initial Date as Customer:");
+        let captionInitialDateAsCustomer = new Text("Initial Date as Customer:");
         let textInitialDateAsCustomer = new TextField();
-        comp.addComponent(labelInitialDateAsCustomer);
+        comp.addComponent(captionInitialDateAsCustomer);
         comp.addComponent(textInitialDateAsCustomer);
 
         return comp;

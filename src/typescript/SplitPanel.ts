@@ -6,7 +6,7 @@ import { TextArea } from "./Base/component/TextArea.js";
 import { List } from "./Base/component/List.js";
 import { Slider } from "./Base/component/Slider.js";
 import { Fit } from "./Base/layout/Fit.js";
-import { Label } from "./Base/component/Label.js";
+import { Text } from "./Base/component/Text.js";
 import { Button } from "./Base/component/Button.js";
 
 export class SplitPanel extends Component {
@@ -28,8 +28,8 @@ export class SplitPanel extends Component {
         let button = new Button("Hello World button!");
         northComponent.addComponent(button);
 
-        let sliderLabel = new Label("0%");
-        northComponent.addComponent(sliderLabel);
+        let sliderText = new Text("0%");
+        northComponent.addComponent(sliderText);
 
         let southComponent = new Component();
         southComponent.setLayoutManager(new Split());
@@ -56,9 +56,9 @@ export class SplitPanel extends Component {
         southComponent.addComponent(textArea);
 
         let slider = new Slider();
-        sliderLabel.setText(slider.getValue().toString() + "%");
+        sliderText.setText(slider.getValue().toString() + "%");
         slider.addActionListener(() => {
-            sliderLabel.setText(slider.getValue().toString() + "%");
+            sliderText.setText(slider.getValue().toString() + "%");
         });
         southComponent.addComponent(slider);
     }

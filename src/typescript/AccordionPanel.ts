@@ -6,7 +6,7 @@ import { AccordionConstraints } from "./Base/layout/AccordionConstraints.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { HBox } from "./Base/layout/HBox.js";
 import { Fit } from "./Base/layout/Fit.js";
-import { Label } from "./Base/component/Label.js";
+import { Text } from "./Base/component/Text.js";
 import { Button } from "./Base/component/Button.js";
 import { Checkbox } from "./Base/component/Checkbox.js";
 import { TextField } from "./Base/component/TextField.js";
@@ -86,7 +86,7 @@ export class AccordionPanel extends Component {
         this.singleOpenToggle.addActionListener(() => {
             const next = !this.accordion.isSingleOpen();
             this.accordion.setSingleOpen(next);
-            this.singleOpenToggle.getLabel().setText(`Single-open: ${next ? 'ON' : 'OFF'}`);
+            this.singleOpenToggle.getText().setText(`Single-open: ${next ? 'ON' : 'OFF'}`);
         });
     }
 
@@ -130,9 +130,9 @@ export class AccordionPanel extends Component {
 
             row.addComponent(new Checkbox());
 
-            const label = new Label(text);
-            label.setPreferredSize(200, 28);
-            row.addComponent(label);
+            const optionText = new Text(text);
+            optionText.setPreferredSize(200, 28);
+            row.addComponent(optionText);
 
             panel.addComponent(row);
         }
@@ -175,16 +175,16 @@ export class AccordionPanel extends Component {
         panel.setInsets(new Insets(8, 8, 8, 8));
         panel.setPreferredSize(0, 86);
 
-        const heading = new Label('Accordion Layout Manager');
+        const heading = new Text('Accordion Layout Manager');
         heading.setFontWeight('bold');
         heading.setPreferredSize(0, 20);
         panel.addComponent(heading);
 
-        const line2 = new Label('Vertically stacked sections with CSS height animation.');
+        const line2 = new Text('Vertically stacked sections with CSS height animation.');
         line2.setPreferredSize(0, 20);
         panel.addComponent(line2);
 
-        const line3 = new Label('Supports single-open mode and programmatic open/close.');
+        const line3 = new Text('Supports single-open mode and programmatic open/close.');
         line3.setPreferredSize(0, 20);
         panel.addComponent(line3);
 
@@ -192,20 +192,20 @@ export class AccordionPanel extends Component {
     }
 
     /**
-     * Creates a horizontal row with a fixed-width label and a text field.
+     * Creates a horizontal row with a fixed-width caption and a text field.
      *
-     * @param labelText - The label string.
+     * @param caption - The caption string shown to the left of the field.
      * @param value - Initial text for the field.
      * @returns The row component.
      */
-    private labeledField(labelText: string, value: string): Component {
+    private labeledField(caption: string, value: string): Component {
         const row = new Component();
         row.setLayoutManager(new HBox());
         row.setPreferredSize(0, 30);
 
-        const label = new Label(labelText);
-        label.setPreferredSize(70, 30);
-        row.addComponent(label);
+        const captionText = new Text(caption);
+        captionText.setPreferredSize(70, 30);
+        row.addComponent(captionText);
 
         const field = new TextField();
         field.setValue(value);

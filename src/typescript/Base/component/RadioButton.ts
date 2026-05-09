@@ -28,8 +28,7 @@ export class RadioButton extends Component {
 
         this.radio = new Input();
 
-        this.label = new Label(text);
-        this.label.setForId(this.radio.getId());
+        this.label = new Label(text ?? "", this.radio.getId());
 
         this.addComponent(this.radio);
         this.addComponent(this.label);

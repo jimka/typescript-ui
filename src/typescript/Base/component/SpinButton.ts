@@ -36,8 +36,8 @@ export class SpinButton extends Button {
         this.setBorder({ style: BorderStyle.NONE });
         this.setBorderRadius("0");
         this.setInsets(new Insets(0, 0, 0, 0));
-        this.getLabel().setFontSize(9);
-        this.getLabel().setLineHeight(9);
+        this.getText().setFontSize(9);
+        this.getText().setLineHeight(9);
 
         Event.addListener(this, "mousedown", () => this.onMouseDown());
         Event.addViewportListener(this, "mouseup", () => this.onMouseUp());

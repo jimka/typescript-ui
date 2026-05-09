@@ -2,7 +2,7 @@
 
 import { Component } from "../Component.js";
 import { Border as BorderLayout } from "../layout/Border.js";
-import { Label } from "./Label.js";
+import { Text } from "./Text.js";
 import { Insets } from "../Insets.js";
 import { AnchorType } from "../layout/AnchorType.js";
 import { FillType } from "../layout/FillType.js";
@@ -19,19 +19,19 @@ import { ThemeManager } from "../Theme.js";
  */
 export class Header extends Component {
 
-    private label: Label;
+    private text: Text;
 
     constructor(text: string) {
         super("header");
 
         this.setLayoutManager(new BorderLayout());
 
-        this.label = new Label(text);
-        this.label.setFontWeight("bold");
-        this.label.setFontSize("--ts-ui-header-font-size");
-        this.label.setPointerEvents("none");
+        this.text = new Text(text);
+        this.text.setFontWeight("bold");
+        this.text.setFontSize("--ts-ui-header-font-size");
+        this.text.setPointerEvents("none");
 
-        this.addComponent(this.label, {
+        this.addComponent(this.text, {
             placement: Placement.WEST,
             anchor: AnchorType.WEST,
             fill: FillType.HORIZONTAL
@@ -47,16 +47,16 @@ export class Header extends Component {
     }
 
     /**
-     * Recalculates the preferred height from the label's measured preferred size.
+     * Recalculates the preferred height from the text component's measured preferred size.
      *
      * Called at construction time and after each theme change so that font-size
      * adjustments propagate to the header's layout hint automatically.
      */
     private updatePreferredSize(): void {
-        const labelSize = this.label.getPreferredSize();
-        const labelHeight = labelSize ? labelSize.height : 20;
+        const textSize = this.text.getPreferredSize();
+        const textHeight = textSize ? textSize.height : 20;
 
-        this.setPreferredSize(100, labelHeight);
+        this.setPreferredSize(100, textHeight);
     }
 
     private applyThemePadding(): void {
@@ -65,11 +65,11 @@ export class Header extends Component {
     }
 
     /**
-     * Returns the Label child used to display the header text.
+     * Returns the Text child used to display the header text.
      *
-     * @returns The internal Label instance.
+     * @returns The internal Text instance.
      */
-    getLabel() {
-        return this.label;
+    getText() {
+        return this.text;
     }
 }
