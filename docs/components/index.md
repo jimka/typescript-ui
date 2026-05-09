@@ -46,9 +46,9 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 
 | Component | Purpose |
 | --- | --- |
-| [`Label`](/api/classes/Label) | Static text label |
+| [`Text`](/api/classes/Text) | Standalone text — the default for status, captions, body |
+| [`Label`](/api/classes/Label) | Text tied to a form control via the HTML `for` attribute |
 | [`Header`](/api/classes/Header) | Title-bar / panel header text |
-| [`Text`](/api/classes/Text) | Underlying text-rendering primitive |
 | [`Image`](/api/classes/Image) | `<img>` wrapper |
 | [`FontAwesomeIcon`](/api/classes/FontAwesomeIcon) | FontAwesome glyph (peer dep) |
 | [`FieldSet`](/api/classes/FieldSet) | Grouped form section with optional [`Legend`](/api/classes/Legend) |

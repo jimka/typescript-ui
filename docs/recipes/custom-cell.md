@@ -12,16 +12,16 @@ A [`CellRenderer<T>`](/api/classes/CellRenderer) is responsible for the display 
 
 ```typescript
 import {
-    CellRenderer, Label, AnchorType, FillType,
+    CellRenderer, Text, AnchorType, FillType,
 } from '@jimka/typescript-ui';
 
 class CurrencyRenderer extends CellRenderer<number> {
-    private label: Label = new Label();
+    private text: Text = new Text();
 
     constructor() {
         super();
-        this.label.setTextAlign('right');
-        this.addComponent(this.label, {
+        this.text.setTextAlign('right');
+        this.addComponent(this.text, {
             fill:   FillType.HORIZONTAL,
             anchor: AnchorType.EAST,
         });
@@ -32,7 +32,7 @@ class CurrencyRenderer extends CellRenderer<number> {
             style:    'currency',
             currency: 'USD',
         }).format(value);
-        this.label.setText(formatted);
+        this.text.setText(formatted);
     }
 }
 ```

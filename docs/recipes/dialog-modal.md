@@ -39,7 +39,7 @@ async function renameFile(currentName: string): Promise<string | null> {
     const nameField = new TextField();
     nameField.setValue(currentName);
 
-    form.addComponent(new Label('New name:'));
+    form.addComponent(new Label('New name:', nameField.getId()));
     form.addComponent(nameField);
 
     const result = await Dialog.show({

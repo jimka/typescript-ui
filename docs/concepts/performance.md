@@ -62,7 +62,7 @@ Custom filter predicates passed to `filterBy` must be **pure functions** with no
 
 ```typescript
 class StatusBar extends Component {
-    private message: Label = new Label('');
+    private message: Text = new Text('');
 
     constructor() {
         super('div');

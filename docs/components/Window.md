@@ -5,14 +5,14 @@
 ## Usage
 
 ```typescript
-import { Body, Window, Label } from '@jimka/typescript-ui';
+import { Body, Window, Text } from '@jimka/typescript-ui';
 
 const win = new Window();
 win.setHeaderText('Settings');
 win.setSize(360, 240);
 win.setPosition(200, 100);
 
-const message = new Label('Welcome to Settings');
+const message = new Text('Welcome to Settings');
 win.addComponent(message);
 
 Body.getInstance().addComponent(win);
