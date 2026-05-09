@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { ModelRecord } from '../ModelRecord.js';
-import { Proxy } from './Proxy.js';
+import { Proxy, ReadParams } from './Proxy.js';
 
 /**
  * Configuration object for constructing an AjaxProxy.
@@ -36,6 +36,7 @@ export class AjaxProxy extends Proxy {
     private createMethod: 'POST' | 'PUT';
     private updateMethod: 'PUT' | 'PATCH';
     private headers: Record<string, string>;
+    private lastTotalCount: number | undefined = undefined;
 
     /**
      * Constructs an AjaxProxy from the given configuration.
@@ -53,17 +54,45 @@ export class AjaxProxy extends Proxy {
     }
 
     /**
-     * Fetches all records from the configured URL, optionally extracting from a root key.
+     * Fetches records from the configured URL, optionally with pagination.
+     *
+     * @param params - Optional. Pagination parameters from the store. When provided,
+     *   `page` and `pageSize` are appended as query-string parameters and the
+     *   response is parsed as a `{ data, total }` envelope.
      *
      * @returns A promise that resolves to an array of raw data objects from the server.
      *
      * @remarks
-     * When `root` is configured the response JSON is expected to be an object and the
-     * array is read from `json[root]`. Without `root` the response must be a top-level
-     * array. An `Error` is thrown for non-OK responses or unexpected response shapes.
+     * Unpaginated mode: when `params` is omitted, the response JSON is read as a
+     * top-level array, or unwrapped via `root` if configured. An `Error` is thrown
+     * for non-OK responses or unexpected response shapes.
+     *
+     * Paginated mode: when `params` carries `page` or `pageSize`, the request URL is
+     * extended with `?page=N&pageSize=M`. The response is expected to be `{ data: T[],
+     * total: number }`. If `root` is configured, the envelope is read from `json[root]`
+     * first. The reported `total` is stored and exposed via {@link getLastTotalCount}.
      */
-    async read(): Promise<any[]> {
-        const response = await fetch(this.url, {
+    async read(params?: ReadParams): Promise<any[]> {
+        const paginated = params != null && (params.page != null || params.pageSize != null);
+
+        let url = this.url;
+
+        if (paginated) {
+            const search = new URLSearchParams();
+
+            if (params!.page != null) {
+                search.set('page', String(params!.page));
+            }
+
+            if (params!.pageSize != null) {
+                search.set('pageSize', String(params!.pageSize));
+            }
+
+            const sep = this.url.includes('?') ? '&' : '?';
+            url = this.url + sep + search.toString();
+        }
+
+        const response = await fetch(url, {
             method: this.method,
             headers: this.headers
         });
@@ -73,6 +102,25 @@ export class AjaxProxy extends Proxy {
         }
 
         const json = await response.json();
+
+        if (paginated) {
+            const envelope = this.root ? json[this.root] : json;
+
+            if (envelope == null || typeof envelope !== 'object') {
+                throw new Error(`AjaxProxy: paginated response is not an envelope object`);
+            }
+
+            const data  = envelope.data;
+            const total = envelope.total;
+
+            if (!Array.isArray(data)) {
+                throw new Error(`AjaxProxy: paginated response 'data' is not an array`);
+            }
+
+            this.lastTotalCount = typeof total === 'number' ? total : undefined;
+
+            return data;
+        }
 
         if (this.root) {
             const extracted = json[this.root];
@@ -87,6 +135,16 @@ export class AjaxProxy extends Proxy {
         }
 
         return json;
+    }
+
+    /**
+     * Returns the total record count reported by the most recent paginated read.
+     *
+     * @returns The `total` value parsed from the last paginated response, or
+     *   undefined if no paginated read has occurred or the server omitted it.
+     */
+    getLastTotalCount(): number | undefined {
+        return this.lastTotalCount;
     }
 
     /**

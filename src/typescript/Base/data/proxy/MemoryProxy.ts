@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { ModelRecord } from '../ModelRecord.js';
-import { Proxy } from './Proxy.js';
+import { Proxy, ReadParams } from './Proxy.js';
 
 /**
  * Configuration object for constructing a MemoryProxy.
@@ -50,9 +50,11 @@ export class MemoryProxy extends Proxy {
     /**
      * Returns a copy of the in-memory data array.
      *
+     * @param _params - Optional. Pagination parameters; ignored by this proxy.
+     *
      * @returns A promise that resolves to a shallow copy of the current data array.
      */
-    read(): Promise<any[]> {
+    read(_params?: ReadParams): Promise<any[]> {
         return Promise.resolve(this.data.slice());
     }
 

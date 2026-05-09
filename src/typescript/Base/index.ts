@@ -93,6 +93,7 @@ export { Image } from './component/Image.js';
 export { FontAwesomeIcon } from './component/FontAwesomeIcon.js';
 export { ProgressBar } from './component/ProgressBar.js';
 export { ProgressSpinner } from './component/ProgressSpinner.js';
+export { PaginationBar } from './component/PaginationBar.js';
 
 // Components — tree
 export { Tree } from './component/tree/Tree.js';
@@ -136,6 +137,7 @@ export type { FilterDescriptor } from './data/FilterDescriptor.js';
 export type { StoreEvent, StoreListener } from './data/AbstractStore.js';
 export type { MemoryProxyConfig } from './data/proxy/MemoryProxy.js';
 export type { AjaxProxyConfig } from './data/proxy/AjaxProxy.js';
+export type { ReadParams } from './data/proxy/Proxy.js';
 
 // Table subsystem
 export { Table } from './component/table/Table.js';

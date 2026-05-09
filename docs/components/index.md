@@ -54,6 +54,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`FieldSet`](/api/classes/FieldSet) | Grouped form section with optional [`Legend`](/api/classes/Legend) |
 | [`ProgressBar`](/components/ProgressBar) | Horizontal progress indicator (determinate or indeterminate) |
 | [`ProgressSpinner`](/components/ProgressSpinner) | Circular loading spinner; supports inline and overlay use |
+| [`PaginationBar`](/components/PaginationBar) | First / prev / next / last navigation for a paginated [`Store`](/api/classes/Store) |
 
 ## Lists
 

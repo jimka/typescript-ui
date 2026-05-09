@@ -1,11 +1,11 @@
 # Graph Report - typescript  (2026-05-09)
 
 ## Corpus Check
-- 175 files · ~1,501,092 words
+- 176 files · ~1,512,721 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1948 nodes · 4579 edges · 61 communities detected
+- 1979 nodes · 4643 edges · 79 communities detected
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 7 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
@@ -71,46 +71,64 @@
 - [[_COMMUNITY_Community 58|Community 58]]
 - [[_COMMUNITY_Community 59|Community 59]]
 - [[_COMMUNITY_Community 60|Community 60]]
+- [[_COMMUNITY_Community 61|Community 61]]
+- [[_COMMUNITY_Community 62|Community 62]]
+- [[_COMMUNITY_Community 63|Community 63]]
+- [[_COMMUNITY_Community 64|Community 64]]
+- [[_COMMUNITY_Community 65|Community 65]]
+- [[_COMMUNITY_Community 66|Community 66]]
+- [[_COMMUNITY_Community 67|Community 67]]
+- [[_COMMUNITY_Community 68|Community 68]]
+- [[_COMMUNITY_Community 69|Community 69]]
+- [[_COMMUNITY_Community 70|Community 70]]
+- [[_COMMUNITY_Community 71|Community 71]]
+- [[_COMMUNITY_Community 72|Community 72]]
+- [[_COMMUNITY_Community 73|Community 73]]
+- [[_COMMUNITY_Community 74|Community 74]]
+- [[_COMMUNITY_Community 75|Community 75]]
+- [[_COMMUNITY_Community 76|Community 76]]
+- [[_COMMUNITY_Community 77|Community 77]]
+- [[_COMMUNITY_Community 78|Community 78]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `Component` - 223 edges
+1. `Component` - 224 edges
 2. `Aria` - 53 edges
 3. `Insets` - 51 edges
-4. `Label` - 44 edges
-5. `Text` - 41 edges
-6. `Button` - 40 edges
-7. `Table` - 37 edges
-8. `ModelRecord` - 35 edges
+4. `Label` - 45 edges
+5. `Button` - 43 edges
+6. `Text` - 41 edges
+7. `Table` - 38 edges
+8. `ModelRecord` - 36 edges
 9. `ThemeManager` - 33 edges
-10. `HBox` - 30 edges
+10. `HBox` - 31 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `x()` --calls--> `it()`  [INFERRED]
-  src/resources/bluebird.core.min.js → src/resources/Base/script/fontawesome/js/fontawesome.min.js
 - `constructor()` --calls--> `applyThemePadding()`  [EXTRACTED]
   src/typescript/Base/component/table/cell/renderer/CellRenderer.ts → Base/component/table/cell/renderer/CellRenderer.ts
 - `constructor()` --calls--> `applyThemePadding()`  [EXTRACTED]
   src/typescript/Base/component/table/cell/editor/CellEditor.ts → Base/component/table/cell/editor/CellEditor.ts
 - `c()` --calls--> `Nt()`  [INFERRED]
   src/resources/bluebird.core.min.js → src/resources/Base/script/fontawesome/js/fontawesome.min.js
+- `x()` --calls--> `it()`  [INFERRED]
+  src/resources/bluebird.core.min.js → src/resources/Base/script/fontawesome/js/fontawesome.min.js
 
 ## Communities
 
 ### Community 0 - "Community 0"
-Cohesion: 0.01
-Nodes (66): Body, Border, BorderLine, ButtonGroup, addListener(), addViewportListener(), addViewportResizeListener(), fireEvent() (+58 more)
+Cohesion: 0.02
+Nodes (63): BaseObject, ButtonGroup, ContextMenu, addListener(), addViewportListener(), addViewportResizeListener(), fireEvent(), init() (+55 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.03
-Nodes (20): Insets, ThemeManager, measureTextSize(), measureTextWidth(), DateCell, DateTimeCell, TimeCell, Button (+12 more)
+Nodes (24): Insets, ThemeManager, themeToVars(), measureTextSize(), measureTextWidth(), DateTimeCell, Button, Input (+16 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.03
-Nodes (4): Component, flushPendingLayouts(), Image, MenuSeparator
+Nodes (3): Component, flushPendingLayouts(), MenuSeparator
 
 ### Community 3 - "Community 3"
-Cohesion: 0.05
-Nodes (84): apiObject(), _arrayWithHoles(), _arrayWithoutHoles(), asIcon(), asSymbol(), asyncCall(), attributesParser(), blankMeta() (+76 more)
+Cohesion: 0.04
+Nodes (49): MultiSelectList, createRecord(), ensureIndex(), getField(), getFields(), getPrimaryKeyField(), hasField(), add() (+41 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.05
@@ -118,39 +136,39 @@ Nodes (84): apiObject(), _arrayWithHoles(), _arrayWithoutHoles(), asIcon(), asSy
 
 ### Community 5 - "Community 5"
 Cohesion: 0.05
-Nodes (40): MultiSelectList, createRecord(), ensureIndex(), getField(), getFields(), getPrimaryKeyField(), hasField(), add() (+32 more)
+Nodes (84): apiObject(), _arrayWithHoles(), _arrayWithoutHoles(), asIcon(), asSymbol(), asyncCall(), attributesParser(), blankMeta() (+76 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.04
-Nodes (15): BooleanCell, Cell, DefaultCell, NumberCell, StringCell, BooleanEditor, applyThemePadding(), constructor() (+7 more)
-
-### Community 7 - "Community 7"
-Cohesion: 0.04
-Nodes (8): ContextMenu, HeaderCell, Field, Table, Column, FooterRow, Header, Row
-
-### Community 8 - "Community 8"
 Cohesion: 0.05
 Nodes (1): Aria
 
-### Community 9 - "Community 9"
-Cohesion: 0.06
-Nodes (6): BaseObject, Binding, Point, Tooltip, FieldDecorator, applyRule()
-
-### Community 10 - "Community 10"
+### Community 7 - "Community 7"
 Cohesion: 0.1
 Nodes (42): a(), ac(), al(), bc(), c(), cl(), dc(), dl() (+34 more)
 
-### Community 11 - "Community 11"
-Cohesion: 0.11
-Nodes (40): ae(), At(), B(), be(), Bt(), Ce(), ct(), d() (+32 more)
+### Community 8 - "Community 8"
+Cohesion: 0.06
+Nodes (7): Cell, DateCell, TimeCell, DateEditor, TimeEditor, DateRenderer, TimeRenderer
 
-### Community 12 - "Community 12"
+### Community 9 - "Community 9"
+Cohesion: 0.11
+Nodes (41): ae(), At(), B(), be(), Bt(), Ce(), ct(), d() (+33 more)
+
+### Community 10 - "Community 10"
+Cohesion: 0.08
+Nodes (4): Binding, Tooltip, FieldDecorator, applyRule()
+
+### Community 11 - "Community 11"
 Cohesion: 0.07
 Nodes (1): Text
 
-### Community 13 - "Community 13"
+### Community 12 - "Community 12"
 Cohesion: 0.18
 Nodes (31): ifArguments(), ifArray(), ifBoolean(), ifElement(), ifFloat(), ifFunction(), ifInteger(), ifNumber() (+23 more)
+
+### Community 13 - "Community 13"
+Cohesion: 0.11
+Nodes (1): Table
 
 ### Community 14 - "Community 14"
 Cohesion: 0.12
@@ -158,43 +176,43 @@ Nodes (13): addActionListener(), addComponent(), constructor(), getElement(), ge
 
 ### Community 15 - "Community 15"
 Cohesion: 0.11
-Nodes (1): Table
-
-### Community 16 - "Community 16"
-Cohesion: 0.18
-Nodes (24): _(), a(), b(), c(), d(), e(), f(), g() (+16 more)
-
-### Community 17 - "Community 17"
-Cohesion: 0.12
 Nodes (13): AjaxProxy, Body(), bufferClone(), consumed(), fetch(), fileReaderReady(), isDataView(), normalizeMethod() (+5 more)
 
-### Community 18 - "Community 18"
+### Community 16 - "Community 16"
+Cohesion: 0.2
+Nodes (23): _(), a(), b(), c(), d(), e(), f(), g() (+15 more)
+
+### Community 17 - "Community 17"
 Cohesion: 0.13
 Nodes (1): NumberSpinner
 
-### Community 19 - "Community 19"
+### Community 18 - "Community 18"
 Cohesion: 0.11
 Nodes (1): AutoCompleteField
 
-### Community 20 - "Community 20"
+### Community 19 - "Community 19"
 Cohesion: 0.19
 Nodes (1): Menu
 
-### Community 21 - "Community 21"
+### Community 20 - "Community 20"
 Cohesion: 0.16
 Nodes (2): Body, columnWidthsEqual()
 
-### Community 22 - "Community 22"
+### Community 21 - "Community 21"
 Cohesion: 0.23
 Nodes (1): Tree
 
-### Community 23 - "Community 23"
+### Community 22 - "Community 22"
 Cohesion: 0.12
 Nodes (1): Accordion
 
-### Community 24 - "Community 24"
+### Community 23 - "Community 23"
 Cohesion: 0.18
 Nodes (1): ComboBox
+
+### Community 24 - "Community 24"
+Cohesion: 0.2
+Nodes (1): Header
 
 ### Community 25 - "Community 25"
 Cohesion: 0.22
@@ -217,8 +235,8 @@ Cohesion: 0.28
 Nodes (9): a(), c(), e(), i(), n(), o(), s(), t() (+1 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.23
-Nodes (1): Grid
+Cohesion: 0.41
+Nodes (10): createClassRule(), createComponentRule(), createRule(), ensureKeyframes(), getClassRule(), getComponentRule(), getMainStyle(), getRule() (+2 more)
 
 ### Community 31 - "Community 31"
 Cohesion: 0.2
@@ -233,133 +251,207 @@ Cohesion: 0.23
 Nodes (1): AutoCompleteDropdown
 
 ### Community 34 - "Community 34"
-Cohesion: 0.41
-Nodes (10): createClassRule(), createComponentRule(), createRule(), ensureKeyframes(), getClassRule(), getComponentRule(), getMainStyle(), getRule() (+2 more)
+Cohesion: 0.17
+Nodes (1): HeaderCell
 
 ### Community 35 - "Community 35"
+Cohesion: 0.25
+Nodes (1): Grid
+
+### Community 36 - "Community 36"
 Cohesion: 0.38
 Nodes (1): ComplexUIPanel
 
-### Community 36 - "Community 36"
-Cohesion: 0.29
-Nodes (1): DateField
-
 ### Community 37 - "Community 37"
-Cohesion: 0.33
-Nodes (1): Checkbox
+Cohesion: 0.36
+Nodes (1): BorderLine
 
 ### Community 38 - "Community 38"
-Cohesion: 0.31
-Nodes (1): MenuItem
+Cohesion: 0.24
+Nodes (1): Row
 
 ### Community 39 - "Community 39"
 Cohesion: 0.29
-Nodes (1): TimeField
+Nodes (1): DateField
 
 ### Community 40 - "Community 40"
-Cohesion: 0.2
-Nodes (1): TreeRow
+Cohesion: 0.33
+Nodes (1): Checkbox
 
 ### Community 41 - "Community 41"
 Cohesion: 0.31
 Nodes (1): MenuItem
 
 ### Community 42 - "Community 42"
+Cohesion: 0.2
+Nodes (1): WindowBorder
+
+### Community 43 - "Community 43"
+Cohesion: 0.29
+Nodes (1): TimeField
+
+### Community 44 - "Community 44"
+Cohesion: 0.2
+Nodes (1): TreeRow
+
+### Community 45 - "Community 45"
+Cohesion: 0.31
+Nodes (1): MenuItem
+
+### Community 46 - "Community 46"
 Cohesion: 0.31
 Nodes (1): Notification
 
-### Community 43 - "Community 43"
-Cohesion: 0.36
-Nodes (1): RadioButton
+### Community 47 - "Community 47"
+Cohesion: 0.22
+Nodes (1): Border
 
-### Community 44 - "Community 44"
+### Community 48 - "Community 48"
 Cohesion: 0.33
 Nodes (1): SpinButton
 
-### Community 45 - "Community 45"
+### Community 49 - "Community 49"
+Cohesion: 0.22
+Nodes (1): TextInput
+
+### Community 50 - "Community 50"
 Cohesion: 0.36
 Nodes (1): RovingTabIndex
 
-### Community 46 - "Community 46"
+### Community 51 - "Community 51"
+Cohesion: 0.39
+Nodes (1): Card
+
+### Community 52 - "Community 52"
 Cohesion: 0.32
 Nodes (1): Split
 
-### Community 47 - "Community 47"
-Cohesion: 0.25
+### Community 53 - "Community 53"
+Cohesion: 0.29
+Nodes (1): Column
+
+### Community 54 - "Community 54"
+Cohesion: 0.29
+Nodes (1): List
+
+### Community 55 - "Community 55"
+Cohesion: 0.29
 Nodes (1): ProgressSpinner
 
-### Community 48 - "Community 48"
+### Community 56 - "Community 56"
 Cohesion: 0.32
 Nodes (1): ProgressBar
 
-### Community 49 - "Community 49"
+### Community 57 - "Community 57"
+Cohesion: 0.36
+Nodes (1): Row
+
+### Community 58 - "Community 58"
+Cohesion: 0.29
+Nodes (1): PaginatingDemoProxy
+
+### Community 59 - "Community 59"
+Cohesion: 0.52
+Nodes (1): AccordionPanel
+
+### Community 60 - "Community 60"
+Cohesion: 0.38
+Nodes (1): Point
+
+### Community 61 - "Community 61"
+Cohesion: 0.38
+Nodes (1): Table
+
+### Community 62 - "Community 62"
 Cohesion: 0.29
 Nodes (1): AutoCompleteItem
 
-### Community 50 - "Community 50"
+### Community 63 - "Community 63"
 Cohesion: 0.33
-Nodes (1): TimeEditor
+Nodes (1): TablePanel
 
-### Community 51 - "Community 51"
+### Community 64 - "Community 64"
+Cohesion: 0.38
+Nodes (1): FooterRow
+
+### Community 65 - "Community 65"
 Cohesion: 0.33
 Nodes (1): DateTimeEditor
 
-### Community 52 - "Community 52"
-Cohesion: 0.33
-Nodes (1): DateEditor
-
-### Community 53 - "Community 53"
+### Community 66 - "Community 66"
 Cohesion: 0.33
 Nodes (2): DialogButtonRow, DialogTitleBar
 
-### Community 54 - "Community 54"
+### Community 67 - "Community 67"
 Cohesion: 0.4
 Nodes (1): AccordionHeader
 
-### Community 55 - "Community 55"
+### Community 68 - "Community 68"
 Cohesion: 0.4
 Nodes (1): MenuBar
 
-### Community 56 - "Community 56"
+### Community 69 - "Community 69"
+Cohesion: 0.4
+Nodes (1): BooleanEditor
+
+### Community 70 - "Community 70"
+Cohesion: 0.5
+Nodes (1): Body
+
+### Community 71 - "Community 71"
 Cohesion: 0.4
 Nodes (1): DialogBackdrop
 
-### Community 57 - "Community 57"
+### Community 72 - "Community 72"
+Cohesion: 0.6
+Nodes (1): Header
+
+### Community 73 - "Community 73"
+Cohesion: 0.5
+Nodes (1): Image
+
+### Community 74 - "Community 74"
 Cohesion: 0.4
 Nodes (1): MenuBarButton
 
-### Community 58 - "Community 58"
+### Community 75 - "Community 75"
 Cohesion: 0.6
 Nodes (3): defineIcons(), _defineProperty(), _objectSpread()
 
-### Community 59 - "Community 59"
+### Community 76 - "Community 76"
 Cohesion: 0.6
 Nodes (3): defineIcons(), _defineProperty(), _objectSpread()
 
-### Community 60 - "Community 60"
+### Community 77 - "Community 77"
 Cohesion: 0.6
 Nodes (3): defineIcons(), _defineProperty(), _objectSpread()
+
+### Community 78 - "Community 78"
+Cohesion: 0.67
+Nodes (1): PaginationBar
 
 ## Knowledge Gaps
-- **Thin community `Community 8`** (53 nodes): `Aria`, `.applyToElement()`, `.constructor()`, `.getActiveDescendant()`, `.getAutoComplete()`, `.getColCount()`, `.getColIndex()`, `.getControls()`, `.getDisabled()`, `.getExpanded()`, `.getHasPopup()`, `.getHidden()`, `.getLabel()`, `.getLabelledBy()`, `.getLevel()`, `.getPosInSet()`, `.getPressed()`, `.getRole()`, `.getRowCount()`, `.getRowIndex()`, `.getSelected()`, `.getSetSize()`, `.getSort()`, `.getTabIndex()`, `.getValueMax()`, `.getValueMin()`, `.getValueNow()`, `.setActiveDescendant()`, `.setAttribute()`, `.setAutoComplete()`, `.setColCount()`, `.setColIndex()`, `.setControls()`, `.setDisabled()`, `.setExpanded()`, `.setHasPopup()`, `.setHidden()`, `.setLabel()`, `.setLabelledBy()`, `.setLevel()`, `.setPosInSet()`, `.setPressed()`, `.setRole()`, `.setRowCount()`, `.setRowIndex()`, `.setSelected()`, `.setSetSize()`, `.setSort()`, `.setTabIndex()`, `.setValueMax()`, `.setValueMin()`, `.setValueNow()`, `Aria.ts`
+- **Thin community `Community 6`** (53 nodes): `Aria`, `.applyToElement()`, `.constructor()`, `.getActiveDescendant()`, `.getAutoComplete()`, `.getColCount()`, `.getColIndex()`, `.getControls()`, `.getDisabled()`, `.getExpanded()`, `.getHasPopup()`, `.getHidden()`, `.getLabel()`, `.getLabelledBy()`, `.getLevel()`, `.getPosInSet()`, `.getPressed()`, `.getRole()`, `.getRowCount()`, `.getRowIndex()`, `.getSelected()`, `.getSetSize()`, `.getSort()`, `.getTabIndex()`, `.getValueMax()`, `.getValueMin()`, `.getValueNow()`, `.setActiveDescendant()`, `.setAttribute()`, `.setAutoComplete()`, `.setColCount()`, `.setColIndex()`, `.setControls()`, `.setDisabled()`, `.setExpanded()`, `.setHasPopup()`, `.setHidden()`, `.setLabel()`, `.setLabelledBy()`, `.setLevel()`, `.setPosInSet()`, `.setPressed()`, `.setRole()`, `.setRowCount()`, `.setRowIndex()`, `.setSelected()`, `.setSetSize()`, `.setSort()`, `.setTabIndex()`, `.setValueMax()`, `.setValueMin()`, `.setValueNow()`, `Aria.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 12`** (35 nodes): `Text`, `.applyStyle()`, `.calculateSize()`, `.constructor()`, `.dispose()`, `.getElement()`, `.getFontFamily()`, `.getFontKerning()`, `.getFontSize()`, `.getFontSizeAdjust()`, `.getFontStretch()`, `.getFontStyle()`, `.getFontVariant()`, `.getFontWeight()`, `.getLineHeight()`, `.getText()`, `.getTextAlign()`, `.getTextShadow()`, `.render()`, `.setCalculatedSize()`, `.setFontFamily()`, `.setFontKerning()`, `.setFontSize()`, `.setFontSizeAdjust()`, `.setFontStretch()`, `.setFontStyle()`, `.setFontVariant()`, `.setFontWeight()`, `.setLineHeight()`, `.setPreferredSize()`, `.setText()`, `.setTextAlign()`, `.setTextOverflow()`, `.setTextShadow()`, `.setWhiteSpace()`
+- **Thin community `Community 11`** (35 nodes): `Text`, `.applyStyle()`, `.calculateSize()`, `.constructor()`, `.dispose()`, `.getElement()`, `.getFontFamily()`, `.getFontKerning()`, `.getFontSize()`, `.getFontSizeAdjust()`, `.getFontStretch()`, `.getFontStyle()`, `.getFontVariant()`, `.getFontWeight()`, `.getLineHeight()`, `.getText()`, `.getTextAlign()`, `.getTextShadow()`, `.render()`, `.setCalculatedSize()`, `.setFontFamily()`, `.setFontKerning()`, `.setFontSize()`, `.setFontSizeAdjust()`, `.setFontStretch()`, `.setFontStyle()`, `.setFontVariant()`, `.setFontWeight()`, `.setLineHeight()`, `.setPreferredSize()`, `.setText()`, `.setTextAlign()`, `.setTextOverflow()`, `.setTextShadow()`, `.setWhiteSpace()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 15`** (29 nodes): `Table`, `.addComponent()`, `.addRow()`, `.buildColumnConfigs()`, `.constructor()`, `.defaultColumnWidth()`, `.getBody()`, `.getColumns()`, `.getColumnWidths()`, `.getEffectiveHiddenSet()`, `.getFooter()`, `.getHeader()`, `.getModel()`, `.getSelectedRecord()`, `.getSelectedRecords()`, `.getStore()`, `.initHiddenFromSpec()`, `.isBodyVisible()`, `.isFooterVisible()`, `.isHeaderVisible()`, `.onColumnResize()`, `.removeSelectedRow()`, `.resetColumns()`, `.setColumnVisible()`, `.setColumnWidths()`, `.setStore()`, `.showColumnMenu()`, `.sync()`, `.trimToTarget()`
+- **Thin community `Community 13`** (30 nodes): `Table`, `.addComponent()`, `.addRow()`, `.buildColumnConfigs()`, `.constructor()`, `.defaultColumnWidth()`, `.getBody()`, `.getColumns()`, `.getColumnWidths()`, `.getEffectiveHiddenSet()`, `.getFooter()`, `.getHeader()`, `.getModel()`, `.getSelectedRecord()`, `.getSelectedRecords()`, `.getStore()`, `.initHiddenFromSpec()`, `.isBodyVisible()`, `.isFooterVisible()`, `.isHeaderVisible()`, `.onColumnResize()`, `.reject()`, `.removeSelectedRow()`, `.resetColumns()`, `.setColumnVisible()`, `.setColumnWidths()`, `.setStore()`, `.showColumnMenu()`, `.sync()`, `.trimToTarget()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 18`** (24 nodes): `NumberSpinner`, `.addBindingListener()`, `.addChangeListener()`, `.applyValue()`, `.constructor()`, `.derivePrecision()`, `.formatValue()`, `.getMax()`, `.getMin()`, `.getPrecision()`, `.getStep()`, `.getValue()`, `.isEnabled()`, `.normalize()`, `.onBlur()`, `.onKeyDown()`, `.setEnabled()`, `.setMax()`, `.setMin()`, `.setPrecision()`, `.setStep()`, `.setValue()`, `._setValueSilent()`, `.updateHeight()`
+- **Thin community `Community 17`** (24 nodes): `NumberSpinner`, `.addBindingListener()`, `.addChangeListener()`, `.applyValue()`, `.constructor()`, `.derivePrecision()`, `.formatValue()`, `.getMax()`, `.getMin()`, `.getPrecision()`, `.getStep()`, `.getValue()`, `.isEnabled()`, `.normalize()`, `.onBlur()`, `.onKeyDown()`, `.setEnabled()`, `.setMax()`, `.setMin()`, `.setPrecision()`, `.setStep()`, `.setValue()`, `._setValueSilent()`, `.updateHeight()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 19`** (24 nodes): `AutoCompleteField`, `.addBindingListener()`, `.addSelectListener()`, `.constructor()`, `.doLayout()`, `.getValue()`, `.matches()`, `.onBlur()`, `.onDropdownHidden()`, `.onFocus()`, `.onInput()`, `.onKeyDown()`, `.onSuggestionSelected()`, `.querySuggestions()`, `.setDebounceMs()`, `.setMatchMode()`, `.setMaxSuggestions()`, `.setMinChars()`, `.setStore()`, `.setSuggestions()`, `.setValue()`, `.showSuggestions()`, `.syncSizeFromTextField()`, `.updateActiveDescendant()`
+- **Thin community `Community 18`** (24 nodes): `AutoCompleteField`, `.addBindingListener()`, `.addSelectListener()`, `.constructor()`, `.doLayout()`, `.getValue()`, `.matches()`, `.onBlur()`, `.onDropdownHidden()`, `.onFocus()`, `.onInput()`, `.onKeyDown()`, `.onSuggestionSelected()`, `.querySuggestions()`, `.setDebounceMs()`, `.setMatchMode()`, `.setMaxSuggestions()`, `.setMinChars()`, `.setStore()`, `.setSuggestions()`, `.setValue()`, `.showSuggestions()`, `.syncSizeFromTextField()`, `.updateActiveDescendant()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 20`** (23 nodes): `Menu`, `.activateFocused()`, `.applyPersistentChrome()`, `.applyRebuildChrome()`, `.assertPersistentMode()`, `.assertRebuildMode()`, `.buildPersistentItems()`, `.close()`, `.constructor()`, `.containsTarget()`, `.dispose()`, `.focusItem()`, `.focusNext()`, `.focusPrev()`, `.getFocusedIndex()`, `.handleItemOpenSubmenu()`, `.hide()`, `.isItemSeparator()`, `.open()`, `.setExcludedElement()`, `.setFocusedIndex()`, `.setMenuWidth()`, `.show()`
+- **Thin community `Community 19`** (23 nodes): `Menu`, `.activateFocused()`, `.applyPersistentChrome()`, `.applyRebuildChrome()`, `.assertPersistentMode()`, `.assertRebuildMode()`, `.buildPersistentItems()`, `.close()`, `.constructor()`, `.containsTarget()`, `.dispose()`, `.focusItem()`, `.focusNext()`, `.focusPrev()`, `.getFocusedIndex()`, `.handleItemOpenSubmenu()`, `.hide()`, `.isItemSeparator()`, `.open()`, `.setExcludedElement()`, `.setFocusedIndex()`, `.setMenuWidth()`, `.show()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 21`** (23 nodes): `Body`, `.bindStore()`, `.clearRowPool()`, `.constructor()`, `.getSelectedRecord()`, `.getSelectedRecords()`, `.init()`, `.invalidateGeom()`, `.onKeyDown()`, `.onRowClick()`, `.renderWindow()`, `.scrollRecordIntoView()`, `.scrollToRecord()`, `.selectRecord()`, `.setColumnConfigs()`, `.setHiddenColumns()`, `.setStore()`, `.sortColumns()`, `.sortRows()`, `._updateActiveDescendant()`, `._updateFocusStyle()`, `.updateRowVisualState()`, `columnWidthsEqual()`
+- **Thin community `Community 20`** (23 nodes): `Body`, `.bindStore()`, `.clearRowPool()`, `.constructor()`, `.getSelectedRecord()`, `.getSelectedRecords()`, `.init()`, `.invalidateGeom()`, `.onKeyDown()`, `.onRowClick()`, `.renderWindow()`, `.scrollRecordIntoView()`, `.scrollToRecord()`, `.selectRecord()`, `.setColumnConfigs()`, `.setHiddenColumns()`, `.setStore()`, `.sortColumns()`, `.sortRows()`, `._updateActiveDescendant()`, `._updateFocusStyle()`, `.updateRowVisualState()`, `columnWidthsEqual()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 22`** (22 nodes): `Tree`, `.addSelectionListener()`, `.constructor()`, `.doLayout()`, `._extendSelectionTo()`, `._fireSelectionListeners()`, `._flatten()`, `.getNodes()`, `.getSelectedNode()`, `.getSelectedNodes()`, `._handleClick()`, `.init()`, `._invalidateGeom()`, `._onKeyDown()`, `._onToggle()`, `._rangeSelect()`, `._renderWindow()`, `._scrollIntoView()`, `._selectAtIndex()`, `.setNodes()`, `._updateActiveDescendant()`, `._updateSelectionStyle()`
+- **Thin community `Community 21`** (22 nodes): `Tree`, `.addSelectionListener()`, `.constructor()`, `.doLayout()`, `._extendSelectionTo()`, `._fireSelectionListeners()`, `._flatten()`, `.getNodes()`, `.getSelectedNode()`, `.getSelectedNodes()`, `._handleClick()`, `.init()`, `._invalidateGeom()`, `._onKeyDown()`, `._onToggle()`, `._rangeSelect()`, `._renderWindow()`, `._scrollIntoView()`, `._selectAtIndex()`, `.setNodes()`, `._updateActiveDescendant()`, `._updateSelectionStyle()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 23`** (19 nodes): `Accordion`, `.attach()`, `.closeSection()`, `.createSection()`, `.detach()`, `.doLayout()`, `.getAnimationDuration()`, `.getHeaderHeight()`, `.getMinSize()`, `.getPreferredSize()`, `.isSectionOpen()`, `.isSingleOpen()`, `.onHeaderClicked()`, `.onHeaderKeyDown()`, `.openSection()`, `.setAnimationDuration()`, `.setHeaderHeight()`, `.setOnSectionToggle()`, `.setSingleOpen()`
+- **Thin community `Community 22`** (19 nodes): `Accordion`, `.attach()`, `.closeSection()`, `.createSection()`, `.detach()`, `.doLayout()`, `.getAnimationDuration()`, `.getHeaderHeight()`, `.getMinSize()`, `.getPreferredSize()`, `.isSectionOpen()`, `.isSingleOpen()`, `.onHeaderClicked()`, `.onHeaderKeyDown()`, `.openSection()`, `.setAnimationDuration()`, `.setHeaderHeight()`, `.setOnSectionToggle()`, `.setSingleOpen()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 24`** (19 nodes): `ComboBox`, `.addActionListener()`, `.addBindingListener()`, `.addItem()`, `.constructor()`, `.getElement()`, `.getItems()`, `.getSelectedIndex()`, `.getSelectedItem()`, `.getSelectedRecord()`, `.getStore()`, `.getValue()`, `.refreshFromStore()`, `.render()`, `.setItems()`, `.setSelectedIndex()`, `.setStore()`, `.setValue()`, `.updateHeight()`
+- **Thin community `Community 23`** (19 nodes): `ComboBox`, `.addActionListener()`, `.addBindingListener()`, `.addItem()`, `.constructor()`, `.getElement()`, `.getItems()`, `.getSelectedIndex()`, `.getSelectedItem()`, `.getSelectedRecord()`, `.getStore()`, `.getValue()`, `.refreshFromStore()`, `.render()`, `.setItems()`, `.setSelectedIndex()`, `.setStore()`, `.setValue()`, `.updateHeight()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 24`** (17 nodes): `Header`, `.addComponent()`, `.addRow()`, `.constructor()`, `.getColumns()`, `.getModel()`, `.handleSortClick()`, `.rebuildCells()`, `.setHeight()`, `.setHiddenColumns()`, `.setModel()`, `.setOnColumnContextMenu()`, `.setOnColumnResize()`, `.setWidth()`, `.sortColumns()`, `.syncSortIndicators()`, `.wireCell()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 25`** (15 nodes): `Tab`, `.attach()`, `.closeTab()`, `.constructor()`, `.createTab()`, `.detach()`, `.doLayout()`, `.getMaxSize()`, `.getMinSize()`, `.getPreferredSize()`, `.getVisibleComponent()`, `.onTabPressed()`, `.onToolbarKeyDown()`, `.selectNextTab()`, `.setOnTabClose()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -369,75 +461,111 @@ Nodes (3): defineIcons(), _defineProperty(), _objectSpread()
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 28`** (13 nodes): `Dialog`, `.center()`, `.computeContentHeight()`, `.confirm()`, `.constructor()`, `.focusFirst()`, `.getContentComponent()`, `.getFocusable()`, `.hide()`, `.onKeyDown()`, `.onViewportResize()`, `.open()`, `.show()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 30`** (12 nodes): `Grid.ts`, `Grid`, `.constructor()`, `.doLayout()`, `.getColRowCount()`, `.getColumns()`, `.getMaxSize()`, `.getMinSize()`, `.getPreferredSize()`, `.getRows()`, `.setColumns()`, `.setRows()`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 31`** (12 nodes): `Slider`, `.addActionListener()`, `.constructor()`, `.getMaxValue()`, `.getMinValue()`, `.getStep()`, `.getValue()`, `.render()`, `.setMaxValue()`, `.setMinValue()`, `.setStep()`, `.setValue()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 32`** (12 nodes): `SplitGutter`, `.addDragListener()`, `.constructor()`, `.destroy()`, `.fireDragListeners()`, `.getDirection()`, `.onDrag()`, `.onDragStart()`, `.onDragStop()`, `.removeDragListener()`, `.render()`, `.setDirection()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 33`** (12 nodes): `AutoCompleteDropdown`, `.constructor()`, `.getHighlightedId()`, `.getHighlightedValue()`, `.hide()`, `.highlightNext()`, `.highlightPrev()`, `.isOpen()`, `.moveTo()`, `.selectHighlighted()`, `.show()`, `.updatePool()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 35`** (10 nodes): `ComplexUIPanel`, `.buildPanel1()`, `.buildPanel2()`, `.buildPanel3()`, `.buildPanel4()`, `.buildPanel5()`, `.buildPanel6()`, `.buildPanel7()`, `.constructor()`, `.initLayout()`
+- **Thin community `Community 34`** (12 nodes): `HeaderCell`, `.constructor()`, `.init()`, `.onResizeDrag()`, `.onResizeDragStart()`, `.onResizeDragStop()`, `.onSortClick()`, `.setOnContextMenu()`, `.setOnResizeDrag()`, `.setOnSortClick()`, `.setSortState()`, `.setTooltip()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 36`** (10 nodes): `DateField`, `.addActionListener()`, `.addBindingListener()`, `.constructor()`, `.formatDate()`, `.getValue()`, `.onInput()`, `.render()`, `.setValue()`, `.updateHeight()`
+- **Thin community `Community 35`** (11 nodes): `Grid`, `.constructor()`, `.doLayout()`, `.getColRowCount()`, `.getColumns()`, `.getMaxSize()`, `.getMinSize()`, `.getPreferredSize()`, `.getRows()`, `.setColumns()`, `.setRows()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 37`** (10 nodes): `Checkbox`, `.addActionListener()`, `.addBindingListener()`, `.constructor()`, `.getValue()`, `.isSelected()`, `.onAction()`, `.render()`, `.setSelected()`, `.setValue()`
+- **Thin community `Community 36`** (10 nodes): `ComplexUIPanel`, `.buildPanel1()`, `.buildPanel2()`, `.buildPanel3()`, `.buildPanel4()`, `.buildPanel5()`, `.buildPanel6()`, `.buildPanel7()`, `.constructor()`, `.initLayout()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 38`** (10 nodes): `MenuItem`, `.activate()`, `.constructor()`, `.dispose()`, `.doLayout()`, `.getSubmenuConfig()`, `.hasSubmenu()`, `.isEnabled()`, `.isSeparator()`, `.setFocused()`
+- **Thin community `Community 37`** (10 nodes): `BorderLine`, `.applyOnCSSRule()`, `.constructor()`, `.getColor()`, `.getPlacement()`, `.getStyle()`, `.getStyleString()`, `.getWidth()`, `.render()`, `.set()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 39`** (10 nodes): `TimeField`, `.addActionListener()`, `.addBindingListener()`, `.constructor()`, `.formatTime()`, `.getValue()`, `.onInput()`, `.render()`, `.setValue()`, `.updateHeight()`
+- **Thin community `Community 38`** (10 nodes): `Row`, `.constructor()`, `.doLayout()`, `.getGap()`, `.getMaxSize()`, `.getMinSize()`, `.getPreferredSize()`, `.setGap()`, `Row.ts`, `RowPanel.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 40`** (10 nodes): `TreeRow`, `.constructor()`, `.getContentWidth()`, `.getDepth()`, `.getNode()`, `.getNodeLabel()`, `.getToggle()`, `.init()`, `.layoutChildren()`, `.setRowData()`
+- **Thin community `Community 39`** (10 nodes): `DateField`, `.addActionListener()`, `.addBindingListener()`, `.constructor()`, `.formatDate()`, `.getValue()`, `.onInput()`, `.render()`, `.setValue()`, `.updateHeight()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 40`** (10 nodes): `Checkbox`, `.addActionListener()`, `.addBindingListener()`, `.constructor()`, `.getValue()`, `.isSelected()`, `.onAction()`, `.render()`, `.setSelected()`, `.setValue()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 41`** (10 nodes): `MenuItem`, `.activate()`, `.constructor()`, `.dispose()`, `.doLayout()`, `.getSubmenuConfig()`, `.hasSubmenu()`, `.isEnabled()`, `.isSeparator()`, `.setFocused()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 42`** (9 nodes): `Notification`, `.constructor()`, `.dismiss()`, `.doLayout()`, `.pauseTimer()`, `.restack()`, `.resumeTimer()`, `.show()`, `.startTimer()`
+- **Thin community `Community 42`** (10 nodes): `WindowBorder`, `.addDragListener()`, `.constructor()`, `.fireDragListeners()`, `.getDirection()`, `.onDragStart()`, `.onDragStop()`, `.removeDragListener()`, `.render()`, `.setDirection()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 43`** (9 nodes): `RadioButton`, `.addActionListener()`, `.constructor()`, `.getElement()`, `.getRadioName()`, `.isSelected()`, `.render()`, `.setRadioName()`, `.setSelected()`
+- **Thin community `Community 43`** (10 nodes): `TimeField`, `.addActionListener()`, `.addBindingListener()`, `.constructor()`, `.formatTime()`, `.getValue()`, `.onInput()`, `.render()`, `.setValue()`, `.updateHeight()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 44`** (9 nodes): `SpinButton`, `.addTickListener()`, `.cancelRepeat()`, `.constructor()`, `.fireTicks()`, `.onMouseDown()`, `.onMouseUp()`, `.scheduleNext()`, `.updateSize()`
+- **Thin community `Community 44`** (10 nodes): `TreeRow`, `.constructor()`, `.getContentWidth()`, `.getDepth()`, `.getNode()`, `.getNodeLabel()`, `.getToggle()`, `.init()`, `.layoutChildren()`, `.setRowData()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 45`** (8 nodes): `RovingTabIndex`, `.add()`, `.getActiveIndex()`, `.getItems()`, `.moveNext()`, `.movePrev()`, `.moveTo()`, `.remove()`
+- **Thin community `Community 45`** (10 nodes): `MenuItem`, `.activate()`, `.constructor()`, `.dispose()`, `.doLayout()`, `.getSubmenuConfig()`, `.hasSubmenu()`, `.isEnabled()`, `.isSeparator()`, `.setFocused()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 46`** (8 nodes): `Split`, `.constructor()`, `.detach()`, `.doLayout()`, `.getDirection()`, `.onDrag()`, `.recalculateSizes()`, `.setDirection()`
+- **Thin community `Community 46`** (9 nodes): `Notification`, `.constructor()`, `.dismiss()`, `.doLayout()`, `.pauseTimer()`, `.restack()`, `.resumeTimer()`, `.show()`, `.startTimer()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 47`** (8 nodes): `ProgressSpinner`, `.constructor()`, `.doLayout()`, `.getSpinnerSize()`, `.hideOverlay()`, `.isOverlay()`, `.setSpinnerSize()`, `.showOverlay()`
+- **Thin community `Community 47`** (9 nodes): `Border`, `.applyOnCSSRule()`, `.constructor()`, `.fromString()`, `.getBottom()`, `.getLeft()`, `.getRight()`, `.getTop()`, `.set()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 48`** (8 nodes): `ProgressBar`, `.applyIndeterminate()`, `.constructor()`, `.doLayout()`, `.getValue()`, `.isIndeterminate()`, `.setIndeterminate()`, `.setValue()`
+- **Thin community `Community 48`** (9 nodes): `SpinButton`, `.addTickListener()`, `.cancelRepeat()`, `.constructor()`, `.fireTicks()`, `.onMouseDown()`, `.onMouseUp()`, `.scheduleNext()`, `.updateSize()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 49`** (7 nodes): `AutoCompleteItem`, `.constructor()`, `.doLayout()`, `.getText()`, `.isHighlighted()`, `.setHighlighted()`, `.update()`
+- **Thin community `Community 49`** (9 nodes): `TextInput`, `.applyStyle()`, `.constructor()`, `.getText()`, `.getTextAlign()`, `.render()`, `.select()`, `.setText()`, `.setTextAlign()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 50`** (7 nodes): `TimeEditor`, `.applyStyle()`, `.constructor()`, `.getValue()`, `.isEmpty()`, `.setValue()`, `.toInputString()`
+- **Thin community `Community 50`** (8 nodes): `RovingTabIndex`, `.add()`, `.getActiveIndex()`, `.getItems()`, `.moveNext()`, `.movePrev()`, `.moveTo()`, `.remove()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 51`** (7 nodes): `DateTimeEditor`, `.applyStyle()`, `.constructor()`, `.getValue()`, `.isEmpty()`, `.setValue()`, `.toInputString()`
+- **Thin community `Community 51`** (8 nodes): `Card`, `.doLayout()`, `.getMaxSize()`, `.getMinSize()`, `.getPreferredSize()`, `.getVisibleComponent()`, `.getVisibleComponentId()`, `.setVisibleComponentId()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 52`** (7 nodes): `DateEditor`, `.applyStyle()`, `.constructor()`, `.getValue()`, `.isEmpty()`, `.setValue()`, `.toInputString()`
+- **Thin community `Community 52`** (8 nodes): `Split`, `.constructor()`, `.detach()`, `.doLayout()`, `.getDirection()`, `.onDrag()`, `.recalculateSizes()`, `.setDirection()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 53`** (6 nodes): `DialogButtonRow`, `.constructor()`, `.doLayout()`, `DialogTitleBar`, `.constructor()`, `.doLayout()`
+- **Thin community `Community 53`** (8 nodes): `Column`, `.constructor()`, `.doLayout()`, `.getGap()`, `.getMaxSize()`, `.getMinSize()`, `.getPreferredSize()`, `.setGap()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 54`** (6 nodes): `AccordionHeader`, `.constructor()`, `.createStyles()`, `.init()`, `.isExpanded()`, `.setExpanded()`
+- **Thin community `Community 54`** (8 nodes): `List`, `.addActionListener()`, `.addItem()`, `.constructor()`, `.refreshFromStore()`, `.render()`, `.setItems()`, `.updateHeight()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 55`** (6 nodes): `MenuBar`, `.closeMenu()`, `.constructor()`, `.getOpenIndex()`, `.openMenu()`, `.setMenus()`
+- **Thin community `Community 55`** (8 nodes): `ProgressSpinner`, `.constructor()`, `.doLayout()`, `.getSpinnerSize()`, `.hideOverlay()`, `.isOverlay()`, `.setSpinnerSize()`, `.showOverlay()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 56`** (5 nodes): `DialogBackdrop`, `.addClickListener()`, `.constructor()`, `.destroy()`, `.resize()`
+- **Thin community `Community 56`** (8 nodes): `ProgressBar`, `.applyIndeterminate()`, `.constructor()`, `.doLayout()`, `.getValue()`, `.isIndeterminate()`, `.setIndeterminate()`, `.setValue()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 57`** (5 nodes): `MenuBarButton`, `.constructor()`, `.dispose()`, `.doLayout()`, `.setActive()`
+- **Thin community `Community 57`** (8 nodes): `Row`, `.addColumn()`, `.addComponent()`, `.constructor()`, `.doLayout()`, `.getData()`, `.setData()`, `.updateVisualState()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 58`** (7 nodes): `PaginatingDemoProxy`, `.constructor()`, `.create()`, `.destroy()`, `.getLastTotalCount()`, `.read()`, `.update()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 59`** (7 nodes): `AccordionPanel`, `.buildAboutSection()`, `.buildInfoSection()`, `.buildListSection()`, `.buildPreferencesSection()`, `.constructor()`, `.labeledField()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 60`** (7 nodes): `Point`, `.constructor()`, `.getX()`, `.getY()`, `.render()`, `Point.ts`, `Point.ts`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 61`** (7 nodes): `Table`, `.attach()`, `.clamp()`, `.constructor()`, `.doLayout()`, `.initializeWidths()`, `.rescaleWidths()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 62`** (7 nodes): `AutoCompleteItem`, `.constructor()`, `.doLayout()`, `.getText()`, `.isHighlighted()`, `.setHighlighted()`, `.update()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 63`** (7 nodes): `TablePanel`, `.constructor()`, `.getPaginationBar()`, `.getTable()`, `.getToolbar()`, `.refreshSyncButtons()`, `.setPaginationBar()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 64`** (7 nodes): `FooterRow`, `.addComponent()`, `.addRow()`, `.constructor()`, `.getColumns()`, `.setHeight()`, `.setWidth()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 65`** (7 nodes): `DateTimeEditor`, `.applyStyle()`, `.constructor()`, `.getValue()`, `.isEmpty()`, `.setValue()`, `.toInputString()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 66`** (6 nodes): `DialogButtonRow`, `.constructor()`, `.doLayout()`, `DialogTitleBar`, `.constructor()`, `.doLayout()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 67`** (6 nodes): `AccordionHeader`, `.constructor()`, `.createStyles()`, `.init()`, `.isExpanded()`, `.setExpanded()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 68`** (6 nodes): `MenuBar`, `.closeMenu()`, `.constructor()`, `.getOpenIndex()`, `.openMenu()`, `.setMenus()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 69`** (6 nodes): `BooleanEditor`, `.constructor()`, `.getValue()`, `.setOnChange()`, `.setValue()`, `.toggle()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 70`** (5 nodes): `Body`, `.constructor()`, `.getElement()`, `.getInstance()`, `.init()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 71`** (5 nodes): `DialogBackdrop`, `.addClickListener()`, `.constructor()`, `.destroy()`, `.resize()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 72`** (5 nodes): `Header`, `.applyThemePadding()`, `.constructor()`, `.getLabel()`, `.updatePreferredSize()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 73`** (5 nodes): `Image`, `.constructor()`, `.getElement()`, `.getPreferredSize()`, `.render()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 74`** (5 nodes): `MenuBarButton`, `.constructor()`, `.dispose()`, `.doLayout()`, `.setActive()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 78`** (4 nodes): `PaginationBar`, `.constructor()`, `.dispose()`, `.refresh()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Component` connect `Community 2` to `Community 0`, `Community 1`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 14`?**
-  _High betweenness centrality (0.184) - this node is a cross-community bridge._
-- **Why does `AjaxProxy` connect `Community 17` to `Community 5`?**
-  _High betweenness centrality (0.042) - this node is a cross-community bridge._
-- **Why does `Aria` connect `Community 8` to `Community 1`?**
-  _High betweenness centrality (0.037) - this node is a cross-community bridge._
+- **Why does `Component` connect `Community 2` to `Community 0`, `Community 1`, `Community 6`, `Community 10`, `Community 14`?**
+  _High betweenness centrality (0.189) - this node is a cross-community bridge._
+- **Why does `Aria` connect `Community 6` to `Community 1`?**
+  _High betweenness centrality (0.045) - this node is a cross-community bridge._
+- **Why does `NumberSpinner` connect `Community 17` to `Community 1`?**
+  _High betweenness centrality (0.034) - this node is a cross-community bridge._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.01 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.02 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
   _Cohesion score 0.03 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
   _Cohesion score 0.03 - nodes in this community are weakly interconnected._
 - **Should `Community 3` be split into smaller, more focused modules?**
-  _Cohesion score 0.05 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.04 - nodes in this community are weakly interconnected._

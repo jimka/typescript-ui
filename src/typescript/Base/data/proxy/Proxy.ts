@@ -3,6 +3,23 @@
 import { ModelRecord } from '../ModelRecord.js';
 
 /**
+ * Optional parameters passed to {@link Proxy.read} when the store opts in to
+ * server-side pagination.
+ *
+ * @remarks
+ * When `AbstractStore.setPageSize(n)` has been called, `AbstractStore.load()`
+ * builds a `ReadParams` object describing the desired page and forwards it to
+ * the proxy. Proxies that do not understand pagination (e.g. {@link MemoryProxy})
+ * are free to ignore the argument.
+ *
+ * @category Data
+ */
+export interface ReadParams {
+    page?    : number;
+    pageSize?: number;
+}
+
+/**
  * Abstract base class for all data proxies.
  * Defines the four CRUD operations that every proxy implementation must provide.
  *
@@ -16,11 +33,14 @@ import { ModelRecord } from '../ModelRecord.js';
 export abstract class Proxy {
 
     /**
-     * Fetches all records from the data source.
+     * Fetches records from the data source.
+     *
+     * @param params - Optional. Pagination parameters from the store.
+     *   Proxies that do not support pagination may ignore this argument.
      *
      * @returns A promise that resolves to an array of raw data objects.
      */
-    abstract read(): Promise<any[]>;
+    abstract read(params?: ReadParams): Promise<any[]>;
 
     /**
      * Persists a new record to the data source.
@@ -49,4 +69,19 @@ export abstract class Proxy {
      * @returns A promise that resolves when the deletion is complete.
      */
     abstract destroy(record: ModelRecord): Promise<void>;
+
+    /**
+     * Returns the total record count reported by the most recent paginated read.
+     *
+     * @returns The total count from the last paginated response, or undefined if
+     *   the proxy does not support pagination or no paginated read has occurred.
+     *
+     * @remarks
+     * Default implementation returns undefined. Pagination-aware proxies (such as
+     * {@link AjaxProxy}) override this to return the `total` value parsed from
+     * the server envelope.
+     */
+    getLastTotalCount(): number | undefined {
+        return undefined;
+    }
 }

@@ -52,6 +52,34 @@ await store.load();
 
 See [`AjaxProxyConfig`](/api/interfaces/AjaxProxyConfig) for the complete option list.
 
+### Server-side pagination
+
+When the [`Store`](/data/store) has had `setPageSize(n)` called on it, the
+store's `load()` forwards a [`ReadParams`](/api/interfaces/ReadParams) object to
+`proxy.read()`. `AjaxProxy` appends `page` and `pageSize` as query-string
+parameters and expects an envelope response:
+
+```json
+{ "data": [...], "total": 1234 }
+```
+
+Stores that never call `setPageSize` are unaffected — `read()` is still called
+with no arguments and the response shape is the legacy top-level array (or
+`json[root]`).
+
+```typescript
+const store = new Store(PersonModel, new AjaxProxy({ url: '/api/people' }));
+store.setPageSize(25);
+await store.load();
+// → GET /api/people?page=1&pageSize=25
+// → response: { data: [...], total: 1234 }
+```
+
+If `root` is configured, the envelope is read from `json[root]` first, then
+`.data` and `.total` are extracted. The total count is exposed on the store
+via `getTotalCount()` and `getTotalPages()`, and on the proxy itself via
+[`getLastTotalCount()`](/api/classes/Proxy#getlasttotalcount).
+
 ## Custom proxies
 
 Subclass [`Proxy`](/api/classes/Proxy) and implement `load()`. This is the path for GraphQL, WebSocket, IndexedDB, or any other transport.
