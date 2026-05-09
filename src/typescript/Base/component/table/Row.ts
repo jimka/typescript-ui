@@ -30,8 +30,15 @@ export class Row extends Component {
     private model?: AbstractModel;
     private data?: ModelRecord;
     private hiddenColumns: Set<string>;
+    private onCellCommit?: (record: ModelRecord) => void;
 
-    constructor(model?: AbstractModel, data?: ModelRecord, hiddenColumns: Set<string> = new Set(), columnConfigs: Map<string, ColumnConfig> = new Map()) {
+    constructor(
+        model?: AbstractModel,
+        data?: ModelRecord,
+        hiddenColumns: Set<string> = new Set(),
+        columnConfigs: Map<string, ColumnConfig> = new Map(),
+        onCellCommit?: (record: ModelRecord) => void,
+    ) {
         super("tr");
 
         this.getAria().setRole("row");
@@ -39,6 +46,7 @@ export class Row extends Component {
         this.model = model;
         this.data = data;
         this.hiddenColumns = hiddenColumns;
+        this.onCellCommit = onCellCommit;
 
         if (this.model) {
             let fields = this.model.getFields()
@@ -76,7 +84,10 @@ export class Row extends Component {
 
                 cell.setValue(value);
                 cell.setOnCommit((newValue) => {
-                    this.data?.set(field.getName(), newValue);
+                    if (this.data) {
+                        this.data.set(field.getName(), newValue);
+                        this.onCellCommit?.(this.data);
+                    }
                     this.updateVisualState();
                 });
 

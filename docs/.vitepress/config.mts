@@ -89,6 +89,7 @@ export default defineConfig({
                     { text: 'Legend',          link: '/components/Legend' },
                     { text: 'ProgressBar',     link: '/components/ProgressBar' },
                     { text: 'ProgressSpinner', link: '/components/ProgressSpinner' },
+                    { text: 'PaginationBar',   link: '/components/PaginationBar' },
                 ] },
                 { text: 'Lists', collapsed: false, items: [
                     { text: 'List',            link: '/components/List' },

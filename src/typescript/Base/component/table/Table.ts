@@ -343,6 +343,14 @@ export class Table extends Component {
     }
 
     /**
+     * Discards all unsynced store changes — reverts dirty records, drops new
+     * ones, and restores pending removals.
+     */
+    reject(): void {
+        this.store.reject();
+    }
+
+    /**
      * Returns the currently selected record, or null if none is selected.
      *
      * @returns The selected {@link ModelRecord}, or null.

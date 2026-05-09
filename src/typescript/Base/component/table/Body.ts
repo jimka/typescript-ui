@@ -262,7 +262,13 @@ export class Body extends Component {
 
         // Grow pool if needed
         while (this.rowPool.length < windowSize) {
-            const row = new Row(this.store.model, undefined, this.hiddenColumns, this.columnConfigs);
+            const row = new Row(
+                this.store.model,
+                undefined,
+                this.hiddenColumns,
+                this.columnConfigs,
+                (record) => this.store.notifyRecordChanged(record),
+            );
             const rowEl = row.getElement(true);
 
             element.appendChild(rowEl);

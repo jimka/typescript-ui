@@ -6,6 +6,7 @@ import { Border } from "../../layout/Border.js";
 import { HBox } from "../../layout/HBox.js";
 import { Placement } from "../../Placement.js";
 import { Button } from "../Button.js";
+import { PaginationBar } from "../PaginationBar.js";
 import { ProgressSpinner } from "../ProgressSpinner.js";
 import { Table } from "./Table.js";
 
@@ -20,7 +21,10 @@ export class TablePanel extends Component {
 
     private table: Table;
     private toolbar: Component;
+    private syncBtn: Button;
+    private rejectBtn: Button;
     private _spinner: ProgressSpinner | null = null;
+    private paginationBar: PaginationBar | undefined = undefined;
 
     constructor(store: AbstractStore) {
         super();
@@ -38,9 +42,13 @@ export class TablePanel extends Component {
         removeBtn.addActionListener(() => this.table.removeSelectedRow());
         this.toolbar.addComponent(removeBtn);
 
-        const syncBtn = new Button("Sync");
-        syncBtn.addActionListener(() => this.table.sync());
-        this.toolbar.addComponent(syncBtn);
+        this.syncBtn = new Button("Sync");
+        this.syncBtn.addActionListener(() => this.table.sync());
+        this.toolbar.addComponent(this.syncBtn);
+
+        this.rejectBtn = new Button("Reject");
+        this.rejectBtn.addActionListener(() => this.table.reject());
+        this.toolbar.addComponent(this.rejectBtn);
 
         this.table = new Table(store);
 
@@ -58,6 +66,27 @@ export class TablePanel extends Component {
                 this._spinner.hideOverlay();
             }
         });
+
+        const refreshSyncButtons = (): void => this.refreshSyncButtons();
+        store.on('add', refreshSyncButtons);
+        store.on('remove', refreshSyncButtons);
+        store.on('datachanged', refreshSyncButtons);
+        store.on('sync', refreshSyncButtons);
+        store.on('load', refreshSyncButtons);
+
+        this.refreshSyncButtons();
+    }
+
+    /**
+     * Updates the Sync and Reject button-enabled state to reflect whether the
+     * store has any unsynced changes. Both buttons disable when there is
+     * nothing to sync or reject.
+     */
+    private refreshSyncButtons(): void {
+        const hasChanges = this.table.getStore().hasPendingChanges();
+
+        this.syncBtn.setEnabled(hasChanges);
+        this.rejectBtn.setEnabled(hasChanges);
     }
 
     /**
@@ -76,5 +105,33 @@ export class TablePanel extends Component {
      */
     getToolbar(): Component {
         return this.toolbar;
+    }
+
+    /**
+     * Docks a {@link PaginationBar} to the south region of the panel.
+     *
+     * @param bar - The pagination bar to attach. Replaces any previously attached bar.
+     *
+     * @remarks
+     * Any previously attached bar is removed and disposed before the new one
+     * is installed, so its store listeners do not leak.
+     */
+    setPaginationBar(bar: PaginationBar): void {
+        if (this.paginationBar) {
+            this.removeComponent(this.paginationBar);
+            this.paginationBar.dispose();
+        }
+
+        this.paginationBar = bar;
+        super.addComponent(bar, { placement: Placement.SOUTH });
+    }
+
+    /**
+     * Returns the currently attached pagination bar, or undefined if none is set.
+     *
+     * @returns The pagination bar previously installed via {@link setPaginationBar}.
+     */
+    getPaginationBar(): PaginationBar | undefined {
+        return this.paginationBar;
     }
 }

@@ -2,7 +2,7 @@
 
 import { AbstractModel } from './AbstractModel.js';
 import { ModelRecord } from './ModelRecord.js';
-import { Proxy } from './proxy/Proxy.js';
+import { Proxy, ReadParams } from './proxy/Proxy.js';
 import { FilterDescriptor, matchesFilter } from './FilterDescriptor.js';
 import { StoreWorkerClient } from './StoreWorkerClient.js';
 
@@ -25,7 +25,7 @@ export type StoreListener<T = any> = (payload: T) => void;
  *
  * @category Data
  */
-export type StoreEvent = 'load' | 'datachanged' | 'add' | 'remove' | 'beforesync' | 'sync' | 'loadingchanged';
+export type StoreEvent = 'load' | 'datachanged' | 'add' | 'remove' | 'beforesync' | 'sync' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked';
 
 interface SorterConfig {
     property: string;
@@ -65,6 +65,14 @@ export abstract class AbstractStore {
     private snapshotDirty: boolean = true;
     private _loading: boolean = false;
 
+    // ── Server-side pagination state ─────────────────────────────────────────
+    // `_pageSize` is undefined until `setPageSize(n)` is called; while undefined,
+    // `load()` calls `proxy.read()` with no arguments and the store behaves
+    // identically to its unpaginated form.
+    private _page: number = 1;
+    private _pageSize: number | undefined = undefined;
+    private _totalCount: number | undefined = undefined;
+
     // ── Loading ──────────────────────────────────────────────────────────────
 
     /**
@@ -84,8 +92,15 @@ export abstract class AbstractStore {
         this.setLoading(true);
 
         try {
-            const raw = await this.proxy.read();
+            const params: ReadParams | undefined = this._pageSize != null
+                ? { page: this._page, pageSize: this._pageSize }
+                : undefined;
+
+            const raw = await this.proxy.read(params);
             this.ingestRaw(raw);
+
+            this._totalCount = this.proxy.getLastTotalCount();
+
             this.emit('load', { records: this.records });
         } finally {
             this.setLoading(false);
@@ -123,6 +138,151 @@ export abstract class AbstractStore {
     loadData(data: any[]): void {
         this.ingestRaw(data);
         this.emit('load', { records: this.records });
+    }
+
+    // ── Pagination ───────────────────────────────────────────────────────────
+
+    /**
+     * Enables server-side pagination at the given page size and resets to page 1.
+     *
+     * @param n - The number of records to request per page. Must be a positive integer.
+     *
+     * @remarks
+     * Calling this method opts the store into the paginated `load()` path, where
+     * `ReadParams` are forwarded to the proxy. Paginated mode also causes
+     * `sort()` and `clearFilter()` to reset to page 1 and re-fetch from the proxy.
+     * Fires `'pagechanged'`.
+     */
+    setPageSize(n: number): void {
+        this._pageSize = n;
+        this._page = 1;
+        this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+    }
+
+    /**
+     * Returns the configured page size, or undefined if pagination is disabled.
+     *
+     * @returns The page size set via {@link setPageSize}, or undefined.
+     */
+    getPageSize(): number | undefined {
+        return this._pageSize;
+    }
+
+    /**
+     * Returns the current 1-based page number.
+     *
+     * @returns The current page (defaults to 1 even when pagination is disabled).
+     */
+    getPage(): number {
+        return this._page;
+    }
+
+    /**
+     * Returns the total record count reported by the most recent paginated load.
+     *
+     * @returns The total count from the proxy, or undefined when no paginated
+     *   load has occurred or the proxy did not report one.
+     */
+    getTotalCount(): number | undefined {
+        return this._totalCount;
+    }
+
+    /**
+     * Returns the total number of pages, derived from the page size and total count.
+     *
+     * @returns The number of pages, or undefined when either piece of information
+     *   is missing.
+     */
+    getTotalPages(): number | undefined {
+        if (this._pageSize == null || this._totalCount == null) {
+            return undefined;
+        }
+
+        return Math.max(1, Math.ceil(this._totalCount / this._pageSize));
+    }
+
+    /**
+     * Advances to the next page and reloads, unless already on the last page.
+     *
+     * @remarks
+     * No-op when pagination is disabled or the current page equals the total
+     * page count. When the store has pending unsynced changes, the navigation
+     * is blocked and `'pagechangeblocked'` is emitted instead, so the user can
+     * sync or reject before leaving the page. Otherwise fires `'pagechanged'`
+     * and triggers a fire-and-forget reload.
+     */
+    nextPage(): void {
+        if (this._pageSize == null) {
+            return;
+        }
+
+        const total = this.getTotalPages();
+        if (total != null && this._page >= total) {
+            return;
+        }
+
+        if (this.hasPendingChanges()) {
+            this.emit('pagechangeblocked', { from: this._page, to: this._page + 1 });
+            return;
+        }
+
+        this._page++;
+        this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+        void this.load();
+    }
+
+    /**
+     * Returns to the previous page and reloads, unless already on page 1.
+     *
+     * @remarks
+     * Blocked when the store has pending changes — emits `'pagechangeblocked'`
+     * instead of firing `'pagechanged'`.
+     */
+    prevPage(): void {
+        if (this._pageSize == null || this._page <= 1) {
+            return;
+        }
+
+        if (this.hasPendingChanges()) {
+            this.emit('pagechangeblocked', { from: this._page, to: this._page - 1 });
+            return;
+        }
+
+        this._page--;
+        this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+        void this.load();
+    }
+
+    /**
+     * Jumps to the given 1-based page and reloads.
+     *
+     * @param n - The target page number; clamped to `[1, totalPages]` when total is known.
+     *
+     * @remarks
+     * No-op when pagination is disabled. Blocked when the store has pending
+     * changes — emits `'pagechangeblocked'` instead.
+     */
+    goToPage(n: number): void {
+        if (this._pageSize == null) {
+            return;
+        }
+
+        const total  = this.getTotalPages();
+        const upper  = total ?? n;
+        const target = Math.max(1, Math.min(n, upper));
+
+        if (target === this._page) {
+            return;
+        }
+
+        if (this.hasPendingChanges()) {
+            this.emit('pagechangeblocked', { from: this._page, to: target });
+            return;
+        }
+
+        this._page = target;
+        this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+        void this.load();
     }
 
     /**
@@ -291,6 +451,84 @@ export abstract class AbstractStore {
     }
 
     /**
+     * Signals that a record's fields were mutated outside the store's own
+     * mutation methods (e.g. an in-cell edit in a Table).
+     *
+     * @param _record - The record that was edited. Forwarded by callers so
+     *   future listeners can identify it; currently unused by the store itself.
+     *
+     * @remarks
+     * Fires `'datachanged'` so listeners (toolbars, pagination bars, etc.)
+     * re-evaluate state such as {@link hasPendingChanges}. The record's dirty
+     * flag is already set by `record.set()`; this method just notifies.
+     */
+    notifyRecordChanged(_record: ModelRecord): void {
+        this.emit('datachanged', {});
+    }
+
+    /**
+     * Returns whether the store holds any unsynced state.
+     *
+     * @returns True if any record is dirty, any record is new, or there are
+     *   queued removals waiting to be synced.
+     *
+     * @remarks
+     * Used by the pagination guard to prevent navigation that would silently
+     * discard in-memory edits. Also useful for "unsaved changes" prompts.
+     */
+    hasPendingChanges(): boolean {
+        if (this.pendingRemoved.length > 0) {
+            return true;
+        }
+
+        for (const record of this.allRecords) {
+            if (record.isNew() || record.isDirty()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Discards all unsynced changes — reverts dirty records, drops new ones,
+     * and restores pending removals — then fires 'datachanged'.
+     *
+     * @remarks
+     * Pending removals are pushed back into `allRecords` (in their original
+     * order is not preserved; they are appended) so the user can recover from
+     * an accidental removal. Dirty records are restored to their last
+     * committed values. New records are dropped outright since they were never
+     * persisted.
+     */
+    reject(): void {
+        const survivors: ModelRecord[] = [];
+
+        for (const record of this.allRecords) {
+            if (record.isNew()) {
+                continue;
+            }
+
+            if (record.isDirty()) {
+                record.reject();
+            }
+
+            survivors.push(record);
+        }
+
+        if (this.pendingRemoved.length > 0) {
+            survivors.push(...this.pendingRemoved);
+            this.pendingRemoved = [];
+        }
+
+        this.allRecords = survivors;
+        this.snapshotDirty = true;
+        this.applyView();
+
+        this.emit('datachanged', {});
+    }
+
+    /**
      * Persists new, dirty, and removed records via the proxy, then fires 'sync'/'datachanged'.
      *
      * @returns A promise that resolves when all pending operations have completed.
@@ -344,12 +582,27 @@ export abstract class AbstractStore {
      *
      * @param property - The field name to sort by.
      * @param direction - Optional. The sort direction; defaults to 'asc'.
+     *
+     * @remarks
+     * When server-side pagination is enabled, this method also resets the current
+     * page to 1 and triggers a fire-and-forget reload so the proxy receives the
+     * new ordering. The promise resolves once the local view is rebuilt; the
+     * subsequent reload is intentionally not awaited.
      */
     sort(property: string, direction: 'asc' | 'desc' = 'asc'): Promise<void> {
         this.activeSorter = { property, direction };
 
+        if (this._pageSize != null) {
+            this._page = 1;
+            this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+        }
+
         return this.applyView().then(() => {
             this.emit('datachanged', {});
+
+            if (this._pageSize != null) {
+                void this.load();
+            }
         });
     }
 
@@ -406,12 +659,26 @@ export abstract class AbstractStore {
 
     /**
      * Removes all active filters and fires 'datachanged'.
+     *
+     * @remarks
+     * When server-side pagination is enabled, this method also resets the current
+     * page to 1 and triggers a fire-and-forget reload so the proxy is queried
+     * without filter context.
      */
     clearFilter(): Promise<void> {
         this.activeFilters = [];
 
+        if (this._pageSize != null) {
+            this._page = 1;
+            this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+        }
+
         return this.applyView().then(() => {
             this.emit('datachanged', {});
+
+            if (this._pageSize != null) {
+                void this.load();
+            }
         });
     }
 

@@ -4,6 +4,9 @@ import { Window } from "./Base/Window.js";
 import { Image } from "./Base/component/Image.js";
 import { Model } from "./Base/data/Model.js";
 import { MemoryStore } from "./Base/data/MemoryStore.js";
+import { Store } from "./Base/data/Store.js";
+import { ModelRecord } from "./Base/data/ModelRecord.js";
+import { Proxy, ReadParams } from "./Base/data/proxy/Proxy.js";
 import { Component } from "./Base/Component.js";
 import { Button } from "./Base/component/Button.js";
 import { Label } from "./Base/component/Label.js";
@@ -13,7 +16,7 @@ import { VBox } from "./Base/layout/VBox.js";
 import { HBox } from "./Base/layout/HBox.js";
 import { FieldSet } from "./Base/component/FieldSet.js";
 import { ThemeManager, DefaultTheme, DarkTheme } from "./Base/Theme.js";
-import { TablePanel, Table, ColumnSpec } from "./Base/index.js";
+import { TablePanel, Table, ColumnSpec, PaginationBar } from "./Base/index.js";
 import { Menu } from "./Base/Menu.js";
 import { Tooltip } from "./Base/Tooltip.js";
 import { Event } from "./Base/Event.js";
@@ -26,6 +29,72 @@ import { NumberSpinner } from "./Base/component/NumberSpinner.js";
 import { ProgressBar } from "./Base/component/ProgressBar.js";
 import { ProgressSpinner } from "./Base/component/ProgressSpinner.js";
 import { Insets } from "./Base/Insets.js";
+
+/**
+ * Demo-only proxy that slices an in-memory dataset by page/pageSize and
+ * pretends to be a slow network request so the spinner overlay is visible.
+ *
+ * @remarks
+ * Only `read()` is meaningfully implemented. CRUD methods are no-ops; the
+ * demo never sync()s.
+ */
+class PaginatingDemoProxy extends Proxy {
+
+    private readonly all: any[];
+    private readonly latencyMs: number;
+    private lastTotal: number | undefined = undefined;
+
+    /**
+     * @param all - The full in-memory dataset.
+     * @param latencyMs - Artificial response delay in milliseconds.
+     */
+    constructor(all: any[], latencyMs: number = 800) {
+        super();
+
+        this.all = all;
+        this.latencyMs = latencyMs;
+    }
+
+    /**
+     * Returns a paginated slice of the in-memory dataset after a simulated delay.
+     *
+     * @param params - Pagination parameters from the store.
+     * @returns The slice of records corresponding to the requested page.
+     */
+    read(params?: ReadParams): Promise<any[]> {
+        const page     = params?.page ?? 1;
+        const pageSize = params?.pageSize ?? this.all.length;
+        const start    = (page - 1) * pageSize;
+        const slice    = this.all.slice(start, start + pageSize);
+
+        this.lastTotal = this.all.length;
+
+        return new Promise(resolve => {
+            setTimeout(() => resolve(slice), this.latencyMs);
+        });
+    }
+
+    /**
+     * Returns the total record count from the most recent paginated read.
+     *
+     * @returns The dataset's full length, or undefined before the first read.
+     */
+    getLastTotalCount(): number | undefined {
+        return this.lastTotal;
+    }
+
+    create(_record: ModelRecord): Promise<Record<string, any>> {
+        return Promise.resolve({});
+    }
+
+    update(_record: ModelRecord): Promise<Record<string, any>> {
+        return Promise.resolve({});
+    }
+
+    destroy(_record: ModelRecord): Promise<void> {
+        return Promise.resolve();
+    }
+}
 
 export class MiscPanel extends Component {
 
@@ -110,6 +179,43 @@ export class MiscPanel extends Component {
             win2.show();
         });
         this.addComponent(buttonWindowTable);
+
+        let buttonPaginatedTable = new Button("Show window with paginated table!");
+        buttonPaginatedTable.addActionListener(function () {
+            const winPag = new Window("Paginated table (server-side)");
+            winPag.setX(150);
+            winPag.setY(150);
+            winPag.setWidth(700);
+            winPag.setHeight(500);
+
+            const pagModel = new Model([
+                { name: "id"    , type: "number" , description: "id"    , order: 0 },
+                { name: "name"  , type: "string" , description: "name"  , order: 1 },
+                { name: "score" , type: "number" , description: "score" , order: 2 },
+                { name: "active", type: "boolean", description: "active", order: 3 },
+            ]);
+
+            const all = Array.from({ length: 237 }, (_, i) => ({
+                id    : i + 1,
+                name  : "Person " + (i + 1),
+                score : Math.round(Math.random() * 1000) / 10,
+                active: i % 3 !== 0,
+            }));
+
+            const pagProxy = new PaginatingDemoProxy(all, 800);
+            const pagStore = new Store(pagModel, pagProxy);
+
+            pagStore.setPageSize(25);
+
+            const pagPanel = new TablePanel(pagStore);
+            pagPanel.setPaginationBar(new PaginationBar(pagStore));
+
+            winPag.addComponent(pagPanel);
+            winPag.show();
+
+            void pagStore.load();
+        });
+        this.addComponent(buttonPaginatedTable);
 
         let buttonWindowTableSpec = new Button("Show window with table (column spec)!");
         buttonWindowTableSpec.addActionListener(function () {

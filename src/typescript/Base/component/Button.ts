@@ -40,6 +40,9 @@ export class Button extends Component {
     private pressedBackgroundColor: string | null = null;
     private pressedBackgroundImage: string | null = null;
 
+    private _enabled: boolean = true;
+    private _enabledCursor: string = "pointer";
+
     constructor(text?: string) {
         super("button");
 
@@ -227,5 +230,44 @@ export class Button extends Component {
         } else {
             this.pressedCSSRule.style.removeProperty('box-shadow');
         }
+    }
+
+    /**
+     * Enables or disables the button.
+     *
+     * @param enabled - True to enable, false to disable.
+     *
+     * @remarks
+     * When disabled, sets the native `disabled` attribute on the underlying
+     * `<button>` element (which suppresses pointer events and `:active`),
+     * dims the button to 0.5 opacity, and switches the cursor to `not-allowed`.
+     * Re-enabling restores the previous cursor and clears the opacity override.
+     */
+    setEnabled(enabled: boolean): void {
+        if (this._enabled === enabled) {
+            return;
+        }
+
+        this._enabled = enabled;
+
+        if (enabled) {
+            this.removeElementAttribute("disabled");
+            this.setOpacity(null);
+            this.setCursor(this._enabledCursor);
+        } else {
+            this._enabledCursor = this.getCursor() ?? "pointer";
+            this.setElementAttribute("disabled", "");
+            this.setOpacity(0.5);
+            this.setCursor("not-allowed");
+        }
+    }
+
+    /**
+     * Returns whether the button is currently enabled.
+     *
+     * @returns True if the button accepts user interaction.
+     */
+    isEnabled(): boolean {
+        return this._enabled;
     }
 }

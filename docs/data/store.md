@@ -90,13 +90,55 @@ store.remove(newPerson);
 
 `store.add` returns the array of newly-created records (so it works with bulk inserts too).
 
+## Server-side pagination
+
+Opt in by calling `setPageSize(n)`. From that point onward `load()` forwards a
+[`ReadParams`](/api/interfaces/ReadParams) object to the proxy, and the store
+tracks the current page and total count returned by the server. Stores that
+never call `setPageSize` keep the legacy single-fetch behaviour.
+
+```typescript
+const store = new Store(PersonModel, new AjaxProxy({ url: '/api/people' }));
+store.setPageSize(25);
+await store.load();
+
+store.getPage();         // 1
+store.getTotalCount();   // e.g. 1234, from the server's { data, total } envelope
+store.getTotalPages();   // 50
+
+store.nextPage();        // re-fetches page 2
+store.goToPage(10);
+```
+
+`sort()` and `clearFilter()` reset to page 1 and re-fetch in paginated mode so
+the proxy receives fresh results. Pair the store with a
+[`PaginationBar`](/components/PaginationBar) for ready-made navigation UI.
+
+### Pending changes block page navigation
+
+A page change reloads `allRecords` from the proxy, which would silently
+discard any in-memory edits that have not been synced. To prevent that,
+`nextPage` / `prevPage` / `goToPage` no-op and emit `'pagechangeblocked'`
+when `hasPendingChanges()` is true. `PaginationBar` greys out its nav
+buttons in that state.
+
+The user can resolve the block in two ways:
+
+- **Sync** — `store.sync()` pushes the changes to the proxy.
+- **Reject** — `store.reject()` reverts dirty records, drops new ones, and
+  restores pending removals.
+
+`TablePanel`'s built-in toolbar exposes both as buttons.
+
 ## Events
 
 | Event | Fired when |
 | --- | --- |
-| `load`         | `load()` resolves |
-| `datachanged`  | Any record is added, removed, or moved (sorted) |
-| `update`       | A record's fields change (commit or rollback) |
+| `load`              | `load()` resolves |
+| `datachanged`       | Any record is added, removed, or moved (sorted) |
+| `update`            | A record's fields change (commit or rollback) |
+| `pagechanged`       | Page or page size changes via the pagination API |
+| `pagechangeblocked` | Page navigation was blocked because the store has pending changes |
 
 The full event surface is typed as [`StoreEvent`](/api/type-aliases/StoreEvent).
 
