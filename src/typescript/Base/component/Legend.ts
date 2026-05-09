@@ -13,7 +13,7 @@ import { Position } from "../Position.js";
 export class Legend extends Text {
 
     constructor() {
-        super("legend");
+        super(undefined, "legend");
 
         // Needs to be static for the browser to position the title text properly.
         this.setPosition(Position.STATIC);
