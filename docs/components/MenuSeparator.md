@@ -1,6 +1,6 @@
 # MenuSeparator
 
-[`MenuSeparator`](/api/classes/MenuSeparator) is a horizontal divider rule used inside a [`MenuPanel`](/components/MenuPanel) to visually group menu items.
+[`MenuSeparator`](/api/classes/MenuSeparator) is a horizontal divider rule used inside a [`Menu`](/components/Menu) to visually group menu items.
 
 You usually don't construct it directly — set `separator: true` on a [`MenuItemConfig`](/api/interfaces/MenuItemConfig) entry instead.
 
@@ -19,13 +19,16 @@ const bar = new MenuBar([
 ]);
 ```
 
+## Theming
+
+`MenuSeparator` reads its border colour from one of two CSS-variable families chosen via the optional `cssVarPrefix` constructor argument (`'menu-bar'` or `'context-menu'`). `Menu` selects the right family for its mode automatically.
+
 ## Notes
 
 - Fixed pixel height: 9 px (see `MenuSeparator.HEIGHT`).
-- Width is computed by `MenuPanel.doLayout()`; `MenuSeparator` does not size itself.
+- Width is computed by `Menu.doLayout()`; `MenuSeparator` does not size itself.
 
 ## See also
 
 - [API: MenuSeparator](/api/classes/MenuSeparator)
-- [`MenuPanel`](/components/MenuPanel)
-- [`ContextMenuSeparator`](/components/ContextMenuSeparator) — equivalent for [`ContextMenu`](/components/ContextMenu)
+- [`Menu`](/components/Menu)

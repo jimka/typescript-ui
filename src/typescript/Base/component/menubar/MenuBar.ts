@@ -4,14 +4,14 @@ import { Component } from "../../Component.js";
 import { Event } from "../../Event.js";
 import { HBox } from "../../layout/HBox.js";
 import { MenuBarButton } from "./MenuBarButton.js";
-import { MenuPanel } from "./MenuPanel.js";
-import { MenuConfig } from "./MenuItem.js";
+import { Menu } from "../../Menu.js";
+import { MenuConfig } from "../MenuItem.js";
 
 /**
  * A persistent horizontal menu bar that hosts top-level dropdown menus.
  *
  * `setMenus()` populates the bar with `MenuBarButton` children. Clicking a button
- * opens the corresponding `MenuPanel` dropdown. While any dropdown is open,
+ * opens the corresponding `Menu` dropdown. While any dropdown is open,
  * hovering another button switches menus immediately (quick-switch mode), and
  * keyboard navigation (Arrow keys, Enter, Escape) is handled via a viewport-level
  * keydown listener.
@@ -37,7 +37,7 @@ import { MenuConfig } from "./MenuItem.js";
 export class MenuBar extends Component {
 
     private readonly _buttons: MenuBarButton[] = [];
-    private readonly _panels: MenuPanel[] = [];
+    private readonly _panels: Menu[] = [];
     private _openIndex: number = -1;
     private _quickSwitchActive: boolean = false;
     private _keydownListening: boolean = false;
@@ -116,7 +116,7 @@ export class MenuBar extends Component {
     /**
      * Replaces the current set of top-level menus.
      *
-     * Disposes all existing `MenuBarButton` and `MenuPanel` instances, then rebuilds
+     * Disposes all existing `MenuBarButton` and `Menu` instances, then rebuilds
      * them from the given descriptors.
      *
      * @param menus - Ordered list of top-level menu descriptors.
@@ -159,7 +159,7 @@ export class MenuBar extends Component {
                 }
             );
 
-            const panel = new MenuPanel(menu.items, () => { this.closeMenu(); });
+            const panel = new Menu(menu.items, () => { this.closeMenu(); });
 
             this._buttons.push(button);
             this._panels.push(panel);

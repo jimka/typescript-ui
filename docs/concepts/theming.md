@@ -56,12 +56,12 @@ The [`Theme`](/api/interfaces/Theme) interface uses nested objects grouped by co
 | `table.row.selected` | `--ts-ui-table-row-selected` | Background tint of the currently selected table row |
 | `table.row.new` | `--ts-ui-table-row-new` | Background tint of unsaved new records |
 | `table.row.dirty` | `--ts-ui-table-row-dirty` | Background tint of locally modified records |
-| `contextMenu.background` | `--ts-ui-context-menu-bg` | Background of the [`ContextMenu`](/api/classes/ContextMenu) panel |
-| `contextMenu.border` | `--ts-ui-context-menu-border` | Border color of the `ContextMenu` panel |
-| `contextMenu.shadow` | `--ts-ui-context-menu-shadow` | Drop shadow of the `ContextMenu` panel |
-| `contextMenu.item.hoverBackground` | `--ts-ui-context-menu-item-hover-bg` | Background of a [`ContextMenuItem`](/api/classes/ContextMenuItem) on hover |
-| `contextMenu.item.disabledColor` | `--ts-ui-context-menu-item-disabled-color` | Text color of a disabled `ContextMenuItem` |
-| `contextMenu.separatorColor` | `--ts-ui-context-menu-separator-color` | Color of the [`ContextMenuSeparator`](/api/classes/ContextMenuSeparator) line |
+| `contextMenu.background` | `--ts-ui-context-menu-bg` | Background of the [`Menu`](/api/classes/Menu) panel in rebuild mode (right-click) |
+| `contextMenu.border` | `--ts-ui-context-menu-border` | Border color of the rebuild-mode `Menu` panel |
+| `contextMenu.shadow` | `--ts-ui-context-menu-shadow` | Drop shadow of the rebuild-mode `Menu` panel |
+| `contextMenu.item.hoverBackground` | `--ts-ui-context-menu-item-hover-bg` | Background of a rebuild-mode [`MenuItem`](/api/classes/MenuItem) on hover |
+| `contextMenu.item.disabledColor` | `--ts-ui-context-menu-item-disabled-color` | Text color of a disabled rebuild-mode `MenuItem` |
+| `contextMenu.separatorColor` | `--ts-ui-context-menu-separator-color` | Color of the rebuild-mode [`MenuSeparator`](/api/classes/MenuSeparator) line |
 | `tooltip.background` | `--ts-ui-tooltip-bg` | Background of the [`Tooltip`](/api/classes/Tooltip) panel |
 | `tooltip.color` | `--ts-ui-tooltip-color` | Text color inside the `Tooltip` |
 | `tooltip.border` | `--ts-ui-tooltip-border` | Border color of the `Tooltip` panel |

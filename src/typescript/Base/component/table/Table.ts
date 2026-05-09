@@ -11,8 +11,8 @@ import { AbstractStore } from "../../data/AbstractStore.js";
 import { ModelRecord } from "../../data/ModelRecord.js";
 import { BorderStyle } from "../../BorderStyle.js";
 import { Insets } from "../../Insets.js";
-import { ContextMenu } from "../../ContextMenu.js";
-import { ContextMenuItemConfig } from "../../component/ContextMenuItem.js";
+import { Menu } from "../../Menu.js";
+import { MenuItemConfig } from "../MenuItem.js";
 import { Column } from "./Column.js";
 import type { ColumnConfig } from "./ColumnConfig.js";
 import { ColumnSpec } from "./ColumnConfig.js";
@@ -57,7 +57,7 @@ export class Table extends Component {
     private spec: ColumnSpec | undefined;
     private resolvedColumns: Column[] = [];
     private hiddenColumns: Set<string> = new Set();
-    private columnContextMenu: ContextMenu = new ContextMenu();
+    private columnContextMenu: Menu = new Menu();
     private headerVisible: boolean;
     private header: Header;
     private body: Body;
@@ -511,7 +511,7 @@ export class Table extends Component {
             .slice()
             .sort((a, b) => a.getField().getOrder() - b.getField().getOrder());
 
-        const items: ContextMenuItemConfig[] = columns.map(col => {
+        const items: MenuItemConfig[] = columns.map(col => {
             const fieldName = col.getField().getName();
             const visible = !this.hiddenColumns.has(fieldName);
 

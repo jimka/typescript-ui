@@ -1,6 +1,6 @@
 # Right-click menu
 
-Use a single shared [`ContextMenu`](/components/ContextMenu) instance to handle right-click on any component.
+Use a single shared [`Menu`](/components/Menu) instance (constructed in rebuild mode) to handle right-click on any component.
 
 ## Goal
 
@@ -9,12 +9,12 @@ Right-clicking a list item opens a menu with Cut / Copy / Paste / Delete. The me
 ## Create a single menu instance
 
 ```typescript
-import { ContextMenu, Event } from '@jimka/typescript-ui';
+import { Menu, Event } from '@jimka/typescript-ui';
 
-const menu = new ContextMenu();
+const menu = new Menu();
 ```
 
-Reuse this single instance — `ContextMenu` is designed to be shared across an app, with the items array changing per invocation.
+Reuse this single instance — `Menu` in rebuild mode is designed to be shared across an app, with the items array changing per invocation.
 
 ## Wire `contextmenu` on the target component
 
@@ -63,11 +63,11 @@ Event.addListener(myList, 'contextmenu', (e: MouseEvent) => {
 ## Notes
 
 - `e.preventDefault()` is required to suppress the browser's native context menu.
-- `ContextMenu` is appended to `document.documentElement` so it always layers above the rest of the UI.
+- `Menu` is appended to `document.documentElement` so it always layers above the rest of the UI.
 - The menu closes itself automatically; you don't need to call `hide` after an `action` runs.
 
 ## See also
 
-- [ContextMenu](/components/ContextMenu) — full API
-- [ContextMenuItem](/components/ContextMenuItem) — item config shape
+- [Menu](/components/Menu) — full API
+- [MenuItem](/components/MenuItem) — item config shape
 - [Toast notifications](/recipes/notifications) — pair with this for "Copied!" feedback

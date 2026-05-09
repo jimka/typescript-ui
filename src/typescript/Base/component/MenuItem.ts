@@ -1,14 +1,23 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../../Component.js";
-import { Event } from "../../Event.js";
-import { Label } from "../Label.js";
+import { Component } from "../Component.js";
+import { Event } from "../Event.js";
+import { Label } from "./Label.js";
 
 /**
- * Describes a leaf action item, submenu trigger, or separator row inside a `MenuPanel`.
+ * Selects which CSS-variable family a `MenuItem` reads its colours from.
+ *
+ * `'menu-bar'` resolves to `--ts-ui-menu-bar-item-*` tokens; `'context-menu'`
+ * resolves to `--ts-ui-context-menu-item-*` tokens. The `Menu` class chooses
+ * the prefix based on its mode.
+ */
+export type MenuItemCSSVarPrefix = "menu-bar" | "context-menu";
+
+/**
+ * Describes a leaf action item, submenu trigger, or separator row inside a `Menu`.
  *
  * @remarks When `separator` is true all other fields are ignored; the item renders as
- * a thin horizontal rule. When `submenu` is set the item opens a child `MenuPanel`
+ * a thin horizontal rule. When `submenu` is set the item opens a child `Menu`
  * instead of calling `action`.
  *
  * @category Components
@@ -43,7 +52,7 @@ export interface MenuConfig {
 }
 
 /**
- * A single row inside a `MenuPanel`.
+ * A single row inside a `Menu` panel.
  *
  * Renders a four-zone layout: icon | text | shortcut | chevron. When
  * `config.separator` is true the item renders instead as a thin horizontal
@@ -68,6 +77,7 @@ export class MenuItem extends Component {
     private readonly _config: MenuItemConfig;
     private readonly _onActivate: () => void;
     private readonly _onOpenSubmenu: (item: MenuItem) => void;
+    private readonly _cssVarPrefix: MenuItemCSSVarPrefix;
 
     private _iconLabel: Label | null = null;
     private _textLabel: Label | null = null;
@@ -86,17 +96,20 @@ export class MenuItem extends Component {
      * @param config - The item descriptor including text, action, shortcut, icon, and submenu.
      * @param onActivate - Called when this item is activated (click or Enter on a leaf item).
      * @param onOpenSubmenu - Called when this item's submenu should open (or close others when no submenu).
+     * @param cssVarPrefix - Selects which CSS-variable family supplies disabled, hover, and shortcut colours. Defaults to `'menu-bar'`.
      */
     constructor(
         config: MenuItemConfig,
         onActivate: () => void,
-        onOpenSubmenu: (item: MenuItem) => void
+        onOpenSubmenu: (item: MenuItem) => void,
+        cssVarPrefix: MenuItemCSSVarPrefix = "menu-bar"
     ) {
         super();
 
         this._config = config;
         this._onActivate = onActivate;
         this._onOpenSubmenu = onOpenSubmenu;
+        this._cssVarPrefix = cssVarPrefix;
 
         if (config.separator) {
             this.setHeight(MenuItem.SEPARATOR_HEIGHT);
@@ -104,7 +117,7 @@ export class MenuItem extends Component {
             this.setBackgroundColor("transparent");
             this.setElementCSSRule(
                 "borderTop",
-                "1px solid var(--ts-ui-menu-bar-separator-color, rgb(220, 220, 220))"
+                `1px solid var(--ts-ui-${cssVarPrefix}-separator-color, rgb(220, 220, 220))`
             );
             this.setElementCSSRule("margin", "4px 0");
             this.getAria().setRole("separator");
@@ -127,7 +140,7 @@ export class MenuItem extends Component {
 
         if (!enabled) {
             this.setForegroundColor(
-                "var(--ts-ui-menu-bar-item-disabled-color, rgb(170, 170, 170))"
+                `var(--ts-ui-${cssVarPrefix}-item-disabled-color, rgb(170, 170, 170))`
             );
             this.getAria().setDisabled(true);
         }
@@ -152,7 +165,7 @@ export class MenuItem extends Component {
             this._shortcutLabel.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
             this._shortcutLabel.setElementCSSRule("textAlign", "right");
             this._shortcutLabel.setForegroundColor(
-                "var(--ts-ui-menu-bar-item-shortcut-color, rgb(140, 140, 140))"
+                `var(--ts-ui-${cssVarPrefix}-item-shortcut-color, rgb(140, 140, 140))`
             );
             this.addComponent(this._shortcutLabel);
         }
@@ -163,7 +176,7 @@ export class MenuItem extends Component {
             this._chevronLabel.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
             this._chevronLabel.setElementCSSRule("textAlign", "center");
             this._chevronLabel.setForegroundColor(
-                "var(--ts-ui-menu-bar-item-shortcut-color, rgb(140, 140, 140))"
+                `var(--ts-ui-${cssVarPrefix}-item-shortcut-color, rgb(140, 140, 140))`
             );
             this.addComponent(this._chevronLabel);
             this.getAria().setHasPopup("menu");
@@ -229,7 +242,7 @@ export class MenuItem extends Component {
     setFocused(focused: boolean): void {
         this.setBackgroundColor(
             focused
-                ? "var(--ts-ui-menu-bar-item-hover-bg, rgba(30, 100, 200, 0.12))"
+                ? `var(--ts-ui-${this._cssVarPrefix}-item-hover-bg, rgba(30, 100, 200, 0.12))`
                 : "transparent"
         );
     }

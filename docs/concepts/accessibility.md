@@ -42,7 +42,7 @@ The framework sets WAI-ARIA roles automatically for its components. Some highlig
 | [`Tree`](/components/Tree) | `tree` with `treeitem` rows |
 | [`Tab`](/layouts/Tab) | `tablist` / `tab` / `tabpanel` |
 | [`MenuBar`](/components/MenuBar) | `menubar` / `menu` / `menuitem` |
-| [`ContextMenu`](/components/ContextMenu) | `menu` / `menuitem` / `separator` |
+| [`Menu`](/components/Menu) | `menu` / `menuitem` / `separator` |
 | [`Button`](/components/Button) | inherits the native `<button>` semantics |
 | [`ComboBox`](/components/ComboBox) | `combobox` (with the underlying `<select>` providing the listbox) |
 
