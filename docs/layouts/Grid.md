@@ -40,14 +40,34 @@ If you set only one of `setRows` or `setColumns` (leaving the other at `0`), the
 | Method | Purpose |
 | --- | --- |
 | `setRows(n)` / `setColumns(n)` | Explicit grid dimensions. `0` = auto. |
+| `setComponentSpacing(px)` | Horizontal and vertical gap between cells. |
+| `setStretching(boolean)` | When `true` (default), every child fills its cell. When `false`, cells stay uniformly sized and the grid still fills the container, but children inside each cell use their preferred heights and are baseline-aligned within the row. |
+
+## Baseline alignment
+
+By default, `Grid` makes every cell the same size and stretches children to fill them. Call `setStretching(false)` to keep the uniform cell grid (so the layout still fills its container) but let children inside each row use their preferred heights and baseline-align with each other — the same alignment rules as [`HBox`](/layouts/HBox#baseline-alignment).
+
+```typescript
+const layout = new Grid();
+layout.setColumns(2);
+layout.setStretching(false); // per-row baseline alignment
+panel.setLayoutManager(layout);
+
+// Useful for label/field form grids:
+panel.addComponent(new Text('Name:'));
+panel.addComponent(new TextField());
+panel.addComponent(new Text('Age:'));
+panel.addComponent(new NumberSpinner());
+```
 
 ## When to use it
 
-- Calculator / numpad layouts.
-- Photo galleries / icon grids.
-- Any tabular UI where every cell is the same size.
+- Calculator / numpad layouts (stretching mode).
+- Photo galleries / icon grids (stretching mode).
+- Form grids where each row should baseline-align label and input (non-stretching mode).
+- Any tabular UI where every cell is the same size (stretching mode).
 
-For variable cell sizes (per-row or per-column), use a [`Border`](/layouts/Border) at top level with [`HBox`](/layouts/HBox) / [`VBox`](/layouts/VBox) inside, or build a [`Table`](/components/Table).
+For variable column widths, use a [`Border`](/layouts/Border) at top level with [`HBox`](/layouts/HBox) / [`VBox`](/layouts/VBox) inside, or build a [`Table`](/components/Table).
 
 ## See also
 

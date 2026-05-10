@@ -47,6 +47,19 @@ toolbar.addComponent(button, {
 | `setSpacing(px)` | Gap between children. |
 | `setStretching(boolean)` | When `true`, all children fill the row's full height. |
 
+## Baseline alignment
+
+When children of mixed heights share a row (e.g. a `Text` label next to a `TextField`, `Button`, `ComboBox`, `Checkbox`, or `ProgressBar`), `HBox` aligns them by their visual baseline — the same way CSS `vertical-align` aligns inline-block elements.
+
+Each component reports a baseline via `getBaseline()`:
+
+- Text-bearing components (`Text`, `Label`, `Button`, `TextField`, `ComboBox`, `NumberSpinner`, …) return their inner-text baseline (font ascent), measured from the top of the component. `HBox` lines up these baselines.
+- Graphical / replaced components (`ProgressBar`, `Image`, `Slider`, `Checkbox`, the inner radio of `RadioButton`, …) return `null`. `HBox` treats them like CSS `vertical-align: middle`: their **vertical center sits on the row baseline**, so a radio circle or checkbox aligns nicely with the surrounding text rather than sitting on top of the line.
+
+`HBox` picks the largest reported baseline in the row, augments it with half the tallest null-baseline child (so a tall graphical control like `ProgressSpinner` doesn't push the row off-screen), and offsets each child so the rule above holds. The row's preferred height grows to `ascent + descent` where `ascent` and `descent` each take the larger of the text-baseline contribution and the null-child half-height.
+
+If no child reports a baseline, `HBox` falls back to the legacy top-aligned layout. Baseline alignment is also skipped when `setStretching(true)` is enabled, since stretching forces every child to fill the row vertically and there is no shared baseline to align.
+
 ## See also
 
 - [API: HBox](/api/classes/HBox)

@@ -70,6 +70,16 @@ Missing units silently produce zero-height components — an early bug fixed in 
 
 Layout managers operate on `getInnerSize()` of their container. Use this when you need the rectangle a child can actually occupy, accounting for the container's borders and padding.
 
+## Baseline (for horizontal layouts)
+
+Every component also exposes `getBaseline()`: the offset, in pixels, from the top of the component to its visual baseline. [`HBox`](/layouts/HBox), [`Column`](/layouts/Column), and [`Grid`](/layouts/Grid) use this to align children of mixed heights so their text baselines coincide — much like CSS `vertical-align`.
+
+Text-bearing components (`Text`, `Label`, `Button`, `TextField`, `ComboBox`, `NumberSpinner`, `Header`, `MenuItem`, `RadioButton`, …) report a real baseline derived from the rendered font metrics. Graphical or replaced-element components (`ProgressBar`, `Image`, `Slider`, `Checkbox`, the inner radio of `RadioButton`, …) return `null`. The layout treats them like CSS `vertical-align: middle`: their vertical centre is placed on the row baseline so they align with the text content rather than sitting flush with the row top.
+
+When a layout finds at least one child with a real baseline it picks the largest baseline as the row baseline (raising it as needed so a tall null-baseline child stays on-screen). The row's preferred height grows to `ascent + descent` where each side accommodates both the text contribution and half the tallest null-baseline child, ensuring nothing is clipped.
+
+`HBox` baseline-aligns by default. `Column` and `Grid` opt in via `setStretching(false)` — by default they stretch every child to fill its cell, in which case baseline alignment doesn't apply.
+
 ## See also
 
 - [Component lifecycle](/concepts/component-lifecycle)
