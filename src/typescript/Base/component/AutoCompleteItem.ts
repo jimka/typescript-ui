@@ -115,6 +115,15 @@ export class AutoCompleteItem extends Component {
     }
 
     /**
+     * Returns the offset from the top of the item to the label's text baseline.
+     *
+     * @returns The baseline offset in pixels, or `null` when the label has no baseline.
+     */
+    getBaseline(): number | null {
+        return this.wrapInnerBaseline(this.textComponent.getBaseline());
+    }
+
+    /**
      * Positions the label to fill the item with 8 px horizontal padding.
      */
     doLayout(): void {

@@ -29,6 +29,21 @@ export class TextArea extends TextInput {
     }
 
     /**
+     * Returns `null` so a `TextArea` is treated as a graphical / replaced element
+     * by horizontal layouts.
+     *
+     * @returns Always `null`.
+     *
+     * @remarks A multi-line text area's box height is far larger than its first
+     * line of text, so participating in baseline alignment would drag every
+     * surrounding text label down by the area's vertical extent. Treating it as
+     * a baseline-less block lets the row keep its text labels in place.
+     */
+    getBaseline(): number | null {
+        return null;
+    }
+
+    /**
      * Cleanup hook; currently a no-op placeholder.
      */
     destructor() {

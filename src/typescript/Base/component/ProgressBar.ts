@@ -65,6 +65,20 @@ export class ProgressBar extends Component {
     }
 
     /**
+     * Returns a baseline near the bottom of the bar so that, when placed in an
+     * `HBox` next to text labels, the bar sits with its bottom roughly on the
+     * surrounding text baseline (CSS replaced-element behaviour, with a 2 px
+     * lift so it doesn't sit visually lower than the text descenders).
+     *
+     * @returns The current preferred height minus 2, or `null` before a size is set.
+     */
+    getBaseline(): number | null {
+        const size = this.getPreferredSize();
+
+        return size ? size.height - 2 : null;
+    }
+
+    /**
      * Returns the current progress value (0–100).
      *
      * @returns The current percentage, or 0 when indeterminate.

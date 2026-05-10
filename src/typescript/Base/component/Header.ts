@@ -54,9 +54,13 @@ export class Header extends Panel {
      */
     private updatePreferredSize(): void {
         const textSize = this.text.getPreferredSize();
+        const insets = this.getInsets();
         const textHeight = textSize ? textSize.height : 20;
+        const preferredHeight = textHeight
+                                    + insets.getTop()
+                                    + insets.getBottom();
 
-        this.setPreferredSize(100, textHeight);
+        this.setPreferredSize(100, preferredHeight);
     }
 
     private applyThemePadding(): void {
@@ -71,5 +75,14 @@ export class Header extends Panel {
      */
     getText() {
         return this.text;
+    }
+
+    /**
+     * Returns the offset from the top of the header to the label's text baseline.
+     *
+     * @returns The baseline offset in pixels, or `null` when the label has no baseline.
+     */
+    getBaseline(): number | null {
+        return this.wrapInnerBaseline(this.text.getBaseline());
     }
 }

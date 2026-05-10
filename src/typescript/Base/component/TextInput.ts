@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Input } from "./Input.js";
+import { Util } from "../Util.js";
 
 /**
  * Base class for single-line and multi-line text input components.
@@ -14,6 +15,25 @@ export class TextInput extends Input {
 
     constructor(tag: string = "input") {
         super(tag);
+    }
+
+    /**
+     * Returns the offset from the top of the text input to its inner-text baseline.
+     *
+     * @returns The baseline offset in pixels.
+     *
+     * @remarks Adds the component's top border and CSS padding-top to the native
+     * input's intrinsic baseline. `insets` is layout-side metadata used only
+     * when sizing children; for a leaf input it does not visually push the
+     * rendered element down, so it is excluded from the baseline. `padding` is
+     * applied as real CSS padding (with `box-sizing: border-box`) and shifts
+     * the inner text down. Bare `Input` subclasses without inner text (e.g.
+     * `Checkbox`, the inner radio of `RadioButton`) inherit the default `null`
+     * baseline from `Component` and are treated as graphical elements by
+     * horizontal layouts.
+     */
+    getBaseline(): number | null {
+        return this.wrapInnerBaseline(Util.measureInputBaseline());
     }
 
     /**

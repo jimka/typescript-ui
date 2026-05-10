@@ -4,6 +4,7 @@ import { Component } from "../Component.js";
 import { Option } from "./Option.js";
 import { Event } from "../Event.js";
 import { Type } from "../Type.js";
+import { Util } from "../Util.js";
 import { AbstractStore } from "../data/AbstractStore.js";
 import { ModelRecord } from "../data/ModelRecord.js";
 import { Bindable } from "../Bindable.js";
@@ -47,6 +48,39 @@ export class ComboBox extends Component implements Bindable<string> {
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
+    }
+
+    /**
+     * Applies base styles and binds font-family/font-size to the active theme.
+     *
+     * @param element - The `<select>` element to apply styles to.
+     *
+     * @remarks Native `<select>` elements do not inherit `font-family` or `font-size`
+     * from ancestors in Chromium/WebKit — they use the UA stylesheet defaults. We
+     * therefore write the theme variables onto the per-component CSS rule explicitly,
+     * the same way `Input` does for `<input>` / `<textarea>`.
+     */
+    applyStyle(element: HTMLElement) {
+        super.applyStyle(element);
+
+        const rule = this.getCSSRule();
+        rule.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
+        rule.style.fontSize   = "var(--ts-ui-font-size, 14px)";
+    }
+
+    /**
+     * Returns the offset from the top of the combo box to the inner-text baseline.
+     *
+     * @returns The baseline offset in pixels.
+     *
+     * @remarks Native `<select>` elements have a slightly different baseline
+     * from `<input>` elements at the same font size. The 1-pixel offset on top
+     * of the cached input baseline approximates the empirical placement of the
+     * select's first-row text so a `Text` label next to a `ComboBox` lines up
+     * visually.
+     */
+    getBaseline(): number | null {
+        return this.wrapInnerBaseline(Util.measureInputBaseline() + 1);
     }
 
     /**

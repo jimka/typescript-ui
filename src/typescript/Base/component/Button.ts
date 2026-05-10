@@ -9,6 +9,7 @@ import { BorderStyle } from "../BorderStyle.js";
 import { AnchorType } from "../layout/AnchorType.js";
 import { CSS } from "../CSS.js";
 import { Border, BorderOptions } from "../Border.js";
+import { Insets } from "../Insets.js";
 
 /**
  * A push button component with a text label and configurable pressed-state appearance.
@@ -83,6 +84,15 @@ export class Button extends Component {
      */
     getText() {
         return this.text;
+    }
+
+    /**
+     * Returns the offset from the top of the button to the label's text baseline.
+     *
+     * @returns The baseline offset in pixels, or `null` when the label has no baseline.
+     */
+    getBaseline(): number | null {
+        return this.wrapInnerBaseline(this.text.getBaseline());
     }
 
     /**

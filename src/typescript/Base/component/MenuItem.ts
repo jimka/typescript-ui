@@ -298,6 +298,20 @@ export class MenuItem extends Component {
     }
 
     /**
+     * Returns the offset from the top of the menu item to the title text's baseline.
+     *
+     * @returns The baseline offset in pixels, or `null` when the title has no baseline
+     * (e.g. for a separator row).
+     */
+    getBaseline(): number | null {
+        if (this._titleText === null) {
+            return null;
+        }
+
+        return this.wrapInnerBaseline(this._titleText.getBaseline());
+    }
+
+    /**
      * Positions the four label zones within the item's bounds.
      */
     doLayout(): void {

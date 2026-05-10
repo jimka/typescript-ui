@@ -1142,6 +1142,52 @@ export class Component extends BaseObject {
         return perimiterSize;
     }
 
+    /**
+     * Returns the offset, in pixels, from the top of this component to its visual baseline.
+     *
+     * @returns The baseline offset in pixels, or `null` when this component has no
+     * intrinsic baseline (e.g. graphical or non-text components).
+     *
+     * @remarks The default implementation returns `null`. Subclasses with a
+     * meaningful baseline override this method, typically composing an inner
+     * baseline with the component's own chrome via `wrapInnerBaseline`. Used by
+     * horizontal layouts to align children of mixed heights so their text
+     * baselines coincide. Components that return `null` are treated as if their
+     * bottom edge were the baseline (CSS replaced-element behaviour).
+     */
+    getBaseline(): number | null {
+        return null;
+    }
+
+    /**
+     * Wraps a chrome-relative inner baseline with this component's outer chrome.
+     *
+     * @param inner - The baseline measured from the inner content top (inside
+     * border, padding, and framework insets), or `null` when the component has
+     * no meaningful baseline.
+     * @returns The visual baseline measured from this component's outer top,
+     * or `null` when `inner` is `null`.
+     *
+     * @remarks Adds `insets.top + border.top + padding.top` to `inner`. Use
+     * when implementing `getBaseline()` on a composite component (delegating
+     * to a child) or a CSS-rendered leaf (delegating to
+     * `Util.measureInputBaseline()`). Centralises the chrome arithmetic that
+     * would otherwise be repeated in every override.
+     */
+    protected wrapInnerBaseline(inner: number | null): number | null {
+        if (inner === null) {
+            return null;
+        }
+
+        const padding    = this.getPadding();
+        const paddingTop = padding ? padding.getTop() : 0;
+
+        return this.getInsets().getTop()
+             + this.getBorderSize().top
+             + paddingTop
+             + inner;
+    }
+
     getVerticalAlign() {
         return this.verticalAlign
     }

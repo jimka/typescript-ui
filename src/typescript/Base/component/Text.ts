@@ -19,7 +19,7 @@ import { Util } from "../Util.js";
 export class Text extends Component {
 
     private text: String | null | undefined = null;
-    private hasExplicitPreferredSize = false;
+    private hasExplicitPreferredSize: boolean = false;
     private textAlign: string | null = null;
     private textShadow: string | null = null;
     private fontFamily: string | null = null;
@@ -34,38 +34,74 @@ export class Text extends Component {
     private fontVariant: string | null = null;
     private fontWeight: string | null = null;
     private lineHeight: number | null = null;
+    private lineHeightCSSVar : string | null = null;
+    private lineHeightCSSRule: string | null = null;
+    private measuredBaseline: number | null = null;
 
     constructor(text?: String, tag: string = "span") {
         super(tag);
 
-        this.text = text;
-        this.textAlign = "left";
-        this.fontFamily = "var(--ts-ui-font-family, system-ui, sans-serif)";
-        this.fontKerning = "auto";
-        this.fontSize = 14;
-        this.fontSizeCSSVar  = "--ts-ui-font-size";
-        this.fontSizeCSSRule = "var(--ts-ui-font-size, 14px)";
-        this.fontSizeAdjust = "none";
-        this.fontStretch = "normal";
-        this.fontStyle = "normal";
-        this.fontVariant = "normal";
-        this.fontWeight = "normal";
+        this.text              = text;
+        this.textAlign         = "left";
+        this.fontFamily        = "var(--ts-ui-font-family, system-ui, sans-serif)";
+        this.fontKerning       = "auto";
+        this.fontSize          = 14;
+        this.fontSizeCSSVar    = "--ts-ui-font-size";
+        this.fontSizeCSSRule   = "var(--ts-ui-font-size, 14px)";
+        this.fontSizeAdjust    = "none";
+        this.fontStretch       = "normal";
+        this.fontStyle         = "normal";
+        this.fontVariant       = "normal";
+        this.fontWeight        = "normal";
+        this.lineHeightCSSVar  = "--ts-ui-line-height";
+        this.lineHeightCSSRule = "var(--ts-ui-line-height, 1.2)";
+        this.lineHeight        = this.readThemeLineHeightPx();
 
         this.setInsets(null);
+        this.setElementCSSRule("lineHeight", this.lineHeightCSSRule);
 
         this.unsubscribeTheme = ThemeManager.onThemeChange(() => {
             if (this.fontSizeCSSVar) {
                 const raw    = getComputedStyle(document.documentElement)
-                                   .getPropertyValue(this.fontSizeCSSVar).trim();
+                                   .getPropertyValue(this.fontSizeCSSVar)
+                                   .trim();
                 const parsed = parseFloat(raw);
+
                 if (!isNaN(parsed)) {
                     this.fontSize = parsed;
                 }
             }
+
+            if (this.lineHeightCSSVar) {
+                this.lineHeight = this.readThemeLineHeightPx();
+            }
+
             this.calculateSize();
         });
 
         this.calculateSize();
+    }
+
+    /**
+     * Reads the active theme's `--ts-ui-line-height` (a unitless multiplier)
+     * and resolves it to a pixel value relative to the current font size.
+     *
+     * @returns The line height in pixels, or `fontSize * 1.2` as a fallback
+     * when the variable is missing or unparseable.
+     */
+    private readThemeLineHeightPx(): number {
+        const fs = this.fontSize ?? 14;
+
+        if (!this.lineHeightCSSVar) {
+            return fs;
+        }
+
+        const raw    = getComputedStyle(document.documentElement)
+                           .getPropertyValue(this.lineHeightCSSVar)
+                           .trim();
+        const parsed = parseFloat(raw);
+
+        return isNaN(parsed) ? fs * 1.2 : fs * parsed;
     }
 
     /**
@@ -102,21 +138,35 @@ export class Text extends Component {
      * @remarks Creates a temporary fixed-positioned invisible `<span>`, appends it to the body
      * to obtain its bounding rect, then removes it. Sets preferred size to (0, 0) when no text is set.
      */
-    private calculateSize() {
+    private calculateSize(): void {
         if (this.text) {
-            const { width, height } = Util.measureTextSize(this.text.toString(), {
-                fontFamily  : this.fontFamily  ?? undefined,
-                fontSize    : this.fontSizeCSSRule ?? (this.fontSize !== null ? `${this.fontSize}px` : undefined),
-                fontWeight  : this.fontWeight  ?? undefined,
-                fontStyle   : this.fontStyle   ?? undefined,
-                fontVariant : this.fontVariant ?? undefined,
-                fontStretch : this.fontStretch ?? undefined,
+            const { width, height, baseline } = Util.measureTextMetrics(this.text.toString(), {
+                fontFamily : this.fontFamily      ?? undefined,
+                fontSize   : this.fontSizeCSSRule ?? (this.fontSize !== null ? `${this.fontSize}px` : undefined),
+                fontWeight : this.fontWeight      ?? undefined,
+                fontStyle  : this.fontStyle       ?? undefined,
+                fontVariant: this.fontVariant     ?? undefined,
+                fontStretch: this.fontStretch     ?? undefined,
+                lineHeight : this.lineHeightCSSRule ?? (this.lineHeight !== null ? `${this.lineHeight}px` : undefined)
             });
 
+            this.measuredBaseline = baseline;
             this.setCalculatedSize(width, height);
         } else {
+            this.measuredBaseline = 0;
             this.setCalculatedSize(0, 0);
         }
+    }
+
+    /**
+     * Returns the visual baseline of the rendered text, accounting for any
+     * border, padding, or framework insets on this component.
+     *
+     * @returns The baseline offset from the component's outer top, in pixels,
+     * or `null` when no text has been measured yet.
+     */
+    getBaseline(): number | null {
+        return this.wrapInnerBaseline(this.measuredBaseline);
     }
 
     /**
@@ -377,14 +427,28 @@ export class Text extends Component {
     }
 
     /**
-     * Sets the line height in pixels and updates the component's CSS rule.
+     * Sets the line height. Pass a number for an explicit pixel value (which
+     * stops tracking the theme), or a CSS variable name (e.g.
+     * `"--ts-ui-line-height"`) to bind to a theme token. Theme tokens are
+     * interpreted as unitless multipliers of the current font size, so they
+     * scale automatically when the font size changes.
      *
-     * @param value - The line height in pixels.
+     * @param value - Pixel value as a number, or a CSS custom property name as a string.
      */
-    setLineHeight(value: number) {
-        this.lineHeight = value;
+    setLineHeight(value: number | string) {
+        if (typeof value === 'number') {
+            this.lineHeight        = value;
+            this.lineHeightCSSVar  = null;
+            this.lineHeightCSSRule = null;
+            this.setElementCSSRule("lineHeight", value + "px");
+        } else {
+            this.lineHeightCSSVar  = value;
+            this.lineHeightCSSRule = `var(${value}, 1.2)`;
+            this.lineHeight        = this.readThemeLineHeightPx();
+            this.setElementCSSRule("lineHeight", this.lineHeightCSSRule);
+        }
 
-        this.setElementCSSRule("lineHeight", value + "px");
+        this.calculateSize();
     }
 
     /**
@@ -414,16 +478,17 @@ export class Text extends Component {
         super.applyStyle(element);
 
         this.setElementCSSRules({
-            fontFamily:     this.fontFamily ?? '',
-            textAlign:      this.textAlign     ? this.textAlign     : '',
-            textShadow:     this.textShadow    ? this.textShadow    : '',
-            fontKerning:    this.fontKerning   ? this.fontKerning   : '',
+            fontFamily:     this.fontFamily      ?? '',
+            textAlign:      this.textAlign        ? this.textAlign          : '',
+            textShadow:     this.textShadow       ? this.textShadow         : '',
+            fontKerning:    this.fontKerning      ? this.fontKerning        : '',
             fontSize:       this.fontSizeCSSRule ?? (this.fontSize !== null ? `${this.fontSize}px` : ''),
-            fontSizeAdjust: this.fontSizeAdjust ? this.fontSizeAdjust : '',
-            fontStretch:    this.fontStretch   ? this.fontStretch   : '',
-            fontStyle:      this.fontStyle     ? this.fontStyle     : '',
-            fontVariant:    this.fontVariant   ? this.fontVariant   : '',
-            fontWeight:     this.fontWeight    ? this.fontWeight    : ''
+            fontSizeAdjust: this.fontSizeAdjust   ? this.fontSizeAdjust     : '',
+            fontStretch:    this.fontStretch      ? this.fontStretch        : '',
+            fontStyle:      this.fontStyle        ? this.fontStyle          : '',
+            fontVariant:    this.fontVariant      ? this.fontVariant        : '',
+            fontWeight:     this.fontWeight       ? this.fontWeight         : '',
+            lineHeight:     this.lineHeightCSSRule ?? (this.lineHeight !== null ? `${this.lineHeight}px` : '')
         });
     }
 

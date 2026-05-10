@@ -60,7 +60,8 @@ export class HBox extends LayoutManager {
     }
 
     /**
-     * Returns the preferred size: the sum of child widths plus spacing, and the tallest child height.
+     * Returns the preferred size: the sum of child widths plus spacing, and a row
+     * height computed from the children's preferred heights and reported baselines.
      *
      * @returns The preferred `{width, height}`, or `null` if no container is attached.
      */
@@ -74,7 +75,9 @@ export class HBox extends LayoutManager {
         let components = container.getComponents();
         let containerInsets = container.getInsets();
         let width = containerInsets.getLeft() + containerInsets.getRight();
-        let height = Number.MAX_SAFE_INTEGER;
+
+        const heights: number[] = [];
+        const baselines: Array<number | null> = [];
 
         for (let idx in components) {
             let component = components[idx];
@@ -82,9 +85,12 @@ export class HBox extends LayoutManager {
 
             if (size) {
                 width += size.width;
-                height = height == Number.MAX_SAFE_INTEGER ? Math.min(height, size.height) : Math.max(height, size.height);
+                heights.push(size.height);
+                baselines.push(component.getBaseline());
             }
         }
+
+        let height = this.computeRowHeight(heights, baselines);
 
         width += this.getComponentSpacing() * (components.length - 1) + containerBorderSize.left + containerBorderSize.right;
         height += containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
@@ -96,7 +102,8 @@ export class HBox extends LayoutManager {
     }
 
     /**
-     * Returns the minimum size: the sum of child minimum widths plus spacing, and the tallest child minimum height.
+     * Returns the minimum size: the sum of child minimum widths plus spacing, and the
+     * row height required by the children's minimum heights and reported baselines.
      *
      * @returns The minimum `{width, height}`, or `null` if no container is attached.
      */
@@ -110,7 +117,9 @@ export class HBox extends LayoutManager {
         let components = container.getComponents();
         let containerInsets = container.getInsets();
         let width = containerInsets.getLeft() + containerInsets.getRight();
-        let height = 0;
+
+        const heights: number[] = [];
+        const baselines: Array<number | null> = [];
 
         for (let idx in components) {
             let component = components[idx];
@@ -118,9 +127,12 @@ export class HBox extends LayoutManager {
 
             if (size) {
                 width += size.width;
-                height = Math.max(height, size.height);
+                heights.push(size.height);
+                baselines.push(component.getBaseline());
             }
         }
+
+        let height = this.computeRowHeight(heights, baselines);
 
         width += this.getComponentSpacing() * (components.length - 1) + containerBorderSize.left + containerBorderSize.right;
         height += containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
@@ -211,10 +223,11 @@ export class HBox extends LayoutManager {
 
         let remainingWidth = Math.max(0, containerSize.width - fixedWidth);
 
-        let x = containerInsets.getLeft();
-        let y = containerInsets.getTop();
+        const widths: number[] = [];
+        const heights: number[] = [];
+        const baselines: Array<number | null> = [];
 
-        for (let idx in components) {
+        for (let idx = 0; idx < components.length; idx += 1) {
             let component = components[idx];
             let constraints = this.getLayoutConstraints(component);
             let weight = constraints?.weight ?? 0;
@@ -239,6 +252,45 @@ export class HBox extends LayoutManager {
                 height = maxSize ? Math.min(maxSize.height, containerSize.height) : containerSize.height;
             } else {
                 height = Math.min(size.height, containerSize.height);
+            }
+
+            widths.push(width);
+            heights.push(height);
+            baselines.push(component.getBaseline());
+        }
+
+        // Stretching forces every child to fill the row vertically, which makes
+        // baseline alignment meaningless — fall back to top-alignment.
+        // rowAscent is driven only by text-bearing children; tall null-baseline
+        // children (a List, TextArea, etc.) must NOT drag the baseline down or
+        // every text label in the row would be pushed off the top.
+        let rowAscent: number | null = null;
+        let rowDescent = 0;
+
+        if (!this.isStretching()) {
+            const metrics = this.computeRowMetrics(heights, baselines);
+            rowAscent = metrics.rowAscent;
+            rowDescent = metrics.rowDescent;
+        }
+
+        let x = containerInsets.getLeft();
+
+        for (let idx = 0; idx < components.length; idx += 1) {
+            let component = components[idx];
+            const width = widths[idx];
+            const height = heights[idx];
+
+            let y: number;
+
+            if (rowAscent !== null) {
+                const b = baselines[idx];
+                if (b !== null) {
+                    y = containerInsets.getTop() + (rowAscent - b);
+                } else {
+                    y = containerInsets.getTop() + this.nullChildY(height, rowAscent, rowDescent);
+                }
+            } else {
+                y = containerInsets.getTop();
             }
 
             this.placeComponent(
