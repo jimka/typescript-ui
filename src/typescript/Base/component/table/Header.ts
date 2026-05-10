@@ -3,7 +3,7 @@
 import { Component } from "../../Component.js";
 import { Row } from "./Row.js";
 import { AbstractModel } from "../../data/AbstractModel.js";
-import { AbstractStore } from "../../data/AbstractStore.js";
+import { AbstractStore, SortDescriptor } from "../../data/AbstractStore.js";
 import { Field } from "../../data/Field.js";
 import { HeaderCell } from "./cell/Header.js";
 import { BorderStyle } from "../../BorderStyle.js";
@@ -209,66 +209,91 @@ export class Header extends Component {
         this.syncSortIndicators();
     }
 
+    /**
+     * Wires the sort, resize, and context-menu callbacks for one cell.
+     *
+     * @param cell - The header cell whose listeners are being attached.
+     * @param idx - Zero-based column index used by the resize callback.
+     */
     private wireCell(cell: HeaderCell, idx: number): void {
-        cell.setOnSortClick((fieldName) => this.handleSortClick(fieldName));
+        cell.setOnSortClick((fieldName, shiftKey) => this.handleSortClick(fieldName, shiftKey));
         cell.setOnResizeDrag((delta) => this.onResizeCallback?.(idx, delta));
         cell.setOnContextMenu((fieldName, x, y) => this.onColumnContextMenuCallback?.(fieldName, x, y));
     }
 
-    private handleSortClick(fieldName: string): void {
-        const sorter = this.store.getActiveSorter();
-        const cells = this.getColumns() as HeaderCell[];
+    /**
+     * Handles a click on a header cell, cycling sort state on the underlying store.
+     *
+     * @param fieldName - The field associated with the clicked column.
+     * @param shiftKey - Whether the shift key was held; toggles multi-column sort composition.
+     *
+     * @remarks
+     * Without shift, behaviour is asc → desc → cleared on the clicked column.
+     * With shift, the column is appended/toggled within the existing sort list:
+     * not present → append asc; asc → flip to desc; desc → remove from the list.
+     */
+    private handleSortClick(fieldName: string, shiftKey: boolean): void {
+        if (shiftKey) {
+            const sorters = this.store.getActiveSorters();
+            const idx     = sorters.findIndex(s => s.field === fieldName);
+            let next: SortDescriptor[];
 
-        let newDir: 'asc' | 'desc' | null;
-
-        if (!sorter || sorter.property !== fieldName) {
-            newDir = 'asc';
-        } else if (sorter.direction === 'asc') {
-            newDir = 'desc';
-        } else {
-            newDir = null;
-        }
-
-        cells.forEach(c => c.setSortState(null));
-
-        if (newDir !== null) {
-            const visibleFields = this.model.getFields()
-                                            .slice()
-                                            .filter(f => !this.hiddenColumns.has(f.getName()))
-                                            .sort((a, b) => a.getOrder() - b.getOrder());
-
-            const idx = visibleFields.findIndex(f => f.getName() === fieldName);
-
-            if (idx !== -1) {
-                cells[idx].setSortState(newDir);
+            if (idx === -1) {
+                next = [...sorters, { field: fieldName, dir: 'asc' }];
+            } else if (sorters[idx].dir === 'asc') {
+                next = sorters.map((s, i) =>
+                    i === idx ? { field: s.field, dir: 'desc' } : s
+                );
+            } else {
+                next = sorters.filter((_, i) => i !== idx);
             }
 
-            this.store.sort(fieldName, newDir);
+            if (next.length === 0) {
+                this.store.clearSort();
+            } else {
+                this.store.sort(next);
+            }
         } else {
-            this.store.clearSort();
+            const sorters = this.store.getActiveSorters();
+            const current = sorters.length === 1 && sorters[0].field === fieldName
+                ? sorters[0] : null;
+
+            if (!current) {
+                this.store.sort(fieldName, 'asc');
+            } else if (current.dir === 'asc') {
+                this.store.sort(fieldName, 'desc');
+            } else {
+                this.store.clearSort();
+            }
         }
+
+        this.syncSortIndicators();
     }
 
+    /**
+     * Refreshes every visible header cell's sort arrow and priority badge
+     * to match the store's current `activeSorters` list.
+     */
     private syncSortIndicators(): void {
-        const sorter = this.store.getActiveSorter();
-
-        if (!sorter) {
-            return;
-        }
-
+        const cells         = this.getColumns() as HeaderCell[];
         const visibleFields = this.model.getFields()
                                         .slice()
                                         .filter(f => !this.hiddenColumns.has(f.getName()))
                                         .sort((a, b) => a.getOrder() - b.getOrder());
 
-        const idx = visibleFields.findIndex(f => f.getName() === sorter.property);
+        const sorters       = this.store.getActiveSorters();
+        const fieldToSorter = new Map(sorters.map((s, i) => [s.field, { dir: s.dir, priority: i + 1 }]));
+        const showPriority  = sorters.length > 1;
 
-        if (idx === -1) {
-            return;
-        }
+        cells.forEach((cell, i) => {
+            const fieldName = visibleFields[i]?.getName();
+            const entry     = fieldName ? fieldToSorter.get(fieldName) : undefined;
 
-        const cells = this.getColumns() as HeaderCell[];
-
-        cells[idx]?.setSortState(sorter.direction);
+            if (entry) {
+                cell.setSortState(entry.dir, showPriority ? entry.priority : null);
+            } else {
+                cell.setSortState(null);
+            }
+        });
     }
 }

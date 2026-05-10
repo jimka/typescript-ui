@@ -53,6 +53,7 @@ const table = new Table(store, {
 ## Sorting and selection
 
 - Click a column header to cycle through sort directions: ascending → descending → no sort.
+- **Shift-click** a column header to compose a multi-column sort: each shift-click appends or toggles that column inside the current sort list (asc → desc → removed). When more than one column is active, a small priority badge (`2`, `3`, …) is shown on each non-primary column header.
 - Drag a column header's right edge to resize.
 - Right-click a column header to toggle column visibility via a context menu.
 - `table.getSelectedRecord()` / `getSelectedRecords()` return the user's selection.

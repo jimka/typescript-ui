@@ -25,11 +25,16 @@ export type StoreListener<T = any> = (payload: T) => void;
  *
  * @category Data
  */
-export type StoreEvent = 'load' | 'datachanged' | 'add' | 'remove' | 'beforesync' | 'sync' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked';
+export type StoreEvent = 'load' | 'datachanged' | 'add' | 'remove' | 'beforesync' | 'sync' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked' | 'sortchanged';
 
-interface SorterConfig {
-    property: string;
-    direction: 'asc' | 'desc';
+/**
+ * Describes one column's contribution to a multi-column sort.
+ *
+ * @category Data
+ */
+export interface SortDescriptor {
+    field: string;
+    dir  : 'asc' | 'desc';
 }
 
 /**
@@ -54,7 +59,7 @@ export abstract class AbstractStore {
     private records: ModelRecord[] = [];
     private pendingRemoved: ModelRecord[] = [];
     private activeFilters: FilterDescriptor[] = [];
-    private activeSorter: SorterConfig | null = null;
+    private activeSorters: SortDescriptor[] = [];
     private listenerMap: Map<string, StoreListener[]> = new Map();
 
     // Worker-offload state. Each store gets a unique id so the shared worker can
@@ -578,19 +583,38 @@ export abstract class AbstractStore {
     // ── Sort ─────────────────────────────────────────────────────────────────
 
     /**
-     * Sorts the view by a property in the given direction and fires 'datachanged'.
+     * Sorts the view by a single property in the given direction.
      *
-     * @param property - The field name to sort by.
-     * @param direction - Optional. The sort direction; defaults to 'asc'.
+     * @param field - The field name to sort by.
+     * @param dir - Optional. The sort direction; defaults to 'asc'.
+     *
+     * @returns A promise that resolves once the local view has been rebuilt.
      *
      * @remarks
-     * When server-side pagination is enabled, this method also resets the current
-     * page to 1 and triggers a fire-and-forget reload so the proxy receives the
-     * new ordering. The promise resolves once the local view is rebuilt; the
-     * subsequent reload is intentionally not awaited.
+     * When server-side pagination is enabled, this method also resets the
+     * current page to 1 and triggers a fire-and-forget reload so the proxy
+     * receives the new ordering. Fires `'sortchanged'` and `'datachanged'`.
      */
-    sort(property: string, direction: 'asc' | 'desc' = 'asc'): Promise<void> {
-        this.activeSorter = { property, direction };
+    sort(field: string, dir?: 'asc' | 'desc'): Promise<void>;
+    /**
+     * Applies a multi-column sort. Pass an empty array to clear all sorters.
+     *
+     * @param descriptors - The ordered list of sort descriptors. Earlier
+     *   descriptors take priority.
+     *
+     * @returns A promise that resolves once the local view has been rebuilt.
+     *
+     * @remarks
+     * Mirrors the single-column overload's pagination side effects when
+     * server-side pagination is enabled.
+     */
+    sort(descriptors: SortDescriptor[]): Promise<void>;
+    sort(fieldOrDescriptors: string | SortDescriptor[], dir: 'asc' | 'desc' = 'asc'): Promise<void> {
+        if (typeof fieldOrDescriptors === 'string') {
+            this.activeSorters = [{ field: fieldOrDescriptors, dir }];
+        } else {
+            this.activeSorters = fieldOrDescriptors.slice();
+        }
 
         if (this._pageSize != null) {
             this._page = 1;
@@ -598,6 +622,7 @@ export abstract class AbstractStore {
         }
 
         return this.applyView().then(() => {
+            this.emit('sortchanged', { sorters: this.getActiveSorters() });
             this.emit('datachanged', {});
 
             if (this._pageSize != null) {
@@ -607,21 +632,37 @@ export abstract class AbstractStore {
     }
 
     /**
-     * Returns a copy of the active sorter config, or null if no sort is active.
+     * Returns a copy of all active sort descriptors in priority order.
      *
-     * @returns The current sorter, or null.
+     * @returns A shallow-copy array of the active sort descriptors; empty when no sort is active.
      */
-    getActiveSorter(): { property: string; direction: 'asc' | 'desc' } | null {
-        return this.activeSorter ? { ...this.activeSorter } : null;
+    getActiveSorters(): SortDescriptor[] {
+        return this.activeSorters.map(s => ({ ...s }));
     }
 
     /**
-     * Removes any active sort and restores insertion order, firing 'datachanged'.
+     * Returns a copy of the primary active sorter config, or null if no sort is active.
+     *
+     * @returns The first active sorter mapped to the legacy `{ property, direction }` shape, or null.
+     *
+     * @deprecated Use {@link getActiveSorters} instead.
+     */
+    getActiveSorter(): { property: string; direction: 'asc' | 'desc' } | null {
+        const first = this.activeSorters[0];
+
+        return first ? { property: first.field, direction: first.dir } : null;
+    }
+
+    /**
+     * Removes any active sort and restores insertion order, firing 'sortchanged' and 'datachanged'.
+     *
+     * @returns A promise that resolves once the local view has been rebuilt.
      */
     clearSort(): Promise<void> {
-        this.activeSorter = null;
+        this.activeSorters = [];
 
         return this.applyView().then(() => {
+            this.emit('sortchanged', { sorters: [] });
             this.emit('datachanged', {});
         });
     }
@@ -761,28 +802,32 @@ export abstract class AbstractStore {
             view = view.filter(r => matchesFilter(r, descriptor));
         }
 
-        if (this.activeSorter) {
-            const { property, direction } = this.activeSorter;
-
+        if (this.activeSorters.length > 0) {
             view.sort((a, b) => {
-                const av = a.get(property);
-                const bv = b.get(property);
+                for (const { field, dir } of this.activeSorters) {
+                    const av = a.get(field);
+                    const bv = b.get(field);
 
-                if (av == null && bv == null) {
-                    return 0;
+                    if (av == null && bv == null) {
+                        continue;
+                    }
+
+                    if (av == null) {
+                        return 1;
+                    }
+
+                    if (bv == null) {
+                        return -1;
+                    }
+
+                    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+
+                    if (cmp !== 0) {
+                        return dir === 'asc' ? cmp : -cmp;
+                    }
                 }
 
-                if (av == null) {
-                    return 1;
-                }
-
-                if (bv == null) {
-                    return -1;
-                }
-
-                const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-
-                return direction === 'asc' ? cmp : -cmp;
+                return 0;
             });
         }
 
@@ -797,6 +842,12 @@ export abstract class AbstractStore {
      * worker for sorted/filtered indices into the snapshot, and maps those indices
      * back to the local ModelRecord array. The worker returns indices (not records)
      * because ModelRecord instances can't survive structured clone.
+     *
+     * @remarks
+     * The worker protocol currently accepts only a single sorter, so on the
+     * worker path multi-sort degrades to the primary (first) sorter. Datasets
+     * below {@link WORKER_THRESHOLD} run in-process and apply the full
+     * multi-key comparator.
      */
     private applyViewOnWorker(): Promise<void> {
         const snapshot = this.snapshotDirty
@@ -808,12 +859,13 @@ export abstract class AbstractStore {
         }
 
         const allRecordsRef = this.allRecords;
+        const primary       = this.activeSorters[0];
 
         return snapshot
             .then(() => StoreWorkerClient.sortFilter(
                 this.storeId,
-                this.activeSorter
-                    ? { field: this.activeSorter.property, direction: this.activeSorter.direction }
+                primary
+                    ? { field: primary.field, direction: primary.dir }
                     : undefined,
                 this.activeFilters.length > 0
                     ? (this.activeFilters.length === 1

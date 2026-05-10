@@ -136,7 +136,7 @@ export { MemoryProxy } from './data/proxy/MemoryProxy.js';
 export { AjaxProxy } from './data/proxy/AjaxProxy.js';
 export type { FieldConfig, FieldType } from './data/Field.js';
 export type { FilterDescriptor } from './data/FilterDescriptor.js';
-export type { StoreEvent, StoreListener } from './data/AbstractStore.js';
+export type { StoreEvent, StoreListener, SortDescriptor } from './data/AbstractStore.js';
 export type { MemoryProxyConfig } from './data/proxy/MemoryProxy.js';
 export type { AjaxProxyConfig } from './data/proxy/AjaxProxy.js';
 export type { ReadParams } from './data/proxy/Proxy.js';
