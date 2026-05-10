@@ -66,6 +66,39 @@ const table = new Table(store, {
 | `setColumnVisible(field, boolean)` | Show / hide a column. |
 | `setColumnWidths(widths[])` | Set all column widths at once. |
 | `setHeaderVisible(boolean)` / `setBodyVisible(boolean)` / `setFooterVisible(boolean)` | Toggle structural sections. |
+| `exportCSV(options?)` / `exportJSON(options?)` | Trigger a download of the current store view. |
+| `setExportMenuEnabled(boolean)` | Adds "Export as CSV" / "Export as JSON" entries to the column context menu. |
+
+## Exporting
+
+`exportCSV()` and `exportJSON()` serialize the **current store view** — the same
+filtered, sorted records the user sees — and trigger a browser download. By
+default only visible columns are included; pass `{ includeHidden: true }` to
+include columns hidden by the user or by the spec's `hidden` flag.
+
+```typescript
+table.exportCSV();                                  // visible columns → table-export.csv
+table.exportJSON({ filename: 'people.json' });      // visible columns, custom filename
+table.exportCSV({ includeHidden: true });           // every resolved column
+```
+
+To surface export from the column context menu, opt in:
+
+```typescript
+table.setExportMenuEnabled(true);
+```
+
+CSV output follows RFC 4180: fields containing `,`, `"`, or `\n` are wrapped in
+double quotes and interior quotes are doubled. Null and undefined cell values
+serialize as the empty string (CSV) or `null` (JSON).
+
+Date, time, and datetime cells are formatted with the same `toLocaleDateString`
+/ `toLocaleTimeString` / `toLocaleString` options the cell renderers use, so
+exports match what the user sees — including the `showSeconds` setting from
+the column spec.
+
+`TablePanel` exposes the same three methods (`setExportMenuEnabled`,
+`exportCSV`, `exportJSON`) as delegates to its inner `Table`.
 
 ## Performance
 
@@ -76,7 +109,7 @@ For large datasets, [`AbstractStore`](/api/classes/AbstractStore) automatically 
 ## See also
 
 - [API: Table](/api/classes/Table)
-- [API: ColumnSpec](/api/interfaces/ColumnSpec), [ColumnConfig](/api/interfaces/ColumnConfig)
+- [API: ColumnSpec](/api/interfaces/ColumnSpec), [ColumnConfig](/api/interfaces/ColumnConfig), [ExportOptions](/api/interfaces/ExportOptions)
 - [`TablePanel`](/components/TablePanel) — table + add/remove/sync toolbar
 - [Data layer](/data/) — Model, Store, Proxy, Binding
 - Recipe: CRUD with a Table (forthcoming)

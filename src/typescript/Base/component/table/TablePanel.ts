@@ -10,6 +10,7 @@ import { Button } from "../Button.js";
 import { PaginationBar } from "../PaginationBar.js";
 import { ProgressSpinner } from "../ProgressSpinner.js";
 import { Table } from "./Table.js";
+import { ExportOptions } from "./TableExporter.js";
 
 /**
  * A composite panel that combines a {@link Table} with an add/remove/sync toolbar.
@@ -106,6 +107,34 @@ export class TablePanel extends Panel {
      */
     getToolbar(): Component {
         return this.toolbar;
+    }
+
+    /**
+     * Enables or disables the "Export as CSV" / "Export as JSON" entries in
+     * the underlying table's column context menu.
+     *
+     * @param enabled - When true the export items are appended to the menu.
+     */
+    setExportMenuEnabled(enabled: boolean): void {
+        this.table.setExportMenuEnabled(enabled);
+    }
+
+    /**
+     * Triggers a CSV download of the current store view.
+     *
+     * @param options - Optional export options (e.g. include hidden columns, custom filename).
+     */
+    exportCSV(options?: ExportOptions): void {
+        this.table.exportCSV(options);
+    }
+
+    /**
+     * Triggers a JSON download of the current store view.
+     *
+     * @param options - Optional export options (e.g. include hidden columns, custom filename).
+     */
+    exportJSON(options?: ExportOptions): void {
+        this.table.exportJSON(options);
     }
 
     /**

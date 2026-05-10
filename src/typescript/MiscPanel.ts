@@ -137,7 +137,9 @@ export class MiscPanel extends Panel {
             ]);
 
             let tableStore = new MemoryStore(tableModel);
-            let tablePanel = new TablePanel(tableStore)
+            let tablePanel = new TablePanel(tableStore);
+
+            tablePanel.setExportMenuEnabled(true);
 
             const rows = [
                 // Declare rows with arrays. Array index is matched by the column order value;
@@ -210,6 +212,7 @@ export class MiscPanel extends Panel {
 
             const pagPanel = new TablePanel(pagStore);
             pagPanel.setPaginationBar(new PaginationBar(pagStore));
+            pagPanel.setExportMenuEnabled(true);
 
             winPag.addComponent(pagPanel);
             winPag.show();
@@ -265,6 +268,7 @@ export class MiscPanel extends Panel {
             };
 
             let specTable = new Table(specStore, spec);
+            specTable.setExportMenuEnabled(true);
 
             win3.addComponent(specTable);
             win3.show();

@@ -41,6 +41,21 @@ panel.setPaginationBar(new PaginationBar(store));
 `setPaginationBar(bar)` replaces any previously attached bar and disposes
 its store listeners.
 
+## Exporting
+
+`TablePanel` delegates [`Table`](/components/Table)'s export methods so callers
+don't have to drill through `getTable()`:
+
+```typescript
+panel.setExportMenuEnabled(true);                    // adds CSV/JSON entries to the column menu
+panel.exportCSV();                                   // visible columns → table-export.csv
+panel.exportJSON({ filename: 'people.json' });       // custom filename
+panel.exportCSV({ includeHidden: true });            // every resolved column
+```
+
+See [Table › Exporting](/components/Table#exporting) for the formatting and
+escaping rules.
+
 ## See also
 
 - [API: TablePanel](/api/classes/TablePanel)
