@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../../Component.js";
 import { Event } from "../../Event.js";
 import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
 import { Table as TableLayout } from "../../layout/Table.js";
@@ -16,6 +15,8 @@ import { MenuItemConfig } from "../MenuItem.js";
 import { Column } from "./Column.js";
 import type { ColumnConfig } from "./ColumnConfig.js";
 import { ColumnSpec } from "./ColumnConfig.js";
+import { Component } from "../../Component.js";
+import { Util } from "../../Util.js";
 
 /**
  * A data-bound table component rendered as an HTML `<table>` element.
@@ -53,18 +54,18 @@ import { ColumnSpec } from "./ColumnConfig.js";
  */
 export class Table extends Component {
 
-    private store: AbstractStore;
-    private spec: ColumnSpec | undefined;
-    private resolvedColumns: Column[] = [];
-    private hiddenColumns: Set<string> = new Set();
+    private store            : AbstractStore;
+    private spec             : ColumnSpec | undefined;
+    private resolvedColumns  : Column[] = [];
+    private hiddenColumns    : Set<string> = new Set();
     private columnContextMenu: Menu = new Menu();
-    private headerVisible: boolean;
-    private header: Header;
-    private body: Body;
-    private bodyVisible: boolean;
-    private footer: FooterRow;
-    private footerVisible: boolean;
-    private columnWidths: number[] = [];
+    private headerVisible    : boolean;
+    private header           : Header;
+    private body             : Body;
+    private bodyVisible      : boolean;
+    private footer           : FooterRow;
+    private footerVisible    : boolean;
+    private columnWidths     : number[] = [];
     private savedColumnWidths: Map<string, number> = new Map();
 
     /**
@@ -394,7 +395,15 @@ export class Table extends Component {
      */
     private defaultColumnWidth(col: Column): number {
         const f = col.getField();
-        const headerMin = f.getName().length * 8 + 16;
+
+        // Measure under the same font properties HeaderCell actually renders with
+        // (bold + table-header font size). 4px cell padding + 5px resize-handle gutter
+        // + 12px breathing room for the optional sort indicator (▲/▼).
+        const textWidth = Util.measureTextWidth(f.getName(), {
+            fontSize  : "var(--ts-ui-table-header-font-size, 13px)",
+            fontWeight: "bold",
+        });
+        const headerMin = textWidth + 21;
 
         switch (f.getType()) {
             case 'boolean': return Math.max(60,  headerMin);

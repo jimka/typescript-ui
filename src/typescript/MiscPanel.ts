@@ -540,7 +540,7 @@ export class MiscPanel extends Panel {
         });
         this.addComponent(buttonProgressIndeterminate);
 
-        const inlineSpinner = new ProgressSpinner(24);
+        const inlineSpinner = new ProgressSpinner();
         const spinnerDemoRow = new Component();
         spinnerDemoRow.setLayoutManager(new HBox());
         spinnerDemoRow.addComponent(new Text("Inline ProgressSpinner:"));

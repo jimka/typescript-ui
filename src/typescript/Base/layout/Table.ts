@@ -5,6 +5,7 @@ import { Table as TableComponent } from "../component/table/Table.js";
 import { Column } from "../component/table/Column.js";
 import { Component } from "../Component.js";
 import { Util } from "../Util.js";
+import { ThemeManager } from "../Theme.js";
 
 const BOOLEAN_WIDTH = 60;
 const NUMBER_WIDTH  = 90;
@@ -90,7 +91,13 @@ export class Table extends LayoutManager {
         const footer = container.getFooter();
 
         if (container.isHeaderVisible() && header) {
-            const columnHeight = 20;
+            // Header cells render their text at table.header.font.size, so match
+            // the row height to that font specifically — not the body font.
+            const theme        = ThemeManager.getTheme();
+            const headerFont   = parseFloat(theme.table.header.font.size) || 13;
+            const lineHeight   = theme.font.lineHeight                    || 1.2;
+            const padding      = theme.table.cell.padding                 ?? 2;
+            const columnHeight = Math.ceil(headerFont * lineHeight) + 2 * padding;
 
             header.setAutoCommitStyle(false);
             header.setX(containerInsets.getLeft());
@@ -116,7 +123,13 @@ export class Table extends LayoutManager {
         }
 
         if (container.isFooterVisible() && footer) {
-            const columnHeight  = 20;
+            // Footer cells use the default cell renderer (body font), not the
+            // header font, so size the footer row to the body font instead.
+            const theme         = ThemeManager.getTheme();
+            const bodyFont      = parseFloat(theme.font.size) || 14;
+            const lineHeight    = theme.font.lineHeight       || 1.2;
+            const padding       = theme.table.cell.padding    ?? 2;
+            const columnHeight  = Math.ceil(bodyFont * lineHeight) + 2 * padding;
             const footerColumns = footer.getColumns();
 
             footer.setAutoCommitStyle(false);
