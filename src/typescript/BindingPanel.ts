@@ -14,8 +14,9 @@ import { TimeField } from "./Base/component/TimeField.js";
 import { Model } from "./Base/data/Model.js";
 import { MemoryStore } from "./Base/data/MemoryStore.js";
 import { Notification } from "./Base/Notification.js";
+import { Panel } from "./Base/Panel.js";
 
-export class BindingPanel extends Component {
+export class BindingPanel extends Panel {
 
     constructor() {
         super();

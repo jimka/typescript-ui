@@ -29,6 +29,7 @@ import { NumberSpinner } from "./Base/component/NumberSpinner.js";
 import { ProgressBar } from "./Base/component/ProgressBar.js";
 import { ProgressSpinner } from "./Base/component/ProgressSpinner.js";
 import { Insets } from "./Base/Insets.js";
+import { Panel } from "./Base/Panel.js";
 
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and
@@ -96,7 +97,7 @@ class PaginatingDemoProxy extends Proxy {
     }
 }
 
-export class MiscPanel extends Component {
+export class MiscPanel extends Panel {
 
     constructor() {
         super();

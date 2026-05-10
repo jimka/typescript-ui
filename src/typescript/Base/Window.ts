@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Component.js";
 import { Border } from "./layout/Border.js";
 import { BorderStyle } from "./BorderStyle.js";
 import { WindowHeader } from "./component/WindowHeader.js";
 import { WindowBorder, Direction } from "./component/WindowBorder.js";
 import { Event } from "./Event.js";
 import { Placement } from "./Placement.js";
+import { Panel } from "./Panel.js";
 
 /**
  * A floating, resizable, and draggable window component.
@@ -16,7 +16,7 @@ import { Placement } from "./Placement.js";
  *
  * @category Core
  */
-export class Window extends Component {
+export class Window extends Panel {
 
     private static zIndexCounter: number = 9000;
     private static activeWindow: Window | null = null;

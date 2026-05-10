@@ -12,12 +12,13 @@ import { Checkbox } from "./Base/component/Checkbox.js";
 import { TextField } from "./Base/component/TextField.js";
 import { List } from "./Base/component/List.js";
 import { Insets } from "./Base/Insets.js";
+import { Panel } from "./Base/Panel.js";
 
 /**
  * Demonstrates the Accordion layout manager with multiple collapsible sections,
  * programmatic open/close controls, and single-open mode toggling.
  */
-export class AccordionPanel extends Component {
+export class AccordionPanel extends Panel {
 
     private accordion: Accordion;
     private singleOpenToggle: Button;
@@ -31,7 +32,6 @@ export class AccordionPanel extends Component {
         const outerVBox = new VBox();
         outerVBox.setStretching(true);
         this.setLayoutManager(outerVBox);
-        this.setInsets(new Insets(8, 8, 8, 8));
 
         // --- Controls toolbar ---
         const toolbar = new Component();
@@ -96,7 +96,7 @@ export class AccordionPanel extends Component {
      * @returns The section content component.
      */
     private buildInfoSection(): Component {
-        const panel = new Component();
+        const panel = new Panel();
         const vbox = new VBox();
         vbox.setStretching(true);
         panel.setLayoutManager(vbox);
@@ -116,7 +116,7 @@ export class AccordionPanel extends Component {
      * @returns The section content component.
      */
     private buildPreferencesSection(): Component {
-        const panel = new Component();
+        const panel = new Panel();
         const vbox = new VBox();
         vbox.setStretching(true);
         panel.setLayoutManager(vbox);
@@ -146,7 +146,7 @@ export class AccordionPanel extends Component {
      * @returns The section content component.
      */
     private buildListSection(): Component {
-        const panel = new Component();
+        const panel = new Panel();
         panel.setLayoutManager(new Fit());
         panel.setPreferredSize(0, 150);
 
@@ -168,7 +168,7 @@ export class AccordionPanel extends Component {
      * @returns The section content component.
      */
     private buildAboutSection(): Component {
-        const panel = new Component();
+        const panel = new Panel();
         const vbox = new VBox();
         vbox.setStretching(true);
         panel.setLayoutManager(vbox);
@@ -199,7 +199,7 @@ export class AccordionPanel extends Component {
      * @returns The row component.
      */
     private labeledField(caption: string, value: string): Component {
-        const row = new Component();
+        const row = new Panel();
         row.setLayoutManager(new HBox());
         row.setPreferredSize(0, 30);
 

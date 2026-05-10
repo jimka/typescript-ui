@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
 import { Border as BorderLayout } from "../layout/Border.js";
 import { Text } from "./Text.js";
 import { Insets } from "../Insets.js";
@@ -8,6 +7,7 @@ import { AnchorType } from "../layout/AnchorType.js";
 import { FillType } from "../layout/FillType.js";
 import { Placement } from "../Placement.js";
 import { ThemeManager } from "../Theme.js";
+import { Panel } from "../Panel.js";
 
 /**
  * A header bar component containing a left-aligned text label.
@@ -17,7 +17,7 @@ import { ThemeManager } from "../Theme.js";
  *
  * @category Components
  */
-export class Header extends Component {
+export class Header extends Panel {
 
     private text: Text;
 
@@ -61,7 +61,7 @@ export class Header extends Component {
 
     private applyThemePadding(): void {
         const pad = ThemeManager.getTheme().header.padding;
-        this.setInsets(new Insets(0, 0, 0, pad));
+        this.setInsets(new Insets(pad, pad, pad, pad));
     }
 
     /**

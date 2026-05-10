@@ -53,6 +53,7 @@ export class Button extends Component {
 
         this.text.setPointerEvents("none");
 
+        this.setInsets(new Insets(4, 4, 4, 4));
         this.text.setTextAlign("center");
         this.text.setFontWeight("bold");
         this.text.setFontSize("--ts-ui-button-font-size");

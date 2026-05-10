@@ -9,13 +9,13 @@ import { MultiSelectList } from "./Base/component/MultiSelectList.js";
 import { Binding } from "./Base/Binding.js";
 import { Model } from "./Base/data/Model.js";
 import { MemoryStore } from "./Base/data/MemoryStore.js";
-import { Insets } from "./Base/Insets.js";
+import { Panel } from "./Base/Panel.js";
 
 /**
  * Demonstrates `MultiSelectList` with static items, store binding,
  * and integration with the `Binding` system.
  */
-export class MultiSelectListPanel extends Component {
+export class MultiSelectListPanel extends Panel {
 
     /**
      * Builds the demo panel with three sections:
@@ -25,7 +25,6 @@ export class MultiSelectListPanel extends Component {
         super();
 
         this.setLayoutManager(new VBox());
-        this.setInsets(new Insets(8, 8, 8, 8));
 
         // ── Section 1: Static items ──────────────────────────────────────────
 

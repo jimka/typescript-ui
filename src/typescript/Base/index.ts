@@ -17,6 +17,7 @@ export type { Theme } from './Theme.js';
 export { BaseObject } from './BaseObject.js';
 export { Component } from './Component.js';
 export type { Comparator, Style } from './Component.js';
+export { Panel } from './Panel.js';
 export { Aria } from './Aria.js';
 export type { AriaRole, AriaSort } from './Aria.js';
 export { RovingTabIndex } from './RovingTabIndex.js';

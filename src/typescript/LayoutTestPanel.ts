@@ -15,8 +15,9 @@ import { ToggleButton } from "./Base/component/ToggleButton.js";
 import { FieldSet } from "./Base/component/FieldSet.js";
 import { HBox } from "./Base/layout/HBox.js";
 import { ButtonGroup } from "./Base/ButtonGroup.js";
+import { Panel } from "./Base/Panel.js";
 
-export class LayoutTestPanel extends Component {
+export class LayoutTestPanel extends Panel {
 
     constructor() {
         super();
