@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+import { Component } from "./Base/Component.js";
+import { Button } from "./Base/component/Button.js";
+import { ComboBox } from "./Base/component/ComboBox.js";
+import { ProgressBar } from "./Base/component/ProgressBar.js";
+import { RadioButton } from "./Base/component/RadioButton.js";
+import { Text } from "./Base/component/Text.js";
+import { TextField } from "./Base/component/TextField.js";
+import { Insets } from "./Base/Insets.js";
+import { HBox } from "./Base/layout/HBox.js";
+import { VBox } from "./Base/layout/VBox.js";
+import { Panel } from "./Base/Panel.js";
+
+export class BaselinePanel extends Panel {
+
+    constructor() {
+        super();
+
+        this.setLayoutManager(new HBox());
+
+        const baselineDemo = new Component();
+        baselineDemo.setLayoutManager(new VBox());
+        baselineDemo.setPreferredSize(420, 220);
+
+        const progressBar = new ProgressBar(50);
+        progressBar.setPreferredSize(120, 12);
+        progressBar.setInsets(new Insets(0, 0, 0, 0));
+
+        const progressRow = new Component();
+        progressRow.setLayoutManager(new HBox());
+        progressRow.addComponent(new Text("Progress:"));
+        progressRow.addComponent(progressBar);
+        progressRow.addComponent(new Text("done"));
+        baselineDemo.addComponent(progressRow);
+
+        const fieldRow = new Component();
+        fieldRow.setLayoutManager(new HBox());
+        fieldRow.addComponent(new Text("Name:"));
+        fieldRow.addComponent(new TextField());
+        baselineDemo.addComponent(fieldRow);
+
+        const buttonRow = new Component();
+        buttonRow.setLayoutManager(new HBox());
+        buttonRow.addComponent(new Text("Save:"));
+        buttonRow.addComponent(new Button("Save"));
+        baselineDemo.addComponent(buttonRow);
+
+        const comboBox = new ComboBox();
+        comboBox.addItem("First");
+        comboBox.addItem("Second");
+
+        const comboRow = new Component();
+        comboRow.setLayoutManager(new HBox());
+        comboRow.addComponent(new Text("Pick:"));
+        comboRow.addComponent(comboBox);
+        baselineDemo.addComponent(comboRow);
+
+        const radioRow = new Component();
+        radioRow.setLayoutManager(new HBox());
+        radioRow.addComponent(new Text("Mode:"));
+        radioRow.addComponent(new RadioButton("Option A"));
+        radioRow.addComponent(new RadioButton("Option B"));
+        baselineDemo.addComponent(radioRow);
+
+        this.addComponent(baselineDemo);
+    }
+}

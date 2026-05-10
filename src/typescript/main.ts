@@ -21,6 +21,7 @@ import { MultiSelectListPanel } from "./MultiSelectListPanel.js";
 import { Model, MemoryStore } from "./Base/index.js";
 import { Util } from "./Base/Util.js";
 import { Benchmark } from "./perf/Benchmark.js";
+import { BaselinePanel } from "./BaselinePanel.js";
 
 Util.getScrollBarWidth();
 (window as any).bench = Benchmark;
@@ -74,6 +75,9 @@ body.addComponent(menuBarPanel, { name: "MenuBar" });
 
 let multiSelectListPanel = new MultiSelectListPanel();
 body.addComponent(multiSelectListPanel, { name: "MultiSelect" });
+
+let baselinePanel = new BaselinePanel();
+body.addComponent(baselinePanel, { name: "Baseline" });
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number'                  },
