@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Option } from "./Option.js";
 import { Event } from "../Event.js";
 import { Type } from "../Type.js";
@@ -9,6 +9,21 @@ import { AbstractStore } from "../data/AbstractStore.js";
 import { ModelRecord } from "../data/ModelRecord.js";
 import { Bindable } from "../Bindable.js";
 import { ThemeManager } from "../Theme.js";
+
+/**
+ * Construction-time options for {@link ComboBox}.
+ *
+ * @category Components
+ */
+export interface ComboBoxOptions extends ComponentOptions {
+    items?:         String | Array<String>;
+    store?:         AbstractStore;
+    displayField?:  string;
+    valueField?:    string;
+    selectedIndex?: number;
+    value?:         string;
+    selectedItem?:  string;
+}
 
 /**
  * A drop-down combo box component backed by a `<select>` element.
@@ -31,23 +46,55 @@ import { ThemeManager } from "../Theme.js";
  */
 export class ComboBox extends Component implements Bindable<string> {
 
-    private items: Array<Option>;
+    private items: Array<Option> = [];
     private store: AbstractStore | null = null;
     private storeRefresh: (() => void) | null = null;
     private displayField: string | null = null;
     private valueField: string | null = null;
 
-    constructor() {
-        super("select");
+    constructor(options?: ComboBoxOptions) {
+        super({ tag: "select" });
 
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
         this.setForegroundColor("var(--ts-ui-text-color, black)");
         this.getAria().setRole("combobox");
 
-        this.items = [];
-
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
+
+        if (this.constructor === ComboBox && options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link ComboBoxOptions} bag, dispatching item / store /
+     * selection options after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: ComboBoxOptions): void {
+        super.applyOptions(options);
+
+        if (options.store !== undefined && options.displayField !== undefined) {
+            this.setStore(options.store, options.displayField, options.valueField);
+        }
+
+        if (options.items !== undefined) {
+            this.setItems(options.items);
+        }
+
+        if (options.selectedIndex !== undefined) {
+            this.setSelectedIndex(options.selectedIndex, false);
+        }
+
+        if (options.value !== undefined) {
+            this.setValue(options.value);
+        }
+
+        if (options.selectedItem !== undefined) {
+            this.setValue(options.selectedItem);
+        }
     }
 
     /**

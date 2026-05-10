@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { Fit } from "../layout/Fit.js";
 import { Text } from "./Text.js";
@@ -10,6 +10,22 @@ import { AnchorType } from "../layout/AnchorType.js";
 import { CSS } from "../CSS.js";
 import { Border, BorderOptions } from "../Border.js";
 import { Insets } from "../Insets.js";
+
+/**
+ * Construction-time options for {@link Button}.
+ *
+ * @category Components
+ */
+export interface ButtonOptions extends ComponentOptions {
+    text?:                   string;
+    enabled?:                boolean;
+    pressedBackgroundColor?: string | null;
+    pressedBackgroundImage?: string | null;
+    pressedForegroundColor?: string | null;
+    pressedBorder?:          BorderOptions;
+    pressedBorderRadius?:    string | null;
+    pressedShadow?:          string | null;
+}
 
 /**
  * A push button component with a text label and configurable pressed-state appearance.
@@ -44,8 +60,8 @@ export class Button extends Component {
     private _enabled: boolean = true;
     private _enabledCursor: string = "pointer";
 
-    constructor(text?: string) {
-        super("button");
+    constructor(text?: string, options?: ButtonOptions) {
+        super({ tag: "button" });
 
         this.pressedCSSRule = CSS.createComponentRule(this.getId() + ":active") as CSSStyleRule;
 
@@ -75,6 +91,52 @@ export class Button extends Component {
         this.setPressedBackgroundColor("var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))");
         this.setPressedBackgroundImage("var(--ts-ui-button-pressed-bg, none)");
         this.setPressedShadow("var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset)");
+
+        if (this.constructor === Button && options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link ButtonOptions} bag, dispatching button-specific text,
+     * enabled state, and pressed-state styling after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: ButtonOptions): void {
+        super.applyOptions(options);
+
+        if (options.text !== undefined) {
+            this.text.setText(options.text);
+        }
+
+        if (options.enabled !== undefined) {
+            this.setEnabled(options.enabled);
+        }
+
+        if (options.pressedBackgroundColor !== undefined) {
+            this.setPressedBackgroundColor(options.pressedBackgroundColor);
+        }
+
+        if (options.pressedBackgroundImage !== undefined) {
+            this.setPressedBackgroundImage(options.pressedBackgroundImage);
+        }
+
+        if (options.pressedForegroundColor !== undefined) {
+            this.setPressedForegroundColor(options.pressedForegroundColor);
+        }
+
+        if (options.pressedBorder !== undefined) {
+            this.setPressedBorder(options.pressedBorder);
+        }
+
+        if (options.pressedBorderRadius !== undefined) {
+            this.setPressedBorderRadius(options.pressedBorderRadius);
+        }
+
+        if (options.pressedShadow !== undefined) {
+            this.setPressedShadow(options.pressedShadow);
+        }
     }
 
     /**

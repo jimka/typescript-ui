@@ -67,7 +67,7 @@ export class Body extends Component {
     private _focusedColIndex: number                    = 0;
 
     constructor(store: AbstractStore) {
-        super("tbody");
+        super({ tag: "tbody" });
 
         this.setOverflow("auto");
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");

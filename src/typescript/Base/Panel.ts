@@ -1,7 +1,20 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Component";
+import { Component, ComponentOptions } from "./Component";
 import { Insets } from "./Insets";
+
+/**
+ * Construction-time options for {@link Panel}.
+ *
+ * @remarks `insets` is inherited from {@link ComponentOptions} but defaults to
+ * `(4, 4, 4, 4)` for `Panel` (Component itself defaults to zero insets). Pass
+ * an explicit `insets` to override.
+ *
+ * @category Core
+ */
+export interface PanelOptions extends ComponentOptions {
+    tag?: string;
+}
 
 /**
  * A `Component` subclass that applies a default 4-pixel inset on all sides.
@@ -16,13 +29,20 @@ import { Insets } from "./Insets";
 export class Panel extends Component {
 
     /**
-     * Creates a panel with 4-pixel insets on all sides.
+     * Creates a panel with 4-pixel insets on all sides by default.
      *
-     * @param tag - Optional. The HTML tag to render. Defaults to `"div"`.
+     * @param options - Optional. Construction-time options applied to the panel.
+     *   `options.tag` overrides the default `"div"` tag for subclasses that need
+     *   a different element (e.g. `"header"`, `"section"`). `options.insets`
+     *   overrides the default `(4, 4, 4, 4)` perimeter.
      */
-    constructor(tag: string = "div") {
-        super(tag);
+    constructor(options?: PanelOptions) {
+        super({ tag: options?.tag ?? "div" });
 
-        this.setInsets(new Insets(4, 4, 4, 4));
+        this.setInsets(options?.insets ?? new Insets(4, 4, 4, 4));
+
+        if (this.constructor === Panel && options) {
+            this.applyOptions(options);
+        }
     }
 }

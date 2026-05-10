@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { AccordionConstraints } from "./AccordionConstraints.js";
 import { AccordionHeader } from "../component/AccordionHeader.js";
 import { Component } from "../Component.js";
@@ -17,6 +17,18 @@ import { Size } from "../Size.js";
  * @category Layouts
  */
 export type SectionToggleCallback = (index: number, open: boolean) => void;
+
+/**
+ * Construction-time options for {@link Accordion}.
+ *
+ * @category Layouts
+ */
+export interface AccordionOptions extends LayoutManagerOptions {
+    singleOpen?:        boolean;
+    headerHeight?:      number;
+    animationDuration?: number;
+    onSectionToggle?:   SectionToggleCallback;
+}
 
 /**
  * A layout manager that stacks vertically collapsible sections, each with a
@@ -58,6 +70,41 @@ export class Accordion extends LayoutManager {
     private _headerHeight: number = 28;
     private _animationDuration: number = 200;
     private onSectionToggleCallback: SectionToggleCallback | null = null;
+
+    constructor(options?: AccordionOptions) {
+        super();
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies an {@link AccordionOptions} bag, dispatching single-open mode,
+     * header height, animation duration, and the toggle callback after the
+     * inherited LayoutManager defaults.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: AccordionOptions): void {
+        super.applyOptions(options);
+
+        if (options.headerHeight !== undefined) {
+            this.setHeaderHeight(options.headerHeight);
+        }
+
+        if (options.animationDuration !== undefined) {
+            this.setAnimationDuration(options.animationDuration);
+        }
+
+        if (options.onSectionToggle !== undefined) {
+            this.setOnSectionToggle(options.onSectionToggle);
+        }
+
+        if (options.singleOpen !== undefined) {
+            this.setSingleOpen(options.singleOpen);
+        }
+    }
 
     /**
      * Returns whether at most one section can be open at a time.

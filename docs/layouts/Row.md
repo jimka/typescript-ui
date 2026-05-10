@@ -21,14 +21,14 @@ Despite the name, `Row` lays children out **vertically**. The name describes the
 import { Component, Row, Button } from '@jimka/typescript-ui';
 
 const sidebar = new Component();
-const layout  = new Row();
-layout.setGap(4);
-sidebar.setLayoutManager(layout);
+sidebar.setLayoutManager(new Row({ gap: 4 }));
 
 sidebar.addComponent(new Button('Section 1'));
 sidebar.addComponent(new Button('Section 2'));
 sidebar.addComponent(new Button('Section 3'));
 ```
+
+[`RowOptions`](/api/interfaces/RowOptions) accepts `gap` declaratively; the `setGap` setter still works for runtime updates.
 
 ## Per-child constraints
 

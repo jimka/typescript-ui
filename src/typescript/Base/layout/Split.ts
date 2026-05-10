@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { SplitGutter } from "../component/SplitGutter.js";
 import { Component } from "../Component.js";
 import { FillType } from "./FillType.js";
+
+/**
+ * Construction-time options for {@link Split}.
+ *
+ * @category Layouts
+ */
+export interface SplitOptions extends LayoutManagerOptions {
+    direction?: string;
+}
 
 /**
  * A layout manager that splits the container into two or more resizable panels
@@ -14,16 +23,38 @@ import { FillType } from "./FillType.js";
  */
 export class Split extends LayoutManager {
 
-    private direction: String;
-    private sizes: Map<Component, number>;
-    private gutters: Array<SplitGutter>;
+    private direction: String = "horizontal";
+    private sizes: Map<Component, number> = new Map<Component, number>();
+    private gutters: Array<SplitGutter> = [];
 
-    constructor(direction?: String) {
+    constructor(direction?: String | SplitOptions, options?: SplitOptions) {
         super();
 
-        this.direction = direction || "horizontal";
-        this.sizes = new Map<Component, number>();
-        this.gutters = [];
+        if (direction === undefined || typeof direction === 'string' || direction instanceof String) {
+            if (direction) {
+                this.direction = direction;
+            }
+
+            if (options) {
+                this.applyOptions(options);
+            }
+        } else {
+            this.applyOptions(direction);
+        }
+    }
+
+    /**
+     * Applies a {@link SplitOptions} bag, dispatching the split direction
+     * after the inherited LayoutManager defaults.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: SplitOptions): void {
+        super.applyOptions(options);
+
+        if (options.direction !== undefined) {
+            this.setDirection(options.direction);
+        }
     }
 
     /**

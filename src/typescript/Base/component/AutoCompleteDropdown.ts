@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { Position } from "../Position.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { VBox } from "../layout/VBox.js";
 import { AutoCompleteItem } from "./AutoCompleteItem.js";
+
+/**
+ * Construction-time options for {@link AutoCompleteDropdown}.
+ *
+ * @category Components
+ */
+export interface AutoCompleteDropdownOptions extends ComponentOptions {
+    maxItems?: number;
+}
 
 /**
  * Floating dropdown panel for `AutoCompleteField`.
@@ -15,25 +24,24 @@ import { AutoCompleteItem } from "./AutoCompleteItem.js";
  */
 export class AutoCompleteDropdown extends Component {
 
-    private pool: AutoCompleteItem[];
-    private highlightedIndex: number;
+    private pool: AutoCompleteItem[] = [];
+    private highlightedIndex: number = -1;
     private readonly onSelect: (value: string) => void;
     private readonly onHide: () => void;
     private readonly onViewportMouseDown: (e: MouseEvent) => void;
-    private open: boolean;
+    private open: boolean = false;
+    private maxItems: number | null = null;
 
     /**
      * @param onSelect - Called with the selected suggestion string when the user picks an item.
      * @param onHide - Called whenever the dropdown hides, including via viewport click-outside.
+     * @param options - Optional construction-time options.
      */
-    constructor(onSelect: (value: string) => void, onHide: () => void) {
+    constructor(onSelect: (value: string) => void, onHide: () => void, options?: AutoCompleteDropdownOptions) {
         super();
 
-        this.pool             = [];
-        this.highlightedIndex = -1;
-        this.onSelect         = onSelect;
-        this.onHide           = onHide;
-        this.open             = false;
+        this.onSelect = onSelect;
+        this.onHide   = onHide;
 
         this.setVisible(false);
         this.getAria().setRole("listbox");
@@ -61,6 +69,33 @@ export class AutoCompleteDropdown extends Component {
                 this.hide();
             }
         };
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies an {@link AutoCompleteDropdownOptions} bag, dispatching `maxItems`
+     * after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: AutoCompleteDropdownOptions): void {
+        super.applyOptions(options);
+
+        if (options.maxItems !== undefined) {
+            this.maxItems = options.maxItems;
+        }
+    }
+
+    /**
+     * Returns the maximum number of items to display, or null if unlimited.
+     *
+     * @returns The configured maxItems cap, or null.
+     */
+    getMaxItems(): number | null {
+        return this.maxItems;
     }
 
     /**

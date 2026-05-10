@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { Size } from "../Size.js";
 import { FillType } from "./FillType.js";
+
+/**
+ * Construction-time options for {@link Fit}.
+ *
+ * @category Layouts
+ */
+export interface FitOptions extends LayoutManagerOptions {
+}
 
 /**
  * A layout manager that expects exactly one child component and sizes it to
@@ -12,6 +20,14 @@ import { FillType } from "./FillType.js";
  * @category Layouts
  */
 export class Fit extends LayoutManager {
+
+    constructor(options?: FitOptions) {
+        super();
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
 
     /**
      * Returns the preferred size of the single child component plus the container perimeter.

@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { HBox } from "../layout/HBox.js";
 import { Input } from "./Input.js";
 import { Label } from "./Label.js";
+
+/**
+ * Construction-time options for {@link RadioButton}.
+ *
+ * @category Components
+ */
+export interface RadioButtonOptions extends ComponentOptions {
+    text?:      string;
+    radioName?: string;
+    selected?:  boolean;
+    enabled?:   boolean;
+}
 
 /**
  * A radio button component composed of an `<input type="radio">` and an associated Label.
@@ -16,12 +28,12 @@ import { Label } from "./Label.js";
  */
 export class RadioButton extends Component {
 
-    private selected: boolean;
+    private selected: boolean = false;
     private label: Label;
     private radio: Input;
     private _radioName: string | null = null;
 
-    constructor(text? : string) {
+    constructor(text? : string, options?: RadioButtonOptions) {
         super();
 
         this.setLayoutManager(new HBox());
@@ -33,8 +45,6 @@ export class RadioButton extends Component {
         this.addComponent(this.radio);
         this.addComponent(this.label);
 
-        this.selected = false;
-
         this.radio.setPreferredSize(16, 16);
         this.radio.setMaxSize(16, 16);
         this.radio.setCursor("pointer");
@@ -42,6 +52,36 @@ export class RadioButton extends Component {
         this.addActionListener(() => {
             this.selected = this.radio.getElement().checked;
         });
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link RadioButtonOptions} bag, dispatching label text, radio
+     * group name, selection, and enabled state after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: RadioButtonOptions): void {
+        super.applyOptions(options);
+
+        if (options.text !== undefined) {
+            this.label.setText(options.text);
+        }
+
+        if (options.radioName !== undefined) {
+            this.setRadioName(options.radioName);
+        }
+
+        if (options.selected !== undefined) {
+            this.setSelected(options.selected);
+        }
+
+        if (options.enabled !== undefined) {
+            this.radio.setElementAttribute("disabled", options.enabled ? null : "");
+        }
     }
 
     /**

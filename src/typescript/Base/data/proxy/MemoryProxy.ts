@@ -4,13 +4,18 @@ import { ModelRecord } from '../ModelRecord.js';
 import { Proxy, ReadParams } from './Proxy.js';
 
 /**
- * Configuration object for constructing a MemoryProxy.
+ * Construction-time options for {@link MemoryProxy}.
  *
  * @category Data
  */
-export interface MemoryProxyConfig {
+export interface MemoryProxyOptions {
     data: any[];
 }
+
+/**
+ * @deprecated Use {@link MemoryProxyOptions}.
+ */
+export type MemoryProxyConfig = MemoryProxyOptions;
 
 /**
  * An in-memory proxy that stores data as a plain JavaScript array.
@@ -30,12 +35,12 @@ export class MemoryProxy extends Proxy {
     /**
      * Constructs a MemoryProxy, optionally pre-populated with an initial data array.
      *
-     * @param config - Optional. Configuration object containing the initial data array.
+     * @param options - Optional. Options object containing the initial data array.
      */
-    constructor(config: MemoryProxyConfig = { data: [] }) {
+    constructor(options: MemoryProxyOptions = { data: [] }) {
         super();
 
-        this.data = config.data.slice();
+        this.data = options.data.slice();
     }
 
     /**

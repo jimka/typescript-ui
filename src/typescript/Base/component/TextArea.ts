@@ -1,8 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { TextInput } from "./TextInput.js";
+import { TextInput, TextInputOptions } from "./TextInput.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
+
+/**
+ * Construction-time options for {@link TextArea}.
+ *
+ * @category Components
+ */
+export interface TextAreaOptions extends TextInputOptions {
+    rows?: number;
+    cols?: number;
+    wrap?: string;
+}
 
 /**
  * A multi-line text area component backed by a `<textarea>` element.
@@ -13,8 +24,8 @@ import { Insets } from "../Insets.js";
  */
 export class TextArea extends TextInput {
 
-    constructor(text: string = "") {
-        super("textarea");
+    constructor(text: string = "", options?: TextAreaOptions) {
+        super({ tag: "textarea" });
 
         this.setCursor("text");
         this.setPadding(new Insets(3, 3, 3, 3));
@@ -26,6 +37,32 @@ export class TextArea extends TextInput {
         }
 
         Event.addListener(this, "input", this.onInput);
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link TextAreaOptions} bag, dispatching textarea-specific
+     * `rows`, `cols`, and `wrap` attributes after inherited TextInput fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: TextAreaOptions): void {
+        super.applyOptions(options);
+
+        if (options.rows !== undefined) {
+            this.setElementAttribute("rows", String(options.rows));
+        }
+
+        if (options.cols !== undefined) {
+            this.setElementAttribute("cols", String(options.cols));
+        }
+
+        if (options.wrap !== undefined) {
+            this.setElementAttribute("wrap", options.wrap);
+        }
     }
 
     /**

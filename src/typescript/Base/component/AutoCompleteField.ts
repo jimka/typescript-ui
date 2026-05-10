@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { Bindable } from "../Bindable.js";
 import { ThemeManager } from "../Theme.js";
@@ -19,11 +19,11 @@ import { AutoCompleteDropdown } from "./AutoCompleteDropdown.js";
 export type AutoCompleteMatchMode = 'contains' | 'startsWith';
 
 /**
- * Configuration passed to the `AutoCompleteField` constructor.
+ * Construction-time options for {@link AutoCompleteField}.
  *
  * @category Components
  */
-export interface AutoCompleteFieldConfig {
+export interface AutoCompleteFieldOptions extends ComponentOptions {
     /** Static list of suggestion strings. */
     suggestions?    : string[];
     /** Data store used when suggestions come from a remote/in-memory store. */
@@ -41,6 +41,11 @@ export interface AutoCompleteFieldConfig {
     /** How the typed query is matched against suggestions. Default: `'contains'`. */
     matchMode?      : AutoCompleteMatchMode;
 }
+
+/**
+ * @deprecated Use {@link AutoCompleteFieldOptions}.
+ */
+export type AutoCompleteFieldConfig = AutoCompleteFieldOptions;
 
 /**
  * A typeahead/autocomplete text field.
@@ -78,27 +83,27 @@ export class AutoCompleteField extends Component implements Bindable<string> {
     private selectListeners   : Array<(value: string) => void>;
 
     /**
-     * @param config - Optional configuration for suggestions, store, and behaviour.
+     * @param options - Optional construction-time options for suggestions, store, behaviour, and base Component styling.
      */
-    constructor(config?: AutoCompleteFieldConfig) {
+    constructor(options?: AutoCompleteFieldOptions) {
         super();
 
-        this.staticSuggestions = config?.suggestions ?? null;
-        this.store             = config?.store       ?? null;
-        this.displayField      = config?.displayField ?? null;
-        this.minChars          = config?.minChars     ?? 1;
-        this.debounceMs        = config?.debounceMs   ?? 200;
-        this.maxSuggestions    = config?.maxSuggestions ?? 10;
+        this.staticSuggestions = options?.suggestions    ?? null;
+        this.store             = options?.store          ?? null;
+        this.displayField      = options?.displayField   ?? null;
+        this.minChars          = options?.minChars       ?? 1;
+        this.debounceMs        = options?.debounceMs     ?? 200;
+        this.maxSuggestions    = options?.maxSuggestions ?? 10;
         this.debounceTimer     = null;
         this.currentValue      = "";
-        this.matchMode         = config?.matchMode ?? 'contains';
+        this.matchMode         = options?.matchMode ?? 'contains';
         this.bindingListeners  = [];
         this.selectListeners   = [];
 
         this.textField = new TextField();
 
-        if (config?.placeholder) {
-            this.textField.setElementAttribute("placeholder", config.placeholder);
+        if (options?.placeholder) {
+            this.textField.setElementAttribute("placeholder", options.placeholder);
         }
 
         this.addComponent(this.textField);
@@ -121,6 +126,10 @@ export class AutoCompleteField extends Component implements Bindable<string> {
         Event.addListener(this.textField, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
         Event.addListener(this.textField, "focus",   () => this.onFocus());
         Event.addListener(this.textField, "blur",    () => this.onBlur());
+
+        if (options) {
+            super.applyOptions(options);
+        }
     }
 
     /**

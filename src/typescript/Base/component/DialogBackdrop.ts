@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { Position } from "../Position.js";
 
+/**
+ * Construction-time options for {@link DialogBackdrop}.
+ *
+ * @category Components
+ */
+export interface DialogBackdropOptions extends ComponentOptions {
+}
 
 /**
  * A full-viewport fixed overlay that visually blocks content behind a modal dialog.
@@ -16,7 +23,7 @@ export class DialogBackdrop extends Component {
     /**
      * Creates the backdrop and applies viewport-filling fixed positioning.
      */
-    constructor() {
+    constructor(options?: DialogBackdropOptions) {
         super();
 
         this.setPosition(Position.FIXED);
@@ -26,6 +33,10 @@ export class DialogBackdrop extends Component {
         this.setHeight(window.innerHeight);
         this.setZIndex(10100);
         this.setBackgroundColor("var(--ts-ui-dialog-backdrop-bg)");
+
+        if (options) {
+            this.applyOptions(options);
+        }
     }
 
     /**

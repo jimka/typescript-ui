@@ -48,6 +48,44 @@ export interface PerimeterSize {
     left: number
 }
 
+/**
+ * Construction-time options for {@link Component}.
+ *
+ * Every field is optional and maps to an existing setter on `Component`. Pass
+ * an `options` object as the trailing constructor argument to configure a
+ * component declaratively instead of issuing chained setter calls.
+ *
+ * @category Core
+ */
+export interface ComponentOptions {
+    tag?:             string;
+    visible?:         boolean;
+    displayed?:       boolean;
+    zIndex?:          number;
+    insets?:          Insets;
+    padding?:         Insets;
+    backgroundColor?: string | null;
+    backgroundImage?: string | null;
+    foregroundColor?: string | null;
+    colorScheme?:     string;
+    border?:          BorderOptions | string;
+    borderRadius?:    string | null;
+    shadow?:          string | null;
+    outline?:         string | null;
+    cursor?:          string;
+    preferredSize?:   Size;
+    minSize?:         Size;
+    maxSize?:         Size;
+    transform?:       string | null;
+    opacity?:         number | null;
+    position?:        Position;
+    overflow?:        string;
+    pointerEvents?:   string;
+    layoutManager?:   LayoutManager;
+    id?:              string;
+    attributes?:      Record<string, string>;
+}
+
 // Module-level state for the rAF-coalesced layout queue. Setters and event handlers call
 // `scheduleLayout()` instead of `doLayout()`; the queue flushes once per animation frame and
 // prunes any component whose ancestor is also dirty (the ancestor's layout will recurse into
@@ -103,97 +141,133 @@ export class Component extends BaseObject {
     private layoutManager: LayoutManager;
     private components: Array<Component>;
 
-    private element: HTMLElement | undefined;
-    private tag: string;
-    private attributes: Map<String, String>;
-    private boxSizing: string | null;
-    private position: Position;
-    private cursor: string | null;
-    private left: number;
-    private top: number;
-    private translateX: number = 0;
-    private translateY: number = 0;
-    private width: number;
-    private height: number;
-    private visible: Boolean | null;
-    private insets: Insets = new Insets(0, 0, 0, 0);
-    private padding: Insets | null;
-    private foregroundColor: string | null;
-    private backgroundColor: string | null;
-    private backgroundImage: string | null;
-    private preferredSize: Size | null = null;
-    private onPreferredSizeChange: (() => void) | null = null;
-    private minSize: Size | null;
-    private maxSize: Size;
-    private overflow: string | null;
-    private whiteSpace: string | null;
-    private border: Border | null = null;
-    private borderCSS: string | null = null;
-    private borderRadius: string | null = null;
-    private shadow: string | null = null;
-    private pointerEvents: string | null = null;
-    private zIndex: number | null;
-    private displayed: Boolean | null;
-    private display: string;
-    private userSelect: string | null;
-    private verticalAlign: string | null;
-    private cssRule: CSSStyleRule;
-    private dirtyStyle: Style = {};
-    private dirtyCSSRule: Style = {};
-    private autoCommitStyle: boolean = true;
-    private layoutPaused: boolean = false;
-    private _aria: Aria | null = null;
+    private element              : HTMLElement | undefined;
+    private tag                  : string                  = "div";
+    private attributes           : Map<String, String>;
+    private boxSizing            : string | null;
+    private position             : Position                = Position.ABSOLUTE;
+    private cursor               : string | null           = "default";
+
+    // Geometry: NaN sentinels mean "never assigned", so equality guards on
+    // setX/setY/setWidth/setHeight short-circuit only AFTER a real write —
+    // the first call always reaches the DOM even when its target value is 0.
+    private left                 : number                  = NaN;
+    private top                  : number                  = NaN;
+    private width                : number                  = NaN;
+    private height               : number                  = NaN;
+    private translateX           : number                  = 0;
+    private translateY           : number                  = 0;
+    private visible              : Boolean | null          = null;
+    private insets               : Insets                  = new Insets(0, 0, 0, 0);
+    private padding              : Insets | null           = new Insets(0, 0, 0, 0);
+    private foregroundColor      : string | null           = null;
+    private backgroundColor      : string | null           = null;
+    private backgroundImage      : string | null           = null;
+    private preferredSize        : Size | null             = null;
+    private onPreferredSizeChange: (() => void) | null     = null;
+    private minSize              : Size | null             = { width: 0, height: 0 };
+    private maxSize              : Size                    = { width: Number.MAX_VALUE, height: Number.MAX_VALUE };
+    private overflow             : string | null           = "hidden";
+    private border               : Border | null           = null;
+    private borderCSS            : string | null           = null;
+    private borderRadius         : string | null           = null;
+    private shadow               : string | null           = null;
+    private pointerEvents        : string | null           = null;
+    private zIndex               : number | null           = 0;
+    private displayed            : Boolean | null          = true;
+    private autoCommitStyle      : boolean                 = true;
+    private layoutPaused         : boolean                 = false;
+    private _aria                : Aria | null             = null;
+    private colorScheme          : string | null           = null;
+    private whiteSpace           : string | null;
+    private display              : string;
+    private userSelect           : string | null;
+    private verticalAlign        : string | null;
+    private cssRule              : CSSStyleRule;
+    private dirtyStyle           : Style = {};
+    private dirtyCSSRule         : Style = {};
+
     // Tracks the single parent this component belongs to. Exposed read-only via
     // getParentComponent() for structural queries (e.g. FieldDecorator insertion).
     // Do NOT use this reference to propagate information upward from child to parent —
     // that direction of communication creates tight coupling and circular dependencies.
     // Parent-to-child communication (layout, sizing) is the only intended flow.
-    private _parent: Component | null = null;
-    private colorScheme: string | null = null;
+    private _parent              : Component | null = null;
 
-    constructor(tag: string = "div") {
+    constructor(options?: ComponentOptions) {
         super();
 
-        this.tag = tag;
-        this.cssRule = CSS.createComponentRule(this.getId()) as CSSStyleRule;
-
+        // Structural setup that doesn't map to ComponentOptions.
+        this.cssRule       = CSS.createComponentRule(this.getId()) as CSSStyleRule;
         this.layoutManager = new Absolute();
-        this.components = [];
+        this.components    = [];
+        this.attributes    = new Map<String, String>();
 
-        this.attributes = new Map<String, String>();
-
-        this.boxSizing = "border-box";
-        this.position = Position.ABSOLUTE;
-        this.cursor = "default";
-        // NaN sentinels for geometry: NaN === anything is always false, so the equality
-        // guards on setX/setY/setWidth/setHeight only short-circuit AFTER a real write
-        // — the first call always reaches the DOM, even when its target value is 0.
-        this.top = NaN;
-        this.left = NaN;
-        this.width = NaN;
-        this.height = NaN;
-        this.zIndex = 0;
-        this.displayed = true;
-        this.display = "block";
-        this.visible = null; // Inherit from our parent.
-        this.setInsets(new Insets(0, 0, 0, 0));
-        this.padding = new Insets(0, 0, 0, 0);
-        this.foregroundColor = null; // Inherit from our parent.
-        this.backgroundColor = null; // Inherit from our parent.
-        this.backgroundImage = null;
-        //this.preferredSize = Base.instantiate("Base.Size");
-        this.minSize = {
-            width: 0,
-            height: 0
-        };
-        this.maxSize = {
-            width: Number.MAX_VALUE,
-            height: Number.MAX_VALUE
-        };
-        this.overflow = "hidden";
-        this.whiteSpace = "nowrap";
-        this.userSelect = "none";
+        // Constants without ComponentOptions counterpart.
+        this.boxSizing     = "border-box";
+        this.display       = "block";
+        this.whiteSpace    = "nowrap";
+        this.userSelect    = "none";
         this.verticalAlign = "baseline";
+
+        // `tag` has no setter — apply the option directly here. Subclasses
+        // commonly forward this from `super({ tag: "..." })`.
+        if (options?.tag !== undefined) {
+            this.tag = options.tag;
+        }
+
+        // Dispatch the rest of the options at the leaf only. Subclass
+        // constructors call `applyOptions(options)` themselves with their
+        // full bag once their internal child components are built.
+        if (this.constructor === Component && options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link ComponentOptions} bag to this component by dispatching
+     * each present field to its corresponding setter.
+     *
+     * @param options - The options bag carrying the values to apply.
+     *
+     * @remarks Defaults live in field initializers, so this method only runs
+     * setters for fields the caller explicitly specified — cssRule writes,
+     * attribute-map updates, and attach chains fire once at the leaf rather
+     * than being re-run for every super() hop. Subclass overrides typically
+     * call `super.applyOptions(options)` first so inherited fields are
+     * applied before subclass-specific ones.
+     */
+    protected applyOptions(options: ComponentOptions): void {
+        if (options.id              !== undefined) this.setId(options.id);
+        if (options.layoutManager   !== undefined) this.setLayoutManager(options.layoutManager);
+        if (options.visible         !== undefined) this.setVisible(options.visible);
+        if (options.displayed       !== undefined) this.setDisplayed(options.displayed);
+        if (options.zIndex          !== undefined) this.setZIndex(options.zIndex);
+        if (options.insets          !== undefined) this.setInsets(options.insets);
+        if (options.padding         !== undefined) this.setPadding(options.padding);
+        if (options.backgroundColor !== undefined) this.setBackgroundColor(options.backgroundColor);
+        if (options.backgroundImage !== undefined) this.setBackgroundImage(options.backgroundImage);
+        if (options.foregroundColor !== undefined) this.setForegroundColor(options.foregroundColor);
+        if (options.colorScheme     !== undefined) this.setColorScheme(options.colorScheme);
+        if (options.border          !== undefined) this.setBorder(options.border);
+        if (options.borderRadius    !== undefined) this.setBorderRadius(options.borderRadius);
+        if (options.shadow          !== undefined) this.setShadow(options.shadow);
+        if (options.outline         !== undefined) this.setOutline(options.outline);
+        if (options.cursor          !== undefined) this.setCursor(options.cursor);
+        if (options.preferredSize   !== undefined) this.setPreferredSize(options.preferredSize.width, options.preferredSize.height);
+        if (options.minSize         !== undefined) this.setMinSize(options.minSize.width, options.minSize.height);
+        if (options.maxSize         !== undefined) this.setMaxSize(options.maxSize.width, options.maxSize.height);
+        if (options.transform       !== undefined) this.setTransform(options.transform);
+        if (options.opacity         !== undefined) this.setOpacity(options.opacity);
+        if (options.position        !== undefined) this.setPosition(options.position);
+        if (options.overflow        !== undefined) this.setOverflow(options.overflow);
+        if (options.pointerEvents   !== undefined) this.setPointerEvents(options.pointerEvents);
+
+        if (options.attributes !== undefined) {
+            for (const key of Object.keys(options.attributes)) {
+                this.setAttribute(key, options.attributes[key]);
+            }
+        }
     }
 
     /**

@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Input } from "./Input.js";
+import { Input, InputOptions } from "./Input.js";
 import { Util } from "../Util.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 import { Bindable } from "../Bindable.js";
 import { ThemeManager } from "../Theme.js";
+
+/**
+ * Construction-time options for {@link TimeField}.
+ *
+ * @category Components
+ */
+export interface TimeFieldOptions extends InputOptions {
+    value?:   Date | null;
+    enabled?: boolean;
+}
 
 /**
  * A time-picker input component backed by an `<input type="time">` element.
@@ -20,7 +30,7 @@ export class TimeField extends Input implements Bindable<Date | null> {
 
     private _value: Date | null = null;
 
-    constructor() {
+    constructor(options?: TimeFieldOptions) {
         super();
 
         this.setCursor("text");
@@ -32,6 +42,28 @@ export class TimeField extends Input implements Bindable<Date | null> {
         ThemeManager.onThemeChange(() => this.updateHeight());
 
         Event.addListener(this, "input", this.onInput);
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link TimeFieldOptions} bag, dispatching the initial value and
+     * enabled/disabled state after inherited Input/Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: TimeFieldOptions): void {
+        super.applyOptions(options);
+
+        if (options.value !== undefined) {
+            this.setValue(options.value);
+        }
+
+        if (options.enabled !== undefined) {
+            this.setElementAttribute("disabled", options.enabled ? null : "");
+        }
     }
 
     /**

@@ -38,6 +38,24 @@ export interface SortDescriptor {
 }
 
 /**
+ * Construction-time options shared by every {@link AbstractStore} subclass.
+ *
+ * @remarks Concrete stores extend this interface with the fields specific to
+ * their model/proxy wiring (e.g. {@link StoreOptions}, {@link MemoryStoreOptions},
+ * {@link AjaxStoreOptions}).
+ *
+ * @category Data
+ */
+export interface AbstractStoreOptions {
+    pageSize?:    number;
+    page?:        number;
+    sorters?:     SortDescriptor[];
+    filters?:     FilterDescriptor[];
+    autoLoad?:    boolean;
+    listeners?:   Partial<Record<StoreEvent, StoreListener>>;
+}
+
+/**
  * Abstract base class for all data stores.
  * Manages a collection of ModelRecord instances with support for loading, CRUD mutations,
  * filtering, sorting, and event notification.
@@ -77,6 +95,50 @@ export abstract class AbstractStore {
     private _page: number = 1;
     private _pageSize: number | undefined = undefined;
     private _totalCount: number | undefined = undefined;
+
+    /**
+     * Applies an {@link AbstractStoreOptions} bag to this store. Subclasses
+     * should call this from their constructor (after `model` and `proxy` are
+     * assigned) so that pagination, sort, filter, and listener defaults are
+     * dispatched to the existing setters.
+     *
+     * @param options - The options bag carrying the values to apply.
+     *
+     * @remarks Listener registrations and filters are applied first so that an
+     * `autoLoad: true` flag triggers a `load()` whose result fires the
+     * already-registered `'load'` listener.
+     */
+    protected applyOptions(options: AbstractStoreOptions): void {
+        if (options.listeners !== undefined) {
+            for (const event of Object.keys(options.listeners) as StoreEvent[]) {
+                const listener = options.listeners[event];
+
+                if (listener !== undefined) {
+                    this.on(event, listener);
+                }
+            }
+        }
+
+        if (options.pageSize !== undefined) {
+            this.setPageSize(options.pageSize);
+        }
+
+        if (options.page !== undefined) {
+            this._page = options.page;
+        }
+
+        if (options.sorters !== undefined && options.sorters.length > 0) {
+            this.activeSorters = options.sorters.slice();
+        }
+
+        if (options.filters !== undefined && options.filters.length > 0) {
+            this.activeFilters = options.filters.slice();
+        }
+
+        if (options.autoLoad === true) {
+            void this.load();
+        }
+    }
 
     // ── Loading ──────────────────────────────────────────────────────────────
 

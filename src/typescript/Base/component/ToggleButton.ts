@@ -2,7 +2,16 @@
 
 import { CSS } from "../CSS.js";
 import { Event } from "../Event.js";
-import { Button } from "./Button.js";
+import { Button, ButtonOptions } from "./Button.js";
+
+/**
+ * Construction-time options for {@link ToggleButton}.
+ *
+ * @category Components
+ */
+export interface ToggleButtonOptions extends ButtonOptions {
+    selected?: boolean;
+}
 
 /**
  * A toggle button component that switches between selected and unselected states on each click.
@@ -17,7 +26,7 @@ export class ToggleButton extends Button {
     private selected: boolean = false;
     private selectedCSSRule: CSSStyleRule;
 
-    constructor(text: string) {
+    constructor(text: string, options?: ToggleButtonOptions) {
         super(text);
 
         this.selectedCSSRule = CSS.createComponentRule(this.getId() + ".selected") as CSSStyleRule;
@@ -26,6 +35,24 @@ export class ToggleButton extends Button {
         this.selectedCSSRule.style.setProperty('background-image', 'var(--ts-ui-toggle-selected-bg, none)');
 
         Event.addListener(this, "click", () => this.onAction());
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link ToggleButtonOptions} bag, dispatching the toggle's
+     * `selected` state after inherited Button/Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: ToggleButtonOptions): void {
+        super.applyOptions(options);
+
+        if (options.selected !== undefined) {
+            this.setSelected(options.selected);
+        }
     }
 
     /**

@@ -1,9 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { CSS } from "../CSS.js";
 import { Event } from "../Event.js";
 import { Text } from "./Text.js";
+
+/**
+ * Construction-time options for {@link AutoCompleteItem}.
+ *
+ * @category Components
+ */
+export interface AutoCompleteItemOptions extends ComponentOptions {
+    text?:        string;
+    highlighted?: boolean;
+}
 
 /**
  * A single row inside an `AutoCompleteDropdown`.
@@ -19,7 +29,7 @@ export class AutoCompleteItem extends Component {
 
     private textComponent: Text;
     private hoverCSSRule: CSSStyleRule;
-    private highlighted: boolean;
+    private highlighted: boolean = false;
     private clickListener: (value: string) => void;
     private readonly onSelect: (value: string) => void;
     private text: string;
@@ -28,12 +38,11 @@ export class AutoCompleteItem extends Component {
      * @param text - The suggestion text to display.
      * @param onSelect - Called with the item text when the user clicks or selects this item.
      */
-    constructor(text: string, onSelect: (value: string) => void) {
+    constructor(text: string, onSelect: (value: string) => void, options?: AutoCompleteItemOptions) {
         super();
 
-        this.text        = text;
-        this.onSelect    = onSelect;
-        this.highlighted = false;
+        this.text     = text;
+        this.onSelect = onSelect;
 
         this.hoverCSSRule = CSS.createComponentRule(this.getId() + ":hover") as CSSStyleRule;
         this.hoverCSSRule.style.setProperty(
@@ -61,6 +70,28 @@ export class AutoCompleteItem extends Component {
         };
 
         Event.addListener(this, "click", this.clickListener);
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies an {@link AutoCompleteItemOptions} bag, dispatching displayed
+     * text and highlight state after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: AutoCompleteItemOptions): void {
+        super.applyOptions(options);
+
+        if (options.text !== undefined) {
+            this.update(options.text);
+        }
+
+        if (options.highlighted !== undefined) {
+            this.setHighlighted(options.highlighted);
+        }
     }
 
     /**

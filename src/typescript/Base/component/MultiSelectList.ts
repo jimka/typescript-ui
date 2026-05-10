@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { List } from "./List.js";
+import { List, ListOptions } from "./List.js";
 import { ModelRecord } from "../data/ModelRecord.js";
+
+/**
+ * Construction-time options for {@link MultiSelectList}.
+ *
+ * @category Components
+ */
+export interface MultiSelectListOptions extends ListOptions {
+    selectedIndices?: number[];
+}
 
 /**
  * A multi-selection list box backed by a `<select multiple>` element.
@@ -13,6 +22,35 @@ import { ModelRecord } from "../data/ModelRecord.js";
  * @category Components
  */
 export class MultiSelectList extends List {
+
+    constructor(options?: MultiSelectListOptions) {
+        super();
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link MultiSelectListOptions} bag, dispatching the multi-select
+     * `selectedIndices` after the inherited List options have been applied.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: MultiSelectListOptions): void {
+        super.applyOptions(options);
+
+        if (options.selectedIndices !== undefined) {
+            const element = this.getElement();
+            if (element) {
+                const indexSet = new Set(options.selectedIndices);
+
+                for (let i = 0; i < element.options.length; i++) {
+                    element.options[i].selected = indexSet.has(i);
+                }
+            }
+        }
+    }
 
     /**
      * Returns the currently selected option values.

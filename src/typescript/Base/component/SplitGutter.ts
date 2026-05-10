@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { Util } from "../Util.js";
+
+/**
+ * Construction-time options for {@link SplitGutter}.
+ *
+ * @category Components
+ */
+export interface SplitGutterOptions extends ComponentOptions {
+    orientation?: string;
+}
 
 /**
  * A draggable gutter component used to resize split panels.
@@ -15,17 +24,37 @@ import { Util } from "../Util.js";
  */
 export class SplitGutter extends Component {
 
-    private direction: String;
-    private dragListeners: Array<Function>;
+    private direction: String = "horizontal";
+    private dragListeners: Array<Function> = [];
 
-    constructor(direction: String) {
+    constructor(direction: String, options?: SplitGutterOptions) {
         super();
 
         this.setBackgroundColor("var(--ts-ui-gutter-bg, #AAAAAA)");
-        this.direction = direction || "horizontal";
-        this.dragListeners = [];
+
+        if (direction) {
+            this.direction = direction;
+        }
 
         Event.addListener(this, 'mousedown', this.onDragStart);
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link SplitGutterOptions} bag, dispatching the gutter
+     * orientation after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: SplitGutterOptions): void {
+        super.applyOptions(options);
+
+        if (options.orientation !== undefined) {
+            this.setDirection(options.orientation);
+        }
     }
 
     /**

@@ -29,7 +29,7 @@ export class Header extends Component {
     private onColumnContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
 
     constructor(model: AbstractModel, store: AbstractStore) {
-        super("thead");
+        super({ tag: "thead" });
 
         this.getAria().setRole("rowgroup");
         this.setBorder({ bottom: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-table-header-border, black)" } });

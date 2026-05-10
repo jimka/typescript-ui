@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import type { MenuItemCSSVarPrefix } from "./MenuItem.js";
+
+/**
+ * Construction-time options for {@link MenuSeparator}.
+ *
+ * @category Components
+ */
+export interface MenuSeparatorOptions extends ComponentOptions {
+}
 
 /**
  * A horizontal separator rule used inside a `Menu` panel to visually group menu items.
@@ -20,7 +28,7 @@ export class MenuSeparator extends Component {
      *
      * @param cssVarPrefix - Selects which CSS-variable family supplies the border colour. Defaults to `'menu-bar'`.
      */
-    constructor(cssVarPrefix: MenuItemCSSVarPrefix = "menu-bar") {
+    constructor(cssVarPrefix: MenuItemCSSVarPrefix = "menu-bar", options?: MenuSeparatorOptions) {
         super();
 
         this.setHeight(MenuSeparator.HEIGHT);
@@ -32,5 +40,9 @@ export class MenuSeparator extends Component {
         );
         this.setElementCSSRule("margin", "4px 0");
         this.getAria().setRole("separator");
+
+        if (options) {
+            this.applyOptions(options);
+        }
     }
 }

@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { CSS } from "../CSS.js";
 import { Position } from "../Position.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { ThemeManager } from "../Theme.js";
+
+/**
+ * Construction-time options for {@link ProgressSpinner}.
+ *
+ * @category Components
+ */
+export interface ProgressSpinnerOptions extends ComponentOptions {
+    spinnerSize?: number;
+}
 
 CSS.ensureKeyframes(
     'ts-ui-progress-spinner-rotate',
@@ -51,7 +60,7 @@ export class ProgressSpinner extends Component {
      * Omit to track the active theme's `--ts-ui-font-size` so the spinner
      * matches surrounding text by default; updates automatically on theme change.
      */
-    constructor(size?: number) {
+    constructor(size?: number, options?: ProgressSpinnerOptions) {
         super();
 
         this.trackThemeFontSize = size === undefined;
@@ -96,6 +105,24 @@ export class ProgressSpinner extends Component {
 
         this.getAria().setRole("status");
         this.getAria().setLabel("Loading");
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link ProgressSpinnerOptions} bag, dispatching the explicit
+     * spinner diameter after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: ProgressSpinnerOptions): void {
+        super.applyOptions(options);
+
+        if (options.spinnerSize !== undefined) {
+            this.setSpinnerSize(options.spinnerSize);
+        }
     }
 
     /**

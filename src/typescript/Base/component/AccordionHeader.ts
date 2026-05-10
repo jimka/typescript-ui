@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Button } from "./Button.js";
+import { Button, ButtonOptions } from "./Button.js";
 import { CSS } from "../CSS.js";
 import { Insets } from "../Insets.js";
+
+/**
+ * Construction-time options for {@link AccordionHeader}.
+ *
+ * @category Components
+ */
+export interface AccordionHeaderOptions extends ButtonOptions {
+    expanded?: boolean;
+}
 
 /**
  * A flat header button used by {@link Accordion} to represent a collapsible section.
@@ -54,13 +63,31 @@ export class AccordionHeader extends Button {
     /**
      * @param label - Text displayed in the header button.
      */
-    constructor(label: string) {
+    constructor(label: string, options?: AccordionHeaderOptions) {
         super(label);
 
         AccordionHeader.createStyles();
 
         this.getText().setTextAlign('left');
         this.getText().setInsets(new Insets(0, 0, 0, 8));
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies an {@link AccordionHeaderOptions} bag, dispatching the indicator
+     * `expanded` state after inherited Button/Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: AccordionHeaderOptions): void {
+        super.applyOptions(options);
+
+        if (options.expanded !== undefined) {
+            this.setExpanded(options.expanded);
+        }
     }
 
     /**

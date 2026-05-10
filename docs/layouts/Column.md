@@ -17,14 +17,14 @@ Despite the name, `Column` lays children out **horizontally**. The name describe
 import { Component, Column, Button } from '@jimka/typescript-ui';
 
 const tabs = new Component();
-const layout = new Column();
-layout.setGap(2);
-tabs.setLayoutManager(layout);
+tabs.setLayoutManager(new Column({ gap: 2 }));
 
 tabs.addComponent(new Button('Files'));
 tabs.addComponent(new Button('Edit'));
 tabs.addComponent(new Button('Help'));
 ```
+
+[`ColumnOptions`](/api/interfaces/ColumnOptions) accepts `gap` and `stretching` declaratively; the `setGap` / `setStretching` setters still work for runtime updates.
 
 ## Per-child constraints
 
@@ -42,8 +42,7 @@ tabs.addComponent(new Button('Help'));
 By default, `Column` stretches every child to fill the row's full height, so baselines are irrelevant. Call `setStretching(false)` to opt into the same baseline-aware placement that [`HBox`](/layouts/HBox#baseline-alignment) uses: text-bearing children line up by their inner-text baseline, and graphical children (checkboxes, progress bars, etc.) center on the row's text line.
 
 ```typescript
-const layout = new Column();
-layout.setStretching(false); // baseline-align children
+const layout = new Column({ stretching: false }); // baseline-align children
 ```
 
 ## When to use it

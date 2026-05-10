@@ -1,7 +1,20 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Input } from "./Input.js";
+import { Input, InputOptions } from "./Input.js";
 import { Util } from "../Util.js";
+
+/**
+ * Construction-time options for {@link TextInput}.
+ *
+ * @category Components
+ */
+export interface TextInputOptions extends InputOptions {
+    text?:        string;
+    textAlign?:   string;
+    placeholder?: string;
+    readOnly?:    boolean;
+    maxLength?:   number;
+}
 
 /**
  * Base class for single-line and multi-line text input components.
@@ -13,8 +26,43 @@ export class TextInput extends Input {
     private text: String = "";
     private textAlign: string | null = null;
 
-    constructor(tag: string = "input") {
-        super(tag);
+    constructor(options?: TextInputOptions) {
+        super({ tag: options?.tag ?? "input" });
+
+        if (this.constructor === TextInput && options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link TextInputOptions} bag, dispatching text, alignment, and
+     * native HTML attributes (placeholder, readOnly, maxLength) after
+     * inherited Input/Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: TextInputOptions): void {
+        super.applyOptions(options);
+
+        if (options.text !== undefined) {
+            this.setText(options.text);
+        }
+
+        if (options.textAlign !== undefined) {
+            this.setTextAlign(options.textAlign);
+        }
+
+        if (options.placeholder !== undefined) {
+            this.setElementAttribute("placeholder", options.placeholder);
+        }
+
+        if (options.readOnly !== undefined) {
+            this.setElementAttribute("readonly", options.readOnly ? "" : null);
+        }
+
+        if (options.maxLength !== undefined) {
+            this.setElementAttribute("maxlength", String(options.maxLength));
+        }
     }
 
     /**

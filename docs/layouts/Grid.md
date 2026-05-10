@@ -17,15 +17,14 @@
 import { Component, Grid, Button } from '@jimka/typescript-ui';
 
 const keypad = new Component();
-const layout = new Grid();
-layout.setRows(4);
-layout.setColumns(3);
-keypad.setLayoutManager(layout);
+keypad.setLayoutManager(new Grid({ rows: 4, columns: 3 }));
 
 ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].forEach(text => {
     keypad.addComponent(new Button(text));
 });
 ```
+
+[`GridOptions`](/api/interfaces/GridOptions) accepts `rows`, `columns`, `spacing`, and `stretching` declaratively; the corresponding setters still work for runtime updates.
 
 ## Auto-sizing
 
@@ -48,10 +47,10 @@ If you set only one of `setRows` or `setColumns` (leaving the other at `0`), the
 By default, `Grid` makes every cell the same size and stretches children to fill them. Call `setStretching(false)` to keep the uniform cell grid (so the layout still fills its container) but let children inside each row use their preferred heights and baseline-align with each other — the same alignment rules as [`HBox`](/layouts/HBox#baseline-alignment).
 
 ```typescript
-const layout = new Grid();
-layout.setColumns(2);
-layout.setStretching(false); // per-row baseline alignment
-panel.setLayoutManager(layout);
+panel.setLayoutManager(new Grid({
+    columns   : 2,
+    stretching: false, // per-row baseline alignment
+}));
 
 // Useful for label/field form grids:
 panel.addComponent(new Text('Name:'));

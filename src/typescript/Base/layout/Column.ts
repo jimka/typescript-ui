@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
+
+/**
+ * Construction-time options for {@link Column}.
+ *
+ * @category Layouts
+ */
+export interface ColumnOptions extends LayoutManagerOptions {
+    gap?:        number;
+    stretching?: boolean;
+}
 
 /**
  * A layout manager that divides the container width equally among all children
@@ -15,8 +25,30 @@ export class Column extends LayoutManager {
     private gap: number = 5;
     private stretching: boolean = true;
 
-    constructor() {
-        super()
+    constructor(options?: ColumnOptions) {
+        super();
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link ColumnOptions} bag, dispatching gap and stretching
+     * after the inherited LayoutManager defaults.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: ColumnOptions): void {
+        super.applyOptions(options);
+
+        if (options.gap !== undefined) {
+            this.gap = options.gap;
+        }
+
+        if (options.stretching !== undefined) {
+            this.setStretching(options.stretching);
+        }
     }
 
     /**

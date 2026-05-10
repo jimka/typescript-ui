@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Field, FieldConfig } from './Field.js';
+import { Field, FieldOptions } from './Field.js';
 import { AbstractModel } from './AbstractModel.js';
+
+/**
+ * Construction-time options for {@link Model}.
+ *
+ * @category Data
+ */
+export interface ModelOptions {
+    fields:      Array<Field | FieldOptions>;
+    primaryKey?: string;
+}
 
 /**
  * A concrete, configurable model created at runtime from a field array.
@@ -11,18 +21,23 @@ import { AbstractModel } from './AbstractModel.js';
  */
 export class Model extends AbstractModel {
 
-    readonly fields: (Field | FieldConfig)[];
+    readonly fields: (Field | FieldOptions)[];
 
     /**
      * Constructs a Model with the specified fields and an optional primary key.
      *
-     * @param fields - An array of Field instances or FieldConfig objects that define the schema.
-     * @param primaryKey - Optional. The name of the field to use as the primary key.
+     * @param fields - An array of Field instances or FieldOptions objects that define the schema, or a {@link ModelOptions} bag.
+     * @param primaryKey - Optional. The name of the field to use as the primary key. Ignored when the first argument is a {@link ModelOptions} bag.
      */
-    constructor(fields: Array<Field | FieldConfig>, primaryKey?: string) {
+    constructor(fields: Array<Field | FieldOptions> | ModelOptions, primaryKey?: string) {
         super();
 
-        this.fields = fields;
-        this._primaryKey = primaryKey;
+        if (Array.isArray(fields)) {
+            this.fields = fields;
+            this._primaryKey = primaryKey;
+        } else {
+            this.fields = fields.fields;
+            this._primaryKey = fields.primaryKey;
+        }
     }
 }

@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
+
+/**
+ * Construction-time options for {@link Input}.
+ *
+ * @remarks `tag` is inherited from {@link ComponentOptions} but defaults to
+ * `"input"` for `Input` (subclasses such as {@link TextArea} pass `"textarea"`).
+ *
+ * @category Components
+ */
+export interface InputOptions extends ComponentOptions {
+    name?: string;
+}
 
 /**
  * Base class for input elements (`<input>` and `<textarea>`).
@@ -9,11 +21,29 @@ import { Component } from "../Component.js";
  */
 export class Input extends Component {
 
-    constructor(tag: string = "input") {
-        super(tag);
+    constructor(options?: InputOptions) {
+        super({ tag: options?.tag ?? "input" });
 
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
+
+        if (this.constructor === Input && options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies an {@link InputOptions} bag, including the optional `name`
+     * attribute used by HTML form submission and radio grouping.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: InputOptions): void {
+        super.applyOptions(options);
+
+        if (options.name !== undefined) {
+            this.setElementAttribute("name", options.name);
+        }
     }
 
     /**

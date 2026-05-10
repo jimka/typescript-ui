@@ -1,9 +1,21 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
 import { Component } from "../Component.js";
+
+/**
+ * Construction-time options for {@link Grid}.
+ *
+ * @category Layouts
+ */
+export interface GridOptions extends LayoutManagerOptions {
+    rows?:       number;
+    columns?:    number;
+    spacing?:    number;
+    stretching?: boolean;
+}
 
 /**
  * A layout manager that tiles children in a uniform grid of equal-sized cells.
@@ -18,8 +30,38 @@ export class Grid extends LayoutManager {
     private spacing: number = 5;
     private stretching: boolean = true;
 
-    constructor() {
+    constructor(options?: GridOptions) {
         super();
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link GridOptions} bag, dispatching grid dimensions, spacing,
+     * and stretching after the inherited LayoutManager defaults.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: GridOptions): void {
+        super.applyOptions(options);
+
+        if (options.rows !== undefined) {
+            this.setRows(options.rows);
+        }
+
+        if (options.columns !== undefined) {
+            this.setColumns(options.columns);
+        }
+
+        if (options.spacing !== undefined) {
+            this.setComponentSpacing(options.spacing);
+        }
+
+        if (options.stretching !== undefined) {
+            this.setStretching(options.stretching);
+        }
     }
 
     /**

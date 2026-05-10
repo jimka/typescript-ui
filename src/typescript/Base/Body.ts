@@ -31,7 +31,7 @@ export class Body extends Component {
     }
 
     private constructor() {
-        super("body");
+        super({ tag: "body" });
 
         this.init();
 

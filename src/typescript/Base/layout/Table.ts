@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { Table as TableComponent } from "../component/table/Table.js";
 import { Column } from "../component/table/Column.js";
 import { Component } from "../Component.js";
 import { Util } from "../Util.js";
 import { ThemeManager } from "../Theme.js";
+
+/**
+ * Construction-time options for the {@link Table} layout manager.
+ *
+ * @category Layouts
+ */
+export interface TableLayoutOptions extends LayoutManagerOptions {
+}
 
 const BOOLEAN_WIDTH = 60;
 const NUMBER_WIDTH  = 90;
@@ -30,9 +38,15 @@ export class Table extends LayoutManager {
 
     /**
      * Constructs a Table layout manager.
+     *
+     * @param options - Optional construction-time options.
      */
-    constructor() {
+    constructor(options?: TableLayoutOptions) {
         super();
+
+        if (options) {
+            this.applyOptions(options);
+        }
     }
 
     /**

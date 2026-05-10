@@ -39,7 +39,7 @@ export class Row extends Component {
         columnConfigs: Map<string, ColumnConfig> = new Map(),
         onCellCommit?: (record: ModelRecord) => void,
     ) {
-        super("tr");
+        super({ tag: "tr" });
 
         this.getAria().setRole("row");
 

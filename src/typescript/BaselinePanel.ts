@@ -19,19 +19,23 @@ export class BaselinePanel extends Panel {
 
         this.setLayoutManager(new HBox());
 
-        const baselineDemo = new Component();
+        const baselineDemo = new Component({
+            preferredSize: { width: 420, height: 220 },
+        });
         baselineDemo.setLayoutManager(new VBox());
-        baselineDemo.setPreferredSize(420, 220);
 
-        const progressBar = new ProgressBar(50);
-        progressBar.setPreferredSize(120, 12);
-        progressBar.setInsets(new Insets(0, 0, 0, 0));
+        const progressBar = new ProgressBar(50, false, {
+            preferredSize: { width: 120, height: 12 },
+            insets       : new Insets(0, 0, 0, 0),
+        });
 
         const progressRow = new Component();
         progressRow.setLayoutManager(new HBox());
+
         progressRow.addComponent(new Text("Progress:"));
         progressRow.addComponent(progressBar);
         progressRow.addComponent(new Text("done"));
+
         baselineDemo.addComponent(progressRow);
 
         const fieldRow = new Component();

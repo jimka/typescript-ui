@@ -1,6 +1,16 @@
-import { AbstractStore } from "./AbstractStore";
+import { AbstractStore, AbstractStoreOptions } from "./AbstractStore";
 import { Model } from "./Model";
 import { MemoryProxy } from "./proxy/MemoryProxy";
+
+/**
+ * Construction-time options for {@link MemoryStore}.
+ *
+ * @category Data
+ */
+export interface MemoryStoreOptions extends AbstractStoreOptions {
+    model: Model;
+    data?: any[];
+}
 
 /**
  * A store backed entirely by in-memory data.
@@ -16,13 +26,20 @@ export class MemoryStore extends AbstractStore {
     /**
      * Constructs a MemoryStore with the given model and an optional initial data array.
      *
-     * @param model - The Model that defines the record schema for this store.
-     * @param data - Optional. The initial data records to load into the store.
+     * @param modelOrOptions - The Model that defines the record schema, or a {@link MemoryStoreOptions} bag.
+     * @param data - Optional. The initial data records to load into the store. Ignored when the first argument is a {@link MemoryStoreOptions} bag.
      */
-    constructor(model: Model, data: any[] = []) {
+    constructor(modelOrOptions: Model | MemoryStoreOptions, data: any[] = []) {
         super();
 
-        this.model = model;
-        this.proxy.setData(data);
+        if (modelOrOptions instanceof Model) {
+            this.model = modelOrOptions;
+            this.proxy.setData(data);
+        } else {
+            this.model = modelOrOptions.model;
+            this.proxy.setData(modelOrOptions.data ?? []);
+
+            this.applyOptions(modelOrOptions);
+        }
     }
 }

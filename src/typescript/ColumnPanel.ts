@@ -8,9 +8,8 @@ export class ColumnPanel extends LayoutTestPanel {
     constructor() {
         super();
 
-        let column = new Column();
-        column.setStretching(false);
-
-        this.setLayoutManager(column);
+        this.setLayoutManager(new Column({
+            stretching: false
+        }));
     }
 }

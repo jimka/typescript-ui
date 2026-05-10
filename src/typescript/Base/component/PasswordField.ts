@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { TextInput } from "./TextInput.js";
+import { TextInput, TextInputOptions } from "./TextInput.js";
 import { Util } from "../Util.js";
 import { Insets } from "../Insets.js";
 import { ThemeManager } from "../Theme.js";
+
+/**
+ * Construction-time options for {@link PasswordField}.
+ *
+ * @category Components
+ */
+export interface PasswordFieldOptions extends TextInputOptions {
+}
 
 /**
  * A password input component that renders an `<input type="password">` element.
@@ -12,7 +20,7 @@ import { ThemeManager } from "../Theme.js";
  */
 export class PasswordField extends TextInput {
 
-    constructor() {
+    constructor(options?: PasswordFieldOptions) {
         super();
 
         this.setPadding(new Insets(3, 3, 3, 3));
@@ -22,6 +30,10 @@ export class PasswordField extends TextInput {
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
+
+        if (options) {
+            this.applyOptions(options);
+        }
     }
 
     /**

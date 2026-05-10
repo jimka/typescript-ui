@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { CSS } from "../CSS.js";
 import { Position } from "../Position.js";
 
@@ -8,6 +8,16 @@ CSS.ensureKeyframes(
     'ts-ui-progress-indeterminate',
     '0% { transform: translateX(-100%); } 100% { transform: translateX(400%); }'
 );
+
+/**
+ * Construction-time options for {@link ProgressBar}.
+ *
+ * @category Components
+ */
+export interface ProgressBarOptions extends ComponentOptions {
+    value?:         number;
+    indeterminate?: boolean;
+}
 
 /**
  * A horizontal progress indicator with a determinate (0–100%) and an indeterminate
@@ -33,7 +43,7 @@ export class ProgressBar extends Component {
      * @param value - Initial progress value in [0, 100]. Defaults to 0.
      * @param indeterminate - When true the bar animates continuously and value is ignored.
      */
-    constructor(value: number = 0, indeterminate: boolean = false) {
+    constructor(value: number = 0, indeterminate: boolean = false, options?: ProgressBarOptions) {
         super();
 
         this.value         = Math.max(0, Math.min(100, value));
@@ -61,6 +71,28 @@ export class ProgressBar extends Component {
 
         if (this.indeterminate) {
             this.applyIndeterminate(true);
+        }
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link ProgressBarOptions} bag, dispatching value and
+     * indeterminate state after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: ProgressBarOptions): void {
+        super.applyOptions(options);
+
+        if (options.indeterminate !== undefined) {
+            this.setIndeterminate(options.indeterminate);
+        }
+
+        if (options.value !== undefined) {
+            this.setValue(options.value);
         }
     }
 

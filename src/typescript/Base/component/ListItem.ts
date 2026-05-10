@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
+
+/**
+ * Construction-time options for {@link ListItem}.
+ *
+ * @category Components
+ */
+export interface ListItemOptions extends ComponentOptions {
+    text?: string;
+}
 
 /**
  * A single list item component backed by a `<li>` element.
@@ -15,11 +24,33 @@ export class ListItem extends Component {
     private key: string;
     private value: string;
 
-    constructor(key: string, value: string) {
-        super("li");
+    constructor(key: string, value: string, options?: ListItemOptions) {
+        super({ tag: "li" });
 
         this.key = key;
         this.value = value;
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link ListItemOptions} bag, dispatching the item's display
+     * text after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: ListItemOptions): void {
+        super.applyOptions(options);
+
+        if (options.text !== undefined) {
+            this.value = options.text;
+            const element = this.getElement();
+            if (element) {
+                element.textContent = options.text;
+            }
+        }
     }
 
     /**

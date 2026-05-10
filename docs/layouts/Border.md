@@ -26,7 +26,7 @@ import {
 } from '@jimka/typescript-ui';
 
 const app = new Component();
-app.setLayoutManager(new BorderLayout());
+app.setLayoutManager(new BorderLayout({ gap: 4 }));
 
 app.addComponent(new MenuBar([/* ... */]),       { region: Placement.NORTH  });
 app.addComponent(new Header('Status'),           { region: Placement.SOUTH  });
@@ -34,6 +34,8 @@ app.addComponent(sidebar,                         { region: Placement.WEST   });
 app.addComponent(detailPanel,                     { region: Placement.EAST   });
 app.addComponent(new Table(store),                { region: Placement.CENTER });
 ```
+
+[`BorderLayoutOptions`](/api/interfaces/BorderLayoutOptions) accepts `gap` declaratively (the inter-region pixel gap); the `setComponentGap` setter still works for runtime updates.
 
 ## Per-child constraints
 

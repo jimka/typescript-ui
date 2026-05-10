@@ -1,11 +1,22 @@
-import { AbstractStore } from "./AbstractStore";
+import { AbstractStore, AbstractStoreOptions } from "./AbstractStore";
 import { Model } from "./Model";
-import { AjaxProxy, AjaxProxyConfig } from "./proxy/AjaxProxy";
+import { AjaxProxy, AjaxProxyOptions } from "./proxy/AjaxProxy";
+
+/**
+ * Construction-time options for {@link AjaxStore}. Combines store-level options
+ * with the proxy configuration that drives the embedded {@link AjaxProxy}.
+ *
+ * @category Data
+ */
+export interface AjaxStoreOptions extends AbstractStoreOptions {
+    model: Model;
+    proxy: AjaxProxyOptions;
+}
 
 /**
  * A store backed by an {@link AjaxProxy} that talks to a remote HTTP/REST endpoint.
- * Convenience subclass that constructs the proxy from an {@link AjaxProxyConfig}
- * so callers do not need to wire a {@link Store} and proxy separately.
+ * Convenience subclass that constructs the proxy from an {@link AjaxProxyOptions}
+ * bag so callers do not need to wire a {@link Store} and proxy separately.
  *
  * @category Data
  */
@@ -17,13 +28,24 @@ export class AjaxStore extends AbstractStore {
     /**
      * Constructs an AjaxStore with the given model and AjaxProxy configuration.
      *
-     * @param model - The Model that defines the record schema for this store.
-     * @param config - The AjaxProxy configuration specifying the endpoint URL and HTTP options.
+     * @param modelOrOptions - The Model that defines the record schema, or an {@link AjaxStoreOptions} bag.
+     * @param proxyOptions - The AjaxProxy options specifying the endpoint URL and HTTP options. Required when the first argument is a Model; ignored when the first argument is an {@link AjaxStoreOptions} bag.
      */
-    constructor(model: Model, config: AjaxProxyConfig) {
+    constructor(modelOrOptions: Model | AjaxStoreOptions, proxyOptions?: AjaxProxyOptions) {
         super();
 
-        this.model = model;
-        this.proxy = new AjaxProxy(config);
+        if (modelOrOptions instanceof Model) {
+            if (!proxyOptions) {
+                throw new Error("AjaxStore requires an AjaxProxyOptions argument when constructed with a Model.");
+            }
+
+            this.model = modelOrOptions;
+            this.proxy = new AjaxProxy(proxyOptions);
+        } else {
+            this.model = modelOrOptions.model;
+            this.proxy = new AjaxProxy(modelOrOptions.proxy);
+
+            this.applyOptions(modelOrOptions);
+        }
     }
 }

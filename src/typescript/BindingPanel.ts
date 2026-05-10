@@ -34,10 +34,13 @@ export class BindingPanel extends Panel {
             { name: 'reminderTime', type: 'string'  },
         ]);
 
-        const personStore = new MemoryStore(personModel, [
-            { id: 1, name: 'Alice', active: true,  role: 'admin',  birthDate: '1990-03-15', reminderTime: '09:00' },
-            { id: 2, name: 'Bob',   active: false, role: 'editor', birthDate: '1985-11-22', reminderTime: '14:30' },
-        ]);
+        const personStore = new MemoryStore({
+            model: personModel,
+            data : [
+                { id: 1, name: 'Alice', active: true,  role: 'admin',  birthDate: '1990-03-15', reminderTime: '09:00' },
+                { id: 2, name: 'Bob',   active: false, role: 'editor', birthDate: '1985-11-22', reminderTime: '14:30' },
+            ],
+        });
 
         // ── Role options store ───────────────────────────────────────────────
 
@@ -46,21 +49,26 @@ export class BindingPanel extends Panel {
             { name: 'label', type: 'string' },
         ]);
 
-        const roleStore = new MemoryStore(roleModel, [
-            { value: 'admin',  label: 'Admin'  },
-            { value: 'editor', label: 'Editor' },
-            { value: 'viewer', label: 'Viewer' },
-        ]);
+        const roleStore = new MemoryStore({
+            model: roleModel,
+            data : [
+                { value: 'admin',  label: 'Admin'  },
+                { value: 'editor', label: 'Editor' },
+                { value: 'viewer', label: 'Viewer' },
+            ],
+        });
 
         // ── Components ───────────────────────────────────────────────────────
 
         const nameField     = new TextField();
         const activeCheck   = new Checkbox();
-        const roleCombo     = new ComboBox();
+        const roleCombo     = new ComboBox({
+            store       : roleStore,
+            displayField: 'label',
+            valueField  : 'value',
+        });
         const birthDateField    = new DateField();
         const reminderTimeField = new TimeField();
-
-        roleCombo.setStore(roleStore, 'label', 'value');
 
         // ── Status label ─────────────────────────────────────────────────────
 
@@ -125,8 +133,11 @@ export class BindingPanel extends Panel {
 
         // ── Record selector ──────────────────────────────────────────────────
 
-        const recordCombo = new ComboBox();
-        recordCombo.setStore(personStore, 'name', 'id');
+        const recordCombo = new ComboBox({
+            store       : personStore,
+            displayField: 'name',
+            valueField  : 'id',
+        });
 
         // ── Layout ───────────────────────────────────────────────────────────
 

@@ -16,7 +16,7 @@ import { BorderStyle } from "../../BorderStyle.js";
 export class FooterRow extends Component {
 
     constructor() {
-        super("tfoot");
+        super({ tag: "tfoot" });
 
         this.setBorder({ top: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" } });
         this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");

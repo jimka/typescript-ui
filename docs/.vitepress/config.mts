@@ -165,6 +165,9 @@ export default defineConfig({
                     { text: 'Custom brand theme',  link: '/recipes/custom-theme' },
                     { text: 'Keyboard shortcuts', link: '/recipes/keyboard-shortcuts' },
                 ] },
+                { text: 'Construction patterns', collapsed: false, items: [
+                    { text: 'Component constructor options', link: '/recipes/component-options' },
+                ] },
             ],
             '/reference/': [
                 { text: 'Reference', items: [

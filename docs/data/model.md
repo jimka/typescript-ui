@@ -4,7 +4,7 @@ A [`Model`](/api/classes/Model) defines the shape of a record — its field name
 
 ## Define a model
 
-Pass an array of field configs to `Model`:
+Pass an array of field options to `Model`:
 
 ```typescript
 import { Model } from '@jimka/typescript-ui';
@@ -14,6 +14,19 @@ const PersonModel = new Model([
     { name: 'name', type: 'string' },
     { name: 'age',  type: 'number', defaultValue: 0 },
 ]);
+```
+
+Or pass a single [`ModelOptions`](/api/interfaces/ModelOptions) bag if you want to declare the primary key declaratively:
+
+```typescript
+const PersonModel = new Model({
+    fields: [
+        { name: 'id',   type: 'number' },
+        { name: 'name', type: 'string' },
+        { name: 'age',  type: 'number', defaultValue: 0 },
+    ],
+    primaryKey: 'id',
+});
 ```
 
 Or extend [`AbstractModel`](/api/classes/AbstractModel) to give the schema a named class — useful when you want to attach domain logic or pair it with a typed store:
@@ -47,7 +60,7 @@ The supported set lives in [`FieldType`](/api/type-aliases/FieldType).
 
 ## Field configuration
 
-Each field accepts these options (see [`FieldConfig`](/api/interfaces/FieldConfig)):
+Each field accepts these options (see [`FieldOptions`](/api/interfaces/FieldOptions); the legacy alias `FieldConfig` is kept as a deprecated re-export):
 
 | Option | Purpose |
 | --- | --- |

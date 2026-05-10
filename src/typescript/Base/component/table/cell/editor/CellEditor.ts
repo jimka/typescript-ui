@@ -16,7 +16,7 @@ import { ThemeManager } from "../../../../Theme.js";
 export abstract class CellEditor<T> extends Component {
 
     constructor(tag: string = "div") {
-        super(tag);
+        super({ tag });
 
         this.setLayoutManager(new Fit());
 

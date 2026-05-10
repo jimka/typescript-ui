@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Text } from "./Text.js";
+import { Text, TextOptions } from "./Text.js";
+
+/**
+ * Construction-time options for {@link Label}.
+ *
+ * @category Components
+ */
+export interface LabelOptions extends TextOptions {
+}
 
 /**
  * A label component backed by a `<label>` element.
@@ -24,14 +32,18 @@ export class Label extends Text {
 
     forId: string;
 
-    constructor(text: string, forId: string) {
+    constructor(text: string, forId: string, options?: LabelOptions) {
         if (!forId) {
             throw new Error("Label requires a non-empty forId. Use Text for standalone text.");
         }
 
-        super(text, "label");
+        super(text, { tag: "label" });
 
         this.forId = forId;
+
+        if (options) {
+            this.applyOptions(options);
+        }
     }
 
     /**

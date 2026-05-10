@@ -29,25 +29,19 @@ export class AccordionPanel extends Panel {
         // VBox with stretching so children fill the full container width.
         // Without stretching, VBox uses size.width from setPreferredSize, which
         // would give 0 width when only the height is meaningful.
-        const outerVBox = new VBox();
-        outerVBox.setStretching(true);
-        this.setLayoutManager(outerVBox);
+        this.setLayoutManager(new VBox({ stretching: true }));
 
         // --- Controls toolbar ---
-        const toolbar = new Component();
+        const toolbar = new Component({ preferredSize: { width: 0, height: 36 } });
         toolbar.setLayoutManager(new HBox());
-        toolbar.setPreferredSize(0, 36);
 
-        const openAllBtn = new Button("Open All");
-        openAllBtn.setPreferredSize(90, 28);
+        const openAllBtn = new Button("Open All", { preferredSize: { width: 90, height: 28 } });
         toolbar.addComponent(openAllBtn);
 
-        const closeAllBtn = new Button("Close All");
-        closeAllBtn.setPreferredSize(90, 28);
+        const closeAllBtn = new Button("Close All", { preferredSize: { width: 90, height: 28 } });
         toolbar.addComponent(closeAllBtn);
 
-        this.singleOpenToggle = new Button("Single-open: OFF");
-        this.singleOpenToggle.setPreferredSize(160, 28);
+        this.singleOpenToggle = new Button("Single-open: OFF", { preferredSize: { width: 160, height: 28 } });
         toolbar.addComponent(this.singleOpenToggle);
 
         this.addComponent(toolbar);
@@ -55,12 +49,12 @@ export class AccordionPanel extends Panel {
         // --- Accordion ---
         const accordionContainer = new Component();
 
-        this.accordion = new Accordion();
-        accordionContainer.setLayoutManager(this.accordion);
-
         // Re-layout the outer VBox whenever a section toggles so the accordion
         // container resizes to match the new total preferred height.
-        this.accordion.setOnSectionToggle(() => { this.doLayout(); });
+        this.accordion = new Accordion({
+            onSectionToggle: () => { this.doLayout(); },
+        });
+        accordionContainer.setLayoutManager(this.accordion);
 
         // Section 1: open by default
         accordionContainer.addComponent(this.buildInfoSection(), new AccordionConstraints('Personal Info', true));
@@ -85,6 +79,7 @@ export class AccordionPanel extends Panel {
 
         this.singleOpenToggle.addActionListener(() => {
             const next = !this.accordion.isSingleOpen();
+
             this.accordion.setSingleOpen(next);
             this.singleOpenToggle.getText().setText(`Single-open: ${next ? 'ON' : 'OFF'}`);
         });
@@ -96,12 +91,12 @@ export class AccordionPanel extends Panel {
      * @returns The section content component.
      */
     private buildInfoSection(): Component {
-        const panel = new Panel();
-        const vbox = new VBox();
-        vbox.setStretching(true);
-        panel.setLayoutManager(vbox);
-        panel.setInsets(new Insets(8, 8, 8, 8));
-        panel.setPreferredSize(0, 116);
+        const panel = new Panel({
+            insets       : new Insets(8, 8, 8, 8),
+            preferredSize: { width: 0, height: 116 },
+        });
+
+        panel.setLayoutManager(new VBox({ stretching: true }));
 
         panel.addComponent(this.labeledField('Name:', 'Jane Doe'));
         panel.addComponent(this.labeledField('Email:', 'jane@example.com'));
@@ -116,22 +111,20 @@ export class AccordionPanel extends Panel {
      * @returns The section content component.
      */
     private buildPreferencesSection(): Component {
-        const panel = new Panel();
-        const vbox = new VBox();
-        vbox.setStretching(true);
-        panel.setLayoutManager(vbox);
-        panel.setInsets(new Insets(8, 8, 8, 8));
-        panel.setPreferredSize(0, 110);
+        const panel = new Panel({
+            insets       : new Insets(8, 8, 8, 8),
+            preferredSize: { width: 0, height: 110 },
+        });
+
+        panel.setLayoutManager(new VBox({ stretching: true }));
 
         for (const text of ['Enable notifications', 'Dark mode', 'Auto-save']) {
-            const row = new Component();
+            const row = new Component({ preferredSize: { width: 0, height: 28 } });
+
             row.setLayoutManager(new HBox());
-            row.setPreferredSize(0, 28);
 
             row.addComponent(new Checkbox());
-
-            const optionText = new Text(text);
-            row.addComponent(optionText);
+            row.addComponent(new Text(text));
 
             panel.addComponent(row);
         }
@@ -145,9 +138,9 @@ export class AccordionPanel extends Panel {
      * @returns The section content component.
      */
     private buildListSection(): Component {
-        const panel = new Panel();
+        const panel = new Panel({ preferredSize: { width: 0, height: 150 } });
+
         panel.setLayoutManager(new Fit());
-        panel.setPreferredSize(0, 150);
 
         const list = new List();
 
@@ -167,25 +160,25 @@ export class AccordionPanel extends Panel {
      * @returns The section content component.
      */
     private buildAboutSection(): Component {
-        const panel = new Panel();
-        const vbox = new VBox();
-        vbox.setStretching(true);
-        panel.setLayoutManager(vbox);
-        panel.setInsets(new Insets(8, 8, 8, 8));
-        panel.setPreferredSize(0, 86);
+        const panel = new Panel({
+            insets       : new Insets(8, 8, 8, 8),
+            preferredSize: { width: 0, height: 86 },
+        });
 
-        const heading = new Text('Accordion Layout Manager');
-        heading.setFontWeight('bold');
-        heading.setPreferredSize(0, 20);
-        panel.addComponent(heading);
+        panel.setLayoutManager(new VBox({ stretching: true }));
 
-        const line2 = new Text('Vertically stacked sections with CSS height animation.');
-        line2.setPreferredSize(0, 20);
-        panel.addComponent(line2);
+        panel.addComponent(new Text('Accordion Layout Manager', {
+            fontWeight   : 'bold',
+            preferredSize: { width: 0, height: 20 },
+        }));
 
-        const line3 = new Text('Supports single-open mode and programmatic open/close.');
-        line3.setPreferredSize(0, 20);
-        panel.addComponent(line3);
+        panel.addComponent(new Text('Vertically stacked sections with CSS height animation.', {
+            preferredSize: { width: 0, height: 20 },
+        }));
+
+        panel.addComponent(new Text('Supports single-open mode and programmatic open/close.', {
+            preferredSize: { width: 0, height: 20 },
+        }));
 
         return panel;
     }
@@ -198,18 +191,15 @@ export class AccordionPanel extends Panel {
      * @returns The row component.
      */
     private labeledField(caption: string, value: string): Component {
-        const row = new Panel();
+        const row = new Panel({ preferredSize: { width: 0, height: 30 } });
+
         row.setLayoutManager(new HBox());
-        row.setPreferredSize(0, 30);
 
-        const captionText = new Text(caption);
-        captionText.setPreferredSize(70, 30);
-        row.addComponent(captionText);
-
-        const field = new TextField();
-        field.setValue(value);
-        field.setPreferredSize(200, 28);
-        row.addComponent(field);
+        row.addComponent(new Text(caption, { preferredSize: { width: 70, height: 30 } }));
+        row.addComponent(new TextField({
+            text         : value,
+            preferredSize: { width: 200, height: 28 },
+        }));
 
         return row;
     }

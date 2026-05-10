@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractListComponent } from "./AbstractListComponent.js";
+import { AbstractListComponent, AbstractListOptions } from "./AbstractListComponent.js";
 import { NumberedListItemStyle } from "./NumberedListItemStyle.js";
+
+/**
+ * Construction-time options for {@link NumberedList}.
+ *
+ * @category Components
+ */
+export interface NumberedListOptions extends AbstractListOptions<NumberedListItemStyle> {
+}
 
 /**
  * An ordered (numbered) list component.
@@ -12,7 +20,11 @@ import { NumberedListItemStyle } from "./NumberedListItemStyle.js";
  */
 export class NumberedList extends AbstractListComponent<NumberedListItemStyle> {
 
-    constructor() {
+    constructor(options?: NumberedListOptions) {
         super("ol", NumberedListItemStyle.DECIMAL);
+
+        if (options) {
+            this.applyOptions(options);
+        }
     }
 }

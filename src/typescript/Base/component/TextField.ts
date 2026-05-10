@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { TextInput } from "./TextInput.js";
+import { TextInput, TextInputOptions } from "./TextInput.js";
 import { Util } from "../Util.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 import { Bindable } from "../Bindable.js";
 import { ThemeManager } from "../Theme.js";
+
+/**
+ * Construction-time options for {@link TextField}.
+ *
+ * @category Components
+ */
+export interface TextFieldOptions extends TextInputOptions {
+}
 
 /**
  * A single-line text field component backed by an `<input type="text">` element.
@@ -16,7 +24,7 @@ import { ThemeManager } from "../Theme.js";
  */
 export class TextField extends TextInput implements Bindable<string> {
 
-    constructor() {
+    constructor(options?: TextFieldOptions) {
         super();
 
         this.setCursor("text");
@@ -28,6 +36,10 @@ export class TextField extends TextInput implements Bindable<string> {
         ThemeManager.onThemeChange(() => this.updateHeight());
 
         Event.addListener(this, "input", this.onInput);
+
+        if (options) {
+            this.applyOptions(options);
+        }
     }
 
     /**
