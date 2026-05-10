@@ -8,8 +8,9 @@ import { Slider } from "./Base/component/Slider.js";
 import { Fit } from "./Base/layout/Fit.js";
 import { Text } from "./Base/component/Text.js";
 import { Button } from "./Base/component/Button.js";
+import { Panel } from "./Base/Panel.js";
 
-export class SplitPanel extends Component {
+export class SplitPanel extends Panel {
 
     constructor() {
         super();

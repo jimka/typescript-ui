@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Base/Component.js";
 import { Text } from "./Base/component/Text.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { MenuBar } from "./Base/component/menubar/MenuBar.js";
+import { Panel } from "./Base/Panel.js";
 
 /**
  * Demo panel showcasing the `MenuBar` component.
@@ -11,7 +11,7 @@ import { MenuBar } from "./Base/component/menubar/MenuBar.js";
  * Demonstrates: top-level menus, separators, disabled items, keyboard shortcut hints,
  * submenu nesting, quick-switch hover, and keyboard navigation.
  */
-export class MenuBarPanel extends Component {
+export class MenuBarPanel extends Panel {
 
     /**
      * Constructs the demo panel and wires up a sample menu bar.

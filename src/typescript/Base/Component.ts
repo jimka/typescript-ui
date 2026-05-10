@@ -176,7 +176,7 @@ export class Component extends BaseObject {
         this.displayed = true;
         this.display = "block";
         this.visible = null; // Inherit from our parent.
-        this.setInsets(new Insets(4, 4, 4, 4));
+        this.setInsets(new Insets(0, 0, 0, 0));
         this.padding = new Insets(0, 0, 0, 0);
         this.foregroundColor = null; // Inherit from our parent.
         this.backgroundColor = null; // Inherit from our parent.

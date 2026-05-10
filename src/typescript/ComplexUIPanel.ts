@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Base/Component.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { Text } from "./Base/component/Text.js";
 import { HBox } from "./Base/layout/HBox.js";
@@ -15,8 +14,9 @@ import { Table } from "./Base/component/table/Table.js";
 import { Model } from "./Base/data/Model.js";
 import { MemoryStore } from "./Base/data/MemoryStore.js";
 import { BorderStyle } from "./Base/BorderStyle.js";
+import { Panel } from "./Base/Panel.js";
 
-export class ComplexUIPanel extends Component {
+export class ComplexUIPanel extends Panel {
 
     constructor() {
         super();
@@ -52,11 +52,11 @@ export class ComplexUIPanel extends Component {
     }
 
     private buildPanel1() {
-        let comp = new Component();
+        let comp = new Panel();
         comp.setLayoutManager(new HBox());
         comp.setBorder({ style: BorderStyle.SOLID, width: 1, color: "black" })
 
-        let panel11 = new Component();
+        let panel11 = new Panel();
         panel11.setLayoutManager(new VBox());
 
         let captionCustomerOrContact = new Text("Select Customer or Contact");
@@ -86,7 +86,7 @@ export class ComplexUIPanel extends Component {
 
         comp.addComponent(panel12);
 
-        let panel13 = new Component();
+        let panel13 = new Panel();
         panel13.setLayoutManager(new VBox());
 
         let buttonNewCustomer = new Button("New Customer");
@@ -100,7 +100,7 @@ export class ComplexUIPanel extends Component {
     }
 
     private buildPanel2() {
-        let comp = new Component();
+        let comp = new Panel();
         comp.setLayoutManager(new HBox());
 
         let captionTitle = new Text("Title:");
@@ -133,7 +133,7 @@ export class ComplexUIPanel extends Component {
     }
 
     private buildPanel4() {
-        let comp = new Component();
+        let comp = new Panel();
         comp.setLayoutManager(new HBox());
 
         let captionNotes = new Text("Notes:");
@@ -171,7 +171,7 @@ export class ComplexUIPanel extends Component {
     }
 
     private buildPanel7() {
-        let comp = new Component();
+        let comp = new Panel();
         comp.setLayoutManager(new HBox());
 
         let captionAddDate = new Text("Add Date:");

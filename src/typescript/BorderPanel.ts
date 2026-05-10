@@ -9,8 +9,9 @@ import { BulletedList } from "./Base/component/BulletedList.js";
 import { ListItem } from "./Base/component/ListItem.js";
 import { NumberedList } from "./Base/component/NumberedList.js";
 import { Placement } from "./Base/Placement.js";
+import { Panel } from "./Base/Panel.js";
 
-export class BorderPanel extends Component {
+export class BorderPanel extends Panel {
 
     constructor() {
         super();

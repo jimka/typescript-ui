@@ -4,6 +4,7 @@ import { Component } from "../../Component.js";
 import { AbstractStore } from "../../data/AbstractStore.js";
 import { Border } from "../../layout/Border.js";
 import { HBox } from "../../layout/HBox.js";
+import { Panel } from "../../Panel.js";
 import { Placement } from "../../Placement.js";
 import { Button } from "../Button.js";
 import { PaginationBar } from "../PaginationBar.js";
@@ -17,7 +18,7 @@ import { Table } from "./Table.js";
  *
  * @category Components
  */
-export class TablePanel extends Component {
+export class TablePanel extends Panel {
 
     private table: Table;
     private toolbar: Component;
