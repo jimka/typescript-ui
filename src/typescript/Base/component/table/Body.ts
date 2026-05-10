@@ -77,14 +77,32 @@ export class Body extends Component {
         this.store = store;
         this.bindStore(store);
 
-        this.rowHeight = parseFloat(ThemeManager.getTheme().table.cell.height) || 22;
+        this.rowHeight = this.computeRowHeight();
 
         ThemeManager.onThemeChange(() => {
-            this.rowHeight = parseFloat(ThemeManager.getTheme().table.cell.height) || 22;
+            this.rowHeight = this.computeRowHeight();
             this.boundIndices.fill(-1);
             this.invalidateGeom();
             this.renderWindow();
         });
+    }
+
+    /**
+     * Derives the row height from the active theme's body font: one line-box
+     * (font-size × line-height) plus top+bottom cell padding.
+     *
+     * @remarks `theme.table.cell.height` is intentionally ignored: a fixed pixel
+     * height ignores the active font size and clips text when the theme bumps
+     * `font.size`. Deriving here keeps row height in sync with whatever font
+     * the cells are actually rendered at.
+     */
+    private computeRowHeight(): number {
+        const theme      = ThemeManager.getTheme();
+        const fontSize   = parseFloat(theme.font.size) || 14;
+        const lineHeight = theme.font.lineHeight       || 1.2;
+        const padding    = theme.table.cell.padding    ?? 2;
+
+        return Math.ceil(fontSize * lineHeight) + 2 * padding;
     }
 
     /**

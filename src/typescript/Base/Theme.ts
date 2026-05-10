@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CSS } from './CSS.js';
+import { Util } from './Util.js';
 
 /**
  * Defines the full set of design tokens that make up a UI theme.
@@ -17,8 +18,15 @@ export interface Theme {
     colorScheme: string;
 
     font: {
-        family: string;
-        size  : string;
+        family    : string;
+        size      : string;
+        /**
+         * Unitless multiplier of the current font size. CSS treats a unitless
+         * `line-height` as "this many times the element's own font-size", so
+         * the value scales automatically when the font size changes. Typical
+         * UI values are around 1.2 (compact) to 1.5 (loose).
+         */
+        lineHeight: number;
     };
 
     text: {
@@ -245,7 +253,7 @@ export interface Theme {
  */
 export const DefaultTheme: Theme = {
     colorScheme: 'light',
-    font       : { family: 'system-ui, sans-serif', size: '14px' },
+    font       : { family: 'system-ui, sans-serif', size: '14px', lineHeight: 1.2 },
     text       : { color: 'rgb(0, 0, 0)' },
     body       : { background: 'rgb(255, 255, 255)' },
     border     : { color: 'black',                 radius: '4px' },
@@ -283,7 +291,7 @@ export const DefaultTheme: Theme = {
         button : { background: '#b8b8c3' },
     },
     window: { shadow: '3px 3px 2px rgba(0, 0, 0, 0.4)' },
-    header: { font: { size: '12px' }, padding: 4 },
+    header: { font: { size: '12px' }, padding: 5 },
     table : {
         header: { border: 'black', font: { size: '13px' } },
         row   : {
@@ -394,7 +402,7 @@ export const DefaultTheme: Theme = {
  */
 export const DarkTheme: Theme = {
     colorScheme: 'dark',
-    font       : { family: 'system-ui, sans-serif', size: '14px' },
+    font       : { family: 'system-ui, sans-serif', size: '14px', lineHeight: 1.2 },
     text       : { color: 'rgb(220, 220, 220)' },
     body       : { background: 'rgb(30, 30, 30)' },
     border     : { color: 'rgb(90, 90, 90)',        radius: '4px' },
@@ -541,101 +549,102 @@ export const DarkTheme: Theme = {
  */
 function themeToVars(theme: Theme): Record<string, string> {
     return {
-        '--ts-ui-font-family'                     : theme.font.family,
-        '--ts-ui-font-size'                       : theme.font.size,
-        '--ts-ui-text-color'                      : theme.text.color,
-        '--ts-ui-body-bg'                         : theme.body.background,
-        '--ts-ui-border-color'                    : theme.border.color,
-        '--ts-ui-border-radius'                   : theme.border.radius,
-        '--ts-ui-button-bg'                       : theme.button.background,
-        '--ts-ui-button-border'                   : theme.button.border,
-        '--ts-ui-button-shadow'                   : theme.button.shadow,
-        '--ts-ui-button-padding'                  : theme.button.padding,
-        '--ts-ui-button-font-size'                : theme.button.font.size,
-        '--ts-ui-button-pressed-fg'               : theme.button.pressed.foreground,
-        '--ts-ui-button-pressed-bg'               : theme.button.pressed.background,
-        '--ts-ui-button-pressed-shadow'           : theme.button.pressed.shadow,
-        '--ts-ui-toggle-selected-bg'              : theme.toggle.selected.background,
-        '--ts-ui-toggle-selected-shadow'          : theme.toggle.selected.shadow,
-        '--ts-ui-input-bg'                        : theme.input.background,
-        '--ts-ui-gutter-bg'                       : theme.gutter.background,
-        '--ts-ui-accordion-header-bg'             : theme.accordion.header.background,
-        '--ts-ui-accordion-header-border'         : theme.accordion.header.border,
-        '--ts-ui-accordion-header-color'          : theme.accordion.header.color,
-        '--ts-ui-accordion-panel-border'          : theme.accordion.panel.border,
-        '--ts-ui-accordion-indicator-color'       : theme.accordion.indicator.color,
-        '--ts-ui-tab-toolbar-bg'                  : theme.tab.toolbar.background,
-        '--ts-ui-tab-toolbar-border'              : theme.tab.toolbar.border,
-        '--ts-ui-tab-button-bg'                   : theme.tab.button.background,
-        '--ts-ui-window-shadow'                   : theme.window.shadow,
-        '--ts-ui-header-font-size'                : theme.header.font.size,
-        '--ts-ui-table-header-border'             : theme.table.header.border,
-        '--ts-ui-table-header-font-size'          : theme.table.header.font.size,
-        '--ts-ui-table-row-selected'              : theme.table.row.selected,
-        '--ts-ui-table-row-selected-border'       : theme.table.row.selectedBorder,
-        '--ts-ui-table-row-new'                   : theme.table.row.new,
-        '--ts-ui-table-row-dirty'                 : theme.table.row.dirty,
-        '--ts-ui-table-cell-height'               : theme.table.cell.height,
-        '--ts-ui-table-cell-bg'                   : theme.table.cell.background,
-        '--ts-ui-table-cell-color'                : theme.table.cell.color,
-        '--ts-ui-table-cell-border'               : theme.table.cell.border,
-        '--ts-ui-table-cell-editor-border'        : theme.table.cell.editorBorderColor,
-        '--ts-ui-color-scheme'                    : theme.colorScheme,
-        '--ts-ui-context-menu-bg'                 : theme.contextMenu.background,
-        '--ts-ui-context-menu-border'             : theme.contextMenu.border,
-        '--ts-ui-context-menu-shadow'             : theme.contextMenu.shadow,
-        '--ts-ui-context-menu-item-hover-bg'      : theme.contextMenu.item.hoverBackground,
-        '--ts-ui-context-menu-item-disabled-color': theme.contextMenu.item.disabledColor,
-        '--ts-ui-context-menu-separator-color'    : theme.contextMenu.separatorColor,
-        '--ts-ui-tooltip-bg'                        : theme.tooltip.background,
-        '--ts-ui-tooltip-color'                     : theme.tooltip.color,
-        '--ts-ui-tooltip-border'                    : theme.tooltip.border,
-        '--ts-ui-tooltip-shadow'                    : theme.tooltip.shadow,
-        '--ts-ui-notification-shadow'               : theme.notification.shadow,
-        '--ts-ui-notification-info-bg'              : theme.notification.info.background,
-        '--ts-ui-notification-info-border'          : theme.notification.info.border,
-        '--ts-ui-notification-success-bg'           : theme.notification.success.background,
-        '--ts-ui-notification-success-border'       : theme.notification.success.border,
-        '--ts-ui-notification-warning-bg'           : theme.notification.warning.background,
-        '--ts-ui-notification-warning-border'       : theme.notification.warning.border,
-        '--ts-ui-notification-error-bg'             : theme.notification.error.background,
-        '--ts-ui-notification-error-border'         : theme.notification.error.border,
-        '--ts-ui-validation-error-border'                  : theme.validation.error.border,
-        '--ts-ui-validation-error-tooltip-bg'              : theme.validation.error.tooltip.background,
-        '--ts-ui-validation-error-tooltip-color'           : theme.validation.error.tooltip.color,
-        '--ts-ui-validation-error-tooltip-border'          : theme.validation.error.tooltip.border,
-        '--ts-ui-autocomplete-bg'                          : theme.autoComplete.background,
-        '--ts-ui-autocomplete-border'                      : theme.autoComplete.border,
-        '--ts-ui-autocomplete-shadow'                      : theme.autoComplete.shadow,
-        '--ts-ui-autocomplete-item-hover-bg'               : theme.autoComplete.item.hoverBackground,
-        '--ts-ui-autocomplete-item-highlight-bg'           : theme.autoComplete.item.highlightBackground,
-        '--ts-ui-autocomplete-item-highlight-color'        : theme.autoComplete.item.highlightColor,
-        '--ts-ui-autocomplete-item-disabled-color'         : theme.autoComplete.item.disabledColor,
-        '--ts-ui-menu-bar-bg'                              : theme.menuBar.background,
-        '--ts-ui-menu-bar-border'                          : theme.menuBar.border,
-        '--ts-ui-menu-bar-btn-bg'                          : theme.menuBar.button.background,
-        '--ts-ui-menu-bar-btn-hover-bg'                    : theme.menuBar.button.hoverBackground,
-        '--ts-ui-menu-bar-btn-fg'                          : theme.menuBar.button.foreground,
-        '--ts-ui-menu-bar-panel-bg'                        : theme.menuBar.panel.background,
-        '--ts-ui-menu-bar-panel-border'                    : theme.menuBar.panel.border,
-        '--ts-ui-menu-bar-panel-shadow'                    : theme.menuBar.panel.shadow,
-        '--ts-ui-menu-bar-panel-min-width'                 : theme.menuBar.panel.minWidth,
-        '--ts-ui-menu-bar-item-hover-bg'                   : theme.menuBar.item.hoverBackground,
-        '--ts-ui-menu-bar-item-disabled-color'             : theme.menuBar.item.disabledColor,
-        '--ts-ui-menu-bar-item-shortcut-color'             : theme.menuBar.item.shortcutColor,
-        '--ts-ui-menu-bar-separator-color'                 : theme.menuBar.separatorColor,
-        '--ts-ui-dialog-backdrop-bg'                       : theme.dialog.backdrop.background,
-        '--ts-ui-dialog-border'                            : theme.dialog.border,
-        '--ts-ui-dialog-shadow'                            : theme.dialog.shadow,
-        '--ts-ui-spinner-btn-width'                        : theme.spinner.buttonWidth,
-        '--ts-ui-spinner-divider'                          : theme.spinner.dividerColor,
-        '--ts-ui-progress-track-bg'                        : theme.progressBar.track.background,
-        '--ts-ui-progress-track-radius'                    : theme.progressBar.track.borderRadius,
-        '--ts-ui-progress-fill-bg'                         : theme.progressBar.fill.background,
-        '--ts-ui-progress-indeterminate-bg'                : theme.progressBar.indeterminate.background,
-        '--ts-ui-progress-spinner-color'                   : theme.progressSpinner.color,
-        '--ts-ui-progress-spinner-backdrop'                : theme.progressSpinner.backdrop,
-        '--ts-ui-progress-spinner-size'                    : theme.progressSpinner.size,
+        '--ts-ui-font-family'                      : theme.font.family,
+        '--ts-ui-font-size'                        : theme.font.size,
+        '--ts-ui-line-height'                      : String(theme.font.lineHeight),
+        '--ts-ui-text-color'                       : theme.text.color,
+        '--ts-ui-body-bg'                          : theme.body.background,
+        '--ts-ui-border-color'                     : theme.border.color,
+        '--ts-ui-border-radius'                    : theme.border.radius,
+        '--ts-ui-button-bg'                        : theme.button.background,
+        '--ts-ui-button-border'                    : theme.button.border,
+        '--ts-ui-button-shadow'                    : theme.button.shadow,
+        '--ts-ui-button-padding'                   : theme.button.padding,
+        '--ts-ui-button-font-size'                 : theme.button.font.size,
+        '--ts-ui-button-pressed-fg'                : theme.button.pressed.foreground,
+        '--ts-ui-button-pressed-bg'                : theme.button.pressed.background,
+        '--ts-ui-button-pressed-shadow'            : theme.button.pressed.shadow,
+        '--ts-ui-toggle-selected-bg'               : theme.toggle.selected.background,
+        '--ts-ui-toggle-selected-shadow'           : theme.toggle.selected.shadow,
+        '--ts-ui-input-bg'                         : theme.input.background,
+        '--ts-ui-gutter-bg'                        : theme.gutter.background,
+        '--ts-ui-accordion-header-bg'              : theme.accordion.header.background,
+        '--ts-ui-accordion-header-border'          : theme.accordion.header.border,
+        '--ts-ui-accordion-header-color'           : theme.accordion.header.color,
+        '--ts-ui-accordion-panel-border'           : theme.accordion.panel.border,
+        '--ts-ui-accordion-indicator-color'        : theme.accordion.indicator.color,
+        '--ts-ui-tab-toolbar-bg'                   : theme.tab.toolbar.background,
+        '--ts-ui-tab-toolbar-border'               : theme.tab.toolbar.border,
+        '--ts-ui-tab-button-bg'                    : theme.tab.button.background,
+        '--ts-ui-window-shadow'                    : theme.window.shadow,
+        '--ts-ui-header-font-size'                 : theme.header.font.size,
+        '--ts-ui-table-header-border'              : theme.table.header.border,
+        '--ts-ui-table-header-font-size'           : theme.table.header.font.size,
+        '--ts-ui-table-row-selected'               : theme.table.row.selected,
+        '--ts-ui-table-row-selected-border'        : theme.table.row.selectedBorder,
+        '--ts-ui-table-row-new'                    : theme.table.row.new,
+        '--ts-ui-table-row-dirty'                  : theme.table.row.dirty,
+        '--ts-ui-table-cell-height'                : theme.table.cell.height,
+        '--ts-ui-table-cell-bg'                    : theme.table.cell.background,
+        '--ts-ui-table-cell-color'                 : theme.table.cell.color,
+        '--ts-ui-table-cell-border'                : theme.table.cell.border,
+        '--ts-ui-table-cell-editor-border'         : theme.table.cell.editorBorderColor,
+        '--ts-ui-color-scheme'                     : theme.colorScheme,
+        '--ts-ui-context-menu-bg'                  : theme.contextMenu.background,
+        '--ts-ui-context-menu-border'              : theme.contextMenu.border,
+        '--ts-ui-context-menu-shadow'              : theme.contextMenu.shadow,
+        '--ts-ui-context-menu-item-hover-bg'       : theme.contextMenu.item.hoverBackground,
+        '--ts-ui-context-menu-item-disabled-color' : theme.contextMenu.item.disabledColor,
+        '--ts-ui-context-menu-separator-color'     : theme.contextMenu.separatorColor,
+        '--ts-ui-tooltip-bg'                       : theme.tooltip.background,
+        '--ts-ui-tooltip-color'                    : theme.tooltip.color,
+        '--ts-ui-tooltip-border'                   : theme.tooltip.border,
+        '--ts-ui-tooltip-shadow'                   : theme.tooltip.shadow,
+        '--ts-ui-notification-shadow'              : theme.notification.shadow,
+        '--ts-ui-notification-info-bg'             : theme.notification.info.background,
+        '--ts-ui-notification-info-border'         : theme.notification.info.border,
+        '--ts-ui-notification-success-bg'          : theme.notification.success.background,
+        '--ts-ui-notification-success-border'      : theme.notification.success.border,
+        '--ts-ui-notification-warning-bg'          : theme.notification.warning.background,
+        '--ts-ui-notification-warning-border'      : theme.notification.warning.border,
+        '--ts-ui-notification-error-bg'            : theme.notification.error.background,
+        '--ts-ui-notification-error-border'        : theme.notification.error.border,
+        '--ts-ui-validation-error-border'          : theme.validation.error.border,
+        '--ts-ui-validation-error-tooltip-bg'      : theme.validation.error.tooltip.background,
+        '--ts-ui-validation-error-tooltip-color'   : theme.validation.error.tooltip.color,
+        '--ts-ui-validation-error-tooltip-border'  : theme.validation.error.tooltip.border,
+        '--ts-ui-autocomplete-bg'                  : theme.autoComplete.background,
+        '--ts-ui-autocomplete-border'              : theme.autoComplete.border,
+        '--ts-ui-autocomplete-shadow'              : theme.autoComplete.shadow,
+        '--ts-ui-autocomplete-item-hover-bg'       : theme.autoComplete.item.hoverBackground,
+        '--ts-ui-autocomplete-item-highlight-bg'   : theme.autoComplete.item.highlightBackground,
+        '--ts-ui-autocomplete-item-highlight-color': theme.autoComplete.item.highlightColor,
+        '--ts-ui-autocomplete-item-disabled-color' : theme.autoComplete.item.disabledColor,
+        '--ts-ui-menu-bar-bg'                      : theme.menuBar.background,
+        '--ts-ui-menu-bar-border'                  : theme.menuBar.border,
+        '--ts-ui-menu-bar-btn-bg'                  : theme.menuBar.button.background,
+        '--ts-ui-menu-bar-btn-hover-bg'            : theme.menuBar.button.hoverBackground,
+        '--ts-ui-menu-bar-btn-fg'                  : theme.menuBar.button.foreground,
+        '--ts-ui-menu-bar-panel-bg'                : theme.menuBar.panel.background,
+        '--ts-ui-menu-bar-panel-border'            : theme.menuBar.panel.border,
+        '--ts-ui-menu-bar-panel-shadow'            : theme.menuBar.panel.shadow,
+        '--ts-ui-menu-bar-panel-min-width'         : theme.menuBar.panel.minWidth,
+        '--ts-ui-menu-bar-item-hover-bg'           : theme.menuBar.item.hoverBackground,
+        '--ts-ui-menu-bar-item-disabled-color'     : theme.menuBar.item.disabledColor,
+        '--ts-ui-menu-bar-item-shortcut-color'     : theme.menuBar.item.shortcutColor,
+        '--ts-ui-menu-bar-separator-color'         : theme.menuBar.separatorColor,
+        '--ts-ui-dialog-backdrop-bg'               : theme.dialog.backdrop.background,
+        '--ts-ui-dialog-border'                    : theme.dialog.border,
+        '--ts-ui-dialog-shadow'                    : theme.dialog.shadow,
+        '--ts-ui-spinner-btn-width'                : theme.spinner.buttonWidth,
+        '--ts-ui-spinner-divider'                  : theme.spinner.dividerColor,
+        '--ts-ui-progress-track-bg'                : theme.progressBar.track.background,
+        '--ts-ui-progress-track-radius'            : theme.progressBar.track.borderRadius,
+        '--ts-ui-progress-fill-bg'                 : theme.progressBar.fill.background,
+        '--ts-ui-progress-indeterminate-bg'        : theme.progressBar.indeterminate.background,
+        '--ts-ui-progress-spinner-color'           : theme.progressSpinner.color,
+        '--ts-ui-progress-spinner-backdrop'        : theme.progressSpinner.backdrop,
+        '--ts-ui-progress-spinner-size'            : theme.progressSpinner.size,
     };
 }
 
@@ -691,8 +700,11 @@ export class ThemeManager {
         document.documentElement.style.color       = theme.text.color;
         document.documentElement.style.fontFamily  = theme.font.family;
         document.documentElement.style.fontSize    = theme.font.size;
+        document.documentElement.style.lineHeight  = String(theme.font.lineHeight);
         document.body.style.backgroundColor        = theme.body.background;
         document.body.style.color                  = theme.text.color;
+
+        Util.invalidateInputBaselineCache();
 
         ThemeManager.themeListeners.forEach(l => l());
     }

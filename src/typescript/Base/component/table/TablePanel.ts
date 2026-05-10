@@ -58,7 +58,7 @@ export class TablePanel extends Panel {
 
         store.on('loadingchanged', (payload: { loading: boolean }) => {
             if (!this._spinner) {
-                this._spinner = new ProgressSpinner();
+                this._spinner = new ProgressSpinner(24);
             }
 
             if (payload.loading) {

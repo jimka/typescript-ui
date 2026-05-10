@@ -13,6 +13,19 @@ export interface TextMeasureOptions {
     fontStyle? : string;
     fontVariant?: string;
     fontStretch?: string;
+    lineHeight?: string
+}
+
+/**
+ * Result of an off-screen text measurement that also reports the typographic baseline.
+ *
+ * @remarks `baseline` is the offset from the top of the measured box to the font baseline,
+ * in pixels — analogous to CSS `vertical-align: baseline` on an inline-block element.
+ */
+export interface TextMetrics {
+    width: number;
+    height: number;
+    baseline: number;
 }
 
 /**
@@ -21,6 +34,7 @@ export interface TextMeasureOptions {
 export namespace Util {
 
     let scrollBarWidth: number = -1;
+    let inputBaseline: number = -1;
 
     /**
      * Measures the rendered size of a text string using an off-screen probe `<span>`.
@@ -30,6 +44,25 @@ export namespace Util {
      * @returns The measured `{width, height}` in pixels, ceiled to whole pixels.
      */
     export function measureTextSize(text: string, options: TextMeasureOptions = {}): Size {
+        const metrics = measureTextMetrics(text, options);
+
+        return { width: metrics.width, height: metrics.height };
+    }
+
+    /**
+     * Measures the rendered width, height, and baseline of a text string using an
+     * off-screen probe `<span>`.
+     *
+     * @param text - The string to measure.
+     * @param options - Font properties to apply. Defaults to the active theme variables.
+     * @returns The measured metrics: `width`, `height`, and `baseline` (offset from
+     * the top of the box to the typographic baseline) in pixels.
+     *
+     * @remarks A second 0×0 inline-block reference span is placed inside the probe
+     * with `vertical-align: baseline`. The reference span's top equals the probe's
+     * baseline, so `baseline = referenceTop - probeTop`.
+     */
+    export function measureTextMetrics(text: string, options: TextMeasureOptions = {}): TextMetrics {
         const {
             fontFamily  = "var(--ts-ui-font-family, system-ui, sans-serif)",
             fontSize    = "var(--ts-ui-font-size, 14px)",
@@ -37,6 +70,7 @@ export namespace Util {
             fontStyle   = "normal",
             fontVariant = "normal",
             fontStretch = "normal",
+            lineHeight  = "50px",
         } = options;
 
         const probe = document.createElement("span");
@@ -51,16 +85,27 @@ export namespace Util {
             `font-style:${fontStyle}`,
             `font-variant:${fontVariant}`,
             `font-stretch:${fontStretch}`,
+            `line-height:${lineHeight}`,
         ].join(";");
 
         probe.textContent = text;
+
+        const ref = document.createElement("span");
+        ref.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
+        probe.appendChild(ref);
+
         document.body.appendChild(probe);
 
-        const rect = probe.getBoundingClientRect();
+        const probeRect = probe.getBoundingClientRect();
+        const refRect   = ref.getBoundingClientRect();
 
         document.body.removeChild(probe);
 
-        return { width: Math.ceil(rect.width), height: Math.ceil(rect.height) };
+        return {
+            width:    Math.ceil(probeRect.width),
+            height:   Math.ceil(probeRect.height),
+            baseline: Math.round(refRect.top - probeRect.top),
+        };
     }
 
     /**
@@ -98,6 +143,70 @@ export namespace Util {
         document.body.removeChild(probe);
 
         return height || 20;
+    }
+
+    /**
+     * Measures the offset from the top of a native `<input>` element to its inner-text baseline.
+     *
+     * @returns The baseline offset in pixels, rounded to the nearest integer.
+     *
+     * @remarks Reads the UA-applied `border-top` and `padding-top` from a probe
+     * `<input>` rendered at the active theme font, then adds the text baseline of
+     * the same font measured by `measureTextMetrics`. This avoids relying on
+     * `vertical-align: baseline` against an `<input>`, which browsers
+     * inconsistently resolve to either the inner-text baseline or the element's
+     * bottom edge. The result is cached after the first measurement; call
+     * `invalidateInputBaselineCache` after a theme change to force re-measurement.
+     */
+    export function measureInputBaseline(): number {
+        if (inputBaseline >= 0) {
+            return inputBaseline;
+        }
+
+        return remeasureInputBaseline();
+    }
+
+    /**
+     * Discards the cached `<input>` baseline measurement so the next call to
+     * `measureInputBaseline` re-probes the DOM.
+     *
+     * @remarks Call this whenever the active theme's font size or family changes,
+     * since the cached value reflects the font in use at the time of the first
+     * measurement and would otherwise mis-align inputs against text after a theme swap.
+     */
+    export function invalidateInputBaselineCache(): void {
+        inputBaseline = -1;
+    }
+
+    /**
+     * Performs the off-screen probe and updates the cached input baseline.
+     *
+     * @returns The measured baseline offset in pixels.
+     */
+    function remeasureInputBaseline(): number {
+        const probe = document.createElement("input");
+        probe.style.position   = "fixed";
+        probe.style.visibility = "hidden";
+        probe.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
+        probe.style.fontSize   = "var(--ts-ui-font-size, 14px)";
+
+        document.body.appendChild(probe);
+
+        const computed   = getComputedStyle(probe);
+        const borderTop  = parseFloat(computed.borderTopWidth) || 0;
+        const paddingTop = parseFloat(computed.paddingTop)     || 0;
+
+        document.body.removeChild(probe);
+
+        const textMetrics = measureTextMetrics("X", {
+            fontFamily: "var(--ts-ui-font-family, sans-serif)",
+            fontSize  : "var(--ts-ui-font-size, 14px)",
+            lineHeight: "var(--ts-ui-line-height, 1.2)",
+        });
+
+        inputBaseline = borderTop + paddingTop + textMetrics.baseline;
+
+        return inputBaseline;
     }
 
     /**

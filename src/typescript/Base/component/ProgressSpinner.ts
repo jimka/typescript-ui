@@ -4,6 +4,7 @@ import { Component } from "../Component.js";
 import { CSS } from "../CSS.js";
 import { Position } from "../Position.js";
 import { BorderStyle } from "../BorderStyle.js";
+import { ThemeManager } from "../Theme.js";
 
 CSS.ensureKeyframes(
     'ts-ui-progress-spinner-rotate',
@@ -11,6 +12,19 @@ CSS.ensureKeyframes(
 );
 
 const ARC_BORDER_WIDTH = 3;
+
+/**
+ * Reads the active theme's `--ts-ui-font-size` as a pixel value.
+ *
+ * @returns The current theme font size in pixels, or `14` as a fallback.
+ */
+function getThemeFontSize(): number {
+    const raw    = getComputedStyle(document.documentElement)
+                       .getPropertyValue("--ts-ui-font-size").trim();
+    const parsed = parseFloat(raw);
+
+    return isNaN(parsed) ? 14 : parsed;
+}
 
 /**
  * A circular loading indicator rendered as a rotating arc.
@@ -27,17 +41,26 @@ export class ProgressSpinner extends Component {
 
     private arc: Component;
     private size: number;
+    private trackThemeFontSize: boolean;
     private overlayTarget: Component | null = null;
 
     /**
      * Constructs a ProgressSpinner.
      *
-     * @param size - Diameter in pixels of the arc when used inline. Defaults to 32.
+     * @param size - Optional. Diameter in pixels of the arc when used inline.
+     * Omit to track the active theme's `--ts-ui-font-size` so the spinner
+     * matches surrounding text by default; updates automatically on theme change.
      */
-    constructor(size: number = 32) {
+    constructor(size?: number) {
         super();
 
-        this.size = size;
+        this.trackThemeFontSize = size === undefined;
+        this.size               = this.trackThemeFontSize ? getThemeFontSize() : size!;
+
+        // Use no insets so the arc fills the declared size — otherwise the
+        // default 4-pixel inset shrinks a 24-pixel spinner's arc to 16 pixels
+        // and leaves 8 pixels of empty space around it.
+        this.setInsets(null);
 
         this.arc = new Component();
         this.arc.setPosition(Position.ABSOLUTE);
@@ -52,7 +75,24 @@ export class ProgressSpinner extends Component {
 
         super.addComponent(this.arc);
 
-        this.setPreferredSize(size, size);
+        this.setPreferredSize(this.size, this.size);
+
+        if (this.trackThemeFontSize) {
+            ThemeManager.onThemeChange(() => {
+                if (!this.trackThemeFontSize) {
+                    return;
+                }
+
+                const next = getThemeFontSize();
+                if (next === this.size) {
+                    return;
+                }
+
+                this.size = next;
+                this.setPreferredSize(next, next);
+                this.scheduleLayout();
+            });
+        }
 
         this.getAria().setRole("status");
         this.getAria().setLabel("Loading");
@@ -71,8 +111,13 @@ export class ProgressSpinner extends Component {
      * Sets a new arc diameter and updates the component's preferred size.
      *
      * @param size - Diameter in pixels.
+     *
+     * @remarks Calling this disables the default theme-font-size tracking so
+     * the spinner stays at the explicit size across subsequent theme changes.
      */
     setSpinnerSize(size: number): void {
+        this.trackThemeFontSize = false;
+
         if (this.size === size) {
             return;
         }
@@ -152,6 +197,7 @@ export class ProgressSpinner extends Component {
         const inner = this.getInnerSize();
         if (!inner) {
             super.doLayout();
+
             return;
         }
 
