@@ -15,8 +15,13 @@ Inline:
 ```typescript
 import { ProgressSpinner } from '@jimka/typescript-ui';
 
-const spinner = new ProgressSpinner(24);
-panel.addComponent(spinner);
+// No size argument: matches the theme's --ts-ui-font-size and re-syncs on theme change
+const inline = new ProgressSpinner();
+panel.addComponent(inline);
+
+// Explicit pixel size: stays fixed regardless of theme
+const fixed = new ProgressSpinner(24);
+panel.addComponent(fixed);
 ```
 
 Overlay:
@@ -27,6 +32,8 @@ overlay.showOverlay(targetPanel);
 
 doAsyncWork().finally(() => overlay.hideOverlay());
 ```
+
+Calling `setSpinnerSize(n)` later disables theme tracking; the spinner stays at the explicit size.
 
 ## Common methods
 

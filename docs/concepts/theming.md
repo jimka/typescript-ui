@@ -30,6 +30,7 @@ The [`Theme`](/api/interfaces/Theme) interface uses nested objects grouped by co
 | `colorScheme` | *(set directly as `color-scheme`)* | Browser rendering of native controls (checkboxes, scrollbars). Use `'light'` or `'dark'`. |
 | `font.family` | `--ts-ui-font-family` | Font family for the entire UI (cascades from `<html>`) |
 | `font.size` | `--ts-ui-font-size` | Base font size for the entire UI |
+| `font.lineHeight` | `--ts-ui-line-height` | Unitless line-height multiplier applied document-wide. Drives the row-height of `Text` components and the baseline alignment math in `HBox`/`Column`/`Grid` |
 | `text.color` | `--ts-ui-text-color` | Default text color for all components |
 | `body.background` | `--ts-ui-body-bg` | Page background; also the background of [`Window`](/api/classes/Window) |
 | `border.color` | `--ts-ui-border-color` | Default border color for [`Window`](/api/classes/Window) and other bordered components |

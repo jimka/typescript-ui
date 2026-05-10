@@ -35,6 +35,16 @@ tabs.addComponent(new Button('Help'));
 | Method | Purpose |
 | --- | --- |
 | `setGap(px)` | Horizontal gap between children. |
+| `setStretching(boolean)` | When `true` (default), every child fills the full row height. When `false`, children use their preferred heights and are baseline-aligned within the row. |
+
+## Baseline alignment
+
+By default, `Column` stretches every child to fill the row's full height, so baselines are irrelevant. Call `setStretching(false)` to opt into the same baseline-aware placement that [`HBox`](/layouts/HBox#baseline-alignment) uses: text-bearing children line up by their inner-text baseline, and graphical children (checkboxes, progress bars, etc.) center on the row's text line.
+
+```typescript
+const layout = new Column();
+layout.setStretching(false); // baseline-align children
+```
 
 ## When to use it
 
