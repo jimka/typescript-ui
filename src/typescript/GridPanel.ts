@@ -8,9 +8,8 @@ export class GridPanel extends LayoutTestPanel {
     constructor() {
         super();
 
-        let grid = new Grid();
-        grid.setStretching(false);
-
-        this.setLayoutManager(grid);
+        this.setLayoutManager(new Grid({
+            stretching: false
+        }));
     }
 }

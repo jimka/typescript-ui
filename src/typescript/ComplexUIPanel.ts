@@ -25,9 +25,7 @@ export class ComplexUIPanel extends Panel {
     }
 
     private initLayout() {
-        let vbox = new VBox()
-        vbox.setStretching(true);
-        this.setLayoutManager(vbox);
+        this.setLayoutManager(new VBox({ stretching: true }));
 
         let panel1 = this.buildPanel1();
         this.addComponent(panel1);
@@ -155,18 +153,20 @@ export class ComplexUIPanel extends Panel {
 
         // Seed rows so a click-on-header / shift-click sort exercise produces
         // visible reorderings — useful for demoing multi-column sorting.
-        const store = new MemoryStore(tableModel, [
-            { street1: "1 Market St",     street2: "",        city: "San Francisco", state_province: "CA", country_region: "US" },
-            { street1: "200 Pine St",     street2: "Apt 4",   city: "Seattle",       state_province: "WA", country_region: "US" },
-            { street1: "55 Broadway",     street2: "",        city: "New York",      state_province: "NY", country_region: "US" },
-            { street1: "12 King St W",    street2: "Suite 5", city: "Toronto",       state_province: "ON", country_region: "CA" },
-            { street1: "300 Granville",   street2: "",        city: "Vancouver",     state_province: "BC", country_region: "CA" },
-            { street1: "10 Downing St",   street2: "",        city: "London",        state_province: "ENG", country_region: "UK" },
-            { street1: "221B Baker St",   street2: "",        city: "London",        state_province: "ENG", country_region: "UK" },
-            { street1: "1 Infinite Loop", street2: "",        city: "Cupertino",     state_province: "CA", country_region: "US" },
-        ]);
-
-        store.load();
+        const store = new MemoryStore({
+            model: tableModel,
+            data : [
+                { street1: "1 Market St",     street2: "",        city: "San Francisco", state_province: "CA", country_region: "US" },
+                { street1: "200 Pine St",     street2: "Apt 4",   city: "Seattle",       state_province: "WA", country_region: "US" },
+                { street1: "55 Broadway",     street2: "",        city: "New York",      state_province: "NY", country_region: "US" },
+                { street1: "12 King St W",    street2: "Suite 5", city: "Toronto",       state_province: "ON", country_region: "CA" },
+                { street1: "300 Granville",   street2: "",        city: "Vancouver",     state_province: "BC", country_region: "CA" },
+                { street1: "10 Downing St",   street2: "",        city: "London",        state_province: "ENG", country_region: "UK" },
+                { street1: "221B Baker St",   street2: "",        city: "London",        state_province: "ENG", country_region: "UK" },
+                { street1: "1 Infinite Loop", street2: "",        city: "Cupertino",     state_province: "CA", country_region: "US" },
+            ],
+            autoLoad: true,
+        });
 
         let comp = new Table(store);
 

@@ -1,10 +1,21 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { AbstractStore } from "../data/AbstractStore.js";
 import { HBox } from "../layout/HBox.js";
 import { Button } from "./Button.js";
 import { Text } from "./Text.js";
+
+/**
+ * Construction-time options for {@link PaginationBar}.
+ *
+ * @category Components
+ */
+export interface PaginationBarOptions extends ComponentOptions {
+    pageSize?:   number;
+    pageIndex?:  number;
+    totalCount?: number;
+}
 
 /**
  * A horizontal navigation bar for stepping through pages of a paginated
@@ -49,7 +60,7 @@ export class PaginationBar extends Component {
      *
      * @param store - The store whose pagination state drives the bar.
      */
-    constructor(store: AbstractStore) {
+    constructor(store: AbstractStore, options?: PaginationBarOptions) {
         super();
 
         this.store = store;
@@ -86,6 +97,28 @@ export class PaginationBar extends Component {
         this.store.on('sync', this.onStoreUpdate);
 
         this.refresh();
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link PaginationBarOptions} bag, dispatching pagination
+     * properties to the bound store after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: PaginationBarOptions): void {
+        super.applyOptions(options);
+
+        if (options.pageSize !== undefined) {
+            this.store.setPageSize(options.pageSize);
+        }
+
+        if (options.pageIndex !== undefined) {
+            this.store.goToPage(options.pageIndex);
+        }
     }
 
     /**

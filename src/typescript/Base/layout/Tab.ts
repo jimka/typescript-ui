@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { Size } from "../Size.js";
 import { ToggleButton } from "../component/ToggleButton.js";
 import { Component } from "../Component.js";
@@ -13,6 +13,15 @@ import { RovingTabIndex } from "../RovingTabIndex.js";
 import { Column } from "./Column.js";
 import { HBox } from "./HBox.js";
 import { TabCloseButton } from "../component/TabCloseButton.js";
+
+/**
+ * Construction-time options for {@link Tab}.
+ *
+ * @category Layouts
+ */
+export interface TabOptions extends LayoutManagerOptions {
+    onTabClose?: (component: Component) => void;
+}
 
 /** Bookkeeping record for one tab slot. */
 interface TabEntry {
@@ -31,23 +40,20 @@ interface TabEntry {
  */
 export class Tab extends LayoutManager {
 
-    private toolbar: Component;
-    private tabs: Array<TabEntry>;
-    private buttonGroup: ButtonGroup;
-    private rovingTabIndex: RovingTabIndex;
-    private selectedTabIndex: number;
+    private toolbar: Component = new Component();
+    private tabs: Array<TabEntry> = [];
+    private buttonGroup: ButtonGroup = new ButtonGroup();
+    private rovingTabIndex: RovingTabIndex = new RovingTabIndex();
+    private selectedTabIndex: number = 0;
     private onTabClose: ((component: Component) => void) | null = null;
 
     /**
      * Creates a Tab layout manager with an empty toolbar.
+     *
+     * @param options - Optional construction-time options.
      */
-    constructor() {
+    constructor(options?: TabOptions) {
         super();
-
-        this.tabs = [];
-        this.buttonGroup = new ButtonGroup();
-        this.rovingTabIndex = new RovingTabIndex();
-        this.toolbar = new Component();
 
         let columnLayout = new Column();
         columnLayout.setGap(0);
@@ -56,7 +62,24 @@ export class Tab extends LayoutManager {
         this.toolbar.setInsets(null);
         this.toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
         this.toolbar.setPreferredSize(0, 30);
-        this.selectedTabIndex = 0;
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link TabOptions} bag, dispatching the close callback
+     * after the inherited LayoutManager defaults.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: TabOptions): void {
+        super.applyOptions(options);
+
+        if (options.onTabClose !== undefined) {
+            this.setOnTabClose(options.onTabClose);
+        }
     }
 
     /**

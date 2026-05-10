@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
+
+/**
+ * Construction-time options for {@link Row}.
+ *
+ * @category Layouts
+ */
+export interface RowOptions extends LayoutManagerOptions {
+    gap?: number;
+}
 
 /**
  * A layout manager that divides the container height equally among all children
@@ -14,8 +23,26 @@ export class Row extends LayoutManager {
 
     private gap: number = 5;
 
-    constructor() {
+    constructor(options?: RowOptions) {
         super();
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link RowOptions} bag, dispatching the inter-row gap after
+     * the inherited LayoutManager defaults.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: RowOptions): void {
+        super.applyOptions(options);
+
+        if (options.gap !== undefined) {
+            this.gap = options.gap;
+        }
     }
 
     /**

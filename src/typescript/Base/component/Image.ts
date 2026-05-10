@@ -1,7 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Size } from "../Size.js";
+
+/**
+ * Construction-time options for {@link Image}.
+ *
+ * @remarks Supplying `preferredSize` locks the rendered size and disables the
+ * default natural-dimension auto-fit behaviour.
+ *
+ * @category Components
+ */
+export interface ImageOptions extends ComponentOptions {
+}
 
 /**
  * An image component backed by an `<img>` element.
@@ -14,12 +25,16 @@ export class Image extends Component {
 
     private src: String;
 
-    constructor(src: String) {
-        super("img");
+    constructor(src: String, options?: ImageOptions) {
+        super({ tag: "img" });
 
         this.src = src;
         this.setInsets(null);
         this.setMinSize(20, 20);
+
+        if (options) {
+            this.applyOptions(options);
+        }
     }
 
     /**

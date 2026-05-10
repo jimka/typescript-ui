@@ -79,7 +79,7 @@ export class Table extends Component {
      * @param spec  - Optional column spec; omit to auto-generate all columns.
      */
     constructor(store: AbstractStore, spec?: ColumnSpec) {
-        super("table");
+        super({ tag: "table" });
 
         this.setLayoutManager(new TableLayout());
         this.getAria().setRole("grid");

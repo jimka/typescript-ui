@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
+
+/**
+ * Construction-time options for {@link HBox}.
+ *
+ * @category Layouts
+ */
+export interface HBoxOptions extends LayoutManagerOptions {
+    spacing?:    number;
+    stretching?: boolean;
+}
 
 /**
  * A layout manager that places children in a single horizontal row,
@@ -12,15 +22,34 @@ import { Size } from "../Size.js";
  */
 export class HBox extends LayoutManager {
 
-    private spacing: number;
-    private stretching: boolean;
+    private spacing: number = 5;
+    private stretching: boolean = false;
     private defaultComponentWidth: number = 100;
 
-    constructor() {
+    constructor(options?: HBoxOptions) {
         super();
 
-        this.spacing = 5;
-        this.stretching = false;
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies an {@link HBoxOptions} bag, dispatching spacing and stretching
+     * after the inherited LayoutManager defaults.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: HBoxOptions): void {
+        super.applyOptions(options);
+
+        if (options.spacing !== undefined) {
+            this.setComponentSpacing(options.spacing);
+        }
+
+        if (options.stretching !== undefined) {
+            this.setStretching(options.stretching);
+        }
     }
 
     /**

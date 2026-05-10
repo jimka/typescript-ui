@@ -25,7 +25,7 @@ const store = new Store(PersonModel, proxy);
 await store.load();
 ```
 
-See [`MemoryProxyConfig`](/api/interfaces/MemoryProxyConfig) for the full options.
+See [`MemoryProxyOptions`](/api/interfaces/MemoryProxyOptions) for the full options. The legacy alias `MemoryProxyConfig` remains as a deprecated type re-export.
 
 ## AjaxProxy
 
@@ -50,7 +50,7 @@ await store.load();
 | `method` | HTTP method (default `GET`) |
 | `root`   | JSON path to the records array (e.g. `'data'` for `{ data: [...] }`) |
 
-See [`AjaxProxyConfig`](/api/interfaces/AjaxProxyConfig) for the complete option list.
+See [`AjaxProxyOptions`](/api/interfaces/AjaxProxyOptions) for the complete option list. The legacy alias `AjaxProxyConfig` remains as a deprecated type re-export.
 
 ### Server-side pagination
 

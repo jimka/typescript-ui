@@ -18,7 +18,7 @@ export class SplitPanel extends Panel {
         this.setLayoutManager(new Fit());
 
         let mainSplit = new Component();
-        mainSplit.setLayoutManager(new Split("vertical"));
+        mainSplit.setLayoutManager(new Split({ direction: "vertical" }));
 
         this.addComponent(mainSplit);
 

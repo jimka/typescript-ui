@@ -1,11 +1,23 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js"
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js"
 import { Component } from "../Component.js"
 import { LayoutConstraints } from "./LayoutConstraints.js";
 import { FillType } from "./FillType.js";
 import { Placement } from "../Placement.js";
 import { Size } from "../Size.js";
+
+/**
+ * Construction-time options for the {@link Border} layout manager.
+ *
+ * @remarks Re-exported as `BorderLayoutOptions` from the package barrel to
+ * disambiguate from the line-style `Border`'s {@link BorderOptions}.
+ *
+ * @category Layouts
+ */
+export interface BorderOptions extends LayoutManagerOptions {
+    gap?: number;
+}
 
 /**
  * A layout manager that divides a container into five named regions:
@@ -25,6 +37,28 @@ export class Border extends LayoutManager {
     private eastComponent: Component | null = null;
     private centerComponent: Component | null = null;
     private gap: number = 5;
+
+    constructor(options?: BorderOptions) {
+        super();
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link BorderOptions} bag, dispatching the inter-region gap
+     * after the inherited LayoutManager defaults.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: BorderOptions): void {
+        super.applyOptions(options);
+
+        if (options.gap !== undefined) {
+            this.setComponentGap(options.gap);
+        }
+    }
 
     /**
      * Registers a component in the north, south, east, west, or center slot

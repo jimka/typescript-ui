@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 // import "../script/fontawesome/js/all.js"; -- For now, we require this import to be made in the index-page.
+
+/**
+ * Construction-time options for {@link FontAwesomeIcon}.
+ *
+ * @category Components
+ */
+export interface FontAwesomeIconOptions extends ComponentOptions {
+    iconName?:  string;
+    iconStyle?: string;
+}
 
 /**
  * A Font Awesome icon component rendered as an `<i>` element.
@@ -18,12 +28,44 @@ export class FontAwesomeIcon extends Component {
     private type: string;
     private icon: string;
 
-    constructor(type: string, icon: string) {
-        super("i");
+    constructor(type: string, icon: string, options?: FontAwesomeIconOptions) {
+        super({ tag: "i" });
 
         this.type = type;
         this.icon = icon;
         this.setPreferredSize(16, 16);
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link FontAwesomeIconOptions} bag, dispatching icon name and
+     * style class overrides after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: FontAwesomeIconOptions): void {
+        super.applyOptions(options);
+
+        const element = this.getElement();
+
+        if (options.iconName !== undefined) {
+            if (element) {
+                element.classList.remove("fa-" + this.icon);
+                element.classList.add("fa-" + options.iconName);
+            }
+            this.icon = options.iconName;
+        }
+
+        if (options.iconStyle !== undefined) {
+            if (element) {
+                element.classList.remove(this.type);
+                element.classList.add(options.iconStyle);
+            }
+            this.type = options.iconStyle;
+        }
     }
 
     /**

@@ -68,16 +68,22 @@ export class MultiSelectListPanel extends Panel {
             { name: 'label', type: 'string' },
         ]);
 
-        const skillStore = new MemoryStore(skillModel, [
-            { id: 'ts',   label: 'TypeScript' },
-            { id: 'rust', label: 'Rust'       },
-            { id: 'go',   label: 'Go'         },
-            { id: 'py',   label: 'Python'     },
-            { id: 'cpp',  label: 'C++'        },
-        ]);
+        const skillStore = new MemoryStore({
+            model: skillModel,
+            data : [
+                { id: 'ts',   label: 'TypeScript' },
+                { id: 'rust', label: 'Rust'       },
+                { id: 'go',   label: 'Go'         },
+                { id: 'py',   label: 'Python'     },
+                { id: 'cpp',  label: 'C++'        },
+            ],
+        });
 
-        const storeList = new MultiSelectList();
-        storeList.setStore(skillStore, 'label', 'id');
+        const storeList = new MultiSelectList({
+            store       : skillStore,
+            displayField: 'label',
+            valueField  : 'id',
+        });
 
         const storeText = new Text("Selected records: (none)");
 
@@ -98,13 +104,17 @@ export class MultiSelectListPanel extends Panel {
             { name: 'tags', type: 'string' },
         ]);
 
-        const tagStore = new MemoryStore(tagModel, [
-            { id: 1, tags: 'urgent,review' },
-            { id: 2, tags: 'docs'          },
-        ]);
+        const tagStore = new MemoryStore({
+            model: tagModel,
+            data : [
+                { id: 1, tags: 'urgent,review' },
+                { id: 2, tags: 'docs'          },
+            ],
+        });
 
-        const tagList = new MultiSelectList();
-        tagList.setItems(["urgent", "review", "docs", "blocked", "wip"]);
+        const tagList = new MultiSelectList({
+            items: ["urgent", "review", "docs", "blocked", "wip"],
+        });
 
         const bindingStatusText = new Text("Binding status: clean");
 

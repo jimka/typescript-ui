@@ -22,6 +22,19 @@ store.on('load', () => {
 await store.load();
 ```
 
+Or pass a single [`MemoryStoreOptions`](/api/interfaces/MemoryStoreOptions) bag — useful when you also want pagination defaults, initial sorters/filters, or to register listeners declaratively:
+
+```typescript
+const store = new MemoryStore({
+    model    : PersonModel,
+    data     : initialPeople,
+    pageSize : 25,
+    sorters  : [{ field: 'name', dir: 'asc' }],
+    autoLoad : true,
+    listeners: { load: () => console.log('store loaded') },
+});
+```
+
 ## Load from a REST endpoint
 
 [`AjaxStore`](/api/classes/AjaxStore) is a convenience subclass that wires an [`AjaxProxy`](/api/classes/AjaxProxy) internally — pass the proxy config straight to the store:
@@ -46,6 +59,17 @@ const proxy = new AjaxProxy({ url: '/api/people', root: 'data' });
 const store = new Store(PersonModel, proxy);
 
 await store.load();
+```
+
+The same `Store` constructor accepts a [`StoreOptions`](/api/interfaces/StoreOptions) bag if you want to set pagination, sorters, filters, or `autoLoad` declaratively:
+
+```typescript
+const store = new Store({
+    model    : PersonModel,
+    proxy    : new AjaxProxy({ url: '/api/people', root: 'data' }),
+    pageSize : 50,
+    autoLoad : true,
+});
 ```
 
 See [Proxy](/data/proxy) for the full set of [`AjaxProxy`](/api/classes/AjaxProxy) options.

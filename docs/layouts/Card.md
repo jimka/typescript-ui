@@ -17,14 +17,17 @@
 import { Component, Card, Button } from '@jimka/typescript-ui';
 
 const stack = new Component();
-const card = new Card();
-stack.setLayoutManager(card);
+stack.setLayoutManager(new Card({ visibleComponentId: contentPanel.getId() }));
 
 stack.addComponent(loadingPanel);
 stack.addComponent(contentPanel);
 stack.addComponent(errorPanel);
+```
 
-card.setVisibleComponent(contentPanel.getId());
+[`CardOptions`](/api/interfaces/CardOptions) accepts `visibleComponentId` declaratively. The `setVisibleComponentId` setter still works for runtime switching:
+
+```typescript
+card.setVisibleComponentId(errorPanel.getId());
 ```
 
 ## Per-child constraints

@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js"
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js"
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
+
+/**
+ * Construction-time options for {@link Card}.
+ *
+ * @category Layouts
+ */
+export interface CardOptions extends LayoutManagerOptions {
+    visibleComponentId?: string;
+}
 
 /**
  * A layout manager that shows exactly one child component at a time,
@@ -14,6 +23,28 @@ import { Size } from "../Size.js";
 export class Card extends LayoutManager {
 
     private visibleComponentId: String | null = null;
+
+    constructor(options?: CardOptions) {
+        super();
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link CardOptions} bag, dispatching the initial visible
+     * component id after the inherited LayoutManager defaults.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: CardOptions): void {
+        super.applyOptions(options);
+
+        if (options.visibleComponentId !== undefined) {
+            this.setVisibleComponentId(options.visibleComponentId);
+        }
+    }
 
     /**
      * Returns the ID of the currently visible child component, or `null` if none is set.

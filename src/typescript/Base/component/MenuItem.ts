@@ -1,8 +1,21 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { Text } from "./Text.js";
+
+/**
+ * Construction-time component-level options for {@link MenuItem}. Use this
+ * for cosmetic/layout overrides on the item row; the menu data (text, action,
+ * shortcut, submenu) still comes through {@link MenuItemConfig}.
+ *
+ * @category Components
+ */
+export interface MenuItemOptions extends ComponentOptions {
+    text?:    string;
+    enabled?: boolean;
+    focused?: boolean;
+}
 
 /**
  * Selects which CSS-variable family a `MenuItem` reads its colours from.
@@ -102,7 +115,8 @@ export class MenuItem extends Component {
         config: MenuItemConfig,
         onActivate: () => void,
         onOpenSubmenu: (item: MenuItem) => void,
-        cssVarPrefix: MenuItemCSSVarPrefix = "menu-bar"
+        cssVarPrefix: MenuItemCSSVarPrefix = "menu-bar",
+        options?: MenuItemOptions
     ) {
         super();
 
@@ -125,6 +139,10 @@ export class MenuItem extends Component {
             this._onMouseOver = () => {};
             this._onMouseOut = () => {};
             this._onClick = () => {};
+
+            if (options) {
+                this.applyOptions(options);
+            }
 
             return;
         }
@@ -214,6 +232,33 @@ export class MenuItem extends Component {
         Event.addListener(this, "mouseover", this._onMouseOver);
         Event.addListener(this, "mouseout", this._onMouseOut);
         Event.addListener(this, "click", this._onClick);
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link MenuItemOptions} bag, dispatching menu item label,
+     * enabled state, and focus highlight after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: MenuItemOptions): void {
+        super.applyOptions(options);
+
+        if (options.text !== undefined && this._titleText) {
+            this._titleText.setText(options.text);
+        }
+
+        if (options.enabled !== undefined) {
+            this.getAria().setDisabled(!options.enabled);
+            this.setCursor(options.enabled ? "pointer" : "default");
+        }
+
+        if (options.focused !== undefined) {
+            this.setFocused(options.focused);
+        }
     }
 
     /**

@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Event } from "../Event.js";
-import { ComboBox } from "./ComboBox.js";
+import { ComboBox, ComboBoxOptions } from "./ComboBox.js";
+
+/**
+ * Construction-time options for {@link List}.
+ *
+ * @category Components
+ */
+export interface ListOptions extends ComboBoxOptions {
+}
 
 /**
  * A scrollable list box component backed by a `<select>` element.
@@ -13,12 +21,16 @@ import { ComboBox } from "./ComboBox.js";
  */
 export class List extends ComboBox {
 
-    constructor() {
+    constructor(options?: ListOptions) {
         super();
 
         this.getAria().setRole("listbox");
         this.setOverflow("auto");
         this.updateHeight();
+
+        if (this.constructor === List && options) {
+            this.applyOptions(options);
+        }
     }
 
     /**

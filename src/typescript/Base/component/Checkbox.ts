@@ -1,9 +1,20 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Event } from "../Event.js";
-import { Input } from "./Input.js";
+import { Input, InputOptions } from "./Input.js";
 import { Bindable } from "../Bindable.js";
 import { ThemeManager } from "../Theme.js";
+
+/**
+ * Construction-time options for {@link Checkbox}.
+ *
+ * @category Components
+ */
+export interface CheckboxOptions extends InputOptions {
+    selected?: boolean;
+    value?:    boolean;
+    enabled?:  boolean;
+}
 
 /**
  * A checkbox input component.
@@ -15,12 +26,10 @@ import { ThemeManager } from "../Theme.js";
  */
 export class Checkbox extends Input implements Bindable<boolean> {
 
-    private selected: boolean;
+    private selected: boolean = false;
 
-    constructor() {
+    constructor(options?: CheckboxOptions) {
         super();
-
-        this.selected = false;
 
         this.setPreferredSize(16, 16);
         this.setMaxSize(16, 16);
@@ -30,6 +39,32 @@ export class Checkbox extends Input implements Bindable<boolean> {
         ThemeManager.onThemeChange(() => this.setColorScheme(ThemeManager.getTheme().colorScheme));
 
         this.addActionListener(this.onAction);
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link CheckboxOptions} bag, dispatching the checked state and
+     * the native disabled attribute after inherited Input/Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: CheckboxOptions): void {
+        super.applyOptions(options);
+
+        if (options.selected !== undefined) {
+            this.setSelected(options.selected);
+        }
+
+        if (options.value !== undefined) {
+            this.setValue(options.value);
+        }
+
+        if (options.enabled !== undefined) {
+            this.setElementAttribute("disabled", options.enabled ? null : "");
+        }
     }
 
     /**

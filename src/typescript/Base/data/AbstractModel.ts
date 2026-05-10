@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Field, FieldConfig } from './Field.js';
+import { Field, FieldOptions } from './Field.js';
 import { ModelRecord } from './ModelRecord.js';
 
 /**
@@ -15,7 +15,7 @@ import { ModelRecord } from './ModelRecord.js';
  */
 export abstract class AbstractModel {
 
-    abstract readonly fields: (Field | FieldConfig)[];
+    abstract readonly fields: (Field | FieldOptions)[];
 
     protected _primaryKey: string | undefined;
 

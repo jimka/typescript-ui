@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Header } from "./Header.js";
+import { Header, HeaderOptions } from "./Header.js";
 import { Button } from "./Button.js";
 import { FontAwesomeIcon } from "./FontAwesomeIcon.js";
 import { FillType } from "../layout/FillType.js";
 import { Placement } from "../Placement.js";
+
+/**
+ * Construction-time options for {@link WindowHeader}.
+ *
+ * @category Components
+ */
+export interface WindowHeaderOptions extends HeaderOptions {
+    closeable?: boolean;
+}
 
 /**
  * A window title bar component with a close button.
@@ -18,7 +27,7 @@ export class WindowHeader extends Header {
     private exitButton: Button;
     private activeBackgroundImage: string;
 
-    constructor(text: string) {
+    constructor(text: string, options?: WindowHeaderOptions) {
         super(text);
 
         this.activeBackgroundImage = "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))";
@@ -36,6 +45,24 @@ export class WindowHeader extends Header {
         });
 
         this.addComponent(this.exitButton, { placement: Placement.EAST });
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link WindowHeaderOptions} bag, dispatching the closeable flag
+     * after inherited Header fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: WindowHeaderOptions): void {
+        super.applyOptions(options);
+
+        if (options.closeable !== undefined) {
+            this.exitButton.setVisible(options.closeable);
+        }
     }
 
     /**

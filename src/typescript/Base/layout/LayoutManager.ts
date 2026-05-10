@@ -8,6 +8,18 @@ import { Component } from "../Component.js";
 import { BaseObject } from "../BaseObject.js";
 
 /**
+ * Construction-time options shared by every {@link LayoutManager}.
+ *
+ * @remarks Reserved for future cross-manager fields. Concrete layout managers
+ * extend this interface (e.g. {@link HBoxOptions}) with their own fields and
+ * dispatch them through `applyOptions`.
+ *
+ * @category Layouts
+ */
+export interface LayoutManagerOptions {
+}
+
+/**
  * Abstract base class for all layout managers.
  * A layout manager is attached to a container component and is responsible for
  * computing size hints and positioning child components within the container.
@@ -17,25 +29,25 @@ import { BaseObject } from "../BaseObject.js";
 export abstract class LayoutManager extends BaseObject {
 
     private container: Component | null = null;
-    private layoutConstraints: Map<string, LayoutConstraints>;
+    private layoutConstraints: Map<string, LayoutConstraints> = new Map<string, LayoutConstraints>();
     private defaultPreferredSize: Size | null = null;
-    private defaultMinSize: Size;
-    private defaultMaxSize: Size;
+    private defaultMinSize: Size = { width: 0, height: 0 };
+    private defaultMaxSize: Size = { width: Number.MAX_VALUE, height: Number.MAX_VALUE };
 
     constructor() {
         super();
+    }
 
-        this.layoutConstraints = new Map<string, LayoutConstraints>();
-        //this.defaultPreferredSize = Base.instantiate("Base.Size");
-        this.defaultMinSize = {
-            width: 0,
-            height: 0
-        };
-
-        this.defaultMaxSize = {
-            width: Number.MAX_VALUE,
-            height: Number.MAX_VALUE
-        };
+    /**
+     * Applies a {@link LayoutManagerOptions} bag to this layout manager.
+     *
+     * @param _options - The options bag carrying the values to apply.
+     *
+     * @remarks The base implementation is a no-op because `LayoutManagerOptions`
+     * has no fields of its own. Subclasses override this method to dispatch
+     * their additional fields (spacing, gap, stretching, etc.).
+     */
+    protected applyOptions(_options: LayoutManagerOptions): void {
     }
 
     /**

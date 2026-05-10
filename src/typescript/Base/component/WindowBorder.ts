@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Util } from "../Util.js";
 import { Event } from "../Event.js";
 
@@ -22,6 +22,14 @@ export enum Direction {
 }
 
 /**
+ * Construction-time options for {@link WindowBorder}.
+ *
+ * @category Components
+ */
+export interface WindowBorderOptions extends ComponentOptions {
+}
+
+/**
  * A resizable window border strip component.
  *
  * Each instance represents one edge or corner of a resizable window. It listens for
@@ -32,23 +40,28 @@ export enum Direction {
  */
 export class WindowBorder extends Component {
 
-    private direction: Direction;
-    private dragListeners: Function[];
+    private direction: Direction = Direction.NORTH;
+    private dragListeners: Function[] = [];
     private dragStartListener: Function;
     private dragStopListener: Function;
     private fireDragListener: Function;
 
-    constructor(direction: Direction) {
-        super("div");
+    constructor(direction: Direction, options?: WindowBorderOptions) {
+        super({ tag: "div" });
 
-        this.direction = direction || Direction.NORTH;
-        this.dragListeners = [];
+        if (direction) {
+            this.direction = direction;
+        }
 
         this.dragStartListener = this.onDragStart.bind(this);
         this.dragStopListener = this.onDragStop.bind(this);
         this.fireDragListener = this.fireDragListeners.bind(this);
 
         Event.addListener(this, 'mousedown', this.dragStartListener);
+
+        if (options) {
+            this.applyOptions(options);
+        }
     }
 
     /**

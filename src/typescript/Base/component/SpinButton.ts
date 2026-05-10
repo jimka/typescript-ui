@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Button } from "./Button.js";
+import { Button, ButtonOptions } from "./Button.js";
 import { Event } from "../Event.js";
 import { Util } from "../Util.js";
 import { ThemeManager } from "../Theme.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { Insets } from "../Insets.js";
+
+/**
+ * Construction-time options for {@link SpinButton}.
+ *
+ * @category Components
+ */
+export interface SpinButtonOptions extends ButtonOptions {
+}
 
 /**
  * A small up- or down-arrow button used inside a NumberSpinner.
@@ -25,7 +33,7 @@ export class SpinButton extends Button {
     /**
      * @param symbol - The arrow glyph rendered inside the button (`"▲"` or `"▼"`).
      */
-    constructor(symbol: "▲" | "▼") {
+    constructor(symbol: "▲" | "▼", options?: SpinButtonOptions) {
         super(symbol);
 
         this.updateSize();
@@ -42,6 +50,10 @@ export class SpinButton extends Button {
         Event.addListener(this, "mousedown", () => this.onMouseDown());
         Event.addViewportListener(this, "mouseup", () => this.onMouseUp());
         Event.addViewportListener(this, "mouseleave", () => this.onMouseUp());
+
+        if (options) {
+            this.applyOptions(options);
+        }
     }
 
     /**

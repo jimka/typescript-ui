@@ -8,12 +8,12 @@
 export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'time' | 'datetime' | 'auto';
 
 /**
- * Configuration object used to define a field on a model.
+ * Construction-time options for a {@link Field}.
  * Can be passed directly to `AbstractModel.fields` or used to construct a `Field` instance.
  *
  * @category Data
  */
-export interface FieldConfig {
+export interface FieldOptions {
     name: string;
     type?: FieldType;
     defaultValue?: any;
@@ -21,6 +21,11 @@ export interface FieldConfig {
     description?: string;
     order?: number;
 }
+
+/**
+ * @deprecated Use {@link FieldOptions}.
+ */
+export type FieldConfig = FieldOptions;
 
 /**
  * Represents a single typed field in a model's schema.
@@ -38,17 +43,17 @@ export class Field {
     private order: number | undefined;
 
     /**
-     * Constructs a Field from a FieldConfig object.
+     * Constructs a Field from a FieldOptions object.
      *
-     * @param config - The configuration object describing the field's properties.
+     * @param options - The options object describing the field's properties.
      */
-    constructor(config: FieldConfig) {
-        this.name = config.name;
-        this.type = config.type ?? 'auto';
-        this.defaultValue = config.defaultValue;
-        this.mapping = config.mapping ?? config.name;
-        this.description = config.description;
-        this.order = config.order;
+    constructor(options: FieldOptions) {
+        this.name = options.name;
+        this.type = options.type ?? 'auto';
+        this.defaultValue = options.defaultValue;
+        this.mapping = options.mapping ?? options.name;
+        this.description = options.description;
+        this.order = options.order;
     }
 
     /**

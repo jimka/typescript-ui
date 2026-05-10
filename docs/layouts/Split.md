@@ -17,13 +17,13 @@
 import { Component, Split, Tree, Table } from '@jimka/typescript-ui';
 
 const workspace = new Component();
-const layout = new Split();
-layout.setDirection('horizontal');
-workspace.setLayoutManager(layout);
+workspace.setLayoutManager(new Split({ direction: 'horizontal' }));
 
 workspace.addComponent(treeView);   // left
 workspace.addComponent(detailTable); // right
 ```
+
+[`SplitOptions`](/api/interfaces/SplitOptions) accepts `direction` declaratively. The legacy positional `new Split('horizontal')` form and the `setDirection` setter still work.
 
 ## Three+ panes
 

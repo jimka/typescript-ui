@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Legend } from "./Legend.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { Insets } from "../Insets.js";
+
+/**
+ * Construction-time options for {@link FieldSet}.
+ *
+ * @category Components
+ */
+export interface FieldSetOptions extends ComponentOptions {
+    legend?: string;
+}
 
 /**
  * A fieldset component with an embedded legend title.
@@ -16,14 +25,32 @@ export class FieldSet extends Component {
 
     private legend: Legend = new Legend();
 
-    constructor(title: string = "") {
-        super("fieldset");
+    constructor(title: string = "", options?: FieldSetOptions) {
+        super({ tag: "fieldset" });
 
         this.legend.setText(title);
         this.setBorder({ style: BorderStyle.GROOVE, width: 1, color: "var(--ts-ui-border-color, black)" });
         this.setPadding(new Insets(15, 3, 3, 3));
         this.setInsets(new Insets(5, 5, 15, 5));
         this.setPreferredSize(200, 200);
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link FieldSetOptions} bag, dispatching the legend title text
+     * after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: FieldSetOptions): void {
+        super.applyOptions(options);
+
+        if (options.legend !== undefined) {
+            this.setTitle(options.legend);
+        }
     }
 
     /**

@@ -1,8 +1,20 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Input } from "./Input.js";
+import { Input, InputOptions } from "./Input.js";
 import { Event } from "../Event.js";
 import { ThemeManager } from "../Theme.js";
+
+/**
+ * Construction-time options for {@link Slider}.
+ *
+ * @category Components
+ */
+export interface SliderOptions extends InputOptions {
+    minValue?: number;
+    maxValue?: number;
+    value?:    number;
+    step?:     number;
+}
 
 /**
  * A range slider input component backed by an `<input type="range">` element.
@@ -14,20 +26,15 @@ import { ThemeManager } from "../Theme.js";
  */
 export class Slider extends Input {
 
-    private minValue: number;
-    private maxValue: number;
-    private value: number;
-    private step: number;
+    private minValue: number = 0;
+    private maxValue: number = 100;
+    private value: number = 50;
+    private step: number = 1;
 
-    constructor() {
+    constructor(options?: SliderOptions) {
         super();
 
         let me = this;
-
-        this.minValue = 0;
-        this.maxValue = 100;
-        this.value = 50;
-        this.step = 1;
 
         this.setPreferredSize(200, 20);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, 20);
@@ -44,6 +51,36 @@ export class Slider extends Input {
 
             me.setValue(Number(target.value));
         });
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link SliderOptions} bag, dispatching range bounds, step, and
+     * current value after inherited Input/Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: SliderOptions): void {
+        super.applyOptions(options);
+
+        if (options.minValue !== undefined) {
+            this.setMinValue(options.minValue);
+        }
+
+        if (options.maxValue !== undefined) {
+            this.setMaxValue(options.maxValue);
+        }
+
+        if (options.step !== undefined) {
+            this.setStep(options.step);
+        }
+
+        if (options.value !== undefined) {
+            this.setValue(options.value);
+        }
     }
 
     /**

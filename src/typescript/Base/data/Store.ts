@@ -2,7 +2,19 @@
 
 import { Model } from './Model.js';
 import { Proxy } from './proxy/Proxy.js';
-import { AbstractStore } from './AbstractStore.js';
+import { AbstractStore, AbstractStoreOptions } from './AbstractStore.js';
+
+/**
+ * Construction-time options for {@link Store}. May be passed as the first
+ * argument in place of the positional `(model, proxy)` form, in which case
+ * `model` and optional `proxy` come from the bag.
+ *
+ * @category Data
+ */
+export interface StoreOptions extends AbstractStoreOptions {
+    model:  Model;
+    proxy?: Proxy;
+}
 
 /**
  * A general-purpose concrete store that pairs a Model with an optional Proxy.
@@ -18,13 +30,20 @@ export class Store extends AbstractStore {
     /**
      * Constructs a Store with the given model and an optional proxy.
      *
-     * @param model - The Model that defines the record schema for this store.
-     * @param proxy - Optional. The Proxy used to load and persist records.
+     * @param modelOrOptions - The {@link Model} that defines the record schema, or a {@link StoreOptions} bag.
+     * @param proxy - Optional. The Proxy used to load and persist records. Ignored when the first argument is a {@link StoreOptions} bag.
      */
-    constructor(model: Model, proxy?: Proxy) {
+    constructor(modelOrOptions: Model | StoreOptions, proxy?: Proxy) {
         super();
 
-        this.model = model;
-        this.proxy = proxy;
+        if (modelOrOptions instanceof Model) {
+            this.model = modelOrOptions;
+            this.proxy = proxy;
+        } else {
+            this.model = modelOrOptions.model;
+            this.proxy = modelOrOptions.proxy;
+
+            this.applyOptions(modelOrOptions);
+        }
     }
 }

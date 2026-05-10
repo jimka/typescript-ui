@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { TextField } from "./TextField.js";
 import { SpinButton } from "./SpinButton.js";
@@ -11,6 +11,20 @@ import { Bindable } from "../Bindable.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { Util } from "../Util.js";
 import { ThemeManager } from "../Theme.js";
+
+/**
+ * Construction-time options for {@link NumberSpinner}.
+ *
+ * @category Components
+ */
+export interface NumberSpinnerOptions extends ComponentOptions {
+    value?:     number;
+    min?:       number;
+    max?:       number;
+    step?:      number;
+    precision?: number | null;
+    enabled?:   boolean;
+}
 
 /**
  * A numeric input field with flanking up/down spin buttons.
@@ -43,7 +57,7 @@ export class NumberSpinner extends Component implements Bindable<number> {
     /**
      * Constructs a new NumberSpinner with default value `0`, step `1`, and unbounded min/max.
      */
-    constructor() {
+    constructor(options?: NumberSpinnerOptions) {
         super();
 
         this.input = new TextField();
@@ -91,6 +105,44 @@ export class NumberSpinner extends Component implements Bindable<number> {
 
         this.getAria().setRole("spinbutton");
         this.getAria().setValueNow(0);
+
+        if (options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link NumberSpinnerOptions} bag, dispatching range, step,
+     * precision, value, and enabled state after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: NumberSpinnerOptions): void {
+        super.applyOptions(options);
+
+        if (options.min !== undefined) {
+            this.setMin(options.min);
+        }
+
+        if (options.max !== undefined) {
+            this.setMax(options.max);
+        }
+
+        if (options.step !== undefined) {
+            this.setStep(options.step);
+        }
+
+        if (options.precision !== undefined) {
+            this.setPrecision(options.precision);
+        }
+
+        if (options.value !== undefined) {
+            this.setValue(options.value);
+        }
+
+        if (options.enabled !== undefined) {
+            this.setEnabled(options.enabled);
+        }
     }
 
     /**

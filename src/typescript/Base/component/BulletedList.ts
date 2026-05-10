@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractListComponent } from "./AbstractListComponent.js";
+import { AbstractListComponent, AbstractListOptions } from "./AbstractListComponent.js";
 import { BulletedListItemStyle } from "./BulletedListItemStyle.js";
+
+/**
+ * Construction-time options for {@link BulletedList}.
+ *
+ * @category Components
+ */
+export interface BulletedListOptions extends AbstractListOptions<BulletedListItemStyle> {
+}
 
 /**
  * An unordered (bulleted) list component.
@@ -12,7 +20,11 @@ import { BulletedListItemStyle } from "./BulletedListItemStyle.js";
  */
 export class BulletedList extends AbstractListComponent<BulletedListItemStyle> {
 
-    constructor() {
+    constructor(options?: BulletedListOptions) {
         super("ul", BulletedListItemStyle.DISC);
+
+        if (options) {
+            this.applyOptions(options);
+        }
     }
 }

@@ -4,11 +4,11 @@ import { ModelRecord } from '../ModelRecord.js';
 import { Proxy, ReadParams } from './Proxy.js';
 
 /**
- * Configuration object for constructing an AjaxProxy.
+ * Construction-time options for {@link AjaxProxy}.
  *
  * @category Data
  */
-export interface AjaxProxyConfig {
+export interface AjaxProxyOptions {
     url: string;
     root?: string;
     method?: 'GET' | 'POST';
@@ -16,6 +16,11 @@ export interface AjaxProxyConfig {
     updateMethod?: 'PUT' | 'PATCH';
     headers?: Record<string, string>;
 }
+
+/**
+ * @deprecated Use {@link AjaxProxyOptions}.
+ */
+export type AjaxProxyConfig = AjaxProxyOptions;
 
 /**
  * A proxy that communicates with a remote HTTP/REST endpoint using the Fetch API.
@@ -39,18 +44,18 @@ export class AjaxProxy extends Proxy {
     private lastTotalCount: number | undefined = undefined;
 
     /**
-     * Constructs an AjaxProxy from the given configuration.
+     * Constructs an AjaxProxy from the given options.
      *
-     * @param config - The configuration object specifying the endpoint URL and HTTP options.
+     * @param options - The options object specifying the endpoint URL and HTTP options.
      */
-    constructor(config: AjaxProxyConfig) {
+    constructor(options: AjaxProxyOptions) {
         super();
-        this.url = config.url;
-        this.root = config.root;
-        this.method = config.method ?? 'GET';
-        this.createMethod = config.createMethod ?? 'POST';
-        this.updateMethod = config.updateMethod ?? 'PUT';
-        this.headers = config.headers ?? {};
+        this.url = options.url;
+        this.root = options.root;
+        this.method = options.method ?? 'GET';
+        this.createMethod = options.createMethod ?? 'POST';
+        this.updateMethod = options.updateMethod ?? 'PUT';
+        this.headers = options.headers ?? {};
     }
 
     /**

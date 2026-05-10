@@ -1,12 +1,22 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 import { LayoutConstraints } from "../layout/LayoutConstraints.js";
 import { BulletedListItemStyle } from "./BulletedListItemStyle.js";
 import { NumberedListItemStyle } from "./NumberedListItemStyle.js";
 import { ListItem } from "./ListItem.js";
+
+/**
+ * Construction-time options for {@link AbstractListComponent}.
+ *
+ * @category Components
+ */
+export interface AbstractListOptions<U extends BulletedListItemStyle | NumberedListItemStyle> extends ComponentOptions {
+    itemStyle?:     U;
+    selectedIndex?: number;
+}
 
 /**
  * Abstract base for bulleted and numbered list components.
@@ -19,11 +29,29 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
     private style: U | undefined;
 
     constructor(tag: string, style: U) {
-        super(tag);
+        super({ tag });
 
         this.setStyle(style);
         this.setPreferredSize(200, 200);
         this.setPadding(new Insets(0, 0, 0, 25));
+    }
+
+    /**
+     * Applies an {@link AbstractListOptions} bag, dispatching the list bullet
+     * style and initial selection after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: AbstractListOptions<U>): void {
+        super.applyOptions(options);
+
+        if (options.itemStyle !== undefined) {
+            this.setStyle(options.itemStyle);
+        }
+
+        if (options.selectedIndex !== undefined) {
+            this.setSelectedIndex(options.selectedIndex, false);
+        }
     }
 
     /**

@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./LayoutManager.js";
+import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
+
+/**
+ * Construction-time options for {@link VBox}.
+ *
+ * @category Layouts
+ */
+export interface VBoxOptions extends LayoutManagerOptions {
+    spacing?:    number;
+    stretching?: boolean;
+}
 
 /**
  * A layout manager that places children in a single vertical column,
@@ -12,15 +22,40 @@ import { Size } from "../Size.js";
  */
 export class VBox extends LayoutManager {
 
-    private spacing: number;
-    private stretching: boolean;
+    private spacing: number = 5;
+    private stretching: boolean = false;
     private defaultComponentHeight: number = 100;
 
-    constructor(spacing: number = 5) {
+    constructor(spacing: number | VBoxOptions = 5, options?: VBoxOptions) {
         super();
 
-        this.spacing = spacing;
-        this.stretching = false;
+        if (typeof spacing === 'number') {
+            this.spacing = spacing;
+
+            if (options) {
+                this.applyOptions(options);
+            }
+        } else {
+            this.applyOptions(spacing);
+        }
+    }
+
+    /**
+     * Applies a {@link VBoxOptions} bag, dispatching spacing and stretching
+     * after the inherited LayoutManager defaults.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: VBoxOptions): void {
+        super.applyOptions(options);
+
+        if (options.spacing !== undefined) {
+            this.setComponentSpacing(options.spacing);
+        }
+
+        if (options.stretching !== undefined) {
+            this.setStretching(options.stretching);
+        }
     }
 
     /**

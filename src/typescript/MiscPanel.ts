@@ -463,21 +463,24 @@ export class MiscPanel extends Panel {
         });
         this.addComponent(buttonDialogBackdrop);
 
-        const integerSpinner = new NumberSpinner();
-        integerSpinner.setMin(0);
-        integerSpinner.setMax(10);
-        integerSpinner.setStep(1);
-        integerSpinner.setValue(3);
+        const integerSpinner = new NumberSpinner({
+            min  : 0,
+            max  : 10,
+            step : 1,
+            value: 3,
+        });
 
-        const decimalSpinner = new NumberSpinner();
-        decimalSpinner.setMin(-1);
-        decimalSpinner.setMax(1);
-        decimalSpinner.setStep(0.1);
-        decimalSpinner.setValue(0);
+        const decimalSpinner = new NumberSpinner({
+            min  : -1,
+            max  : 1,
+            step : 0.1,
+            value: 0,
+        });
 
-        const unboundedSpinner = new NumberSpinner();
-        unboundedSpinner.setStep(5);
-        unboundedSpinner.setValue(100);
+        const unboundedSpinner = new NumberSpinner({
+            step : 5,
+            value: 100,
+        });
 
         const spinnerText = new Text("Spinners — integer: 3, decimal: 0.0, unbounded: 100");
         const updateSpinnerText = (): void => {
@@ -504,9 +507,10 @@ export class MiscPanel extends Panel {
         this.addComponent(spinnerRow);
         this.addComponent(spinnerText);
 
-        const progressBar = new ProgressBar(0);
-        progressBar.setPreferredSize(300, 12);
-        progressBar.setInsets(new Insets(0, 0, 0, 0));
+        const progressBar = new ProgressBar(0, false, {
+            preferredSize: { width: 300, height: 12 },
+            insets       : new Insets(0, 0, 0, 0),
+        });
 
         const progressText = new Text("Progress: 0%");
 

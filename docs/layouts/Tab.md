@@ -18,12 +18,16 @@
 import { Component, Tab } from '@jimka/typescript-ui';
 
 const tabbed = new Component();
-tabbed.setLayoutManager(new Tab());
+tabbed.setLayoutManager(new Tab({
+    onTabClose: removed => console.log('closed', removed.getId()),
+}));
 
 tabbed.addComponent(generalPanel,   { name: 'General'  });
 tabbed.addComponent(networkPanel,   { name: 'Network'  });
 tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 ```
+
+[`TabOptions`](/api/interfaces/TabOptions) currently exposes `onTabClose`; the `setOnTabClose` setter still works.
 
 ## Per-child constraints
 

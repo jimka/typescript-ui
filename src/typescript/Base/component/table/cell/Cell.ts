@@ -30,7 +30,7 @@ export class Cell<T> extends Component {
     private _onEditEnd: (() => void) | undefined;
 
     constructor(tag: string, renderer: CellRenderer<T>, editor?: CellEditor<T>, rendererConstraints?: LayoutConstraints, editorContraints?: LayoutConstraints) {
-        super(tag || "td");
+        super({ tag: tag || "td" });
 
         this.setLayoutManager(new Card());
 

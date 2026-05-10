@@ -1,8 +1,31 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
+import { Component, ComponentOptions } from "../Component.js";
 import { ThemeManager } from "../Theme.js";
 import { Util } from "../Util.js";
+
+/**
+ * Construction-time options for {@link Text}.
+ *
+ * @category Components
+ */
+export interface TextOptions extends ComponentOptions {
+    tag?:            string;
+    text?:           string;
+    textAlign?:      string;
+    textShadow?:     string;
+    fontFamily?:     string;
+    fontSize?:       number | string;
+    fontWeight?:     string;
+    fontStyle?:      string;
+    fontVariant?:    string;
+    fontStretch?:    string;
+    fontKerning?:    string;
+    fontSizeAdjust?: string;
+    lineHeight?:     number | string;
+    textOverflow?:   string;
+    whiteSpace?:     string;
+}
 
 /**
  * A text-displaying component with comprehensive font and layout controls.
@@ -20,42 +43,29 @@ export class Text extends Component {
 
     private text: String | null | undefined = null;
     private hasExplicitPreferredSize: boolean = false;
-    private textAlign: string | null = null;
+    private textAlign: string | null = "left";
     private textShadow: string | null = null;
-    private fontFamily: string | null = null;
-    private fontKerning: string | null = null;
-    private fontSize: number | null = null;
-    private fontSizeCSSVar : string | null = null;
-    private fontSizeCSSRule: string | null = null;
+    private fontFamily: string | null = "var(--ts-ui-font-family, system-ui, sans-serif)";
+    private fontKerning: string | null = "auto";
+    private fontSize: number | null = 14;
+    private fontSizeCSSVar : string | null = "--ts-ui-font-size";
+    private fontSizeCSSRule: string | null = "var(--ts-ui-font-size, 14px)";
     private readonly unsubscribeTheme: () => void;
-    private fontSizeAdjust: string | null = null;
-    private fontStretch: string | null = null;
-    private fontStyle: string | null = null;
-    private fontVariant: string | null = null;
-    private fontWeight: string | null = null;
+    private fontSizeAdjust: string | null = "none";
+    private fontStretch: string | null = "normal";
+    private fontStyle: string | null = "normal";
+    private fontVariant: string | null = "normal";
+    private fontWeight: string | null = "normal";
     private lineHeight: number | null = null;
-    private lineHeightCSSVar : string | null = null;
-    private lineHeightCSSRule: string | null = null;
+    private lineHeightCSSVar : string | null = "--ts-ui-line-height";
+    private lineHeightCSSRule: string | null = "var(--ts-ui-line-height, 1.2)";
     private measuredBaseline: number | null = null;
 
-    constructor(text?: String, tag: string = "span") {
-        super(tag);
+    constructor(text?: String, options?: TextOptions) {
+        super({ tag: options?.tag ?? "span" });
 
-        this.text              = text;
-        this.textAlign         = "left";
-        this.fontFamily        = "var(--ts-ui-font-family, system-ui, sans-serif)";
-        this.fontKerning       = "auto";
-        this.fontSize          = 14;
-        this.fontSizeCSSVar    = "--ts-ui-font-size";
-        this.fontSizeCSSRule   = "var(--ts-ui-font-size, 14px)";
-        this.fontSizeAdjust    = "none";
-        this.fontStretch       = "normal";
-        this.fontStyle         = "normal";
-        this.fontVariant       = "normal";
-        this.fontWeight        = "normal";
-        this.lineHeightCSSVar  = "--ts-ui-line-height";
-        this.lineHeightCSSRule = "var(--ts-ui-line-height, 1.2)";
-        this.lineHeight        = this.readThemeLineHeightPx();
+        this.text       = text;
+        this.lineHeight = this.readThemeLineHeightPx();
 
         this.setInsets(null);
         this.setElementCSSRule("lineHeight", this.lineHeightCSSRule);
@@ -80,6 +90,77 @@ export class Text extends Component {
         });
 
         this.calculateSize();
+
+        if (this.constructor === Text && options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link TextOptions} bag to this component, dispatching font and
+     * text properties to their corresponding setters after the inherited
+     * Component fields have been applied.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: TextOptions): void {
+        super.applyOptions(options);
+
+        if (options.text !== undefined) {
+            this.setText(options.text);
+        }
+
+        if (options.textAlign !== undefined) {
+            this.setTextAlign(options.textAlign);
+        }
+
+        if (options.textShadow !== undefined) {
+            this.setTextShadow(options.textShadow);
+        }
+
+        if (options.fontFamily !== undefined) {
+            this.setFontFamily(options.fontFamily);
+        }
+
+        if (options.fontSize !== undefined) {
+            this.setFontSize(options.fontSize);
+        }
+
+        if (options.fontWeight !== undefined) {
+            this.setFontWeight(options.fontWeight);
+        }
+
+        if (options.fontStyle !== undefined) {
+            this.setFontStyle(options.fontStyle);
+        }
+
+        if (options.fontVariant !== undefined) {
+            this.setFontVariant(options.fontVariant);
+        }
+
+        if (options.fontStretch !== undefined) {
+            this.setFontStretch(options.fontStretch);
+        }
+
+        if (options.fontKerning !== undefined) {
+            this.setFontKerning(options.fontKerning);
+        }
+
+        if (options.fontSizeAdjust !== undefined) {
+            this.setFontSizeAdjust(options.fontSizeAdjust);
+        }
+
+        if (options.lineHeight !== undefined) {
+            this.setLineHeight(options.lineHeight);
+        }
+
+        if (options.textOverflow !== undefined) {
+            this.setTextOverflow(options.textOverflow);
+        }
+
+        if (options.whiteSpace !== undefined) {
+            this.setWhiteSpace(options.whiteSpace);
+        }
     }
 
     /**
