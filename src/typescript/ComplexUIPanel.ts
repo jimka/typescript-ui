@@ -155,6 +155,8 @@ export class ComplexUIPanel extends Panel {
 
         let comp = new Table(new MemoryStore(tableModel));
 
+        comp.setExportMenuEnabled(true);
+
         return comp;
     }
 
@@ -166,6 +168,8 @@ export class ComplexUIPanel extends Panel {
         ]);
 
         let comp = new Table(new MemoryStore(tableModel));
+
+        comp.setExportMenuEnabled(true);
 
         return comp;
     }

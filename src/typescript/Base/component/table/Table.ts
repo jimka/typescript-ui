@@ -17,6 +17,7 @@ import type { ColumnConfig } from "./ColumnConfig.js";
 import { ColumnSpec } from "./ColumnConfig.js";
 import { Component } from "../../Component.js";
 import { Util } from "../../Util.js";
+import { TableExporter, ExportOptions } from "./TableExporter.js";
 
 /**
  * A data-bound table component rendered as an HTML `<table>` element.
@@ -67,6 +68,8 @@ export class Table extends Component {
     private footerVisible    : boolean;
     private columnWidths     : number[] = [];
     private savedColumnWidths: Map<string, number> = new Map();
+    private columnConfigs    : Map<string, ColumnConfig> = new Map();
+    private exportMenuEnabled: boolean = false;
 
     /**
      * Constructs a Table bound to the given store, optionally constrained by a
@@ -112,7 +115,8 @@ export class Table extends Component {
         }
 
         if (spec) {
-            this.body.setColumnConfigs(this.buildColumnConfigs(spec));
+            this.columnConfigs = this.buildColumnConfigs(spec);
+            this.body.setColumnConfigs(this.columnConfigs);
         }
 
         this.getAria().setColCount(this.getColumns().length);
@@ -543,7 +547,59 @@ export class Table extends Component {
             { text: 'Reset columns', action: () => this.resetColumns() }
         );
 
+        if (this.exportMenuEnabled) {
+            items.push(
+                { separator: true },
+                { text: 'Export as CSV',  action: () => this.exportCSV()  },
+                { text: 'Export as JSON', action: () => this.exportJSON() }
+            );
+        }
+
         this.columnContextMenu.show(x, y, items);
+    }
+
+    /**
+     * Enables or disables the "Export as CSV" / "Export as JSON" entries in
+     * the column context menu.
+     *
+     * @param enabled - When true the export items are appended to the menu.
+     */
+    setExportMenuEnabled(enabled: boolean): void {
+        this.exportMenuEnabled = enabled;
+    }
+
+    /**
+     * Triggers a CSV download of the current store view.
+     *
+     * @param options - Optional export options (e.g. include hidden columns, custom filename).
+     */
+    exportCSV(options?: ExportOptions): void {
+        const columns = this.getExportColumns(options?.includeHidden ?? false);
+        const records = this.store.getRecords();
+
+        TableExporter.exportCSV(columns, records, this.columnConfigs, options);
+    }
+
+    /**
+     * Triggers a JSON download of the current store view.
+     *
+     * @param options - Optional export options (e.g. include hidden columns, custom filename).
+     */
+    exportJSON(options?: ExportOptions): void {
+        const columns = this.getExportColumns(options?.includeHidden ?? false);
+        const records = this.store.getRecords();
+
+        TableExporter.exportJSON(columns, records, this.columnConfigs, options);
+    }
+
+    /**
+     * Returns the columns to include in an export.
+     *
+     * @param includeHidden - When true, all resolved columns are returned; otherwise only visible columns.
+     * @returns The columns to export, in display order.
+     */
+    private getExportColumns(includeHidden: boolean): Column[] {
+        return includeHidden ? this.resolvedColumns.slice() : this.getColumns();
     }
 
     /**
