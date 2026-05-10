@@ -131,7 +131,6 @@ export class AccordionPanel extends Panel {
             row.addComponent(new Checkbox());
 
             const optionText = new Text(text);
-            optionText.setPreferredSize(200, 28);
             row.addComponent(optionText);
 
             panel.addComponent(row);

@@ -36,14 +36,11 @@ export class TabPanel extends Component {
         // --- Controls toolbar ---
         const toolbar = new Component();
         toolbar.setLayoutManager(new HBox());
-        toolbar.setPreferredSize(0, 36);
 
         const addNormalBtn = new Button("Add Tab");
-        addNormalBtn.setPreferredSize(90, 28);
         toolbar.addComponent(addNormalBtn);
 
         const addCloseableBtn = new Button("Add Closeable Tab");
-        addCloseableBtn.setPreferredSize(140, 28);
         toolbar.addComponent(addCloseableBtn);
 
         this.addComponent(toolbar);
