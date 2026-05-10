@@ -24,8 +24,8 @@
     "hash": "51e1ae473e3901dcc1ad539e36631187"
   },
   "/home/jika/typescript/typescript/src/typescript/MiscPanel.ts": {
-    "mtime": 1778410496.8286433,
-    "hash": "e685320ab6e172470acd87b729c874cb"
+    "mtime": 1778411227.2237325,
+    "hash": "6d00b48e7938f19b1702f6ec94493cd7"
   },
   "/home/jika/typescript/typescript/src/typescript/HBoxPanel.ts": {
     "mtime": 1778406270.0831237,
@@ -48,8 +48,8 @@
     "hash": "88ecf528cca974e2f0c7efa988a5adb1"
   },
   "/home/jika/typescript/typescript/src/typescript/ComplexUIPanel.ts": {
-    "mtime": 1778357907.5652514,
-    "hash": "a9e015cd05575db199904c97873bd37f"
+    "mtime": 1778412570.8479478,
+    "hash": "2c5b1a8bdfd70092c0cc314d94d5b7f9"
   },
   "/home/jika/typescript/typescript/src/typescript/MenuBarPanel.ts": {
     "mtime": 1778354004.267922,
@@ -192,8 +192,8 @@
     "hash": "a33779be381d1beb02776836bb296e52"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/index.ts": {
-    "mtime": 1778410475.558861,
-    "hash": "41b83cee70ab93ca769a372c9b213068"
+    "mtime": 1778412444.3517957,
+    "hash": "b3ed88dcf90a57297374bfcaa880deaf"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/data/StoreWorkerClient.ts": {
     "mtime": 1778271289.5733945,
@@ -212,8 +212,8 @@
     "hash": "8be13d5209b138320b7461de06f02541"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/data/AbstractStore.ts": {
-    "mtime": 1778310104.851537,
-    "hash": "61724897b71d90a7f494a84e8967e509"
+    "mtime": 1778412338.2066236,
+    "hash": "aaa4c7a786906d4e135dfb8a72a5f53c"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/data/Store.ts": {
     "mtime": 1778271289.5733945,
@@ -520,24 +520,24 @@
     "hash": "0558ab35c36cd8c9454a3f2d7160935a"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/component/table/TablePanel.ts": {
-    "mtime": 1778406772.3300326,
-    "hash": "f1449918f3c120c99df95ab0fa38cf8d"
+    "mtime": 1778411175.412191,
+    "hash": "c1299265d34ecae63c3204c97249dc3e"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/component/table/ColumnConfig.ts": {
     "mtime": 1778271289.5733945,
     "hash": "aa15a0dfe288ab3cb9c223ffdced2dd5"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/component/table/TableExporter.ts": {
-    "mtime": 1778410524.1538434,
-    "hash": "f18ade2c2365e24b5553b813ad56100a"
+    "mtime": 1778411027.0780654,
+    "hash": "22ee069b0bb14029123f4e2788601871"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/component/table/Footer.ts": {
     "mtime": 1778271289.5733945,
     "hash": "8763958d571193fd0539ebba3960c3ef"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/component/table/Header.ts": {
-    "mtime": 1778393658.4570272,
-    "hash": "ebb34808e092fb410da4d54926e781bd"
+    "mtime": 1778412429.6229892,
+    "hash": "b968b0e5a9aa2798239bafe6fcdc7417"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/component/table/Body.ts": {
     "mtime": 1778406772.3300326,
@@ -548,8 +548,8 @@
     "hash": "93f756ce2767684685073c577bc7e60e"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/component/table/Table.ts": {
-    "mtime": 1778410468.1022518,
-    "hash": "93c425902859e8070fe9484c92d4290a"
+    "mtime": 1778411047.8795903,
+    "hash": "578a25d70e49f4bf96063362f6e42d12"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/component/table/Column.ts": {
     "mtime": 1778271289.5733945,
@@ -584,8 +584,8 @@
     "hash": "31354b79118dd81a540bc70dd1a11ee9"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/component/table/cell/Header.ts": {
-    "mtime": 1778313165.7326324,
-    "hash": "77a328655f280f65223d5a045f189e67"
+    "mtime": 1778412389.909711,
+    "hash": "a5c7ef8b34371bc9131a8366883615eb"
   },
   "/home/jika/typescript/typescript/src/typescript/Base/component/table/cell/Date.ts": {
     "mtime": 1778271289.5841768,
@@ -784,8 +784,8 @@
     "hash": "999ea301eedc6d503375190e3251ca49"
   },
   "/home/jika/typescript/typescript/plans/table-multi-sort.md": {
-    "mtime": 1778271289.444006,
-    "hash": "c1bbf921b1725d6b4bb6db7277ad858a"
+    "mtime": 1778411878.756178,
+    "hash": "250cbb0983ea53ef10e9979c7933f45f"
   },
   "/home/jika/typescript/typescript/plans/npm-package.md": {
     "mtime": 1778271289.444006,
@@ -884,8 +884,8 @@
     "hash": "b6cf01f4c49e3f29bf9313893add5676"
   },
   "/home/jika/typescript/typescript/docs/data/store.md": {
-    "mtime": 1778310727.7255955,
-    "hash": "4119230778324bbf4a8f984fff29765b"
+    "mtime": 1778412550.4133687,
+    "hash": "25dc568641ceb97f13283f42a9011615"
   },
   "/home/jika/typescript/typescript/docs/data/binding.md": {
     "mtime": 1778271289.444006,
@@ -1188,8 +1188,8 @@
     "hash": "5aa72a7ee52ead98fe8ad9f3c79b2447"
   },
   "/home/jika/typescript/typescript/docs/components/TablePanel.md": {
-    "mtime": 1778309860.2078192,
-    "hash": "941bc97c0727a708a4a2f9e8dd0cb2a9"
+    "mtime": 1778411310.6039724,
+    "hash": "7bed36a42825cfc269fdd3a37fc58c4d"
   },
   "/home/jika/typescript/typescript/docs/components/Label.md": {
     "mtime": 1778320431.7394311,
@@ -1248,8 +1248,8 @@
     "hash": "ae51f1773fb874af2aab44f8e68ea30a"
   },
   "/home/jika/typescript/typescript/docs/components/Table.md": {
-    "mtime": 1778410543.8004816,
-    "hash": "ffffcd755b2f8a7358d4d1dc82e641ce"
+    "mtime": 1778412527.220759,
+    "hash": "b4ecadf35ffffebc4cbdb96d0b346b82"
   },
   "/home/jika/typescript/typescript/docs/components/Dialog.md": {
     "mtime": 1778271289.4763532,
@@ -1264,640 +1264,644 @@
     "hash": "300af090a6f83fa7e86ba46130e44f6e"
   },
   "/home/jika/typescript/typescript/docs/api/index.md": {
-    "mtime": 1778410599.2462401,
-    "hash": "6a741f86571d3fc54d30f62c555fea40"
+    "mtime": 1778412588.988648,
+    "hash": "003617113b37202b4cdd4fa83fafeebb"
   },
   "/home/jika/typescript/typescript/docs/api/classes/ProgressSpinner.md": {
-    "mtime": 1778410599.4374018,
-    "hash": "59261bd56d9283cb137e0302615d72d8"
+    "mtime": 1778412589.1912668,
+    "hash": "d365941ff1d458e00503dc53b9c16bcc"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Notification.md": {
-    "mtime": 1778410599.4055417,
-    "hash": "57e514090226b093e8259cf66b18a70a"
+    "mtime": 1778412589.1592743,
+    "hash": "536ad6f0b1a375d662a27979bed6c0f9"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Slider.md": {
-    "mtime": 1778410599.4374018,
-    "hash": "848d6a37ed3cdcc0279bd2abcdd35c05"
+    "mtime": 1778412589.201931,
+    "hash": "dcb5eaff7550aeee350127989e281cfb"
   },
   "/home/jika/typescript/typescript/docs/api/classes/VBox.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "df0ddbe8ae99b3ebb703f8554665dbc1"
+    "mtime": 1778412589.2659159,
+    "hash": "b6ebcb5d64455b0e4784882b2b8f5bab"
   },
   "/home/jika/typescript/typescript/docs/api/classes/PaginationBar.md": {
-    "mtime": 1778410599.4161618,
-    "hash": "9f9f4b4b1bcef6d079170570ee04cf14"
+    "mtime": 1778412589.1806026,
+    "hash": "f2e0d52e03a5b9a4458c6c83b539ca28"
   },
   "/home/jika/typescript/typescript/docs/api/classes/NumberRenderer.md": {
-    "mtime": 1778410599.4161618,
-    "hash": "473ccfd2294ce8cee5f003e74e3c88b6"
+    "mtime": 1778412589.1806026,
+    "hash": "fad59d58d94522d4912fbfc0edc90860"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Menu.md": {
-    "mtime": 1778410599.3843014,
-    "hash": "30975fc61b26e5c934c2593230707b58"
+    "mtime": 1778412589.14861,
+    "hash": "0f3df2231136cf3a1164931417b8481c"
   },
   "/home/jika/typescript/typescript/docs/api/classes/ModelRecord.md": {
-    "mtime": 1778410599.3949215,
-    "hash": "87ade89099ccdc35034b5f57b6db01fd"
+    "mtime": 1778412589.1592743,
+    "hash": "37112d31aabf55a3fca6827faf29d9d2"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Cell.md": {
-    "mtime": 1778410599.3099608,
-    "hash": "6a6d4724872f705886a83051c431d6cc"
+    "mtime": 1778412589.063297,
+    "hash": "37e1cba6b59eeb250bf7589c56050166"
   },
   "/home/jika/typescript/typescript/docs/api/classes/LayoutManager.md": {
-    "mtime": 1778410599.3630612,
-    "hash": "5e2ab602a7941a351a6013f9a4d60a02"
+    "mtime": 1778412589.127282,
+    "hash": "ae532d54d256d170288bd566be96a9b3"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TableRow.md": {
-    "mtime": 1778410599.4798822,
-    "hash": "f2680645929a4f70d54d00eb4876329b"
+    "mtime": 1778412589.2445877,
+    "hash": "17f82712bb130ab3043925ff47d44a16"
   },
   "/home/jika/typescript/typescript/docs/api/classes/BorderLayout.md": {
-    "mtime": 1778410599.2887206,
-    "hash": "d0cf8178dfeabdcd5b027dd0397776cc"
+    "mtime": 1778412589.0419686,
+    "hash": "3f1cc0c0bf4de4b58e9c40e37cd992f4"
   },
   "/home/jika/typescript/typescript/docs/api/classes/AbstractModel.md": {
-    "mtime": 1778410599.2568603,
-    "hash": "e48dceac21166068089921f975f49d9c"
+    "mtime": 1778412588.999312,
+    "hash": "4df6d6a335daed93d5265adb687818ae"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Aria.md": {
-    "mtime": 1778410599.2674804,
-    "hash": "2e5c1eb8df47334722d83753417feb6d"
+    "mtime": 1778412589.0099761,
+    "hash": "04483548aa4786b764a333572c9a9efe"
   },
   "/home/jika/typescript/typescript/docs/api/classes/AccordionHeader.md": {
-    "mtime": 1778410599.2674804,
-    "hash": "cd18c9d261d4420039bcb0be1d9d9534"
+    "mtime": 1778412589.0099761,
+    "hash": "be9225cbecd046a0e92ba57476080cb5"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Column.md": {
-    "mtime": 1778410599.3205807,
-    "hash": "ebab6ca0e589baab0bed72b7e7dd9f6f"
+    "mtime": 1778412589.073961,
+    "hash": "73b8a633a350ef1848550c19c318f65e"
   },
   "/home/jika/typescript/typescript/docs/api/classes/AutoCompleteField.md": {
-    "mtime": 1778410599.2674804,
-    "hash": "554383332933c90a74edfdeae24d543a"
+    "mtime": 1778412589.0206404,
+    "hash": "30664e8cc3368abd77a23ead4ca2371b"
   },
   "/home/jika/typescript/typescript/docs/api/classes/MenuBarButton.md": {
-    "mtime": 1778410599.3843014,
-    "hash": "c681075a5a0bcd906d6e5948ad7e8851"
+    "mtime": 1778412589.14861,
+    "hash": "3eacc68bbed3a56c247d54fe2721d61e"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Point.md": {
-    "mtime": 1778410599.4267817,
-    "hash": "1c1d404f67b32c2540b3227b2abd48ae"
+    "mtime": 1778412589.1912668,
+    "hash": "74cc31eea4df125955f12a93a3bf8287"
   },
   "/home/jika/typescript/typescript/docs/api/classes/DateTimeEditor.md": {
-    "mtime": 1778410599.341821,
-    "hash": "b2f8033f618fc0b833e47756d89dd69d"
+    "mtime": 1778412589.1059537,
+    "hash": "57fbd58f5d51ddab60f446374c6a32de"
   },
   "/home/jika/typescript/typescript/docs/api/classes/DateTimeRenderer.md": {
-    "mtime": 1778410599.341821,
-    "hash": "7aa7b780fa777e20d28e47b137f140df"
+    "mtime": 1778412589.1059537,
+    "hash": "574e52b463d5b719c9bd31bd1b5d521d"
   },
   "/home/jika/typescript/typescript/docs/api/classes/StringEditor.md": {
-    "mtime": 1778410599.448022,
-    "hash": "758d78af3bbf1960ec4e75ffc7642714"
+    "mtime": 1778412589.2125952,
+    "hash": "7ca53d9b94668e7cd6ba00191a751564"
   },
   "/home/jika/typescript/typescript/docs/api/classes/AbstractStore.md": {
-    "mtime": 1778410599.2568603,
-    "hash": "38b4f5f1228ffd0c817beab776c6f2d0"
+    "mtime": 1778412588.999312,
+    "hash": "6f0c42b62bb83007900473bfdfe67717"
   },
   "/home/jika/typescript/typescript/docs/api/classes/MenuItem.md": {
-    "mtime": 1778410599.3949215,
-    "hash": "0cd2055ad8a52a910057dfcb259f5b8f"
+    "mtime": 1778412589.1592743,
+    "hash": "e78c99f7ffb6988a47533e003450e643"
   },
   "/home/jika/typescript/typescript/docs/api/classes/MemoryStore.md": {
-    "mtime": 1778410599.3843014,
-    "hash": "722bd8ade63602a8bc05fd5dd4df1660"
+    "mtime": 1778412589.1379461,
+    "hash": "7736e922ddc6ce539de2bd457fd3ede4"
   },
   "/home/jika/typescript/typescript/docs/api/classes/FontAwesomeIcon.md": {
-    "mtime": 1778410599.352441,
-    "hash": "ce10e4cad9d30c9f8c7fb89f74b13ef4"
+    "mtime": 1778412589.1166177,
+    "hash": "fd94f0699d23398e469eca80c82a5ab5"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TableBody.md": {
-    "mtime": 1778410599.4692621,
-    "hash": "d847fef4b988a35d391ef7dc60697953"
+    "mtime": 1778412589.2339234,
+    "hash": "428dbd3dec3bd90a03cf076e122eb159"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TimeCell.md": {
-    "mtime": 1778410599.4905024,
-    "hash": "c30614093c80e7534f1f34aacef22941"
+    "mtime": 1778412589.2552516,
+    "hash": "e779963386300c9893265bf8f501babd"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Border.md": {
-    "mtime": 1778410599.2887206,
-    "hash": "874f6008f77d38b128177c488308ee1d"
+    "mtime": 1778412589.0419686,
+    "hash": "ea9abc10792bf466ecaa4615e3a6e4ad"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Text.md": {
-    "mtime": 1778410599.4798822,
-    "hash": "100baee86190d21d56764cb4f1861856"
+    "mtime": 1778412589.2445877,
+    "hash": "59e3aef67ed13151e1e8a1a6792f1cd8"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Store.md": {
-    "mtime": 1778410599.448022,
-    "hash": "88f9857932a7d8e374e0a01938ee6c45"
+    "mtime": 1778412589.2125952,
+    "hash": "026923829c66698a779067b56f0b8e87"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Tab.md": {
-    "mtime": 1778410599.458642,
-    "hash": "654eefa706335d7b233df2e4c60f4b6c"
+    "mtime": 1778412589.2232592,
+    "hash": "abf73c1e240f41d959733c4f6c695119"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Card.md": {
-    "mtime": 1778410599.2993407,
-    "hash": "cc51a182c4f5f94b9a6e0ae738729cca"
+    "mtime": 1778412589.0526328,
+    "hash": "9c33432f6ca42491f1c120a13f1c54ca"
   },
   "/home/jika/typescript/typescript/docs/api/classes/ListItem.md": {
-    "mtime": 1778410599.3736813,
-    "hash": "27eacac5fe170f3c5296e0be8450f2da"
+    "mtime": 1778412589.1379461,
+    "hash": "e55f698a65ed3d1f128c8b0b91f9cfb5"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Grid.md": {
-    "mtime": 1778410599.352441,
-    "hash": "f9799b45b0a56f9a37af020c4829bde0"
+    "mtime": 1778412589.1166177,
+    "hash": "9f42739283dee975670ea1c502a7f32f"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TimeField.md": {
-    "mtime": 1778410599.5011225,
-    "hash": "289aae21d704e82205576933486bbbc2"
+    "mtime": 1778412589.2552516,
+    "hash": "3c58eb5db1db2e453afb1c985220840a"
   },
   "/home/jika/typescript/typescript/docs/api/classes/CellEditor.md": {
-    "mtime": 1778410599.3099608,
-    "hash": "3f10bd09b73857cfe84aa03aec83c15d"
+    "mtime": 1778412589.063297,
+    "hash": "a09967f77852592bbfddf76a587713e0"
   },
   "/home/jika/typescript/typescript/docs/api/classes/DateEditor.md": {
-    "mtime": 1778410599.3312008,
-    "hash": "4cfb3eca078b10bc23a8a847c67a3958"
+    "mtime": 1778412589.0846252,
+    "hash": "18b38f7e140263a90ac04393469fe240"
   },
   "/home/jika/typescript/typescript/docs/api/classes/BulletedList.md": {
-    "mtime": 1778410599.2993407,
-    "hash": "2dc2e8c274331e0f6b433529fa3a76e3"
+    "mtime": 1778412589.0526328,
+    "hash": "d38b42795f58e1750a4c096cdde33ba2"
   },
   "/home/jika/typescript/typescript/docs/api/classes/SpinButton.md": {
-    "mtime": 1778410599.4374018,
-    "hash": "797cc56035e5027d70f3bad712874250"
+    "mtime": 1778412589.201931,
+    "hash": "43f9eb8efc445a5c4cc5101e5b9f1d56"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TextArea.md": {
-    "mtime": 1778410599.4798822,
-    "hash": "223b3505da84ab5aa9994cdba2a5c08a"
+    "mtime": 1778412589.2445877,
+    "hash": "e8674fcde66bcfbbebe90ccfadd8a6d4"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TimeRenderer.md": {
-    "mtime": 1778410599.5011225,
-    "hash": "66e3f1206b8454140308ad3f1c36b19f"
+    "mtime": 1778412589.2659159,
+    "hash": "5c8f2155f758d740938d5d98733ddc37"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Absolute.md": {
-    "mtime": 1778410599.2568603,
-    "hash": "3115c3ce0d8c03aaa09cbff800b22084"
+    "mtime": 1778412588.999312,
+    "hash": "f7775016347d99ca2e5282a80a47ee3b"
   },
   "/home/jika/typescript/typescript/docs/api/classes/BooleanEditor.md": {
-    "mtime": 1778410599.2887206,
-    "hash": "8ae71d6f043fbe95da1da40e254a52f6"
+    "mtime": 1778412589.0313046,
+    "hash": "83dd72b37fd37a2583db5c0d37983d76"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Header.md": {
-    "mtime": 1778410599.352441,
-    "hash": "9982bd32d1b65c04214a173897736ba9"
+    "mtime": 1778412589.1166177,
+    "hash": "f3501e52e179c8dea6a5f699d3b6740f"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Button.md": {
-    "mtime": 1778410599.2993407,
-    "hash": "267f9728d641ea851b1e0e984e3faeb8"
+    "mtime": 1778412589.0526328,
+    "hash": "84e4219a0911f93ba0d195311ad27e89"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Component.md": {
-    "mtime": 1778410599.3205807,
-    "hash": "8414a13ffcfe2985236123ff38f52efe"
+    "mtime": 1778412589.073961,
+    "hash": "9a48390d3b34f8b95dccd6677e146a4e"
   },
   "/home/jika/typescript/typescript/docs/api/classes/HeaderCell.md": {
-    "mtime": 1778410599.3630612,
-    "hash": "75fb44e8e20c551299ed1ae01c03dc49"
+    "mtime": 1778412589.1166177,
+    "hash": "f1c45f1995c82af4b15259f044ee46ec"
   },
   "/home/jika/typescript/typescript/docs/api/classes/RadioButton.md": {
-    "mtime": 1778410599.4374018,
-    "hash": "9366f2feb18f050003a44a2a312818ff"
+    "mtime": 1778412589.201931,
+    "hash": "dc27c30f0fe10854a33e88f75a2954a8"
   },
   "/home/jika/typescript/typescript/docs/api/classes/MultiSelectList.md": {
-    "mtime": 1778410599.3949215,
-    "hash": "93bda461478cbf8fdfbc094522100363"
+    "mtime": 1778412589.1592743,
+    "hash": "fbd61205bd2e591f2d5e67c3f800e7ac"
   },
   "/home/jika/typescript/typescript/docs/api/classes/ThemeManager.md": {
-    "mtime": 1778410599.4905024,
-    "hash": "3ef097bfc8a6e682b2ac89f5bd08ad99"
+    "mtime": 1778412589.2552516,
+    "hash": "b3ffc4b43f4acb364e7e2cc8cd68ea96"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Image.md": {
-    "mtime": 1778410599.3630612,
-    "hash": "4500f6329548d1ad8b4027ee56dfb386"
+    "mtime": 1778412589.127282,
+    "hash": "2edbb185a259cb2fcd524cd5197ca01e"
   },
   "/home/jika/typescript/typescript/docs/api/classes/AccordionConstraints.md": {
-    "mtime": 1778410599.2568603,
-    "hash": "309f9b995ab17d4f0068151b6eee272d"
+    "mtime": 1778412588.999312,
+    "hash": "284edb53018206fa4ecba2013ff01c01"
   },
   "/home/jika/typescript/typescript/docs/api/classes/StringRenderer.md": {
-    "mtime": 1778410599.458642,
-    "hash": "a6b0bd13893cd058f410a464839dfdc3"
+    "mtime": 1778412589.2232592,
+    "hash": "6633c05667857df78b8091c6ad04d35d"
   },
   "/home/jika/typescript/typescript/docs/api/classes/MenuBar.md": {
-    "mtime": 1778410599.3843014,
-    "hash": "e00b939bdb8a6a0615afbdcfdd7f057d"
+    "mtime": 1778412589.14861,
+    "hash": "c9e383ee9689615e59a74feaac0bb039"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Field.md": {
-    "mtime": 1778410599.352441,
-    "hash": "40ed3131d74f41a8248ba39b9bc210b7"
+    "mtime": 1778412589.1059537,
+    "hash": "130db70b3aa7b53a3cb13aec33d7853a"
   },
   "/home/jika/typescript/typescript/docs/api/classes/FieldSet.md": {
-    "mtime": 1778410599.352441,
-    "hash": "b5539cb9b9cd1df0d6cb2d49ef8727d3"
+    "mtime": 1778412589.1059537,
+    "hash": "345f812700cd5ea181dbe7d957e322d3"
   },
   "/home/jika/typescript/typescript/docs/api/classes/NumberedList.md": {
-    "mtime": 1778410599.4055417,
-    "hash": "c5a686cbbf0747cff3db339507a667dc"
+    "mtime": 1778412589.1699386,
+    "hash": "618ded81768ce8ab0ecedc6e14b2e2da"
   },
   "/home/jika/typescript/typescript/docs/api/classes/NumberEditor.md": {
-    "mtime": 1778410599.4055417,
-    "hash": "cb2ef90b192e693511c0eb3f9e6c99e0"
+    "mtime": 1778412589.1699386,
+    "hash": "b67a09fe0a526396f8ade29a4d93037a"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Fit.md": {
-    "mtime": 1778410599.352441,
-    "hash": "2121369d603e444a8cd120d93cf9270c"
+    "mtime": 1778412589.1059537,
+    "hash": "c348f0ec9bd644810fa8cb3e34e68c24"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Body.md": {
-    "mtime": 1778410599.2781005,
-    "hash": "f79f73f9d062d211cd76a808b517b0ea"
+    "mtime": 1778412589.0206404,
+    "hash": "5d8513b89a5e1acb00c920e09a26db6b"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TimeEditor.md": {
-    "mtime": 1778410599.4905024,
-    "hash": "8dc783d643c4b25c79fbfe9b7b97edef"
+    "mtime": 1778412589.2552516,
+    "hash": "e80bc1a245b56611fd1216b98e440eb5"
   },
   "/home/jika/typescript/typescript/docs/api/classes/MenuSeparator.md": {
-    "mtime": 1778410599.3949215,
-    "hash": "2d973a1ea61df0cb49027c08944f39be"
+    "mtime": 1778412589.1592743,
+    "hash": "8732c34ebe954bb2806d1d4d925b7a62"
   },
   "/home/jika/typescript/typescript/docs/api/classes/NumberCell.md": {
-    "mtime": 1778410599.4055417,
-    "hash": "28b54a5db4cd2cea1c6c8a3a030ebb1e"
+    "mtime": 1778412589.1699386,
+    "hash": "a152460c508816cf5f7e3aec8caedd89"
   },
   "/home/jika/typescript/typescript/docs/api/classes/BooleanCell.md": {
-    "mtime": 1778410599.2781005,
-    "hash": "5bbb47be20d0ece52c16dc6ebd65e919"
+    "mtime": 1778412589.0313046,
+    "hash": "8ca999339fbe51f4e79094b574757f54"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Option.md": {
-    "mtime": 1778410599.4161618,
-    "hash": "e6511128eb864656222aad5c7d30f283"
+    "mtime": 1778412589.1806026,
+    "hash": "f2fa5fa7a4c06f4473cb38555e066bec"
   },
   "/home/jika/typescript/typescript/docs/api/classes/DateTimeCell.md": {
-    "mtime": 1778410599.341821,
-    "hash": "798ffecfa316ab69853aec10c37213e6"
+    "mtime": 1778412589.0952895,
+    "hash": "b1248fcfa526af576260253e90c39856"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TablePanel.md": {
-    "mtime": 1778410599.4798822,
-    "hash": "5cadac2b9150397c339fb3db7ddd41e0"
+    "mtime": 1778412589.2339234,
+    "hash": "85047e6ca17215dcb535c922e38a94a8"
   },
   "/home/jika/typescript/typescript/docs/api/classes/AjaxProxy.md": {
-    "mtime": 1778410599.2674804,
-    "hash": "72c0492206f9f74977205bd702148eaa"
+    "mtime": 1778412589.0099761,
+    "hash": "291af9f108305ab3d90a1092196eb6f4"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Row.md": {
-    "mtime": 1778410599.4374018,
-    "hash": "a6c27577e7150524fcbb2dc1ab715bad"
+    "mtime": 1778412589.201931,
+    "hash": "e3250f736413f58a1ec1d02973f11ae9"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Label.md": {
-    "mtime": 1778410599.3630612,
-    "hash": "1cf8e5534f2a96a53469042379bfbd70"
+    "mtime": 1778412589.127282,
+    "hash": "0d5b4e8c5ed36c7ab55e41bb9c3429b7"
   },
   "/home/jika/typescript/typescript/docs/api/classes/LayoutConstraints.md": {
-    "mtime": 1778410599.3630612,
-    "hash": "2f5f0dba519fbfd43c605970224c32db"
+    "mtime": 1778412589.127282,
+    "hash": "d9cbefa7fa477f16945f7c902d1d8ef2"
   },
   "/home/jika/typescript/typescript/docs/api/classes/DefaultCell.md": {
-    "mtime": 1778410599.352441,
-    "hash": "927c49a068d074430e03e0f1ff61c2ee"
+    "mtime": 1778412589.1059537,
+    "hash": "0b77e1e36e644dfa2fc6187647b2c803"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Split.md": {
-    "mtime": 1778410599.4374018,
-    "hash": "9d3f845d5693aa4ba19252f3a3e082a6"
+    "mtime": 1778412589.201931,
+    "hash": "60534d02ca298f34c5d0af9f944f386c"
   },
   "/home/jika/typescript/typescript/docs/api/classes/HBox.md": {
-    "mtime": 1778410599.352441,
-    "hash": "63a86438735d84145978e8f6755dc710"
+    "mtime": 1778412589.1166177,
+    "hash": "fa75ef8093e3a112fe537174c4856585"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TabCloseButton.md": {
-    "mtime": 1778410599.458642,
-    "hash": "8675394e192caa67e865a446fa32bbc2"
+    "mtime": 1778412589.2232592,
+    "hash": "3418264b327d1206009a1d4d2e9668dd"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Window.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "4e20d194b9e9d42410ad83a681e9357f"
+    "mtime": 1778412589.2659159,
+    "hash": "3b5500b1eccc1335701d74dc267885ca"
   },
   "/home/jika/typescript/typescript/docs/api/classes/FieldDecorator.md": {
-    "mtime": 1778410599.352441,
-    "hash": "8876b2132c632a2bbc721b95f7c9998e"
+    "mtime": 1778412589.1059537,
+    "hash": "5c3780c0e54c82fd5a1ee503bba8f907"
   },
   "/home/jika/typescript/typescript/docs/api/classes/MemoryProxy.md": {
-    "mtime": 1778410599.3736813,
-    "hash": "a169d8c8fc241f2184730f80c511eeb1"
+    "mtime": 1778412589.1379461,
+    "hash": "b377457d1e3da7d12b03f7a541b643bc"
   },
   "/home/jika/typescript/typescript/docs/api/classes/DateField.md": {
-    "mtime": 1778410599.3312008,
-    "hash": "bb8526e0b16b106f14793253dd523b4e"
+    "mtime": 1778412589.0846252,
+    "hash": "d8a7ea8dc891c226790c655933abf242"
   },
   "/home/jika/typescript/typescript/docs/api/classes/RovingTabIndex.md": {
-    "mtime": 1778410599.4374018,
-    "hash": "9d70bf52b28cf097fdf8ecad2f4bf288"
+    "mtime": 1778412589.201931,
+    "hash": "b84bb1d29614b8035ec19727b9e1ceec"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Proxy.md": {
-    "mtime": 1778410599.4374018,
-    "hash": "59e86e7d61d8e903030811106bf8d77a"
+    "mtime": 1778412589.201931,
+    "hash": "7d6529b232bc2a244af3662c90964556"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Binding.md": {
-    "mtime": 1778410599.2781005,
-    "hash": "f5b6ee4bd16a8972c03e7ef8697d21f6"
+    "mtime": 1778412589.0206404,
+    "hash": "4b21f6b2e80a8491cab987c284eedc21"
   },
   "/home/jika/typescript/typescript/docs/api/classes/ButtonGroup.md": {
-    "mtime": 1778410599.2993407,
-    "hash": "e70a31e2a327dc3b492238f0c6eda123"
+    "mtime": 1778412589.0526328,
+    "hash": "7afcad383cd6cfb430ae0ce46d96692d"
   },
   "/home/jika/typescript/typescript/docs/api/classes/ToggleButton.md": {
-    "mtime": 1778410599.5011225,
-    "hash": "6f430ac6028d84182cbf63c50047f1d3"
+    "mtime": 1778412589.2659159,
+    "hash": "d51e3919387cdc957e24f04bbde81385"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TableHeader.md": {
-    "mtime": 1778410599.4692621,
-    "hash": "73077a6fa2744b8cbe307875c6f389c2"
+    "mtime": 1778412589.2339234,
+    "hash": "ef371250fb6c7965d89cd2f13753ddb6"
   },
   "/home/jika/typescript/typescript/docs/api/classes/AjaxStore.md": {
-    "mtime": 1778410599.2674804,
-    "hash": "d203ef2be87bfe35548ea7f95cd402df"
+    "mtime": 1778412589.0099761,
+    "hash": "13863768581bf78a913bc8e0914277cf"
   },
   "/home/jika/typescript/typescript/docs/api/classes/NumberSpinner.md": {
-    "mtime": 1778410599.4161618,
-    "hash": "f184338d24aae3978187e213ee392e72"
+    "mtime": 1778412589.1806026,
+    "hash": "0cec29c3d08142036ca02b4b3c96c910"
   },
   "/home/jika/typescript/typescript/docs/api/classes/StringCell.md": {
-    "mtime": 1778410599.448022,
-    "hash": "94aa8b38e61685ae3d7eac9ee81b10f6"
+    "mtime": 1778412589.2125952,
+    "hash": "ef33619ff0d749d85c8bdb3d3329def8"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TextField.md": {
-    "mtime": 1778410599.4905024,
-    "hash": "0cc3257bccedb7cbebb0e21ee6f87ec6"
+    "mtime": 1778412589.2552516,
+    "hash": "e40608d30fc19589443d373b74f8c446"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Legend.md": {
-    "mtime": 1778410599.3736813,
-    "hash": "180f6ed429d346d31a58c47cd632c89f"
+    "mtime": 1778412589.1379461,
+    "hash": "c9e989056c57fe3a99044cd7b5e9b69c"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Accordion.md": {
-    "mtime": 1778410599.2568603,
-    "hash": "270ce9c25d3b8eb1d7c99105fd2e7899"
+    "mtime": 1778412588.999312,
+    "hash": "29bd7ced4f985f036e0fbe7d5283abc2"
   },
   "/home/jika/typescript/typescript/docs/api/classes/List.md": {
-    "mtime": 1778410599.3736813,
-    "hash": "5edeedb5e99dfdba8572d91c714c0c72"
+    "mtime": 1778412589.1379461,
+    "hash": "399cbf8fcd184fac91d835cd2649c6d0"
   },
   "/home/jika/typescript/typescript/docs/api/classes/ComboBox.md": {
-    "mtime": 1778410599.3205807,
-    "hash": "84be41ee2f4010e77dbb6177f5dbabd0"
+    "mtime": 1778412589.073961,
+    "hash": "761c38897e0952cd0b73f32f2fb481a1"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TableFooter.md": {
-    "mtime": 1778410599.4692621,
-    "hash": "5beea340fc9277e7f9c90f2435ef395b"
+    "mtime": 1778412589.2339234,
+    "hash": "bee7efd4fa66fe1fc4bee82803e5a024"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Tree.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "f26d6678fa62640b1824fbffa5f14cf2"
+    "mtime": 1778412589.2659159,
+    "hash": "c2d83ac046a6b476a9ffbc21a8414c85"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Panel.md": {
-    "mtime": 1778410599.4267817,
-    "hash": "28174ca78defb97be18d0c43bf13058d"
+    "mtime": 1778412589.1912668,
+    "hash": "c176ab4851b7f90eb0362e6e4ea67cea"
   },
   "/home/jika/typescript/typescript/docs/api/classes/ProgressBar.md": {
-    "mtime": 1778410599.4267817,
-    "hash": "b81d5591fcb1e3c72e02d00a8412b46c"
+    "mtime": 1778412589.1912668,
+    "hash": "ac669ed5f4f1d8c6a126974c896ddf0b"
   },
   "/home/jika/typescript/typescript/docs/api/classes/BorderLine.md": {
-    "mtime": 1778410599.2887206,
-    "hash": "aa69a9ae952f0a9a64d35b80bf0b7058"
+    "mtime": 1778412589.0419686,
+    "hash": "59417f348fc71f76d550041d7aba7ab9"
   },
   "/home/jika/typescript/typescript/docs/api/classes/TableColumn.md": {
-    "mtime": 1778410599.4692621,
-    "hash": "77ff03caec65204d2e64506c9be26ac0"
+    "mtime": 1778412589.2339234,
+    "hash": "c7ea2f9b1420f04ef38a06c09b275fab"
   },
   "/home/jika/typescript/typescript/docs/api/classes/SplitGutter.md": {
-    "mtime": 1778410599.448022,
-    "hash": "2085a304241f81992f01ed6e5fb96d6e"
+    "mtime": 1778412589.2125952,
+    "hash": "4854559296158b232b2d15d9750b99d8"
   },
   "/home/jika/typescript/typescript/docs/api/classes/DateRenderer.md": {
-    "mtime": 1778410599.341821,
-    "hash": "94dfebadb1ed5f406b293daa96195bf3"
+    "mtime": 1778412589.0952895,
+    "hash": "a928ed31a9aa2f4ebe06731c831dcff8"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Table.md": {
-    "mtime": 1778410599.458642,
-    "hash": "3aaac2155a731eadf5a80e03ae333c6a"
+    "mtime": 1778412589.2232592,
+    "hash": "6054fa115f0835e1de744dabc9a39514"
   },
   "/home/jika/typescript/typescript/docs/api/classes/DateCell.md": {
-    "mtime": 1778410599.3312008,
-    "hash": "660f771cd66589749baf9f54c9f3a7ab"
+    "mtime": 1778412589.0846252,
+    "hash": "04e30edc3a92f94dd286bd5ccb832e17"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Model.md": {
-    "mtime": 1778410599.3949215,
-    "hash": "b7dd9f1b682680a774b960fdbfb989ac"
+    "mtime": 1778412589.1592743,
+    "hash": "8d23a2f5c0bc392725a88a90840ccbe4"
   },
   "/home/jika/typescript/typescript/docs/api/classes/BaseObject.md": {
-    "mtime": 1778410599.2674804,
-    "hash": "5e0bae17f7b267459904748488812aa7"
+    "mtime": 1778412589.0206404,
+    "hash": "0b1447e1f32e0717b9adb6025cdec0b7"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Dialog.md": {
-    "mtime": 1778410599.352441,
-    "hash": "0bc2476c2c8aa1f8b3f7c5d6988868b7"
+    "mtime": 1778412589.1059537,
+    "hash": "cf54ec8ba4ce30584feb630cfd21426c"
   },
   "/home/jika/typescript/typescript/docs/api/classes/WindowBorder.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "0b798258b3c090163020e48d6f40d700"
+    "mtime": 1778412589.2659159,
+    "hash": "a73b07e7c365d6adc5d750c54622bed9"
   },
   "/home/jika/typescript/typescript/docs/api/classes/CellRenderer.md": {
-    "mtime": 1778410599.3099608,
-    "hash": "0c74c48d458233fc10e99d01863374b1"
+    "mtime": 1778412589.063297,
+    "hash": "c7a22d2830b2c8b47654d4029bd7af17"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Tooltip.md": {
-    "mtime": 1778410599.5011225,
-    "hash": "9f38b0d98f3e4ce300056842e891c8b9"
+    "mtime": 1778412589.2659159,
+    "hash": "386744b88b2bc10d2abe9386225fb44d"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Checkbox.md": {
-    "mtime": 1778410599.3205807,
-    "hash": "50e78a383fec00e570fb37e37822ec8d"
+    "mtime": 1778412589.073961,
+    "hash": "ca0779e7365e31bc76451697c6e1985c"
   },
   "/home/jika/typescript/typescript/docs/api/classes/Insets.md": {
-    "mtime": 1778410599.3630612,
-    "hash": "0d2d242cb54d7fee3606ebd86c33228b"
+    "mtime": 1778412589.127282,
+    "hash": "ea33223c7bc9da03f1fb1b9fb10eb15b"
   },
   "/home/jika/typescript/typescript/docs/api/variables/DefaultTheme.md": {
-    "mtime": 1778410599.5223627,
-    "hash": "5bfd0f77a88867623f45b6461d8aa9fc"
+    "mtime": 1778412589.27658,
+    "hash": "0097b1f6ff4ac0e27bfb9bcc5578ab39"
   },
   "/home/jika/typescript/typescript/docs/api/variables/DarkTheme.md": {
-    "mtime": 1778410599.5223627,
-    "hash": "4ac65791eea44f872d9896a33cfbdb32"
+    "mtime": 1778412589.27658,
+    "hash": "4f51db6dd94053ea71a0fa1cc17a61e3"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/DialogConfig.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "71988c24eae3151b74dd407b4558c2af"
+    "mtime": 1778412589.27658,
+    "hash": "928eb16f5cc69216ad493efd32e21199"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/AjaxProxyConfig.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "48568eb4327a97316857cac0c7aa205a"
+    "mtime": 1778412589.2659159,
+    "hash": "017bd969641500e9eec4f1e2e70d7e03"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/AutoCompleteFieldConfig.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "af76cdbd8dd418bff7e0ba1f7c6c668e"
+    "mtime": 1778412589.2659159,
+    "hash": "530c093daa68705e5ec67d46c93d2034"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/MenuItemConfig.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "014400469c180bc6f0b04a98a3fb7a65"
+    "mtime": 1778412589.27658,
+    "hash": "d76e6bbdabf26916a0a980b4d59aea4a"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/BindingAccessors.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "1c6008f0ac34d3ee992e93bbf0e4d243"
+    "mtime": 1778412589.2659159,
+    "hash": "f389935fbd86211b932d0529773384ea"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/BorderSideOptions.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "0db237f81c304c2613257639efe0b2de"
+    "mtime": 1778412589.2659159,
+    "hash": "1fd32a8b22a1c70e3080042758c60d07"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/Comparator.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "f4b180bb68332a262f9fc257aa366e89"
+    "mtime": 1778412589.2659159,
+    "hash": "59d3e8a63c689d8380f0b8bc7daad552"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/DialogButtonConfig.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "2ee26c529698d1834b7565e9f9c49039"
+    "mtime": 1778412589.2659159,
+    "hash": "58ec59c9e1dab98ca88fcb48557afdfd"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/ColumnSpec.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "13ab3b1a908b2e063b57621e88757137"
+    "mtime": 1778412589.2659159,
+    "hash": "6ae1ad710bb87eb5334d8522c8431d92"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/FieldValidationResult.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "f29ce9a998b6a102e7db892d72734a13"
+    "mtime": 1778412589.27658,
+    "hash": "d10dab06c6bf670dacf00080e133ccfc"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/ReadParams.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "81cb9e6d648c511c36eca1c92596c9ef"
+    "mtime": 1778412589.27658,
+    "hash": "f4bcfa89b253e95b2173344265926dc2"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/BorderOptions.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "aab49ebf59b7a990ff25d489fe9705f0"
+    "mtime": 1778412589.2659159,
+    "hash": "15b0a3f52429e0637db9947e6363d2b4"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/Size.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "7109ef6a1b317af3b6749a1198fa73ce"
+    "mtime": 1778412589.27658,
+    "hash": "c32e445d3a28cc5ae9249d2a2cb585a6"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/Style.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "806832ff27c76c6329c46877dce27d66"
+    "mtime": 1778412589.27658,
+    "hash": "82106ff718c16741547a8c14f2286e58"
+  },
+  "/home/jika/typescript/typescript/docs/api/interfaces/SortDescriptor.md": {
+    "mtime": 1778412589.27658,
+    "hash": "2e82ebeda3b241d1106ec4a397663406"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/MenuConfig.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "109b1c2a36049e208094e3ad48b253ca"
+    "mtime": 1778412589.27658,
+    "hash": "455f037db5756224297c45eb135809d7"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/PerimeterSize.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "6d36cdffa9ee40f62ed3c7196f8efbe7"
+    "mtime": 1778412589.27658,
+    "hash": "35a0761b86518dcd5d4fd5dffb087c89"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/MemoryProxyConfig.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "7ac429562bdd34aa301a10197168ec00"
+    "mtime": 1778412589.27658,
+    "hash": "51aa2964c57bba66e68de3210249768d"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/TooltipColors.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "86dc67066b0ecda2f2d20022056f98e6"
+    "mtime": 1778412589.27658,
+    "hash": "5352deb5f6689f1ba76846907aabb628"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/Bindable.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "7c6fb3c946cf025cc11051447bbc9918"
+    "mtime": 1778412589.2659159,
+    "hash": "c98a03d0ea27dd7e428b2719d8e267ce"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/FieldConfig.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "f83421933a44f97671bbe7373ba22b45"
+    "mtime": 1778412589.27658,
+    "hash": "d8b1a4655a388afa22df64f54afaeb06"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/TreeNode.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "944e2a9797b8e7023031508b8241a91d"
+    "mtime": 1778412589.27658,
+    "hash": "56f4d974eece7e9cf3c4003d3e162878"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/ExportOptions.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "c0881ef2a8940cfc5d625df9a7a5b08d"
+    "mtime": 1778412589.27658,
+    "hash": "88c1cb7e45c5927b10012a2cf7c74ce8"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/ColumnConfig.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "3e622927c088f2b801ad4091852bd9df"
+    "mtime": 1778412589.2659159,
+    "hash": "e01c0ee014ca8f316d58ae0b18a58288"
   },
   "/home/jika/typescript/typescript/docs/api/interfaces/Theme.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "b96a103eab5666b67837088855abcea2"
+    "mtime": 1778412589.27658,
+    "hash": "39f8743d4d2446dcdc54b6d66eb83464"
   },
   "/home/jika/typescript/typescript/docs/api/enumerations/BulletedListItemStyle.md": {
-    "mtime": 1778410599.2462401,
-    "hash": "01b6c60f01b0e4a6ff82588143f10e31"
+    "mtime": 1778412588.988648,
+    "hash": "99e6f43b3a5dc4ca6a51687ee0d95ed6"
   },
   "/home/jika/typescript/typescript/docs/api/enumerations/AnchorType.md": {
-    "mtime": 1778410599.2462401,
-    "hash": "401ffe1a4bb85ed1bce81d2069e15f15"
+    "mtime": 1778412588.988648,
+    "hash": "5eb6e5cfcde3d4bd23bea0f2716cbc1a"
   },
   "/home/jika/typescript/typescript/docs/api/enumerations/Position.md": {
-    "mtime": 1778410599.2462401,
-    "hash": "7eda97a55c2d9cd765c4f4b1eec79975"
+    "mtime": 1778412588.988648,
+    "hash": "c21802d3f2157cd9beb7b61a582d3c60"
   },
   "/home/jika/typescript/typescript/docs/api/enumerations/Placement.md": {
-    "mtime": 1778410599.2462401,
-    "hash": "49969be9c308f75d429cc298cfd1b97c"
+    "mtime": 1778412588.988648,
+    "hash": "1d84868282b12e2397b3124785c3b614"
   },
   "/home/jika/typescript/typescript/docs/api/enumerations/Direction.md": {
-    "mtime": 1778410599.2462401,
-    "hash": "d99f55a8a2620798261d2fb4745431fe"
+    "mtime": 1778412588.988648,
+    "hash": "fd4d2c35dc02b9e141e3220728d6c6f6"
   },
   "/home/jika/typescript/typescript/docs/api/enumerations/FillType.md": {
-    "mtime": 1778410599.2462401,
-    "hash": "256e112b5f5a8ffb1bf5a618d889ecad"
+    "mtime": 1778412588.988648,
+    "hash": "80f3c305115b7d0282e90ed04d095a68"
   },
   "/home/jika/typescript/typescript/docs/api/enumerations/BorderStyle.md": {
-    "mtime": 1778410599.2462401,
-    "hash": "c6d6f1a40145d6e98616deccd5f01fd1"
+    "mtime": 1778412588.988648,
+    "hash": "73e4c043edac031199ff7725b0f8b3c2"
   },
   "/home/jika/typescript/typescript/docs/api/enumerations/NumberedListItemStyle.md": {
-    "mtime": 1778410599.2462401,
-    "hash": "c8d163df2fa93eb720ea6052f61c5d34"
+    "mtime": 1778412588.988648,
+    "hash": "b2157797987d3b4d502eadbfa56f4708"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/SectionToggleCallback.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "44bd49bfd56cb874b4e14d65fb90a50c"
+    "mtime": 1778412589.27658,
+    "hash": "1b6d480968deeec8dcb19a56a9f6ef87"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/StoreEvent.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "68cb7fa74eeb9b9f1dac66af95f0fba1"
+    "mtime": 1778412589.27658,
+    "hash": "c914bd3bb239579d448272273c74cbda"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/NotificationType.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "40609344d590d8b9413e9272094e3b5e"
+    "mtime": 1778412589.27658,
+    "hash": "bc1be8183c78f0074934e7da3e107e7f"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/MenuItemCSSVarPrefix.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "394b394f325e6b5779497864dc42d38f"
+    "mtime": 1778412589.27658,
+    "hash": "f2c2cf1c0b5e4abb66a6f7accbef8b87"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/FieldType.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "31e321a7f8358dfb6c253a6384a03005"
+    "mtime": 1778412589.27658,
+    "hash": "f62c1e80dc56561f3cb637a171be70ab"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/FilterDescriptor.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "19cb584988097b86f77e53dc29c3d63c"
+    "mtime": 1778412589.27658,
+    "hash": "c6e1001bcf0954f9fc5f768e466edf26"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/DialogResult.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "863eb098fc0823cb33e49c187a38f1c1"
+    "mtime": 1778412589.27658,
+    "hash": "a9d19ff5f9c390f06eb5eec7d48b4f63"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/StoreListener.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "e912e2cad3bfb4bffc1196c9d7795781"
+    "mtime": 1778412589.27658,
+    "hash": "a96fac4e7c485c5844f868f92da66c84"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/ValidationRule.md": {
-    "mtime": 1778410599.5223627,
-    "hash": "b671d6378a52cbcd4af5136fd90e3a2d"
+    "mtime": 1778412589.27658,
+    "hash": "1ce13386515932437031d7f2cf274d13"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/AutoCompleteMatchMode.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "3ee65c72b8b2c97bb4fc524d3671722b"
+    "mtime": 1778412589.27658,
+    "hash": "e166d448c3027ecc72f3e8a744933f1d"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/AriaRole.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "06b8476b30076344aca221f2e4a89f4d"
+    "mtime": 1778412589.27658,
+    "hash": "99ee0d9c520215afb36f00e84b41aaf0"
   },
   "/home/jika/typescript/typescript/docs/api/type-aliases/AriaSort.md": {
-    "mtime": 1778410599.5117426,
-    "hash": "fa4077643d12c5c45afabb56ea9a5e75"
+    "mtime": 1778412589.27658,
+    "hash": "e01c58bf996105c88aff5b0bd86a0f7d"
   },
   "/home/jika/typescript/typescript/ui example.png": {
     "mtime": 1590314204.4303174,

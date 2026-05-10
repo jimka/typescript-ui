@@ -22,11 +22,12 @@ export class HeaderCell extends DefaultCell {
 
     private text: String;
     private fieldName: string;
-    private onSortClickCallback: ((fieldName: string) => void) | null = null;
+    private onSortClickCallback: ((fieldName: string, shiftKey: boolean) => void) | null = null;
     private onContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
     private resizeDragCallback: ((delta: number) => void) | null = null;
     private isDragging: boolean = false;
     private tooltipText: string = '';
+    private priorityBadge: HTMLSpanElement | null = null;
 
     /**
      * Creates a header cell with bold text and wires up the sort click listener.
@@ -70,7 +71,7 @@ export class HeaderCell extends DefaultCell {
         }
 
         // Native listener so clicks on any child element (e.g. the Label) bubble up here.
-        el.addEventListener('click', () => this.onSortClick());
+        el.addEventListener('click', (e: MouseEvent) => this.onSortClick(e.shiftKey));
 
         el.addEventListener('contextmenu', (e: MouseEvent) => {
             e.preventDefault();
@@ -88,29 +89,52 @@ export class HeaderCell extends DefaultCell {
 
         el.appendChild(handle);
 
+        const badge = document.createElement('span');
+
+        // Multi-sort priority indicator. Shown only when two or more sorters are active.
+        badge.style.cssText =
+            'position:absolute;top:2px;right:8px;font-size:10px;line-height:1;' +
+            'background:var(--ts-ui-sort-badge-bg,rgba(0,0,0,0.15));' +
+            'color:var(--ts-ui-sort-badge-color,inherit);' +
+            'border-radius:3px;padding:1px 3px;display:none;pointer-events:none;';
+
+        el.appendChild(badge);
+        this.priorityBadge = badge;
+
         if (this.tooltipText) {
             Tooltip.attachToElement(el, this.tooltipText);
         }
     }
 
     /**
-     * Updates the label to show a sort direction arrow suffix, or removes it.
+     * Updates the label to show a sort direction arrow suffix, or removes it,
+     * and toggles the multi-sort priority badge.
      *
      * @param state - 'asc', 'desc', or null to clear the indicator.
+     * @param priority - Optional 1-based position of this sorter in a multi-sort.
+     *   The badge is only shown when priority is at least 2.
      */
-    setSortState(state: 'asc' | 'desc' | null): void {
+    setSortState(state: 'asc' | 'desc' | null, priority?: number | null): void {
         const arrow = state === 'asc' ? ' ▲' : state === 'desc' ? ' ▼' : '';
 
         this.getRenderer().getText().setText(this.text + arrow);
         this.getAria().setSort(state === 'asc' ? 'ascending' : state === 'desc' ? 'descending' : 'none');
+
+        if (this.priorityBadge) {
+            const showBadge = priority != null && priority >= 2;
+
+            this.priorityBadge.textContent   = showBadge ? String(priority) : '';
+            this.priorityBadge.style.display = showBadge ? '' : 'none';
+        }
     }
 
     /**
      * Registers the callback invoked when the user clicks to sort this column.
      *
-     * @param fn - Receives the field name for this column.
+     * @param fn - Receives the field name for this column and whether the
+     *   shift key was held during the click (used to compose multi-column sort).
      */
-    setOnSortClick(fn: (fieldName: string) => void): void {
+    setOnSortClick(fn: (fieldName: string, shiftKey: boolean) => void): void {
         this.onSortClickCallback = fn;
     }
 
@@ -146,13 +170,19 @@ export class HeaderCell extends DefaultCell {
         this.resizeDragCallback = fn;
     }
 
-    private onSortClick(): void {
+    /**
+     * Routes a click on the header to the registered sort callback,
+     * unless a resize drag has just finished.
+     *
+     * @param shiftKey - Whether the shift key was held when the click fired.
+     */
+    private onSortClick(shiftKey: boolean): void {
         if (this.isDragging) {
             this.isDragging = false;
             return;
         }
 
-        this.onSortClickCallback?.(this.fieldName);
+        this.onSortClickCallback?.(this.fieldName, shiftKey);
     }
 
     private onResizeDragStart(e: MouseEvent): void {

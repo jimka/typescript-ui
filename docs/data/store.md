@@ -91,6 +91,25 @@ store.clearFilter();
 
 Multiple `filter` / `filterBy` calls **stack** — every active predicate must pass for a record to be visible. `clearFilter()` removes all active predicates at once.
 
+### Multi-column sort
+
+`sort()` is overloaded: pass a [`SortDescriptor[]`](/api/interfaces/SortDescriptor) to apply a stable multi-column sort. The first descriptor is the primary key; ties are broken by the next one, and so on.
+
+```typescript
+store.sort([
+    { field: 'lastName',  dir: 'asc'  },
+    { field: 'firstName', dir: 'asc'  },
+    { field: 'age',       dir: 'desc' },
+]);
+
+store.getActiveSorters();   // → SortDescriptor[] in priority order
+store.sort([]);             // clear all sorters (also: store.clearSort())
+```
+
+`Table` headers compose multi-column sort interactively when the user shift-clicks. The store fires the dedicated `'sortchanged'` event whenever the active sorter list is replaced, alongside the broader `'datachanged'` notification.
+
+The legacy `getActiveSorter()` accessor still works (returns the primary sorter mapped to `{ property, direction }`) but is **deprecated** in favour of `getActiveSorters()`.
+
 ## Add and remove records
 
 ```typescript
@@ -150,6 +169,7 @@ The user can resolve the block in two ways:
 | `load`              | `load()` resolves |
 | `datachanged`       | Any record is added, removed, or moved (sorted) |
 | `update`            | A record's fields change (commit or rollback) |
+| `sortchanged`       | The active multi-column sort list changed (replaced or cleared) |
 | `pagechanged`       | Page or page size changes via the pagination API |
 | `pagechangeblocked` | Page navigation was blocked because the store has pending changes |
 
