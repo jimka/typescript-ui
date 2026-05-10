@@ -94,6 +94,15 @@ export class NumberSpinner extends Component implements Bindable<number> {
     }
 
     /**
+     * Returns the offset from the top of the spinner to the inner input's text baseline.
+     *
+     * @returns The baseline offset in pixels, or `null` when the input has no baseline.
+     */
+    getBaseline(): number | null {
+        return this.wrapInnerBaseline(this.input.getBaseline());
+    }
+
+    /**
      * Recalculates preferred and maximum height from the native input's measured size.
      */
     private updateHeight(): void {

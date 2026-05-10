@@ -35,7 +35,7 @@ export class RadioButton extends Component {
 
         this.selected = false;
 
-        this.radio.setPreferredSize(20, 20);
+        this.radio.setPreferredSize(16, 16);
         this.radio.setMaxSize(16, 16);
         this.radio.setCursor("pointer");
 
@@ -53,6 +53,15 @@ export class RadioButton extends Component {
      */
     getElement(createIfMissing: boolean = false) {
         return <HTMLInputElement>super.getElement(createIfMissing);
+    }
+
+    /**
+     * Returns the offset from the top of the radio button to the label's text baseline.
+     *
+     * @returns The baseline offset in pixels, or `null` when the label has no baseline.
+     */
+    getBaseline(): number | null {
+        return this.wrapInnerBaseline(this.label.getBaseline());
     }
 
     /**

@@ -276,5 +276,99 @@ export abstract class LayoutManager extends BaseObject {
         return this.layoutConstraints.get(component.getId());
     }
 
+    /**
+     * Computes the y-offset, relative to the row top, for a null-baseline child of the given height.
+     *
+     * @param height - The child's height.
+     * @param rowAscent - The text baseline of the row (max baseline among text-bearing children).
+     * @param rowDescent - The text descent of the row (max `height − baseline` among text-bearing children).
+     * @returns The y-offset to use when placing the child.
+     *
+     * @remarks Vertically centres the child within the row's text line height.
+     * Tall replaced elements (e.g. an inline `ProgressSpinner`) clamp to 0 and
+     * extend below the text. Components that want to align with the surrounding
+     * text baseline should expose a real baseline via `getBaseline()` rather
+     * than relying on this null-child placement.
+     */
+    protected nullChildY(height: number, rowAscent: number, rowDescent: number): number {
+        const textLineHeight = rowAscent + rowDescent;
+
+        return Math.max(0, (textLineHeight - height) / 2);
+    }
+
+    /**
+     * Computes the row's text-line metrics from a set of child heights and baselines.
+     *
+     * @param heights - The per-child heights to consider.
+     * @param baselines - The per-child baselines (`null` means "no baseline of my own —
+     * graphical or replaced element").
+     * @returns `{ rowAscent, rowDescent }`. `rowAscent` is the max baseline among
+     * text-bearing children (`null` if none); `rowDescent` is the max
+     * `height − baseline` among the same set.
+     */
+    protected computeRowMetrics(heights: number[], baselines: Array<number | null>): { rowAscent: number | null, rowDescent: number } {
+        let rowAscent: number | null = null;
+        let rowDescent = 0;
+
+        for (let i = 0; i < baselines.length; i += 1) {
+            const b = baselines[i];
+
+            if (b !== null) {
+                if (rowAscent === null || b > rowAscent) {
+                    rowAscent = b;
+                }
+
+                const below = heights[i] - b;
+                if (below > rowDescent) {
+                    rowDescent = below;
+                }
+            }
+        }
+
+        return { rowAscent, rowDescent };
+    }
+
+    /**
+     * Computes the row height required to fit all children when their baselines are aligned.
+     *
+     * @param heights - The per-child heights to consider.
+     * @param baselines - The per-child baselines (`null` means "no baseline of my own").
+     * @returns The row height, in pixels.
+     *
+     * @remarks Falls back to `max(heights)` when no child reports a real baseline.
+     * Otherwise the row must fit text-bearing children's `rowAscent + rowDescent`
+     * AND each null-baseline child's actual placed extent (`y + height`).
+     */
+    protected computeRowHeight(heights: number[], baselines: Array<number | null>): number {
+        const { rowAscent, rowDescent } = this.computeRowMetrics(heights, baselines);
+
+        if (rowAscent === null) {
+            let maxAnyHeight = 0;
+
+            for (const h of heights) {
+                if (h > maxAnyHeight) {
+                    maxAnyHeight = h;
+                }
+            }
+
+            return maxAnyHeight;
+        }
+
+        let result = rowAscent + rowDescent;
+
+        for (let i = 0; i < heights.length; i += 1) {
+            if (baselines[i] === null) {
+                const y = this.nullChildY(heights[i], rowAscent, rowDescent);
+                const extent = y + heights[i];
+
+                if (extent > result) {
+                    result = extent;
+                }
+            }
+        }
+
+        return result;
+    }
+
     abstract doLayout(): void;
 };

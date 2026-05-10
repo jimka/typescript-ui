@@ -31,6 +31,21 @@ export class List extends ComboBox {
     }
 
     /**
+     * Returns `null` so a multi-line `List` is treated as a graphical / replaced
+     * element by horizontal layouts.
+     *
+     * @returns Always `null`.
+     *
+     * @remarks Overrides {@link ComboBox.getBaseline}: a list's box height is far
+     * larger than its first visible row of text, so participating in baseline
+     * alignment would drag every surrounding text label down by the list's
+     * vertical extent.
+     */
+    getBaseline(): number | null {
+        return null;
+    }
+
+    /**
      * Registers a listener for the list's 'change' event.
      *
      * @param listener - The callback to invoke when the selection changes.

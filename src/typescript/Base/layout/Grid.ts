@@ -3,6 +3,7 @@
 import { LayoutManager } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
+import { Component } from "../Component.js";
 
 /**
  * A layout manager that tiles children in a uniform grid of equal-sized cells.
@@ -14,9 +15,31 @@ export class Grid extends LayoutManager {
 
     private rows: number = 0;
     private columns: number = 0;
+    private spacing: number = 5;
+    private stretching: boolean = true;
 
     constructor() {
         super();
+    }
+
+    /**
+     * Returns whether children stretch to fill their cells.
+     *
+     * @returns `true` if stretching is enabled (default).
+     */
+    isStretching(): boolean {
+        return this.stretching;
+    }
+
+    /**
+     * Sets whether children stretch to fill their cells. When `false`, each row
+     * uses the natural heights of its children and components are
+     * baseline-aligned within the row.
+     *
+     * @param stretching - Pass `false` to enable per-row baseline alignment instead of stretching.
+     */
+    setStretching(stretching: boolean): void {
+        this.stretching = stretching;
     }
 
     /**
@@ -35,6 +58,25 @@ export class Grid extends LayoutManager {
      */
     setRows(rows: number) {
         this.rows = rows;
+    }
+
+    /**
+     * Returns the gap, in pixels, between adjacent cells (horizontally and vertically).
+     *
+     * @returns The current spacing in pixels.
+     */
+    getComponentSpacing() {
+        return this.spacing || 0;
+    }
+
+    /**
+     * Sets the gap, in pixels, between adjacent cells. Applied both horizontally
+     * (between columns) and vertically (between rows).
+     *
+     * @param spacing - Spacing in pixels. Falsy values are treated as `0`.
+     */
+    setComponentSpacing(spacing: number) {
+        this.spacing = spacing || 0;
     }
 
     /**
@@ -93,7 +135,7 @@ export class Grid extends LayoutManager {
     }
 
     /**
-     * Returns the preferred size: the maximum child preferred size multiplied by the computed row/column counts.
+     * Returns the preferred size: the maximum child preferred size multiplied by the computed row/column counts, plus inter-cell spacing.
      *
      * @returns The preferred `{width, height}`, or `null` if no container is attached.
      */
@@ -124,10 +166,11 @@ export class Grid extends LayoutManager {
         }
 
         let colRowCount = this.getColRowCount();
+        let spacing = this.getComponentSpacing();
 
         if (colRowCount) {
-            innerWidth = innerWidth * colRowCount.width;
-            innerHeight = innerHeight * colRowCount.height;
+            innerWidth = innerWidth * colRowCount.width + Math.max(0, colRowCount.width - 1) * spacing;
+            innerHeight = innerHeight * colRowCount.height + Math.max(0, colRowCount.height - 1) * spacing;
         }
 
         return {
@@ -137,7 +180,7 @@ export class Grid extends LayoutManager {
     }
 
     /**
-     * Returns the minimum size: the maximum child minimum size multiplied by the computed row/column counts.
+     * Returns the minimum size: the maximum child minimum size multiplied by the computed row/column counts, plus inter-cell spacing.
      *
      * @returns The minimum `{width, height}`, or `null` if no container is attached.
      */
@@ -168,10 +211,11 @@ export class Grid extends LayoutManager {
         }
 
         let colRowCount = this.getColRowCount();
+        let spacing = this.getComponentSpacing();
 
         if (colRowCount) {
-            innerWidth = innerWidth * colRowCount.width;
-            innerHeight = innerHeight * colRowCount.height;
+            innerWidth = innerWidth * colRowCount.width + Math.max(0, colRowCount.width - 1) * spacing;
+            innerHeight = innerHeight * colRowCount.height + Math.max(0, colRowCount.height - 1) * spacing;
         }
 
         return {
@@ -181,7 +225,7 @@ export class Grid extends LayoutManager {
     }
 
     /**
-     * Returns the maximum size: the minimum child maximum size multiplied by the computed row/column counts.
+     * Returns the maximum size: the minimum child maximum size multiplied by the computed row/column counts, plus inter-cell spacing.
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
@@ -212,10 +256,11 @@ export class Grid extends LayoutManager {
         }
 
         let colRowCount = this.getColRowCount();
+        let spacing = this.getComponentSpacing();
 
         if (colRowCount) {
-            innerWidth = innerWidth * colRowCount.width;
-            innerHeight = innerHeight * colRowCount.height;
+            innerWidth = innerWidth * colRowCount.width + Math.max(0, colRowCount.width - 1) * spacing;
+            innerHeight = innerHeight * colRowCount.height + Math.max(0, colRowCount.height - 1) * spacing;
         }
 
         return {
@@ -226,6 +271,11 @@ export class Grid extends LayoutManager {
 
     /**
      * Tiles all children in a grid of equal-sized cells, left-to-right then top-to-bottom.
+     *
+     * @remarks When stretching is enabled (default) cells are equal-sized and each
+     * child fills its cell. When stretching is disabled, columns remain uniform-width
+     * but each row uses the natural heights of its children and components are
+     * baseline-aligned within their row, mirroring `HBox`'s baseline-aware placement.
      */
     doLayout() {
         let container = this.getContainer();
@@ -240,46 +290,104 @@ export class Grid extends LayoutManager {
             return;
         }
 
-        let columnWidth = containerSize.width;
-        let columnHeight = containerSize.height;
-
         let colRowCount = this.getColRowCount();
+        let cols = colRowCount ? colRowCount.width  : 1;
+        let rows = colRowCount ? colRowCount.height : 1;
+        let spacing = this.getComponentSpacing();
 
-        if (colRowCount) {
-            columnWidth /= colRowCount.width;
-            columnHeight /= colRowCount.height;
+        let totalHSpacing = Math.max(0, cols - 1) * spacing;
+        let totalVSpacing = Math.max(0, rows - 1) * spacing;
+        let columnWidth   = (containerSize.width  - totalHSpacing) / cols;
+        let columnHeight  = (containerSize.height - totalVSpacing) / rows;
+
+        if (this.stretching) {
+            let colIdx = 0;
+            let x = containerInsets.getLeft();
+            let y = containerInsets.getTop();
+
+            for (let idx in components) {
+                let component = components[idx];
+
+                this.placeComponent(
+                    component,
+                    x,
+                    y,
+                    columnWidth,
+                    columnHeight,
+                    FillType.BOTH
+                );
+
+                colIdx += 1;
+
+                if (colIdx >= cols) {
+                    colIdx = 0;
+
+                    x = containerInsets.getLeft();
+                    y += columnHeight + spacing;
+                } else {
+                    x += columnWidth + spacing;
+                }
+            }
+
+            return;
         }
 
-        let colCount = colRowCount ? colRowCount.width : 1;
-
-        //let rowIdx = 0;
-        let colIdx = 0;
-        let x = containerInsets.getLeft();
         let y = containerInsets.getTop();
 
-        for (let idx in components) {
-            let component = components[idx];
+        for (let row = 0; row < rows; row += 1) {
+            const rowComponents: Component[] = [];
+            const rowHeights: number[] = [];
+            const rowBaselines: Array<number | null> = [];
 
-            this.placeComponent(
-                component,
-                x,
-                y,
-                columnWidth,
-                columnHeight,
-                FillType.BOTH
-            );
+            for (let col = 0; col < cols; col += 1) {
+                const idx = row * cols + col;
+                if (idx >= components.length) {
+                    break;
+                }
 
-            colIdx += 1;
+                const component = components[idx];
+                const size = component.getPreferredSize();
 
-            if (colIdx >= colCount) {
-                //rowIdx += 1;
-                colIdx = 0;
-
-                x = containerInsets.getLeft();
-                y += columnHeight;
-            } else {
-                x += columnWidth;
+                rowComponents.push(component);
+                rowHeights.push(size ? size.height : 0);
+                rowBaselines.push(component.getBaseline());
             }
+
+            const { rowAscent, rowDescent } = this.computeRowMetrics(rowHeights, rowBaselines);
+
+            let x = containerInsets.getLeft();
+
+            for (let i = 0; i < rowComponents.length; i += 1) {
+                const component = rowComponents[i];
+                const height = rowHeights[i];
+
+                let cellY: number;
+
+                if (rowAscent !== null) {
+                    const b = rowBaselines[i];
+
+                    if (b !== null) {
+                        cellY = y + (rowAscent - b);
+                    } else {
+                        cellY = y + this.nullChildY(height, rowAscent, rowDescent);
+                    }
+                } else {
+                    cellY = y;
+                }
+
+                this.placeComponent(
+                    component,
+                    x,
+                    cellY,
+                    columnWidth,
+                    height,
+                    FillType.BOTH
+                );
+
+                x += columnWidth + spacing;
+            }
+
+            y += columnHeight + spacing;
         }
     }
 }

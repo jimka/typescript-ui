@@ -143,6 +143,19 @@ export class AutoCompleteField extends Component implements Bindable<string> {
     }
 
     /**
+     * Returns the offset from the top of the autocomplete field to the inner text field's baseline.
+     *
+     * @returns The baseline offset in pixels, or `null` when the text field has no baseline.
+     *
+     * @remarks `doLayout` places the inner `TextField` at `(0, 0)` to fill this
+     * component, so this baseline excludes `insets` (which are not used to
+     * position the child) and only adds the component's own border.
+     */
+    getBaseline(): number | null {
+        return this.wrapInnerBaseline(this.textField.getBaseline());
+    }
+
+    /**
      * Lays out the internal text field to fill the container exactly.
      */
     doLayout(): void {

@@ -13,6 +13,7 @@ import { Size } from "../Size.js";
 export class Column extends LayoutManager {
 
     private gap: number = 5;
+    private stretching: boolean = true;
 
     constructor() {
         super()
@@ -38,8 +39,28 @@ export class Column extends LayoutManager {
     }
 
     /**
+     * Returns whether children stretch to fill the container height.
+     *
+     * @returns `true` if stretching is enabled (default).
+     */
+    isStretching(): boolean {
+        return this.stretching;
+    }
+
+    /**
+     * Sets whether children stretch to fill the container height. When `false`,
+     * children use their preferred heights and are baseline-aligned within the row.
+     *
+     * @param stretching - Pass `false` to enable baseline alignment instead of stretching.
+     */
+    setStretching(stretching: boolean): void {
+        this.stretching = stretching;
+    }
+
+    /**
      * Computes the preferred size as the maximum child preferred dimensions
-     * arranged horizontally with gaps.
+     * arranged horizontally with gaps. When stretching is disabled the height
+     * reflects baseline-aligned row metrics.
      *
      * @returns The preferred `{width, height}`, or `null` if no container is attached.
      */
@@ -59,6 +80,9 @@ export class Column extends LayoutManager {
         let innerWidth = 0;
         let innerHeight = 0;
 
+        const heights: number[] = [];
+        const baselines: Array<number | null> = [];
+
         for (let idx in components) {
             let component = components[idx];
             let size = component.getPreferredSize();
@@ -66,7 +90,13 @@ export class Column extends LayoutManager {
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight = Math.max(innerHeight, size.height);
+                heights.push(size.height);
+                baselines.push(component.getBaseline());
             }
+        }
+
+        if (!this.stretching) {
+            innerHeight = this.computeRowHeight(heights, baselines);
         }
 
         innerWidth = components.length * (innerWidth + this.gap) - this.gap;
@@ -79,7 +109,8 @@ export class Column extends LayoutManager {
 
     /**
      * Computes the minimum size as the maximum child minimum dimensions
-     * arranged horizontally with gaps.
+     * arranged horizontally with gaps. When stretching is disabled the height
+     * reflects baseline-aligned row metrics.
      *
      * @returns The minimum `{width, height}`, or `null` if no container is attached.
      */
@@ -99,6 +130,9 @@ export class Column extends LayoutManager {
         let innerWidth = 0;
         let innerHeight = 0;
 
+        const heights: number[] = [];
+        const baselines: Array<number | null> = [];
+
         for (let idx in components) {
             let component = components[idx];
             let size = component.getMinSize();
@@ -106,7 +140,13 @@ export class Column extends LayoutManager {
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight = Math.max(innerHeight, size.height);
+                heights.push(size.height);
+                baselines.push(component.getBaseline());
             }
+        }
+
+        if (!this.stretching) {
+            innerHeight = this.computeRowHeight(heights, baselines);
         }
 
         innerWidth = components.length * (innerWidth + this.gap) - this.gap;
@@ -160,6 +200,11 @@ export class Column extends LayoutManager {
     /**
      * Divides the container width equally among children and places them
      * left-to-right with gaps.
+     *
+     * @remarks When stretching is enabled (default) every child fills the full
+     * container height. When stretching is disabled the children use their
+     * preferred heights and are baseline-aligned within the row, mirroring
+     * `HBox`'s baseline-aware placement.
      */
     doLayout() {
         let container = this.getContainer();
@@ -176,20 +221,70 @@ export class Column extends LayoutManager {
         let containerInsets = container.getInsets();
 
         let columnWidth = (containerSize.width - (this.gap * components.length) + this.gap) / components.length;
-        let columnHeight = containerSize.height;
+
+        if (this.stretching) {
+            let columnHeight = containerSize.height;
+            let x = containerInsets.getLeft();
+            let y = containerInsets.getTop();
+
+            for (let idx in components) {
+                let component = components[idx];
+
+                this.placeComponent(
+                    component,
+                    x,
+                    y,
+                    columnWidth,
+                    columnHeight,
+                    FillType.BOTH
+                );
+
+                x += columnWidth + this.gap;
+            }
+
+            return;
+        }
+
+        const heights: number[] = [];
+        const baselines: Array<number | null> = [];
+
+        for (let idx = 0; idx < components.length; idx += 1) {
+            let component = components[idx];
+            let size = component.getPreferredSize();
+            let height = size ? size.height : 0;
+
+            heights.push(height);
+            baselines.push(component.getBaseline());
+        }
+
+        const { rowAscent, rowDescent } = this.computeRowMetrics(heights, baselines);
 
         let x = containerInsets.getLeft();
-        let y = containerInsets.getTop();
 
-        for (let idx in components) {
+        for (let idx = 0; idx < components.length; idx += 1) {
             let component = components[idx];
+            const height = heights[idx];
+
+            let y: number;
+
+            if (rowAscent !== null) {
+                const b = baselines[idx];
+
+                if (b !== null) {
+                    y = containerInsets.getTop() + (rowAscent - b);
+                } else {
+                    y = containerInsets.getTop() + this.nullChildY(height, rowAscent, rowDescent);
+                }
+            } else {
+                y = containerInsets.getTop();
+            }
 
             this.placeComponent(
                 component,
                 x,
                 y,
                 columnWidth,
-                columnHeight,
+                height,
                 FillType.BOTH
             );
 

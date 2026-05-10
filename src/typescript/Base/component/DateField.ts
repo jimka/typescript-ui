@@ -121,6 +121,18 @@ export class DateField extends Input implements Bindable<Date | null> {
     }
 
     /**
+     * Returns the offset from the top of the date field to its inner-text baseline.
+     *
+     * @returns The baseline offset in pixels.
+     *
+     * @remarks Same formula as `TextInput.getBaseline`: the native input's
+     * intrinsic baseline plus the component's top border and CSS padding.
+     */
+    getBaseline(): number | null {
+        return this.wrapInnerBaseline(Util.measureInputBaseline());
+    }
+
+    /**
      * Renders the input element with type="date" and restores any stored value.
      *
      * @returns The created input element.

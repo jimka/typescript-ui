@@ -16,10 +16,10 @@ export class VBox extends LayoutManager {
     private stretching: boolean;
     private defaultComponentHeight: number = 100;
 
-    constructor() {
+    constructor(spacing: number = 5) {
         super();
 
-        this.spacing = 5;
+        this.spacing = spacing;
         this.stretching = false;
     }
 
