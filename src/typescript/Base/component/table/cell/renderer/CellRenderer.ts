@@ -3,6 +3,7 @@
 import { Component } from "../../../../Component.js";
 import { Fit } from "../../../../layout/Fit.js";
 import { Insets } from "../../../../Insets.js";
+import { Text } from "../../../../component/Text.js";
 import { ThemeManager } from "../../../../Theme.js";
 
 /**
@@ -45,4 +46,33 @@ export abstract class CellRenderer<T> extends Component {
      * @param t - The value to render.
      */
     abstract setValue(t: T): void;
+
+    /**
+     * Runs the Fit layout, then synchronises the Text child's `line-height`
+     * to its own element height. A single-line `<span>` whose `line-height`
+     * matches its block height renders the text glyphs vertically centered;
+     * without this, the line-box sits at the top of the cell and leaves the
+     * empty space below.
+     *
+     * Cell renderer Texts have `setAutoMeasure(false)`, so `setLineHeight`
+     * skips its DOM measurement and only writes the CSS rule.
+     */
+    doLayout(): void {
+        super.doLayout();
+
+        const children = this.getComponents();
+        if (children.length !== 1) {
+            return;
+        }
+
+        const child = children[0];
+        if (!(child instanceof Text)) {
+            return;
+        }
+
+        const h = child.getHeight();
+        if (h > 0) {
+            child.setLineHeight(h);
+        }
+    }
 }

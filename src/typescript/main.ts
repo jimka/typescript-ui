@@ -98,6 +98,6 @@ store.on('load', () => {
 
 await store.load();
 
-if (true) {
+if (false) {
     Benchmark.benchAll();
 }

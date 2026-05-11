@@ -60,6 +60,7 @@ export class Text extends Component {
     private lineHeightCSSVar : string | null = "--ts-ui-line-height";
     private lineHeightCSSRule: string | null = "var(--ts-ui-line-height, 1.2)";
     private measuredBaseline: number | null = null;
+    private autoMeasure: boolean = true;
 
     constructor(text?: String, options?: TextOptions) {
         super({ tag: options?.tag ?? "span" });
@@ -218,8 +219,13 @@ export class Text extends Component {
      *
      * @remarks Creates a temporary fixed-positioned invisible `<span>`, appends it to the body
      * to obtain its bounding rect, then removes it. Sets preferred size to (0, 0) when no text is set.
+     * No-op when {@link setAutoMeasure} is `false` — the parent layout is expected to size this Text.
      */
     private calculateSize(): void {
+        if (!this.autoMeasure) {
+            return;
+        }
+
         if (this.text) {
             const { width, height, baseline } = Util.measureTextMetrics(this.text.toString(), {
                 fontFamily : this.fontFamily      ?? undefined,
@@ -237,6 +243,18 @@ export class Text extends Component {
             this.measuredBaseline = 0;
             this.setCalculatedSize(0, 0);
         }
+    }
+
+    /**
+     * Forces a one-off text measurement that ignores {@link setAutoMeasure}.
+     * Use when the caller has opted out of auto-measure but needs an up-to-date
+     * preferred size after a programmatic text change.
+     */
+    measure(): void {
+        const wasAuto = this.autoMeasure;
+        this.autoMeasure = true;
+        this.calculateSize();
+        this.autoMeasure = wasAuto;
     }
 
     /**
@@ -275,6 +293,18 @@ export class Text extends Component {
         }
 
         element.textContent = text.valueOf();
+    }
+
+    /**
+     * Enables or disables automatic text measurement on `setText`.
+     *
+     * @param enabled - When `false`, `setText` skips the off-screen probe and
+     *                  leaves preferred size and baseline unchanged. Use only when
+     *                  the parent layout (e.g. {@link Fit}) sizes this Text from
+     *                  the container, so the measured preferred size is unused.
+     */
+    setAutoMeasure(enabled: boolean): void {
+        this.autoMeasure = enabled;
     }
 
     /**
