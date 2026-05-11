@@ -39,38 +39,52 @@ export class FooterRow extends Component {
      *
      * @param row - The row to append.
      */
-    addRow(row: Row) {
+    addRow(row: Row) : this {
         this.addComponent(row);
+
+        return this;
     }
 
     /**
      * Adds a row as a child component of the footer.
      *
      * @param row - The row component to add.
+     *
+     * @returns This component, for method chaining.
      */
-    addComponent(row: Row) {
+    addComponent(row: Row): this {
         super.addComponent(row);
+
+        return this;
     }
 
     /**
      * Sets the footer width and propagates it to the inner row.
      *
      * @param width - The width in pixels.
+     *
+     * @returns This component, for method chaining.
      */
-    setWidth(width: number) {
+    setWidth(width: number): this {
         super.setWidth(width);
 
         this.getComponents()[0].setWidth(width);
+
+        return this;
     }
 
     /**
      * Sets the footer height and propagates it to the inner row.
      *
      * @param height - The height in pixels.
+     *
+     * @returns This component, for method chaining.
      */
-    setHeight(height: number) {
+    setHeight(height: number): this {
         super.setHeight(height);
 
         this.getComponents()[0].setHeight(height);
+
+        return this;
     }
 }

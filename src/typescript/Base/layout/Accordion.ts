@@ -121,11 +121,11 @@ export class Accordion extends LayoutManager {
      *
      * @param value - True to enforce single-open mode.
      */
-    setSingleOpen(value: boolean): void {
+    setSingleOpen(value: boolean): this {
         this._singleOpen = value;
 
         if (!value) {
-            return;
+            return this;
         }
 
         let foundOpen = false;
@@ -146,6 +146,8 @@ export class Accordion extends LayoutManager {
         }
 
         this.getContainer()?.scheduleLayout();
+
+        return this;
     }
 
     /**
@@ -162,8 +164,10 @@ export class Accordion extends LayoutManager {
      *
      * @param height - Height in pixels.
      */
-    setHeaderHeight(height: number): void {
+    setHeaderHeight(height: number): this {
         this._headerHeight = height;
+
+        return this;
     }
 
     /**
@@ -180,8 +184,10 @@ export class Accordion extends LayoutManager {
      *
      * @param ms - Duration in milliseconds.
      */
-    setAnimationDuration(ms: number): void {
+    setAnimationDuration(ms: number): this {
         this._animationDuration = ms;
+
+        return this;
     }
 
     /**
@@ -189,9 +195,9 @@ export class Accordion extends LayoutManager {
      *
      * @param index - Zero-based section index.
      */
-    openSection(index: number): void {
+    openSection(index: number): this {
         if (index < 0 || index >= this.openState.length) {
-            return;
+            return this;
         }
 
         if (this._singleOpen) {
@@ -210,6 +216,8 @@ export class Accordion extends LayoutManager {
         this.headers[index].getAria().setExpanded(true);
         this.onSectionToggleCallback?.(index, true);
         this.getContainer()?.scheduleLayout();
+
+        return this;
     }
 
     /**
@@ -217,9 +225,9 @@ export class Accordion extends LayoutManager {
      *
      * @param index - Zero-based section index.
      */
-    closeSection(index: number): void {
+    closeSection(index: number): this {
         if (index < 0 || index >= this.openState.length) {
-            return;
+            return this;
         }
 
         this.openState[index] = false;
@@ -227,6 +235,8 @@ export class Accordion extends LayoutManager {
         this.headers[index].getAria().setExpanded(false);
         this.onSectionToggleCallback?.(index, false);
         this.getContainer()?.scheduleLayout();
+
+        return this;
     }
 
     /**
@@ -244,8 +254,10 @@ export class Accordion extends LayoutManager {
      *
      * @param callback - The callback, or null to remove it.
      */
-    setOnSectionToggle(callback: SectionToggleCallback | null): void {
+    setOnSectionToggle(callback: SectionToggleCallback | null): this {
         this.onSectionToggleCallback = callback;
+
+        return this;
     }
 
     /**
@@ -254,15 +266,17 @@ export class Accordion extends LayoutManager {
      *
      * @param container - The container component to attach to.
      */
-    attach(container: Component): void {
+    attach(container: Component): this {
         super.attach(container);
+
+        return this;
     }
 
     /**
      * Detaches from the container, removing all header and panel wrapper elements
      * from the DOM and moving content elements back to the container.
      */
-    detach(): void {
+    detach(): this {
         const container = this.getContainer();
 
         for (let i = 0; i < this.headers.length; i++) {
@@ -282,6 +296,8 @@ export class Accordion extends LayoutManager {
         this.openState = [];
 
         super.detach();
+
+        return this;
     }
 
     /**

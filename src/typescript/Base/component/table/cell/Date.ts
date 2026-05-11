@@ -23,16 +23,20 @@ export class DateCell extends Cell<Date | null> {
         this.dateEditor = editor;
     }
 
-    setValue(value: Date | null): void {
+    setValue(value: Date | null): this {
         this.getRenderer().setValue(value);
+
+        return this;
     }
 
-    commitEdit(): void {
+    commitEdit(): this {
         // Non-empty input that failed to parse → revert rather than write null.
         if (!this.dateEditor.isEmpty() && this.dateEditor.getValue() === null) {
             this.cancelEdit();
-            return;
+            return this;
         }
         super.commitEdit();
+
+        return this;
     }
 }

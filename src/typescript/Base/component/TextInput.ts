@@ -41,7 +41,7 @@ export class TextInput extends Input {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: TextInputOptions): void {
+    protected applyOptions(options: TextInputOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -63,6 +63,8 @@ export class TextInput extends Input {
         if (options.maxLength !== undefined) {
             this.setElementAttribute("maxlength", String(options.maxLength));
         }
+
+        return this;
     }
 
     /**
@@ -97,11 +99,15 @@ export class TextInput extends Input {
      * Sets the CSS text-align and updates the component's CSS rule.
      *
      * @param align - A CSS text-align value (e.g. "left", "center", "right").
+     *
+     * @returns This component, for method chaining.
      */
-    setTextAlign(align: string) {
+    setTextAlign(align: string): this {
         this.textAlign = align;
 
         this.setElementCSSRule("textAlign", align);
+
+        return this;
     }
 
     /**
@@ -117,16 +123,20 @@ export class TextInput extends Input {
      * Sets the text value and updates the DOM element's value property.
      *
      * @param text - The new text value.
+     *
+     * @returns This component, for method chaining.
      */
-    setText(text: String) {
+    setText(text: String): this {
         this.text = text || "";
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.value = this.text.valueOf();
+
+        return this;
     }
 
     /**
@@ -134,11 +144,13 @@ export class TextInput extends Input {
      *
      * @param start - Optional. The start index of the selection. Defaults to 0.
      * @param end - Optional. The end index of the selection. Defaults to the text length + 1.
+     *
+     * @returns This component, for method chaining.
      */
-    select(start?: number, end?: number) {
+    select(start?: number, end?: number): this {
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         if (!start || start < 0) {
@@ -150,6 +162,8 @@ export class TextInput extends Input {
         }
 
         element.setSelectionRange(start, end);
+
+        return this;
     }
 
     /**
@@ -157,11 +171,13 @@ export class TextInput extends Input {
      *
      * @param element - The HTMLElement to apply styles to.
      */
-    applyStyle(element: HTMLElement) {
+    applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
 
         let rule = this.getCSSRule();
         rule.style.textAlign = this.textAlign ? this.textAlign : "";
+
+        return this;
     }
 
     /**

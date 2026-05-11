@@ -64,7 +64,7 @@ export class RadioButton extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: RadioButtonOptions): void {
+    protected applyOptions(options: RadioButtonOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -82,6 +82,8 @@ export class RadioButton extends Component {
         if (options.enabled !== undefined) {
             this.radio.setElementAttribute("disabled", options.enabled ? null : "");
         }
+
+        return this;
     }
 
     /**
@@ -109,8 +111,10 @@ export class RadioButton extends Component {
      *
      * @param listener - The callback to invoke when the radio selection changes.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function) : this {
         Event.addListener(this.radio, "change", listener);
+
+        return this;
     }
 
     /**
@@ -118,9 +122,11 @@ export class RadioButton extends Component {
      *
      * @param name - The name to set on the radio input element.
      */
-    setRadioName(name: string): void {
+    setRadioName(name: string): this {
         this._radioName = name;
         this.radio.setElementAttribute("name", name);
+
+        return this;
     }
 
     /**
@@ -137,15 +143,17 @@ export class RadioButton extends Component {
      *
      * @param value - True to select the radio button, false to deselect it.
      */
-    setSelected(value: boolean) {
+    setSelected(value: boolean) : this {
         this.selected = !!value;
 
         let element = this.radio.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.checked = this.isSelected();
+
+        return this;
     }
 
     /**

@@ -52,7 +52,9 @@ export class BooleanCell extends Cell<Boolean> {
      *
      * @param value - The boolean value to reflect on the checkbox.
      */
-    setValue(value: Boolean) {
+    setValue(value: Boolean) : this {
         this.getRenderer().setValue(value);
+
+        return this;
     }
 }

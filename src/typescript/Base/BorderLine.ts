@@ -82,10 +82,12 @@ export class BorderLine extends Object {
      * @param width - The new border width in pixels.
      * @param color - The new border color string.
      */
-    set(borderStyle: BorderStyle, width: number, color: string) {
+    set(borderStyle: BorderStyle, width: number, color: string) : this {
         this.borderStyle = borderStyle;
         this.width = width;
         this.color = color;
+
+        return this;
     }
 
     /**

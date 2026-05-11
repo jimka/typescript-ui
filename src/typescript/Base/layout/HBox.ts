@@ -66,8 +66,10 @@ export class HBox extends LayoutManager {
      *
      * @param spacing - Spacing in pixels.
      */
-    setComponentSpacing(spacing: number) {
+    setComponentSpacing(spacing: number) : this {
         this.spacing = spacing || 0;
+
+        return this;
     }
 
     /**
@@ -84,8 +86,10 @@ export class HBox extends LayoutManager {
      *
      * @param stretching - Pass `true` to enable height stretching.
      */
-    setStretching(stretching: boolean) {
+    setStretching(stretching: boolean) : this {
         this.stretching = stretching;
+
+        return this;
     }
 
     /**

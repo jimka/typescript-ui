@@ -26,8 +26,10 @@ export class DateRenderer extends CellRenderer<Date | null> {
         return this.value;
     }
 
-    setValue(value: Date | null): void {
+    setValue(value: Date | null): this {
         this.value = value ?? null;
         this.text.setText(value ? value.toLocaleDateString() : "");
+
+        return this;
     }
 }

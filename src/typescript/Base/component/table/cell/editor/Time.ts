@@ -24,10 +24,12 @@ export class TimeEditor extends CellEditor<Date | null> {
         this.setOutline('none');
     }
 
-    applyStyle(element: HTMLElement) {
+    applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
         element.setAttribute('type', 'time');
         if (this.showSeconds) element.setAttribute('step', '1');
+
+        return this;
     }
 
     isEmpty(): boolean {
@@ -42,9 +44,11 @@ export class TimeEditor extends CellEditor<Date | null> {
         return new Date(1970, 0, 1, parts[0], parts[1], parts[2] ?? 0);
     }
 
-    setValue(value: Date | null): void {
+    setValue(value: Date | null): this {
         const el = this.getElement() as HTMLInputElement | null;
         if (el) el.value = value ? this.toInputString(value) : "";
+
+        return this;
     }
 
     private toInputString(date: Date): string {

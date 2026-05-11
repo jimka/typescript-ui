@@ -72,8 +72,10 @@ export class VBox extends LayoutManager {
      *
      * @param spacing - Spacing in pixels.
      */
-    setComponentSpacing(spacing: number) {
+    setComponentSpacing(spacing: number) : this {
         this.spacing = spacing;
+
+        return this;
     }
 
     /**
@@ -90,8 +92,10 @@ export class VBox extends LayoutManager {
      *
      * @param stretching - Pass `true` to enable width stretching.
      */
-    setStretching(stretching: boolean) {
+    setStretching(stretching: boolean) : this {
         this.stretching = !!stretching;
+
+        return this;
     }
 
     /**

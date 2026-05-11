@@ -51,7 +51,7 @@ export class Checkbox extends Input implements Bindable<boolean> {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: CheckboxOptions): void {
+    protected applyOptions(options: CheckboxOptions): this {
         super.applyOptions(options);
 
         if (options.selected !== undefined) {
@@ -65,6 +65,8 @@ export class Checkbox extends Input implements Bindable<boolean> {
         if (options.enabled !== undefined) {
             this.setElementAttribute("disabled", options.enabled ? null : "");
         }
+
+        return this;
     }
 
     /**
@@ -79,37 +81,49 @@ export class Checkbox extends Input implements Bindable<boolean> {
      * Registers a click event listener on this checkbox.
      *
      * @param listener - The callback to invoke on each click.
+     *
+     * @returns This component, for method chaining.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function): this {
         Event.addListener(this, "click", listener);
+
+        return this;
     }
 
-    setValue(value: boolean): void {
+    setValue(value: boolean): this {
         this.setSelected(value);
+
+        return this;
     }
 
     getValue(): boolean {
         return this.isSelected();
     }
 
-    addBindingListener(fn: () => void): void {
+    addBindingListener(fn: () => void): this {
         this.addActionListener(fn);
+
+        return this;
     }
 
     /**
      * Sets the selected state and updates the checkbox element's checked property.
      *
      * @param value - True to check the box, false to uncheck it.
+     *
+     * @returns This component, for method chaining.
      */
-    setSelected(value: boolean) {
+    setSelected(value: boolean): this {
         this.selected = !!value;
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.checked = this.isSelected();
+
+        return this;
     }
 
     /**

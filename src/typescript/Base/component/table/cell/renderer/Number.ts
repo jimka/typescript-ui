@@ -39,7 +39,9 @@ export class NumberRenderer extends CellRenderer<Number> {
      *
      * @param value - The numeric value to display.
      */
-    setValue(value: Number) {
+    setValue(value: Number) : this {
         this.text.setText(String(value) || "");
+
+        return this;
     }
 }

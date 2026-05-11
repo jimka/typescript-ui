@@ -50,15 +50,19 @@ export class BooleanEditor extends CellEditor<Boolean> {
      *
      * @param value - The boolean value to set on the checkbox.
      */
-    setValue(value: boolean) {
+    setValue(value: boolean) : this {
         this.checkBox.setSelected(value);
+
+        return this;
     }
 
     /**
      * Toggles the checkbox and fires the onChange callback.
      */
-    toggle() {
+    toggle() : this {
         this.checkBox.setSelected(!this.checkBox.isSelected());
         this.onChange?.(this.getValue());
+
+        return this;
     }
 }

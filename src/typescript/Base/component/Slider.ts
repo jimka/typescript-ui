@@ -63,7 +63,7 @@ export class Slider extends Input {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: SliderOptions): void {
+    protected applyOptions(options: SliderOptions): this {
         super.applyOptions(options);
 
         if (options.minValue !== undefined) {
@@ -81,6 +81,8 @@ export class Slider extends Input {
         if (options.value !== undefined) {
             this.setValue(options.value);
         }
+
+        return this;
     }
 
     /**
@@ -96,11 +98,15 @@ export class Slider extends Input {
      * Sets the minimum value and updates the DOM element's min attribute.
      *
      * @param value - The new minimum value.
+     *
+     * @returns This component, for method chaining.
      */
-    setMinValue(value: number) {
+    setMinValue(value: number): this {
         this.minValue = value;
 
         this.setElementAttribute("min", value);
+
+        return this;
     }
 
     /**
@@ -116,11 +122,15 @@ export class Slider extends Input {
      * Sets the maximum value and updates the DOM element's max attribute.
      *
      * @param value - The new maximum value.
+     *
+     * @returns This component, for method chaining.
      */
-    setMaxValue(value: number) {
+    setMaxValue(value: number): this {
         this.maxValue = value;
 
         this.setElementAttribute("max", value);
+
+        return this;
     }
 
     /**
@@ -136,11 +146,15 @@ export class Slider extends Input {
      * Sets the slider step increment and updates the DOM element's step attribute.
      *
      * @param value - The new step increment.
+     *
+     * @returns This component, for method chaining.
      */
-    setStep(value: number) {
+    setStep(value: number): this {
         this.step = value;
 
         this.setElementAttribute("step", value);
+
+        return this;
     }
 
     /**
@@ -156,20 +170,28 @@ export class Slider extends Input {
      * Sets the current slider value and updates the DOM element's value attribute.
      *
      * @param value - The new value, which should be within the min/max range.
+     *
+     * @returns This component, for method chaining.
      */
-    setValue(value: number) {
+    setValue(value: number): this {
         this.value = value;
 
         this.setElementAttribute("value", value);
+
+        return this;
     }
 
     /**
      * Registers a listener for the slider's 'input' event, fired on every value change.
      *
      * @param listener - The callback to invoke with each input event as the slider moves.
+     *
+     * @returns This component, for method chaining.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function): this {
         Event.addListener(this, "input", listener);
+
+        return this;
     }
 
     /**

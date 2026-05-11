@@ -119,7 +119,7 @@ export class Menu extends Component {
      * @param y - Vertical viewport coordinate (e.g. `MouseEvent.clientY`).
      * @param configs - Ordered list of item descriptors to render.
      */
-    show(x: number, y: number, configs: MenuItemConfig[]): void {
+    show(x: number, y: number, configs: MenuItemConfig[]): this {
         this.assertRebuildMode("show");
 
         for (const item of this._menuItems) {
@@ -172,6 +172,8 @@ export class Menu extends Component {
         this.setVisible(true);
 
         Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
+
+        return this;
     }
 
     /**
@@ -179,13 +181,15 @@ export class Menu extends Component {
      *
      * The instance remains alive and can be shown again by calling `show()`.
      */
-    hide(): void {
+    hide(): this {
         this.assertRebuildMode("hide");
 
         this.setVisible(false);
         this.removeElement();
 
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
+
+        return this;
     }
 
     /**
@@ -193,10 +197,12 @@ export class Menu extends Component {
      *
      * @param width - Width in pixels. Defaults to 180.
      */
-    setMenuWidth(width: number): void {
+    setMenuWidth(width: number): this {
         this.assertRebuildMode("setMenuWidth");
 
         this._menuWidth = width;
+
+        return this;
     }
 
     /**
@@ -207,7 +213,7 @@ export class Menu extends Component {
      * @param anchorEl - The `HTMLElement` of the triggering button or menu item.
      * @param parentPanel - When set, positions the panel as a submenu of this parent.
      */
-    open(anchorEl: HTMLElement, parentPanel?: Menu): void {
+    open(anchorEl: HTMLElement, parentPanel?: Menu): this {
         this.assertPersistentMode("open");
 
         const totalHeight = this.getPreferredSize()?.height ?? (this._menuItems.length * MenuItem.HEIGHT + 8);
@@ -271,13 +277,15 @@ export class Menu extends Component {
         this.doLayout();
 
         Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
+
+        return this;
     }
 
     /**
      * Closes this panel and any open child submenus. Detaches from the DOM.
      * **Persistent-mode only.**
      */
-    close(): void {
+    close(): this {
         this.assertPersistentMode("close");
 
         if (this._openSubmenuPanel) {
@@ -292,6 +300,8 @@ export class Menu extends Component {
         this.removeElement();
 
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
+
+        return this;
     }
 
     /**
@@ -300,17 +310,19 @@ export class Menu extends Component {
      *
      * @param index - Zero-based item index, or `-1` to clear.
      */
-    focusItem(index: number): void {
+    focusItem(index: number): this {
         this.assertPersistentMode("focusItem");
 
         this.setFocusedIndex(index);
+
+        return this;
     }
 
     /**
      * Moves focus to the next focusable item, wrapping around and skipping separators.
      * **Persistent-mode only.**
      */
-    focusNext(): void {
+    focusNext(): this {
         this.assertPersistentMode("focusNext");
 
         let next = this._focusedIndex + 1;
@@ -328,13 +340,15 @@ export class Menu extends Component {
         }
 
         this.setFocusedIndex(next);
+
+        return this;
     }
 
     /**
      * Moves focus to the previous focusable item, wrapping around and skipping separators.
      * **Persistent-mode only.**
      */
-    focusPrev(): void {
+    focusPrev(): this {
         this.assertPersistentMode("focusPrev");
 
         let prev = this._focusedIndex - 1;
@@ -352,6 +366,8 @@ export class Menu extends Component {
         }
 
         this.setFocusedIndex(prev);
+
+        return this;
     }
 
     /**
@@ -393,10 +409,12 @@ export class Menu extends Component {
      *
      * @param el - The element to exclude, or `null` to clear.
      */
-    setExcludedElement(el: HTMLElement | null): void {
+    setExcludedElement(el: HTMLElement | null): this {
         this.assertPersistentMode("setExcludedElement");
 
         this._excludedEl = el;
+
+        return this;
     }
 
     /**

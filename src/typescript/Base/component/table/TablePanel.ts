@@ -115,8 +115,10 @@ export class TablePanel extends Panel {
      *
      * @param enabled - When true the export items are appended to the menu.
      */
-    setExportMenuEnabled(enabled: boolean): void {
+    setExportMenuEnabled(enabled: boolean): this {
         this.table.setExportMenuEnabled(enabled);
+
+        return this;
     }
 
     /**
@@ -146,7 +148,7 @@ export class TablePanel extends Panel {
      * Any previously attached bar is removed and disposed before the new one
      * is installed, so its store listeners do not leak.
      */
-    setPaginationBar(bar: PaginationBar): void {
+    setPaginationBar(bar: PaginationBar): this {
         if (this.paginationBar) {
             this.removeComponent(this.paginationBar);
             this.paginationBar.dispose();
@@ -154,6 +156,8 @@ export class TablePanel extends Panel {
 
         this.paginationBar = bar;
         super.addComponent(bar, { placement: Placement.SOUTH });
+
+        return this;
     }
 
     /**

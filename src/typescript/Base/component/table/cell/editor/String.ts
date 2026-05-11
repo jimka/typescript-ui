@@ -56,15 +56,21 @@ export class StringEditor extends CellEditor<String> {
      *
      * @param value - The string value to set in the text field.
      */
-    setValue(value: String) {
+    setValue(value: String) : this {
         this.textField.setText(value || "");
+
+        return this;
     }
 
     /**
      * Focuses the text field and selects all its content.
+     *
+     * @returns This component, for method chaining.
      */
-    focus() {
+    focus(): this {
         this.textField.focus();
         this.textField.select();
+
+        return this;
     }
 }

@@ -65,7 +65,7 @@ export class Header extends Panel {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: HeaderOptions): void {
+    protected applyOptions(options: HeaderOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -119,6 +119,8 @@ export class Header extends Panel {
         if (options.textOverflow !== undefined) {
             this.text.setTextOverflow(options.textOverflow);
         }
+
+        return this;
     }
 
     /**

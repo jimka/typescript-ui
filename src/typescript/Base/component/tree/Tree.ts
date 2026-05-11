@@ -89,7 +89,7 @@ export class Tree extends Component {
      *
      * @param nodes - The new array of root {@link TreeNode} objects.
      */
-    setNodes(nodes: TreeNode[]): void {
+    setNodes(nodes: TreeNode[]): this {
         this._nodes = nodes;
         this._expandedNodes.clear();
         this._selectedNodes.clear();
@@ -102,6 +102,8 @@ export class Tree extends Component {
             this._invalidateGeom();
             this._renderWindow();
         }
+
+        return this;
     }
 
     private _invalidateGeom(): void {
@@ -293,8 +295,10 @@ export class Tree extends Component {
      *
      * @param y - The new scroll position in pixels.
      */
-    setScrollY(y: number): void {
+    setScrollY(y: number): this {
         this._scroller?.setScrollY(y);
+
+        return this;
     }
 
     /**
@@ -303,8 +307,10 @@ export class Tree extends Component {
      *
      * @param x - The new scroll position in pixels.
      */
-    setScrollX(x: number): void {
+    setScrollX(x: number): this {
         this._scroller?.setScrollX(x);
+
+        return this;
     }
 
     /**
@@ -727,12 +733,12 @@ export class Tree extends Component {
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
-    protected init(element?: HTMLElement): void {
+    protected init(element?: HTMLElement): this {
         super.init(element);
 
         const el = element || this.getElement();
         if (!el) {
-            return;
+            return this;
         }
 
         this._scroller = new VirtualScroller(this, el, () => this._renderWindow());
@@ -746,21 +752,27 @@ export class Tree extends Component {
         });
 
         this._renderWindow();
+
+        return this;
     }
 
     /**
      * Calls the layout manager and then refreshes the virtual-scroll viewport.
      *
+     * @returns This component, for method chaining.
+     *
      * @remarks
      * Overrides {@link Component.doLayout} so that layout-manager-driven size changes
      * (e.g. from a parent Tab or Split) automatically update the rendered row window.
      */
-    doLayout(): void {
+    doLayout(): this {
         if (this.isLayoutPaused()) {
-            return;
+            return this;
         }
 
         super.doLayout();
         this._renderWindow();
+
+        return this;
     }
 }

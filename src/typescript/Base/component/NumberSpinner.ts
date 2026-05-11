@@ -117,7 +117,7 @@ export class NumberSpinner extends Component implements Bindable<number> {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: NumberSpinnerOptions): void {
+    protected applyOptions(options: NumberSpinnerOptions): this {
         super.applyOptions(options);
 
         if (options.min !== undefined) {
@@ -143,6 +143,8 @@ export class NumberSpinner extends Component implements Bindable<number> {
         if (options.enabled !== undefined) {
             this.setEnabled(options.enabled);
         }
+
+        return this;
     }
 
     /**
@@ -181,8 +183,10 @@ export class NumberSpinner extends Component implements Bindable<number> {
      * @remarks Used by the {@link Bindable} interface; does not fire listeners so that
      * binding write-backs do not trigger feedback loops.
      */
-    setValue(n: number): void {
+    setValue(n: number): this {
         this._setValueSilent(n);
+
+        return this;
     }
 
     /**
@@ -199,10 +203,12 @@ export class NumberSpinner extends Component implements Bindable<number> {
      *
      * @param n - The new minimum value. Pass `-Infinity` to remove the lower bound.
      */
-    setMin(n: number): void {
+    setMin(n: number): this {
         this.min = n;
 
         this.getAria().setValueMin(isFinite(n) ? n : null);
+
+        return this;
     }
 
     /**
@@ -219,10 +225,12 @@ export class NumberSpinner extends Component implements Bindable<number> {
      *
      * @param n - The new maximum value. Pass `Infinity` to remove the upper bound.
      */
-    setMax(n: number): void {
+    setMax(n: number): this {
         this.max = n;
 
         this.getAria().setValueMax(isFinite(n) ? n : null);
+
+        return this;
     }
 
     /**
@@ -239,8 +247,10 @@ export class NumberSpinner extends Component implements Bindable<number> {
      *
      * @param n - The new step value.
      */
-    setStep(n: number): void {
+    setStep(n: number): this {
         this.step = n;
+
+        return this;
     }
 
     /**
@@ -257,10 +267,12 @@ export class NumberSpinner extends Component implements Bindable<number> {
      *
      * @param decimals - The number of decimal places, or `null` to derive from `step`.
      */
-    setPrecision(decimals: number | null): void {
+    setPrecision(decimals: number | null): this {
         this.precision = decimals;
 
         this.input.setText(this.formatValue(this.value));
+
+        return this;
     }
 
     /**
@@ -278,7 +290,7 @@ export class NumberSpinner extends Component implements Bindable<number> {
      *
      * @param enabled - `true` to enable, `false` to disable.
      */
-    setEnabled(enabled: boolean): void {
+    setEnabled(enabled: boolean): this {
         this._enabled = enabled;
 
         if (enabled) {
@@ -292,6 +304,8 @@ export class NumberSpinner extends Component implements Bindable<number> {
             this.downBtn.setPointerEvents("none");
             this.setOpacity(0.5);
         }
+
+        return this;
     }
 
     /**

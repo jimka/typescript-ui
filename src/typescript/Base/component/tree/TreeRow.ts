@@ -90,7 +90,7 @@ export class TreeRow extends Component {
      * @param siblingCount - Total number of siblings at this level under the same parent.
      * @param posInSet - 1-based position of this node among its siblings.
      */
-    setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number): void {
+    setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number): this {
         this._node = node;
         this._depth = depth;
 
@@ -104,6 +104,8 @@ export class TreeRow extends Component {
         this.getAria().setExpanded(hasChildren ? expanded : null);
         this.getAria().setSetSize(siblingCount);
         this.getAria().setPosInSet(posInSet);
+
+        return this;
     }
 
     /**
@@ -156,15 +158,17 @@ export class TreeRow extends Component {
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
-    protected init(element?: HTMLElement): void {
+    protected init(element?: HTMLElement): this {
         super.init(element);
 
         const el = element || this.getElement();
         if (!el) {
-            return;
+            return this;
         }
 
         el.appendChild(this._toggle.getElement(true));
         el.appendChild(this._nodeLabel.getElement(true));
+
+        return this;
     }
 }

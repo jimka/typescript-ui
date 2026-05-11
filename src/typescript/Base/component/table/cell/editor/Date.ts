@@ -23,9 +23,11 @@ export class DateEditor extends CellEditor<Date | null> {
         this.setOutline('none');
     }
 
-    applyStyle(element: HTMLElement) {
+    applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
         element.setAttribute('type', 'date');
+
+        return this;
     }
 
     isEmpty(): boolean {
@@ -44,9 +46,11 @@ export class DateEditor extends CellEditor<Date | null> {
         return isNaN(d.getTime()) ? null : d;
     }
 
-    setValue(value: Date | null): void {
+    setValue(value: Date | null): this {
         const el = this.getElement() as HTMLInputElement | null;
         if (el) el.value = value ? this.toInputString(value) : "";
+
+        return this;
     }
 
     private toInputString(date: Date): string {

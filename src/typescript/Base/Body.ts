@@ -51,8 +51,10 @@ export class Body extends Component {
 
     /**
      * Initializes the body size from the viewport and registers a resize listener to keep it in sync.
+     *
+     * @returns This component, for method chaining.
      */
-    protected init() {
+    protected init(): this {
         super.init();
 
         let viewportSize = Util.getViewportSize();
@@ -64,5 +66,7 @@ export class Body extends Component {
         Event.addViewportResizeListener(function (size: Size) {
             me.setSize(size);
         });
+
+        return this;
     }
 }

@@ -59,9 +59,11 @@ export class Row extends LayoutManager {
      *
      * @param gap - Gap size in pixels.
      */
-    setGap(gap : number) {
+    setGap(gap : number) : this {
         this.gap = gap;
         this.doLayout();
+
+        return this;
     }
 
     /**

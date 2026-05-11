@@ -42,7 +42,7 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: AbstractListOptions<U>): void {
+    protected applyOptions(options: AbstractListOptions<U>): this {
         super.applyOptions(options);
 
         if (options.itemStyle !== undefined) {
@@ -52,6 +52,8 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
         if (options.selectedIndex !== undefined) {
             this.setSelectedIndex(options.selectedIndex, false);
         }
+
+        return this;
     }
 
     /**
@@ -68,9 +70,11 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      *
      * @param style - The list item style enum value to apply.
      */
-    setStyle(style: U) {
+    setStyle(style: U) : this {
         this.style = style;
         this.setElementCSSRule("list-style-type", style);
+
+        return this;
     }
 
     /**
@@ -78,8 +82,10 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      *
      * @param listener - The callback to invoke when the selection changes.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function) : this {
         Event.addListener(this, "change", listener);
+
+        return this;
     }
 
     /**
@@ -108,10 +114,10 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      * @param idx - The zero-based index to select.
      * @param fireEvent - Optional. When true (default), fires the 'change' event after updating.
      */
-    setSelectedIndex(idx: number, fireEvent = true) {
+    setSelectedIndex(idx: number, fireEvent = true) : this {
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.selectedIndex = idx;
@@ -119,6 +125,8 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
         if (!!fireEvent) {
             Event.fireEvent(this, "change");
         }
+
+        return this;
     }
 
     /**
@@ -138,8 +146,10 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      * @param component - The ListItem to add.
      * @param constraints - Optional. Layout constraints for the item.
      */
-    addComponent(component: ListItem, constraints?: LayoutConstraints) {
+    addComponent(component: ListItem, constraints?: LayoutConstraints): this {
         super.addComponent(component, constraints);
+
+        return this;
     }
 
     /**

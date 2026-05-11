@@ -64,7 +64,7 @@ export class ButtonGroup {
      * For `ToggleButton` instances, the button is added to the roving tabindex group if a container has been set.
      * @param button - The button to add to the group.
      */
-    addButton(button: RadioButton | ToggleButton): void {
+    addButton(button: RadioButton | ToggleButton): this {
         this.buttons.push(button);
 
         button.addActionListener(() => {
@@ -76,6 +76,8 @@ export class ButtonGroup {
         } else if (button instanceof ToggleButton && this._rovingTabIndex !== null) {
             this._rovingTabIndex.add(button);
         }
+
+        return this;
     }
 
     /**
@@ -83,11 +85,11 @@ export class ButtonGroup {
      *
      * @param button - The button to remove.
      */
-    removeButton(button: RadioButton | ToggleButton): void {
+    removeButton(button: RadioButton | ToggleButton): this {
         let idx = this.buttons.indexOf(button);
 
         if (idx < 0) {
-            return;
+            return this;
         }
 
         this.buttons.splice(idx, 1);
@@ -95,6 +97,8 @@ export class ButtonGroup {
         if (button instanceof ToggleButton && this._rovingTabIndex !== null) {
             this._rovingTabIndex.remove(button);
         }
+
+        return this;
     }
 
     /**
@@ -104,7 +108,7 @@ export class ButtonGroup {
      * Also initialises the {@link RovingTabIndex} and adds any already-registered `ToggleButton` members to it.
      * @param container - The component that wraps the toggle buttons and should receive key events.
      */
-    setContainer(container: Component): void {
+    setContainer(container: Component): this {
         this._rovingTabIndex = new RovingTabIndex();
 
         for (const button of this.buttons) {
@@ -122,5 +126,7 @@ export class ButtonGroup {
                 this._rovingTabIndex!.movePrev();
             }
         });
+
+        return this;
     }
 }

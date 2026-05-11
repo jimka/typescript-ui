@@ -65,9 +65,11 @@ export class Column extends LayoutManager {
      *
      * @param gap - Gap size in pixels.
      */
-    setGap(gap : number) {
+    setGap(gap : number) : this {
         this.gap = gap;
         this.doLayout();
+
+        return this;
     }
 
     /**
@@ -85,8 +87,10 @@ export class Column extends LayoutManager {
      *
      * @param stretching - Pass `false` to enable baseline alignment instead of stretching.
      */
-    setStretching(stretching: boolean): void {
+    setStretching(stretching: boolean): this {
         this.stretching = stretching;
+
+        return this;
     }
 
     /**

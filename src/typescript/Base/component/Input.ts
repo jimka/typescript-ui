@@ -38,12 +38,14 @@ export class Input extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: InputOptions): void {
+    protected applyOptions(options: InputOptions): this {
         super.applyOptions(options);
 
         if (options.name !== undefined) {
             this.setElementAttribute("name", options.name);
         }
+
+        return this;
     }
 
     /**
@@ -62,12 +64,14 @@ export class Input extends Component {
      *
      * @param element - The HTMLElement to apply styles to.
      */
-    applyStyle(element: HTMLElement) {
+    applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
 
         let rule = this.getCSSRule();
         rule.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
         rule.style.fontSize   = "var(--ts-ui-font-size, 12px)";
+
+        return this;
     }
 
     /**

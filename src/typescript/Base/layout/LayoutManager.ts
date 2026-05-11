@@ -55,15 +55,19 @@ export abstract class LayoutManager extends BaseObject {
      *
      * @param container - The container component to attach to.
      */
-    attach(container: Component) {
+    attach(container: Component) : this {
         this.container = container;
+
+        return this;
     }
 
     /**
      * Dissociates this layout manager from its container.
      */
-    detach() {
+    detach() : this {
         this.container = null;
+
+        return this;
     }
 
     /**

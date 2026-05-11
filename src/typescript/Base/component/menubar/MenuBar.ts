@@ -121,7 +121,7 @@ export class MenuBar extends Component {
      *
      * @param menus - Ordered list of top-level menu descriptors.
      */
-    setMenus(menus: MenuConfig[]): void {
+    setMenus(menus: MenuConfig[]): this {
         if (this._openIndex >= 0) {
             this.closeMenu();
         }
@@ -165,6 +165,8 @@ export class MenuBar extends Component {
             this._panels.push(panel);
             this.addComponent(button);
         }
+
+        return this;
     }
 
     /**
@@ -172,13 +174,13 @@ export class MenuBar extends Component {
      *
      * @param index - Zero-based index into the menus array.
      */
-    openMenu(index: number): void {
+    openMenu(index: number): this {
         if (index < 0 || index >= this._panels.length) {
-            return;
+            return this;
         }
 
         if (index === this._openIndex) {
-            return;
+            return this;
         }
 
         if (this._openIndex >= 0) {
@@ -197,14 +199,16 @@ export class MenuBar extends Component {
             this._keydownListening = true;
             Event.addViewportListener(this, "keydown", this._onKeyDown);
         }
+
+        return this;
     }
 
     /**
      * Closes the currently open menu, if any.
      */
-    closeMenu(): void {
+    closeMenu(): this {
         if (this._openIndex < 0) {
-            return;
+            return this;
         }
 
         this._panels[this._openIndex].close();
@@ -217,6 +221,8 @@ export class MenuBar extends Component {
             this._keydownListening = false;
             Event.removeViewportListener(this, "keydown", this._onKeyDown);
         }
+
+        return this;
     }
 
     /**

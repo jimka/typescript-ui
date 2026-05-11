@@ -120,8 +120,10 @@ class DialogTitleBar extends Component {
 
     /**
      * Positions the title label and close button within the title bar bounds.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         super.doLayout();
 
         const w          = this.getWidth();
@@ -140,6 +142,8 @@ class DialogTitleBar extends Component {
         this.closeIcon.setY(centerY);
         this.closeIcon.setWidth(CLOSE_SIZE);
         this.closeIcon.setHeight(CLOSE_SIZE);
+
+        return this;
     }
 }
 
@@ -187,8 +191,10 @@ class DialogButtonRow extends Component {
 
     /**
      * Positions buttons right-aligned within the footer row.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         super.doLayout();
 
         const w         = this.getWidth();
@@ -207,6 +213,8 @@ class DialogButtonRow extends Component {
 
             x += BUTTON_WIDTH + BUTTON_GAP;
         }
+
+        return this;
     }
 }
 
@@ -468,7 +476,7 @@ export class Dialog extends Component {
      *
      * @param result - The result to resolve the promise with.
      */
-    hide(result: DialogResult): void {
+    hide(result: DialogResult): this {
         document.removeEventListener('keydown', this.boundKeyHandler, true);
         window.removeEventListener('resize', this.boundResizeHandler);
 
@@ -486,6 +494,8 @@ export class Dialog extends Component {
             this.resolvePromise(result);
             this.resolvePromise = null;
         }
+
+        return this;
     }
 
     /**
