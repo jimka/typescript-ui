@@ -2,7 +2,6 @@
 
 import { CellRenderer } from "./CellRenderer.js";
 import { Text } from "../../../Text.js";
-import { AnchorType } from "../../../../layout/AnchorType.js";
 
 /**
  * A read-only renderer for numeric cell values.
@@ -21,10 +20,9 @@ export class NumberRenderer extends CellRenderer<Number> {
         this.text.setPointerEvents("none");
         this.text.setTextAlign("right");
         this.text.setText("");
+        this.text.setAutoMeasure(false);
 
-        this.addComponent(this.text, {
-            anchor: AnchorType.NORTHEAST
-        });
+        this.addComponent(this.text);
     }
 
     /**

@@ -6,6 +6,7 @@ import { ModelRecord } from "../../data/ModelRecord.js";
 import { Row } from "./Row.js";
 import { Cell } from "./cell/Cell.js";
 import { Event } from "../../Event.js";
+import { VirtualScroller } from "../VirtualScroller.js";
 import { ThemeManager } from "../../Theme.js";
 import type { ColumnConfig } from "./ColumnConfig.js";
 
@@ -33,15 +34,9 @@ function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
  * hasn't changed (e.g. during a pure resize) the call is skipped, avoiding the
  * text-measurement reflow inside `setText()`.
  *
- * `renderWindow()` is the single entry point for both layout-manager-driven
- * updates (resize) and scroll-event-driven updates. The `layoutInProgress` flag
- * suppresses the spurious scroll event that the browser fires when the body
- * height changes during layout.
- *
- * Known limitation: the browser's GPU compositor scrolls content visually
- * before the JS scroll event reaches the main thread, causing a one-frame
- * flicker during fast scrolling. Eliminating it would require a transform-based
- * positioning strategy rather than `position: absolute; top: dataIndex * ROW_HEIGHT`.
+ * Scrolling is delegated to a {@link VirtualScroller} that owns the
+ * rows-container transform, two custom scrollbar overlays, and the wheel/touch
+ * handlers with fling momentum.
  *
  * Re-exported as `TableBody` from the package barrel.
  *
@@ -56,11 +51,12 @@ export class Body extends Component {
     private boundIndices    : number[]                  = [];
     private rowGeom         : Array<{ ty: number, w: number, h: number } | null> = [];
     private cellGeom        : Array<Array<{ x: number, w: number, h: number } | null>> = [];
-    private phantom         : HTMLElement | null        = null;
+    private rowDisplayed    : boolean[]                 = [];
+    private scroller        : VirtualScroller | null    = null;
     private lastBodyWidth   : number                    = 0;
     private lastColumnWidths: number[]                  = [];
+    private lastAriaRowCount: number                    = -1;
     private rowHeight       : number;
-    private layoutInProgress: boolean                   = false;
     private storeRefresh    : (() => void) | null       = null;
     private selectedRecords : Set<ModelRecord>          = new Set();
     private anchorRecord    : ModelRecord | null        = null;
@@ -69,7 +65,7 @@ export class Body extends Component {
     constructor(store: AbstractStore) {
         super({ tag: "tbody" });
 
-        this.setOverflow("auto");
+        this.setOverflow("hidden");
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
         this.getAria().setTabIndex(0);
         this.getAria().setRole("rowgroup");
@@ -157,14 +153,14 @@ export class Body extends Component {
      * Removes all pooled row elements from the DOM and resets the pool arrays.
      */
     private clearRowPool(): void {
-        const el = this.getElement();
+        const container = this.scroller ? this.scroller.getRowsContainer() : null;
 
-        if (el) {
+        if (container) {
             for (const row of this.rowPool) {
                 const rowEl = row.getElement();
 
-                if (rowEl?.parentNode === el) {
-                    el.removeChild(rowEl);
+                if (rowEl?.parentNode === container) {
+                    container.removeChild(rowEl);
                 }
             }
         }
@@ -173,6 +169,8 @@ export class Body extends Component {
         this.boundIndices = [];
         this.rowGeom = [];
         this.cellGeom = [];
+        this.rowDisplayed = [];
+        this.lastAriaRowCount = -1;
     }
 
     /**
@@ -200,7 +198,8 @@ export class Body extends Component {
     }
 
     /**
-     * Initializes the body element, creates the phantom height div, and attaches the scroll listener.
+     * Initializes the body element, constructs the {@link VirtualScroller}, and
+     * wires keyboard and focus listeners.
      *
      * @param element - Optional. The HTMLElement to initialize with; falls back to `getElement()`.
      */
@@ -212,20 +211,7 @@ export class Body extends Component {
             return;
         }
 
-        const records = this.store.getRecords();
-
-        this.phantom = document.createElement("div");
-        this.phantom.style.position = "absolute";
-        this.phantom.style.top = "0";
-        this.phantom.style.width = "1px";
-        this.phantom.style.height = records.length * this.rowHeight + "px";
-
-        el.appendChild(this.phantom);
-
-        Event.addListener(this, "scroll", () => {
-            if (this.layoutInProgress) return;
-            this.renderWindow();
-        });
+        this.scroller = new VirtualScroller(this, el, () => this.renderWindow());
 
         Event.addListener(this, "focus", () => {
             this._updateActiveDescendant();
@@ -238,48 +224,161 @@ export class Body extends Component {
     }
 
     /**
+     * Sets the JS-controlled vertical scroll position. Delegates to the
+     * underlying {@link VirtualScroller}.
+     *
+     * @param y - The new scroll position in pixels.
+     */
+    setScrollY(y: number): void {
+        this.scroller?.setScrollY(y);
+    }
+
+    /**
+     * Sets the JS-controlled horizontal scroll position. Delegates to the
+     * underlying {@link VirtualScroller}.
+     *
+     * @param x - The new scroll position in pixels.
+     */
+    setScrollX(x: number): void {
+        this.scroller?.setScrollX(x);
+    }
+
+    /**
      * Recomputes the visible row window, rebinds changed rows from the pool, and hides excess rows.
      *
      * @param bodyWidth - Optional. The total body width in pixels; cached and reused on scroll updates.
      * @param columnWidths - Optional. The per-column widths in pixels; derived from bodyWidth when omitted.
-     *
-     * @remarks When called with width arguments (layout pass) the `layoutInProgress` flag is set to
-     * suppress the spurious scroll event the browser fires when the phantom element's height changes.
      */
     renderWindow(bodyWidth?: number, columnWidths?: number[]) {
         const element = this.getElement();
-        if (!element) {
+        if (!element || !this.scroller) {
             return;
         }
 
-        const rowHeight = this.rowHeight;
-        const records = this.store.getRecords();
+        const scroller = this.scroller;
+        const records   = this.store.getRecords();
         const totalRows = records.length;
 
-        const scrollTop = element.scrollTop;
+        this.updateColumnWidthCache(bodyWidth, columnWidths);
+
+        // Loose-clamp scroll positions against the new content sizes before
+        // reading them for the window calc.
+        const totalHeight       = totalRows * this.rowHeight;
+        const totalColumnWidth  = this.lastColumnWidths.reduce((s, w) => s + w, 0);
+        const totalContentWidth = Math.max(this.lastBodyWidth, totalColumnWidth);
+
+        scroller.clampToContent(totalContentWidth, totalHeight);
+
         const visibleHeight = this.getHeight() || 0;
-        const firstRow = Math.max(0, Math.floor(scrollTop / rowHeight) - SCROLL_BUFFER);
-        const lastRow = Math.min(
+        const win = this.computeVisibleWindow(scroller.getScrollY(), visibleHeight, totalRows);
+
+        const poolTarget = this.computePoolTarget(win.windowSize, visibleHeight, totalRows);
+        this.growRowPool(poolTarget);
+
+        const rowWidth   = Math.max(this.lastBodyWidth, totalColumnWidth);
+        const fieldCount = this.store.model.getFields()
+                               .filter(f => !this.hiddenColumns.has(f.getName()))
+                               .length;
+        const fallback   = fieldCount > 0 ? rowWidth / fieldCount : rowWidth;
+
+        this.bindAndPositionRows(win.firstRow, win.windowSize, rowWidth, fallback, records);
+        this.hideExcessPoolRows(win.windowSize);
+
+        if (totalRows !== this.lastAriaRowCount) {
+            this.getAria().setRowCount(totalRows);
+            this.lastAriaRowCount = totalRows;
+        }
+
+        scroller.layoutScrollbars(totalContentWidth, totalHeight);
+
+        this._updateFocusStyle();
+    }
+
+    /**
+     * Caches incoming bodyWidth / columnWidths from a layout-driven call and
+     * invalidates the per-row geometry cache when either changes.
+     *
+     * @param bodyWidth - The new body width in pixels, or undefined to leave the cache untouched.
+     * @param columnWidths - The new per-column widths in pixels.
+     */
+    private updateColumnWidthCache(bodyWidth?: number, columnWidths?: number[]): void {
+        if (bodyWidth === undefined) {
+            return;
+        }
+
+        const widthsChanged = this.lastBodyWidth !== bodyWidth
+            || !columnWidthsEqual(this.lastColumnWidths, columnWidths);
+
+        this.lastBodyWidth = bodyWidth;
+        this.lastColumnWidths = columnWidths ?? [];
+
+        if (widthsChanged) {
+            this.invalidateGeom();
+        }
+    }
+
+    /**
+     * Computes the `[firstRow, lastRow]` data-index window visible in the
+     * current viewport, padded by `SCROLL_BUFFER` on each side and clamped to
+     * the dataset bounds.
+     *
+     * @param scrollY - The current scroll offset in pixels.
+     * @param visibleHeight - The viewport height in pixels.
+     * @param totalRows - The total number of records in the store.
+     * @returns The `firstRow` / `lastRow` data indices and the number of rows in the window.
+     */
+    private computeVisibleWindow(scrollY: number, visibleHeight: number, totalRows: number): { firstRow: number, lastRow: number, windowSize: number } {
+        const rowHeight = this.rowHeight;
+        const firstRow  = Math.max(0, Math.floor(scrollY / rowHeight) - SCROLL_BUFFER);
+        const lastRow   = Math.min(
             totalRows - 1,
-            Math.ceil((scrollTop + visibleHeight) / rowHeight) + SCROLL_BUFFER
+            Math.ceil((scrollY + visibleHeight) / rowHeight) + SCROLL_BUFFER
         );
         const windowSize = lastRow - firstRow + 1 > 0 ? lastRow - firstRow + 1 : 0;
 
-        if (bodyWidth !== undefined) {
-            const widthsChanged = this.lastBodyWidth !== bodyWidth
-                || !columnWidthsEqual(this.lastColumnWidths, columnWidths);
+        return { firstRow, lastRow, windowSize };
+    }
 
-            this.lastBodyWidth = bodyWidth;
-            this.lastColumnWidths = columnWidths ?? [];
-            this.layoutInProgress = true;
+    /**
+     * Computes the row-pool target size: the max possible window for the
+     * current viewport, not just the current windowSize. windowSize shrinks
+     * near the top/bottom edges of the dataset because firstRow clamps to 0
+     * (and lastRow to totalRows-1); growing only to windowSize would force
+     * regrowth mid-scroll once the user passes a viewport-edge boundary,
+     * paying per-row first-time `cell.doLayout` cost then. Pre-growing pays
+     * that cost once.
+     *
+     * @param windowSize - The current visible-window size.
+     * @param visibleHeight - The viewport height in pixels.
+     * @param totalRows - The total number of records in the store.
+     * @returns The pool target size.
+     */
+    private computePoolTarget(windowSize: number, visibleHeight: number, totalRows: number): number {
+        return Math.min(
+            totalRows,
+            Math.max(
+                windowSize,
+                Math.ceil(visibleHeight / this.rowHeight) + 2 * SCROLL_BUFFER + 2
+            )
+        );
+    }
 
-            if (widthsChanged) {
-                this.invalidateGeom();
-            }
+    /**
+     * Grows the row pool up to `poolTarget`, batching new row elements through
+     * a {@link DocumentFragment} so the live rows container sees a single
+     * append instead of N.
+     *
+     * @param poolTarget - The target pool size.
+     */
+    private growRowPool(poolTarget: number): void {
+        if (!this.scroller || this.rowPool.length >= poolTarget) {
+            return;
         }
 
-        // Grow pool if needed
-        while (this.rowPool.length < windowSize) {
+        const rowsContainer = this.scroller.getRowsContainer();
+        const growFragment  = document.createDocumentFragment();
+
+        while (this.rowPool.length < poolTarget) {
             const row = new Row(
                 this.store.model,
                 undefined,
@@ -289,7 +388,7 @@ export class Body extends Component {
             );
             const rowEl = row.getElement(true);
 
-            element.appendChild(rowEl);
+            growFragment.appendChild(rowEl);
 
             rowEl.addEventListener('click', (e: MouseEvent) => this.onRowClick(row, e));
 
@@ -301,15 +400,27 @@ export class Body extends Component {
             this.boundIndices.push(-1);
             this.rowGeom.push(null);
             this.cellGeom.push([]);
+            this.rowDisplayed.push(false);
         }
 
-        const totalColumnWidth = this.lastColumnWidths.reduce((s, w) => s + w, 0);
-        const rowWidth = Math.max(this.lastBodyWidth, totalColumnWidth);
-        const fieldCount = this.store.model.getFields()
-            .filter(f => !this.hiddenColumns.has(f.getName())).length;
-        const fallback = fieldCount > 0 ? rowWidth / fieldCount : rowWidth;
+        rowsContainer.appendChild(growFragment);
+    }
 
-        // Bind and position visible rows
+    /**
+     * Binds visible pool slots to their data records and positions each row +
+     * its cells. Skips data rebind when the slot's bound index hasn't changed;
+     * skips geometry writes when the row geometry hasn't changed; skips cell
+     * layout when the cell geometry hasn't changed.
+     *
+     * @param firstRow - The first data index covered by the visible window.
+     * @param windowSize - The number of rows in the window.
+     * @param rowWidth - The horizontal extent of each row in pixels.
+     * @param fallback - Fallback column width for fields without an explicit width.
+     * @param records - The current store records (passed in so this helper doesn't re-query).
+     */
+    private bindAndPositionRows(firstRow: number, windowSize: number, rowWidth: number, fallback: number, records: ModelRecord[]): void {
+        const rowHeight = this.rowHeight;
+
         for (let i = 0; i < windowSize; i++) {
             const row = this.rowPool[i];
             const dataIndex = firstRow + i;
@@ -320,9 +431,8 @@ export class Body extends Component {
 
                 this.boundIndices[i] = dataIndex;
                 this.updateRowVisualState(i);
+                row.getAria().setRowIndex(dataIndex + 2);
             }
-
-            row.getAria().setRowIndex(dataIndex + 2);
 
             const targetY = dataIndex * rowHeight;
             const prev = this.rowGeom[i];
@@ -335,7 +445,10 @@ export class Body extends Component {
                 row.setAutoCommitStyle(true);
                 this.rowGeom[i] = { ty: targetY, w: rowWidth, h: rowHeight };
             }
-            row.setDisplayed(true);
+            if (!this.rowDisplayed[i]) {
+                row.setDisplayed(true);
+                this.rowDisplayed[i] = true;
+            }
 
             const cells = row.getComponents();
             const cellRow = this.cellGeom[i];
@@ -355,33 +468,36 @@ export class Body extends Component {
                     cell.setHeight(rowHeight);
                     cell.setAutoCommitStyle(true);
                     cellRow[ci] = { x: x, w: colW, h: rowHeight };
-                }
-                cell.getAria().setColIndex(ci + 1);
-
-                if (wasRebound || cellChanged) {
+                    if (!prevCell) {
+                        cell.getAria().setColIndex(ci + 1);
+                    }
+                    // Geometry change requires a full layout pass so the
+                    // renderer/editor (Card-layout siblings) re-fit. Pure data
+                    // rebinds don't need this because renderers with
+                    // setAutoMeasure(false) don't resize on text changes.
                     cell.doLayout();
                 }
 
                 x += colW;
             }
         }
+    }
 
-        // Hide excess pool rows
+    /**
+     * Hides pool slots whose index falls outside the visible window and
+     * clears their cached binding so the next bind triggers a full rebuild.
+     *
+     * @param windowSize - The number of pool slots currently in use.
+     */
+    private hideExcessPoolRows(windowSize: number): void {
         for (let i = windowSize; i < this.rowPool.length; i++) {
-            this.rowPool[i].setDisplayed(false);
+            if (this.rowDisplayed[i]) {
+                this.rowPool[i].setDisplayed(false);
+                this.rowDisplayed[i] = false;
+            }
             this.boundIndices[i] = -1;
             this.rowGeom[i] = null;
         }
-
-        // Keep phantom height in sync
-        if (this.phantom) {
-            this.phantom.style.height = totalRows * rowHeight + "px";
-        }
-
-        this.getAria().setRowCount(totalRows);
-        this._updateFocusStyle();
-
-        this.layoutInProgress = false;
     }
 
     /**
@@ -500,13 +616,7 @@ export class Body extends Component {
             return;
         }
 
-        const el = this.getElement() as HTMLElement;
-
-        if (!el) {
-            return;
-        }
-
-        el.scrollTop = idx * this.rowHeight;
+        this.setScrollY(idx * this.rowHeight);
     }
 
     /**
@@ -732,21 +842,15 @@ export class Body extends Component {
     private scrollRecordIntoView(record: ModelRecord): void {
         const idx = this.store.getRecords().indexOf(record);
 
-        if (idx === -1) {
+        if (idx === -1 || !this.scroller) {
             return;
         }
 
-        const el = this.getElement() as HTMLElement;
-
-        if (!el) {
-            return;
-        }
-
-        const top = idx * this.rowHeight;
-        const bottom = top + this.rowHeight;
-        const scrollTop = el.scrollTop;
+        const top            = idx * this.rowHeight;
+        const bottom         = top + this.rowHeight;
+        const scrollTop      = this.scroller.getScrollY();
         const viewportHeight = this.getHeight();
-        const visibleBottom = scrollTop + viewportHeight;
+        const visibleBottom  = scrollTop + viewportHeight;
 
         let target = scrollTop;
         if (top < scrollTop) {
@@ -755,7 +859,7 @@ export class Body extends Component {
             target = bottom - viewportHeight;
         }
         if (target !== scrollTop) {
-            el.scrollTop = target;
+            this.setScrollY(target);
         }
     }
 }

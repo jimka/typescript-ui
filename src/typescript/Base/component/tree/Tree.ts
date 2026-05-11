@@ -2,6 +2,7 @@
 
 import { Component } from "../../Component.js";
 import { Event } from "../../Event.js";
+import { VirtualScroller } from "../VirtualScroller.js";
 import { TreeNode } from "./TreeNode.js";
 import { TreeRow } from "./TreeRow.js";
 
@@ -30,10 +31,14 @@ interface FlatRow {
 /**
  * A hierarchical data view with collapsible nodes and virtual scrolling.
  *
- * Pass root nodes via {@link Tree.setNodes}. The tree flattens the currently visible
- * subtree into a single scrollable list and recycles a fixed pool of internal
- * row components — rebinding rows only when their data index changes, mirroring
- * the approach used in `table/Body.ts`.
+ * Pass root nodes via {@link Tree.setNodes}. The tree flattens the currently
+ * visible subtree into a single scrollable list and recycles a fixed pool of
+ * internal row components — rebinding rows only when their data index changes,
+ * mirroring the approach used in `table/Body.ts`.
+ *
+ * Scrolling is delegated to a {@link VirtualScroller} that owns the
+ * rows-container transform, two custom scrollbar overlays, and the wheel/touch
+ * handlers with fling momentum.
  *
  * @example
  * ```typescript
@@ -52,24 +57,24 @@ interface FlatRow {
  */
 export class Tree extends Component {
 
-    private _nodes: TreeNode[] = [];
-    private _expandedNodes: Set<TreeNode> = new Set();
-    private _flatRows: FlatRow[] = [];
-    private _rowPool: TreeRow[] = [];
-    private _boundIndices: number[] = [];
-    private _rowGeom: Array<{ ty: number, w: number, h: number } | null> = [];
-    private _lastRowWidth: number = 0;
-    private _phantom: HTMLElement | null = null;
-    private _layoutInProgress: boolean = false;
-    private _selectedNodes: Set<TreeNode> = new Set();
-    private _anchorNode: TreeNode | null = null;
-    private _focusNode: TreeNode | null = null;
-    private _selectionListeners: Function[] = [];
+    private _nodes              : TreeNode[]                                              = [];
+    private _expandedNodes      : Set<TreeNode>                                           = new Set();
+    private _flatRows           : FlatRow[]                                               = [];
+    private _rowPool            : TreeRow[]                                               = [];
+    private _boundIndices       : number[]                                                = [];
+    private _rowGeom            : Array<{ ty: number, w: number, h: number } | null>      = [];
+    private _rowDisplayed       : boolean[]                                               = [];
+    private _lastRowWidth       : number                                                  = 0;
+    private _scroller           : VirtualScroller | null                                  = null;
+    private _selectedNodes      : Set<TreeNode>                                           = new Set();
+    private _anchorNode         : TreeNode | null                                         = null;
+    private _focusNode          : TreeNode | null                                         = null;
+    private _selectionListeners : Function[]                                              = [];
 
     constructor() {
         super();
 
-        this.setOverflow("auto");
+        this.setOverflow("hidden");
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
         this.setPreferredSize(200, 300);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
@@ -266,21 +271,40 @@ export class Tree extends Component {
      * @param index - Zero-based index into `_flatRows`.
      */
     private _scrollIntoView(index: number): void {
-        const el = this.getElement() as HTMLElement | undefined;
-        if (!el) {
+        if (!this._scroller) {
             return;
         }
 
-        const top = index * ROW_HEIGHT;
-        const bottom = top + ROW_HEIGHT;
-        const scrollTop = el.scrollTop;
+        const top           = index * ROW_HEIGHT;
+        const bottom        = top + ROW_HEIGHT;
+        const scrollTop     = this._scroller.getScrollY();
         const visibleBottom = scrollTop + this.getHeight();
 
         if (top < scrollTop) {
-            el.scrollTop = top;
+            this.setScrollY(top);
         } else if (bottom > visibleBottom) {
-            el.scrollTop = bottom - this.getHeight();
+            this.setScrollY(bottom - this.getHeight());
         }
+    }
+
+    /**
+     * Sets the JS-controlled vertical scroll position. Delegates to the
+     * underlying {@link VirtualScroller}.
+     *
+     * @param y - The new scroll position in pixels.
+     */
+    setScrollY(y: number): void {
+        this._scroller?.setScrollY(y);
+    }
+
+    /**
+     * Sets the JS-controlled horizontal scroll position. Delegates to the
+     * underlying {@link VirtualScroller}.
+     *
+     * @param x - The new scroll position in pixels.
+     */
+    setScrollX(x: number): void {
+        this._scroller?.setScrollX(x);
     }
 
     /**
@@ -488,34 +512,107 @@ export class Tree extends Component {
 
     /**
      * Recomputes the visible row window, rebinds changed pool slots, and hides excess rows.
-     *
-     * @remarks
-     * Sets `_layoutInProgress` during layout-driven calls to suppress the spurious scroll
-     * event the browser fires when the phantom element's height changes (same technique
-     * as `table/Body.ts`).
      */
     private _renderWindow(): void {
         const element = this.getElement();
-        if (!element) {
+        if (!element || !this._scroller) {
             return;
         }
+        const scroller = this._scroller;
 
-        const totalRows = this._flatRows.length;
-        const scrollTop = element.scrollTop;
+        const totalRows   = this._flatRows.length;
+        const totalHeight = totalRows * ROW_HEIGHT;
+
+        // Loose clamp using the last-known content width (the actual contentW
+        // for this frame is computed below from the first row-bind pass).
+        scroller.clampToContent(this._lastRowWidth, totalHeight);
+
         const visibleHeight = this.getHeight() || 0;
-        const firstRow = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - SCROLL_BUFFER);
-        const lastRow = Math.min(
+        const win = this._computeVisibleWindow(scroller.getScrollY(), visibleHeight, totalRows);
+
+        const poolTarget = this._computePoolTarget(win.windowSize, visibleHeight, totalRows);
+        this._growRowPool(poolTarget);
+
+        const { reboundFlags, maxContentWidth } =
+            this._bindAndMeasure(win.firstRow, win.windowSize);
+
+        const treeWidth = this.getWidth() || 0;
+        const rowWidth  = Math.max(treeWidth, maxContentWidth);
+        if (rowWidth !== this._lastRowWidth) {
+            this._lastRowWidth = rowWidth;
+            this._invalidateGeom();
+        }
+
+        this._positionRows(win.firstRow, win.windowSize, rowWidth, reboundFlags);
+        this._hideExcessPoolRows(win.windowSize);
+
+        this._updateSelectionStyle();
+
+        scroller.layoutScrollbars(rowWidth, totalHeight);
+    }
+
+    /**
+     * Computes the `[firstRow, lastRow]` data-index window visible in the
+     * current viewport, padded by `SCROLL_BUFFER` on each side and clamped to
+     * the dataset bounds.
+     *
+     * @param scrollY - The current scroll offset in pixels.
+     * @param visibleHeight - The viewport height in pixels.
+     * @param totalRows - The total number of flattened rows.
+     * @returns The `firstRow` / `lastRow` data indices and the number of rows in the window.
+     */
+    private _computeVisibleWindow(scrollY: number, visibleHeight: number, totalRows: number): { firstRow: number, lastRow: number, windowSize: number } {
+        const firstRow = Math.max(0, Math.floor(scrollY / ROW_HEIGHT) - SCROLL_BUFFER);
+        const lastRow  = Math.min(
             totalRows - 1,
-            Math.ceil((scrollTop + visibleHeight) / ROW_HEIGHT) + SCROLL_BUFFER
+            Math.ceil((scrollY + visibleHeight) / ROW_HEIGHT) + SCROLL_BUFFER
         );
         const windowSize = lastRow - firstRow + 1 > 0 ? lastRow - firstRow + 1 : 0;
 
-        // Grow pool if the visible window is larger than the current pool
-        while (this._rowPool.length < windowSize) {
-            const row = new TreeRow();
+        return { firstRow, lastRow, windowSize };
+    }
+
+    /**
+     * Computes the row-pool target size: the max possible window for the
+     * current viewport, not just the current windowSize. Pre-growing avoids
+     * paying per-row first-time layout cost once the user passes a
+     * viewport-edge boundary mid-scroll.
+     *
+     * @param windowSize - The current visible-window size.
+     * @param visibleHeight - The viewport height in pixels.
+     * @param totalRows - The total number of flattened rows.
+     * @returns The pool target size.
+     */
+    private _computePoolTarget(windowSize: number, visibleHeight: number, totalRows: number): number {
+        return Math.min(
+            totalRows,
+            Math.max(
+                windowSize,
+                Math.ceil(visibleHeight / ROW_HEIGHT) + 2 * SCROLL_BUFFER + 2
+            )
+        );
+    }
+
+    /**
+     * Grows the row pool up to `poolTarget`, batching new {@link TreeRow}
+     * elements through a {@link DocumentFragment} so the rows container sees a
+     * single append instead of N.
+     *
+     * @param poolTarget - The target pool size.
+     */
+    private _growRowPool(poolTarget: number): void {
+        if (!this._scroller || this._rowPool.length >= poolTarget) {
+            return;
+        }
+
+        const rowsContainer = this._scroller.getRowsContainer();
+        const growFragment  = document.createDocumentFragment();
+
+        while (this._rowPool.length < poolTarget) {
+            const row   = new TreeRow();
             const rowEl = row.getElement(true);
 
-            element.appendChild(rowEl);
+            growFragment.appendChild(rowEl);
 
             // Pin row's static top to 0 once; per-frame Y offset comes from translateY.
             row.setY(0);
@@ -523,21 +620,33 @@ export class Tree extends Component {
             this._rowPool.push(row);
             this._boundIndices.push(-1);
             this._rowGeom.push(null);
+            this._rowDisplayed.push(false);
         }
 
-        // First pass: bind data so each label's preferred size reflects the current text,
-        // then take the widest content as the row width so horizontal overflow turns into
-        // a scrollbar via the tree's overflow:auto.
+        rowsContainer.appendChild(growFragment);
+    }
+
+    /**
+     * First pass: binds visible pool slots to their flattened rows (when
+     * rebound) and computes the maximum content width across visible rows so
+     * the second pass knows how wide each row should be.
+     *
+     * @param firstRow - The first data index covered by the visible window.
+     * @param windowSize - The number of rows in the window.
+     * @returns Per-slot rebind flags (parallel to the window) and the widest
+     * content width seen, both consumed by {@link _positionRows}.
+     */
+    private _bindAndMeasure(firstRow: number, windowSize: number): { reboundFlags: boolean[], maxContentWidth: number } {
         const reboundFlags: boolean[] = new Array(windowSize);
         let maxContentWidth = 0;
 
         for (let i = 0; i < windowSize; i++) {
-            const row = this._rowPool[i];
-            const dataIndex = firstRow + i;
-            const flatRow = this._flatRows[dataIndex];
+            const row         = this._rowPool[i];
+            const dataIndex   = firstRow + i;
+            const flatRow     = this._flatRows[dataIndex];
             const hasChildren = !!(flatRow.node.children && flatRow.node.children.length > 0);
-            const expanded = this._expandedNodes.has(flatRow.node);
-            const wasRebound = this._boundIndices[i] !== dataIndex;
+            const expanded    = this._expandedNodes.has(flatRow.node);
+            const wasRebound  = this._boundIndices[i] !== dataIndex;
 
             if (wasRebound) {
                 row.setRowData(flatRow.node, flatRow.depth, hasChildren, expanded, flatRow.siblingCount, flatRow.posInSet);
@@ -552,22 +661,27 @@ export class Tree extends Component {
             }
         }
 
-        const treeWidth = this.getWidth() || 0;
-        const rowWidth = Math.max(treeWidth, maxContentWidth);
-        const widthChanged = rowWidth !== this._lastRowWidth;
-        if (widthChanged) {
-            this._lastRowWidth = rowWidth;
-            this._invalidateGeom();
-        }
+        return { reboundFlags, maxContentWidth };
+    }
 
-        // Second pass: position rows and lay out their children
+    /**
+     * Second pass: positions visible rows at `dataIndex * ROW_HEIGHT`, sizes
+     * them to `rowWidth`, marks them displayed, and re-lays out their children
+     * only when the row was rebound or its geometry changed.
+     *
+     * @param firstRow - The first data index covered by the visible window.
+     * @param windowSize - The number of rows in the window.
+     * @param rowWidth - The horizontal extent of each row in pixels.
+     * @param reboundFlags - The per-slot rebind flags produced by {@link _bindAndMeasure}.
+     */
+    private _positionRows(firstRow: number, windowSize: number, rowWidth: number, reboundFlags: boolean[]): void {
         for (let i = 0; i < windowSize; i++) {
-            const row = this._rowPool[i];
-            const dataIndex = firstRow + i;
+            const row        = this._rowPool[i];
+            const dataIndex  = firstRow + i;
             const wasRebound = reboundFlags[i];
 
-            const targetY = dataIndex * ROW_HEIGHT;
-            const prev = this._rowGeom[i];
+            const targetY     = dataIndex * ROW_HEIGHT;
+            const prev        = this._rowGeom[i];
             const geomChanged = !prev || prev.ty !== targetY || prev.w !== rowWidth || prev.h !== ROW_HEIGHT;
             if (geomChanged) {
                 row.setAutoCommitStyle(false);
@@ -578,32 +692,38 @@ export class Tree extends Component {
                 row.setAutoCommitStyle(true);
                 this._rowGeom[i] = { ty: targetY, w: rowWidth, h: ROW_HEIGHT };
             }
-            row.setDisplayed(true);
+
+            if (!this._rowDisplayed[i]) {
+                row.setDisplayed(true);
+                this._rowDisplayed[i] = true;
+            }
 
             if (wasRebound || geomChanged) {
                 row.layoutChildren(ROW_HEIGHT, INDENT_PX);
             }
         }
-
-        // Hide pool rows that fall outside the visible window
-        for (let i = windowSize; i < this._rowPool.length; i++) {
-            this._rowPool[i].setDisplayed(false);
-            this._boundIndices[i] = -1;
-            this._rowGeom[i] = null;
-        }
-
-        // Keep phantom height in sync with total content height
-        if (this._phantom) {
-            this._phantom.style.height = totalRows * ROW_HEIGHT + "px";
-        }
-
-        this._updateSelectionStyle();
-
-        this._layoutInProgress = false;
     }
 
     /**
-     * Creates the phantom height element, attaches the scroll and click listeners, and renders the initial window.
+     * Hides pool slots whose index falls outside the visible window and
+     * clears their cached binding so the next bind triggers a full rebuild.
+     *
+     * @param windowSize - The number of pool slots currently in use.
+     */
+    private _hideExcessPoolRows(windowSize: number): void {
+        for (let i = windowSize; i < this._rowPool.length; i++) {
+            if (this._rowDisplayed[i]) {
+                this._rowPool[i].setDisplayed(false);
+                this._rowDisplayed[i] = false;
+            }
+
+            this._boundIndices[i] = -1;
+            this._rowGeom[i] = null;
+        }
+    }
+
+    /**
+     * Constructs the {@link VirtualScroller} and wires click and keyboard listeners.
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
@@ -615,20 +735,7 @@ export class Tree extends Component {
             return;
         }
 
-        this._phantom = document.createElement("div");
-        this._phantom.style.position = "absolute";
-        this._phantom.style.top = "0";
-        this._phantom.style.width = "1px";
-        this._phantom.style.height = this._flatRows.length * ROW_HEIGHT + "px";
-
-        el.appendChild(this._phantom);
-
-        Event.addListener(this, "scroll", () => {
-            if (this._layoutInProgress) {
-                return;
-            }
-            this._renderWindow();
-        });
+        this._scroller = new VirtualScroller(this, el, () => this._renderWindow());
 
         Event.addSubtreeListener(this, "click", (e: MouseEvent) => {
             this._handleClick(e);

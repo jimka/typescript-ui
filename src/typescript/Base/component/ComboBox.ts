@@ -369,9 +369,11 @@ export class ComboBox extends Component implements Bindable<string> {
 
         element.innerHTML = "";
 
+        const fragment = document.createDocumentFragment();
         for (let i = 0; i < this.items.length; i++) {
-            element.appendChild(this.items[i].getElement(true));
+            fragment.appendChild(this.items[i].getElement(true));
         }
+        element.appendChild(fragment);
     }
 
     /**
