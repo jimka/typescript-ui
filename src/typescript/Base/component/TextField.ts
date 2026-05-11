@@ -75,12 +75,16 @@ export class TextField extends TextInput implements Bindable<string> {
      *
      * @param listener - The callback to invoke on each input event.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function) : this {
         Event.addListener(this, "input", listener);
+
+        return this;
     }
 
-    setValue(value: string): void {
+    setValue(value: string): this {
         this.setText(value);
+
+        return this;
     }
 
     getValue(): string {

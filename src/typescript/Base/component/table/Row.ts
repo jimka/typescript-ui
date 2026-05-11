@@ -113,7 +113,7 @@ export class Row extends Component {
      *
      * @param record - The new record to bind to this row.
      */
-    setData(record: ModelRecord) {
+    setData(record: ModelRecord) : this {
         this.data = record;
 
         const cells = this.getComponents() as Cell<any>[];
@@ -124,6 +124,8 @@ export class Row extends Component {
         }
 
         this.updateVisualState();
+
+        return this;
     }
 
     /**
@@ -152,8 +154,10 @@ export class Row extends Component {
      * @param cell - The cell to append.
      * @param constraints - Optional. Layout constraints for the cell.
      */
-    addColumn(cell: Cell<any>, constraints?: LayoutConstraints) {
+    addColumn(cell: Cell<any>, constraints?: LayoutConstraints) : this {
         this.addComponent(cell, constraints);
+
+        return this;
     }
 
     /**
@@ -161,13 +165,21 @@ export class Row extends Component {
      *
      * @param cell - The cell component to add.
      * @param constraints - Optional. Layout constraints for the cell.
+     *
+     * @returns This component, for method chaining.
      */
-    addComponent(cell: Cell<any>, constraints?: LayoutConstraints) {
+    addComponent(cell: Cell<any>, constraints?: LayoutConstraints): this {
         super.addComponent(cell, constraints);
+
+        return this;
     }
 
     /**
      * No-op; cell layout is driven by the Body's renderWindow.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout() { }
+    doLayout(): this {
+        return this;
+    }
 }

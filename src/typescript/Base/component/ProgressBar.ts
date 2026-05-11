@@ -84,7 +84,7 @@ export class ProgressBar extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: ProgressBarOptions): void {
+    protected applyOptions(options: ProgressBarOptions): this {
         super.applyOptions(options);
 
         if (options.indeterminate !== undefined) {
@@ -94,6 +94,8 @@ export class ProgressBar extends Component {
         if (options.value !== undefined) {
             this.setValue(options.value);
         }
+
+        return this;
     }
 
     /**
@@ -125,10 +127,10 @@ export class ProgressBar extends Component {
      *
      * @param value - Progress percentage in [0, 100].
      */
-    setValue(value: number): void {
+    setValue(value: number): this {
         const clamped = Math.max(0, Math.min(100, value));
         if (clamped === this.value) {
-            return;
+            return this;
         }
 
         this.value = clamped;
@@ -137,6 +139,8 @@ export class ProgressBar extends Component {
         if (!this.indeterminate) {
             this.scheduleLayout();
         }
+
+        return this;
     }
 
     /**
@@ -153,24 +157,28 @@ export class ProgressBar extends Component {
      *
      * @param value - True to activate indeterminate mode.
      */
-    setIndeterminate(value: boolean): void {
+    setIndeterminate(value: boolean): this {
         if (this.indeterminate === value) {
-            return;
+            return this;
         }
 
         this.indeterminate = value;
         this.applyIndeterminate(value);
         this.scheduleLayout();
+
+        return this;
     }
 
     /**
      * Lays out the track and fill child components.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         const inner = this.getInnerSize();
         if (!inner) {
             super.doLayout();
-            return;
+            return this;
         }
 
         this.track.setX(0);
@@ -190,6 +198,8 @@ export class ProgressBar extends Component {
         }
 
         super.doLayout();
+
+        return this;
     }
 
     /**

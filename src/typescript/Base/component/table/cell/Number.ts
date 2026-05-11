@@ -25,7 +25,9 @@ export class NumberCell extends Cell<Number> {
      *
      * @param value - The numeric value to display.
      */
-    setValue(value: Number) {
+    setValue(value: Number) : this {
         this.getRenderer().setValue(value);
+
+        return this;
     }
 }

@@ -46,7 +46,9 @@ export class StringRenderer extends CellRenderer<String> {
      *
      * @param value - The string value to display.
      */
-    setValue(value: String) {
+    setValue(value: String) : this {
         this.text.setText(value || "");
+
+        return this;
     }
 }

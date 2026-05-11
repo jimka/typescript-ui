@@ -23,15 +23,19 @@ export class DateTimeCell extends Cell<Date | null> {
         this.dateTimeEditor = editor;
     }
 
-    setValue(value: Date | null): void {
+    setValue(value: Date | null): this {
         this.getRenderer().setValue(value);
+
+        return this;
     }
 
-    commitEdit(): void {
+    commitEdit(): this {
         if (!this.dateTimeEditor.isEmpty() && this.dateTimeEditor.getValue() === null) {
             this.cancelEdit();
-            return;
+            return this;
         }
         super.commitEdit();
+
+        return this;
     }
 }

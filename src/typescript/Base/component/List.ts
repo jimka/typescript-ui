@@ -62,8 +62,10 @@ export class List extends ComboBox {
      *
      * @param listener - The callback to invoke when the selection changes.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function) : this {
         Event.addListener(this, "change", listener);
+
+        return this;
     }
 
     /**
@@ -73,15 +75,17 @@ export class List extends ComboBox {
      *
      * @remarks Sets the select's size attribute to items.length + 1 so all options are visible.
      */
-    setItems(items: String | Array<String>) {
+    setItems(items: String | Array<String>) : this {
         super.setItems(items);
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.size = this.getItems().length + 1;
+
+        return this;
     }
 
     /**
@@ -89,15 +93,17 @@ export class List extends ComboBox {
      *
      * @param item - The string label for the new option.
      */
-    addItem(item: String) {
+    addItem(item: String) : this {
         super.addItem(item);
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.size = this.getItems().length + 1;
+
+        return this;
     }
 
     /**

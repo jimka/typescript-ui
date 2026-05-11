@@ -80,8 +80,10 @@ export class Grid extends LayoutManager {
      *
      * @param stretching - Pass `false` to enable per-row baseline alignment instead of stretching.
      */
-    setStretching(stretching: boolean): void {
+    setStretching(stretching: boolean): this {
         this.stretching = stretching;
+
+        return this;
     }
 
     /**
@@ -98,8 +100,10 @@ export class Grid extends LayoutManager {
      *
      * @param rows - The desired row count, or `0` for automatic.
      */
-    setRows(rows: number) {
+    setRows(rows: number) : this {
         this.rows = rows;
+
+        return this;
     }
 
     /**
@@ -117,8 +121,10 @@ export class Grid extends LayoutManager {
      *
      * @param spacing - Spacing in pixels. Falsy values are treated as `0`.
      */
-    setComponentSpacing(spacing: number) {
+    setComponentSpacing(spacing: number) : this {
         this.spacing = spacing || 0;
+
+        return this;
     }
 
     /**
@@ -135,8 +141,10 @@ export class Grid extends LayoutManager {
      *
      * @param columns - The desired column count, or `0` for automatic.
      */
-    setColumns(columns: number) {
+    setColumns(columns: number) : this {
         this.columns = columns;
+
+        return this;
     }
 
     /**

@@ -82,7 +82,7 @@ export class AutoCompleteItem extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: AutoCompleteItemOptions): void {
+    protected applyOptions(options: AutoCompleteItemOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -92,6 +92,8 @@ export class AutoCompleteItem extends Component {
         if (options.highlighted !== undefined) {
             this.setHighlighted(options.highlighted);
         }
+
+        return this;
     }
 
     /**
@@ -118,7 +120,7 @@ export class AutoCompleteItem extends Component {
      *
      * @param highlighted - True to apply highlight styling; false to clear it.
      */
-    setHighlighted(highlighted: boolean): void {
+    setHighlighted(highlighted: boolean): this {
         this.highlighted = highlighted;
 
         if (highlighted) {
@@ -134,6 +136,8 @@ export class AutoCompleteItem extends Component {
             this.setForegroundColor("inherit");
             this.getAria().setSelected(false);
         }
+
+        return this;
     }
 
     /**
@@ -156,13 +160,17 @@ export class AutoCompleteItem extends Component {
 
     /**
      * Positions the label to fill the item with 8 px horizontal padding.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         super.doLayout();
 
         this.textComponent.setX(8);
         this.textComponent.setY(0);
         this.textComponent.setWidth(Math.max(0, this.getWidth() - 16));
         this.textComponent.setHeight(AutoCompleteItem.HEIGHT);
+
+        return this;
     }
 }

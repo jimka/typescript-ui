@@ -56,12 +56,14 @@ export class Table extends LayoutManager {
      *
      * @remarks This layout manager is only valid for containers whose class name is `"Table"`.
      */
-    attach(container: Component) {
+    attach(container: Component) : this {
         if (container.getClassName() != "Table") {
             throw new Error("Container must be a Table.");
         }
 
         super.attach(container);
+
+        return this;
     }
 
     /**

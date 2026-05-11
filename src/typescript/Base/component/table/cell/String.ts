@@ -25,7 +25,9 @@ export class StringCell extends Cell<String> {
      *
      * @param value - The string value to display.
      */
-    setValue(value: String) {
+    setValue(value: String) : this {
         this.getRenderer().setValue(value);
+
+        return this;
     }
 }

@@ -37,7 +37,7 @@ export class MultiSelectList extends List {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: MultiSelectListOptions): void {
+    protected applyOptions(options: MultiSelectListOptions): this {
         super.applyOptions(options);
 
         if (options.selectedIndices !== undefined) {
@@ -50,6 +50,8 @@ export class MultiSelectList extends List {
                 }
             }
         }
+
+        return this;
     }
 
     /**
@@ -77,10 +79,10 @@ export class MultiSelectList extends List {
      *
      * @param values - The option values to select.
      */
-    setValues(values: string[]): void {
+    setValues(values: string[]): this {
         const element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         const valueSet = new Set(values);
@@ -88,6 +90,8 @@ export class MultiSelectList extends List {
         for (const option of Array.from(element.options)) {
             option.selected = valueSet.has(option.value);
         }
+
+        return this;
     }
 
     /**
@@ -128,10 +132,10 @@ export class MultiSelectList extends List {
      *
      * @param records - The store records to select.
      */
-    setSelectedRecords(records: ModelRecord[]): void {
+    setSelectedRecords(records: ModelRecord[]): this {
         const store = this.getStore();
         if (!store) {
-            return;
+            return this;
         }
 
         const recordSet    = new Set(records);
@@ -150,6 +154,8 @@ export class MultiSelectList extends List {
         }
 
         this.setValues(values);
+
+        return this;
     }
 
     /**

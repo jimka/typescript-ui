@@ -75,9 +75,11 @@ export class Aria {
      *
      * @param role - The ARIA role to assign.
      */
-    setRole(role: AriaRole): void {
+    setRole(role: AriaRole): this {
         this.role = role;
         this.component.setElementAttribute("role", role);
+
+        return this;
     }
 
     /**
@@ -94,7 +96,7 @@ export class Aria {
      *
      * @param value - 0 = focusable in document order, -1 = focusable by script only, null removes the attribute.
      */
-    setTabIndex(value: number | null): void {
+    setTabIndex(value: number | null): this {
         this.tabIndex = value;
 
         if (value !== null) {
@@ -102,6 +104,8 @@ export class Aria {
         } else {
             this.component.removeElementAttribute("tabindex");
         }
+
+        return this;
     }
 
     /**
@@ -118,8 +122,10 @@ export class Aria {
      *
      * @param value - The sort direction.
      */
-    setSort(value: AriaSort): void {
+    setSort(value: AriaSort): this {
         this.setAttribute("sort", value);
+
+        return this;
     }
 
     /**
@@ -136,8 +142,10 @@ export class Aria {
      *
      * @param value - Whether the element is selected.
      */
-    setSelected(value: boolean): void {
+    setSelected(value: boolean): this {
         this.setAttribute("selected", String(value));
+
+        return this;
     }
 
     /**
@@ -156,8 +164,10 @@ export class Aria {
      *
      * @param value - Whether the element is hidden from assistive technology.
      */
-    setHidden(value: boolean): void {
+    setHidden(value: boolean): this {
         this.setAttribute("hidden", String(value));
+
+        return this;
     }
 
     /**
@@ -176,8 +186,10 @@ export class Aria {
      *
      * @param value - The 1-based row index.
      */
-    setRowIndex(value: number): void {
+    setRowIndex(value: number): this {
         this.setAttribute("rowindex", String(value));
+
+        return this;
     }
 
     /**
@@ -196,8 +208,10 @@ export class Aria {
      *
      * @param value - The total row count.
      */
-    setRowCount(value: number): void {
+    setRowCount(value: number): this {
         this.setAttribute("rowcount", String(value));
+
+        return this;
     }
 
     /**
@@ -216,13 +230,15 @@ export class Aria {
      *
      * @param value - `true` if the element is expanded, `false` if collapsed, `null` to remove the attribute (e.g. for leaf nodes).
      */
-    setExpanded(value: boolean | null): void {
+    setExpanded(value: boolean | null): this {
         if (value !== null) {
             this.setAttribute("expanded", String(value));
         } else {
             this.attributes.delete("expanded");
             this.component.removeElementAttribute("aria-expanded");
         }
+
+        return this;
     }
 
     /**
@@ -241,8 +257,10 @@ export class Aria {
      *
      * @param value - The 1-based level number.
      */
-    setLevel(value: number): void {
+    setLevel(value: number): this {
         this.setAttribute("level", String(value));
+
+        return this;
     }
 
     /**
@@ -261,8 +279,10 @@ export class Aria {
      *
      * @param id - The ID of the labelling element.
      */
-    setLabelledBy(id: string): void {
+    setLabelledBy(id: string): this {
         this.setAttribute("labelledby", id);
+
+        return this;
     }
 
     /**
@@ -279,8 +299,10 @@ export class Aria {
      *
      * @param id - The ID of the controlled element.
      */
-    setControls(id: string): void {
+    setControls(id: string): this {
         this.setAttribute("controls", id);
+
+        return this;
     }
 
     /**
@@ -297,8 +319,10 @@ export class Aria {
      *
      * @param value - `'none'`, `'list'`, `'inline'`, or `'both'`.
      */
-    setAutoComplete(value: 'none' | 'list' | 'inline' | 'both'): void {
+    setAutoComplete(value: 'none' | 'list' | 'inline' | 'both'): this {
         this.setAttribute("autocomplete", value);
+
+        return this;
     }
 
     /**
@@ -317,13 +341,15 @@ export class Aria {
      *
      * @param id - The element ID of the active descendant, or `""` to clear.
      */
-    setActiveDescendant(id: string): void {
+    setActiveDescendant(id: string): this {
         if (id === "") {
             this.attributes.delete("activedescendant");
             this.component.removeElementAttribute("aria-activedescendant");
         } else {
             this.setAttribute("activedescendant", id);
         }
+
+        return this;
     }
 
     /**
@@ -340,8 +366,10 @@ export class Aria {
      *
      * @param value - The 1-based column index.
      */
-    setColIndex(value: number): void {
+    setColIndex(value: number): this {
         this.setAttribute("colindex", String(value));
+
+        return this;
     }
 
     /**
@@ -360,8 +388,10 @@ export class Aria {
      *
      * @param value - The total column count.
      */
-    setColCount(value: number): void {
+    setColCount(value: number): this {
         this.setAttribute("colcount", String(value));
+
+        return this;
     }
 
     /**
@@ -380,8 +410,10 @@ export class Aria {
      *
      * @param value - The total set size.
      */
-    setSetSize(value: number): void {
+    setSetSize(value: number): this {
         this.setAttribute("setsize", String(value));
+
+        return this;
     }
 
     /**
@@ -400,8 +432,10 @@ export class Aria {
      *
      * @param value - The 1-based position.
      */
-    setPosInSet(value: number): void {
+    setPosInSet(value: number): this {
         this.setAttribute("posinset", String(value));
+
+        return this;
     }
 
     /**
@@ -420,8 +454,10 @@ export class Aria {
      *
      * @param value - Whether the button is currently pressed.
      */
-    setPressed(value: boolean): void {
+    setPressed(value: boolean): this {
         this.setAttribute("pressed", String(value));
+
+        return this;
     }
 
     /**
@@ -440,8 +476,10 @@ export class Aria {
      *
      * @param value - The popup type, or `false` to indicate no popup.
      */
-    setHasPopup(value: 'false' | 'true' | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog'): void {
+    setHasPopup(value: 'false' | 'true' | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog'): this {
         this.setAttribute("haspopup", value);
+
+        return this;
     }
 
     /**
@@ -458,8 +496,10 @@ export class Aria {
      *
      * @param value - Whether the element is disabled.
      */
-    setDisabled(value: boolean): void {
+    setDisabled(value: boolean): this {
         this.setAttribute("disabled", String(value));
+
+        return this;
     }
 
     /**
@@ -478,8 +518,10 @@ export class Aria {
      *
      * @param value - The current numeric value.
      */
-    setValueNow(value: number): void {
+    setValueNow(value: number): this {
         this.setAttribute("valuenow", String(value));
+
+        return this;
     }
 
     /**
@@ -498,13 +540,15 @@ export class Aria {
      *
      * @param value - The minimum numeric value, or `null` to remove the attribute.
      */
-    setValueMin(value: number | null): void {
+    setValueMin(value: number | null): this {
         if (value === null) {
             this.attributes.delete("valuemin");
             this.component.removeElementAttribute("aria-valuemin");
         } else {
             this.setAttribute("valuemin", String(value));
         }
+
+        return this;
     }
 
     /**
@@ -523,13 +567,15 @@ export class Aria {
      *
      * @param value - The maximum numeric value, or `null` to remove the attribute.
      */
-    setValueMax(value: number | null): void {
+    setValueMax(value: number | null): this {
         if (value === null) {
             this.attributes.delete("valuemax");
             this.component.removeElementAttribute("aria-valuemax");
         } else {
             this.setAttribute("valuemax", String(value));
         }
+
+        return this;
     }
 
     /**
@@ -548,8 +594,10 @@ export class Aria {
      *
      * @param value - The label text.
      */
-    setLabel(value: string): void {
+    setLabel(value: string): this {
         this.setAttribute("label", value);
+
+        return this;
     }
 
     /**

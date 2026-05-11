@@ -68,7 +68,7 @@ export class FieldDecorator extends Component {
      *
      * @param message - The error message to display in the tooltip.
      */
-    showError(message: string): void {
+    showError(message: string): this {
         this.setOutline('2px solid var(--ts-ui-validation-error-border)');
 
         Tooltip.attach(this, message, {
@@ -76,13 +76,17 @@ export class FieldDecorator extends Component {
             color     : 'var(--ts-ui-validation-error-tooltip-color)',
             border    : 'var(--ts-ui-validation-error-tooltip-border)',
         });
+
+        return this;
     }
 
     /**
      * Removes the error outline and detaches the error tooltip.
      */
-    clearError(): void {
+    clearError(): this {
         this.setOutline(null);
         Tooltip.detach(this);
+
+        return this;
     }
 }

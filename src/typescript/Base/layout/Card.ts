@@ -170,13 +170,15 @@ export class Card extends LayoutManager {
      *
      * @param id - The ID of the child component to make visible.
      */
-    setVisibleComponentId(id: String): void {
+    setVisibleComponentId(id: String): this {
         if (this.visibleComponentId === id) {
-            return;
+            return this;
         }
 
         this.visibleComponentId = id;
         this.syncVisible();
+
+        return this;
     }
 
     /**

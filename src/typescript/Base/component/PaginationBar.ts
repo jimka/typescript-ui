@@ -109,7 +109,7 @@ export class PaginationBar extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: PaginationBarOptions): void {
+    protected applyOptions(options: PaginationBarOptions): this {
         super.applyOptions(options);
 
         if (options.pageSize !== undefined) {
@@ -119,6 +119,8 @@ export class PaginationBar extends Component {
         if (options.pageIndex !== undefined) {
             this.store.goToPage(options.pageIndex);
         }
+
+        return this;
     }
 
     /**

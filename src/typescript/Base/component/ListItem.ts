@@ -41,7 +41,7 @@ export class ListItem extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: ListItemOptions): void {
+    protected applyOptions(options: ListItemOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -51,13 +51,18 @@ export class ListItem extends Component {
                 element.textContent = options.text;
             }
         }
+
+        return this;
     }
 
     /**
      * Overrides applyStyle as a no-op; framework positioning styles break native list rendering.
+     *
+     * @returns This component, for method chaining.
      */
-    applyStyle() {
+    applyStyle(): this {
         // Framework styles (absolute positioning etc.) break native list rendering.
+        return this;
     }
 
     /**

@@ -61,13 +61,13 @@ export class HeaderCell extends DefaultCell {
      *
      * @param element - Optional element passed from the framework init chain.
      */
-    protected init(element?: HTMLElement): void {
+    protected init(element?: HTMLElement): this {
         super.init(element);
 
         const el = element || this.getElement();
 
         if (!el) {
-            return;
+            return this;
         }
 
         // Native listener so clicks on any child element (e.g. the Label) bubble up here.
@@ -104,6 +104,8 @@ export class HeaderCell extends DefaultCell {
         if (this.tooltipText) {
             Tooltip.attachToElement(el, this.tooltipText);
         }
+
+        return this;
     }
 
     /**
@@ -114,7 +116,7 @@ export class HeaderCell extends DefaultCell {
      * @param priority - Optional 1-based position of this sorter in a multi-sort.
      *   The badge is only shown when priority is at least 2.
      */
-    setSortState(state: 'asc' | 'desc' | null, priority?: number | null): void {
+    setSortState(state: 'asc' | 'desc' | null, priority?: number | null): this {
         const arrow = state === 'asc' ? ' ▲' : state === 'desc' ? ' ▼' : '';
 
         this.getRenderer().getText().setText(this.text + arrow);
@@ -126,6 +128,8 @@ export class HeaderCell extends DefaultCell {
             this.priorityBadge.textContent   = showBadge ? String(priority) : '';
             this.priorityBadge.style.display = showBadge ? '' : 'none';
         }
+
+        return this;
     }
 
     /**
@@ -157,8 +161,10 @@ export class HeaderCell extends DefaultCell {
      *
      * @param text - The text to display in the tooltip.
      */
-    setTooltip(text: string): void {
+    setTooltip(text: string): this {
         this.tooltipText = text;
+
+        return this;
     }
 
     /**

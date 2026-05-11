@@ -70,13 +70,15 @@ export class MenuBarButton extends Component {
      *
      * @param active - `true` to show the open state, `false` to revert to the default.
      */
-    setActive(active: boolean): void {
+    setActive(active: boolean): this {
         this.setBackgroundColor(
             active
                 ? "var(--ts-ui-menu-bar-btn-hover-bg, rgba(30, 100, 200, 0.10))"
                 : "var(--ts-ui-menu-bar-btn-bg, transparent)"
         );
         this.getAria().setExpanded(active);
+
+        return this;
     }
 
     /**
@@ -89,8 +91,10 @@ export class MenuBarButton extends Component {
 
     /**
      * Positions the label with horizontal padding inside the button bounds.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         super.doLayout();
 
         const pad = 10;
@@ -99,5 +103,7 @@ export class MenuBarButton extends Component {
         this._text.setY(0);
         this._text.setWidth(Math.max(0, this.getWidth() - pad * 2));
         this._text.setHeight(this.getHeight());
+
+        return this;
     }
 }

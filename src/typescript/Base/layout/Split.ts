@@ -71,8 +71,10 @@ export class Split extends LayoutManager {
      *
      * @param direction - `'horizontal'` for side-by-side panels, `'vertical'` for stacked panels.
      */
-    setDirection(direction: String) {
+    setDirection(direction: String) : this {
         this.direction = direction;
+
+        return this;
     }
 
     /**
@@ -115,7 +117,7 @@ export class Split extends LayoutManager {
     /**
      * Detaches from the container and removes all gutter elements from the DOM.
      */
-    detach() {
+    detach() : this {
         super.detach();
 
         for (let idx in this.gutters) {
@@ -127,6 +129,8 @@ export class Split extends LayoutManager {
         }
 
         this.gutters = [];
+
+        return this;
     }
 
     /**

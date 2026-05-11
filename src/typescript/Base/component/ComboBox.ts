@@ -73,7 +73,7 @@ export class ComboBox extends Component implements Bindable<string> {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: ComboBoxOptions): void {
+    protected applyOptions(options: ComboBoxOptions): this {
         super.applyOptions(options);
 
         if (options.store !== undefined && options.displayField !== undefined) {
@@ -95,6 +95,8 @@ export class ComboBox extends Component implements Bindable<string> {
         if (options.selectedItem !== undefined) {
             this.setValue(options.selectedItem);
         }
+
+        return this;
     }
 
     /**
@@ -107,12 +109,14 @@ export class ComboBox extends Component implements Bindable<string> {
      * therefore write the theme variables onto the per-component CSS rule explicitly,
      * the same way `Input` does for `<input>` / `<textarea>`.
      */
-    applyStyle(element: HTMLElement) {
+    applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
 
         const rule = this.getCSSRule();
         rule.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
         rule.style.fontSize   = "var(--ts-ui-font-size, 14px)";
+
+        return this;
     }
 
     /**
@@ -159,14 +163,18 @@ export class ComboBox extends Component implements Bindable<string> {
      *
      * @param listener - The callback to invoke when the selection changes.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function) : this {
         Event.addListener(this, "change", listener);
+
+        return this;
     }
 
-    setValue(value: string): void {
+    setValue(value: string): this {
         const element = this.getElement();
-        if (!element) return;
+        if (!element) return this;
         element.value = value;
+
+        return this;
     }
 
     getValue(): string {
@@ -215,10 +223,10 @@ export class ComboBox extends Component implements Bindable<string> {
      * @param idx - The zero-based index to select.
      * @param fireEvent - Optional. When true (default), fires the 'change' event after updating.
      */
-    setSelectedIndex(idx: number, fireEvent = true) {
+    setSelectedIndex(idx: number, fireEvent = true) : this {
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.selectedIndex = idx;
@@ -226,6 +234,8 @@ export class ComboBox extends Component implements Bindable<string> {
         if (!!fireEvent) {
             Event.fireEvent(this, "change");
         }
+
+        return this;
     }
 
     /**
@@ -244,7 +254,7 @@ export class ComboBox extends Component implements Bindable<string> {
      *
      * @remarks Clears the existing DOM options before appending the new ones.
      */
-    setItems(items: String | Array<String>) {
+    setItems(items: String | Array<String>) : this {
         if (!Type.isArray(items)) {
             items = [<String>items];
         }
@@ -258,7 +268,7 @@ export class ComboBox extends Component implements Bindable<string> {
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.innerHTML = "";
@@ -268,6 +278,8 @@ export class ComboBox extends Component implements Bindable<string> {
 
             element.appendChild(value.getElement());
         }
+
+        return this;
     }
 
     /**
@@ -275,16 +287,18 @@ export class ComboBox extends Component implements Bindable<string> {
      *
      * @param item - The string label for the new option.
      */
-    addItem(item: String) {
+    addItem(item: String) : this {
         let listItem = new Option((this.items.length + 1).toString(), item as string);
         this.items.push(listItem);
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.appendChild(listItem.getElement(true));
+
+        return this;
     }
 
     /**
@@ -294,7 +308,7 @@ export class ComboBox extends Component implements Bindable<string> {
      * @param displayField - The record field whose value is shown as the option label.
      * @param valueField - Optional. The record field used as the option value; defaults to the record's primary key.
      */
-    setStore(store: AbstractStore, displayField: string, valueField?: string): void {
+    setStore(store: AbstractStore, displayField: string, valueField?: string): this {
         if (this.storeRefresh && this.store) {
             const old = this.store;
 
@@ -316,6 +330,8 @@ export class ComboBox extends Component implements Bindable<string> {
         store.on('sync',        refresh);
 
         this.refreshFromStore();
+
+        return this;
     }
 
     /**

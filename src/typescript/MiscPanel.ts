@@ -417,11 +417,10 @@ export class MiscPanel extends Panel {
             autoCompleteField.setMatchMode(button === radioContains ? 'contains' : 'startsWith');
         });
 
-        const modeRow = new Component();
-        modeRow.setLayoutManager(new HBox());
-        modeRow.addComponent(new Text("Match mode:"));
-        modeRow.addComponent(radioContains);
-        modeRow.addComponent(radioStartsWith);
+        const modeRow = new Component({ layoutManager: new HBox() })
+            .addComponent(new Text("Match mode:"))
+            .addComponent(radioContains)
+            .addComponent(radioStartsWith);
 
         const autoCompleteRow = new Component();
         autoCompleteRow.setLayoutManager(new HBox());

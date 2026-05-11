@@ -46,7 +46,7 @@ export class FontAwesomeIcon extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: FontAwesomeIconOptions): void {
+    protected applyOptions(options: FontAwesomeIconOptions): this {
         super.applyOptions(options);
 
         const element = this.getElement();
@@ -66,6 +66,8 @@ export class FontAwesomeIcon extends Component {
             }
             this.type = options.iconStyle;
         }
+
+        return this;
     }
 
     /**

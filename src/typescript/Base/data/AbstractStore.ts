@@ -220,10 +220,12 @@ export abstract class AbstractStore {
      * `sort()` and `clearFilter()` to reset to page 1 and re-fetch from the proxy.
      * Fires `'pagechanged'`.
      */
-    setPageSize(n: number): void {
+    setPageSize(n: number): this {
         this._pageSize = n;
         this._page = 1;
         this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
+
+        return this;
     }
 
     /**
@@ -329,9 +331,9 @@ export abstract class AbstractStore {
      * No-op when pagination is disabled. Blocked when the store has pending
      * changes — emits `'pagechangeblocked'` instead.
      */
-    goToPage(n: number): void {
+    goToPage(n: number): this {
         if (this._pageSize == null) {
-            return;
+            return this;
         }
 
         const total  = this.getTotalPages();
@@ -339,17 +341,19 @@ export abstract class AbstractStore {
         const target = Math.max(1, Math.min(n, upper));
 
         if (target === this._page) {
-            return;
+            return this;
         }
 
         if (this.hasPendingChanges()) {
             this.emit('pagechangeblocked', { from: this._page, to: target });
-            return;
+            return this;
         }
 
         this._page = target;
         this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
         void this.load();
+
+        return this;
     }
 
     /**
@@ -481,10 +485,10 @@ export abstract class AbstractStore {
      * Records that have been persisted are added to `pendingRemoved` and sent to
      * the proxy during the next call to `sync()`.
      */
-    remove(record: ModelRecord): void {
+    remove(record: ModelRecord): this {
         const allIdx = this.allRecords.indexOf(record);
         if (allIdx === -1) {
-            return;
+            return this;
         }
 
         this.allRecords.splice(allIdx, 1);
@@ -498,6 +502,8 @@ export abstract class AbstractStore {
 
         this.emit('remove', { record });
         this.emit('datachanged', {});
+
+        return this;
     }
 
     /**
@@ -507,7 +513,7 @@ export abstract class AbstractStore {
      * Only persisted records are queued for removal; records that are still marked
      * as new are simply discarded.
      */
-    removeAll(): void {
+    removeAll(): this {
         this.pendingRemoved.push(...this.allRecords.filter(r => !r.isNew()));
 
         this.allRecords = [];
@@ -515,6 +521,8 @@ export abstract class AbstractStore {
         this.snapshotDirty = true;
 
         this.emit('datachanged', {});
+
+        return this;
     }
 
     /**

@@ -244,7 +244,7 @@ export class MenuItem extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: MenuItemOptions): void {
+    protected applyOptions(options: MenuItemOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined && this._titleText) {
@@ -259,6 +259,8 @@ export class MenuItem extends Component {
         if (options.focused !== undefined) {
             this.setFocused(options.focused);
         }
+
+        return this;
     }
 
     /**
@@ -284,12 +286,14 @@ export class MenuItem extends Component {
      *
      * @param focused - `true` to highlight, `false` to clear.
      */
-    setFocused(focused: boolean): void {
+    setFocused(focused: boolean): this {
         this.setBackgroundColor(
             focused
                 ? `var(--ts-ui-${this._cssVarPrefix}-item-hover-bg, rgba(30, 100, 200, 0.12))`
                 : "transparent"
         );
+
+        return this;
     }
 
     /**
@@ -358,12 +362,14 @@ export class MenuItem extends Component {
 
     /**
      * Positions the four label zones within the item's bounds.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         super.doLayout();
 
         if (this._config.separator) {
-            return;
+            return this;
         }
 
         const H = MenuItem.HEIGHT;
@@ -414,5 +420,7 @@ export class MenuItem extends Component {
             this._shortcutText.setWidth(MenuItem.SHORTCUT_ZONE);
             this._shortcutText.setHeight(H);
         }
+
+        return this;
     }
 }

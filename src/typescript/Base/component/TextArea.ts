@@ -49,7 +49,7 @@ export class TextArea extends TextInput {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: TextAreaOptions): void {
+    protected applyOptions(options: TextAreaOptions): this {
         super.applyOptions(options);
 
         if (options.rows !== undefined) {
@@ -63,6 +63,8 @@ export class TextArea extends TextInput {
         if (options.wrap !== undefined) {
             this.setElementAttribute("wrap", options.wrap);
         }
+
+        return this;
     }
 
     /**
@@ -100,8 +102,10 @@ export class TextArea extends TextInput {
      *
      * @param listener - The callback to invoke on each input event.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function) : this {
         Event.addListener(this, "input", listener);
+
+        return this;
     }
 
     /**

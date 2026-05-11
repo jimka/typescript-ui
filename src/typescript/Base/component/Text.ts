@@ -104,7 +104,7 @@ export class Text extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: TextOptions): void {
+    protected applyOptions(options: TextOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -162,6 +162,8 @@ export class Text extends Component {
         if (options.whiteSpace !== undefined) {
             this.setWhiteSpace(options.whiteSpace);
         }
+
+        return this;
     }
 
     /**
@@ -199,10 +201,14 @@ export class Text extends Component {
 
     /**
      * Sets the preferred size from an explicit caller, locking it against automatic recalculation.
+     *
+     * @returns This component, for method chaining.
      */
-    setPreferredSize(width: number, height: number): void {
+    setPreferredSize(width: number, height: number): this {
         this.hasExplicitPreferredSize = true;
         super.setPreferredSize(width, height);
+
+        return this;
     }
 
     /**
@@ -281,18 +287,22 @@ export class Text extends Component {
      * Sets the text content, recalculates the preferred size, and updates the DOM element.
      *
      * @param text - The new text to display.
+     *
+     * @returns This component, for method chaining.
      */
-    setText(text: String) {
+    setText(text: String): this {
         this.text = text || "";
 
         this.calculateSize();
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.textContent = text.valueOf();
+
+        return this;
     }
 
     /**
@@ -302,9 +312,13 @@ export class Text extends Component {
      *                  leaves preferred size and baseline unchanged. Use only when
      *                  the parent layout (e.g. {@link Fit}) sizes this Text from
      *                  the container, so the measured preferred size is unused.
+     *
+     * @returns This component, for method chaining.
      */
-    setAutoMeasure(enabled: boolean): void {
+    setAutoMeasure(enabled: boolean): this {
         this.autoMeasure = enabled;
+
+        return this;
     }
 
     /**
@@ -320,11 +334,15 @@ export class Text extends Component {
      * Sets the CSS text-align and updates the component's CSS rule.
      *
      * @param align - A CSS text-align value (e.g. "left", "center", "right").
+     *
+     * @returns This component, for method chaining.
      */
-    setTextAlign(align: string) {
+    setTextAlign(align: string): this {
         this.textAlign = align;
 
         this.setElementCSSRule("textAlign", align);
+
+        return this;
     }
 
     /**
@@ -340,11 +358,15 @@ export class Text extends Component {
      * Sets the CSS text-shadow and updates the component's CSS rule.
      *
      * @param shadow - A CSS text-shadow value.
+     *
+     * @returns This component, for method chaining.
      */
-    setTextShadow(shadow: string) {
+    setTextShadow(shadow: string): this {
         this.textShadow = shadow;
 
         this.setElementCSSRule("textShadow", shadow);
+
+        return this;
     }
 
     /**
@@ -360,13 +382,17 @@ export class Text extends Component {
      * Sets the CSS font-family, updates the rule, and recalculates preferred size.
      *
      * @param value - The CSS font-family string (e.g. "sans-serif", "'Arial', sans-serif").
+     *
+     * @returns This component, for method chaining.
      */
-    setFontFamily(value: string) {
+    setFontFamily(value: string): this {
         this.fontFamily = value;
 
         this.setElementCSSRule("fontFamily", value);
 
         this.calculateSize();
+
+        return this;
     }
 
     /**
@@ -382,11 +408,15 @@ export class Text extends Component {
      * Sets the CSS font-kerning and updates the component's CSS rule.
      *
      * @param value - A CSS font-kerning value (e.g. "auto", "normal", "none").
+     *
+     * @returns This component, for method chaining.
      */
-    setFontKerning(value: string) {
+    setFontKerning(value: string): this {
         this.fontKerning = value;
 
         this.setElementCSSRule("fontKerning", value);
+
+        return this;
     }
 
     /**
@@ -403,8 +433,10 @@ export class Text extends Component {
      * (e.g. `"--ts-ui-header-font-size"`) to bind to a theme token.
      *
      * @param value - Pixel size as a number, or a CSS custom property name as a string.
+     *
+     * @returns This component, for method chaining.
      */
-    setFontSize(value: number | string) {
+    setFontSize(value: number | string): this {
         if (typeof value === 'number') {
             this.fontSize        = value;
             this.fontSizeCSSVar  = null;
@@ -424,6 +456,8 @@ export class Text extends Component {
         }
 
         this.calculateSize();
+
+        return this;
     }
 
     /**
@@ -439,11 +473,15 @@ export class Text extends Component {
      * Sets the CSS font-size-adjust and updates the component's CSS rule.
      *
      * @param value - A CSS font-size-adjust value.
+     *
+     * @returns This component, for method chaining.
      */
-    setFontSizeAdjust(value: string) {
+    setFontSizeAdjust(value: string): this {
         this.fontSizeAdjust = value;
 
         this.setElementCSSRule("fontSizeAdjust", value);
+
+        return this;
     }
 
     /**
@@ -459,11 +497,15 @@ export class Text extends Component {
      * Sets the CSS font-stretch and updates the component's CSS rule.
      *
      * @param value - A CSS font-stretch value (e.g. "normal", "condensed", "expanded").
+     *
+     * @returns This component, for method chaining.
      */
-    setFontStretch(value: string) {
+    setFontStretch(value: string): this {
         this.fontStretch = value;
 
         this.setElementCSSRule("fontStretch", value);
+
+        return this;
     }
 
     /**
@@ -479,11 +521,15 @@ export class Text extends Component {
      * Sets the CSS font-style and updates the component's CSS rule.
      *
      * @param value - A CSS font-style value (e.g. "normal", "italic", "oblique").
+     *
+     * @returns This component, for method chaining.
      */
-    setFontStyle(value: string) {
+    setFontStyle(value: string): this {
         this.fontStyle = value;
 
         this.setElementCSSRule("fontStyle", value);
+
+        return this;
     }
 
     /**
@@ -499,11 +545,15 @@ export class Text extends Component {
      * Sets the CSS font-variant and updates the component's CSS rule.
      *
      * @param value - A CSS font-variant value (e.g. "normal", "small-caps").
+     *
+     * @returns This component, for method chaining.
      */
-    setFontVariant(value: string) {
+    setFontVariant(value: string): this {
         this.fontVariant = value;
 
         this.setElementCSSRule("fontVariant", value);
+
+        return this;
     }
 
     /**
@@ -519,13 +569,17 @@ export class Text extends Component {
      * Sets the CSS font-weight, updates the rule, and recalculates preferred size.
      *
      * @param value - A CSS font-weight value (e.g. "normal", "bold", "700").
+     *
+     * @returns This component, for method chaining.
      */
-    setFontWeight(value: string) {
+    setFontWeight(value: string): this {
         this.fontWeight = value;
 
         this.setElementCSSRule("fontWeight", value);
 
         this.calculateSize();
+
+        return this;
     }
 
     /**
@@ -545,8 +599,10 @@ export class Text extends Component {
      * scale automatically when the font size changes.
      *
      * @param value - Pixel value as a number, or a CSS custom property name as a string.
+     *
+     * @returns This component, for method chaining.
      */
-    setLineHeight(value: number | string) {
+    setLineHeight(value: number | string): this {
         if (typeof value === 'number') {
             this.lineHeight        = value;
             this.lineHeightCSSVar  = null;
@@ -560,24 +616,34 @@ export class Text extends Component {
         }
 
         this.calculateSize();
+
+        return this;
     }
 
     /**
      * Sets the CSS text-overflow property and updates the component's CSS rule.
      *
      * @param value - A CSS text-overflow value (e.g. "clip", "ellipsis").
+     *
+     * @returns This component, for method chaining.
      */
-    setTextOverflow(value: string): void {
+    setTextOverflow(value: string): this {
         this.setElementCSSRule("textOverflow", value);
+
+        return this;
     }
 
     /**
      * Sets the CSS white-space property and updates the component's CSS rule.
      *
      * @param value - A CSS white-space value (e.g. "nowrap", "normal", "pre").
+     *
+     * @returns This component, for method chaining.
      */
-    setWhiteSpace(value: string): void {
+    setWhiteSpace(value: string): this {
         this.setElementCSSRule("whiteSpace", value);
+
+        return this;
     }
 
     /**
@@ -585,7 +651,7 @@ export class Text extends Component {
      *
      * @param element - The HTMLElement to apply styles to.
      */
-    applyStyle(element: HTMLElement) {
+    applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
 
         this.setElementCSSRules({
@@ -601,6 +667,8 @@ export class Text extends Component {
             fontWeight:     this.fontWeight       ? this.fontWeight         : '',
             lineHeight:     this.lineHeightCSSRule ?? (this.lineHeight !== null ? `${this.lineHeight}px` : '')
         });
+
+        return this;
     }
 
     /**

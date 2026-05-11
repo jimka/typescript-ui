@@ -117,8 +117,10 @@ export class Border extends LayoutManager {
      *
      * @param gap - Gap size in pixels.
      */
-    setComponentGap(gap: number) {
+    setComponentGap(gap: number) : this {
         this.gap = gap;
+
+        return this;
     }
 
     /**

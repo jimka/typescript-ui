@@ -54,7 +54,7 @@ export class TimeField extends Input implements Bindable<Date | null> {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: TimeFieldOptions): void {
+    protected applyOptions(options: TimeFieldOptions): this {
         super.applyOptions(options);
 
         if (options.value !== undefined) {
@@ -64,6 +64,8 @@ export class TimeField extends Input implements Bindable<Date | null> {
         if (options.enabled !== undefined) {
             this.setElementAttribute("disabled", options.enabled ? null : "");
         }
+
+        return this;
     }
 
     /**
@@ -105,8 +107,10 @@ export class TimeField extends Input implements Bindable<Date | null> {
      *
      * @param listener - The callback to invoke on each input event.
      */
-    addActionListener(listener: Function): void {
+    addActionListener(listener: Function): this {
         Event.addListener(this, "input", listener);
+
+        return this;
     }
 
     /**
@@ -115,16 +119,18 @@ export class TimeField extends Input implements Bindable<Date | null> {
      *
      * @param value - The Date whose time to display, or null to clear the field.
      */
-    setValue(value: Date | null): void {
+    setValue(value: Date | null): this {
         this._value = value;
 
         const element = this.getElement();
 
         if (!element) {
-            return;
+            return this;
         }
 
         element.value = value ? this.formatTime(value) : "";
+
+        return this;
     }
 
     /**

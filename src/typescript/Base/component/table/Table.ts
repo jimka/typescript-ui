@@ -173,7 +173,7 @@ export class Table extends Component {
      *
      * @param store - The new store to bind to the table.
      */
-    setStore(store: AbstractStore): void {
+    setStore(store: AbstractStore): this {
         this.store = store;
         this.columnWidths = [];
         this.savedColumnWidths = new Map();
@@ -183,6 +183,8 @@ export class Table extends Component {
         this.header.setModel(store.model);
         this.header.setHiddenColumns(this.getEffectiveHiddenSet());
         this.getAria().setColCount(this.getColumns().length);
+
+        return this;
     }
 
     /**
@@ -201,7 +203,7 @@ export class Table extends Component {
      * @remarks Also mirrors each width into `savedColumnWidths` keyed by field name so
      * that show/hide toggles can restore per-column widths without a full re-initialisation.
      */
-    setColumnWidths(widths: number[]): void {
+    setColumnWidths(widths: number[]): this {
         this.columnWidths = widths;
 
         const visibleColumns = this.getColumns();
@@ -213,6 +215,8 @@ export class Table extends Component {
                 this.savedColumnWidths.set(col.getField().getName(), w);
             }
         });
+
+        return this;
     }
 
     /**
@@ -229,7 +233,7 @@ export class Table extends Component {
      * @param fieldName - The model field name of the column to toggle.
      * @param visible   - `true` to show the column, `false` to hide it.
      */
-    setColumnVisible(fieldName: string, visible: boolean): void {
+    setColumnVisible(fieldName: string, visible: boolean): this {
         if (visible) {
             this.hiddenColumns.delete(fieldName);
         } else {
@@ -253,6 +257,8 @@ export class Table extends Component {
         this.body.setHiddenColumns(effectiveHidden);
         this.getAria().setColCount(this.getColumns().length);
         this.doLayout();
+
+        return this;
     }
 
     /**
@@ -327,15 +333,17 @@ export class Table extends Component {
     /**
      * Removes the currently selected record from the store.
      */
-    removeSelectedRow(): void {
+    removeSelectedRow(): this {
         const record = this.body.getSelectedRecord();
 
         if (!record) {
-            return;
+            return this;
         }
 
         this.body.selectRecord(null);
         this.store.remove(record);
+
+        return this;
     }
 
     /**
@@ -378,8 +386,10 @@ export class Table extends Component {
      *
      * @param row         - The section component to add.
      * @param constraints - Optional layout constraints for the section.
+     *
+     * @returns This component, for method chaining.
      */
-    addComponent(row: Header | Body | FooterRow, constraints?: LayoutConstraints) {
+    addComponent(row: Header | Body | FooterRow, constraints?: LayoutConstraints): this {
         if (row instanceof Header) {
             this.header = row;
         } else if (row instanceof Body) {
@@ -389,6 +399,8 @@ export class Table extends Component {
         }
 
         super.addComponent(row, constraints);
+
+        return this;
     }
 
     /**
@@ -564,8 +576,10 @@ export class Table extends Component {
      *
      * @param enabled - When true the export items are appended to the menu.
      */
-    setExportMenuEnabled(enabled: boolean): void {
+    setExportMenuEnabled(enabled: boolean): this {
         this.exportMenuEnabled = enabled;
+
+        return this;
     }
 
     /**

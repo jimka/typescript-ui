@@ -691,7 +691,7 @@ export class ThemeManager {
      * are appended to `document.documentElement`, so text in floating windows must inherit
      * from `<html>`.
      */
-    static setTheme(theme: Theme) {
+    static setTheme(theme: Theme): void {
         ThemeManager.current = theme;
 
         CSS.setRootVariables(themeToVars(theme));

@@ -1,7 +1,7 @@
 # Graph Report - typescript  (2026-05-12)
 
 ## Corpus Check
-- 182 files · ~1,585,408 words
+- 182 files · ~1,587,270 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary

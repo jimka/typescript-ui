@@ -47,12 +47,14 @@ export class ToggleButton extends Button {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: ToggleButtonOptions): void {
+    protected applyOptions(options: ToggleButtonOptions): this {
         super.applyOptions(options);
 
         if (options.selected !== undefined) {
             this.setSelected(options.selected);
         }
+
+        return this;
     }
 
     /**
@@ -60,8 +62,10 @@ export class ToggleButton extends Button {
      *
      * @param listener - The callback to invoke when the selection state changes.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function) : this {
         Event.addListener(this, "change", listener);
+
+        return this;
     }
 
     /**
@@ -78,7 +82,7 @@ export class ToggleButton extends Button {
      *
      * @param value - True to select the button, false to deselect it.
      */
-    setSelected(value: boolean) {
+    setSelected(value: boolean) : this {
         this.selected = value;
 
         this.getAria().setPressed(value);
@@ -87,6 +91,8 @@ export class ToggleButton extends Button {
         if (element) {
             element.classList.toggle("selected", value);
         }
+
+        return this;
     }
 
     /**

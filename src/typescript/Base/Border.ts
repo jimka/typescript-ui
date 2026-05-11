@@ -106,11 +106,13 @@ export class Border extends Object {
      * @param width - The border width in pixels to apply to all sides.
      * @param color - The border color string to apply to all sides.
      */
-    set(borderStyle: BorderStyle, width: number, color: string) {
+    set(borderStyle: BorderStyle, width: number, color: string) : this {
         this.top.set(borderStyle, width, color);
         this.right.set(borderStyle, width, color);
         this.bottom.set(borderStyle, width, color);
         this.left.set(borderStyle, width, color);
+
+        return this;
     }
 
     /**
