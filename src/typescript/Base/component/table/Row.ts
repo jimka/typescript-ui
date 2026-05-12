@@ -29,8 +29,8 @@ export class Row extends Component {
 
     private model?: AbstractModel;
     private data?: ModelRecord;
-    private hiddenColumns: Set<string>;
     private onCellCommit?: (record: ModelRecord) => void;
+    private fieldNames: string[] = [];
 
     constructor(
         model?: AbstractModel,
@@ -45,13 +45,14 @@ export class Row extends Component {
 
         this.model = model;
         this.data = data;
-        this.hiddenColumns = hiddenColumns;
         this.onCellCommit = onCellCommit;
 
         if (this.model) {
             let fields = this.model.getFields()
                                    .filter(f => !hiddenColumns.has(f.getName()))
                                    .sort((f1, f2) => f1.getOrder() - f2.getOrder());
+
+            this.fieldNames = fields.map(f => f.getName());
 
             for (let idx in fields) {
                 let field = fields[idx];
@@ -114,15 +115,13 @@ export class Row extends Component {
      */
     setData(record: ModelRecord) {
         this.data = record;
-        const fields = this.model!.getFields()
-                                  .filter(f => !this.hiddenColumns.has(f.getName()))
-                                  .sort((f1, f2) => f1.getOrder() - f2.getOrder());
 
         const cells = this.getComponents() as Cell<any>[];
+        const names = this.fieldNames;
 
-        fields.forEach((field, i) => {
-            cells[i].setValue(record.get(field.getName()));
-        });
+        for (let i = 0; i < names.length; i++) {
+            cells[i].setValue(record.get(names[i]));
+        }
 
         this.updateVisualState();
     }

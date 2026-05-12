@@ -57,8 +57,7 @@ export class Benchmark {
             table.setSize({ width: 600, height: 400 });
 
             const body = table.getBody();
-            const el = body.getElement();
-            if (!el) {
+            if (!body.getElement()) {
                 console.warn("Benchmark: body element not present");
                 document.body.removeChild(host);
                 resolve();
@@ -76,7 +75,7 @@ export class Benchmark {
             const start = lastTs;
 
             const tick = () => {
-                el.scrollTop = step * stride;
+                body.setScrollY(step * stride);
                 step++;
 
                 const now = performance.now();
@@ -103,6 +102,132 @@ export class Benchmark {
 
             requestAnimationFrame(tick);
         });
+    }
+
+    /**
+     * Builds a Table with `rowCount` rows, mounts it offscreen, and measures the
+     * pure JS cost of `Body.renderWindow` across `steps` scroll positions.
+     *
+     * Unlike `benchTableScroll`, this drives `renderWindow` synchronously
+     * instead of letting it run from the scroll-event/rAF path, so the
+     * measurement reflects actual JS work and is not dominated by the ~16ms
+     * vsync frame interval. The first call (pool grow) is excluded.
+     *
+     * @param rowCount - Number of records in the backing store.
+     * @param steps - Number of scrollTop positions to sweep through.
+     */
+    static async benchTableRenderWindow(rowCount: number = 10000, steps: number = 200): Promise<void> {
+        const store = Benchmark.buildPersonStore(rowCount);
+        await store.load();
+
+        // For datasets above the worker threshold, AbstractStore.load() returns
+        // before applyView completes (worker round-trip). Wait until the view
+        // is populated before starting the timing loop.
+        while (store.getRecords().length < rowCount) {
+            await new Promise(r => requestAnimationFrame(r));
+        }
+
+        return new Promise(resolve => {
+            const table = new Table(store);
+
+            const host = document.createElement("div");
+            host.style.position = "fixed";
+            host.style.left = "-10000px";
+            host.style.top = "0";
+            host.style.width = "600px";
+            host.style.height = "400px";
+            document.body.appendChild(host);
+
+            host.appendChild(table.getElement(true));
+            table.setSize({ width: 600, height: 400 });
+
+            const body = table.getBody();
+            if (!body.getElement()) {
+                console.warn("Benchmark: body element not present");
+                document.body.removeChild(host);
+                resolve();
+                return;
+            }
+
+            // setSize schedules layout via rAF; wait for it to complete so
+            // body.getHeight() is non-zero and renderWindow has work to do.
+            requestAnimationFrame(() => {
+                const ROW_HEIGHT = 22;
+                const totalScrollHeight = rowCount * ROW_HEIGHT;
+                const stride = Math.max(1, Math.floor(totalScrollHeight / steps));
+
+                // setScrollY is the real user entry point; it clamps, updates the
+                // rows-container transform, and calls renderWindow synchronously.
+                // The transform write is negligible compared to renderWindow, so this
+                // is essentially renderWindow timing with the production call path.
+                const times: number[] = new Array(steps);
+                for (let i = 0; i < steps; i++) {
+                    const start = performance.now();
+                    body.setScrollY((i + 1) * stride);
+                    times[i] = performance.now() - start;
+                }
+
+                const sum = times.reduce((a, b) => a + b, 0);
+                const mean = sum / times.length;
+                const max = times.reduce((a, b) => Math.max(a, b), 0);
+                console.log("[bench:tableRenderWindow]",
+                    "rows=" + rowCount,
+                    "steps=" + steps,
+                    "total=" + sum.toFixed(2) + "ms",
+                    "mean=" + mean.toFixed(3) + "ms",
+                    "max=" + max.toFixed(2) + "ms");
+
+                document.body.removeChild(host);
+                resolve();
+            });
+        });
+    }
+
+    /**
+     * Builds a Table with `rowCount` rows, mounts it offscreen, and measures the
+     * synchronous cost of the first `setSize`-driven `renderWindow` (the
+     * pool-grow path in `Body`). Runs `iterations` times with a fresh table per
+     * iteration so each iteration starts with an empty pool.
+     *
+     * @param rowCount - Number of records in the backing store.
+     * @param iterations - Number of fresh-table pool-grow samples to take.
+     */
+    static async benchTablePoolGrow(rowCount: number = 10000, iterations: number = 20): Promise<void> {
+        const store = Benchmark.buildPersonStore(rowCount);
+
+        const samples: number[] = new Array(iterations);
+
+        for (let i = 0; i < iterations; i++) {
+            const table = new Table(store);
+
+            const host = document.createElement("div");
+            host.style.position = "fixed";
+            host.style.left = "-10000px";
+            host.style.top = "0";
+            host.style.width = "600px";
+            host.style.height = "400px";
+            document.body.appendChild(host);
+
+            host.appendChild(table.getElement(true));
+
+            const start = performance.now();
+            table.setSize({ width: 600, height: 400 });
+            const elapsed = performance.now() - start;
+
+            samples[i] = elapsed;
+
+            document.body.removeChild(host);
+        }
+
+        const sum = samples.reduce((a, b) => a + b, 0);
+        const mean = sum / samples.length;
+        const max = samples.reduce((a, b) => Math.max(a, b), 0);
+        console.log("[bench:tablePoolGrow]",
+            "rows=" + rowCount,
+            "iterations=" + iterations,
+            "total=" + sum.toFixed(2) + "ms",
+            "mean=" + mean.toFixed(3) + "ms",
+            "max=" + max.toFixed(2) + "ms");
     }
 
     /**
@@ -142,12 +267,14 @@ export class Benchmark {
     }
 
     /**
-     * Runs all three benchmarks sequentially.
+     * Runs all benchmarks sequentially.
      */
     static async benchAll(): Promise<void> {
         Benchmark.benchComponentInit();
         Benchmark.benchThemeSwitch();
         await Benchmark.benchTableScroll();
+        await Benchmark.benchTablePoolGrow();
+        await Benchmark.benchTableRenderWindow();
     }
 }
 

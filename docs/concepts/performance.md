@@ -32,7 +32,7 @@ Use this when:
 [`Table`](/components/Table) and [`Tree`](/components/Tree) both render only the rows visible in the viewport plus a small buffer. The mechanics:
 
 - A fixed pool of [`TableRow`](/api/classes/TableRow) (or tree row) components.
-- A phantom `<div>` provides the scroll height for `dataCount × rowHeight`.
+- Scrolling is JS-owned via a [`VirtualScroller`](/components/VirtualScroller): the rows live inside a container whose `translate3d` transform exposes the requested viewport, and two custom [`Scrollbar`](/components/Scrollbar) overlays drive `scrollX` / `scrollY`. Wheel, touch (with 2D fling momentum), and keyboard navigation all funnel through the same `setScrollY` / `setScrollX` entry points.
 - Pool slots are rebound to new data via `setData()` only when their data index changes — DOM nodes stay in place and only their bound data shifts.
 
 This gives constant memory and constant frame time regardless of dataset size. A 100,000-row table has the same performance characteristics as a 100-row table for the rows currently on screen.
@@ -90,7 +90,7 @@ A few patterns can defeat the rAF coalescing and force multiple layout passes pe
 
 Each component creates one CSS rule for itself on construction (and a second for `:active` state on [`Button`](/components/Button), `.selected` on [`ToggleButton`](/components/ToggleButton), etc.). For a typical app with hundreds of components this is fine. For lists rendering thousands of items, prefer the virtual-scrolling components which reuse a fixed pool of rules.
 
-If you find yourself building a custom virtual list, look at how [`TableBody`](/api/classes/TableBody) is implemented — it's the canonical reference.
+If you find yourself building a custom virtual list, look at how [`TableBody`](/api/classes/TableBody) is implemented — it's the canonical reference. The scroll plumbing is reusable on its own via [`VirtualScroller`](/components/VirtualScroller).
 
 ## See also
 

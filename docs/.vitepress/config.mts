@@ -114,6 +114,10 @@ export default defineConfig({
                     { text: 'TablePanel',      link: '/components/TablePanel' },
                     { text: 'Table internals', link: '/components/TableInternals' },
                 ] },
+                { text: 'Scrolling', collapsed: false, items: [
+                    { text: 'Scrollbar',       link: '/components/Scrollbar' },
+                    { text: 'VirtualScroller', link: '/components/VirtualScroller' },
+                ] },
             ],
             '/layouts/': [
                 { text: 'Layouts', items: [

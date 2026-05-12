@@ -21,6 +21,7 @@ export class TimeRenderer extends CellRenderer<Date | null> {
 
         this.text.setText("");
         this.text.setPointerEvents("none");
+        this.text.setAutoMeasure(false);
         this.addComponent(this.text);
     }
 

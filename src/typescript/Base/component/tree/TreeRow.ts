@@ -36,10 +36,12 @@ export class TreeRow extends Component {
         this._toggle = new Text();
         this._toggle.setCursor("pointer");
         this._toggle.setInsets(null);
+        this._toggle.setAutoMeasure(false);
         this._toggle.getAria().setHidden(true);
 
         this._nodeLabel = new Text();
         this._nodeLabel.setInsets(null);
+        this._nodeLabel.setAutoMeasure(false);
     }
 
     /**
@@ -94,6 +96,9 @@ export class TreeRow extends Component {
 
         this._toggle.setText(hasChildren ? (expanded ? "▼" : "▶") : "");
         this._nodeLabel.setText(node.label);
+        // Texts have setAutoMeasure(false); cache label width explicitly so
+        // getContentWidth reflects the current text.
+        this._nodeLabel.measure();
 
         this.getAria().setLevel(depth + 1);
         this.getAria().setExpanded(hasChildren ? expanded : null);
@@ -115,6 +120,10 @@ export class TreeRow extends Component {
         this._toggle.setY(0);
         this._toggle.setWidth(TOGGLE_WIDTH);
         this._toggle.setHeight(rowHeight);
+        // Sync line-height to row height so the glyph renders vertically
+        // centered within the row. autoMeasure is off, so this skips the
+        // DOM measurement and only writes the CSS rule.
+        this._toggle.setLineHeight(rowHeight);
         this._toggle.setAutoCommitStyle(true);
 
         const labelX = indent + TOGGLE_WIDTH;
@@ -125,6 +134,7 @@ export class TreeRow extends Component {
         this._nodeLabel.setY(0);
         this._nodeLabel.setWidth(labelWidth);
         this._nodeLabel.setHeight(rowHeight);
+        this._nodeLabel.setLineHeight(rowHeight);
         this._nodeLabel.setAutoCommitStyle(true);
     }
 
