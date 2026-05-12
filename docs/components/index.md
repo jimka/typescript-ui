@@ -79,7 +79,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 
 ## Table
 
-A [`Table`](/api/classes/Table) ties columns to a [`Store`](/api/classes/Store) and renders rows via virtual scrolling. The body keeps only visible rows + a small buffer in the DOM at any time; a phantom `<div>` provides the full scroll height.
+A [`Table`](/api/classes/Table) ties columns to a [`Store`](/api/classes/Store) and renders rows via virtual scrolling. The body keeps only visible rows + a small buffer in the DOM at any time. Scrolling is delegated to a [`VirtualScroller`](/components/VirtualScroller) — `translate3d` positioning plus two custom [`Scrollbar`](/components/Scrollbar) overlays — with wheel, touch (fling momentum), and keyboard support.
 
 | Component | Purpose |
 | --- | --- |
@@ -122,3 +122,5 @@ These components are usually internal but are publicly exposed in case you need 
 | --- | --- |
 | [`SplitGutter`](/api/classes/SplitGutter) | Drag handle for the [`Split`](/api/classes/Split) layout |
 | [`AccordionHeader`](/api/classes/AccordionHeader) | Collapsible section header for the [`Accordion`](/api/classes/Accordion) layout |
+| [`Scrollbar`](/components/Scrollbar) | Custom vertical or horizontal scrollbar overlay for components that own their scroll state |
+| [`VirtualScroller`](/components/VirtualScroller) | Shared scroll machinery for transform-based virtual lists (rows container, scrollbars, wheel + touch + momentum) |
