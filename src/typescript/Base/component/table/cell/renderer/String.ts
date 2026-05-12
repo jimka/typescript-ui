@@ -19,6 +19,7 @@ export class StringRenderer extends CellRenderer<String> {
 
         this.text.setText("");
         this.text.setPointerEvents("none");
+        this.text.setAutoMeasure(false);
         this.addComponent(this.text);
     }
 

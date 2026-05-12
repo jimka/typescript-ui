@@ -36,7 +36,7 @@ The body keeps roughly 50 rows in the DOM at any time (viewport + buffer) regard
 [`TableBody`](/api/classes/TableBody):
 
 - Maintains a fixed pool of reusable [`TableRow`](/api/classes/TableRow) components.
-- A phantom `<div>` provides the scroll height for `dataCount × rowHeight`.
+- Scrolling is JS-owned via [`VirtualScroller`](/components/VirtualScroller): the rows live inside a transform-positioned container and two custom [`Scrollbar`](/components/Scrollbar) overlays drive both axes. Wheel, touch (with fling momentum), and keyboard nav all funnel through the same entry points.
 - Only rows whose data index changed get rebound on scroll — the rest sit at the same DOM position.
 
 [`Tree`](/components/Tree) uses the same approach; it flattens the visible subtree into a linear list and recycles a row pool.

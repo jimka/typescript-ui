@@ -14,7 +14,7 @@ Re-exported as `TableHeader` from `@jimka/typescript-ui` (the source class is `H
 
 - Maintains a fixed pool of reusable row components.
 - Only rows visible in the viewport plus a small buffer are in the DOM at any time.
-- A phantom `<div>` provides the full scroll height without rendering every row.
+- Scrolling is delegated to a [`VirtualScroller`](/components/VirtualScroller) — a rows-container `<div>` whose `translate3d` transform exposes the requested viewport, two custom [`Scrollbar`](/components/Scrollbar) overlays, and wheel/touch handlers with fling momentum. `overflow:hidden` on the body suppresses the native scroll path, removing the compositor-vs-JS race that caused a one-frame flicker during fast scrolling.
 - Rebinds existing pool slots to new data via `setData()` only when their data index changes.
 
 The full implementation lives in `src/typescript/Base/component/table/Body.ts` and is documented at the [API page](/api/classes/TableBody).

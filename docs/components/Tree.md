@@ -43,6 +43,8 @@ Nodes with a non-empty `children` array render as expandable parents; nodes with
 ## Notes
 
 - **Virtual scrolling** — only the visible rows plus a small buffer are in the DOM at any time. Resizing the tree does not re-render every row.
+- **Scrolling** is delegated to a [`VirtualScroller`](/components/VirtualScroller): JS-owned transform scroll with two custom [`Scrollbar`](/components/Scrollbar) overlays, wheel, touch (with fling momentum), and keyboard navigation.
+- **Horizontal scrolling** is supported when node labels exceed the tree's width — the horizontal scrollbar appears automatically.
 - **Indentation depth** is taken from the level of each node in the tree; you don't set it manually.
 - For tabular hierarchical data (multi-column tree), build a [`Table`](/components/Table) with a custom cell type for the first column.
 
@@ -50,4 +52,4 @@ Nodes with a non-empty `children` array render as expandable parents; nodes with
 
 - [API: Tree](/api/classes/Tree)
 - [API: TreeNode](/api/interfaces/TreeNode)
-- [Performance › Virtual scrolling](/concepts/performance) (forthcoming)
+- [Performance › Virtual scrolling](/concepts/performance)
