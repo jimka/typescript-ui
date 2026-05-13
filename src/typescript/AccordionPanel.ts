@@ -1,19 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./lib/Component.js";
-import { Accordion } from "./lib/layout/Accordion.js";
-import { AccordionConstraints } from "./lib/layout/AccordionConstraints.js";
-import { VBox } from "./lib/layout/VBox.js";
-import { HBox } from "./lib/layout/HBox.js";
-import { Fit } from "./lib/layout/Fit.js";
-import { Text } from "./lib/component/Text.js";
-import { Button } from "./lib/component/Button.js";
-import { Checkbox } from "./lib/component/Checkbox.js";
-import { TextField } from "./lib/component/TextField.js";
-import { List } from "./lib/component/List.js";
-import { Insets } from "./lib/Insets.js";
-import { Panel } from "./lib/Panel.js";
-import { callable } from "./lib/Callable.js";
+import { Component, Accordion, AccordionConstraints, VBox, HBox, Fit, Text, Button, Checkbox, TextField, List, Insets, Panel, callable } from "@jimka/typescript-ui";
 
 /**
  * Demonstrates the Accordion layout manager with multiple collapsible sections,

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Text } from "./lib/component/Text.js";
-import { VBox } from "./lib/layout/VBox.js";
-import { MenuBar } from "./lib/component/menubar/MenuBar.js";
-import { Panel } from "./lib/Panel.js";
-import { callable } from "./lib/Callable.js";
+import { Text, VBox, MenuBar, Panel, callable } from "@jimka/typescript-ui";
 
 /**
  * Demo panel showcasing the `MenuBar` component.

@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Split } from "./lib/layout/Split.js";
-import { Component } from "./lib/Component.js";
-import { TextArea } from "./lib/component/TextArea.js";
-import { List } from "./lib/component/List.js";
-import { Slider } from "./lib/component/Slider.js";
-import { Fit } from "./lib/layout/Fit.js";
-import { Text } from "./lib/component/Text.js";
-import { Button } from "./lib/component/Button.js";
-import { Panel } from "./lib/Panel.js";
-import { callable } from "./lib/Callable.js";
+import { Split, Component, TextArea, List, Slider, Fit, Text, Button, Panel, callable } from "@jimka/typescript-ui";
 
 class SplitPanel extends Panel {
 

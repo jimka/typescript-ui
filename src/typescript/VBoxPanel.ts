@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutTestPanel } from "./LayoutTestPanel.js";
-import { VBox } from "./lib/layout/VBox.js";
-import { callable } from "./lib/Callable.js";
+import { VBox, callable } from "@jimka/typescript-ui";
 
 class VBoxPanel extends LayoutTestPanel {
 

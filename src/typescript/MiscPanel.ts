@@ -1,36 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Window } from "./lib/Window.js";
-import { Image } from "./lib/component/Image.js";
-import { Model } from "./lib/data/Model.js";
-import { MemoryStore } from "./lib/data/MemoryStore.js";
-import { Store } from "./lib/data/Store.js";
-import { ModelRecord } from "./lib/data/ModelRecord.js";
-import { Proxy, ReadParams } from "./lib/data/proxy/Proxy.js";
-import { Component } from "./lib/Component.js";
-import { Button } from "./lib/component/Button.js";
-import { Text } from "./lib/component/Text.js";
-import { RadioButton } from "./lib/component/RadioButton.js";
-import { ButtonGroup } from "./lib/ButtonGroup.js";
-import { VBox } from "./lib/layout/VBox.js";
-import { HBox } from "./lib/layout/HBox.js";
-import { FieldSet } from "./lib/component/FieldSet.js";
-import { ThemeManager, DefaultTheme, DarkTheme } from "./lib/Theme.js";
-import { TablePanel, Table, ColumnSpec, PaginationBar } from "./lib/index.js";
-import { Menu } from "./lib/Menu.js";
-import { Tooltip } from "./lib/Tooltip.js";
-import { Event } from "./lib/Event.js";
-import { Tree } from "./lib/component/tree/Tree.js";
-import type { TreeNode } from "./lib/component/tree/TreeNode.js";
-import { Notification } from "./lib/Notification.js";
-import { Dialog } from "./lib/Dialog.js";
-import { AutoCompleteField } from "./lib/component/AutoCompleteField.js";
-import { NumberSpinner } from "./lib/component/NumberSpinner.js";
-import { ProgressBar } from "./lib/component/ProgressBar.js";
-import { ProgressSpinner } from "./lib/component/ProgressSpinner.js";
-import { Insets } from "./lib/Insets.js";
-import { Panel } from "./lib/Panel.js";
-import { callable } from "./lib/Callable.js";
+import { Window, Image, Model, MemoryStore, Store, ModelRecord, Proxy, ReadParams, Component, Button, Text, RadioButton, ButtonGroup, VBox, HBox, FieldSet, ThemeManager, DefaultTheme, DarkTheme, TablePanel, Table, ColumnSpec, PaginationBar, Menu, Tooltip, Event, Tree, Notification, Dialog, AutoCompleteField, NumberSpinner, ProgressBar, ProgressSpinner, Insets, Panel, callable } from "@jimka/typescript-ui";
+import type { TreeNode } from "@jimka/typescript-ui";
 
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and

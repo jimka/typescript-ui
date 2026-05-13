@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./lib/Component.js";
-import { Tab } from "./lib/layout/Tab.js";
-import { VBox } from "./lib/layout/VBox.js";
-import { HBox } from "./lib/layout/HBox.js";
-import { Fit } from "./lib/layout/Fit.js";
-import { Text } from "./lib/component/Text.js";
-import { Button } from "./lib/component/Button.js";
-import { Insets } from "./lib/Insets.js";
-import { callable } from "./lib/Callable.js";
+import { Component, Tab, VBox, HBox, Fit, Text, Button, Insets, callable } from "@jimka/typescript-ui";
 
 /**
  * Demonstrates the Tab layout manager with both normal and closeable tabs,

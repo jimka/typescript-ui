@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { TextArea } from "./lib/component/TextArea.js";
-import { Fit } from "./lib/layout/Fit.js";
-import { Panel } from "./lib/Panel.js";
-import { callable } from "./lib/Callable.js";
+import { TextArea, Fit, Panel, callable } from "@jimka/typescript-ui";
 
 class FitPanel extends Panel {
 

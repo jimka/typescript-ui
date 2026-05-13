@@ -1,21 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./lib/Component.js";
-import { VBox } from "./lib/layout/VBox.js";
-import { HBox } from "./lib/layout/HBox.js";
-import { Text } from "./lib/component/Text.js";
-import { TextField } from "./lib/component/TextField.js";
-import { Checkbox } from "./lib/component/Checkbox.js";
-import { ComboBox } from "./lib/component/ComboBox.js";
-import { Button } from "./lib/component/Button.js";
-import { Binding } from "./lib/Binding.js";
-import { DateField } from "./lib/component/DateField.js";
-import { TimeField } from "./lib/component/TimeField.js";
-import { Model } from "./lib/data/Model.js";
-import { MemoryStore } from "./lib/data/MemoryStore.js";
-import { Notification } from "./lib/Notification.js";
-import { Panel } from "./lib/Panel.js";
-import { callable } from "./lib/Callable.js";
+import { Component, VBox, HBox, Text, TextField, Checkbox, ComboBox, Button, Binding, DateField, TimeField, Model, MemoryStore, Notification, Panel, callable } from "@jimka/typescript-ui";
 
 class BindingPanel extends Panel {
 

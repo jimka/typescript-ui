@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../lib/Component.js";
-import { Table } from "../lib/component/table/Table.js";
-import { Model } from "../lib/data/Model.js";
-import { MemoryStore } from "../lib/data/MemoryStore.js";
-import { ThemeManager, DefaultTheme, DarkTheme } from "../lib/Theme.js";
+import { Component, Table, Model, MemoryStore, ThemeManager, DefaultTheme, DarkTheme } from "@jimka/typescript-ui";
 
 /**
  * In-browser micro-benchmarks for the UI library. Not auto-run; invoke from

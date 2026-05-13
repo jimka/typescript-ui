@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { HBox } from "./lib/layout/HBox.js";
+import { HBox, callable } from "@jimka/typescript-ui";
 import { LayoutTestPanel } from "./LayoutTestPanel.js";
-import { callable } from "./lib/Callable.js";
 
 class HBoxPanel extends LayoutTestPanel {
 
