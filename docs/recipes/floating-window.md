@@ -10,47 +10,45 @@ A floating "Settings" window with two text fields and Save / Cancel buttons. Clo
 
 ```typescript
 import {
-    Body, Window, BorderLayout, Placement,
-    VBox, HBox, Label, TextField, Button,
+    Body, Window, Placement,
+    Component, VBox, HBox, Label, TextField, Button,
     Event,
 } from '@jimka/typescript-ui';
 
-const settingsWin = new Window();
-settingsWin.setHeaderText('Settings');
-settingsWin.setSize(400, 280);
-settingsWin.setPosition(200, 100);
-settingsWin.setLayoutManager(new BorderLayout());
-```
-
-## Add form content
-
-```typescript
-const form = new VBox();
-
-const urlField = new TextField();
+const urlField = TextField();
 urlField.setValue('https://api.example.com');
 
-const keyField = new TextField();
+const keyField = TextField();
 
-form.addComponent(new Label('Server URL:', urlField.getId()));
-form.addComponent(urlField);
-form.addComponent(new Label('API key:', keyField.getId()));
-form.addComponent(keyField);
+const saveBtn   = Button('Save');
+const cancelBtn = Button('Cancel');
 
-settingsWin.addComponent(form, { region: Placement.CENTER });
+const settingsWin = Window('Settings');
+settingsWin.setSize(400, 280);
+settingsWin.setPosition(200, 100);
+
+settingsWin.addComponents(
+    {
+        component: Component({
+            layoutManager: VBox(),
+            components: [
+                Label('Server URL:', urlField.getId()), urlField,
+                Label('API key:',    keyField.getId()), keyField
+            ]
+        }),
+        constraints: { region: Placement.CENTER }
+    },
+    {
+        component: Component({
+            layoutManager: HBox(),
+            components: [saveBtn, cancelBtn]
+        }),
+        constraints: { region: Placement.SOUTH }
+    }
+);
 ```
 
-## Add a footer with buttons
-
-```typescript
-const footer = new HBox();
-const saveBtn   = new Button('Save');
-const cancelBtn = new Button('Cancel');
-footer.addComponent(saveBtn);
-footer.addComponent(cancelBtn);
-
-settingsWin.addComponent(footer, { region: Placement.SOUTH });
-```
+`Window` ships its own Border layout already, so the form and footer just slot into `CENTER` / `SOUTH` regions. The fields and buttons are pulled out into named consts because the handlers below reference them; everything else (labels, containers, layout managers) is declared inline.
 
 ## Show / hide instead of destroy
 
@@ -58,7 +56,7 @@ settingsWin.addComponent(footer, { region: Placement.SOUTH });
 Body.getInstance().addComponent(settingsWin);
 settingsWin.setVisible(false);  // hidden until requested
 
-const openBtn = new Button('Settings…');
+const openBtn = Button('Settings…');
 Event.addListener(openBtn, 'click', () => {
     settingsWin.setVisible(true);
     settingsWin.show();           // brings to front

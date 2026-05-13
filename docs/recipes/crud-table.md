@@ -46,7 +46,7 @@ await store.load();
 ```typescript
 import { TablePanel, Body } from '@jimka/typescript-ui';
 
-const panel = new TablePanel(store);
+const panel = TablePanel(store);
 Body.getInstance().addComponent(panel);
 ```
 
@@ -67,15 +67,9 @@ import {
     HBox, Button, Table, Event, Notification,
 } from '@jimka/typescript-ui';
 
-const root = new Component();
-root.setLayoutManager(new BorderLayout());
-
-const toolbar = new Component();
-toolbar.setLayoutManager(new HBox());
-
-const addBtn  = new Button('Add');
-const exportBtn = new Button('Export CSV');
-const syncBtn = new Button('Sync');
+const addBtn    = Button('Add');
+const exportBtn = Button('Export CSV');
+const syncBtn   = Button('Sync');
 
 Event.addListener(addBtn,    'click', () => store.add({}));
 Event.addListener(exportBtn, 'click', () => exportCSV(store));
@@ -84,12 +78,22 @@ Event.addListener(syncBtn,   'click', async () => {
     Notification.show('Saved.', 'success');
 });
 
-toolbar.addComponent(addBtn);
-toolbar.addComponent(exportBtn);
-toolbar.addComponent(syncBtn);
-
-root.addComponent(toolbar,        { region: Placement.NORTH  });
-root.addComponent(new Table(store), { region: Placement.CENTER });
+const root = Component({
+    layoutManager: BorderLayout(),
+    components: [
+        {
+            component: Component({
+                layoutManager: HBox(),
+                components: [addBtn, exportBtn, syncBtn]
+            }),
+            constraints: { region: Placement.NORTH }
+        },
+        {
+            component: Table(store),
+            constraints: { region: Placement.CENTER }
+        }
+    ]
+});
 ```
 
 ## Constraining columns
@@ -97,7 +101,7 @@ root.addComponent(new Table(store), { region: Placement.CENTER });
 Use a [`ColumnSpec`](/api/interfaces/ColumnSpec) to control widths and order:
 
 ```typescript
-const table = new Table(store, {
+const table = Table(store, {
     columns: [
         { field: 'name',  minWidth: 160 },
         { field: 'email', minWidth: 220 },

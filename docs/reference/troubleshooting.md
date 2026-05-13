@@ -9,7 +9,7 @@ The single most common issue. Run through this list:
 1. **Does the parent have a layout manager?** A bare [`Component`](/api/classes/Component) defaults to [`Absolute`](/layouts/Absolute), which positions nothing.
 
    ```typescript
-   panel.setLayoutManager(new VBox());  // ← required
+   panel.setLayoutManager(VBox());  // ← required
    ```
 
 2. **Are you reading size before layout has run?**
@@ -76,7 +76,7 @@ Most often a [`Text`](/components/Text)-derived listener leak. Custom components
 
 ```typescript
 class StatusBar extends Component {
-    private message: Text = new Text('');
+    private message: Text = Text('');
 
     protected destructor(): void {
         this.message.dispose();

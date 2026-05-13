@@ -35,27 +35,26 @@ import {
     Label, TextField, Checkbox, ComboBox, Option, Button,
 } from '@jimka/typescript-ui';
 
-const form = new Component();
-form.setLayoutManager(new VBox());
+const nameField   = TextField();
+const emailField  = TextField();
+const activeCheck = Checkbox();
+const roleCombo   = ComboBox()
+    .addItem(Option('admin', 'Admin'))
+    .addItem(Option('user',  'User'))
+    .addItem(Option('guest', 'Guest'));
 
-const nameField   = new TextField();
-const emailField  = new TextField();
-const roleCombo   = new ComboBox();
-const activeCheck = new Checkbox();
-
-roleCombo.addItem(new Option('admin', 'Admin'));
-roleCombo.addItem(new Option('user',  'User'));
-roleCombo.addItem(new Option('guest', 'Guest'));
-
-form.addComponent(new Label('Name',   nameField.getId()));
-form.addComponent(nameField);
-form.addComponent(new Label('Email',  emailField.getId()));
-form.addComponent(emailField);
-form.addComponent(new Label('Role',   roleCombo.getId()));
-form.addComponent(roleCombo);
-form.addComponent(new Label('Active', activeCheck.getId()));
-form.addComponent(activeCheck);
+const form = Component({
+    layoutManager: VBox(),
+    components: [
+        Label('Name',   nameField.getId()),   nameField,
+        Label('Email',  emailField.getId()),  emailField,
+        Label('Role',   roleCombo.getId()),   roleCombo,
+        Label('Active', activeCheck.getId()), activeCheck
+    ]
+});
 ```
+
+The fields are bound to named references because the `Binding` below needs handles on them; everything else (labels, layout managers) is declared inline.
 
 ## Bind and react to dirty state
 
@@ -68,8 +67,8 @@ const binding = new Binding()
 
 binding.setRecord(store.getAt(0));
 
-const saveBtn   = new Button('Save');
-const cancelBtn = new Button('Cancel');
+const saveBtn   = Button('Save');
+const cancelBtn = Button('Cancel');
 saveBtn.setEnabled(false);
 cancelBtn.setEnabled(false);
 
@@ -82,12 +81,10 @@ binding.addChangeListener(() => {
 Event.addListener(saveBtn,   'click', () => binding.commit());
 Event.addListener(cancelBtn, 'click', () => binding.reject());
 
-const buttons = new Component();
-buttons.setLayoutManager(new HBox());
-buttons.addComponent(saveBtn);
-buttons.addComponent(cancelBtn);
-
-form.addComponent(buttons);
+form.addComponent(Component({
+    layoutManager: HBox(),
+    components: [saveBtn, cancelBtn]
+}));
 ```
 
 ## Switching records

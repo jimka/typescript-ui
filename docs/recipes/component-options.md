@@ -7,7 +7,7 @@ Every `Component` subclass, every `LayoutManager`, and every concrete `Store` / 
 Replace boilerplate like this:
 
 ```typescript
-const button = new Button("Save");
+const button = Button("Save");
 button.setEnabled(false);
 button.setForegroundColor("white");
 button.setBackgroundColor("var(--ts-ui-accent)");
@@ -18,13 +18,15 @@ panel.addComponent(button);
 with this:
 
 ```typescript
-panel.addComponent(new Button("Save", {
+panel.addComponent(Button("Save", {
     enabled        : false,
     foregroundColor: "white",
     backgroundColor: "var(--ts-ui-accent)",
     borderRadius   : "8px",
 }));
 ```
+
+Component classes are callable in both `Foo(...)` and `new Foo(...)` form — pick whichever reads better. The bare-call form is recommended for nested trees because it removes `new` clutter.
 
 ## How the options object is layered
 
@@ -52,7 +54,7 @@ Subclass options inherit every parent field, so any `ComponentOptions` field —
 ### Styling a label
 
 ```typescript
-new Label("Name", "user-input", {
+Label("Name", "user-input", {
     fontWeight: "bold",
     fontSize  : 16,
 });
@@ -61,7 +63,7 @@ new Label("Name", "user-input", {
 ### Pre-configured numeric spinner
 
 ```typescript
-new NumberSpinner({
+NumberSpinner({
     value    : 50,
     min      : 0,
     max      : 100,
@@ -73,7 +75,7 @@ new NumberSpinner({
 ### Pre-populated combo box bound to a store
 
 ```typescript
-new ComboBox({
+ComboBox({
     store        : peopleStore,
     displayField : "name",
     valueField   : "id",
@@ -84,10 +86,37 @@ new ComboBox({
 ### Static-suggestion AutoComplete
 
 ```typescript
-new AutoCompleteField({
+AutoCompleteField({
     suggestions: ["Apple", "Banana", "Cherry"],
     placeholder: "Type a fruit…",
     minChars   : 2,
+});
+```
+
+### Declaring child components
+
+`ComponentOptions.components` accepts an array of children (or `{ component, constraints }` pairs), removing the need for trailing `.addComponents(...)`:
+
+```typescript
+Panel({
+    layoutManager: HBox(),
+    components: [
+        Text("Title:"),    TextField(),
+        Text("Subtitle:"), TextField()
+    ]
+});
+```
+
+Per-child layout constraints via the `ConstrainedComponent` shape:
+
+```typescript
+Panel({
+    layoutManager: Border(),
+    components: [
+        { component: header,  constraints: { region: 'north'  } },
+        { component: content, constraints: { region: 'center' } },
+        { component: footer,  constraints: { region: 'south'  } }
+    ]
 });
 ```
 
@@ -96,10 +125,10 @@ new AutoCompleteField({
 Layout managers follow the same pattern. The base `LayoutManagerOptions` interface is empty today; each concrete manager's interface adds its own settable fields.
 
 ```typescript
-const hbox = new HBox({ spacing: 12, stretching: true });
-const grid = new Grid({ rows: 4, columns: 4, spacing: 8 });
-const split = new Split({ direction: "vertical" });
-const accordion = new Accordion({
+const hbox = HBox({ spacing: 12, stretching: true });
+const grid = Grid({ rows: 4, columns: 4, spacing: 8 });
+const split = Split({ direction: "vertical" });
+const accordion = Accordion({
     singleOpen       : true,
     headerHeight     : 32,
     animationDuration: 150,
@@ -109,7 +138,7 @@ const accordion = new Accordion({
 panel.setLayoutManager(hbox);
 ```
 
-The previous positional `new VBox(spacing)` and `new Split(direction)` signatures still compile.
+The previous positional `VBox(spacing)` and `Split(direction)` signatures still compile, and `new` works alongside the callable form for every concrete manager.
 
 ## Data layer
 
@@ -130,11 +159,13 @@ const remote = new AjaxStore({
     autoLoad: true,
 });
 
-const Model = new Model({
+const personModel = new Model({
     fields    : [{ name: "id", type: "number" }, { name: "name", type: "string" }],
     primaryKey: "id",
 });
 ```
+
+Data-layer classes (`Model`, `Store`, `MemoryStore`, `AjaxStore`, `Proxy`) are not currently part of the callable wrapper — they still require `new`. The options-bag pattern is identical regardless.
 
 Store options accepted by every `AbstractStoreOptions` consumer: `pageSize`, `page`, `sorters`, `filters`, `autoLoad`, `listeners`. The `autoLoad: true` flag triggers `load()` from the constructor — registered `listeners` fire as expected.
 
@@ -145,3 +176,22 @@ Use options for construction-time defaults. Use setters for any state that chang
 ## Backwards compatibility
 
 The options parameter is purely additive: every existing positional call site continues to compile and behave identically. Migration is opportunistic — adopt the new style at new call sites, leave the old ones alone. The renamed `Config` types (`FieldConfig`, `AjaxProxyConfig`, `MemoryProxyConfig`, `AutoCompleteFieldConfig`) are kept as deprecated aliases.
+
+## Calling components and layouts without `new`
+
+Every `Component` subclass and every concrete `LayoutManager` (plus `ButtonGroup`) may be invoked without the `new` keyword. The bare-call form is equivalent to `new` — it constructs the same instance, accepts the same arguments, and produces a value that still satisfies `instanceof` and can serve as a superclass:
+
+```typescript
+const panel = Panel({
+    layoutManager: HBox({ spacing: 10 }),
+    components: [
+        Button("OK"),
+        Text("hello")
+    ]
+});
+
+panel instanceof Panel;        // true
+class MyPanel extends Panel {} // still works
+```
+
+Both forms compile and behave identically; pick whichever reads better at the call site. The bare-call form composes naturally with the `components: [...]` option to express a full UI tree as a single expression. See [Mental model — JSX-shaped, without JSX](/guide/mental-model#jsx-shaped-without-jsx) for the underlying mechanism.

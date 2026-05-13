@@ -24,14 +24,29 @@ A [`LayoutManager`](/api/classes/LayoutManager) is attached to a container [`Com
 ```typescript
 import { Component, Border } from '@jimka/typescript-ui';
 
-const panel = new Component();
-panel.setLayoutManager(new Border());
-panel.addComponent(header,  { region: 'north' });
-panel.addComponent(content, { region: 'center' });
-panel.addComponent(footer,  { region: 'south' });
+const panel = Component({
+    layoutManager: Border(),
+    components: [
+        { component: header,  constraints: { region: 'north'  } },
+        { component: content, constraints: { region: 'center' } },
+        { component: footer,  constraints: { region: 'south'  } }
+    ]
+});
 ```
 
-The second argument to `addComponent` is the layout's constraint — its shape is specific to the manager. `Border` takes a region; `Grid` takes a row + column; `Absolute` ignores it.
+The second argument to `addComponent` (or the `constraints` field of a `ConstrainedComponent` pair) is the layout's constraint — its shape is specific to the manager. `Border` takes a region; `Grid` takes a row + column; `Absolute` ignores it.
+
+The same can be expressed imperatively if you need refs along the way:
+
+```typescript
+const panel = Component();
+panel.setLayoutManager(Border());
+panel.addComponents(
+    { component: header,  constraints: { region: 'north'  } },
+    { component: content, constraints: { region: 'center' } },
+    { component: footer,  constraints: { region: 'south'  } }
+);
+```
 
 ## When `doLayout` runs
 
