@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Border } from "./Base/layout/Border.js";
-import { Component } from "./Base/Component.js";
-import { List } from "./Base/component/List.js";
-import { Text } from "./Base/component/Text.js";
-import { TextArea } from "./Base/component/TextArea.js";
-import { BulletedList } from "./Base/component/BulletedList.js";
-import { ListItem } from "./Base/component/ListItem.js";
-import { NumberedList } from "./Base/component/NumberedList.js";
-import { Placement } from "./Base/Placement.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import {
+    BorderLayout,
+    BulletedList,
+    callable,
+    Component,
+    List,
+    ListItem,
+    NumberedList,
+    Panel,
+    Placement,
+    Text,
+    TextArea
+} from "@jimka/typescript-ui";
 
 class BorderPanel extends Panel {
 
     constructor() {
         super();
 
-        this.setLayoutManager(new Border());
+        this.setLayoutManager(new BorderLayout());
 
         let headerText = new Text("Header!");
         headerText.setPreferredSize(20, 100);
@@ -48,7 +50,7 @@ class BorderPanel extends Panel {
         this.addComponent(footerText, { placement: Placement.SOUTH });
 
         let eastComponent = new Component();
-        eastComponent.setLayoutManager(new Border());
+        eastComponent.setLayoutManager(new BorderLayout());
 
         let bulletedList = new BulletedList();
         bulletedList.addComponent(new ListItem("a", "A"));

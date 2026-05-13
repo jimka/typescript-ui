@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Base/Component.js";
-import { VBox } from "./Base/layout/VBox.js";
-import { HBox } from "./Base/layout/HBox.js";
-import { Text } from "./Base/component/Text.js";
-import { Button } from "./Base/component/Button.js";
-import { MultiSelectList } from "./Base/component/MultiSelectList.js";
-import { Binding } from "./Base/Binding.js";
-import { Model } from "./Base/data/Model.js";
-import { MemoryStore } from "./Base/data/MemoryStore.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import {
+    Binding,
+    Button,
+    callable,
+    Component,
+    HBox,
+    MemoryStore,
+    Model,
+    MultiSelectList,
+    Panel,
+    Text,
+    VBox
+} from "@jimka/typescript-ui";
 
 /**
  * Demonstrates `MultiSelectList` with static items, store binding,

@@ -1,36 +1,46 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Window } from "./Base/Window.js";
-import { Image } from "./Base/component/Image.js";
-import { Model } from "./Base/data/Model.js";
-import { MemoryStore } from "./Base/data/MemoryStore.js";
-import { Store } from "./Base/data/Store.js";
-import { ModelRecord } from "./Base/data/ModelRecord.js";
-import { Proxy, ReadParams } from "./Base/data/proxy/Proxy.js";
-import { Component } from "./Base/Component.js";
-import { Button } from "./Base/component/Button.js";
-import { Text } from "./Base/component/Text.js";
-import { RadioButton } from "./Base/component/RadioButton.js";
-import { ButtonGroup } from "./Base/ButtonGroup.js";
-import { VBox } from "./Base/layout/VBox.js";
-import { HBox } from "./Base/layout/HBox.js";
-import { FieldSet } from "./Base/component/FieldSet.js";
-import { ThemeManager, DefaultTheme, DarkTheme } from "./Base/Theme.js";
-import { TablePanel, Table, ColumnSpec, PaginationBar } from "./Base/index.js";
-import { Menu } from "./Base/Menu.js";
-import { Tooltip } from "./Base/Tooltip.js";
-import { Event } from "./Base/Event.js";
-import { Tree } from "./Base/component/tree/Tree.js";
-import type { TreeNode } from "./Base/component/tree/TreeNode.js";
-import { Notification } from "./Base/Notification.js";
-import { Dialog } from "./Base/Dialog.js";
-import { AutoCompleteField } from "./Base/component/AutoCompleteField.js";
-import { NumberSpinner } from "./Base/component/NumberSpinner.js";
-import { ProgressBar } from "./Base/component/ProgressBar.js";
-import { ProgressSpinner } from "./Base/component/ProgressSpinner.js";
-import { Insets } from "./Base/Insets.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import {
+    AutoCompleteField,
+    Button,
+    ButtonGroup,
+    callable,
+    ColumnSpec,
+    Component,
+    DarkTheme,
+    DefaultTheme,
+    Dialog,
+    Event,
+    FieldSet,
+    HBox,
+    Image,
+    Insets,
+    MemoryStore,
+    Menu,
+    Model,
+    ModelRecord,
+    Notification,
+    NumberSpinner,
+    PaginationBar,
+    Panel,
+    ProgressBar,
+    ProgressSpinner,
+    Proxy,
+    RadioButton,
+    ReadParams,
+    Store,
+    Table,
+    TablePanel,
+    Text,
+    ThemeManager,
+    Tooltip,
+    Tree,
+    VBox,
+    Window
+} from "@jimka/typescript-ui";
+import type {
+    TreeNode
+} from "@jimka/typescript-ui";
 
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and

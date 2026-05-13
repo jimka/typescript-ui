@@ -15,6 +15,9 @@ export type { Theme } from './Theme.js';
 
 // Core
 export { BaseObject } from './BaseObject.js';
+export { Event } from './Event.js';
+export { Util } from './Util.js';
+export type { TextMeasureOptions, TextMetrics } from './Util.js';
 export { callable } from './Callable.js';
 export type { Callable } from './Callable.js';
 export { Component } from './Component.js';

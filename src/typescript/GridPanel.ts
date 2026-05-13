@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutTestPanel } from "./LayoutTestPanel.js";
-import { Grid } from "./Base/layout/Grid.js";
-import { callable } from "./Base/Callable.js";
+import {
+    callable,
+    Grid
+} from "@jimka/typescript-ui";
 
 class GridPanel extends LayoutTestPanel {
 
