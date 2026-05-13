@@ -23,7 +23,7 @@ const actions = {
 ```typescript
 import { Body, MenuBar } from '@jimka/typescript-ui';
 
-const bar = new MenuBar([
+const bar = MenuBar([
     { label: 'File', items: [
         { text: 'New',  shortcut: 'Ctrl+N', action: actions.new  },
         { text: 'Open', shortcut: 'Ctrl+O', action: actions.open },

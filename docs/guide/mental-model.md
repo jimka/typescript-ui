@@ -31,6 +31,50 @@ A `Component` is a rectangle on the screen with a known `x`, `y`, `width`, `heig
 - Apps that need responsive HTML-flow reflow on mobile.
 - Anywhere SEO matters — components render lazily into absolute-positioned divs.
 
+## JSX-shaped, without JSX
+
+You can express a UI tree as a single declarative expression — and the framework does this using only plain TypeScript. Three primitives — callable component classes, options-bag configuration, and a `components: [...]` option — combine to give you the JSX shape with nothing more than standard language features:
+
+```ts
+Panel({
+    layoutManager: HBox(),
+    border: { style: BorderStyle.SOLID, width: 1, color: "black" },
+    components: [
+        Panel({
+            layoutManager: VBox(),
+            components: [Text("Select Customer"), ComboBox()]
+        }),
+        Button("Save")
+    ]
+})
+```
+
+### How JSX reaches the browser
+
+JSX is not part of JavaScript. The ECMAScript spec has no `<Foo>` syntax. To run in a browser, JSX takes a path through:
+
+- A parser that understands JSX (TypeScript with `--jsx`, Babel + a JSX plugin, esbuild, swc).
+- A transform that rewrites `<Foo bar="x">` into a function call (`React.createElement(Foo, ...)`, `h(Foo, ...)`, etc.).
+- Per-project configuration pointing the transform at a factory (`jsxFactory`, `jsxImportSource`, or per-file `/** @jsx ... */` pragmas).
+- A runtime helper from a library to interpret what the factory returns.
+
+By the time browser code runs, JSX is already gone — it has been compiled into function calls. The work is purely build-time.
+
+### What this framework uses instead
+
+Object literals, function calls, and arrays — all valid TypeScript expressions. The same TypeScript compiler and bundler that handles the rest of your project handles your UI trees without extra configuration. There is no JSX flag, no factory pragma, no runtime helper.
+
+### What you get
+
+Nested object literals replace angle-bracketed elements — a similar visual hierarchy with slightly different punctuation. In return:
+
+- **A standard TypeScript toolchain.** No JSX-specific tsconfig flags or per-file pragmas; your existing build pipeline already knows how to handle every line of UI code.
+- **Direct construction.** Calling a component returns a real, live instance immediately — ready to inspect, mutate, or hand to other code.
+- **First-class IDE navigation.** Ctrl+click on a component name jumps straight to its TypeScript class.
+- **No virtual DOM, no diffing layer.** What you build is what is on screen, from the moment you build it.
+
+The framework's imperative widget model — build a tree once, then mutate via setters on retained references — gives you direct control over component lifecycles. The declarative shape on top makes that control comfortable to use, without bringing along the build machinery that a JSX-based stack would need.
+
 ## The three layers
 
 ```

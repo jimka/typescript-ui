@@ -56,7 +56,7 @@ Body.getInstance().addComponent(root);
 ```typescript
 import { Button, Event, ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui';
 
-const toggle = new Button('Toggle theme');
+const toggle = Button('Toggle theme');
 let dark = false;
 
 Event.addListener(toggle, 'click', () => {

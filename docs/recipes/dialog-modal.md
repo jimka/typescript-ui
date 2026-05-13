@@ -35,12 +35,13 @@ import {
 } from '@jimka/typescript-ui';
 
 async function renameFile(currentName: string): Promise<string | null> {
-    const form = new VBox();
-    const nameField = new TextField();
+    const nameField = TextField();
     nameField.setValue(currentName);
 
-    form.addComponent(new Label('New name:', nameField.getId()));
-    form.addComponent(nameField);
+    const form = Component({
+        layoutManager: VBox(),
+        components: [Label('New name:', nameField.getId()), nameField]
+    });
 
     const result = await Dialog.show({
         title:            'Rename file',

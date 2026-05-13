@@ -73,7 +73,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | --- | --- |
 | [`MenuBar`](/api/classes/MenuBar) | Top-of-window menu bar |
 | [`MenuBarButton`](/api/classes/MenuBarButton) | A button that opens a menu panel |
-| [`Menu`](/api/classes/Menu) | Floating menu — right-click context menu (`new Menu()`) or `MenuBar` dropdown (`new Menu(items, onClose)`) |
+| [`Menu`](/api/classes/Menu) | Floating menu — right-click context menu (`Menu()`) or `MenuBar` dropdown (`Menu(items, onClose)`) |
 | [`MenuItem`](/api/classes/MenuItem) | Item inside a menu |
 | [`MenuSeparator`](/api/classes/MenuSeparator) | Divider line in a menu |
 
@@ -104,7 +104,7 @@ A [`Table`](/api/classes/Table) ties columns to a [`Store`](/api/classes/Store) 
 ```typescript
 import { Tree } from '@jimka/typescript-ui';
 
-const tree = new Tree();
+const tree = Tree();
 tree.setNodes([
     { label: 'Fruits', children: [
         { label: 'Apple' },
