@@ -5,7 +5,9 @@ import { VBox, Text, HBox, ComboBox, FieldSet, RadioButton, ButtonGroup, Button,
 class ComplexUIPanel extends Panel {
 
     constructor() {
-        super({ layoutManager: VBox({ stretching: true })});
+        super();
+
+        this.setLayoutManager(new VBox({ stretching: true }));
 
         this.initLayout();
     }
