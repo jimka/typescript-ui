@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutTestPanel } from "./LayoutTestPanel.js";
-import { Row } from "./lib/layout/Row.js";
-import { callable } from "./lib/Callable.js";
+import { Row, callable } from "@jimka/typescript-ui";
 
 class RowPanel extends LayoutTestPanel {
 
