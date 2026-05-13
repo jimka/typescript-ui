@@ -30,6 +30,8 @@ export interface TextMetrics {
 
 /**
  * General-purpose utility functions for DOM interaction and browser environment queries.
+ *
+ * @category Util
  */
 export namespace Util {
 

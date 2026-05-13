@@ -2,7 +2,7 @@
 
 [`Header`](/api/classes/Header) is a title-bar / panel-header component containing left-aligned text. Renders a `<header>` element with a [`Border`](/api/classes/BorderLayout) layout and a bold [`Text`](/components/Text) child anchored to the west side.
 
-This is the standalone header component. The table's column-header strip — also exported as `Header` from `Base/component/table/` — is re-exported as [`TableHeader`](/api/classes/TableHeader) at the package level.
+This is the standalone header component. The table's column-header strip — also exported as `Header` from `lib/component/table/` — is re-exported as [`TableHeader`](/api/classes/TableHeader) at the package level.
 
 ## Usage
 
