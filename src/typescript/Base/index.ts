@@ -178,6 +178,8 @@ export { SplitGutter } from './component/SplitGutter.js';
 export type { SplitGutterOptions } from './component/SplitGutter.js';
 export { WindowBorder, Direction } from './component/WindowBorder.js';
 export type { WindowBorderOptions } from './component/WindowBorder.js';
+export { WindowHeader } from './component/WindowHeader.js';
+export type { WindowHeaderOptions } from './component/WindowHeader.js';
 
 // Components — menu bar
 export { MenuBar } from './component/menubar/MenuBar.js';
