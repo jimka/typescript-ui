@@ -80,9 +80,9 @@ The framework's imperative widget model — build a tree once, then mutate via s
 ```
 Entry point (your main.ts)
   └─ Your panels / screens
-       └─ Component system (Base/)
-            ├─ Layout managers (Base/layout/)
-            └─ UI components (Base/component/)
+       └─ Component system (lib/)
+            ├─ Layout managers (lib/layout/)
+            └─ UI components (lib/component/)
 ```
 
 ### Component system
@@ -104,7 +104,7 @@ See [Layouts](/layouts/) for the full list (Border, Card, Column, Fit, Grid, HBo
 
 ### UI components
 
-`Base/component/` contains 50+ ready components — buttons, text inputs, lists, tables, trees, menus, dialogs. See [Components](/components/) for the catalog.
+`lib/component/` contains 50+ ready components — buttons, text inputs, lists, tables, trees, menus, dialogs. See [Components](/components/) for the catalog.
 
 ## What runs when you call `setSize`
 
