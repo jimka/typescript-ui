@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Base/Component.js";
-import { Button } from "./Base/component/Button.js";
-import { ComboBox } from "./Base/component/ComboBox.js";
-import { ProgressBar } from "./Base/component/ProgressBar.js";
-import { RadioButton } from "./Base/component/RadioButton.js";
-import { Text } from "./Base/component/Text.js";
-import { TextField } from "./Base/component/TextField.js";
-import { Insets } from "./Base/Insets.js";
-import { HBox } from "./Base/layout/HBox.js";
-import { VBox } from "./Base/layout/VBox.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import { Component } from "./lib/Component.js";
+import { Button } from "./lib/component/Button.js";
+import { ComboBox } from "./lib/component/ComboBox.js";
+import { ProgressBar } from "./lib/component/ProgressBar.js";
+import { RadioButton } from "./lib/component/RadioButton.js";
+import { Text } from "./lib/component/Text.js";
+import { TextField } from "./lib/component/TextField.js";
+import { Insets } from "./lib/Insets.js";
+import { HBox } from "./lib/layout/HBox.js";
+import { VBox } from "./lib/layout/VBox.js";
+import { Panel } from "./lib/Panel.js";
+import { callable } from "./lib/Callable.js";
 
 class BaselinePanel extends Panel {
 

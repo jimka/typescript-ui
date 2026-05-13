@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Base/Component.js";
-import { Accordion } from "./Base/layout/Accordion.js";
-import { AccordionConstraints } from "./Base/layout/AccordionConstraints.js";
-import { VBox } from "./Base/layout/VBox.js";
-import { HBox } from "./Base/layout/HBox.js";
-import { Fit } from "./Base/layout/Fit.js";
-import { Text } from "./Base/component/Text.js";
-import { Button } from "./Base/component/Button.js";
-import { Checkbox } from "./Base/component/Checkbox.js";
-import { TextField } from "./Base/component/TextField.js";
-import { List } from "./Base/component/List.js";
-import { Insets } from "./Base/Insets.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import { Component } from "./lib/Component.js";
+import { Accordion } from "./lib/layout/Accordion.js";
+import { AccordionConstraints } from "./lib/layout/AccordionConstraints.js";
+import { VBox } from "./lib/layout/VBox.js";
+import { HBox } from "./lib/layout/HBox.js";
+import { Fit } from "./lib/layout/Fit.js";
+import { Text } from "./lib/component/Text.js";
+import { Button } from "./lib/component/Button.js";
+import { Checkbox } from "./lib/component/Checkbox.js";
+import { TextField } from "./lib/component/TextField.js";
+import { List } from "./lib/component/List.js";
+import { Insets } from "./lib/Insets.js";
+import { Panel } from "./lib/Panel.js";
+import { callable } from "./lib/Callable.js";
 
 /**
  * Demonstrates the Accordion layout manager with multiple collapsible sections,

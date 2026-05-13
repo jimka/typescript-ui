@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Border } from "./Base/layout/Border.js";
-import { Component } from "./Base/Component.js";
-import { List } from "./Base/component/List.js";
-import { Text } from "./Base/component/Text.js";
-import { TextArea } from "./Base/component/TextArea.js";
-import { BulletedList } from "./Base/component/BulletedList.js";
-import { ListItem } from "./Base/component/ListItem.js";
-import { NumberedList } from "./Base/component/NumberedList.js";
-import { Placement } from "./Base/Placement.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import { Border } from "./lib/layout/Border.js";
+import { Component } from "./lib/Component.js";
+import { List } from "./lib/component/List.js";
+import { Text } from "./lib/component/Text.js";
+import { TextArea } from "./lib/component/TextArea.js";
+import { BulletedList } from "./lib/component/BulletedList.js";
+import { ListItem } from "./lib/component/ListItem.js";
+import { NumberedList } from "./lib/component/NumberedList.js";
+import { Placement } from "./lib/Placement.js";
+import { Panel } from "./lib/Panel.js";
+import { callable } from "./lib/Callable.js";
 
 class BorderPanel extends Panel {
 

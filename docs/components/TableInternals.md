@@ -6,7 +6,7 @@ This page covers the structural sub-components of [`Table`](/components/Table) â
 
 [`TableHeader`](/api/classes/TableHeader) renders the column-header strip as a `<thead>` element. It builds one [`HeaderCell`](/api/classes/HeaderCell) per visible field from the model, wired with sort-click, resize-drag, and context-menu callbacks.
 
-Re-exported as `TableHeader` from `@jimka/typescript-ui` (the source class is `Header` in `Base/component/table/`).
+Re-exported as `TableHeader` from `@jimka/typescript-ui` (the source class is `Header` in `lib/component/table/`).
 
 ## TableBody
 
@@ -17,7 +17,7 @@ Re-exported as `TableHeader` from `@jimka/typescript-ui` (the source class is `H
 - Scrolling is delegated to a [`VirtualScroller`](/components/VirtualScroller) â€” a rows-container `<div>` whose `translate3d` transform exposes the requested viewport, two custom [`Scrollbar`](/components/Scrollbar) overlays, and wheel/touch handlers with fling momentum. `overflow:hidden` on the body suppresses the native scroll path, removing the compositor-vs-JS race that caused a one-frame flicker during fast scrolling.
 - Rebinds existing pool slots to new data via `setData()` only when their data index changes.
 
-The full implementation lives in `src/typescript/Base/component/table/Body.ts` and is documented at the [API page](/api/classes/TableBody).
+The full implementation lives in `src/typescript/lib/component/table/Body.ts` and is documented at the [API page](/api/classes/TableBody).
 
 ## TableFooter
 

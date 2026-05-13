@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Base/Component.js"
-import { Button } from "./Base/component/Button.js";
-import { Checkbox } from "./Base/component/Checkbox.js";
-import { ComboBox } from "./Base/component/ComboBox.js";
-import { Text } from "./Base/component/Text.js";
-import { List } from "./Base/component/List.js";
-import { PasswordField } from "./Base/component/PasswordField.js";
-import { RadioButton } from "./Base/component/RadioButton.js";
-import { Slider } from "./Base/component/Slider.js";
-import { TextArea } from "./Base/component/TextArea.js";
-import { TextField } from "./Base/component/TextField.js";
-import { ToggleButton } from "./Base/component/ToggleButton.js";
-import { FieldSet } from "./Base/component/FieldSet.js";
-import { HBox } from "./Base/layout/HBox.js";
-import { ButtonGroup } from "./Base/ButtonGroup.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import { Component } from "./lib/Component.js"
+import { Button } from "./lib/component/Button.js";
+import { Checkbox } from "./lib/component/Checkbox.js";
+import { ComboBox } from "./lib/component/ComboBox.js";
+import { Text } from "./lib/component/Text.js";
+import { List } from "./lib/component/List.js";
+import { PasswordField } from "./lib/component/PasswordField.js";
+import { RadioButton } from "./lib/component/RadioButton.js";
+import { Slider } from "./lib/component/Slider.js";
+import { TextArea } from "./lib/component/TextArea.js";
+import { TextField } from "./lib/component/TextField.js";
+import { ToggleButton } from "./lib/component/ToggleButton.js";
+import { FieldSet } from "./lib/component/FieldSet.js";
+import { HBox } from "./lib/layout/HBox.js";
+import { ButtonGroup } from "./lib/ButtonGroup.js";
+import { Panel } from "./lib/Panel.js";
+import { callable } from "./lib/Callable.js";
 
 class LayoutTestPanel extends Panel {
 

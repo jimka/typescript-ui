@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Base/Component.js";
-import { VBox } from "./Base/layout/VBox.js";
-import { HBox } from "./Base/layout/HBox.js";
-import { Text } from "./Base/component/Text.js";
-import { TextField } from "./Base/component/TextField.js";
-import { Checkbox } from "./Base/component/Checkbox.js";
-import { ComboBox } from "./Base/component/ComboBox.js";
-import { Button } from "./Base/component/Button.js";
-import { Binding } from "./Base/Binding.js";
-import { DateField } from "./Base/component/DateField.js";
-import { TimeField } from "./Base/component/TimeField.js";
-import { Model } from "./Base/data/Model.js";
-import { MemoryStore } from "./Base/data/MemoryStore.js";
-import { Notification } from "./Base/Notification.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import { Component } from "./lib/Component.js";
+import { VBox } from "./lib/layout/VBox.js";
+import { HBox } from "./lib/layout/HBox.js";
+import { Text } from "./lib/component/Text.js";
+import { TextField } from "./lib/component/TextField.js";
+import { Checkbox } from "./lib/component/Checkbox.js";
+import { ComboBox } from "./lib/component/ComboBox.js";
+import { Button } from "./lib/component/Button.js";
+import { Binding } from "./lib/Binding.js";
+import { DateField } from "./lib/component/DateField.js";
+import { TimeField } from "./lib/component/TimeField.js";
+import { Model } from "./lib/data/Model.js";
+import { MemoryStore } from "./lib/data/MemoryStore.js";
+import { Notification } from "./lib/Notification.js";
+import { Panel } from "./lib/Panel.js";
+import { callable } from "./lib/Callable.js";
 
 class BindingPanel extends Panel {
 

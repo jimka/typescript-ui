@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutTestPanel } from "./LayoutTestPanel.js";
-import { Column } from "./Base/layout/Column.js";
-import { callable } from "./Base/Callable.js";
+import { Column } from "./lib/layout/Column.js";
+import { callable } from "./lib/Callable.js";
 
 class ColumnPanel extends LayoutTestPanel {
 
