@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Split } from "./Base/layout/Split.js";
-import { Component } from "./Base/Component.js";
-import { TextArea } from "./Base/component/TextArea.js";
-import { List } from "./Base/component/List.js";
-import { Slider } from "./Base/component/Slider.js";
-import { Fit } from "./Base/layout/Fit.js";
-import { Text } from "./Base/component/Text.js";
-import { Button } from "./Base/component/Button.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import { Split } from "./lib/layout/Split.js";
+import { Component } from "./lib/Component.js";
+import { TextArea } from "./lib/component/TextArea.js";
+import { List } from "./lib/component/List.js";
+import { Slider } from "./lib/component/Slider.js";
+import { Fit } from "./lib/layout/Fit.js";
+import { Text } from "./lib/component/Text.js";
+import { Button } from "./lib/component/Button.js";
+import { Panel } from "./lib/Panel.js";
+import { callable } from "./lib/Callable.js";
 
 class SplitPanel extends Panel {
 

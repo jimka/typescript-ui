@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { VBox } from "./Base/layout/VBox.js";
-import { Text } from "./Base/component/Text.js";
-import { HBox } from "./Base/layout/HBox.js";
-import { ComboBox } from "./Base/component/ComboBox.js";
-import { FieldSet } from "./Base/component/FieldSet.js";
-import { RadioButton } from "./Base/component/RadioButton.js";
-import { ButtonGroup } from "./Base/ButtonGroup.js";
-import { Button } from "./Base/component/Button.js";
-import { TextField } from "./Base/component/TextField.js";
-import { TextArea } from "./Base/component/TextArea.js";
-import { Table } from "./Base/component/table/Table.js";
-import { Model } from "./Base/data/Model.js";
-import { MemoryStore } from "./Base/data/MemoryStore.js";
-import { BorderStyle } from "./Base/BorderStyle.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import { VBox } from "./lib/layout/VBox.js";
+import { Text } from "./lib/component/Text.js";
+import { HBox } from "./lib/layout/HBox.js";
+import { ComboBox } from "./lib/component/ComboBox.js";
+import { FieldSet } from "./lib/component/FieldSet.js";
+import { RadioButton } from "./lib/component/RadioButton.js";
+import { ButtonGroup } from "./lib/ButtonGroup.js";
+import { Button } from "./lib/component/Button.js";
+import { TextField } from "./lib/component/TextField.js";
+import { TextArea } from "./lib/component/TextArea.js";
+import { Table } from "./lib/component/table/Table.js";
+import { Model } from "./lib/data/Model.js";
+import { MemoryStore } from "./lib/data/MemoryStore.js";
+import { BorderStyle } from "./lib/BorderStyle.js";
+import { Panel } from "./lib/Panel.js";
+import { callable } from "./lib/Callable.js";
 
 class ComplexUIPanel extends Panel {
 
