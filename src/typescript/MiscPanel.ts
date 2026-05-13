@@ -1,7 +1,46 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Window, Image, Model, MemoryStore, Store, ModelRecord, Proxy, ReadParams, Component, Button, Text, RadioButton, ButtonGroup, VBox, HBox, FieldSet, ThemeManager, DefaultTheme, DarkTheme, TablePanel, Table, ColumnSpec, PaginationBar, Menu, Tooltip, Event, Tree, Notification, Dialog, AutoCompleteField, NumberSpinner, ProgressBar, ProgressSpinner, Insets, Panel, callable } from "@jimka/typescript-ui";
-import type { TreeNode } from "@jimka/typescript-ui";
+import {
+    AutoCompleteField,
+    Button,
+    ButtonGroup,
+    callable,
+    ColumnSpec,
+    Component,
+    DarkTheme,
+    DefaultTheme,
+    Dialog,
+    Event,
+    FieldSet,
+    HBox,
+    Image,
+    Insets,
+    MemoryStore,
+    Menu,
+    Model,
+    ModelRecord,
+    Notification,
+    NumberSpinner,
+    PaginationBar,
+    Panel,
+    ProgressBar,
+    ProgressSpinner,
+    Proxy,
+    RadioButton,
+    ReadParams,
+    Store,
+    Table,
+    TablePanel,
+    Text,
+    ThemeManager,
+    Tooltip,
+    Tree,
+    VBox,
+    Window
+} from "@jimka/typescript-ui";
+import type {
+    TreeNode
+} from "@jimka/typescript-ui";
 
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and

@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Body, Tab, Model, MemoryStore, Util } from "@jimka/typescript-ui";
-
+import {
+    Body,
+    MemoryStore,
+    Model,
+    Tab,
+    Util
+} from "@jimka/typescript-ui";
 import { VBoxPanel } from "./VBoxPanel.js";
 import { HBoxPanel } from "./HBoxPanel.js";
 import { BorderPanel } from "./BorderPanel.js";

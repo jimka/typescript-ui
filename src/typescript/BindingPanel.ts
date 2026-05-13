@@ -1,6 +1,23 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, VBox, HBox, Text, TextField, Checkbox, ComboBox, Button, Binding, DateField, TimeField, Model, MemoryStore, Notification, Panel, callable } from "@jimka/typescript-ui";
+import {
+    Binding,
+    Button,
+    callable,
+    Checkbox,
+    ComboBox,
+    Component,
+    DateField,
+    HBox,
+    MemoryStore,
+    Model,
+    Notification,
+    Panel,
+    Text,
+    TextField,
+    TimeField,
+    VBox
+} from "@jimka/typescript-ui";
 
 class BindingPanel extends Panel {
 

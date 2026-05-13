@@ -1,6 +1,23 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { VBox, Text, HBox, ComboBox, FieldSet, RadioButton, ButtonGroup, Button, TextField, TextArea, Table, Model, MemoryStore, BorderStyle, Panel, callable } from "@jimka/typescript-ui";
+import {
+    BorderStyle,
+    Button,
+    ButtonGroup,
+    callable,
+    ComboBox,
+    FieldSet,
+    HBox,
+    MemoryStore,
+    Model,
+    Panel,
+    RadioButton,
+    Table,
+    Text,
+    TextArea,
+    TextField,
+    VBox
+} from "@jimka/typescript-ui";
 
 class ComplexUIPanel extends Panel {
 

@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Split, Component, TextArea, List, Slider, Fit, Text, Button, Panel, callable } from "@jimka/typescript-ui";
+import {
+    Button,
+    callable,
+    Component,
+    Fit,
+    List,
+    Panel,
+    Slider,
+    Split,
+    Text,
+    TextArea
+} from "@jimka/typescript-ui";
 
 class SplitPanel extends Panel {
 

@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, VBox, HBox, Text, Button, MultiSelectList, Binding, Model, MemoryStore, Panel, callable } from "@jimka/typescript-ui";
+import {
+    Binding,
+    Button,
+    callable,
+    Component,
+    HBox,
+    MemoryStore,
+    Model,
+    MultiSelectList,
+    Panel,
+    Text,
+    VBox
+} from "@jimka/typescript-ui";
 
 /**
  * Demonstrates `MultiSelectList` with static items, store binding,
