@@ -2,6 +2,7 @@
 
 import { CellRenderer } from "./CellRenderer.js";
 import { Text } from "../../../../component/Text.js";
+import { callable } from "../../../../Callable.js";
 
 /**
  * A read-only renderer for string cell values.
@@ -10,7 +11,7 @@ import { Text } from "../../../../component/Text.js";
  *
  * @category Components
  */
-export class StringRenderer extends CellRenderer<String> {
+class StringRenderer extends CellRenderer<String> {
 
     private text: Text = new Text();
 
@@ -52,3 +53,10 @@ export class StringRenderer extends CellRenderer<String> {
         return this;
     }
 }
+
+const StringRendererCallable = callable(StringRenderer);
+type StringRendererCallable = StringRenderer;
+export {
+    StringRenderer         as _StringRenderer,
+    StringRendererCallable as StringRenderer
+};

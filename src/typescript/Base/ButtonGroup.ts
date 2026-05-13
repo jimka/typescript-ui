@@ -5,6 +5,16 @@ import { Event } from "./Event.js";
 import { RadioButton } from "./component/RadioButton.js";
 import { RovingTabIndex } from "./RovingTabIndex.js";
 import { ToggleButton } from "./component/ToggleButton.js";
+import { callable } from "./Callable.js";
+
+/**
+ * Construction-time options for {@link ButtonGroup}.
+ *
+ * @category Core
+ */
+export interface ButtonGroupOptions {
+    buttons?: Array<RadioButton | ToggleButton>;
+}
 
 /**
  * Manages mutual exclusivity among a set of {@link RadioButton} or {@link ToggleButton} instances.
@@ -15,7 +25,7 @@ import { ToggleButton } from "./component/ToggleButton.js";
  *
  * @category Core
  */
-export class ButtonGroup {
+class ButtonGroup {
 
     buttons: Array<RadioButton | ToggleButton> = new Array<RadioButton | ToggleButton>();
 
@@ -24,9 +34,13 @@ export class ButtonGroup {
     private _selectionListeners: Array<(button: RadioButton | ToggleButton) => void> = [];
 
     /**
-     * Creates an empty ButtonGroup.
+     * Creates a ButtonGroup, optionally populated with an initial set of buttons.
+     *
+     * @param options - Optional. Construction-time options. `options.buttons` registers
+     *   the given buttons via {@link addButtons}.
      */
-    constructor() {
+    constructor(options?: ButtonGroupOptions) {
+        if (options?.buttons !== undefined) this.addButtons(options.buttons);
     }
 
     /**
@@ -55,6 +69,39 @@ export class ButtonGroup {
      */
     addSelectionListener(listener: (button: RadioButton | ToggleButton) => void): void {
         this._selectionListeners.push(listener);
+    }
+
+    /**
+     * Returns the group's buttons as a {@link Component} array, suitable for passing
+     * directly to {@link Component.addComponents}.
+     *
+     * @returns A new array of the buttons, widened to `Component`.
+     */
+    getButtons(): Array<Component> {
+        return this.buttons.slice();
+    }
+
+    /**
+     * Adds multiple buttons to the group in a single call.
+     *
+     * Each argument is either a button or an array of buttons; all forms can be freely mixed
+     * in the same call. Each button is registered via {@link addButton}, so mutual-exclusivity
+     * wiring and (for `ToggleButton`) roving tabindex registration are applied to every entry.
+     *
+     * @param buttons - The buttons to add. Each entry is a bare button or an array of buttons.
+     *
+     * @returns This group, for method chaining.
+     */
+    addButtons(...buttons: Array<RadioButton | ToggleButton | Array<RadioButton | ToggleButton>>): this {
+        for (const entry of buttons) {
+            const items = Array.isArray(entry) ? entry : [entry];
+
+            for (const button of items) {
+                this.addButton(button);
+            }
+        }
+
+        return this;
     }
 
     /**
@@ -130,3 +177,10 @@ export class ButtonGroup {
         return this;
     }
 }
+
+const ButtonGroupCallable = callable(ButtonGroup);
+type ButtonGroupCallable = ButtonGroup;
+export {
+    ButtonGroup as _ButtonGroup,
+    ButtonGroupCallable as ButtonGroup
+};

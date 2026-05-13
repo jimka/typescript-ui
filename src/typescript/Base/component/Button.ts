@@ -10,6 +10,7 @@ import { AnchorType } from "../layout/AnchorType.js";
 import { CSS } from "../CSS.js";
 import { Border, BorderOptions } from "../Border.js";
 import { Insets } from "../Insets.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Button}.
@@ -44,7 +45,7 @@ export interface ButtonOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class Button extends Component {
+class Button extends Component {
 
     private text: Text;
 
@@ -376,3 +377,10 @@ export class Button extends Component {
         return this._enabled;
     }
 }
+
+const ButtonCallable = callable(Button);
+type ButtonCallable = Button;
+export {
+    Button         as _Button,
+    ButtonCallable as Button
+};

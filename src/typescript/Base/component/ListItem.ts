@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "../Component.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link ListItem}.
@@ -19,7 +20,7 @@ export interface ListItemOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class ListItem extends Component {
+class ListItem extends Component {
 
     private key: string;
     private value: string;
@@ -88,3 +89,10 @@ export class ListItem extends Component {
         return element;
     }
 }
+
+const ListItemCallable = callable(ListItem);
+type ListItemCallable = ListItem;
+export {
+    ListItem         as _ListItem,
+    ListItemCallable as ListItem
+};

@@ -7,6 +7,7 @@ import { ThemeManager } from "../Theme.js";
 import { AbstractStore } from "../data/AbstractStore.js";
 import { TextField } from "./TextField.js";
 import { AutoCompleteDropdown } from "./AutoCompleteDropdown.js";
+import { callable } from "../Callable.js";
 
 /**
  * Controls how typed input is matched against suggestion strings.
@@ -66,7 +67,7 @@ export type AutoCompleteFieldConfig = AutoCompleteFieldOptions;
  *
  * @category Components
  */
-export class AutoCompleteField extends Component implements Bindable<string> {
+class AutoCompleteField extends Component implements Bindable<string> {
 
     private textField         : TextField;
     private dropdown          : AutoCompleteDropdown;
@@ -513,3 +514,10 @@ export class AutoCompleteField extends Component implements Bindable<string> {
         this.textField.focus();
     }
 }
+
+const AutoCompleteFieldCallable = callable(AutoCompleteField);
+type AutoCompleteFieldCallable = AutoCompleteField;
+export {
+    AutoCompleteField         as _AutoCompleteField,
+    AutoCompleteFieldCallable as AutoCompleteField
+};

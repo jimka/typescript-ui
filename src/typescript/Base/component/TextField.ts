@@ -6,6 +6,7 @@ import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 import { Bindable } from "../Bindable.js";
 import { ThemeManager } from "../Theme.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link TextField}.
@@ -22,7 +23,7 @@ export interface TextFieldOptions extends TextInputOptions {
  *
  * @category Components
  */
-export class TextField extends TextInput implements Bindable<string> {
+class TextField extends TextInput implements Bindable<string> {
 
     constructor(options?: TextFieldOptions) {
         super();
@@ -108,3 +109,10 @@ export class TextField extends TextInput implements Bindable<string> {
         return element;
     }
 }
+
+const TextFieldCallable = callable(TextField);
+type TextFieldCallable = TextField;
+export {
+    TextField         as _TextField,
+    TextFieldCallable as TextField
+};

@@ -6,6 +6,7 @@ import { HBox } from "../../layout/HBox.js";
 import { MenuBarButton } from "./MenuBarButton.js";
 import { Menu } from "../../Menu.js";
 import { MenuConfig } from "../MenuItem.js";
+import { callable } from "../../Callable.js";
 
 /**
  * A persistent horizontal menu bar that hosts top-level dropdown menus.
@@ -34,7 +35,7 @@ import { MenuConfig } from "../MenuItem.js";
  *
  * @category Components
  */
-export class MenuBar extends Component {
+class MenuBar extends Component {
 
     private readonly _buttons: MenuBarButton[] = [];
     private readonly _panels: Menu[] = [];
@@ -234,3 +235,10 @@ export class MenuBar extends Component {
         return this._openIndex;
     }
 }
+
+const MenuBarCallable = callable(MenuBar);
+type MenuBarCallable = MenuBar;
+export {
+    MenuBar         as _MenuBar,
+    MenuBarCallable as MenuBar
+};

@@ -4,6 +4,7 @@ import { Component } from "../../Component.js";
 import { CSS } from "../../CSS.js";
 import { Event } from "../../Event.js";
 import { Text } from "../Text.js";
+import { callable } from "../../Callable.js";
 
 /**
  * A single top-level button in a `MenuBar` (e.g. "File", "Edit").
@@ -17,7 +18,7 @@ import { Text } from "../Text.js";
  *
  * @category Components
  */
-export class MenuBarButton extends Component {
+class MenuBarButton extends Component {
 
     private readonly _text: Text;
     private readonly _hoverRule: CSSStyleRule;
@@ -107,3 +108,10 @@ export class MenuBarButton extends Component {
         return this;
     }
 }
+
+const MenuBarButtonCallable = callable(MenuBarButton);
+type MenuBarButtonCallable = MenuBarButton;
+export {
+    MenuBarButton         as _MenuBarButton,
+    MenuBarButtonCallable as MenuBarButton
+};

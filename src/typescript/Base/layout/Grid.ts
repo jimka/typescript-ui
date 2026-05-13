@@ -4,6 +4,7 @@ import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
 import { Component } from "../Component.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Grid}.
@@ -23,7 +24,7 @@ export interface GridOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class Grid extends LayoutManager {
+class Grid extends LayoutManager {
 
     private rows: number = 0;
     private columns: number = 0;
@@ -441,3 +442,10 @@ export class Grid extends LayoutManager {
         }
     }
 }
+
+const GridCallable = callable(Grid);
+type GridCallable = Grid;
+export {
+    Grid         as _Grid,
+    GridCallable as Grid
+};

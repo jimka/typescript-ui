@@ -10,8 +10,9 @@ import { ListItem } from "./Base/component/ListItem.js";
 import { NumberedList } from "./Base/component/NumberedList.js";
 import { Placement } from "./Base/Placement.js";
 import { Panel } from "./Base/Panel.js";
+import { callable } from "./Base/Callable.js";
 
-export class BorderPanel extends Panel {
+class BorderPanel extends Panel {
 
     constructor() {
         super();
@@ -70,3 +71,10 @@ export class BorderPanel extends Panel {
         this.addComponent(eastComponent, { placement: Placement.EAST });
     }
 }
+
+const BorderPanelCallable = callable(BorderPanel);
+type BorderPanelCallable = BorderPanel;
+export {
+    BorderPanel         as _BorderPanel,
+    BorderPanelCallable as BorderPanel
+};

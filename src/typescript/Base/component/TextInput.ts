@@ -2,6 +2,7 @@
 
 import { Input, InputOptions } from "./Input.js";
 import { Util } from "../Util.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link TextInput}.
@@ -21,7 +22,7 @@ export interface TextInputOptions extends InputOptions {
  *
  * Tracks the current text value and text-align internally and exposes text selection support.
  */
-export class TextInput extends Input {
+class TextInput extends Input {
 
     private text: String = "";
     private textAlign: string | null = null;
@@ -193,3 +194,10 @@ export class TextInput extends Input {
         return element;
     }
 }
+
+const TextInputCallable = callable(TextInput);
+type TextInputCallable = TextInput;
+export {
+    TextInput         as _TextInput,
+    TextInputCallable as TextInput
+};

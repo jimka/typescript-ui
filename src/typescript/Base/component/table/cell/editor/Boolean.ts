@@ -2,6 +2,7 @@
 
 import { CellEditor } from "./CellEditor.js";
 import { Checkbox } from "../../../../component/Checkbox.js";
+import { callable } from "../../../../Callable.js";
 
 /**
  * An always-visible checkbox editor for boolean cell values.
@@ -11,7 +12,7 @@ import { Checkbox } from "../../../../component/Checkbox.js";
  *
  * @category Components
  */
-export class BooleanEditor extends CellEditor<Boolean> {
+class BooleanEditor extends CellEditor<Boolean> {
 
     private checkBox: Checkbox = new Checkbox();
     private onChange: ((value: Boolean) => void) | undefined;
@@ -66,3 +67,10 @@ export class BooleanEditor extends CellEditor<Boolean> {
         return this;
     }
 }
+
+const BooleanEditorCallable = callable(BooleanEditor);
+type BooleanEditorCallable = BooleanEditor;
+export {
+    BooleanEditor         as _BooleanEditor,
+    BooleanEditorCallable as BooleanEditor
+};

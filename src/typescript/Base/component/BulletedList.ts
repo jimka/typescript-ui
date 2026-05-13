@@ -2,6 +2,7 @@
 
 import { AbstractListComponent, AbstractListOptions } from "./AbstractListComponent.js";
 import { BulletedListItemStyle } from "./BulletedListItemStyle.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link BulletedList}.
@@ -18,7 +19,7 @@ export interface BulletedListOptions extends AbstractListOptions<BulletedListIte
  *
  * @category Components
  */
-export class BulletedList extends AbstractListComponent<BulletedListItemStyle> {
+class BulletedList extends AbstractListComponent<BulletedListItemStyle> {
 
     constructor(options?: BulletedListOptions) {
         super("ul", BulletedListItemStyle.DISC);
@@ -28,3 +29,10 @@ export class BulletedList extends AbstractListComponent<BulletedListItemStyle> {
         }
     }
 }
+
+const BulletedListCallable = callable(BulletedList);
+type BulletedListCallable = BulletedList;
+export {
+    BulletedList         as _BulletedList,
+    BulletedListCallable as BulletedList
+};

@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "../Component.js";
 import { Util } from "../Util.js";
 import { Event } from "../Event.js";
+import { callable } from "../Callable.js";
 
 /**
  * The eight edge / corner positions used by {@link WindowBorder} to identify
@@ -38,7 +39,7 @@ export interface WindowBorderOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class WindowBorder extends Component {
+class WindowBorder extends Component {
 
     private direction: Direction = Direction.NORTH;
     private dragListeners: Function[] = [];
@@ -191,3 +192,10 @@ export class WindowBorder extends Component {
         return element;
     }
 }
+
+const WindowBorderCallable = callable(WindowBorder);
+type WindowBorderCallable = WindowBorder;
+export {
+    WindowBorder         as _WindowBorder,
+    WindowBorderCallable as WindowBorder
+};

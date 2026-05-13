@@ -12,6 +12,7 @@ import { Border as BorderLayout } from "./layout/Border.js";
 import { Fit } from "./layout/Fit.js";
 import { Placement } from "./Placement.js";
 import { Insets } from "./Insets.js";
+import { callable } from "./Callable.js";
 
 /**
  * The result produced when a dialog is dismissed.
@@ -254,7 +255,7 @@ const DEFAULT_BUTTONS: DialogButtonConfig[] = [
  *
  * @category Core
  */
-export class Dialog extends Component {
+class Dialog extends Component {
 
     private readonly titleBar        : DialogTitleBar;
     private readonly contentContainer: Component;
@@ -554,3 +555,10 @@ export class Dialog extends Component {
         return result === 'confirm';
     }
 }
+
+const DialogCallable = callable(Dialog);
+type DialogCallable = Dialog;
+export {
+    Dialog         as _Dialog,
+    DialogCallable as Dialog
+};

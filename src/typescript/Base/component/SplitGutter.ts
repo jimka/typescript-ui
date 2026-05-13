@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { Util } from "../Util.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link SplitGutter}.
@@ -22,7 +23,7 @@ export interface SplitGutterOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class SplitGutter extends Component {
+class SplitGutter extends Component {
 
     private direction: String = "horizontal";
     private dragListeners: Array<Function> = [];
@@ -186,3 +187,10 @@ export class SplitGutter extends Component {
         return element;
     }
 }
+
+const SplitGutterCallable = callable(SplitGutter);
+type SplitGutterCallable = SplitGutter;
+export {
+    SplitGutter         as _SplitGutter,
+    SplitGutterCallable as SplitGutter
+};

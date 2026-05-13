@@ -2,6 +2,7 @@
 
 import { Text, TextOptions } from "./Text.js"
 import { Position } from "../Position.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Legend}.
@@ -18,7 +19,7 @@ export interface LegendOptions extends TextOptions {
  *
  * @category Components
  */
-export class Legend extends Text {
+class Legend extends Text {
 
     constructor(options?: LegendOptions) {
         super(undefined, { tag: "legend" });
@@ -31,3 +32,10 @@ export class Legend extends Text {
         }
     }
 }
+
+const LegendCallable = callable(Legend);
+type LegendCallable = Legend;
+export {
+    Legend         as _Legend,
+    LegendCallable as Legend
+};

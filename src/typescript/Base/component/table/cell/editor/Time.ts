@@ -2,6 +2,7 @@
 
 import { CellEditor } from "./CellEditor.js";
 import { BorderStyle } from "../../../../BorderStyle.js";
+import { callable } from "../../../../Callable.js";
 
 /**
  * An in-place editor for time cell values.
@@ -9,7 +10,7 @@ import { BorderStyle } from "../../../../BorderStyle.js";
  * Renders as `<input type="time">`. The value is represented as a `Date`
  * whose time portion is meaningful; the date portion is normalized to 1970-01-01 local.
  */
-export class TimeEditor extends CellEditor<Date | null> {
+class TimeEditor extends CellEditor<Date | null> {
 
     private showSeconds: boolean;
 
@@ -61,3 +62,10 @@ export class TimeEditor extends CellEditor<Date | null> {
         return `${h}:${m}`;
     }
 }
+
+const TimeEditorCallable = callable(TimeEditor);
+type TimeEditorCallable = TimeEditor;
+export {
+    TimeEditor         as _TimeEditor,
+    TimeEditorCallable as TimeEditor
+};

@@ -6,6 +6,7 @@ import { LayoutConstraints } from "./LayoutConstraints.js";
 import { FillType } from "./FillType.js";
 import { Placement } from "../Placement.js";
 import { Size } from "../Size.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for the {@link Border} layout manager.
@@ -29,7 +30,7 @@ export interface BorderOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class Border extends LayoutManager {
+class Border extends LayoutManager {
 
     private northComponent: Component | null = null;
     private southComponent: Component | null = null;
@@ -470,3 +471,10 @@ export class Border extends LayoutManager {
         }
     }
 }
+
+const BorderCallable = callable(Border);
+type BorderCallable = Border;
+export {
+    Border         as _Border,
+    BorderCallable as Border
+};

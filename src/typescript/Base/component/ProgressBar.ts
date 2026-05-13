@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "../Component.js";
 import { CSS } from "../CSS.js";
 import { Position } from "../Position.js";
+import { callable } from "../Callable.js";
 
 CSS.ensureKeyframes(
     'ts-ui-progress-indeterminate',
@@ -30,7 +31,7 @@ export interface ProgressBarOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class ProgressBar extends Component {
+class ProgressBar extends Component {
 
     private track: Component;
     private fill : Component;
@@ -218,3 +219,10 @@ export class ProgressBar extends Component {
         }
     }
 }
+
+const ProgressBarCallable = callable(ProgressBar);
+type ProgressBarCallable = ProgressBar;
+export {
+    ProgressBar         as _ProgressBar,
+    ProgressBarCallable as ProgressBar
+};

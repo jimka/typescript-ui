@@ -2,8 +2,9 @@
 
 import { LayoutTestPanel } from "./LayoutTestPanel.js";
 import { VBox } from "./Base/layout/VBox.js";
+import { callable } from "./Base/Callable.js";
 
-export class VBoxPanel extends LayoutTestPanel {
+class VBoxPanel extends LayoutTestPanel {
 
     constructor() {
         super();
@@ -11,3 +12,10 @@ export class VBoxPanel extends LayoutTestPanel {
         this.setLayoutManager(new VBox());
     }
 }
+
+const VBoxPanelCallable = callable(VBoxPanel);
+type VBoxPanelCallable = VBoxPanel;
+export {
+    VBoxPanel         as _VBoxPanel,
+    VBoxPanelCallable as VBoxPanel
+};

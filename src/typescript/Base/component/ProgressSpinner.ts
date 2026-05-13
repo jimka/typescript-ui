@@ -5,6 +5,7 @@ import { CSS } from "../CSS.js";
 import { Position } from "../Position.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { ThemeManager } from "../Theme.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link ProgressSpinner}.
@@ -46,7 +47,7 @@ function getThemeFontSize(): number {
  *
  * @category Components
  */
-export class ProgressSpinner extends Component {
+class ProgressSpinner extends Component {
 
     private arc: Component;
     private size: number;
@@ -247,3 +248,10 @@ export class ProgressSpinner extends Component {
         return this;
     }
 }
+
+const ProgressSpinnerCallable = callable(ProgressSpinner);
+type ProgressSpinnerCallable = ProgressSpinner;
+export {
+    ProgressSpinner         as _ProgressSpinner,
+    ProgressSpinnerCallable as ProgressSpinner
+};

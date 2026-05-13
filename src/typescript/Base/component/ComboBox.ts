@@ -9,6 +9,7 @@ import { AbstractStore } from "../data/AbstractStore.js";
 import { ModelRecord } from "../data/ModelRecord.js";
 import { Bindable } from "../Bindable.js";
 import { ThemeManager } from "../Theme.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link ComboBox}.
@@ -44,7 +45,7 @@ export interface ComboBoxOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class ComboBox extends Component implements Bindable<string> {
+class ComboBox extends Component implements Bindable<string> {
 
     private items: Array<Option> = [];
     private store: AbstractStore | null = null;
@@ -409,3 +410,10 @@ export class ComboBox extends Component implements Bindable<string> {
         return element;
     }
 }
+
+const ComboBoxCallable = callable(ComboBox);
+type ComboBoxCallable = ComboBox;
+export {
+    ComboBox         as _ComboBox,
+    ComboBoxCallable as ComboBox
+};

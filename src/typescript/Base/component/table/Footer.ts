@@ -3,6 +3,7 @@
 import { Component } from "../../Component.js";
 import { Row } from "./Row.js";
 import { BorderStyle } from "../../BorderStyle.js";
+import { callable } from "../../Callable.js";
 
 /**
  * The footer section of a table, rendered as a `<tfoot>` element.
@@ -13,7 +14,7 @@ import { BorderStyle } from "../../BorderStyle.js";
  *
  * @category Components
  */
-export class FooterRow extends Component {
+class FooterRow extends Component {
 
     constructor() {
         super({ tag: "tfoot" });
@@ -88,3 +89,10 @@ export class FooterRow extends Component {
         return this;
     }
 }
+
+const FooterRowCallable = callable(FooterRow);
+type FooterRowCallable = FooterRow;
+export {
+    FooterRow         as _FooterRow,
+    FooterRowCallable as FooterRow
+};

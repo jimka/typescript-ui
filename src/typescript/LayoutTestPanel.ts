@@ -16,8 +16,9 @@ import { FieldSet } from "./Base/component/FieldSet.js";
 import { HBox } from "./Base/layout/HBox.js";
 import { ButtonGroup } from "./Base/ButtonGroup.js";
 import { Panel } from "./Base/Panel.js";
+import { callable } from "./Base/Callable.js";
 
-export class LayoutTestPanel extends Panel {
+class LayoutTestPanel extends Panel {
 
     constructor() {
         super();
@@ -105,3 +106,10 @@ export class LayoutTestPanel extends Panel {
         this.addComponent(fieldSet);
     }
 }
+
+const LayoutTestPanelCallable = callable(LayoutTestPanel);
+type LayoutTestPanelCallable = LayoutTestPanel;
+export {
+    LayoutTestPanel         as _LayoutTestPanel,
+    LayoutTestPanelCallable as LayoutTestPanel
+};

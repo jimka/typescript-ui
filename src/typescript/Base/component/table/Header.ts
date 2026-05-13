@@ -7,6 +7,7 @@ import { AbstractStore, SortDescriptor } from "../../data/AbstractStore.js";
 import { Field } from "../../data/Field.js";
 import { HeaderCell } from "./cell/Header.js";
 import { BorderStyle } from "../../BorderStyle.js";
+import { callable } from "../../Callable.js";
 
 /**
  * The header section of a table, rendered as a `<thead>` element.
@@ -20,7 +21,7 @@ import { BorderStyle } from "../../BorderStyle.js";
  *
  * @category Components
  */
-export class Header extends Component {
+class Header extends Component {
 
     private model: AbstractModel;
     private store: AbstractStore;
@@ -315,3 +316,10 @@ export class Header extends Component {
         });
     }
 }
+
+const HeaderCallable = callable(Header);
+type HeaderCallable = Header;
+export {
+    Header         as _Header,
+    HeaderCallable as Header
+};

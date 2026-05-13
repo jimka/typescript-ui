@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "../Component.js";
 import { Size } from "../Size.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Image}.
@@ -21,7 +22,7 @@ export interface ImageOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class Image extends Component {
+class Image extends Component {
 
     private src: String;
 
@@ -75,3 +76,10 @@ export class Image extends Component {
         return element;
     }
 }
+
+const ImageCallable = callable(Image);
+type ImageCallable = Image;
+export {
+    Image         as _Image,
+    ImageCallable as Image
+};

@@ -3,6 +3,7 @@
 import { Cell } from "./Cell.js";
 import { DateTimeRenderer } from "./renderer/DateTime.js";
 import { DateTimeEditor } from "./editor/DateTime.js";
+import { callable } from "../../../Callable.js";
 
 /**
  * A table cell for date-time values.
@@ -11,7 +12,7 @@ import { DateTimeEditor } from "./editor/DateTime.js";
  * editing. Committing an empty field writes null; committing an unparseable value reverts
  * to the previous value instead of writing null.
  */
-export class DateTimeCell extends Cell<Date | null> {
+class DateTimeCell extends Cell<Date | null> {
 
     private dateTimeEditor: DateTimeEditor;
 
@@ -39,3 +40,10 @@ export class DateTimeCell extends Cell<Date | null> {
         return this;
     }
 }
+
+const DateTimeCellCallable = callable(DateTimeCell);
+type DateTimeCellCallable = DateTimeCell;
+export {
+    DateTimeCell         as _DateTimeCell,
+    DateTimeCellCallable as DateTimeCell
+};

@@ -6,6 +6,7 @@ import { Position } from "../Position.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { VBox } from "../layout/VBox.js";
 import { AutoCompleteItem } from "./AutoCompleteItem.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link AutoCompleteDropdown}.
@@ -22,7 +23,7 @@ export interface AutoCompleteDropdownOptions extends ComponentOptions {
  * Maintains a reusable pool of `AutoCompleteItem` rows — items are updated
  * in place rather than destroyed and recreated on each keystroke.
  */
-export class AutoCompleteDropdown extends Component {
+class AutoCompleteDropdown extends Component {
 
     private pool: AutoCompleteItem[] = [];
     private highlightedIndex: number = -1;
@@ -281,3 +282,10 @@ export class AutoCompleteDropdown extends Component {
         }
     }
 }
+
+const AutoCompleteDropdownCallable = callable(AutoCompleteDropdown);
+type AutoCompleteDropdownCallable = AutoCompleteDropdown;
+export {
+    AutoCompleteDropdown         as _AutoCompleteDropdown,
+    AutoCompleteDropdownCallable as AutoCompleteDropdown
+};

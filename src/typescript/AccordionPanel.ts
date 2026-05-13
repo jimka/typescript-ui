@@ -13,12 +13,13 @@ import { TextField } from "./Base/component/TextField.js";
 import { List } from "./Base/component/List.js";
 import { Insets } from "./Base/Insets.js";
 import { Panel } from "./Base/Panel.js";
+import { callable } from "./Base/Callable.js";
 
 /**
  * Demonstrates the Accordion layout manager with multiple collapsible sections,
  * programmatic open/close controls, and single-open mode toggling.
  */
-export class AccordionPanel extends Panel {
+class AccordionPanel extends Panel {
 
     private accordion: Accordion;
     private singleOpenToggle: Button;
@@ -204,3 +205,10 @@ export class AccordionPanel extends Panel {
         return row;
     }
 }
+
+const AccordionPanelCallable = callable(AccordionPanel);
+type AccordionPanelCallable = AccordionPanel;
+export {
+    AccordionPanel         as _AccordionPanel,
+    AccordionPanelCallable as AccordionPanel
+};

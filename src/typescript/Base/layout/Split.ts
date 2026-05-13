@@ -4,6 +4,7 @@ import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { SplitGutter } from "../component/SplitGutter.js";
 import { Component } from "../Component.js";
 import { FillType } from "./FillType.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Split}.
@@ -21,7 +22,7 @@ export interface SplitOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class Split extends LayoutManager {
+class Split extends LayoutManager {
 
     private direction: String = "horizontal";
     private sizes: Map<Component, number> = new Map<Component, number>();
@@ -292,3 +293,10 @@ export class Split extends LayoutManager {
         }
     }
 }
+
+const SplitCallable = callable(Split);
+type SplitCallable = Split;
+export {
+    Split         as _Split,
+    SplitCallable as Split
+};

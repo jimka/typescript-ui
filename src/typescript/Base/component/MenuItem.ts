@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { Text } from "./Text.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time component-level options for {@link MenuItem}. Use this
@@ -76,7 +77,7 @@ export interface MenuConfig {
  *
  * @category Components
  */
-export class MenuItem extends Component {
+class MenuItem extends Component {
 
     /** Fixed pixel height for every non-separator menu item. */
     static readonly HEIGHT: number = 24;
@@ -424,3 +425,10 @@ export class MenuItem extends Component {
         return this;
     }
 }
+
+const MenuItemCallable = callable(MenuItem);
+type MenuItemCallable = MenuItem;
+export {
+    MenuItem         as _MenuItem,
+    MenuItemCallable as MenuItem
+};

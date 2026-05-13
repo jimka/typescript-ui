@@ -4,6 +4,7 @@ import { Event } from "../Event.js";
 import { Input, InputOptions } from "./Input.js";
 import { Bindable } from "../Bindable.js";
 import { ThemeManager } from "../Theme.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Checkbox}.
@@ -24,7 +25,7 @@ export interface CheckboxOptions extends InputOptions {
  *
  * @category Components
  */
-export class Checkbox extends Input implements Bindable<boolean> {
+class Checkbox extends Input implements Bindable<boolean> {
 
     private selected: boolean = false;
 
@@ -149,3 +150,10 @@ export class Checkbox extends Input implements Bindable<boolean> {
         return element;
     }
 }
+
+const CheckboxCallable = callable(Checkbox);
+type CheckboxCallable = Checkbox;
+export {
+    Checkbox         as _Checkbox,
+    CheckboxCallable as Checkbox
+};

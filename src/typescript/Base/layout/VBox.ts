@@ -3,6 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link VBox}.
@@ -20,7 +21,7 @@ export interface VBoxOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class VBox extends LayoutManager {
+class VBox extends LayoutManager {
 
     private spacing: number = 5;
     private stretching: boolean = false;
@@ -293,3 +294,10 @@ export class VBox extends LayoutManager {
         }
     }
 }
+
+const VBoxCallable = callable(VBox);
+type VBoxCallable = VBox;
+export {
+    VBox         as _VBox,
+    VBoxCallable as VBox
+};

@@ -3,6 +3,7 @@
 import { Component } from '../Component.js';
 import { Fit } from '../layout/Fit.js';
 import { Tooltip } from '../Tooltip.js';
+import { callable } from "../Callable.js";
 
 /**
  * A thin wrapper component that provides error visualisation for a field component.
@@ -18,7 +19,7 @@ import { Tooltip } from '../Tooltip.js';
  *
  * @category Validation
  */
-export class FieldDecorator extends Component {
+class FieldDecorator extends Component {
 
     /**
      * Creates a decorator that wraps `field` inside `parent`.
@@ -90,3 +91,10 @@ export class FieldDecorator extends Component {
         return this;
     }
 }
+
+const FieldDecoratorCallable = callable(FieldDecorator);
+type FieldDecoratorCallable = FieldDecorator;
+export {
+    FieldDecorator         as _FieldDecorator,
+    FieldDecoratorCallable as FieldDecorator
+};

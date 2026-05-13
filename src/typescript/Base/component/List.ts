@@ -2,6 +2,7 @@
 
 import { Event } from "../Event.js";
 import { ComboBox, ComboBoxOptions } from "./ComboBox.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link List}.
@@ -19,7 +20,7 @@ export interface ListOptions extends ComboBoxOptions {
  *
  * @category Components
  */
-export class List extends ComboBox {
+class List extends ComboBox {
 
     constructor(options?: ListOptions) {
         super();
@@ -133,3 +134,10 @@ export class List extends ComboBox {
         return element;
     }
 }
+
+const ListCallable = callable(List);
+type ListCallable = List;
+export {
+    List         as _List,
+    ListCallable as List
+};

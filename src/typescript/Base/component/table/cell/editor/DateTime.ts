@@ -2,6 +2,7 @@
 
 import { CellEditor } from "./CellEditor.js";
 import { BorderStyle } from "../../../../BorderStyle.js";
+import { callable } from "../../../../Callable.js";
 
 /**
  * An in-place editor for date-time cell values.
@@ -9,7 +10,7 @@ import { BorderStyle } from "../../../../BorderStyle.js";
  * Renders as `<input type="datetime-local">`. Blur and keydown events reach the
  * parent {@link Cell} directly — no proxying needed.
  */
-export class DateTimeEditor extends CellEditor<Date | null> {
+class DateTimeEditor extends CellEditor<Date | null> {
 
     private showSeconds: boolean;
 
@@ -65,3 +66,10 @@ export class DateTimeEditor extends CellEditor<Date | null> {
         return `${y}-${mo}-${d}T${h}:${mi}`;
     }
 }
+
+const DateTimeEditorCallable = callable(DateTimeEditor);
+type DateTimeEditorCallable = DateTimeEditor;
+export {
+    DateTimeEditor         as _DateTimeEditor,
+    DateTimeEditorCallable as DateTimeEditor
+};

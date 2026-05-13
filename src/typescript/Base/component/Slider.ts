@@ -3,6 +3,7 @@
 import { Input, InputOptions } from "./Input.js";
 import { Event } from "../Event.js";
 import { ThemeManager } from "../Theme.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Slider}.
@@ -24,7 +25,7 @@ export interface SliderOptions extends InputOptions {
  *
  * @category Components
  */
-export class Slider extends Input {
+class Slider extends Input {
 
     private minValue: number = 0;
     private maxValue: number = 100;
@@ -211,3 +212,10 @@ export class Slider extends Input {
         return element;
     }
 }
+
+const SliderCallable = callable(Slider);
+type SliderCallable = Slider;
+export {
+    Slider         as _Slider,
+    SliderCallable as Slider
+};
