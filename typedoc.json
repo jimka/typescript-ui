@@ -2,7 +2,7 @@
     "$schema": "https://typedoc.org/schema.json",
     "entryPoints": ["src/typescript/Base/index.ts"],
     "tsconfig": "tsconfig.lib.json",
-    "plugin": ["typedoc-plugin-markdown", "typedoc-vitepress-theme"],
+    "plugin": ["typedoc-plugin-markdown", "typedoc-vitepress-theme", "./typedoc-callable-plugin.mjs"],
     "out": "docs/api",
     "docsRoot": "docs",
     "readme": "none",
