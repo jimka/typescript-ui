@@ -7,6 +7,7 @@ import { WindowBorder, Direction } from "./component/WindowBorder.js";
 import { Event } from "./Event.js";
 import { Placement } from "./Placement.js";
 import { Panel } from "./Panel.js";
+import { callable } from "./Callable.js";
 
 /**
  * A floating, resizable, and draggable window component.
@@ -16,7 +17,7 @@ import { Panel } from "./Panel.js";
  *
  * @category Core
  */
-export class Window extends Panel {
+class Window extends Panel {
 
     private static zIndexCounter: number = 9000;
     private static activeWindow: Window | null = null;
@@ -434,3 +435,10 @@ export class Window extends Panel {
         return element;
     }
 }
+
+const WindowCallable = callable(Window);
+type WindowCallable = Window;
+export {
+    Window         as _Window,
+    WindowCallable as Window
+};

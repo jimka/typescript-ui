@@ -3,6 +3,7 @@
 import { TextInput, TextInputOptions } from "./TextInput.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link TextArea}.
@@ -22,7 +23,7 @@ export interface TextAreaOptions extends TextInputOptions {
  *
  * @category Components
  */
-export class TextArea extends TextInput {
+class TextArea extends TextInput {
 
     constructor(text: string = "", options?: TextAreaOptions) {
         super({ tag: "textarea" });
@@ -121,3 +122,10 @@ export class TextArea extends TextInput {
         return element;
     }
 }
+
+const TextAreaCallable = callable(TextArea);
+type TextAreaCallable = TextArea;
+export {
+    TextArea         as _TextArea,
+    TextAreaCallable as TextArea
+};

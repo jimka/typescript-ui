@@ -3,6 +3,7 @@
 import { Cell } from "./Cell.js";
 import { NumberRenderer } from "./renderer/Number.js";
 import { NumberEditor } from "./editor/Number.js";
+import { callable } from "../../../Callable.js";
 
 /**
  * A table cell for numeric values.
@@ -11,7 +12,7 @@ import { NumberEditor } from "./editor/Number.js";
  *
  * @category Components
  */
-export class NumberCell extends Cell<Number> {
+class NumberCell extends Cell<Number> {
 
     constructor() {
         let renderer = new NumberRenderer();
@@ -31,3 +32,10 @@ export class NumberCell extends Cell<Number> {
         return this;
     }
 }
+
+const NumberCellCallable = callable(NumberCell);
+type NumberCellCallable = NumberCell;
+export {
+    NumberCell         as _NumberCell,
+    NumberCellCallable as NumberCell
+};

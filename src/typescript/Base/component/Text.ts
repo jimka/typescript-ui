@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "../Component.js";
 import { ThemeManager } from "../Theme.js";
 import { Util } from "../Util.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Text}.
@@ -39,7 +40,7 @@ export interface TextOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class Text extends Component {
+class Text extends Component {
 
     private text: String | null | undefined = null;
     private hasExplicitPreferredSize: boolean = false;
@@ -691,3 +692,10 @@ export class Text extends Component {
         return element;
     }
 }
+
+const TextCallable = callable(Text);
+type TextCallable = Text;
+export {
+    Text         as _Text,
+    TextCallable as Text
+};

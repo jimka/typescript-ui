@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "../Component.js";
 import { CSS } from "../CSS.js";
 import { Event } from "../Event.js";
 import { Text } from "./Text.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link AutoCompleteItem}.
@@ -22,7 +23,7 @@ export interface AutoCompleteItemOptions extends ComponentOptions {
  * `MenuItem`, this item is mutable after construction so the dropdown
  * can reuse the DOM pool across keystrokes.
  */
-export class AutoCompleteItem extends Component {
+class AutoCompleteItem extends Component {
 
     /** Fixed pixel height of every autocomplete item row. */
     static readonly HEIGHT: number = 24;
@@ -174,3 +175,10 @@ export class AutoCompleteItem extends Component {
         return this;
     }
 }
+
+const AutoCompleteItemCallable = callable(AutoCompleteItem);
+type AutoCompleteItemCallable = AutoCompleteItem;
+export {
+    AutoCompleteItem         as _AutoCompleteItem,
+    AutoCompleteItemCallable as AutoCompleteItem
+};

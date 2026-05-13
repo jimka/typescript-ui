@@ -7,6 +7,7 @@ import { Component } from "../Component.js";
 import { Event } from "../Event.js";
 import { Position } from "../Position.js";
 import { Size } from "../Size.js";
+import { callable } from "../Callable.js";
 
 /**
  * Callback invoked when a section is opened or closed.
@@ -61,7 +62,7 @@ export interface AccordionOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class Accordion extends LayoutManager {
+class Accordion extends LayoutManager {
 
     private headers: AccordionHeader[] = [];
     private panelWrappers: Component[] = [];
@@ -531,3 +532,10 @@ export class Accordion extends LayoutManager {
         this.getContainer()?.scheduleLayout();
     }
 }
+
+const AccordionCallable = callable(Accordion);
+type AccordionCallable = Accordion;
+export {
+    Accordion         as _Accordion,
+    AccordionCallable as Accordion
+};

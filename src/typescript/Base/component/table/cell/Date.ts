@@ -3,6 +3,7 @@
 import { Cell } from "./Cell.js";
 import { DateRenderer } from "./renderer/Date.js";
 import { DateEditor } from "./editor/Date.js";
+import { callable } from "../../../Callable.js";
 
 /**
  * A table cell for date values.
@@ -11,7 +12,7 @@ import { DateEditor } from "./editor/Date.js";
  * Committing an empty field writes null; committing an unparseable value reverts to the
  * previous value instead of writing null.
  */
-export class DateCell extends Cell<Date | null> {
+class DateCell extends Cell<Date | null> {
 
     private dateEditor: DateEditor;
 
@@ -40,3 +41,10 @@ export class DateCell extends Cell<Date | null> {
         return this;
     }
 }
+
+const DateCellCallable = callable(DateCell);
+type DateCellCallable = DateCell;
+export {
+    DateCell         as _DateCell,
+    DateCellCallable as DateCell
+};

@@ -18,6 +18,7 @@ import { ColumnSpec } from "./ColumnConfig.js";
 import { Component } from "../../Component.js";
 import { Util } from "../../Util.js";
 import { TableExporter, ExportOptions } from "./TableExporter.js";
+import { callable } from "../../Callable.js";
 
 /**
  * A data-bound table component rendered as an HTML `<table>` element.
@@ -53,7 +54,7 @@ import { TableExporter, ExportOptions } from "./TableExporter.js";
  *
  * @category Components
  */
-export class Table extends Component {
+class Table extends Component {
 
     private store            : AbstractStore;
     private spec             : ColumnSpec | undefined;
@@ -678,3 +679,10 @@ export class Table extends Component {
         this.doLayout();
     }
 }
+
+const TableCallable = callable(Table);
+type TableCallable = Table;
+export {
+    Table         as _Table,
+    TableCallable as Table
+};

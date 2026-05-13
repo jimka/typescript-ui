@@ -5,6 +5,7 @@ import { Event } from "../../Event.js";
 import { VirtualScroller } from "../VirtualScroller.js";
 import { TreeNode } from "./TreeNode.js";
 import { TreeRow } from "./TreeRow.js";
+import { callable } from "../../Callable.js";
 
 /** Pixels of indentation added per depth level. */
 const INDENT_PX = 16;
@@ -55,7 +56,7 @@ interface FlatRow {
  *
  * @category Components
  */
-export class Tree extends Component {
+class Tree extends Component {
 
     private _nodes              : TreeNode[]                                              = [];
     private _expandedNodes      : Set<TreeNode>                                           = new Set();
@@ -776,3 +777,10 @@ export class Tree extends Component {
         return this;
     }
 }
+
+const TreeCallable = callable(Tree);
+type TreeCallable = Tree;
+export {
+    Tree         as _Tree,
+    TreeCallable as Tree
+};

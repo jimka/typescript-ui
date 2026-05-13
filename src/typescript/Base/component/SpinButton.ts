@@ -6,6 +6,7 @@ import { Util } from "../Util.js";
 import { ThemeManager } from "../Theme.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { Insets } from "../Insets.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link SpinButton}.
@@ -24,7 +25,7 @@ export interface SpinButtonOptions extends ButtonOptions {
  *
  * @category Components
  */
-export class SpinButton extends Button {
+class SpinButton extends Button {
 
     private tickListeners: Array<() => void> = [];
     private repeatHandle : ReturnType<typeof setTimeout> | null = null;
@@ -131,3 +132,10 @@ export class SpinButton extends Button {
         }
     }
 }
+
+const SpinButtonCallable = callable(SpinButton);
+type SpinButtonCallable = SpinButton;
+export {
+    SpinButton         as _SpinButton,
+    SpinButtonCallable as SpinButton
+};

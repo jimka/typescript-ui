@@ -5,6 +5,7 @@ import { Button } from "./Button.js";
 import { FontAwesomeIcon } from "./FontAwesomeIcon.js";
 import { FillType } from "../layout/FillType.js";
 import { Placement } from "../Placement.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link WindowHeader}.
@@ -22,7 +23,7 @@ export interface WindowHeaderOptions extends HeaderOptions {
  *
  * @category Components
  */
-export class WindowHeader extends Header {
+class WindowHeader extends Header {
 
     private exitButton: Button;
     private activeBackgroundImage: string;
@@ -95,3 +96,10 @@ export class WindowHeader extends Header {
         return this;
     }
 }
+
+const WindowHeaderCallable = callable(WindowHeader);
+type WindowHeaderCallable = WindowHeader;
+export {
+    WindowHeader         as _WindowHeader,
+    WindowHeaderCallable as WindowHeader
+};

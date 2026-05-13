@@ -2,13 +2,14 @@
 
 import { CellRenderer } from "./CellRenderer.js";
 import { Text } from "../../../../component/Text.js";
+import { callable } from "../../../../Callable.js";
 
 /**
  * A read-only renderer for date cell values.
  *
  * Displays the value via a {@link Text} formatted with `Date.toLocaleDateString`.
  */
-export class DateRenderer extends CellRenderer<Date | null> {
+class DateRenderer extends CellRenderer<Date | null> {
 
     private text: Text = new Text();
     private value: Date | null = null;
@@ -33,3 +34,10 @@ export class DateRenderer extends CellRenderer<Date | null> {
         return this;
     }
 }
+
+const DateRendererCallable = callable(DateRenderer);
+type DateRendererCallable = DateRenderer;
+export {
+    DateRenderer         as _DateRenderer,
+    DateRendererCallable as DateRenderer
+};

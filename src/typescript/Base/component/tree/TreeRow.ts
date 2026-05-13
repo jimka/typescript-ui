@@ -3,6 +3,7 @@
 import { Component } from "../../Component.js";
 import { Text } from "../Text.js";
 import { TreeNode } from "./TreeNode.js";
+import { callable } from "../../Callable.js";
 
 /** Width in pixels reserved for the expand/collapse toggle icon. */
 export const TOGGLE_WIDTH = 20;
@@ -21,7 +22,7 @@ export const TOGGLE_WIDTH = 20;
  * preferred-size change notifications do not propagate up to the Tree and
  * trigger unnecessary layout passes.
  */
-export class TreeRow extends Component {
+class TreeRow extends Component {
 
     private _toggle: Text;
     private _nodeLabel: Text;
@@ -172,3 +173,10 @@ export class TreeRow extends Component {
         return this;
     }
 }
+
+const TreeRowCallable = callable(TreeRow);
+type TreeRowCallable = TreeRow;
+export {
+    TreeRow         as _TreeRow,
+    TreeRowCallable as TreeRow
+};

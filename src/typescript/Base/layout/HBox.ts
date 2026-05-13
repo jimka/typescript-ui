@@ -3,6 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link HBox}.
@@ -20,7 +21,7 @@ export interface HBoxOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class HBox extends LayoutManager {
+class HBox extends LayoutManager {
 
     private spacing: number = 5;
     private stretching: boolean = false;
@@ -340,3 +341,10 @@ export class HBox extends LayoutManager {
         }
     }
 }
+
+const HBoxCallable = callable(HBox);
+type HBoxCallable = HBox;
+export {
+    HBox         as _HBox,
+    HBoxCallable as HBox
+};

@@ -13,6 +13,7 @@ import { TimeCell } from "./cell/Time.js";
 import { DateTimeCell } from "./cell/DateTime.js";
 import type { ColumnConfig } from "./ColumnConfig.js";
 import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
+import { callable } from "../../Callable.js";
 
 /**
  * A single data row in the table, rendered as a `<tr>` element.
@@ -25,7 +26,7 @@ import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
  *
  * @category Components
  */
-export class Row extends Component {
+class Row extends Component {
 
     private model?: AbstractModel;
     private data?: ModelRecord;
@@ -183,3 +184,10 @@ export class Row extends Component {
         return this;
     }
 }
+
+const RowCallable = callable(Row);
+type RowCallable = Row;
+export {
+    Row         as _Row,
+    RowCallable as Row
+};

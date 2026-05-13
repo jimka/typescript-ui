@@ -5,6 +5,7 @@ import { Event } from "../Event.js";
 import { HBox } from "../layout/HBox.js";
 import { Input } from "./Input.js";
 import { Label } from "./Label.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link RadioButton}.
@@ -26,7 +27,7 @@ export interface RadioButtonOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class RadioButton extends Component {
+class RadioButton extends Component {
 
     private selected: boolean = false;
     private label: Label;
@@ -183,3 +184,10 @@ export class RadioButton extends Component {
         return element;
     }
 }
+
+const RadioButtonCallable = callable(RadioButton);
+type RadioButtonCallable = RadioButton;
+export {
+    RadioButton         as _RadioButton,
+    RadioButtonCallable as RadioButton
+};

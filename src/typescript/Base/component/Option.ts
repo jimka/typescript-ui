@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "../Component.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Option}.
@@ -21,7 +22,7 @@ export interface OptionOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class Option extends Component {
+class Option extends Component {
 
     private key: string;
     private value: string;
@@ -97,3 +98,10 @@ export class Option extends Component {
         return element;
     }
 }
+
+const OptionCallable = callable(Option);
+type OptionCallable = Option;
+export {
+    Option         as _Option,
+    OptionCallable as Option
+};

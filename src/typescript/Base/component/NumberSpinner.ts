@@ -11,6 +11,7 @@ import { Bindable } from "../Bindable.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { Util } from "../Util.js";
 import { ThemeManager } from "../Theme.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link NumberSpinner}.
@@ -37,7 +38,7 @@ export interface NumberSpinnerOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class NumberSpinner extends Component implements Bindable<number> {
+class NumberSpinner extends Component implements Bindable<number> {
 
     private input  : TextField;
     private upBtn  : SpinButton;
@@ -450,3 +451,10 @@ export class NumberSpinner extends Component implements Bindable<number> {
         return dotIdx >= 0 ? stepStr.length - dotIdx - 1 : 0;
     }
 }
+
+const NumberSpinnerCallable = callable(NumberSpinner);
+type NumberSpinnerCallable = NumberSpinner;
+export {
+    NumberSpinner         as _NumberSpinner,
+    NumberSpinnerCallable as NumberSpinner
+};

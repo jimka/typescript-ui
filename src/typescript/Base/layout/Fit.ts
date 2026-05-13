@@ -3,6 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { Size } from "../Size.js";
 import { FillType } from "./FillType.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Fit}.
@@ -19,7 +20,7 @@ export interface FitOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class Fit extends LayoutManager {
+class Fit extends LayoutManager {
 
     constructor(options?: FitOptions) {
         super();
@@ -193,3 +194,10 @@ export class Fit extends LayoutManager {
         );
     }
 }
+
+const FitCallable = callable(Fit);
+type FitCallable = Fit;
+export {
+    Fit         as _Fit,
+    FitCallable as Fit
+};

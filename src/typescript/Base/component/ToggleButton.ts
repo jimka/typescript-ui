@@ -3,6 +3,7 @@
 import { CSS } from "../CSS.js";
 import { Event } from "../Event.js";
 import { Button, ButtonOptions } from "./Button.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link ToggleButton}.
@@ -21,7 +22,7 @@ export interface ToggleButtonOptions extends ButtonOptions {
  *
  * @category Components
  */
-export class ToggleButton extends Button {
+class ToggleButton extends Button {
 
     private selected: boolean = false;
     private selectedCSSRule: CSSStyleRule;
@@ -115,3 +116,10 @@ export class ToggleButton extends Button {
         return element;
     }
 }
+
+const ToggleButtonCallable = callable(ToggleButton);
+type ToggleButtonCallable = ToggleButton;
+export {
+    ToggleButton         as _ToggleButton,
+    ToggleButtonCallable as ToggleButton
+};

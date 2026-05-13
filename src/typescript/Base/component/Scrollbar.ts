@@ -4,6 +4,7 @@ import { Component } from "../Component.js";
 import { Event } from "../Event.js";
 import { Position } from "../Position.js";
 import { Util } from "../Util.js";
+import { callable } from "../Callable.js";
 
 const TRACK_WIDTH    = 12;
 const THUMB_INSET    = 2;
@@ -43,7 +44,7 @@ export type ScrollbarListener = (position: number) => void;
  *
  * @category Components
  */
-export class Scrollbar extends Component {
+class Scrollbar extends Component {
 
     private orientation     : ScrollbarOrientation     = "vertical";
     private thumb           : Component;
@@ -394,3 +395,10 @@ export class Scrollbar extends Component {
         this.fireScrollListeners(newPosition);
     };
 }
+
+const ScrollbarCallable = callable(Scrollbar);
+type ScrollbarCallable = Scrollbar;
+export {
+    Scrollbar         as _Scrollbar,
+    ScrollbarCallable as Scrollbar
+};

@@ -5,6 +5,7 @@ import { Event } from "../../../Event.js";
 import { Util } from "../../../Util.js";
 import { CSS } from "../../../CSS.js";
 import { Tooltip } from "../../../Tooltip.js";
+import { callable } from "../../../Callable.js";
 
 /**
  * A non-editable header cell rendered as a `<th>` element.
@@ -18,7 +19,7 @@ import { Tooltip } from "../../../Tooltip.js";
  *
  * @category Components
  */
-export class HeaderCell extends DefaultCell {
+class HeaderCell extends DefaultCell {
 
     private text: String;
     private fieldName: string;
@@ -216,3 +217,10 @@ export class HeaderCell extends DefaultCell {
         setTimeout(() => { this.isDragging = false; }, 0);
     }
 }
+
+const HeaderCellCallable = callable(HeaderCell);
+type HeaderCellCallable = HeaderCell;
+export {
+    HeaderCell         as _HeaderCell,
+    HeaderCellCallable as HeaderCell
+};

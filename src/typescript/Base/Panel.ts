@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "./Component";
 import { Insets } from "./Insets";
+import { callable } from "./Callable.js";
 
 /**
  * Construction-time options for {@link Panel}.
@@ -26,7 +27,7 @@ export interface PanelOptions extends ComponentOptions {
  *
  * @category Core
  */
-export class Panel extends Component {
+class Panel extends Component {
 
     /**
      * Creates a panel with 4-pixel insets on all sides by default.
@@ -46,3 +47,10 @@ export class Panel extends Component {
         }
     }
 }
+
+const PanelCallable = callable(Panel);
+type PanelCallable = Panel;
+export {
+    Panel as _Panel,
+    PanelCallable as Panel
+};

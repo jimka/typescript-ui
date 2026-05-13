@@ -9,6 +9,7 @@ import { Event } from "../../Event.js";
 import { VirtualScroller } from "../VirtualScroller.js";
 import { ThemeManager } from "../../Theme.js";
 import type { ColumnConfig } from "./ColumnConfig.js";
+import { callable } from "../../Callable.js";
 
 const SCROLL_BUFFER = 2;
 
@@ -42,7 +43,7 @@ function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
  *
  * @category Components
  */
-export class Body extends Component {
+class Body extends Component {
 
     private store           : AbstractStore;
     private hiddenColumns   : Set<string>               = new Set();
@@ -875,3 +876,10 @@ export class Body extends Component {
         }
     }
 }
+
+const BodyCallable = callable(Body);
+type BodyCallable = Body;
+export {
+    Body         as _Body,
+    BodyCallable as Body
+};

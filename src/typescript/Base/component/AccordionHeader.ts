@@ -3,6 +3,7 @@
 import { Button, ButtonOptions } from "./Button.js";
 import { CSS } from "../CSS.js";
 import { Insets } from "../Insets.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link AccordionHeader}.
@@ -22,7 +23,7 @@ export interface AccordionHeaderOptions extends ButtonOptions {
  *
  * @category Components
  */
-export class AccordionHeader extends Button {
+class AccordionHeader extends Button {
 
     private static _stylesCreated: boolean = false;
 
@@ -143,3 +144,10 @@ export class AccordionHeader extends Button {
         return this._expanded;
     }
 }
+
+const AccordionHeaderCallable = callable(AccordionHeader);
+type AccordionHeaderCallable = AccordionHeader;
+export {
+    AccordionHeader         as _AccordionHeader,
+    AccordionHeaderCallable as AccordionHeader
+};

@@ -15,131 +15,85 @@ import { Model } from "./Base/data/Model.js";
 import { MemoryStore } from "./Base/data/MemoryStore.js";
 import { BorderStyle } from "./Base/BorderStyle.js";
 import { Panel } from "./Base/Panel.js";
+import { callable } from "./Base/Callable.js";
 
-export class ComplexUIPanel extends Panel {
+class ComplexUIPanel extends Panel {
 
     constructor() {
-        super();
+        super({ layoutManager: VBox({ stretching: true })});
 
         this.initLayout();
     }
 
     private initLayout() {
-        this.setLayoutManager(new VBox({ stretching: true }));
-
-        let panel1 = this.buildPanel1();
-        this.addComponent(panel1);
-
-        let panel2 = this.buildPanel2();
-        this.addComponent(panel2);
-
-        let panel3 = this.buildPanel3();
-        this.addComponent(panel3);
-
-        let panel4 = this.buildPanel4();
-        this.addComponent(panel4);
-
-        let panel5 = this.buildPanel5();
-        this.addComponent(panel5);
-
-        let panel6 = this.buildPanel6();
-        this.addComponent(panel6);
-
-        let panel7 = this.buildPanel7();
-        this.addComponent(panel7);
+        this.addComponents(
+            this.buildPanel1(),
+            this.buildPanel2(),
+            this.buildPanel3(),
+            this.buildPanel4(),
+            this.buildPanel5(),
+            this.buildPanel6(),
+            this.buildPanel7()
+        );
     }
 
     private buildPanel1() {
-        let comp = new Panel();
-        comp.setLayoutManager(new HBox());
-        comp.setBorder({ style: BorderStyle.SOLID, width: 1, color: "black" })
-
-        let panel11 = new Panel();
-        panel11.setLayoutManager(new VBox());
-
-        let captionCustomerOrContact = new Text("Select Customer or Contact");
-        panel11.addComponent(captionCustomerOrContact);
-
-        let comboCustomerOrContact = new ComboBox();
-        comboCustomerOrContact.addItem("Alderson.George");
-        panel11.addComponent(comboCustomerOrContact);
-
-        comp.addComponent(panel11);
-
-        let panel12 = new FieldSet("Filter");
-        panel12.setLayoutManager(new VBox());
-
-        let radioCustomersOnly = new RadioButton("Customers Only");
-        let radioCustomersOnATrip = new RadioButton("Customers on a Trip");
-        let radioAllContacts = new RadioButton("All Contacts");
-
-        panel12.addComponent(radioCustomersOnly);
-        panel12.addComponent(radioCustomersOnATrip);
-        panel12.addComponent(radioAllContacts);
-
-        let buttonGroup = new ButtonGroup();
-        buttonGroup.addButton(radioCustomersOnly);
-        buttonGroup.addButton(radioCustomersOnATrip);
-        buttonGroup.addButton(radioAllContacts);
-
-        comp.addComponent(panel12);
-
-        let panel13 = new Panel();
-        panel13.setLayoutManager(new VBox());
-
-        let buttonNewCustomer = new Button("New Customer");
-        let buttonSaveCustomer = new Button("Save Customer");
-        panel13.addComponent(buttonNewCustomer);
-        panel13.addComponent(buttonSaveCustomer);
-
-        comp.addComponent(panel13);
-
-        return comp;
+        return Panel({
+            layoutManager: HBox(),
+            border: { style: BorderStyle.SOLID, width: 1, color: "black" },
+            components: [
+                Panel({
+                    layoutManager: VBox(),
+                    components: [
+                        Text("Select Customer or Contact"),
+                        ComboBox().addItem("Alderson.George")
+                    ]
+                }),
+                FieldSet("Filter", {
+                    layoutManager: VBox(),
+                    components: ButtonGroup({
+                        buttons: [
+                            RadioButton("Customers Only"),
+                            RadioButton("Customers on a Trip"),
+                            RadioButton("All Contacts")
+                        ]
+                    }).getButtons()
+                }),
+                Panel({
+                    layoutManager: VBox(),
+                    components: [
+                        Button("New Customer"),
+                        Button("Save Customer")
+                    ]
+                })
+            ]
+        });
     }
 
     private buildPanel2() {
-        let comp = new Panel();
-        comp.setLayoutManager(new HBox());
-
-        let captionTitle = new Text("Title:");
-        let textTitle = new TextField();
-        comp.addComponent(captionTitle);
-        comp.addComponent(textTitle);
-
-        let captionFirstName = new Text("First Name:");
-        let textFirstName = new TextField();
-        comp.addComponent(captionFirstName);
-        comp.addComponent(textFirstName);
-
-        let captionLastName = new Text("Last Name:");
-        let textLastName = new TextField();
-        comp.addComponent(captionLastName);
-        comp.addComponent(textLastName);
-
-        let captionCustomerType = new Text("Customer Type:");
-        let textCustomerType = new TextField();
-        comp.addComponent(captionCustomerType);
-        comp.addComponent(textCustomerType);
-
-        return comp;
+        return Panel({
+            layoutManager: HBox(),
+            components: [
+                Text("Title:")        , TextField(),
+                Text("First Name:")   , TextField(),
+                Text("Last Name:")    , TextField(),
+                Text("Customer Type:"), TextField()
+            ]
+        });
     }
 
     private buildPanel3() {
-        let comp = new FieldSet("Preferences");
-
-        return comp;
+        return FieldSet("Preferences");
     }
 
     private buildPanel4() {
-        let comp = new Panel();
-        comp.setLayoutManager(new HBox());
-
-        let captionNotes = new Text("Notes:");
-        let areaNotes = new TextArea();
-        comp.addComponent(captionNotes);
-        comp.addComponent(areaNotes);
-
-        return comp
+        return Panel({
+            layoutManager: HBox(),
+            components: [
+                Text("Notes:"),
+                TextArea()
+            ]
+        });
     }
 
     private buildPanel5() {
@@ -168,11 +122,8 @@ export class ComplexUIPanel extends Panel {
             autoLoad: true,
         });
 
-        let comp = new Table(store);
-
-        comp.setExportMenuEnabled(true);
-
-        return comp;
+        return Table(store)
+            .setExportMenuEnabled(true);
     }
 
     private buildPanel6() {
@@ -182,32 +133,25 @@ export class ComplexUIPanel extends Panel {
             { name: "balance",          type: "string", description: "Balance",         order: 3 },
         ]);
 
-        let comp = new Table(new MemoryStore(tableModel));
-
-        comp.setExportMenuEnabled(true);
-
-        return comp;
+        return Table(new MemoryStore(tableModel))
+            .setExportMenuEnabled(true);
     }
 
     private buildPanel7() {
-        let comp = new Panel();
-        comp.setLayoutManager(new HBox());
-
-        let captionAddDate = new Text("Add Date:");
-        let textAddDate = new TextField();
-        comp.addComponent(captionAddDate);
-        comp.addComponent(textAddDate);
-
-        let captionModifiedDate = new Text("Modified Date:");
-        let textModifiedDate = new TextField();
-        comp.addComponent(captionModifiedDate);
-        comp.addComponent(textModifiedDate);
-
-        let captionInitialDateAsCustomer = new Text("Initial Date as Customer:");
-        let textInitialDateAsCustomer = new TextField();
-        comp.addComponent(captionInitialDateAsCustomer);
-        comp.addComponent(textInitialDateAsCustomer);
-
-        return comp;
+        return Panel({
+            layoutManager: HBox(),
+            components: [
+                Text("Add Date:"),                TextField(),
+                Text("Modified Date:"),           TextField(),
+                Text("Initial Date as Customer:"), TextField()
+            ]
+        });
     }
 }
+
+const ComplexUIPanelCallable = callable(ComplexUIPanel);
+type ComplexUIPanelCallable = ComplexUIPanel;
+export {
+    ComplexUIPanel as _ComplexUIPanel,
+    ComplexUIPanelCallable as ComplexUIPanel
+};

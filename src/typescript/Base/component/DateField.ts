@@ -6,6 +6,7 @@ import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
 import { Bindable } from "../Bindable.js";
 import { ThemeManager } from "../Theme.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link DateField}.
@@ -25,7 +26,7 @@ export interface DateFieldOptions extends InputOptions {
  *
  * @category Components
  */
-export class DateField extends Input implements Bindable<Date | null> {
+class DateField extends Input implements Bindable<Date | null> {
 
     private _value: Date | null = null;
 
@@ -184,3 +185,10 @@ export class DateField extends Input implements Bindable<Date | null> {
         return element;
     }
 }
+
+const DateFieldCallable = callable(DateField);
+type DateFieldCallable = DateField;
+export {
+    DateField         as _DateField,
+    DateFieldCallable as DateField
+};

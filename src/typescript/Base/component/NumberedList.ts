@@ -2,6 +2,7 @@
 
 import { AbstractListComponent, AbstractListOptions } from "./AbstractListComponent.js";
 import { NumberedListItemStyle } from "./NumberedListItemStyle.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link NumberedList}.
@@ -18,7 +19,7 @@ export interface NumberedListOptions extends AbstractListOptions<NumberedListIte
  *
  * @category Components
  */
-export class NumberedList extends AbstractListComponent<NumberedListItemStyle> {
+class NumberedList extends AbstractListComponent<NumberedListItemStyle> {
 
     constructor(options?: NumberedListOptions) {
         super("ol", NumberedListItemStyle.DECIMAL);
@@ -28,3 +29,10 @@ export class NumberedList extends AbstractListComponent<NumberedListItemStyle> {
         }
     }
 }
+
+const NumberedListCallable = callable(NumberedList);
+type NumberedListCallable = NumberedList;
+export {
+    NumberedList         as _NumberedList,
+    NumberedListCallable as NumberedList
+};

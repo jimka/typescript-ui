@@ -4,6 +4,7 @@ import { CellEditor } from "./CellEditor.js";
 import { TextField } from "../../../../component/TextField.js";
 import { BorderStyle } from "../../../../BorderStyle.js";
 import { Event } from "../../../../Event.js";
+import { callable } from "../../../../Callable.js";
 
 /**
  * An in-place editor for string cell values.
@@ -13,7 +14,7 @@ import { Event } from "../../../../Event.js";
  *
  * @category Components
  */
-export class StringEditor extends CellEditor<String> {
+class StringEditor extends CellEditor<String> {
 
     private textField: TextField = new TextField();
 
@@ -74,3 +75,10 @@ export class StringEditor extends CellEditor<String> {
         return this;
     }
 }
+
+const StringEditorCallable = callable(StringEditor);
+type StringEditorCallable = StringEditor;
+export {
+    StringEditor         as _StringEditor,
+    StringEditorCallable as StringEditor
+};

@@ -12,6 +12,8 @@ import { Util } from "./Util.js";
 import { CSS } from "./CSS.js";
 import { Position } from "./Position.js";
 import { Aria } from "./Aria.js";
+import { callable } from "./Callable.js";
+
 //import { FastDom } from "./FastDom.js";
 
 /**
@@ -46,6 +48,17 @@ export interface PerimeterSize {
     right: number,
     bottom: number,
     left: number
+}
+
+/**
+ * A child component paired with optional layout constraints, as accepted by
+ * {@link Component.addComponents}.
+ *
+ * @category Core
+ */
+export interface ConstrainedComponent {
+    component:    Component;
+    constraints?: LayoutConstraints;
 }
 
 /**
@@ -84,6 +97,7 @@ export interface ComponentOptions {
     layoutManager?:   LayoutManager;
     id?:              string;
     attributes?:      Record<string, string>;
+    components?:      Array<Component | ConstrainedComponent>;
 }
 
 // Module-level state for the rAF-coalesced layout queue. Setters and event handlers call
@@ -136,7 +150,7 @@ function flushPendingLayouts() {
  *
  * @category Core
  */
-export class Component extends BaseObject {
+class Component extends BaseObject {
 
     private layoutManager: LayoutManager;
     private components: Array<Component>;
@@ -270,6 +284,8 @@ export class Component extends BaseObject {
                 this.setAttribute(key, options.attributes[key]);
             }
         }
+
+        if (options.components !== undefined) this.addComponents(options.components);
 
         return this;
     }
@@ -1889,12 +1905,6 @@ export class Component extends BaseObject {
     }
 
     /**
-     * Adds a child component, appends its element, wires preferred-size change propagation, and triggers layout.
-     *
-     * @param component - The child component to add.
-     * @param constraints - Optional. Layout constraints to pass to the layout manager.
-     */
-    /**
      * Returns the parent component this component was added to, or null if it has no parent.
      *
      * @returns The parent {@link Component}, or null.
@@ -1903,6 +1913,41 @@ export class Component extends BaseObject {
         return this._parent;
     }
 
+    /**
+     * Adds multiple child components in a single call, with optional per-component layout constraints.
+     *
+     * Each argument is either a {@link Component} (added with no constraints), a
+     * {@link ConstrainedComponent} pair (added with the supplied constraints), or an array of
+     * either form (each entry is processed in order). All three forms can be freely mixed in
+     * the same call.
+     *
+     * @param specs - The components to add. Each entry is a bare {@link Component}, a
+     *   {@link ConstrainedComponent} pair, or an array of either.
+     *
+     * @returns This component, for method chaining.
+     */
+    addComponents(...specs: Array<Component | ConstrainedComponent | Array<Component | ConstrainedComponent>>): this {
+        for (const spec of specs) {
+            const items = Array.isArray(spec) ? spec : [spec];
+
+            for (const item of items) {
+                if (item instanceof Component) {
+                    this.addComponent(item);
+                } else {
+                    this.addComponent(item.component, item.constraints);
+                }
+            }
+        }
+
+        return this;
+    }
+
+    /**
+     * Adds a child component, appends its element, wires preferred-size change propagation, and triggers layout.
+     *
+     * @param component - The child component to add.
+     * @param constraints - Optional. Layout constraints to pass to the layout manager.
+     */
     addComponent(component: Component, constraints?: LayoutConstraints): this {
         if (component._parent !== null) {
             throw new Error(`Component ${component.getId()} already has a parent. Remove it first.`);
@@ -2238,3 +2283,11 @@ export class Component extends BaseObject {
         return element;
     }
 }
+
+const ComponentCallable = callable(Component);
+type ComponentCallable = Component;
+export {
+    Component         as _Component,
+    ComponentCallable as Component
+};
+

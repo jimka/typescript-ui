@@ -2,6 +2,7 @@
 
 import { List, ListOptions } from "./List.js";
 import { ModelRecord } from "../data/ModelRecord.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link MultiSelectList}.
@@ -21,7 +22,7 @@ export interface MultiSelectListOptions extends ListOptions {
  *
  * @category Components
  */
-export class MultiSelectList extends List {
+class MultiSelectList extends List {
 
     constructor(options?: MultiSelectListOptions) {
         super();
@@ -170,3 +171,10 @@ export class MultiSelectList extends List {
         return element;
     }
 }
+
+const MultiSelectListCallable = callable(MultiSelectList);
+type MultiSelectListCallable = MultiSelectList;
+export {
+    MultiSelectList         as _MultiSelectList,
+    MultiSelectListCallable as MultiSelectList
+};

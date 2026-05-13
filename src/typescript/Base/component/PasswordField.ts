@@ -4,6 +4,7 @@ import { TextInput, TextInputOptions } from "./TextInput.js";
 import { Util } from "../Util.js";
 import { Insets } from "../Insets.js";
 import { ThemeManager } from "../Theme.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link PasswordField}.
@@ -18,7 +19,7 @@ export interface PasswordFieldOptions extends TextInputOptions {
  *
  * @category Components
  */
-export class PasswordField extends TextInput {
+class PasswordField extends TextInput {
 
     constructor(options?: PasswordFieldOptions) {
         super();
@@ -62,3 +63,10 @@ export class PasswordField extends TextInput {
         return element;
     }
 }
+
+const PasswordFieldCallable = callable(PasswordField);
+type PasswordFieldCallable = PasswordField;
+export {
+    PasswordField         as _PasswordField,
+    PasswordFieldCallable as PasswordField
+};

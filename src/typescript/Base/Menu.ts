@@ -8,6 +8,7 @@ import { Insets } from "./Insets.js";
 import { VBox } from "./layout/VBox.js";
 import { MenuItem, MenuItemConfig } from "./component/MenuItem.js";
 import { MenuSeparator } from "./component/MenuSeparator.js";
+import { callable } from "./Callable.js";
 
 /** Pixel width used for every persistent-mode `Menu` panel. */
 const PANEL_WIDTH = 220;
@@ -50,7 +51,7 @@ const DEFAULT_REBUILD_WIDTH = 180;
  *
  * @category Components
  */
-export class Menu extends Component {
+class Menu extends Component {
 
     private readonly _persistent: boolean;
     private readonly _onClose: (() => void) | null;
@@ -617,3 +618,10 @@ export class Menu extends Component {
         }
     }
 }
+
+const MenuCallable = callable(Menu);
+type MenuCallable = Menu;
+export {
+    Menu         as _Menu,
+    MenuCallable as Menu
+};

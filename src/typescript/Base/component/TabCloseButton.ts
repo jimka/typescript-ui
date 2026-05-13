@@ -2,6 +2,7 @@
 
 import { Button, ButtonOptions } from "./Button.js";
 import { Insets } from "../Insets.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link TabCloseButton}.
@@ -16,7 +17,7 @@ export interface TabCloseButtonOptions extends ButtonOptions {
  *
  * @category Components
  */
-export class TabCloseButton extends Button {
+class TabCloseButton extends Button {
 
     /**
      * Creates a TabCloseButton with a "×" label sized for use in a tab toolbar.
@@ -33,3 +34,10 @@ export class TabCloseButton extends Button {
         }
     }
 }
+
+const TabCloseButtonCallable = callable(TabCloseButton);
+type TabCloseButtonCallable = TabCloseButton;
+export {
+    TabCloseButton         as _TabCloseButton,
+    TabCloseButtonCallable as TabCloseButton
+};

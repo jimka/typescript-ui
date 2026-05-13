@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Text, TextOptions } from "./Text.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Label}.
@@ -28,7 +29,7 @@ export interface LabelOptions extends TextOptions {
  *
  * @category Components
  */
-export class Label extends Text {
+class Label extends Text {
 
     forId: string;
 
@@ -92,3 +93,10 @@ export class Label extends Text {
         return element;
     }
 }
+
+const LabelCallable = callable(Label);
+type LabelCallable = Label;
+export {
+    Label         as _Label,
+    LabelCallable as Label
+};
