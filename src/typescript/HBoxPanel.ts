@@ -2,8 +2,9 @@
 
 import { HBox } from "./Base/layout/HBox.js";
 import { LayoutTestPanel } from "./LayoutTestPanel.js";
+import { callable } from "./Base/Callable.js";
 
-export class HBoxPanel extends LayoutTestPanel {
+class HBoxPanel extends LayoutTestPanel {
 
     constructor() {
         super();
@@ -11,3 +12,10 @@ export class HBoxPanel extends LayoutTestPanel {
         this.setLayoutManager(new HBox());
     }
 }
+
+const HBoxPanelCallable = callable(HBoxPanel);
+type HBoxPanelCallable = HBoxPanel;
+export {
+    HBoxPanel         as _HBoxPanel,
+    HBoxPanelCallable as HBoxPanel
+};

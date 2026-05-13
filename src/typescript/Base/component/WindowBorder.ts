@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "../Component.js";
 import { Util } from "../Util.js";
 import { Event } from "../Event.js";
+import { callable } from "../Callable.js";
 
 /**
  * The eight edge / corner positions used by {@link WindowBorder} to identify
@@ -38,7 +39,7 @@ export interface WindowBorderOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class WindowBorder extends Component {
+class WindowBorder extends Component {
 
     private direction: Direction = Direction.NORTH;
     private dragListeners: Function[] = [];
@@ -78,12 +79,14 @@ export class WindowBorder extends Component {
      *
      * @param direction - The Direction enum value. Defaults to NORTH if falsy.
      */
-    setDirection(direction: Direction) {
+    setDirection(direction: Direction) : this {
         if (!direction) {
             direction = Direction.NORTH;
         }
 
         this.direction = direction;
+
+        return this;
     }
 
     /**
@@ -91,8 +94,10 @@ export class WindowBorder extends Component {
      *
      * @param listener - The callback invoked with this WindowBorder and the MouseEvent on each drag.
      */
-    addDragListener(listener: Function) {
+    addDragListener(listener: Function) : this {
         this.dragListeners.push(listener);
+
+        return this;
     }
 
     /**
@@ -100,13 +105,15 @@ export class WindowBorder extends Component {
      *
      * @param listener - The callback to remove.
      */
-    removeDragListener(listener: Function) {
+    removeDragListener(listener: Function) : this {
         let idx = this.dragListeners.indexOf(listener);
         if (idx < 0) {
-            return;
+            return this;
         }
 
         this.dragListeners.push(listener);
+
+        return this;
     }
 
     /**
@@ -185,3 +192,10 @@ export class WindowBorder extends Component {
         return element;
     }
 }
+
+const WindowBorderCallable = callable(WindowBorder);
+type WindowBorderCallable = WindowBorder;
+export {
+    WindowBorder         as _WindowBorder,
+    WindowBorderCallable as WindowBorder
+};

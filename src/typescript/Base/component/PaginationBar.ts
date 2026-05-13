@@ -5,6 +5,7 @@ import { AbstractStore } from "../data/AbstractStore.js";
 import { HBox } from "../layout/HBox.js";
 import { Button } from "./Button.js";
 import { Text } from "./Text.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link PaginationBar}.
@@ -43,7 +44,7 @@ export interface PaginationBarOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class PaginationBar extends Component {
+class PaginationBar extends Component {
 
     private store: AbstractStore;
 
@@ -109,7 +110,7 @@ export class PaginationBar extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: PaginationBarOptions): void {
+    protected applyOptions(options: PaginationBarOptions): this {
         super.applyOptions(options);
 
         if (options.pageSize !== undefined) {
@@ -119,6 +120,8 @@ export class PaginationBar extends Component {
         if (options.pageIndex !== undefined) {
             this.store.goToPage(options.pageIndex);
         }
+
+        return this;
     }
 
     /**
@@ -161,3 +164,10 @@ export class PaginationBar extends Component {
         this.lastBtn.setEnabled(!dirty && totalPages != null && page < totalPages);
     }
 }
+
+const PaginationBarCallable = callable(PaginationBar);
+type PaginationBarCallable = PaginationBar;
+export {
+    PaginationBar         as _PaginationBar,
+    PaginationBarCallable as PaginationBar
+};

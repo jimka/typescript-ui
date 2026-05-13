@@ -3,6 +3,7 @@
 import { Cell } from "./Cell.js";
 import { DateRenderer } from "./renderer/Date.js";
 import { DateEditor } from "./editor/Date.js";
+import { callable } from "../../../Callable.js";
 
 /**
  * A table cell for date values.
@@ -11,7 +12,7 @@ import { DateEditor } from "./editor/Date.js";
  * Committing an empty field writes null; committing an unparseable value reverts to the
  * previous value instead of writing null.
  */
-export class DateCell extends Cell<Date | null> {
+class DateCell extends Cell<Date | null> {
 
     private dateEditor: DateEditor;
 
@@ -23,16 +24,27 @@ export class DateCell extends Cell<Date | null> {
         this.dateEditor = editor;
     }
 
-    setValue(value: Date | null): void {
+    setValue(value: Date | null): this {
         this.getRenderer().setValue(value);
+
+        return this;
     }
 
-    commitEdit(): void {
+    commitEdit(): this {
         // Non-empty input that failed to parse → revert rather than write null.
         if (!this.dateEditor.isEmpty() && this.dateEditor.getValue() === null) {
             this.cancelEdit();
-            return;
+            return this;
         }
         super.commitEdit();
+
+        return this;
     }
 }
+
+const DateCellCallable = callable(DateCell);
+type DateCellCallable = DateCell;
+export {
+    DateCell         as _DateCell,
+    DateCellCallable as DateCell
+};

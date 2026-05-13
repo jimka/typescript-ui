@@ -5,6 +5,16 @@ import { Event } from "./Event.js";
 import { RadioButton } from "./component/RadioButton.js";
 import { RovingTabIndex } from "./RovingTabIndex.js";
 import { ToggleButton } from "./component/ToggleButton.js";
+import { callable } from "./Callable.js";
+
+/**
+ * Construction-time options for {@link ButtonGroup}.
+ *
+ * @category Core
+ */
+export interface ButtonGroupOptions {
+    buttons?: Array<RadioButton | ToggleButton>;
+}
 
 /**
  * Manages mutual exclusivity among a set of {@link RadioButton} or {@link ToggleButton} instances.
@@ -15,7 +25,7 @@ import { ToggleButton } from "./component/ToggleButton.js";
  *
  * @category Core
  */
-export class ButtonGroup {
+class ButtonGroup {
 
     buttons: Array<RadioButton | ToggleButton> = new Array<RadioButton | ToggleButton>();
 
@@ -24,9 +34,13 @@ export class ButtonGroup {
     private _selectionListeners: Array<(button: RadioButton | ToggleButton) => void> = [];
 
     /**
-     * Creates an empty ButtonGroup.
+     * Creates a ButtonGroup, optionally populated with an initial set of buttons.
+     *
+     * @param options - Optional. Construction-time options. `options.buttons` registers
+     *   the given buttons via {@link addButtons}.
      */
-    constructor() {
+    constructor(options?: ButtonGroupOptions) {
+        if (options?.buttons !== undefined) this.addButtons(options.buttons);
     }
 
     /**
@@ -58,13 +72,46 @@ export class ButtonGroup {
     }
 
     /**
+     * Returns the group's buttons as a {@link Component} array, suitable for passing
+     * directly to {@link Component.addComponents}.
+     *
+     * @returns A new array of the buttons, widened to `Component`.
+     */
+    getButtons(): Array<Component> {
+        return this.buttons.slice();
+    }
+
+    /**
+     * Adds multiple buttons to the group in a single call.
+     *
+     * Each argument is either a button or an array of buttons; all forms can be freely mixed
+     * in the same call. Each button is registered via {@link addButton}, so mutual-exclusivity
+     * wiring and (for `ToggleButton`) roving tabindex registration are applied to every entry.
+     *
+     * @param buttons - The buttons to add. Each entry is a bare button or an array of buttons.
+     *
+     * @returns This group, for method chaining.
+     */
+    addButtons(...buttons: Array<RadioButton | ToggleButton | Array<RadioButton | ToggleButton>>): this {
+        for (const entry of buttons) {
+            const items = Array.isArray(entry) ? entry : [entry];
+
+            for (const button of items) {
+                this.addButton(button);
+            }
+        }
+
+        return this;
+    }
+
+    /**
      * Adds a button to the group and wires its selection to enforce mutual exclusivity.
      *
      * @remarks For `RadioButton` instances, a shared `name` attribute is applied for native browser grouping.
      * For `ToggleButton` instances, the button is added to the roving tabindex group if a container has been set.
      * @param button - The button to add to the group.
      */
-    addButton(button: RadioButton | ToggleButton): void {
+    addButton(button: RadioButton | ToggleButton): this {
         this.buttons.push(button);
 
         button.addActionListener(() => {
@@ -76,6 +123,8 @@ export class ButtonGroup {
         } else if (button instanceof ToggleButton && this._rovingTabIndex !== null) {
             this._rovingTabIndex.add(button);
         }
+
+        return this;
     }
 
     /**
@@ -83,11 +132,11 @@ export class ButtonGroup {
      *
      * @param button - The button to remove.
      */
-    removeButton(button: RadioButton | ToggleButton): void {
+    removeButton(button: RadioButton | ToggleButton): this {
         let idx = this.buttons.indexOf(button);
 
         if (idx < 0) {
-            return;
+            return this;
         }
 
         this.buttons.splice(idx, 1);
@@ -95,6 +144,8 @@ export class ButtonGroup {
         if (button instanceof ToggleButton && this._rovingTabIndex !== null) {
             this._rovingTabIndex.remove(button);
         }
+
+        return this;
     }
 
     /**
@@ -104,7 +155,7 @@ export class ButtonGroup {
      * Also initialises the {@link RovingTabIndex} and adds any already-registered `ToggleButton` members to it.
      * @param container - The component that wraps the toggle buttons and should receive key events.
      */
-    setContainer(container: Component): void {
+    setContainer(container: Component): this {
         this._rovingTabIndex = new RovingTabIndex();
 
         for (const button of this.buttons) {
@@ -122,5 +173,14 @@ export class ButtonGroup {
                 this._rovingTabIndex!.movePrev();
             }
         });
+
+        return this;
     }
 }
+
+const ButtonGroupCallable = callable(ButtonGroup);
+type ButtonGroupCallable = ButtonGroup;
+export {
+    ButtonGroup as _ButtonGroup,
+    ButtonGroupCallable as ButtonGroup
+};

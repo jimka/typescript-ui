@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { Position } from "../Position.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link DialogBackdrop}.
@@ -18,7 +19,7 @@ export interface DialogBackdropOptions extends ComponentOptions {
  * Appended to `document.documentElement` as a sibling of the dialog panel at a lower
  * z-index, mirroring the pattern used by `Notification` and `Menu`.
  */
-export class DialogBackdrop extends Component {
+class DialogBackdrop extends Component {
 
     /**
      * Creates the backdrop and applies viewport-filling fixed positioning.
@@ -44,8 +45,10 @@ export class DialogBackdrop extends Component {
      *
      * @param listener - Called when the user clicks the backdrop area.
      */
-    addClickListener(listener: Function): void {
+    addClickListener(listener: Function): this {
         Event.addListener(this, "click", listener);
+
+        return this;
     }
 
     /**
@@ -64,3 +67,10 @@ export class DialogBackdrop extends Component {
         this.destructor();
     }
 }
+
+const DialogBackdropCallable = callable(DialogBackdrop);
+type DialogBackdropCallable = DialogBackdrop;
+export {
+    DialogBackdrop         as _DialogBackdrop,
+    DialogBackdropCallable as DialogBackdrop
+};

@@ -3,6 +3,7 @@
 import { Cell } from "./Cell.js";
 import { StringRenderer } from "./renderer/String.js";
 import { StringEditor } from "./editor/String.js";
+import { callable } from "../../../Callable.js";
 
 /**
  * A table cell for string values.
@@ -11,7 +12,7 @@ import { StringEditor } from "./editor/String.js";
  *
  * @category Components
  */
-export class StringCell extends Cell<String> {
+class StringCell extends Cell<String> {
 
     constructor() {
         let renderer = new StringRenderer();
@@ -25,7 +26,16 @@ export class StringCell extends Cell<String> {
      *
      * @param value - The string value to display.
      */
-    setValue(value: String) {
+    setValue(value: String) : this {
         this.getRenderer().setValue(value);
+
+        return this;
     }
 }
+
+const StringCellCallable = callable(StringCell);
+type StringCellCallable = StringCell;
+export {
+    StringCell         as _StringCell,
+    StringCellCallable as StringCell
+};

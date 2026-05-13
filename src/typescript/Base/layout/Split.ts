@@ -4,6 +4,7 @@ import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { SplitGutter } from "../component/SplitGutter.js";
 import { Component } from "../Component.js";
 import { FillType } from "./FillType.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Split}.
@@ -21,7 +22,7 @@ export interface SplitOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class Split extends LayoutManager {
+class Split extends LayoutManager {
 
     private direction: String = "horizontal";
     private sizes: Map<Component, number> = new Map<Component, number>();
@@ -71,8 +72,10 @@ export class Split extends LayoutManager {
      *
      * @param direction - `'horizontal'` for side-by-side panels, `'vertical'` for stacked panels.
      */
-    setDirection(direction: String) {
+    setDirection(direction: String) : this {
         this.direction = direction;
+
+        return this;
     }
 
     /**
@@ -115,7 +118,7 @@ export class Split extends LayoutManager {
     /**
      * Detaches from the container and removes all gutter elements from the DOM.
      */
-    detach() {
+    detach() : this {
         super.detach();
 
         for (let idx in this.gutters) {
@@ -127,6 +130,8 @@ export class Split extends LayoutManager {
         }
 
         this.gutters = [];
+
+        return this;
     }
 
     /**
@@ -288,3 +293,10 @@ export class Split extends LayoutManager {
         }
     }
 }
+
+const SplitCallable = callable(Split);
+type SplitCallable = Split;
+export {
+    Split         as _Split,
+    SplitCallable as Split
+};

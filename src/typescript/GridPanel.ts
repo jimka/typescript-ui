@@ -2,8 +2,9 @@
 
 import { LayoutTestPanel } from "./LayoutTestPanel.js";
 import { Grid } from "./Base/layout/Grid.js";
+import { callable } from "./Base/Callable.js";
 
-export class GridPanel extends LayoutTestPanel {
+class GridPanel extends LayoutTestPanel {
 
     constructor() {
         super();
@@ -13,3 +14,10 @@ export class GridPanel extends LayoutTestPanel {
         }));
     }
 }
+
+const GridPanelCallable = callable(GridPanel);
+type GridPanelCallable = GridPanel;
+export {
+    GridPanel         as _GridPanel,
+    GridPanelCallable as GridPanel
+};

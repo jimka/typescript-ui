@@ -9,8 +9,9 @@ import { Fit } from "./Base/layout/Fit.js";
 import { Text } from "./Base/component/Text.js";
 import { Button } from "./Base/component/Button.js";
 import { Panel } from "./Base/Panel.js";
+import { callable } from "./Base/Callable.js";
 
-export class SplitPanel extends Panel {
+class SplitPanel extends Panel {
 
     constructor() {
         super();
@@ -64,3 +65,10 @@ export class SplitPanel extends Panel {
         southComponent.addComponent(slider);
     }
 }
+
+const SplitPanelCallable = callable(SplitPanel);
+type SplitPanelCallable = SplitPanel;
+export {
+    SplitPanel         as _SplitPanel,
+    SplitPanelCallable as SplitPanel
+};

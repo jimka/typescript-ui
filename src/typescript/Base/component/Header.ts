@@ -8,6 +8,7 @@ import { FillType } from "../layout/FillType.js";
 import { Placement } from "../Placement.js";
 import { ThemeManager } from "../Theme.js";
 import { Panel } from "../Panel.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Header}. Text and font fields target
@@ -26,7 +27,7 @@ export interface HeaderOptions extends TextOptions {
  *
  * @category Components
  */
-export class Header extends Panel {
+class Header extends Panel {
 
     private text: Text;
 
@@ -65,7 +66,7 @@ export class Header extends Panel {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: HeaderOptions): void {
+    protected applyOptions(options: HeaderOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -119,6 +120,8 @@ export class Header extends Panel {
         if (options.textOverflow !== undefined) {
             this.text.setTextOverflow(options.textOverflow);
         }
+
+        return this;
     }
 
     /**
@@ -161,3 +164,10 @@ export class Header extends Panel {
         return this.wrapInnerBaseline(this.text.getBaseline());
     }
 }
+
+const HeaderCallable = callable(Header);
+type HeaderCallable = Header;
+export {
+    Header         as _Header,
+    HeaderCallable as Header
+};

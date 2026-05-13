@@ -4,6 +4,7 @@ import { Component } from "../../Component.js";
 import { CSS } from "../../CSS.js";
 import { Event } from "../../Event.js";
 import { Text } from "../Text.js";
+import { callable } from "../../Callable.js";
 
 /**
  * A single top-level button in a `MenuBar` (e.g. "File", "Edit").
@@ -17,7 +18,7 @@ import { Text } from "../Text.js";
  *
  * @category Components
  */
-export class MenuBarButton extends Component {
+class MenuBarButton extends Component {
 
     private readonly _text: Text;
     private readonly _hoverRule: CSSStyleRule;
@@ -70,13 +71,15 @@ export class MenuBarButton extends Component {
      *
      * @param active - `true` to show the open state, `false` to revert to the default.
      */
-    setActive(active: boolean): void {
+    setActive(active: boolean): this {
         this.setBackgroundColor(
             active
                 ? "var(--ts-ui-menu-bar-btn-hover-bg, rgba(30, 100, 200, 0.10))"
                 : "var(--ts-ui-menu-bar-btn-bg, transparent)"
         );
         this.getAria().setExpanded(active);
+
+        return this;
     }
 
     /**
@@ -89,8 +92,10 @@ export class MenuBarButton extends Component {
 
     /**
      * Positions the label with horizontal padding inside the button bounds.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         super.doLayout();
 
         const pad = 10;
@@ -99,5 +104,14 @@ export class MenuBarButton extends Component {
         this._text.setY(0);
         this._text.setWidth(Math.max(0, this.getWidth() - pad * 2));
         this._text.setHeight(this.getHeight());
+
+        return this;
     }
 }
+
+const MenuBarButtonCallable = callable(MenuBarButton);
+type MenuBarButtonCallable = MenuBarButton;
+export {
+    MenuBarButton         as _MenuBarButton,
+    MenuBarButtonCallable as MenuBarButton
+};

@@ -12,6 +12,8 @@ import { Util } from "./Util.js";
 import { CSS } from "./CSS.js";
 import { Position } from "./Position.js";
 import { Aria } from "./Aria.js";
+import { callable } from "./Callable.js";
+
 //import { FastDom } from "./FastDom.js";
 
 /**
@@ -46,6 +48,17 @@ export interface PerimeterSize {
     right: number,
     bottom: number,
     left: number
+}
+
+/**
+ * A child component paired with optional layout constraints, as accepted by
+ * {@link Component.addComponents}.
+ *
+ * @category Core
+ */
+export interface ConstrainedComponent {
+    component:    Component;
+    constraints?: LayoutConstraints;
 }
 
 /**
@@ -84,6 +97,7 @@ export interface ComponentOptions {
     layoutManager?:   LayoutManager;
     id?:              string;
     attributes?:      Record<string, string>;
+    components?:      Array<Component | ConstrainedComponent>;
 }
 
 // Module-level state for the rAF-coalesced layout queue. Setters and event handlers call
@@ -136,7 +150,7 @@ function flushPendingLayouts() {
  *
  * @category Core
  */
-export class Component extends BaseObject {
+class Component extends BaseObject {
 
     private layoutManager: LayoutManager;
     private components: Array<Component>;
@@ -230,6 +244,8 @@ export class Component extends BaseObject {
      *
      * @param options - The options bag carrying the values to apply.
      *
+     * @returns This component, for method chaining.
+     *
      * @remarks Defaults live in field initializers, so this method only runs
      * setters for fields the caller explicitly specified — cssRule writes,
      * attribute-map updates, and attach chains fire once at the leaf rather
@@ -237,7 +253,7 @@ export class Component extends BaseObject {
      * call `super.applyOptions(options)` first so inherited fields are
      * applied before subclass-specific ones.
      */
-    protected applyOptions(options: ComponentOptions): void {
+    protected applyOptions(options: ComponentOptions): this {
         if (options.id              !== undefined) this.setId(options.id);
         if (options.layoutManager   !== undefined) this.setLayoutManager(options.layoutManager);
         if (options.visible         !== undefined) this.setVisible(options.visible);
@@ -268,6 +284,10 @@ export class Component extends BaseObject {
                 this.setAttribute(key, options.attributes[key]);
             }
         }
+
+        if (options.components !== undefined) this.addComponents(options.components);
+
+        return this;
     }
 
     /**
@@ -285,7 +305,7 @@ export class Component extends BaseObject {
      *
      * @returns The HTML tag string (e.g. "div", "button").
      */
-    getTag() {
+    getTag(): string {
         return this.tag;
     }
 
@@ -321,13 +341,15 @@ export class Component extends BaseObject {
     /**
      * Removes the component's DOM element from the document.
      */
-    removeElement() {
+    removeElement(): this {
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.remove();
+
+        return this;
     }
 
     /**
@@ -369,12 +391,14 @@ export class Component extends BaseObject {
      *
      * @param key - The attribute name.
      * @param value - The attribute value. Passing null or undefined removes the attribute.
+     *
+     * @returns This component, for method chaining.
      */
-    setElementAttribute(key: string, value: Object | null | undefined) {
+    setElementAttribute(key: string, value: Object | null | undefined): this {
         let element = this.getElement();
         if (!element) {
             //console.warn("Component #" + this.id + " is not yet in the DOM. Attribute '" + key + "' will not be set.");
-            return;
+            return this;
         }
 
         if (value) {
@@ -382,21 +406,27 @@ export class Component extends BaseObject {
         } else {
             this.removeElementAttribute(key);
         }
+
+        return this;
     }
 
     /**
      * Removes an attribute from the DOM element.
      *
      * @param key - The attribute name to remove.
+     *
+     * @returns This component, for method chaining.
      */
-    removeElementAttribute(key: string) {
+    removeElementAttribute(key: string): this {
         let element = this.getElement();
         if (!element) {
             //console.warn("Component #" + this.id + " is not yet in the DOM. Attribute '" + key + "' will not be removed.");
-            return;
+            return this;
         }
 
         element.removeAttribute(key);
+
+        return this;
     }
 
     /**
@@ -407,12 +437,14 @@ export class Component extends BaseObject {
      *
      * @remarks Immediately flushes to the DOM unless autoCommitStyle is false.
      */
-    setElementStyle(key: string, value: Object | null) {
+    setElementStyle(key: string, value: Object | null): this {
         this.dirtyStyle[key] = value ? String(value) : null;
 
         if (this.autoCommitStyle) {
             this.commitElementStyle();
         }
+
+        return this;
     }
 
     /**
@@ -422,12 +454,14 @@ export class Component extends BaseObject {
      *
      * @remarks Immediately flushes to the DOM unless autoCommitStyle is false.
      */
-    setElementStyles(values: Style) {
+    setElementStyles(values: Style): this {
         Object.assign(this.dirtyStyle, values);
 
         if (this.autoCommitStyle) {
             this.commitElementStyle();
         }
+
+        return this;
     }
 
     /**
@@ -444,32 +478,33 @@ export class Component extends BaseObject {
      *
      * @param value - True to enable immediate commits; false to batch changes until manually flushed.
      */
-    setAutoCommitStyle(value: boolean) {
+    setAutoCommitStyle(value: boolean): this {
         this.autoCommitStyle = value;
 
         if (value) {
             this.commitElementStyle();
             this.commitCSSRule();
         }
+
+        return this;
     }
 
     /**
      * Flushes all queued inline style changes to the DOM element and clears the dirty map.
      */
-    commitElementStyle() {
+    commitElementStyle(): this {
         var me = this;
-        // FastDom doesn't seem to be worth it, 'feels' faster without.
-        // FastDom.mutate(function() {
         let element = me.getElement();
+
         if (!element) {
-            //console.warn("Component #" + this.id + " is not yet in the DOM. Style '" + key + "' will not be set.");
-            return;
+            return this;
         }
 
         Object.assign(element.style, me.dirtyStyle);
 
         me.dirtyStyle = {};
-        // });
+        
+        return this;
     }
 
     /**
@@ -479,12 +514,14 @@ export class Component extends BaseObject {
      *
      * @remarks Immediately flushes to the CSS rule unless autoCommitStyle is false.
      */
-    setElementCSSRules(values: Style) {
+    setElementCSSRules(values: Style): this {
         Object.assign(this.dirtyCSSRule, values);
 
         if (this.autoCommitStyle) {
             this.commitCSSRule();
         }
+
+        return this;
     }
 
     /**
@@ -495,25 +532,27 @@ export class Component extends BaseObject {
      *
      * @remarks Immediately flushes to the CSS rule unless autoCommitStyle is false.
      */
-    setElementCSSRule(key: string, value: Object | null) {
+    setElementCSSRule(key: string, value: Object | null): this {
         this.dirtyCSSRule[key] = value ? String(value) : null;
 
         if (this.autoCommitStyle) {
             this.commitCSSRule();
         }
+
+        return this;
     }
 
     /**
      * Flushes all queued CSS rule changes to the component's CSS rule and clears the dirty map.
      */
-    commitCSSRule() {
+    commitCSSRule(): this {
         var me = this;
-        // FastDom doesn't seem to be worth it, 'feels' faster without.
-        // FastDom.mutate(function() {
+
         Object.assign(me.cssRule.style, me.dirtyCSSRule);
 
         me.dirtyCSSRule = {};
-        // });
+        
+        return this;
     }
 
     /**
@@ -521,15 +560,17 @@ export class Component extends BaseObject {
      *
      * @param id - The new unique identifier for this component.
      */
-    setId(id: string) {
+    setId(id: string): this {
         super.setId(id);
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.id = id;
+
+        return this;
     }
 
     /**
@@ -549,16 +590,17 @@ export class Component extends BaseObject {
      * @param key - The attribute name.
      * @param value - The attribute value. Passing null delegates to delAttribute.
      */
-    setAttribute(key: string, value: string) {
+    setAttribute(key: string, value: string): this {
         if (value === null) {
             this.delAttribute(key);
 
-            return;
+            return this;
         }
 
         this.attributes.set(key, value);
-
         this.setElementAttribute(key, value);
+
+        return this;
     }
 
     /**
@@ -566,9 +608,11 @@ export class Component extends BaseObject {
      *
      * @param key - The attribute name to remove.
      */
-    delAttribute(key: string) {
+    delAttribute(key: string): this {
         this.attributes.delete(key);
         this.removeElementAttribute(key);
+
+        return this;
     }
 
     /**
@@ -587,7 +631,7 @@ export class Component extends BaseObject {
      *
      * @remarks Throws an Error if value is a non-boolean truthy value.
      */
-    setVisible(value: Boolean) {
+    setVisible(value: Boolean): this {
         if (Type.isBoolean(value)) {
             this.visible = value;
         } else if (!value) {
@@ -598,7 +642,7 @@ export class Component extends BaseObject {
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         let ruleValue;
@@ -609,6 +653,8 @@ export class Component extends BaseObject {
         }
 
         this.setElementCSSRule("visibility", ruleValue);
+
+        return this;
     }
 
     /**
@@ -616,12 +662,15 @@ export class Component extends BaseObject {
      *
      * @param value - The z-index value.
      */
-    setZIndex(value: number) {
+    setZIndex(value: number): this {
         if (this.zIndex === value) {
-            return;
+            return this;
         }
+
         this.zIndex = value;
         this.setElementStyle("zIndex", this.zIndex);
+
+        return this;
     }
 
     /**
@@ -641,21 +690,25 @@ export class Component extends BaseObject {
      * Shows or hides the component using CSS display; hidden components take no space.
      *
      * @param value - True to show the component, false to set display to "none".
+     *
+     * @returns This component, for method chaining.
      */
-    setDisplayed(value: boolean) {
+    setDisplayed(value: boolean): this {
         const v = !!value;
         if (this.displayed === v && this.getElement()) {
-            return;
+            return this;
         }
 
         this.displayed = v;
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.style.display = this.displayed ? this.display : "none";
+
+        return this;
     }
 
     /**
@@ -671,8 +724,10 @@ export class Component extends BaseObject {
      * Sets the component's insets; null resets to zero insets.
      *
      * @param insets - The new Insets, or null to reset to zero on all sides.
+     *
+     * @returns This component, for method chaining.
      */
-    setInsets(insets: Insets | null) {
+    setInsets(insets: Insets | null): this {
         if (!insets) {
             this.insets = new Insets(0, 0, 0, 0);
         } else {
@@ -684,6 +739,8 @@ export class Component extends BaseObject {
         } else {
             this.delAttribute("insets");
         }
+
+        return this;
     }
 
     /**
@@ -699,19 +756,23 @@ export class Component extends BaseObject {
      * Sets the CSS padding; null resets to zero.
      *
      * @param padding - The new padding Insets, or null to reset to "0px 0px 0px 0px".
+     *
+     * @returns This component, for method chaining.
      */
-    setPadding(padding: Insets | null) {
+    setPadding(padding: Insets | null): this {
         if (this.padding === padding ||
             (this.padding && padding &&
              this.padding.getTop()    === padding.getTop()    &&
              this.padding.getRight()  === padding.getRight()  &&
              this.padding.getBottom() === padding.getBottom() &&
              this.padding.getLeft()   === padding.getLeft())) {
-            return;
+            return this;
         }
 
         this.padding = padding;
         this.cssRule.style.padding = padding ? padding.render() as string : "0px 0px 0px 0px";
+
+        return this;
     }
 
     /**
@@ -727,10 +788,12 @@ export class Component extends BaseObject {
      * Sets the background color CSS property; null removes the property to inherit.
      *
      * @param backgroundColor - A CSS color string, or null to remove the property and inherit.
+     *
+     * @returns This component, for method chaining.
      */
-    setBackgroundColor(backgroundColor: string | null) {
+    setBackgroundColor(backgroundColor: string | null): this {
         if (this.backgroundColor === backgroundColor) {
-            return;
+            return this;
         }
 
         this.backgroundColor = backgroundColor;
@@ -740,6 +803,8 @@ export class Component extends BaseObject {
         } else {
             this.cssRule.style.removeProperty('background-color');
         }
+
+        return this;
     }
 
     /**
@@ -755,8 +820,10 @@ export class Component extends BaseObject {
      * Sets the CSS background-image property; null removes it.
      *
      * @param backgroundImage - A CSS background-image string, or null to remove the property.
+     *
+     * @returns This component, for method chaining.
      */
-    setBackgroundImage(backgroundImage: string | null) {
+    setBackgroundImage(backgroundImage: string | null): this {
         this.backgroundImage = backgroundImage;
 
         if (backgroundImage) {
@@ -764,6 +831,8 @@ export class Component extends BaseObject {
         } else {
             this.cssRule.style.removeProperty('background-image');
         }
+
+        return this;
     }
 
     /**
@@ -779,10 +848,12 @@ export class Component extends BaseObject {
      * Sets the CSS color (text color); null removes the property to inherit.
      *
      * @param foregroundColor - A CSS color string, or null to remove the property and inherit.
+     *
+     * @returns This component, for method chaining.
      */
-    setForegroundColor(foregroundColor: string | null) {
+    setForegroundColor(foregroundColor: string | null): this {
         if (this.foregroundColor === foregroundColor) {
-            return;
+            return this;
         }
 
         this.foregroundColor = foregroundColor;
@@ -792,16 +863,23 @@ export class Component extends BaseObject {
         } else {
             this.cssRule.style.removeProperty('color');
         }
+
+        return this;
     }
 
     getColorScheme() {
         return this.colorScheme;
     }
 
-    setColorScheme(colorScheme: string) {
+    /**
+     * @returns This component, for method chaining.
+     */
+    setColorScheme(colorScheme: string): this {
         this.colorScheme = colorScheme;
 
         this.cssRule.style.setProperty('color-scheme', colorScheme);
+
+        return this;
     }
 
     /**
@@ -817,8 +895,10 @@ export class Component extends BaseObject {
      * Creates and applies a border from options, or clears the border CSS property.
      *
      * @param options - Optional. Border configuration (style, width, color). Omit to apply a default border.
+     *
+     * @returns This component, for method chaining.
      */
-    setBorder(options?: BorderOptions | string) {
+    setBorder(options?: BorderOptions | string): this {
         if (typeof options === 'string' && options.trimStart().startsWith('var(')) {
             this.borderCSS = options;
             this.cssRule.style.setProperty('border', options);
@@ -843,6 +923,8 @@ export class Component extends BaseObject {
                 this.cssRule.style.removeProperty('border');
             }
         }
+
+        return this;
     }
 
     /**
@@ -858,13 +940,17 @@ export class Component extends BaseObject {
      * Sets the CSS cursor style on the element.
      *
      * @param cursor - A CSS cursor value (e.g. "pointer", "text", "default").
+     *
+     * @returns This component, for method chaining.
      */
-    setCursor(cursor: string) {
+    setCursor(cursor: string): this {
         if (this.cursor === cursor) {
-            return;
+            return this;
         }
         this.cursor = cursor;
         this.setElementStyle("cursor", cursor);
+
+        return this;
     }
 
     /**
@@ -880,13 +966,17 @@ export class Component extends BaseObject {
      * Sets the CSS border-radius on the element; null clears it.
      *
      * @param borderRadius - Optional. A CSS border-radius string (e.g. "4px"), or null to clear.
+     *
+     * @returns This component, for method chaining.
      */
-    setBorderRadius(borderRadius: string | null = null) {
+    setBorderRadius(borderRadius: string | null = null): this {
         if (this.borderRadius === borderRadius) {
-            return;
+            return this;
         }
         this.borderRadius = borderRadius;
         this.setElementStyle("borderRadius", this.borderRadius);
+
+        return this;
     }
 
     /**
@@ -902,32 +992,42 @@ export class Component extends BaseObject {
      * Sets the CSS box-shadow; null sets it to 'none'.
      *
      * @param shadow - A CSS box-shadow string, or null to set the shadow to "none".
+     *
+     * @returns This component, for method chaining.
      */
-    setShadow(shadow: string | null) {
+    setShadow(shadow: string | null): this {
         this.shadow = shadow;
 
         this.cssRule.style.setProperty('box-shadow', this.shadow || 'none');
+
+        return this;
     }
 
     /**
      * Sets the CSS outline on the element; null removes the property.
      *
      * @param outline - A CSS outline value (e.g. "none", "2px solid blue"), or null to inherit.
+     *
+     * @returns This component, for method chaining.
      */
-    setOutline(outline: string | null) {
+    setOutline(outline: string | null): this {
         if (outline !== null) {
             this.cssRule.style.setProperty('outline', outline);
         } else {
             this.cssRule.style.removeProperty('outline');
         }
+
+        return this;
     }
 
     /**
      * Sets the CSS appearance on the element; null removes the property.
      *
      * @param value - A CSS appearance value (e.g. "none", "auto"), or null to remove.
+     *
+     * @returns This component, for method chaining.
      */
-    setAppearance(value: string | null) {
+    setAppearance(value: string | null): this {
         if (value !== null) {
             this.cssRule.style.setProperty('-webkit-appearance', value);
             this.cssRule.style.setProperty('appearance', value);
@@ -935,32 +1035,42 @@ export class Component extends BaseObject {
             this.cssRule.style.removeProperty('-webkit-appearance');
             this.cssRule.style.removeProperty('appearance');
         }
+
+        return this;
     }
 
     /**
      * Sets the CSS border-image shorthand on the element; null removes the property.
      *
      * @param value - A CSS border-image value (e.g. "none"), or null to remove.
+     *
+     * @returns This component, for method chaining.
      */
-    setBorderImage(value: string | null) {
+    setBorderImage(value: string | null): this {
         if (value !== null) {
             this.cssRule.style.setProperty('border-image', value);
         } else {
             this.cssRule.style.removeProperty('border-image');
         }
+
+        return this;
     }
 
     /**
      * Sets the CSS transform on the element; null removes the property.
      *
      * @param value - A CSS transform value (e.g. "translateY(-1px)"), or null to remove.
+     *
+     * @returns This component, for method chaining.
      */
-    setTransform(value: string | null) {
+    setTransform(value: string | null): this {
         if (value !== null) {
             this.cssRule.style.setProperty('transform', value);
         } else {
             this.cssRule.style.removeProperty('transform');
         }
+
+        return this;
     }
 
     /**
@@ -1000,16 +1110,20 @@ export class Component extends BaseObject {
      *
      * @param width - The preferred width in pixels.
      * @param height - The preferred height in pixels.
+     *
+     * @returns This component, for method chaining.
      */
-    setPreferredSize(width: number, height: number) {
+    setPreferredSize(width: number, height: number): this {
         const prev = this.preferredSize;
         if (prev && prev.width === width && prev.height === height) {
-            return;
+            return this;
         }
 
         this.preferredSize = { width, height };
         this.setAttribute("preferredSize", this.preferredSize.width + " " + this.preferredSize.height);
         this.onPreferredSizeChange?.();
+
+        return this;
     }
 
     /**
@@ -1059,10 +1173,12 @@ export class Component extends BaseObject {
      *
      * @param width - The minimum width in pixels.
      * @param height - The minimum height in pixels.
+     *
+     * @returns This component, for method chaining.
      */
-    setMinSize(width: number, height: number) {
+    setMinSize(width: number, height: number): this {
         if (this.minSize && this.minSize.width === width && this.minSize.height === height) {
-            return;
+            return this;
         }
 
         this.minSize = {
@@ -1072,6 +1188,8 @@ export class Component extends BaseObject {
 
         this.cssRule.style.minWidth = this.minSize.width + "px";
         this.cssRule.style.minHeight = this.minSize.height + "px";
+
+        return this;
     }
 
     /**
@@ -1121,10 +1239,12 @@ export class Component extends BaseObject {
      *
      * @param width - The maximum width in pixels. Pass Number.MAX_VALUE to remove the constraint.
      * @param height - The maximum height in pixels. Pass Number.MAX_VALUE to remove the constraint.
+     *
+     * @returns This component, for method chaining.
      */
-    setMaxSize(width: number, height: number) {
+    setMaxSize(width: number, height: number): this {
         if (this.maxSize && this.maxSize.width === width && this.maxSize.height === height) {
-            return;
+            return this;
         }
 
         this.maxSize = {
@@ -1136,6 +1256,8 @@ export class Component extends BaseObject {
         this.cssRule.style.maxHeight = this.maxSize.height === Number.MAX_VALUE ? "none" : this.maxSize.height + "px";
 
         this.setAttribute("maxSize", this.maxSize.width + " " + this.maxSize.height);
+
+        return this;
     }
 
     /**
@@ -1266,10 +1388,15 @@ export class Component extends BaseObject {
         return this.verticalAlign
     }
 
-    setVerticalAlign(align: string) {
+    /**
+     * @returns This component, for method chaining.
+     */
+    setVerticalAlign(align: string): this {
         this.verticalAlign = align;
 
         this.setElementCSSRule("verticalAlign", align);
+
+        return this;
     }
 
     // Currently commented out, probing if a scrollbar is visible or not seems to be unreliable with the below method.
@@ -1302,14 +1429,16 @@ export class Component extends BaseObject {
      * Sets width and height, updates the DOM element, and triggers doLayout.
      *
      * @param size - The new Size with width and height in pixels.
+     *
+     * @returns This component, for method chaining.
      */
-    setSize(size: Size) {
+    setSize(size: Size): this {
         this.width = size.width;
         this.height = size.height;
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         this.setElementStyles({
@@ -1318,6 +1447,8 @@ export class Component extends BaseObject {
         });
 
         this.scheduleLayout();
+
+        return this;
     }
 
     /**
@@ -1338,20 +1469,24 @@ export class Component extends BaseObject {
      * Sets the component width and updates the DOM element's inline style.
      *
      * @param width - The new width in pixels.
+     *
+     * @returns This component, for method chaining.
      */
-    setWidth(width: number) {
+    setWidth(width: number): this {
         if (this.width === width) {
-            return;
+            return this;
         }
 
         this.width = width;
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         this.setElementStyle("width", this.width + "px");
+
+        return this;
     }
 
     /**
@@ -1372,20 +1507,24 @@ export class Component extends BaseObject {
      * Sets the component height and updates the DOM element's inline style.
      *
      * @param height - The new height in pixels.
+     *
+     * @returns This component, for method chaining.
      */
-    setHeight(height: number) {
+    setHeight(height: number): this {
         if (this.height === height) {
-            return;
+            return this;
         }
 
         this.height = height;
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         this.setElementStyle("height", this.height + "px");
+
+        return this;
     }
 
     /**
@@ -1401,20 +1540,24 @@ export class Component extends BaseObject {
      * Sets the CSS left position and updates the DOM element's inline style.
      *
      * @param x - The horizontal offset in pixels.
+     *
+     * @returns This component, for method chaining.
      */
-    setX(x: number) {
+    setX(x: number): this {
         if (this.left === x) {
-            return;
+            return this;
         }
 
         this.left = x;
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         this.setElementStyle("left", this.left + "px");
+
+        return this;
     }
 
     /**
@@ -1430,20 +1573,24 @@ export class Component extends BaseObject {
      * Sets the CSS top position and updates the DOM element's inline style.
      *
      * @param y - The vertical offset in pixels.
+     *
+     * @returns This component, for method chaining.
      */
-    setY(y: number) {
+    setY(y: number): this {
         if (this.top === y) {
-            return;
+            return this;
         }
 
         this.top = y;
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         this.setElementStyle("top", this.top + "px");
+
+        return this;
     }
 
     /**
@@ -1471,10 +1618,12 @@ export class Component extends BaseObject {
      *
      * @param x - Translate-X in pixels.
      * @param y - Translate-Y in pixels.
+     *
+     * @returns This component, for method chaining.
      */
-    setTranslate(x: number, y: number) {
+    setTranslate(x: number, y: number): this {
         if (this.translateX === x && this.translateY === y && this.getElement()) {
-            return;
+            return this;
         }
 
         this.translateX = x;
@@ -1485,6 +1634,8 @@ export class Component extends BaseObject {
         } else {
             this.setElementStyle("transform", "translate3d(" + x + "px," + y + "px,0)");
         }
+
+        return this;
     }
 
     /**
@@ -1500,16 +1651,20 @@ export class Component extends BaseObject {
      * Sets the CSS position mode and updates the component's CSS rule.
      *
      * @param position - The CSS position mode to apply (e.g. Position.ABSOLUTE, Position.STATIC).
+     *
+     * @returns This component, for method chaining.
      */
-    setPosition(position: Position) {
+    setPosition(position: Position): this {
         this.position = position;
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         this.setElementCSSRule("position", position);
+
+        return this;
     }
 
     /**
@@ -1525,68 +1680,92 @@ export class Component extends BaseObject {
      * Sets the CSS overflow property on the component's CSS rule.
      *
      * @param overflow - A CSS overflow value (e.g. "hidden", "auto", "visible").
+     *
+     * @returns This component, for method chaining.
      */
-    setOverflow(overflow: string) {
+    setOverflow(overflow: string): this {
         this.overflow = overflow;
 
         this.cssRule.style.overflow = overflow;
+
+        return this;
     }
 
     /**
      * Sets the CSS pointer-events property on the element.
      *
      * @param value - A CSS pointer-events value (e.g. "none", "auto").
+     *
+     * @returns This component, for method chaining.
      */
-    setPointerEvents(value: string) {
+    setPointerEvents(value: string): this {
         this.pointerEvents = value;
 
         this.setElementStyle("pointerEvents", value);
+
+        return this;
     }
 
     /**
      * Sets the CSS opacity property on the element.
      *
      * @param value - A number between `0` (fully transparent) and `1` (fully opaque), or `null` to clear the property.
+     *
+     * @returns This component, for method chaining.
      */
-    setOpacity(value: number | null): void {
+    setOpacity(value: number | null): this {
         this.setElementStyle("opacity", value === null ? null : String(value));
+
+        return this;
     }
 
     /**
      * Sets the CSS user-select property on the element.
      *
      * @param value - A CSS user-select value (e.g. "none", "auto", "text").
+     *
+     * @returns This component, for method chaining.
      */
-    setUserSelect(value: string) {
+    setUserSelect(value: string): this {
         this.userSelect = value;
 
         this.cssRule.style.userSelect = value;
+
+        return this;
     }
 
     /**
      * Moves browser focus to this component's DOM element.
+     *
+     * @returns This component, for method chaining.
      */
-    focus() {
+    focus(): this {
         let element = this.getElement();
         if (!element) {
             //console.warn("Component #" + this.id + " is not yet in the DOM, unable to focus.");
-            return;
+            return this;
         }
 
         element.focus();
+
+        return this;
     }
 
     /**
      * Removes browser focus from this component's DOM element.
+     *
+     * @returns This component, for method chaining.
      */
-    unfocus() {
+    unfocus(): this {
         let element = this.getElement();
         if (!element) {
             //console.warn("Component #" + this.id + " is not yet in the DOM, unable to focus.");
-            return;
+            return this;
         }
 
         element.blur();
+
+        return this;
     }
 
     /**
@@ -1594,9 +1773,11 @@ export class Component extends BaseObject {
      *
      * @param element - The HTMLElement to apply styles to.
      *
+     * @returns This component, for method chaining.
+     *
      * @remarks Clears all existing inline styles on the element before re-applying, ensuring a clean state.
      */
-    applyStyle(element: HTMLElement) {
+    applyStyle(element: HTMLElement): this {
         element.removeAttribute("style");
 
         if (this.boxSizing) {
@@ -1707,6 +1888,8 @@ export class Component extends BaseObject {
         }
 
         this.cssRule.style.margin = "0px 0px 0px 0px";
+
+        return this;
     }
 
     /**
@@ -1722,12 +1905,6 @@ export class Component extends BaseObject {
     }
 
     /**
-     * Adds a child component, appends its element, wires preferred-size change propagation, and triggers layout.
-     *
-     * @param component - The child component to add.
-     * @param constraints - Optional. Layout constraints to pass to the layout manager.
-     */
-    /**
      * Returns the parent component this component was added to, or null if it has no parent.
      *
      * @returns The parent {@link Component}, or null.
@@ -1736,7 +1913,42 @@ export class Component extends BaseObject {
         return this._parent;
     }
 
-    addComponent(component: Component, constraints?: LayoutConstraints) {
+    /**
+     * Adds multiple child components in a single call, with optional per-component layout constraints.
+     *
+     * Each argument is either a {@link Component} (added with no constraints), a
+     * {@link ConstrainedComponent} pair (added with the supplied constraints), or an array of
+     * either form (each entry is processed in order). All three forms can be freely mixed in
+     * the same call.
+     *
+     * @param specs - The components to add. Each entry is a bare {@link Component}, a
+     *   {@link ConstrainedComponent} pair, or an array of either.
+     *
+     * @returns This component, for method chaining.
+     */
+    addComponents(...specs: Array<Component | ConstrainedComponent | Array<Component | ConstrainedComponent>>): this {
+        for (const spec of specs) {
+            const items = Array.isArray(spec) ? spec : [spec];
+
+            for (const item of items) {
+                if (item instanceof Component) {
+                    this.addComponent(item);
+                } else {
+                    this.addComponent(item.component, item.constraints);
+                }
+            }
+        }
+
+        return this;
+    }
+
+    /**
+     * Adds a child component, appends its element, wires preferred-size change propagation, and triggers layout.
+     *
+     * @param component - The child component to add.
+     * @param constraints - Optional. Layout constraints to pass to the layout manager.
+     */
+    addComponent(component: Component, constraints?: LayoutConstraints): this {
         if (component._parent !== null) {
             throw new Error(`Component ${component.getId()} already has a parent. Remove it first.`);
         }
@@ -1754,12 +1966,14 @@ export class Component extends BaseObject {
 
         let element = this.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         let compElement = component.getElement(true);
         element.appendChild(compElement);
         this.scheduleLayout();
+
+        return this;
     }
 
     /**
@@ -1796,8 +2010,10 @@ export class Component extends BaseObject {
 
     /**
      * Removes all child components and their DOM elements without triggering layout.
+     *
+     * @returns This component, for method chaining.
      */
-    removeAllComponents() {
+    removeAllComponents(): this {
         for (let idx in this.components) {
             let component = this.components[idx];
             component._parent = null;
@@ -1806,15 +2022,21 @@ export class Component extends BaseObject {
         }
 
         this.components = [];
+
+        return this;
     }
 
     /**
      * Sorts the children array in place using the given comparator function.
      *
      * @param comparator - Optional. A comparator function that receives two Components and returns a number.
+     *
+     * @returns This component, for method chaining.
      */
-    sortComponents(comparator: Comparator<Component, Component> | undefined) {
+    sortComponents(comparator: Comparator<Component, Component> | undefined): this {
         this.components.sort(comparator);
+
+        return this;
     }
 
     /**
@@ -1886,7 +2108,7 @@ export class Component extends BaseObject {
      *
      * @param layoutManager - The new LayoutManager to use for this component.
      */
-    setLayoutManager(layoutManager: LayoutManager) {
+    setLayoutManager(layoutManager: LayoutManager): this {
         if (this.layoutManager) {
             this.layoutManager.detach();
         }
@@ -1898,6 +2120,8 @@ export class Component extends BaseObject {
         }
 
         this.setAttribute("layout", layoutManager.getClassName());
+
+        return this;
     }
 
     /**
@@ -1912,38 +2136,50 @@ export class Component extends BaseObject {
     /**
      * Suspends automatic layout passes until resumeLayout is called.
      */
-    pauseLayout() {
+    pauseLayout(): this {
         this.layoutPaused = true;
+
+        return this;
     }
 
     /**
      * Resumes layout and immediately triggers a doLayout pass.
+     *
+     * @returns This component, for method chaining.
      */
-    resumeLayout() {
+    resumeLayout(): this {
         this.layoutPaused = false;
         this.doLayout();
+
+        return this;
     }
 
     /**
      * Calls doLayout on each direct child component.
+     *
+     * @returns This component, for method chaining.
      */
-    doChildrenComponentLayouts() {
+    doChildrenComponentLayouts(): this {
         let components = this.getComponents();
 
         for (let idx = 0; idx < components.length; idx += 1) {
             let component = components[idx];
             component.doLayout();
         }
+
+        return this;
     }
 
     /**
      * Delegates layout to the layout manager unless layout is currently paused.
      *
+     * @returns This component, for method chaining.
+     *
      * @remarks Throws an Error if no layout manager has been set.
      */
-    doLayout() {
+    doLayout(): this {
         if (this.isLayoutPaused()) {
-            return;
+            return this;
         }
 
         if (!this.layoutManager) {
@@ -1951,6 +2187,8 @@ export class Component extends BaseObject {
         }
 
         this.layoutManager.doLayout();
+
+        return this;
     }
 
     /**
@@ -1959,12 +2197,14 @@ export class Component extends BaseObject {
      * scheduled, the ancestor's recursion subsumes this component and its scheduled
      * pass is skipped.
      *
+     * @returns This component, for method chaining.
+     *
      * @remarks Honors `pauseLayout()`. Callers that need a synchronous layout commit
      * (e.g. before reading getInnerSize) should call `flushLayout()` instead.
      */
-    scheduleLayout() {
+    scheduleLayout(): this {
         if (this.isLayoutPaused()) {
-            return;
+            return this;
         }
 
         pendingLayouts.add(this);
@@ -1972,16 +2212,22 @@ export class Component extends BaseObject {
         if (rafHandle === null) {
             rafHandle = requestAnimationFrame(flushPendingLayouts);
         }
+
+        return this;
     }
 
     /**
      * Forces a synchronous layout pass on this component, removing it from the
      * scheduled-layout queue if it was pending. Use when a layout-derived value must
      * be read before the next animation frame.
+     *
+     * @returns This component, for method chaining.
      */
-    flushLayout() {
+    flushLayout(): this {
         pendingLayouts.delete(this);
         this.doLayout();
+
+        return this;
     }
 
     /**
@@ -1989,9 +2235,11 @@ export class Component extends BaseObject {
      *
      * @param element - Optional. The element to initialise. Falls back to getElement() if omitted.
      *
+     * @returns This component, for method chaining.
+     *
      * @remarks Throws an Error if no element is available (i.e. render has not been called).
      */
-    protected init(element?: HTMLElement) {
+    protected init(element?: HTMLElement): this {
         element = element || this.getElement();
         if (!element) {
             throw new Error("Component has not been rendered!");
@@ -2018,6 +2266,8 @@ export class Component extends BaseObject {
 
             element.appendChild(compElement);
         }
+
+        return this;
     }
 
     /**
@@ -2033,3 +2283,11 @@ export class Component extends BaseObject {
         return element;
     }
 }
+
+const ComponentCallable = callable(Component);
+type ComponentCallable = Component;
+export {
+    Component         as _Component,
+    ComponentCallable as Component
+};
+

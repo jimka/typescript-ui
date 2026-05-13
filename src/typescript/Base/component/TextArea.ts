@@ -3,6 +3,7 @@
 import { TextInput, TextInputOptions } from "./TextInput.js";
 import { Event } from "../Event.js";
 import { Insets } from "../Insets.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link TextArea}.
@@ -22,7 +23,7 @@ export interface TextAreaOptions extends TextInputOptions {
  *
  * @category Components
  */
-export class TextArea extends TextInput {
+class TextArea extends TextInput {
 
     constructor(text: string = "", options?: TextAreaOptions) {
         super({ tag: "textarea" });
@@ -49,7 +50,7 @@ export class TextArea extends TextInput {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: TextAreaOptions): void {
+    protected applyOptions(options: TextAreaOptions): this {
         super.applyOptions(options);
 
         if (options.rows !== undefined) {
@@ -63,6 +64,8 @@ export class TextArea extends TextInput {
         if (options.wrap !== undefined) {
             this.setElementAttribute("wrap", options.wrap);
         }
+
+        return this;
     }
 
     /**
@@ -100,8 +103,10 @@ export class TextArea extends TextInput {
      *
      * @param listener - The callback to invoke on each input event.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function) : this {
         Event.addListener(this, "input", listener);
+
+        return this;
     }
 
     /**
@@ -117,3 +122,10 @@ export class TextArea extends TextInput {
         return element;
     }
 }
+
+const TextAreaCallable = callable(TextArea);
+type TextAreaCallable = TextArea;
+export {
+    TextArea         as _TextArea,
+    TextAreaCallable as TextArea
+};

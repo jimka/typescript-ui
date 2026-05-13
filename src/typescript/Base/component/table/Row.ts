@@ -13,6 +13,7 @@ import { TimeCell } from "./cell/Time.js";
 import { DateTimeCell } from "./cell/DateTime.js";
 import type { ColumnConfig } from "./ColumnConfig.js";
 import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
+import { callable } from "../../Callable.js";
 
 /**
  * A single data row in the table, rendered as a `<tr>` element.
@@ -25,7 +26,7 @@ import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
  *
  * @category Components
  */
-export class Row extends Component {
+class Row extends Component {
 
     private model?: AbstractModel;
     private data?: ModelRecord;
@@ -113,7 +114,7 @@ export class Row extends Component {
      *
      * @param record - The new record to bind to this row.
      */
-    setData(record: ModelRecord) {
+    setData(record: ModelRecord) : this {
         this.data = record;
 
         const cells = this.getComponents() as Cell<any>[];
@@ -124,6 +125,8 @@ export class Row extends Component {
         }
 
         this.updateVisualState();
+
+        return this;
     }
 
     /**
@@ -152,8 +155,10 @@ export class Row extends Component {
      * @param cell - The cell to append.
      * @param constraints - Optional. Layout constraints for the cell.
      */
-    addColumn(cell: Cell<any>, constraints?: LayoutConstraints) {
+    addColumn(cell: Cell<any>, constraints?: LayoutConstraints) : this {
         this.addComponent(cell, constraints);
+
+        return this;
     }
 
     /**
@@ -161,13 +166,28 @@ export class Row extends Component {
      *
      * @param cell - The cell component to add.
      * @param constraints - Optional. Layout constraints for the cell.
+     *
+     * @returns This component, for method chaining.
      */
-    addComponent(cell: Cell<any>, constraints?: LayoutConstraints) {
+    addComponent(cell: Cell<any>, constraints?: LayoutConstraints): this {
         super.addComponent(cell, constraints);
+
+        return this;
     }
 
     /**
      * No-op; cell layout is driven by the Body's renderWindow.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout() { }
+    doLayout(): this {
+        return this;
+    }
 }
+
+const RowCallable = callable(Row);
+type RowCallable = Row;
+export {
+    Row         as _Row,
+    RowCallable as Row
+};

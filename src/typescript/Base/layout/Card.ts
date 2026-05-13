@@ -4,6 +4,7 @@ import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js"
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
 import { Component } from "../Component.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Card}.
@@ -21,7 +22,7 @@ export interface CardOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class Card extends LayoutManager {
+class Card extends LayoutManager {
 
     private visibleComponentId: String | null = null;
     private currentVisible: Component | null = null;
@@ -170,13 +171,15 @@ export class Card extends LayoutManager {
      *
      * @param id - The ID of the child component to make visible.
      */
-    setVisibleComponentId(id: String): void {
+    setVisibleComponentId(id: String): this {
         if (this.visibleComponentId === id) {
-            return;
+            return this;
         }
 
         this.visibleComponentId = id;
         this.syncVisible();
+
+        return this;
     }
 
     /**
@@ -283,3 +286,10 @@ export class Card extends LayoutManager {
         );
     }
 }
+
+const CardCallable = callable(Card);
+type CardCallable = Card;
+export {
+    Card         as _Card,
+    CardCallable as Card
+};

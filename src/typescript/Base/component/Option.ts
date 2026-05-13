@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "../Component.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Option}.
@@ -21,7 +22,7 @@ export interface OptionOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class Option extends Component {
+class Option extends Component {
 
     private key: string;
     private value: string;
@@ -43,7 +44,7 @@ export class Option extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: OptionOptions): void {
+    protected applyOptions(options: OptionOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -69,13 +70,18 @@ export class Option extends Component {
         if (options.disabled !== undefined) {
             this.setElementAttribute("disabled", options.disabled ? "" : null);
         }
+
+        return this;
     }
 
     /**
      * Overrides applyStyle as a no-op; framework positioning styles break native option rendering inside `<select>`.
+     *
+     * @returns This component, for method chaining.
      */
-    applyStyle() {
+    applyStyle(): this {
         // Framework styles (absolute positioning etc.) break native option rendering inside <select>.
+        return this;
     }
 
     /**
@@ -92,3 +98,10 @@ export class Option extends Component {
         return element;
     }
 }
+
+const OptionCallable = callable(Option);
+type OptionCallable = Option;
+export {
+    Option         as _Option,
+    OptionCallable as Option
+};

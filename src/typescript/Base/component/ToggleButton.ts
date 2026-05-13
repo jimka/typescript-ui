@@ -3,6 +3,7 @@
 import { CSS } from "../CSS.js";
 import { Event } from "../Event.js";
 import { Button, ButtonOptions } from "./Button.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link ToggleButton}.
@@ -21,7 +22,7 @@ export interface ToggleButtonOptions extends ButtonOptions {
  *
  * @category Components
  */
-export class ToggleButton extends Button {
+class ToggleButton extends Button {
 
     private selected: boolean = false;
     private selectedCSSRule: CSSStyleRule;
@@ -47,12 +48,14 @@ export class ToggleButton extends Button {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: ToggleButtonOptions): void {
+    protected applyOptions(options: ToggleButtonOptions): this {
         super.applyOptions(options);
 
         if (options.selected !== undefined) {
             this.setSelected(options.selected);
         }
+
+        return this;
     }
 
     /**
@@ -60,8 +63,10 @@ export class ToggleButton extends Button {
      *
      * @param listener - The callback to invoke when the selection state changes.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function) : this {
         Event.addListener(this, "change", listener);
+
+        return this;
     }
 
     /**
@@ -78,7 +83,7 @@ export class ToggleButton extends Button {
      *
      * @param value - True to select the button, false to deselect it.
      */
-    setSelected(value: boolean) {
+    setSelected(value: boolean) : this {
         this.selected = value;
 
         this.getAria().setPressed(value);
@@ -87,6 +92,8 @@ export class ToggleButton extends Button {
         if (element) {
             element.classList.toggle("selected", value);
         }
+
+        return this;
     }
 
     /**
@@ -109,3 +116,10 @@ export class ToggleButton extends Button {
         return element;
     }
 }
+
+const ToggleButtonCallable = callable(ToggleButton);
+type ToggleButtonCallable = ToggleButton;
+export {
+    ToggleButton         as _ToggleButton,
+    ToggleButtonCallable as ToggleButton
+};

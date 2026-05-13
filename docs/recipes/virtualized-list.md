@@ -25,7 +25,7 @@ const data = Array.from({ length: 100_000 }, (_, i) => ({
 const store = new MemoryStore(ItemModel, data);
 await store.load();
 
-const table = new Table(store);
+const table = Table(store);
 Body.getInstance().addComponent(table);
 ```
 

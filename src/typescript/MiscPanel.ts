@@ -30,6 +30,7 @@ import { ProgressBar } from "./Base/component/ProgressBar.js";
 import { ProgressSpinner } from "./Base/component/ProgressSpinner.js";
 import { Insets } from "./Base/Insets.js";
 import { Panel } from "./Base/Panel.js";
+import { callable } from "./Base/Callable.js";
 
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and
@@ -97,7 +98,7 @@ class PaginatingDemoProxy extends Proxy {
     }
 }
 
-export class MiscPanel extends Panel {
+class MiscPanel extends Panel {
 
     constructor() {
         super();
@@ -417,11 +418,10 @@ export class MiscPanel extends Panel {
             autoCompleteField.setMatchMode(button === radioContains ? 'contains' : 'startsWith');
         });
 
-        const modeRow = new Component();
-        modeRow.setLayoutManager(new HBox());
-        modeRow.addComponent(new Text("Match mode:"));
-        modeRow.addComponent(radioContains);
-        modeRow.addComponent(radioStartsWith);
+        const modeRow = new Component({ layoutManager: new HBox() })
+            .addComponent(new Text("Match mode:"))
+            .addComponent(radioContains)
+            .addComponent(radioStartsWith);
 
         const autoCompleteRow = new Component();
         autoCompleteRow.setLayoutManager(new HBox());
@@ -565,3 +565,10 @@ export class MiscPanel extends Panel {
         this.addComponent(buttonOverlaySpinner);
     }
 }
+
+const MiscPanelCallable = callable(MiscPanel);
+type MiscPanelCallable = MiscPanel;
+export {
+    MiscPanel         as _MiscPanel,
+    MiscPanelCallable as MiscPanel
+};

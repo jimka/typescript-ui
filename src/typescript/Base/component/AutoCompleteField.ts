@@ -7,6 +7,7 @@ import { ThemeManager } from "../Theme.js";
 import { AbstractStore } from "../data/AbstractStore.js";
 import { TextField } from "./TextField.js";
 import { AutoCompleteDropdown } from "./AutoCompleteDropdown.js";
+import { callable } from "../Callable.js";
 
 /**
  * Controls how typed input is matched against suggestion strings.
@@ -66,7 +67,7 @@ export type AutoCompleteFieldConfig = AutoCompleteFieldOptions;
  *
  * @category Components
  */
-export class AutoCompleteField extends Component implements Bindable<string> {
+class AutoCompleteField extends Component implements Bindable<string> {
 
     private textField         : TextField;
     private dropdown          : AutoCompleteDropdown;
@@ -166,14 +167,18 @@ export class AutoCompleteField extends Component implements Bindable<string> {
 
     /**
      * Lays out the internal text field to fill the container exactly.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         super.doLayout();
 
         this.textField.setX(0);
         this.textField.setY(0);
         this.textField.setWidth(this.getWidth());
         this.textField.setHeight(this.getHeight());
+
+        return this;
     }
 
     // ── Bindable<string> ────────────────────────────────────────────────────
@@ -183,9 +188,11 @@ export class AutoCompleteField extends Component implements Bindable<string> {
      *
      * @param value - The string value to display.
      */
-    setValue(value: string): void {
+    setValue(value: string): this {
         this.currentValue = value;
         this.textField.setValue(value);
+
+        return this;
     }
 
     /**
@@ -213,8 +220,10 @@ export class AutoCompleteField extends Component implements Bindable<string> {
      *
      * @param suggestions - The new list of suggestion strings.
      */
-    setSuggestions(suggestions: string[]): void {
+    setSuggestions(suggestions: string[]): this {
         this.staticSuggestions = suggestions;
+
+        return this;
     }
 
     /**
@@ -223,9 +232,11 @@ export class AutoCompleteField extends Component implements Bindable<string> {
      * @param store - The data store to filter.
      * @param displayField - The field name on each record to use as the suggestion text.
      */
-    setStore(store: AbstractStore, displayField: string): void {
+    setStore(store: AbstractStore, displayField: string): this {
         this.store        = store;
         this.displayField = displayField;
+
+        return this;
     }
 
     /**
@@ -233,8 +244,10 @@ export class AutoCompleteField extends Component implements Bindable<string> {
      *
      * @param n - Minimum character count. Default is 1.
      */
-    setMinChars(n: number): void {
+    setMinChars(n: number): this {
         this.minChars = n;
+
+        return this;
     }
 
     /**
@@ -242,8 +255,10 @@ export class AutoCompleteField extends Component implements Bindable<string> {
      *
      * @param ms - Delay in milliseconds. Default is 200.
      */
-    setDebounceMs(ms: number): void {
+    setDebounceMs(ms: number): this {
         this.debounceMs = ms;
+
+        return this;
     }
 
     /**
@@ -251,8 +266,10 @@ export class AutoCompleteField extends Component implements Bindable<string> {
      *
      * @param n - Maximum item count. Default is 10.
      */
-    setMaxSuggestions(n: number): void {
+    setMaxSuggestions(n: number): this {
         this.maxSuggestions = n;
+
+        return this;
     }
 
     /**
@@ -260,8 +277,10 @@ export class AutoCompleteField extends Component implements Bindable<string> {
      *
      * @param mode - `'contains'` to match anywhere; `'startsWith'` to match from the beginning only.
      */
-    setMatchMode(mode: AutoCompleteMatchMode): void {
+    setMatchMode(mode: AutoCompleteMatchMode): this {
         this.matchMode = mode;
+
+        return this;
     }
 
     // ── Events ───────────────────────────────────────────────────────────────
@@ -495,3 +514,10 @@ export class AutoCompleteField extends Component implements Bindable<string> {
         this.textField.focus();
     }
 }
+
+const AutoCompleteFieldCallable = callable(AutoCompleteField);
+type AutoCompleteFieldCallable = AutoCompleteField;
+export {
+    AutoCompleteField         as _AutoCompleteField,
+    AutoCompleteFieldCallable as AutoCompleteField
+};

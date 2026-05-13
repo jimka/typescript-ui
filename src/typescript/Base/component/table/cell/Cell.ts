@@ -148,14 +148,14 @@ export class Cell<T> extends Component {
     /**
      * Saves the editor value to the renderer, fires onCommit, and returns to renderer view.
      */
-    commitEdit() {
+    commitEdit() : this {
         if (this.isReadOnly() || !this.isEditing()) {
-            return;
+            return this;
         }
 
         let editor = this.getEditor();
         if (!editor) {
-            return;
+            return this;
         }
 
         let layoutManager = this.getLayoutManager();
@@ -167,6 +167,8 @@ export class Cell<T> extends Component {
 
         layoutManager.setVisibleComponentId(renderer.getId());
         this.doLayout();
+
+        return this;
     }
 
     /**
@@ -194,8 +196,10 @@ export class Cell<T> extends Component {
      *
      * @param value - The value to pass to the renderer.
      */
-    setValue(value: T) {
+    setValue(value: T) : this {
         this.renderer.setValue(value);
+
+        return this;
     }
 
     /**

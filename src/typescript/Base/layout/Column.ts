@@ -3,6 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Column}.
@@ -20,7 +21,7 @@ export interface ColumnOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class Column extends LayoutManager {
+class Column extends LayoutManager {
 
     private gap: number = 5;
     private stretching: boolean = true;
@@ -65,9 +66,11 @@ export class Column extends LayoutManager {
      *
      * @param gap - Gap size in pixels.
      */
-    setGap(gap : number) {
+    setGap(gap : number) : this {
         this.gap = gap;
         this.doLayout();
+
+        return this;
     }
 
     /**
@@ -85,8 +88,10 @@ export class Column extends LayoutManager {
      *
      * @param stretching - Pass `false` to enable baseline alignment instead of stretching.
      */
-    setStretching(stretching: boolean): void {
+    setStretching(stretching: boolean): this {
         this.stretching = stretching;
+
+        return this;
     }
 
     /**
@@ -324,3 +329,10 @@ export class Column extends LayoutManager {
         }
     }
 }
+
+const ColumnCallable = callable(Column);
+type ColumnCallable = Column;
+export {
+    Column         as _Column,
+    ColumnCallable as Column
+};

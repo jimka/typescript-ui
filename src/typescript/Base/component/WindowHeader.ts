@@ -5,6 +5,7 @@ import { Button } from "./Button.js";
 import { FontAwesomeIcon } from "./FontAwesomeIcon.js";
 import { FillType } from "../layout/FillType.js";
 import { Placement } from "../Placement.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link WindowHeader}.
@@ -22,7 +23,7 @@ export interface WindowHeaderOptions extends HeaderOptions {
  *
  * @category Components
  */
-export class WindowHeader extends Header {
+class WindowHeader extends Header {
 
     private exitButton: Button;
     private activeBackgroundImage: string;
@@ -57,12 +58,14 @@ export class WindowHeader extends Header {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: WindowHeaderOptions): void {
+    protected applyOptions(options: WindowHeaderOptions): this {
         super.applyOptions(options);
 
         if (options.closeable !== undefined) {
             this.exitButton.setVisible(options.closeable);
         }
+
+        return this;
     }
 
     /**
@@ -70,7 +73,7 @@ export class WindowHeader extends Header {
      *
      * @param active - True to show the focused (gradient) background; false for the unfocused (flat) background.
      */
-    setActive(active: boolean): void {
+    setActive(active: boolean): this {
         if (active) {
             this.setBackgroundImage(this.activeBackgroundImage);
             this.setBackgroundColor(null);
@@ -78,6 +81,8 @@ export class WindowHeader extends Header {
             this.setBackgroundImage(null);
             this.setBackgroundColor("var(--ts-ui-gutter-bg, rgb(200, 200, 200))");
         }
+
+        return this;
     }
 
     /**
@@ -85,7 +90,16 @@ export class WindowHeader extends Header {
      *
      * @param listener - The callback to invoke when the close button is clicked.
      */
-    addExitButtonListener(listener: Function) {
+    addExitButtonListener(listener: Function) : this {
         this.exitButton.addActionListener(listener);
+
+        return this;
     }
 }
+
+const WindowHeaderCallable = callable(WindowHeader);
+type WindowHeaderCallable = WindowHeader;
+export {
+    WindowHeader         as _WindowHeader,
+    WindowHeaderCallable as WindowHeader
+};

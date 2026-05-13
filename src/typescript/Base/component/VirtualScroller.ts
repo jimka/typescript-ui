@@ -116,18 +116,20 @@ export class VirtualScroller {
      *
      * @param y - The new scroll position in pixels.
      */
-    setScrollY(y: number): void {
+    setScrollY(y: number): this {
         const viewportH = this.owner.getHeight() || 0;
         const maxScroll = Math.max(0, this.contentHeight - viewportH);
         const next      = Math.max(0, Math.min(maxScroll, y));
 
         if (next === this.scrollY) {
-            return;
+            return this;
         }
 
         this.scrollY = next;
         this.updateTransform();
         this.onScroll();
+
+        return this;
     }
 
     /**
@@ -137,18 +139,20 @@ export class VirtualScroller {
      *
      * @param x - The new scroll position in pixels.
      */
-    setScrollX(x: number): void {
+    setScrollX(x: number): this {
         const viewportW = this.owner.getWidth() || 0;
         const maxScroll = Math.max(0, this.contentWidth - viewportW);
         const next      = Math.max(0, Math.min(maxScroll, x));
 
         if (next === this.scrollX) {
-            return;
+            return this;
         }
 
         this.scrollX = next;
         this.updateTransform();
         this.onScroll();
+
+        return this;
     }
 
     /**

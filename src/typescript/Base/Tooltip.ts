@@ -305,13 +305,17 @@ export class Tooltip extends Component {
 
     /**
      * Positions the label to fill the tooltip body with uniform padding.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         super.doLayout();
 
         this.text.setX(Tooltip.H_PADDING / 2);
         this.text.setY(Tooltip.V_PADDING / 2);
         this.text.setWidth(Math.max(0, this.getWidth() - Tooltip.H_PADDING));
         this.text.setHeight(Tooltip.ITEM_HEIGHT);
+
+        return this;
     }
 }

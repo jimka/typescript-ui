@@ -17,10 +17,11 @@ import { Body, Window, Button, ThemeManager, DefaultTheme } from '@jimka/typescr
 
 ThemeManager.setTheme(DefaultTheme);
 
-const win = new Window();
-win.setHeaderText('Hello');
+const win = Window('Hello');
 win.show();
 ```
+
+Components and layout managers are callable — `Window('Hello')` works without `new`. Most configuration that has a matching setter (`setSize`, `setBackgroundColor`, ...) can also be passed via a trailing options bag, e.g. `Panel({ layoutManager: HBox(), backgroundColor: '#222', components: [Text('hi')] })`. See [Mental model — JSX-shaped, without JSX](/guide/mental-model#jsx-shaped-without-jsx) for the design rationale.
 
 ## Next steps
 

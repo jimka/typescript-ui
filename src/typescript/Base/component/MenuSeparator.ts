@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "../Component.js";
 import type { MenuItemCSSVarPrefix } from "./MenuItem.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link MenuSeparator}.
@@ -18,7 +19,7 @@ export interface MenuSeparatorOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class MenuSeparator extends Component {
+class MenuSeparator extends Component {
 
     /** Fixed pixel height of every separator. */
     static readonly HEIGHT: number = 9;
@@ -46,3 +47,10 @@ export class MenuSeparator extends Component {
         }
     }
 }
+
+const MenuSeparatorCallable = callable(MenuSeparator);
+type MenuSeparatorCallable = MenuSeparator;
+export {
+    MenuSeparator         as _MenuSeparator,
+    MenuSeparatorCallable as MenuSeparator
+};
