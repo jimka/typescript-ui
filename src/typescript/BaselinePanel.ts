@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Base/Component.js";
-import { Button } from "./Base/component/Button.js";
-import { ComboBox } from "./Base/component/ComboBox.js";
-import { ProgressBar } from "./Base/component/ProgressBar.js";
-import { RadioButton } from "./Base/component/RadioButton.js";
-import { Text } from "./Base/component/Text.js";
-import { TextField } from "./Base/component/TextField.js";
-import { Insets } from "./Base/Insets.js";
-import { HBox } from "./Base/layout/HBox.js";
-import { VBox } from "./Base/layout/VBox.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import {
+    Button,
+    callable,
+    ComboBox,
+    Component,
+    HBox,
+    Insets,
+    Panel,
+    ProgressBar,
+    RadioButton,
+    Text,
+    TextField,
+    VBox
+} from "@jimka/typescript-ui";
 
 class BaselinePanel extends Panel {
 

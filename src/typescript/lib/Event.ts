@@ -5,6 +5,8 @@ import { Component } from "./Component.js";
 /**
  * Event routing system that manages DOM event listeners on behalf of components.
  * Uses a single window-level capture handler per event type to avoid per-element listeners.
+ *
+ * @category Core
  */
 export namespace Event {
     interface CompFunc {

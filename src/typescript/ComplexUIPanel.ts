@@ -1,26 +1,30 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { VBox } from "./Base/layout/VBox.js";
-import { Text } from "./Base/component/Text.js";
-import { HBox } from "./Base/layout/HBox.js";
-import { ComboBox } from "./Base/component/ComboBox.js";
-import { FieldSet } from "./Base/component/FieldSet.js";
-import { RadioButton } from "./Base/component/RadioButton.js";
-import { ButtonGroup } from "./Base/ButtonGroup.js";
-import { Button } from "./Base/component/Button.js";
-import { TextField } from "./Base/component/TextField.js";
-import { TextArea } from "./Base/component/TextArea.js";
-import { Table } from "./Base/component/table/Table.js";
-import { Model } from "./Base/data/Model.js";
-import { MemoryStore } from "./Base/data/MemoryStore.js";
-import { BorderStyle } from "./Base/BorderStyle.js";
-import { Panel } from "./Base/Panel.js";
-import { callable } from "./Base/Callable.js";
+import {
+    BorderStyle,
+    Button,
+    ButtonGroup,
+    callable,
+    ComboBox,
+    FieldSet,
+    HBox,
+    MemoryStore,
+    Model,
+    Panel,
+    RadioButton,
+    Table,
+    Text,
+    TextArea,
+    TextField,
+    VBox
+} from "@jimka/typescript-ui";
 
 class ComplexUIPanel extends Panel {
 
     constructor() {
-        super({ layoutManager: VBox({ stretching: true })});
+        super();
+
+        this.setLayoutManager(new VBox({ stretching: true }));
 
         this.initLayout();
     }

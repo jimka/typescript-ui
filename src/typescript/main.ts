@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Body } from "./Base/Body.js";
-import { Tab } from "./Base/layout/Tab.js";
+import {
+    Body,
+    MemoryStore,
+    Model,
+    Tab,
+    Util
+} from "@jimka/typescript-ui";
 import { VBoxPanel } from "./VBoxPanel.js";
 import { HBoxPanel } from "./HBoxPanel.js";
 import { BorderPanel } from "./BorderPanel.js";
@@ -18,8 +23,6 @@ import { TabPanel } from "./TabPanel.js";
 import { MenuBarPanel } from "./MenuBarPanel.js";
 import { MultiSelectListPanel } from "./MultiSelectListPanel.js";
 
-import { Model, MemoryStore } from "./Base/index.js";
-import { Util } from "./Base/Util.js";
 import { Benchmark } from "./perf/Benchmark.js";
 import { BaselinePanel } from "./BaselinePanel.js";
 
