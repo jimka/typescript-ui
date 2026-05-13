@@ -2,6 +2,7 @@
 
 import { CellEditor } from "./CellEditor.js";
 import { BorderStyle } from "../../../../BorderStyle.js";
+import { callable } from "../../../../Callable.js";
 
 /**
  * An in-place editor for date cell values.
@@ -11,7 +12,7 @@ import { BorderStyle } from "../../../../BorderStyle.js";
  * type="text" after render. Blur and keydown events reach the parent {@link Cell}
  * directly — no proxying needed.
  */
-export class DateEditor extends CellEditor<Date | null> {
+class DateEditor extends CellEditor<Date | null> {
 
     constructor() {
         super("input");
@@ -23,9 +24,11 @@ export class DateEditor extends CellEditor<Date | null> {
         this.setOutline('none');
     }
 
-    applyStyle(element: HTMLElement) {
+    applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
         element.setAttribute('type', 'date');
+
+        return this;
     }
 
     isEmpty(): boolean {
@@ -44,9 +47,11 @@ export class DateEditor extends CellEditor<Date | null> {
         return isNaN(d.getTime()) ? null : d;
     }
 
-    setValue(value: Date | null): void {
+    setValue(value: Date | null): this {
         const el = this.getElement() as HTMLInputElement | null;
         if (el) el.value = value ? this.toInputString(value) : "";
+
+        return this;
     }
 
     private toInputString(date: Date): string {
@@ -56,3 +61,10 @@ export class DateEditor extends CellEditor<Date | null> {
         return `${y}-${m}-${d}`;
     }
 }
+
+const DateEditorCallable = callable(DateEditor);
+type DateEditorCallable = DateEditor;
+export {
+    DateEditor         as _DateEditor,
+    DateEditorCallable as DateEditor
+};

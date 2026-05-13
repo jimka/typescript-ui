@@ -2,13 +2,14 @@
 
 import { CellRenderer } from "./CellRenderer.js";
 import { Text } from "../../../../component/Text.js";
+import { callable } from "../../../../Callable.js";
 
 /**
  * A read-only renderer for date-time cell values.
  *
  * Displays a `Date` via a {@link Text} formatted with `Date.toLocaleString`.
  */
-export class DateTimeRenderer extends CellRenderer<Date | null> {
+class DateTimeRenderer extends CellRenderer<Date | null> {
 
     private text: Text = new Text();
     private value: Date | null = null;
@@ -28,11 +29,20 @@ export class DateTimeRenderer extends CellRenderer<Date | null> {
         return this.value;
     }
 
-    setValue(value: Date | null): void {
+    setValue(value: Date | null): this {
         this.value = value ?? null;
         const opts: Intl.DateTimeFormatOptions = this.showSeconds
             ? { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }
             : { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
         this.text.setText(value ? value.toLocaleString(undefined, opts) : "");
+
+        return this;
     }
 }
+
+const DateTimeRendererCallable = callable(DateTimeRenderer);
+type DateTimeRendererCallable = DateTimeRenderer;
+export {
+    DateTimeRenderer         as _DateTimeRenderer,
+    DateTimeRendererCallable as DateTimeRenderer
+};

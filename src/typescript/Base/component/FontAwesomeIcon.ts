@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "../Component.js";
+import { callable } from "../Callable.js";
+
 // import "../script/fontawesome/js/all.js"; -- For now, we require this import to be made in the index-page.
 
 /**
@@ -23,7 +25,7 @@ export interface FontAwesomeIconOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class FontAwesomeIcon extends Component {
+class FontAwesomeIcon extends Component {
 
     private type: string;
     private icon: string;
@@ -46,7 +48,7 @@ export class FontAwesomeIcon extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: FontAwesomeIconOptions): void {
+    protected applyOptions(options: FontAwesomeIconOptions): this {
         super.applyOptions(options);
 
         const element = this.getElement();
@@ -66,6 +68,8 @@ export class FontAwesomeIcon extends Component {
             }
             this.type = options.iconStyle;
         }
+
+        return this;
     }
 
     /**
@@ -82,3 +86,10 @@ export class FontAwesomeIcon extends Component {
         return element;
     }
 }
+
+const FontAwesomeIconCallable = callable(FontAwesomeIcon);
+type FontAwesomeIconCallable = FontAwesomeIcon;
+export {
+    FontAwesomeIcon         as _FontAwesomeIcon,
+    FontAwesomeIconCallable as FontAwesomeIcon
+};

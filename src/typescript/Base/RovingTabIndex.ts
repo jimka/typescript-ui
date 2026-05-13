@@ -47,11 +47,13 @@ export class RovingTabIndex {
      * @remarks The first item added receives `tabindex=0`; all subsequent items receive `tabindex=-1`.
      * @param component - The component to add.
      */
-    add(component: Component): void {
+    add(component: Component): this {
         const isFirst = this._items.length === 0;
 
         this._items.push(component);
         component.getAria().setTabIndex(isFirst ? 0 : -1);
+
+        return this;
     }
 
     /**
@@ -60,11 +62,11 @@ export class RovingTabIndex {
      * @remarks If the removed item was active, focus moves to the previous item (or index 0).
      * @param component - The component to remove.
      */
-    remove(component: Component): void {
+    remove(component: Component): this {
         const idx = this._items.indexOf(component);
 
         if (idx < 0) {
-            return;
+            return this;
         }
 
         this._items.splice(idx, 1);
@@ -72,7 +74,7 @@ export class RovingTabIndex {
         if (this._items.length === 0) {
             this._activeIndex = 0;
 
-            return;
+            return this;
         }
 
         if (idx === this._activeIndex) {
@@ -80,6 +82,8 @@ export class RovingTabIndex {
         } else if (idx < this._activeIndex) {
             this._activeIndex -= 1;
         }
+
+        return this;
     }
 
     /**

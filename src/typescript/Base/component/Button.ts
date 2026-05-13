@@ -10,6 +10,7 @@ import { AnchorType } from "../layout/AnchorType.js";
 import { CSS } from "../CSS.js";
 import { Border, BorderOptions } from "../Border.js";
 import { Insets } from "../Insets.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Button}.
@@ -44,7 +45,7 @@ export interface ButtonOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class Button extends Component {
+class Button extends Component {
 
     private text: Text;
 
@@ -103,7 +104,7 @@ export class Button extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: ButtonOptions): void {
+    protected applyOptions(options: ButtonOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -137,6 +138,8 @@ export class Button extends Component {
         if (options.pressedShadow !== undefined) {
             this.setPressedShadow(options.pressedShadow);
         }
+
+        return this;
     }
 
     /**
@@ -161,9 +164,13 @@ export class Button extends Component {
      * Registers a click event listener on this button.
      *
      * @param listener - The callback to invoke when the button is clicked.
+     *
+     * @returns This component, for method chaining.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function): this {
         Event.addListener(this, "click", listener);
+
+        return this;
     }
 
     /**
@@ -179,14 +186,18 @@ export class Button extends Component {
      * Sets the background color for the :active CSS rule.
      *
      * @param backgroundColor - A CSS color string, or null to clear the property.
+     *
+     * @returns This component, for method chaining.
      */
-    setPressedBackgroundColor(backgroundColor: string | null) {
+    setPressedBackgroundColor(backgroundColor: string | null): this {
         this.pressedBackgroundColor = backgroundColor;
         if (this.pressedBackgroundColor) {
             this.pressedCSSRule.style.setProperty('background-color', this.pressedBackgroundColor);
         } else {
             this.pressedCSSRule.style.removeProperty('background-color');
         }
+
+        return this;
     }
 
     /**
@@ -202,14 +213,18 @@ export class Button extends Component {
      * Sets the background image for the :active CSS rule.
      *
      * @param backgroundImage - Optional. A CSS background-image string, or null to clear the property.
+     *
+     * @returns This component, for method chaining.
      */
-    setPressedBackgroundImage(backgroundImage: string | null = null) {
+    setPressedBackgroundImage(backgroundImage: string | null = null): this {
         this.pressedBackgroundImage = backgroundImage;
         if (this.pressedBackgroundImage) {
             this.pressedCSSRule.style.setProperty('background-image', this.pressedBackgroundImage);
         } else {
             this.pressedCSSRule.style.removeProperty('background-image');
         }
+
+        return this;
     }
 
     /**
@@ -225,14 +240,18 @@ export class Button extends Component {
      * Sets the text color for the :active CSS rule.
      *
      * @param foregroundColor - A CSS color string, or null to clear the property.
+     *
+     * @returns This component, for method chaining.
      */
-    setPressedForegroundColor(foregroundColor: string | null) {
+    setPressedForegroundColor(foregroundColor: string | null): this {
         this.pressedForegroundColor = foregroundColor;
         if (this.pressedForegroundColor) {
             this.pressedCSSRule.style.setProperty('color', this.pressedForegroundColor);
         } else {
             this.pressedCSSRule.style.removeProperty('color');
         }
+
+        return this;
     }
 
     /**
@@ -248,8 +267,10 @@ export class Button extends Component {
      * Sets the border for the :active CSS rule.
      *
      * @param options - Optional. Border configuration (style, width, color). Omit to apply a default border.
+     *
+     * @returns This component, for method chaining.
      */
-    setPressedBorder(options?: BorderOptions) {
+    setPressedBorder(options?: BorderOptions): this {
         this.pressedBorder = new Border(options);
 
         if (this.pressedBorder) {
@@ -257,6 +278,8 @@ export class Button extends Component {
         } else {
             this.pressedCSSRule.style.removeProperty("border");
         }
+
+        return this;
     }
 
     /**
@@ -272,14 +295,18 @@ export class Button extends Component {
      * Sets the border radius for the :active CSS rule.
      *
      * @param borderRadius - Optional. A CSS border-radius string, or null to clear the property.
+     *
+     * @returns This component, for method chaining.
      */
-    setPressedBorderRadius(borderRadius: string | null = null) {
+    setPressedBorderRadius(borderRadius: string | null = null): this {
         this.pressedBorderRadius = borderRadius;
         if (this.pressedBorderRadius) {
             this.pressedCSSRule.style.setProperty('border-radius', this.pressedBorderRadius);
         } else {
             this.pressedCSSRule.style.removeProperty('border-radius');
         }
+
+        return this;
     }
 
     /**
@@ -295,14 +322,18 @@ export class Button extends Component {
      * Sets the box shadow for the :active CSS rule.
      *
      * @param shadow - A CSS box-shadow string, or null to set the shadow to "none".
+     *
+     * @returns This component, for method chaining.
      */
-    setPressedShadow(shadow: string | null) {
+    setPressedShadow(shadow: string | null): this {
         this.pressedShadow = shadow;
         if (this.pressedShadow) {
             this.pressedCSSRule.style.setProperty('box-shadow', this.pressedShadow);
         } else {
             this.pressedCSSRule.style.removeProperty('box-shadow');
         }
+
+        return this;
     }
 
     /**
@@ -316,9 +347,9 @@ export class Button extends Component {
      * dims the button to 0.5 opacity, and switches the cursor to `not-allowed`.
      * Re-enabling restores the previous cursor and clears the opacity override.
      */
-    setEnabled(enabled: boolean): void {
+    setEnabled(enabled: boolean): this {
         if (this._enabled === enabled) {
-            return;
+            return this;
         }
 
         this._enabled = enabled;
@@ -333,6 +364,8 @@ export class Button extends Component {
             this.setOpacity(0.5);
             this.setCursor("not-allowed");
         }
+
+        return this;
     }
 
     /**
@@ -344,3 +377,10 @@ export class Button extends Component {
         return this._enabled;
     }
 }
+
+const ButtonCallable = callable(Button);
+type ButtonCallable = Button;
+export {
+    Button         as _Button,
+    ButtonCallable as Button
+};

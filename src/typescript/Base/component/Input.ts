@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "../Component.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Input}.
@@ -19,7 +20,7 @@ export interface InputOptions extends ComponentOptions {
  *
  * Sets a white background by default and applies a sans-serif 12px font via the CSS rule.
  */
-export class Input extends Component {
+class Input extends Component {
 
     constructor(options?: InputOptions) {
         super({ tag: options?.tag ?? "input" });
@@ -38,12 +39,14 @@ export class Input extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: InputOptions): void {
+    protected applyOptions(options: InputOptions): this {
         super.applyOptions(options);
 
         if (options.name !== undefined) {
             this.setElementAttribute("name", options.name);
         }
+
+        return this;
     }
 
     /**
@@ -62,12 +65,14 @@ export class Input extends Component {
      *
      * @param element - The HTMLElement to apply styles to.
      */
-    applyStyle(element: HTMLElement) {
+    applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
 
         let rule = this.getCSSRule();
         rule.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
         rule.style.fontSize   = "var(--ts-ui-font-size, 12px)";
+
+        return this;
     }
 
     /**
@@ -79,3 +84,10 @@ export class Input extends Component {
         return super.render() as HTMLInputElement & HTMLTextAreaElement;
     }
 }
+
+const InputCallable = callable(Input);
+type InputCallable = Input;
+export {
+    Input         as _Input,
+    InputCallable as Input
+};

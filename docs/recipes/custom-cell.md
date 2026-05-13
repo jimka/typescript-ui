@@ -16,7 +16,7 @@ import {
 } from '@jimka/typescript-ui';
 
 class CurrencyRenderer extends CellRenderer<number> {
-    private text: Text = new Text();
+    private text: Text = Text();
 
     constructor() {
         super();
@@ -47,7 +47,7 @@ import {
 } from '@jimka/typescript-ui';
 
 class CurrencyEditor extends CellEditor<number> {
-    private input: TextField = new TextField();
+    private input: TextField = TextField();
 
     constructor() {
         super();

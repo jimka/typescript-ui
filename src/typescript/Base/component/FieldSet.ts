@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "../Component.js";
 import { Legend } from "./Legend.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { Insets } from "../Insets.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link FieldSet}.
@@ -21,7 +22,7 @@ export interface FieldSetOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class FieldSet extends Component {
+class FieldSet extends Component {
 
     private legend: Legend = new Legend();
 
@@ -45,12 +46,14 @@ export class FieldSet extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: FieldSetOptions): void {
+    protected applyOptions(options: FieldSetOptions): this {
         super.applyOptions(options);
 
         if (options.legend !== undefined) {
             this.setTitle(options.legend);
         }
+
+        return this;
     }
 
     /**
@@ -67,8 +70,10 @@ export class FieldSet extends Component {
      *
      * @param title - The text to display in the legend.
      */
-    setTitle(title: string) {
+    setTitle(title: string) : this {
         this.legend.setText(title);
+
+        return this;
     }
 
     /**
@@ -84,3 +89,10 @@ export class FieldSet extends Component {
         return element;
     }
 }
+
+const FieldSetCallable = callable(FieldSet);
+type FieldSetCallable = FieldSet;
+export {
+    FieldSet         as _FieldSet,
+    FieldSetCallable as FieldSet
+};

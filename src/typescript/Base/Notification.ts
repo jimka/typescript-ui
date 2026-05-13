@@ -212,8 +212,10 @@ export class Notification extends Component {
 
     /**
      * Positions the message label and the close button within the notification body.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         super.doLayout();
 
         const closeX    = Notification.WIDTH - Notification.CLOSE_SIZE - 4;
@@ -229,5 +231,7 @@ export class Notification extends Component {
         this.closeIcon.setY(4);
         this.closeIcon.setWidth(Notification.CLOSE_SIZE);
         this.closeIcon.setHeight(Notification.CLOSE_SIZE);
+
+        return this;
     }
 }

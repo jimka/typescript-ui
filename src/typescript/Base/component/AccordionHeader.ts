@@ -3,6 +3,7 @@
 import { Button, ButtonOptions } from "./Button.js";
 import { CSS } from "../CSS.js";
 import { Insets } from "../Insets.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link AccordionHeader}.
@@ -22,7 +23,7 @@ export interface AccordionHeaderOptions extends ButtonOptions {
  *
  * @category Components
  */
-export class AccordionHeader extends Button {
+class AccordionHeader extends Button {
 
     private static _stylesCreated: boolean = false;
 
@@ -82,12 +83,14 @@ export class AccordionHeader extends Button {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: AccordionHeaderOptions): void {
+    protected applyOptions(options: AccordionHeaderOptions): this {
         super.applyOptions(options);
 
         if (options.expanded !== undefined) {
             this.setExpanded(options.expanded);
         }
+
+        return this;
     }
 
     /**
@@ -95,13 +98,13 @@ export class AccordionHeader extends Button {
      *
      * @param element - Optional element passed from the framework init chain.
      */
-    protected init(element?: HTMLElement): void {
+    protected init(element?: HTMLElement): this {
         super.init(element);
 
         const el = element || this.getElement();
 
         if (!el) {
-            return;
+            return this;
         }
 
         this._indicatorEl = document.createElement('span');
@@ -109,6 +112,8 @@ export class AccordionHeader extends Button {
         this._indicatorEl.textContent = '▶';
 
         el.appendChild(this._indicatorEl);
+
+        return this;
     }
 
     /**
@@ -116,7 +121,7 @@ export class AccordionHeader extends Button {
      *
      * @param expanded - True to rotate the indicator to the expanded position.
      */
-    setExpanded(expanded: boolean): void {
+    setExpanded(expanded: boolean): this {
         this._expanded = expanded;
 
         if (this._indicatorEl) {
@@ -126,6 +131,8 @@ export class AccordionHeader extends Button {
                 this._indicatorEl.classList.remove('expanded');
             }
         }
+
+        return this;
     }
 
     /**
@@ -137,3 +144,10 @@ export class AccordionHeader extends Button {
         return this._expanded;
     }
 }
+
+const AccordionHeaderCallable = callable(AccordionHeader);
+type AccordionHeaderCallable = AccordionHeader;
+export {
+    AccordionHeader         as _AccordionHeader,
+    AccordionHeaderCallable as AccordionHeader
+};

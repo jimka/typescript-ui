@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "../Component.js";
 import { CSS } from "../CSS.js";
 import { Event } from "../Event.js";
 import { Text } from "./Text.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link AutoCompleteItem}.
@@ -22,7 +23,7 @@ export interface AutoCompleteItemOptions extends ComponentOptions {
  * `MenuItem`, this item is mutable after construction so the dropdown
  * can reuse the DOM pool across keystrokes.
  */
-export class AutoCompleteItem extends Component {
+class AutoCompleteItem extends Component {
 
     /** Fixed pixel height of every autocomplete item row. */
     static readonly HEIGHT: number = 24;
@@ -82,7 +83,7 @@ export class AutoCompleteItem extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: AutoCompleteItemOptions): void {
+    protected applyOptions(options: AutoCompleteItemOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -92,6 +93,8 @@ export class AutoCompleteItem extends Component {
         if (options.highlighted !== undefined) {
             this.setHighlighted(options.highlighted);
         }
+
+        return this;
     }
 
     /**
@@ -118,7 +121,7 @@ export class AutoCompleteItem extends Component {
      *
      * @param highlighted - True to apply highlight styling; false to clear it.
      */
-    setHighlighted(highlighted: boolean): void {
+    setHighlighted(highlighted: boolean): this {
         this.highlighted = highlighted;
 
         if (highlighted) {
@@ -134,6 +137,8 @@ export class AutoCompleteItem extends Component {
             this.setForegroundColor("inherit");
             this.getAria().setSelected(false);
         }
+
+        return this;
     }
 
     /**
@@ -156,13 +161,24 @@ export class AutoCompleteItem extends Component {
 
     /**
      * Positions the label to fill the item with 8 px horizontal padding.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         super.doLayout();
 
         this.textComponent.setX(8);
         this.textComponent.setY(0);
         this.textComponent.setWidth(Math.max(0, this.getWidth() - 16));
         this.textComponent.setHeight(AutoCompleteItem.HEIGHT);
+
+        return this;
     }
 }
+
+const AutoCompleteItemCallable = callable(AutoCompleteItem);
+type AutoCompleteItemCallable = AutoCompleteItem;
+export {
+    AutoCompleteItem         as _AutoCompleteItem,
+    AutoCompleteItemCallable as AutoCompleteItem
+};

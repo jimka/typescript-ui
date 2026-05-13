@@ -3,6 +3,7 @@
 import { Component } from "../../Component.js";
 import { Text } from "../Text.js";
 import { TreeNode } from "./TreeNode.js";
+import { callable } from "../../Callable.js";
 
 /** Width in pixels reserved for the expand/collapse toggle icon. */
 export const TOGGLE_WIDTH = 20;
@@ -21,7 +22,7 @@ export const TOGGLE_WIDTH = 20;
  * preferred-size change notifications do not propagate up to the Tree and
  * trigger unnecessary layout passes.
  */
-export class TreeRow extends Component {
+class TreeRow extends Component {
 
     private _toggle: Text;
     private _nodeLabel: Text;
@@ -90,7 +91,7 @@ export class TreeRow extends Component {
      * @param siblingCount - Total number of siblings at this level under the same parent.
      * @param posInSet - 1-based position of this node among its siblings.
      */
-    setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number): void {
+    setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number): this {
         this._node = node;
         this._depth = depth;
 
@@ -104,6 +105,8 @@ export class TreeRow extends Component {
         this.getAria().setExpanded(hasChildren ? expanded : null);
         this.getAria().setSetSize(siblingCount);
         this.getAria().setPosInSet(posInSet);
+
+        return this;
     }
 
     /**
@@ -156,15 +159,24 @@ export class TreeRow extends Component {
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
-    protected init(element?: HTMLElement): void {
+    protected init(element?: HTMLElement): this {
         super.init(element);
 
         const el = element || this.getElement();
         if (!el) {
-            return;
+            return this;
         }
 
         el.appendChild(this._toggle.getElement(true));
         el.appendChild(this._nodeLabel.getElement(true));
+
+        return this;
     }
 }
+
+const TreeRowCallable = callable(TreeRow);
+type TreeRowCallable = TreeRow;
+export {
+    TreeRow         as _TreeRow,
+    TreeRowCallable as TreeRow
+};

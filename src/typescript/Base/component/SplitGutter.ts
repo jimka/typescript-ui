@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "../Component.js";
 import { Event } from "../Event.js";
 import { Util } from "../Util.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link SplitGutter}.
@@ -22,7 +23,7 @@ export interface SplitGutterOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class SplitGutter extends Component {
+class SplitGutter extends Component {
 
     private direction: String = "horizontal";
     private dragListeners: Array<Function> = [];
@@ -49,12 +50,14 @@ export class SplitGutter extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: SplitGutterOptions): void {
+    protected applyOptions(options: SplitGutterOptions): this {
         super.applyOptions(options);
 
         if (options.orientation !== undefined) {
             this.setDirection(options.orientation);
         }
+
+        return this;
     }
 
     /**
@@ -71,12 +74,14 @@ export class SplitGutter extends Component {
      *
      * @param direction - Optional. "horizontal" or "vertical". Defaults to "horizontal".
      */
-    setDirection(direction?: String) {
+    setDirection(direction?: String) : this {
         if (!direction) {
             direction = "horizontal";
         }
 
         this.direction = direction;
+
+        return this;
     }
 
     /**
@@ -84,8 +89,10 @@ export class SplitGutter extends Component {
      *
      * @param listener - The callback invoked with the pixel delta on each mousemove/touchmove.
      */
-    addDragListener(listener: Function) {
+    addDragListener(listener: Function) : this {
         this.dragListeners.push(listener);
+
+        return this;
     }
 
     /**
@@ -93,13 +100,15 @@ export class SplitGutter extends Component {
      *
      * @param listener - The callback to remove.
      */
-    removeDragListener(listener: Function) {
+    removeDragListener(listener: Function) : this {
         let idx = this.dragListeners.indexOf(listener);
         if (idx < 0) {
-            return;
+            return this;
         }
 
         this.dragListeners.splice(idx, 1);
+
+        return this;
     }
 
     /**
@@ -178,3 +187,10 @@ export class SplitGutter extends Component {
         return element;
     }
 }
+
+const SplitGutterCallable = callable(SplitGutter);
+type SplitGutterCallable = SplitGutter;
+export {
+    SplitGutter         as _SplitGutter,
+    SplitGutterCallable as SplitGutter
+};

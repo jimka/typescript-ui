@@ -13,6 +13,7 @@ import { RovingTabIndex } from "../RovingTabIndex.js";
 import { Column } from "./Column.js";
 import { HBox } from "./HBox.js";
 import { TabCloseButton } from "../component/TabCloseButton.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Tab}.
@@ -38,7 +39,7 @@ interface TabEntry {
  *
  * @category Layouts
  */
-export class Tab extends LayoutManager {
+class Tab extends LayoutManager {
 
     private toolbar: Component = new Component();
     private tabs: Array<TabEntry> = [];
@@ -103,7 +104,7 @@ export class Tab extends LayoutManager {
      *
      * @param container - The container component to attach to.
      */
-    attach(container: Component): void {
+    attach(container: Component): this {
         super.attach(container);
 
         let element = this.toolbar.getElement(true);
@@ -112,15 +113,19 @@ export class Tab extends LayoutManager {
         this.toolbar.getAria().setRole("tablist");
 
         Event.addSubtreeListener(this.toolbar, "keydown", (e: KeyboardEvent) => this.onToolbarKeyDown(e));
+
+        return this;
     }
 
     /**
      * Detaches from the container and removes the tab toolbar element from the DOM.
      */
-    detach(): void {
+    detach(): this {
         super.detach();
 
         this.toolbar.getElement().remove();
+
+        return this;
     }
 
     /**
@@ -491,3 +496,10 @@ export class Tab extends LayoutManager {
         this.onTabPressed(newTab);
     }
 }
+
+const TabCallable = callable(Tab);
+type TabCallable = Tab;
+export {
+    Tab         as _Tab,
+    TabCallable as Tab
+};

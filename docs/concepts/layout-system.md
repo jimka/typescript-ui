@@ -35,6 +35,18 @@ panel.addComponent(child, new AccordionConstraints('Section 1')); // Accordion
 panel.addComponent(child);                                  // Absolute, Fit, Card, Grid
 ```
 
+`addComponents` accepts the same per-child constraints by wrapping each child in a `ConstrainedComponent` pair:
+
+```typescript
+panel.addComponents(
+    { component: header,  constraints: { region: Placement.NORTH } },
+    { component: content, constraints: { region: Placement.CENTER } },
+    footer  // bare component, no constraints
+);
+```
+
+The same pair shape can appear in a constructor's `components` option for a fully declarative tree.
+
 The shared base [`LayoutConstraints`](/api/classes/LayoutConstraints) carries `fill` ([`FillType`](/api/enumerations/FillType)) and `anchor` ([`AnchorType`](/api/enumerations/AnchorType)) for managers that honour them. See the [Constraints reference](/layouts/Constraints).
 
 ## Fill and anchor resolution

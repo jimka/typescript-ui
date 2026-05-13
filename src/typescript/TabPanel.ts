@@ -8,12 +8,13 @@ import { Fit } from "./Base/layout/Fit.js";
 import { Text } from "./Base/component/Text.js";
 import { Button } from "./Base/component/Button.js";
 import { Insets } from "./Base/Insets.js";
+import { callable } from "./Base/Callable.js";
 
 /**
  * Demonstrates the Tab layout manager with both normal and closeable tabs,
  * including programmatic tab addition and a close-event log.
  */
-export class TabPanel extends Component {
+class TabPanel extends Component {
 
     private tabContainer: Component;
     private tabLayout: Tab;
@@ -104,3 +105,10 @@ export class TabPanel extends Component {
         return panel;
     }
 }
+
+const TabPanelCallable = callable(TabPanel);
+type TabPanelCallable = TabPanel;
+export {
+    TabPanel         as _TabPanel,
+    TabPanelCallable as TabPanel
+};

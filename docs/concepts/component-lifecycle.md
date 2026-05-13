@@ -5,7 +5,7 @@ A [`Component`](/api/classes/Component) goes through a small, predictable sequen
 ## The phases
 
 ```
-new Component(tag)        ─→  in-memory object, no DOM
+Component(tag)            ─→  in-memory object, no DOM
    │
 addComponent(child)       ─→  parent registers the child
    │
@@ -30,20 +30,33 @@ destructor() (protected)  ─→  subclass cleanup hook
 ## Construction
 
 ```typescript
-const button = new Button('Save');
+const button = Button('Save');
 ```
 
-The component object exists in memory immediately. No `<div>`, no styles, no listeners — just JavaScript state. You can call any setter (`setPosition`, `setForegroundColor`, `setBorder`) at this point; values are stashed and replayed when the DOM element is eventually created.
+The component object exists in memory immediately. No `<div>`, no styles, no listeners — just JavaScript state. You can call any setter (`setPosition`, `setForegroundColor`, `setBorder`) at this point, or supply matching options in a trailing options bag — `Button('Save', { foregroundColor: '#fff', preferredSize: { width: 120, height: 32 } })`. Values are stashed and replayed when the DOM element is eventually created.
 
 This is why `setBackgroundColor` works *before* you've added the component to a parent. The framework defers DOM work until it's actually needed.
+
+`new Button('Save')` also works — every component class is callable in both forms. Bare-call is the recommended style; `new` is kept for backwards compatibility.
 
 ## Adding to a parent
 
 ```typescript
-panel.addComponent(button);
+panel.addComponent(button);                       // single child
+panel.addComponents(button, label, textField);    // variadic
+panel.addComponents([button, label, textField]);  // or as an array
 ```
 
-`addComponent` registers the child with its parent's component list and applies the parent's layout-manager constraints (the optional second argument). It does **not** force a DOM commit — the element is still lazy.
+`addComponent` registers a child with its parent's component list and applies the parent's layout-manager constraints (optional second argument). `addComponents` accepts any mix of bare components, `{ component, constraints }` pairs, or arrays of either. Neither call forces a DOM commit — the element is still lazy.
+
+For a fully declarative tree, pass children via the `components` option at construction time:
+
+```typescript
+const panel = Panel({
+    layoutManager: VBox(),
+    components: [Button('Save'), Button('Cancel')]
+});
+```
 
 ## Element creation: `getElement()`
 
@@ -78,9 +91,7 @@ For bulk mutations, suspend automatic layout passes:
 
 ```typescript
 panel.pauseLayout();
-for (const item of largeArray) {
-    panel.addComponent(buildItem(item));
-}
+panel.addComponents(largeArray.map(buildItem));
 panel.resumeLayout(); // triggers a single doLayout afterwards
 ```
 

@@ -10,12 +10,13 @@ import { Binding } from "./Base/Binding.js";
 import { Model } from "./Base/data/Model.js";
 import { MemoryStore } from "./Base/data/MemoryStore.js";
 import { Panel } from "./Base/Panel.js";
+import { callable } from "./Base/Callable.js";
 
 /**
  * Demonstrates `MultiSelectList` with static items, store binding,
  * and integration with the `Binding` system.
  */
-export class MultiSelectListPanel extends Panel {
+class MultiSelectListPanel extends Panel {
 
     /**
      * Builds the demo panel with three sections:
@@ -165,3 +166,10 @@ export class MultiSelectListPanel extends Panel {
         });
     }
 }
+
+const MultiSelectListPanelCallable = callable(MultiSelectListPanel);
+type MultiSelectListPanelCallable = MultiSelectListPanel;
+export {
+    MultiSelectListPanel         as _MultiSelectListPanel,
+    MultiSelectListPanelCallable as MultiSelectListPanel
+};

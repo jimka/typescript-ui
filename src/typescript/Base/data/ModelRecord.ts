@@ -60,14 +60,16 @@ export class ModelRecord {
      * @param field - The logical name of the field to update.
      * @param value - The new value to assign to the field.
      */
-    set(field: string, value: any): void {
+    set(field: string, value: any): this {
         if (ModelRecord.isEqual(this.data[field], value)) {
-            return;
+            return this;
         }
 
         this.data[field] = value;
         this.dirty = this._isNew || Object.keys(this.original)
                                           .some(k => !ModelRecord.isEqual(this.data[k], this.original[k]));
+
+        return this;
     }
 
     private static isEqual(a: any, b: any): boolean {
@@ -119,10 +121,12 @@ export class ModelRecord {
      * Called automatically by `AbstractStore.sync()` after a successful create or update
      * so that the record no longer appears in subsequent sync cycles.
      */
-    commit(): void {
+    commit(): this {
         this.original = { ...this.data };
         this.dirty = false;
         this._isNew = false;
+
+        return this;
     }
 
     /**

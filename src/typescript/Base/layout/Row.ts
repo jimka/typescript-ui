@@ -3,6 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Row}.
@@ -19,7 +20,7 @@ export interface RowOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class Row extends LayoutManager {
+class Row extends LayoutManager {
 
     private gap: number = 5;
 
@@ -59,9 +60,11 @@ export class Row extends LayoutManager {
      *
      * @param gap - Gap size in pixels.
      */
-    setGap(gap : number) {
+    setGap(gap : number) : this {
         this.gap = gap;
         this.doLayout();
+
+        return this;
     }
 
     /**
@@ -224,3 +227,10 @@ export class Row extends LayoutManager {
         }
     }
 }
+
+const RowCallable = callable(Row);
+type RowCallable = Row;
+export {
+    Row         as _Row,
+    RowCallable as Row
+};

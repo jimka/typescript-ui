@@ -6,6 +6,7 @@ import { Column } from "../component/table/Column.js";
 import { Component } from "../Component.js";
 import { Util } from "../Util.js";
 import { ThemeManager } from "../Theme.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for the {@link Table} layout manager.
@@ -34,7 +35,7 @@ const HEADER_PAD    = 16;
  * compact-type columns keep their width unchanged; only flexible columns scale
  * proportionally, again clamped to their per-column constraints.
  */
-export class Table extends LayoutManager {
+class Table extends LayoutManager {
 
     /**
      * Constructs a Table layout manager.
@@ -56,12 +57,14 @@ export class Table extends LayoutManager {
      *
      * @remarks This layout manager is only valid for containers whose class name is `"Table"`.
      */
-    attach(container: Component) {
+    attach(container: Component) : this {
         if (container.getClassName() != "Table") {
             throw new Error("Container must be a Table.");
         }
 
         super.attach(container);
+
+        return this;
     }
 
     /**
@@ -277,3 +280,10 @@ export class Table extends LayoutManager {
         return Math.min(Math.max(width, min), max);
     }
 }
+
+const TableCallable = callable(Table);
+type TableCallable = Table;
+export {
+    Table         as _Table,
+    TableCallable as Table
+};

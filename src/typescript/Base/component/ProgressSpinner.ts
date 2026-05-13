@@ -5,6 +5,7 @@ import { CSS } from "../CSS.js";
 import { Position } from "../Position.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { ThemeManager } from "../Theme.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link ProgressSpinner}.
@@ -46,7 +47,7 @@ function getThemeFontSize(): number {
  *
  * @category Components
  */
-export class ProgressSpinner extends Component {
+class ProgressSpinner extends Component {
 
     private arc: Component;
     private size: number;
@@ -117,12 +118,14 @@ export class ProgressSpinner extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: ProgressSpinnerOptions): void {
+    protected applyOptions(options: ProgressSpinnerOptions): this {
         super.applyOptions(options);
 
         if (options.spinnerSize !== undefined) {
             this.setSpinnerSize(options.spinnerSize);
         }
+
+        return this;
     }
 
     /**
@@ -142,16 +145,18 @@ export class ProgressSpinner extends Component {
      * @remarks Calling this disables the default theme-font-size tracking so
      * the spinner stays at the explicit size across subsequent theme changes.
      */
-    setSpinnerSize(size: number): void {
+    setSpinnerSize(size: number): this {
         this.trackThemeFontSize = false;
 
         if (this.size === size) {
-            return;
+            return this;
         }
 
         this.size = size;
         this.setPreferredSize(size, size);
         this.scheduleLayout();
+
+        return this;
     }
 
     /**
@@ -215,8 +220,10 @@ export class ProgressSpinner extends Component {
 
     /**
      * Lays out the inner arc element at the centre of the component bounds.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout(): void {
+    doLayout(): this {
         if (this.overlayTarget) {
             this.setSize({ width: this.overlayTarget.getWidth(), height: this.overlayTarget.getHeight() });
         }
@@ -225,7 +232,7 @@ export class ProgressSpinner extends Component {
         if (!inner) {
             super.doLayout();
 
-            return;
+            return this;
         }
 
         const diameter = Math.min(this.size, inner.width, inner.height);
@@ -237,5 +244,14 @@ export class ProgressSpinner extends Component {
         this.arc.setSize({ width: diameter, height: diameter });
 
         super.doLayout();
+
+        return this;
     }
 }
+
+const ProgressSpinnerCallable = callable(ProgressSpinner);
+type ProgressSpinnerCallable = ProgressSpinner;
+export {
+    ProgressSpinner         as _ProgressSpinner,
+    ProgressSpinnerCallable as ProgressSpinner
+};

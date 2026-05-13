@@ -7,6 +7,7 @@ import { WindowBorder, Direction } from "./component/WindowBorder.js";
 import { Event } from "./Event.js";
 import { Placement } from "./Placement.js";
 import { Panel } from "./Panel.js";
+import { callable } from "./Callable.js";
 
 /**
  * A floating, resizable, and draggable window component.
@@ -16,7 +17,7 @@ import { Panel } from "./Panel.js";
  *
  * @category Core
  */
-export class Window extends Panel {
+class Window extends Panel {
 
     private static zIndexCounter: number = 9000;
     private static activeWindow: Window | null = null;
@@ -108,7 +109,7 @@ export class Window extends Panel {
     /**
      * Appends the window element to the document root, triggers layout, and makes it visible.
      */
-    show(): void {
+    show(): this {
         const el = this.getElement(true);
 
         this.doLayout();
@@ -123,6 +124,8 @@ export class Window extends Panel {
         document.documentElement.appendChild(el);
 
         this.setVisible(true);
+
+        return this;
     }
 
     /**
@@ -170,12 +173,14 @@ export class Window extends Panel {
      *
      * @param text - The new header label text.
      */
-    setHeaderText(text: string) {
+    setHeaderText(text: string) : this {
         if (!this.header) {
             throw new Error("Window does not have a header.");
         }
 
         this.header.getText().setText(text);
+
+        return this;
     }
 
     /**
@@ -220,8 +225,10 @@ export class Window extends Panel {
      *
      * @param fps - Frames per second cap (e.g. 30 or 20). Defaults to 60.
      */
-    setResizeFps(fps: number) {
+    setResizeFps(fps: number) : this {
         this.resizeFps = fps;
+
+        return this;
     }
 
     private flushResize(timestamp: number) {
@@ -327,8 +334,10 @@ export class Window extends Panel {
 
     /**
      * Runs the border layout and positions all eight resize-handle strips around the window.
+     *
+     * @returns This component, for method chaining.
      */
-    doLayout() {
+    doLayout(): this {
         super.doLayout();
 
         let borderSize = this.getBorderSize();
@@ -402,6 +411,8 @@ export class Window extends Panel {
         this.borderComponents.southeast.setAutoCommitStyle(true);
         this.borderComponents.south.setAutoCommitStyle(true);
         this.borderComponents.southwest.setAutoCommitStyle(true);
+
+        return this;
     }
 
     /**
@@ -424,3 +435,10 @@ export class Window extends Panel {
         return element;
     }
 }
+
+const WindowCallable = callable(Window);
+type WindowCallable = Window;
+export {
+    Window         as _Window,
+    WindowCallable as Window
+};

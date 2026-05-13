@@ -11,8 +11,9 @@ import { Insets } from "./Base/Insets.js";
 import { HBox } from "./Base/layout/HBox.js";
 import { VBox } from "./Base/layout/VBox.js";
 import { Panel } from "./Base/Panel.js";
+import { callable } from "./Base/Callable.js";
 
-export class BaselinePanel extends Panel {
+class BaselinePanel extends Panel {
 
     constructor() {
         super();
@@ -70,3 +71,10 @@ export class BaselinePanel extends Panel {
         this.addComponent(baselineDemo);
     }
 }
+
+const BaselinePanelCallable = callable(BaselinePanel);
+type BaselinePanelCallable = BaselinePanel;
+export {
+    BaselinePanel         as _BaselinePanel,
+    BaselinePanelCallable as BaselinePanel
+};

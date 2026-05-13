@@ -11,7 +11,7 @@ Right-clicking a list item opens a menu with Cut / Copy / Paste / Delete. The me
 ```typescript
 import { Menu, Event } from '@jimka/typescript-ui';
 
-const menu = new Menu();
+const menu = Menu();
 ```
 
 Reuse this single instance — `Menu` in rebuild mode is designed to be shared across an app, with the items array changing per invocation.

@@ -4,6 +4,7 @@ import { BooleanEditor } from "./editor/Boolean.js";
 import { Cell } from "./Cell.js";
 import { FillType } from "../../../layout/FillType.js";
 import { AnchorType } from "../../../layout/AnchorType.js";
+import { callable } from "../../../Callable.js";
 
 /**
  * A table cell for boolean values, rendered as a checkbox.
@@ -13,7 +14,7 @@ import { AnchorType } from "../../../layout/AnchorType.js";
  *
  * @category Components
  */
-export class BooleanCell extends Cell<Boolean> {
+class BooleanCell extends Cell<Boolean> {
 
     constructor() {
         let editor = new BooleanEditor();
@@ -52,7 +53,16 @@ export class BooleanCell extends Cell<Boolean> {
      *
      * @param value - The boolean value to reflect on the checkbox.
      */
-    setValue(value: Boolean) {
+    setValue(value: Boolean) : this {
         this.getRenderer().setValue(value);
+
+        return this;
     }
 }
+
+const BooleanCellCallable = callable(BooleanCell);
+type BooleanCellCallable = BooleanCell;
+export {
+    BooleanCell         as _BooleanCell,
+    BooleanCellCallable as BooleanCell
+};

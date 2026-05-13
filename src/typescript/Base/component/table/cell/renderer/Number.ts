@@ -2,6 +2,7 @@
 
 import { CellRenderer } from "./CellRenderer.js";
 import { Text } from "../../../Text.js";
+import { callable } from "../../../../Callable.js";
 
 /**
  * A read-only renderer for numeric cell values.
@@ -10,7 +11,7 @@ import { Text } from "../../../Text.js";
  *
  * @category Components
  */
-export class NumberRenderer extends CellRenderer<Number> {
+class NumberRenderer extends CellRenderer<Number> {
 
     private text: Text = new Text();
 
@@ -39,7 +40,16 @@ export class NumberRenderer extends CellRenderer<Number> {
      *
      * @param value - The numeric value to display.
      */
-    setValue(value: Number) {
+    setValue(value: Number) : this {
         this.text.setText(String(value) || "");
+
+        return this;
     }
 }
+
+const NumberRendererCallable = callable(NumberRenderer);
+type NumberRendererCallable = NumberRenderer;
+export {
+    NumberRenderer         as _NumberRenderer,
+    NumberRendererCallable as NumberRenderer
+};

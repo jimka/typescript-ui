@@ -4,6 +4,7 @@ import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
 import { FillType } from "./FillType.js";
 import { Size } from "../Size.js";
 import { Component } from "../Component.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Grid}.
@@ -23,7 +24,7 @@ export interface GridOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class Grid extends LayoutManager {
+class Grid extends LayoutManager {
 
     private rows: number = 0;
     private columns: number = 0;
@@ -80,8 +81,10 @@ export class Grid extends LayoutManager {
      *
      * @param stretching - Pass `false` to enable per-row baseline alignment instead of stretching.
      */
-    setStretching(stretching: boolean): void {
+    setStretching(stretching: boolean): this {
         this.stretching = stretching;
+
+        return this;
     }
 
     /**
@@ -98,8 +101,10 @@ export class Grid extends LayoutManager {
      *
      * @param rows - The desired row count, or `0` for automatic.
      */
-    setRows(rows: number) {
+    setRows(rows: number) : this {
         this.rows = rows;
+
+        return this;
     }
 
     /**
@@ -117,8 +122,10 @@ export class Grid extends LayoutManager {
      *
      * @param spacing - Spacing in pixels. Falsy values are treated as `0`.
      */
-    setComponentSpacing(spacing: number) {
+    setComponentSpacing(spacing: number) : this {
         this.spacing = spacing || 0;
+
+        return this;
     }
 
     /**
@@ -135,8 +142,10 @@ export class Grid extends LayoutManager {
      *
      * @param columns - The desired column count, or `0` for automatic.
      */
-    setColumns(columns: number) {
+    setColumns(columns: number) : this {
         this.columns = columns;
+
+        return this;
     }
 
     /**
@@ -433,3 +442,10 @@ export class Grid extends LayoutManager {
         }
     }
 }
+
+const GridCallable = callable(Grid);
+type GridCallable = Grid;
+export {
+    Grid         as _Grid,
+    GridCallable as Grid
+};

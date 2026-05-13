@@ -53,7 +53,7 @@ For a custom theme, see the [custom theme recipe](/recipes/custom-theme).
 
 Three common causes:
 
-1. **No layout manager on the parent.** A bare [`Component`](/api/classes/Component) defaults to [`Absolute`](/layouts/Absolute), which positions nothing. Set a manager: `panel.setLayoutManager(new VBox())`.
+1. **No layout manager on the parent.** A bare [`Component`](/api/classes/Component) defaults to [`Absolute`](/layouts/Absolute), which positions nothing. Set a manager: `panel.setLayoutManager(VBox())`.
 2. **No preferred size on a [`Text`](/components/Text)-derived component before its first measurement.** Wait until the parent has had a chance to lay out, or call `setPreferredSize` explicitly.
 3. **Custom CSS without `"px"` units.** See above.
 
@@ -104,6 +104,19 @@ The [Component lifecycle](/concepts/component-lifecycle) and [Sizing](/concepts/
 ## Can I use this framework with React / Vue / Svelte?
 
 Not really. The framework owns DOM updates entirely; mixing it with a virtual-DOM framework's reconciliation in the same subtree leads to fights over which side is authoritative. You can have a plain `<div>` hosted inside a React app and mount the framework into it, but you can't mix children.
+
+## Can I drop the `new` keyword when constructing components?
+
+Yes. Every concrete `Component` subclass, every concrete `LayoutManager`, and `ButtonGroup` are callable as plain functions — `Panel({...})` is identical to `new Panel({...})`. Both forms construct the same instance, satisfy `instanceof`, and remain usable as the right-hand side of `extends`.
+
+```typescript
+const panel = Panel({
+    layoutManager: HBox({ spacing: 10 }),
+    components: [Button("OK"), Text("hello")]
+});
+```
+
+The two forms are interchangeable; pick whichever reads better at the call site. See [Mental model — JSX-shaped, without JSX](/guide/mental-model#jsx-shaped-without-jsx) and [Component options — Calling without `new`](/recipes/component-options#calling-components-and-layouts-without-new).
 
 ## How do I unsubscribe from a listener?
 

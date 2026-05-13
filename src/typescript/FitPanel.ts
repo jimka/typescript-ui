@@ -3,8 +3,9 @@
 import { TextArea } from "./Base/component/TextArea.js";
 import { Fit } from "./Base/layout/Fit.js";
 import { Panel } from "./Base/Panel.js";
+import { callable } from "./Base/Callable.js";
 
-export class FitPanel extends Panel {
+class FitPanel extends Panel {
 
     constructor() {
         super();
@@ -15,3 +16,10 @@ export class FitPanel extends Panel {
         this.addComponent(centerTextArea);
     }
 }
+
+const FitPanelCallable = callable(FitPanel);
+type FitPanelCallable = FitPanel;
+export {
+    FitPanel         as _FitPanel,
+    FitPanelCallable as FitPanel
+};

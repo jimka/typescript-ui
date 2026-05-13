@@ -30,8 +30,10 @@ export class BaseObject {
      *
      * @param id - The new identifier string to assign.
      */
-    setId(id: string) {
+    setId(id: string) : this {
         this.id = id;
+
+        return this;
     }
 
     /**

@@ -57,22 +57,24 @@ export abstract class CellRenderer<T> extends Component {
      * Cell renderer Texts have `setAutoMeasure(false)`, so `setLineHeight`
      * skips its DOM measurement and only writes the CSS rule.
      */
-    doLayout(): void {
+    doLayout(): this {
         super.doLayout();
 
         const children = this.getComponents();
         if (children.length !== 1) {
-            return;
+            return this;
         }
 
         const child = children[0];
         if (!(child instanceof Text)) {
-            return;
+            return this;
         }
 
         const h = child.getHeight();
         if (h > 0) {
             child.setLineHeight(h);
         }
+
+        return this;
     }
 }

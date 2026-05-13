@@ -9,6 +9,7 @@ import { Event } from "../../Event.js";
 import { VirtualScroller } from "../VirtualScroller.js";
 import { ThemeManager } from "../../Theme.js";
 import type { ColumnConfig } from "./ColumnConfig.js";
+import { callable } from "../../Callable.js";
 
 const SCROLL_BUFFER = 2;
 
@@ -42,7 +43,7 @@ function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
  *
  * @category Components
  */
-export class Body extends Component {
+class Body extends Component {
 
     private store           : AbstractStore;
     private hiddenColumns   : Set<string>               = new Set();
@@ -137,16 +138,20 @@ export class Body extends Component {
      *
      * @param hidden - The new set of field names to hide.
      */
-    setHiddenColumns(hidden: Set<string>): void {
+    setHiddenColumns(hidden: Set<string>): this {
         this.hiddenColumns = new Set(hidden);
         this.clearRowPool();
         this.renderWindow();
+
+        return this;
     }
 
-    setColumnConfigs(configs: Map<string, ColumnConfig>): void {
+    setColumnConfigs(configs: Map<string, ColumnConfig>): this {
         this.columnConfigs = configs;
         this.clearRowPool();
         this.renderWindow();
+
+        return this;
     }
 
     /**
@@ -178,7 +183,7 @@ export class Body extends Component {
      *
      * @param store - The new store to bind to the body.
      */
-    setStore(store: AbstractStore): void {
+    setStore(store: AbstractStore): this {
         if (this.storeRefresh) {
             const old = this.store;
 
@@ -195,6 +200,8 @@ export class Body extends Component {
         if (this.getElement()) {
             this.renderWindow();
         }
+
+        return this;
     }
 
     /**
@@ -203,12 +210,12 @@ export class Body extends Component {
      *
      * @param element - Optional. The HTMLElement to initialize with; falls back to `getElement()`.
      */
-    protected init(element?: HTMLElement) {
+    protected init(element?: HTMLElement): this {
         super.init(element);
 
         const el = element || this.getElement();
         if (!el) {
-            return;
+            return this;
         }
 
         this.scroller = new VirtualScroller(this, el, () => this.renderWindow());
@@ -221,6 +228,8 @@ export class Body extends Component {
         Event.addListener(this, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
 
         this.renderWindow();
+
+        return this;
     }
 
     /**
@@ -229,8 +238,10 @@ export class Body extends Component {
      *
      * @param y - The new scroll position in pixels.
      */
-    setScrollY(y: number): void {
+    setScrollY(y: number): this {
         this.scroller?.setScrollY(y);
+
+        return this;
     }
 
     /**
@@ -239,8 +250,10 @@ export class Body extends Component {
      *
      * @param x - The new scroll position in pixels.
      */
-    setScrollX(x: number): void {
+    setScrollX(x: number): this {
         this.scroller?.setScrollX(x);
+
+        return this;
     }
 
     /**
@@ -863,3 +876,10 @@ export class Body extends Component {
         }
     }
 }
+
+const BodyCallable = callable(Body);
+type BodyCallable = Body;
+export {
+    Body         as _Body,
+    BodyCallable as Body
+};

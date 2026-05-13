@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Text, TextOptions } from "./Text.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Label}.
@@ -28,7 +29,7 @@ export interface LabelOptions extends TextOptions {
  *
  * @category Components
  */
-export class Label extends Text {
+class Label extends Text {
 
     forId: string;
 
@@ -59,8 +60,10 @@ export class Label extends Text {
      * Sets the for/htmlFor association and updates the DOM element.
      *
      * @param id - The ID of the form control this label should be associated with. Must be non-empty.
+     *
+     * @returns This component, for method chaining.
      */
-    public setForId(id : string) {
+    public setForId(id : string): this {
         if (!id) {
             throw new Error("Label forId must be non-empty.");
         }
@@ -69,10 +72,12 @@ export class Label extends Text {
 
         let element = this.getElement() as HTMLLabelElement;
         if (!element) {
-            return;
+            return this;
         }
 
         element.htmlFor = id;
+
+        return this;
     }
 
     /**
@@ -88,3 +93,10 @@ export class Label extends Text {
         return element;
     }
 }
+
+const LabelCallable = callable(Label);
+type LabelCallable = Label;
+export {
+    Label         as _Label,
+    LabelCallable as Label
+};

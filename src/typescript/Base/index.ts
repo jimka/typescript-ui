@@ -15,6 +15,8 @@ export type { Theme } from './Theme.js';
 
 // Core
 export { BaseObject } from './BaseObject.js';
+export { callable } from './Callable.js';
+export type { Callable } from './Callable.js';
 export { Component } from './Component.js';
 export type { Comparator, Style, ComponentOptions } from './Component.js';
 export { Panel } from './Panel.js';

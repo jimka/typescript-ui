@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link Absolute}.
@@ -16,7 +17,7 @@ export interface AbsoluteOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-export class Absolute extends LayoutManager {
+class Absolute extends LayoutManager {
 
     constructor(options?: AbsoluteOptions) {
         super();
@@ -32,3 +33,10 @@ export class Absolute extends LayoutManager {
     doLayout(): void {
     }
 }
+
+const AbsoluteCallable = callable(Absolute);
+type AbsoluteCallable = Absolute;
+export {
+    Absolute         as _Absolute,
+    AbsoluteCallable as Absolute
+};

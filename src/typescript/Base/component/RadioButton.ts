@@ -5,6 +5,7 @@ import { Event } from "../Event.js";
 import { HBox } from "../layout/HBox.js";
 import { Input } from "./Input.js";
 import { Label } from "./Label.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link RadioButton}.
@@ -26,7 +27,7 @@ export interface RadioButtonOptions extends ComponentOptions {
  *
  * @category Components
  */
-export class RadioButton extends Component {
+class RadioButton extends Component {
 
     private selected: boolean = false;
     private label: Label;
@@ -64,7 +65,7 @@ export class RadioButton extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: RadioButtonOptions): void {
+    protected applyOptions(options: RadioButtonOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -82,6 +83,8 @@ export class RadioButton extends Component {
         if (options.enabled !== undefined) {
             this.radio.setElementAttribute("disabled", options.enabled ? null : "");
         }
+
+        return this;
     }
 
     /**
@@ -109,8 +112,10 @@ export class RadioButton extends Component {
      *
      * @param listener - The callback to invoke when the radio selection changes.
      */
-    addActionListener(listener: Function) {
+    addActionListener(listener: Function) : this {
         Event.addListener(this.radio, "change", listener);
+
+        return this;
     }
 
     /**
@@ -118,9 +123,11 @@ export class RadioButton extends Component {
      *
      * @param name - The name to set on the radio input element.
      */
-    setRadioName(name: string): void {
+    setRadioName(name: string): this {
         this._radioName = name;
         this.radio.setElementAttribute("name", name);
+
+        return this;
     }
 
     /**
@@ -137,15 +144,17 @@ export class RadioButton extends Component {
      *
      * @param value - True to select the radio button, false to deselect it.
      */
-    setSelected(value: boolean) {
+    setSelected(value: boolean) : this {
         this.selected = !!value;
 
         let element = this.radio.getElement();
         if (!element) {
-            return;
+            return this;
         }
 
         element.checked = this.isSelected();
+
+        return this;
     }
 
     /**
@@ -175,3 +184,10 @@ export class RadioButton extends Component {
         return element;
     }
 }
+
+const RadioButtonCallable = callable(RadioButton);
+type RadioButtonCallable = RadioButton;
+export {
+    RadioButton         as _RadioButton,
+    RadioButtonCallable as RadioButton
+};

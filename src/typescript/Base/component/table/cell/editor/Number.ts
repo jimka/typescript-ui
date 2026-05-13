@@ -5,6 +5,7 @@ import { TextField } from "../../../../component/TextField.js";
 import { AnchorType } from "../../../../layout/AnchorType.js";
 import { BorderStyle } from "../../../../BorderStyle.js";
 import { Event } from "../../../../Event.js";
+import { callable } from "../../../../Callable.js";
 
 /**
  * An in-place editor for numeric cell values.
@@ -14,7 +15,7 @@ import { Event } from "../../../../Event.js";
  *
  * @category Components
  */
-export class NumberEditor extends CellEditor<Number> {
+class NumberEditor extends CellEditor<Number> {
 
     private textField: TextField = new TextField();
 
@@ -61,15 +62,28 @@ export class NumberEditor extends CellEditor<Number> {
      *
      * @param value - The numeric value to set in the text field.
      */
-    setValue(value: Number) {
+    setValue(value: Number) : this {
         this.textField.setText(String(value) || "");
+
+        return this;
     }
 
     /**
      * Focuses the text field and selects all its content.
+     *
+     * @returns This component, for method chaining.
      */
-    focus() {
+    focus(): this {
         this.textField.focus();
         this.textField.select();
+
+        return this;
     }
 }
+
+const NumberEditorCallable = callable(NumberEditor);
+type NumberEditorCallable = NumberEditor;
+export {
+    NumberEditor         as _NumberEditor,
+    NumberEditorCallable as NumberEditor
+};

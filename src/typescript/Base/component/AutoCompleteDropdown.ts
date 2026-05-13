@@ -6,6 +6,7 @@ import { Position } from "../Position.js";
 import { BorderStyle } from "../BorderStyle.js";
 import { VBox } from "../layout/VBox.js";
 import { AutoCompleteItem } from "./AutoCompleteItem.js";
+import { callable } from "../Callable.js";
 
 /**
  * Construction-time options for {@link AutoCompleteDropdown}.
@@ -22,7 +23,7 @@ export interface AutoCompleteDropdownOptions extends ComponentOptions {
  * Maintains a reusable pool of `AutoCompleteItem` rows — items are updated
  * in place rather than destroyed and recreated on each keystroke.
  */
-export class AutoCompleteDropdown extends Component {
+class AutoCompleteDropdown extends Component {
 
     private pool: AutoCompleteItem[] = [];
     private highlightedIndex: number = -1;
@@ -81,12 +82,14 @@ export class AutoCompleteDropdown extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: AutoCompleteDropdownOptions): void {
+    protected applyOptions(options: AutoCompleteDropdownOptions): this {
         super.applyOptions(options);
 
         if (options.maxItems !== undefined) {
             this.maxItems = options.maxItems;
         }
+
+        return this;
     }
 
     /**
@@ -106,7 +109,7 @@ export class AutoCompleteDropdown extends Component {
      * @param anchorEl - The input element to anchor the dropdown to.
      * @param suggestions - The list of suggestion strings to display.
      */
-    show(anchorEl: HTMLElement, suggestions: string[]): void {
+    show(anchorEl: HTMLElement, suggestions: string[]): this {
         this.pauseLayout();
         this.updatePool(suggestions);
         this.resumeLayout();
@@ -144,18 +147,22 @@ export class AutoCompleteDropdown extends Component {
         this.open = true;
 
         Event.addViewportListener(this, "mousedown", this.onViewportMouseDown);
+
+        return this;
     }
 
     /**
      * Hides the dropdown, detaches it from the DOM, and fires the `onHide` callback.
      */
-    hide(): void {
+    hide(): this {
         this.setVisible(false);
         this.removeElement();
         this.open = false;
 
         Event.removeViewportListener(this, "mousedown", this.onViewportMouseDown);
         this.onHide();
+
+        return this;
     }
 
     /**
@@ -275,3 +282,10 @@ export class AutoCompleteDropdown extends Component {
         }
     }
 }
+
+const AutoCompleteDropdownCallable = callable(AutoCompleteDropdown);
+type AutoCompleteDropdownCallable = AutoCompleteDropdown;
+export {
+    AutoCompleteDropdown         as _AutoCompleteDropdown,
+    AutoCompleteDropdownCallable as AutoCompleteDropdown
+};

@@ -134,13 +134,13 @@ export class Binding extends BaseObject {
      *
      * @param record - The record to bind, or `null` to detach.
      */
-    setRecord(record: ModelRecord | null): void {
+    setRecord(record: ModelRecord | null): this {
         this.record = record;
 
         this.clearValidation();
 
         if (!record) {
-            return;
+            return this;
         }
 
         for (const [fieldName, entry] of this.entries) {
@@ -150,6 +150,8 @@ export class Binding extends BaseObject {
         for (const [fieldName] of this.validationConfigs) {
             this._validateFieldIfLive(fieldName);
         }
+
+        return this;
     }
 
     /**
@@ -165,12 +167,14 @@ export class Binding extends BaseObject {
      * Commits the current record, clearing its dirty and new flags.
      * Fires all registered commit listeners.
      */
-    commit(): void {
+    commit(): this {
         this.record?.commit();
 
         for (const fn of this.commitListeners) {
             fn();
         }
+
+        return this;
     }
 
     /**
@@ -287,8 +291,10 @@ export class Binding extends BaseObject {
      *
      * @param enabled - true to validate on every change event; false for explicit-only.
      */
-    setValidateOnChange(enabled: boolean): void {
+    setValidateOnChange(enabled: boolean): this {
         this.globalValidateOnChange = enabled;
+
+        return this;
     }
 
     /**
@@ -304,12 +310,14 @@ export class Binding extends BaseObject {
      * Clears all error decorations without re-running rules.
      * Called automatically by {@link reject}.
      */
-    clearValidation(): void {
+    clearValidation(): this {
         for (const [, config] of this.validationConfigs) {
             if (config.decorator) {
                 config.decorator.clearError();
             }
         }
+
+        return this;
     }
 
     /**

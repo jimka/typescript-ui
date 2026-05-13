@@ -15,8 +15,9 @@ import { Model } from "./Base/data/Model.js";
 import { MemoryStore } from "./Base/data/MemoryStore.js";
 import { Notification } from "./Base/Notification.js";
 import { Panel } from "./Base/Panel.js";
+import { callable } from "./Base/Callable.js";
 
-export class BindingPanel extends Panel {
+class BindingPanel extends Panel {
 
     constructor() {
         super();
@@ -217,3 +218,10 @@ export class BindingPanel extends Panel {
         });
     }
 }
+
+const BindingPanelCallable = callable(BindingPanel);
+type BindingPanelCallable = BindingPanel;
+export {
+    BindingPanel         as _BindingPanel,
+    BindingPanelCallable as BindingPanel
+};

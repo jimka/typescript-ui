@@ -2,6 +2,7 @@
 
 import { StringRenderer } from "./renderer/String.js";
 import { Cell } from "./Cell.js";
+import { callable } from "../../../Callable.js";
 
 /**
  * A plain string-rendering cell with no editor.
@@ -11,7 +12,7 @@ import { Cell } from "./Cell.js";
  *
  * @category Components
  */
-export class DefaultCell extends Cell<String> {
+class DefaultCell extends Cell<String> {
 
     constructor(tag?: string) {
         let renderer = new StringRenderer();
@@ -33,7 +34,16 @@ export class DefaultCell extends Cell<String> {
      *
      * @param value - The string value to display.
      */
-    setValue(value: String) {
+    setValue(value: String) : this {
         this.getRenderer().setValue(value);
+
+        return this;
     }
 }
+
+const DefaultCellCallable = callable(DefaultCell);
+type DefaultCellCallable = DefaultCell;
+export {
+    DefaultCell         as _DefaultCell,
+    DefaultCellCallable as DefaultCell
+};

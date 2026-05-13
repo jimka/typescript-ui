@@ -4,6 +4,7 @@ import { Component } from "../Component.js";
 import { Event } from "../Event.js";
 import { Position } from "../Position.js";
 import { Util } from "../Util.js";
+import { callable } from "../Callable.js";
 
 const TRACK_WIDTH    = 12;
 const THUMB_INSET    = 2;
@@ -43,7 +44,7 @@ export type ScrollbarListener = (position: number) => void;
  *
  * @category Components
  */
-export class Scrollbar extends Component {
+class Scrollbar extends Component {
 
     private orientation     : ScrollbarOrientation     = "vertical";
     private thumb           : Component;
@@ -121,13 +122,15 @@ export class Scrollbar extends Component {
      *
      * @param element - Optional. The HTMLElement to initialize with.
      */
-    protected init(element?: HTMLElement): void {
+    protected init(element?: HTMLElement): this {
         super.init(element);
 
         const el = element || this.getElement();
         if (el) {
             el.style.touchAction = "none";
         }
+
+        return this;
     }
 
     /**
@@ -136,8 +139,10 @@ export class Scrollbar extends Component {
      *
      * @param listener - The callback to invoke with the new scroll position.
      */
-    addScrollListener(listener: ScrollbarListener): void {
+    addScrollListener(listener: ScrollbarListener): this {
         this.scrollListeners.push(listener);
+
+        return this;
     }
 
     /**
@@ -145,11 +150,13 @@ export class Scrollbar extends Component {
      *
      * @param listener - The exact callback reference to remove.
      */
-    removeScrollListener(listener: ScrollbarListener): void {
+    removeScrollListener(listener: ScrollbarListener): this {
         const idx = this.scrollListeners.indexOf(listener);
         if (idx >= 0) {
             this.scrollListeners.splice(idx, 1);
         }
+
+        return this;
     }
 
     /**
@@ -161,7 +168,7 @@ export class Scrollbar extends Component {
      * @param contentSize - The total scrollable content size in pixels along the scroll axis.
      * @param scrollPosition - The current scroll offset in pixels.
      */
-    setMetrics(viewportSize: number, contentSize: number, scrollPosition: number): void {
+    setMetrics(viewportSize: number, contentSize: number, scrollPosition: number): this {
         this.viewportSize   = viewportSize;
         this.contentSize    = contentSize;
         this.scrollPosition = scrollPosition;
@@ -170,12 +177,12 @@ export class Scrollbar extends Component {
         this.setDisplayed(overflow);
 
         if (!overflow) {
-            return;
+            return this;
         }
 
         const trackLength = this.getTrackLength();
         if (trackLength <= 0) {
-            return;
+            return this;
         }
 
         const ratio        = viewportSize / contentSize;
@@ -192,6 +199,8 @@ export class Scrollbar extends Component {
             this.thumbPos = newThumbPos;
             this.setThumbPos(newThumbPos);
         }
+
+        return this;
     }
 
     /**
@@ -386,3 +395,10 @@ export class Scrollbar extends Component {
         this.fireScrollListeners(newPosition);
     };
 }
+
+const ScrollbarCallable = callable(Scrollbar);
+type ScrollbarCallable = Scrollbar;
+export {
+    Scrollbar         as _Scrollbar,
+    ScrollbarCallable as Scrollbar
+};

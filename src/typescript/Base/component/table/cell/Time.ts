@@ -3,6 +3,7 @@
 import { Cell } from "./Cell.js";
 import { TimeRenderer } from "./renderer/Time.js";
 import { TimeEditor } from "./editor/Time.js";
+import { callable } from "../../../Callable.js";
 
 /**
  * A table cell for time values.
@@ -11,7 +12,7 @@ import { TimeEditor } from "./editor/Time.js";
  * Committing an empty field writes null; committing an unparseable value reverts to the
  * previous value instead of writing null.
  */
-export class TimeCell extends Cell<Date | null> {
+class TimeCell extends Cell<Date | null> {
 
     private timeEditor: TimeEditor;
 
@@ -23,15 +24,26 @@ export class TimeCell extends Cell<Date | null> {
         this.timeEditor = editor;
     }
 
-    setValue(value: Date | null): void {
+    setValue(value: Date | null): this {
         this.getRenderer().setValue(value);
+
+        return this;
     }
 
-    commitEdit(): void {
+    commitEdit(): this {
         if (!this.timeEditor.isEmpty() && this.timeEditor.getValue() === null) {
             this.cancelEdit();
-            return;
+            return this;
         }
         super.commitEdit();
+
+        return this;
     }
 }
+
+const TimeCellCallable = callable(TimeCell);
+type TimeCellCallable = TimeCell;
+export {
+    TimeCell         as _TimeCell,
+    TimeCellCallable as TimeCell
+};
