@@ -29,4 +29,5 @@ export { ThemeManager, DefaultTheme, DarkTheme } from '~/core/Theme.js';
 export type { Theme } from '~/core/Theme.js';
 
 export { Binding } from '~/core/Binding.js';
+export type { BeforeRecordListener } from '~/core/Binding.js';
 export type { Bindable, BindingAccessors } from '~/core/Bindable.js';

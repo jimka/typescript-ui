@@ -16,6 +16,10 @@ The package is at version `0.0.0` — pre-release, not yet published. Until a `0
 - Web Worker offload for store sort / filter on datasets ≥ 1,000 rows.
 - Full TypeDoc-generated API reference and curated documentation site.
 
+**Data-binding additions** (additive):
+
+- **`Binding.addBeforeRecordListener`.** Registers a synchronous veto listener consulted before `setRecord` mutates any state. Listener returns `false` to cancel the change; iteration short-circuits on the first veto. Use it for programmatic guards such as "refuse to switch records while the current one is dirty". Async confirmation flows still belong at the call site — `setRecord` stays synchronous. New exported type `BeforeRecordListener` from `@jimka/typescript-ui/core`.
+
 **Declarative-construction additions** (all additive — every `new X(...)` call site still works):
 
 - **Callable component and layout-manager classes.** Every `Component` subclass, every concrete `LayoutManager`, and `ButtonGroup` can now be invoked without `new` — `Panel({...})` is equivalent to `new Panel({...})`. The classes still satisfy `instanceof` and remain usable as `extends` targets. Backed by a small `callable()` Proxy helper exported from `@jimka/typescript-ui/core`.

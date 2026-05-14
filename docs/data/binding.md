@@ -62,6 +62,45 @@ binding.setRecord(store.getAt(1));   // discards uncommitted edits on record 0
 
 `setRecord` is **synchronous** — there is no built-in confirmation step if the current record is dirty. If you need a "save first?" prompt, run it at the call site before `setRecord`.
 
+## Vetoing a record change
+
+`addBeforeRecordListener` registers a guard that runs before `setRecord` mutates any state. The listener receives the *next* record (which may be `null`) and returns `false` to cancel the change:
+
+```typescript
+binding.addBeforeRecordListener((next) => {
+    const current = binding.getRecord();
+
+    if (current && current !== next && current.isDirty()) {
+        Notification.show('Commit or reject your changes first.', 'error');
+        return false;
+    }
+
+    return true;
+});
+```
+
+A vetoed call is a **complete no-op** — the previous record stays bound, field values are not repopulated, and validation decorations are preserved. Multiple listeners can be registered; the first one to return `false` short-circuits the rest, so adding a listener can never widen permission. Returning `true` or omitting `return` allows the change.
+
+The veto API is intentionally synchronous and boolean. For async confirmation flows (a "Discard unsaved changes?" dialog), orchestrate the dialog at the call site and only invoke `setRecord` once the user has decided.
+
+If a veto fires, any picker UI that drove the call (e.g. a record-selector combo) will still show the rejected selection while the binding remains on the previous record. The call site is responsible for reconciling — compare [`getRecord`](/api/core/classes/Binding#getrecord) after the call and reset the picker if they diverge:
+
+```typescript
+recordCombo.addActionListener(() => {
+    const next = store.find('id', Number(recordCombo.getElement().value));
+    if (!next) return;
+
+    binding.setRecord(next);
+
+    const active = binding.getRecord();
+    if (active && active !== next) {
+        recordCombo.getElement().value = String(active.get('id'));
+    }
+});
+```
+
+Listeners that only want to guard *switches* (and let `setRecord(null)` clears through) must short-circuit `next === null` themselves.
+
 ## Unbinding
 
 `binding.unbind(fieldName)` removes a component from the binding. `binding.bind` on an already-bound field rebinds it.
@@ -71,3 +110,4 @@ binding.setRecord(store.getAt(1));   // discards uncommitted edits on record 0
 - [Record](/data/record) — what `setRecord` accepts.
 - [`Bindable`](/api/core/interfaces/Bindable) — the interface form components implement.
 - [`BindingAccessors`](/api/core/interfaces/BindingAccessors) — the explicit-accessor shape.
+- [`BeforeRecordListener`](/api/core/type-aliases/BeforeRecordListener) — the veto-listener signature.
