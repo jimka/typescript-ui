@@ -1,14 +1,13 @@
 # TablePanel
 
-[`TablePanel`](/api/classes/TablePanel) is a composite that combines a [`Table`](/components/Table) with an add / remove / sync toolbar. The toolbar is docked to the north region; the table fills the centre.
+[`TablePanel`](/api/component/table/classes/TablePanel) is a composite that combines a [`Table`](/components/Table) with an add / remove / sync toolbar. The toolbar is docked to the north region; the table fills the centre.
 
 This is the convenience component for CRUD UIs that don't need a custom toolbar layout.
 
 ## Usage
 
 ```typescript
-import { TablePanel } from '@jimka/typescript-ui';
-
+import { TablePanel } from '@jimka/typescript-ui/component/table';
 const panel = new TablePanel(store);
 container.addComponent(panel);
 ```
@@ -22,7 +21,7 @@ The toolbar exposes four actions out of the box:
 
 ## Customising the toolbar
 
-For fine-grained control over the toolbar buttons, build a layout yourself with a north-region [`HBox`](/api/classes/HBox) of `Button`s and a centre-region [`Table`](/components/Table). `TablePanel` is intended for the common case where you just want CRUD wired up.
+For fine-grained control over the toolbar buttons, build a layout yourself with a north-region [`HBox`](/api/layout/classes/HBox) of `Button`s and a centre-region [`Table`](/components/Table). `TablePanel` is intended for the common case where you just want CRUD wired up.
 
 ## Pagination
 
@@ -30,8 +29,8 @@ When the store is paginated (via `setPageSize`), drop a
 [`PaginationBar`](/components/PaginationBar) into the south region:
 
 ```typescript
-import { PaginationBar, TablePanel } from '@jimka/typescript-ui';
-
+import { PaginationBar } from '@jimka/typescript-ui/component/display';
+import { TablePanel } from '@jimka/typescript-ui/component/table';
 store.setPageSize(25);
 
 const panel = new TablePanel(store);
@@ -58,7 +57,7 @@ escaping rules.
 
 ## See also
 
-- [API: TablePanel](/api/classes/TablePanel)
+- [API: TablePanel](/api/component/table/classes/TablePanel)
 - [`Table`](/components/Table) — the underlying component
 - [`PaginationBar`](/components/PaginationBar) — pagination navigation
 - [Store › Add and remove records](/data/store#add-and-remove-records)

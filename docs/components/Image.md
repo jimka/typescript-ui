@@ -1,12 +1,11 @@
 # Image
 
-[`Image`](/api/classes/Image) is an image component backed by an `<img>` element. Reports its preferred size from the image's natural intrinsic dimensions once loaded.
+[`Image`](/api/component/display/classes/Image) is an image component backed by an `<img>` element. Reports its preferred size from the image's natural intrinsic dimensions once loaded.
 
 ## Usage
 
 ```typescript
-import { Image } from '@jimka/typescript-ui';
-
+import { Image } from '@jimka/typescript-ui/component/display';
 const logo = new Image();
 logo.setSrc('/assets/logo.png');
 logo.setPreferredSize(120, 40);
@@ -28,5 +27,5 @@ panel.addComponent(logo);
 
 ## See also
 
-- [API: Image](/api/classes/Image)
+- [API: Image](/api/component/display/classes/Image)
 - [`FontAwesomeIcon`](/components/FontAwesomeIcon) — for vector glyphs

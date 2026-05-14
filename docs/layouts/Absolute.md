@@ -1,6 +1,6 @@
 # Absolute
 
-[`Absolute`](/api/classes/Absolute) is the **no-op** layout manager. It performs no automatic positioning; children are expected to be positioned manually via `setPosition`, `setX`, `setY`.
+[`Absolute`](/api/layout/classes/Absolute) is the **no-op** layout manager. It performs no automatic positioning; children are expected to be positioned manually via `setPosition`, `setX`, `setY`.
 
 ```
 +--------------------------+
@@ -16,8 +16,9 @@
 ## Usage
 
 ```typescript
-import { Component, Absolute, Button } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Absolute } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
 const canvas = new Component();
 canvas.setLayoutManager(new Absolute());
 
@@ -41,5 +42,5 @@ For everything else, prefer one of the structural managers ([`Border`](/layouts/
 
 ## See also
 
-- [API: Absolute](/api/classes/Absolute)
+- [API: Absolute](/api/layout/classes/Absolute)
 - [Layouts overview](/layouts/)

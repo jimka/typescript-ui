@@ -1,6 +1,6 @@
-import { AbstractStore, AbstractStoreOptions } from "./AbstractStore";
-import { Model } from "./Model";
-import { AjaxProxy, AjaxProxyOptions } from "./proxy/AjaxProxy";
+import { AbstractStore, AbstractStoreOptions } from "~/data/AbstractStore";
+import { Model } from "~/data/Model";
+import { AjaxProxy, AjaxProxyOptions } from "~/data/proxy/AjaxProxy";
 
 /**
  * Construction-time options for {@link AjaxStore}. Combines store-level options

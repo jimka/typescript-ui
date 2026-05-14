@@ -6,12 +6,12 @@
 // (test environment, server-side, etc.) — the AbstractStore caller checks
 // `isAvailable()` before dispatching.
 
-import { FilterDescriptor } from "./FilterDescriptor.js";
+import { FilterDescriptor } from "~/data/FilterDescriptor.js";
 
 // Vite-specific worker import. The `?worker` suffix tells Vite to bundle the
 // module as a Web Worker entry. The default export is the Worker constructor.
 // @ts-ignore — Vite resolves this at build time; tsc on its own can't.
-import StoreWorkerCtor from "./StoreWorker.js?worker";
+import StoreWorkerCtor from "~/data/StoreWorker.js?worker";
 
 type Direction = "asc" | "desc";
 

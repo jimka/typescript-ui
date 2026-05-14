@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../../../Component.js";
-import { Event } from "../../../Event.js";
-import { Insets } from "../../../Insets.js";
-import { Card } from "../../../layout/Card.js";
-import { CellRenderer } from "./renderer/CellRenderer.js";
-import { CellEditor } from "./editor/CellEditor.js";
-import { LayoutConstraints } from "../../../layout/LayoutConstraints.js";
-import { ThemeManager } from "../../../Theme.js";
+import { Component } from "~/core/Component.js";
+import { Event } from "~/core/Event.js";
+import { Insets } from "~/primitive/Insets.js";
+import { Card } from "~/layout/Card.js";
+import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
+import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import { ThemeManager } from "~/core/Theme.js";
 
 /**
  * Base class for table cells that support both a display renderer and an optional in-place editor.

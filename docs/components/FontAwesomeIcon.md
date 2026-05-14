@@ -1,6 +1,6 @@
 # FontAwesomeIcon
 
-[`FontAwesomeIcon`](/api/classes/FontAwesomeIcon) is a Font Awesome glyph rendered as an `<i>` element. Applies the given icon-type prefix (e.g. `"fas"`) and icon name (e.g. `"times"`) as CSS classes so the Font Awesome library can resolve the correct glyph.
+[`FontAwesomeIcon`](/api/component/display/classes/FontAwesomeIcon) is a Font Awesome glyph rendered as an `<i>` element. Applies the given icon-type prefix (e.g. `"fas"`) and icon name (e.g. `"times"`) as CSS classes so the Font Awesome library can resolve the correct glyph.
 
 ::: warning Font Awesome must be loaded
 The Font Awesome script must be included separately in the host page or installed via the `@fortawesome/fontawesome-free` peer dependency. The framework does not bundle it.
@@ -9,8 +9,8 @@ The Font Awesome script must be included separately in the host page or installe
 ## Usage
 
 ```typescript
-import { FontAwesomeIcon, Button } from '@jimka/typescript-ui';
-
+import { Button } from '@jimka/typescript-ui/component/button';
+import { FontAwesomeIcon } from '@jimka/typescript-ui/component/display';
 const closeIcon = new FontAwesomeIcon('fas', 'times');
 closeIcon.setPreferredSize(16, 16);
 
@@ -34,5 +34,5 @@ panel.addComponent(closeButton);
 
 ## See also
 
-- [API: FontAwesomeIcon](/api/classes/FontAwesomeIcon)
+- [API: FontAwesomeIcon](/api/component/display/classes/FontAwesomeIcon)
 - [Font Awesome icon catalog](https://fontawesome.com/icons) (external)

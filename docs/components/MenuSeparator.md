@@ -1,14 +1,13 @@
 # MenuSeparator
 
-[`MenuSeparator`](/api/classes/MenuSeparator) is a horizontal divider rule used inside a [`Menu`](/components/Menu) to visually group menu items.
+[`MenuSeparator`](/api/component/container/classes/MenuSeparator) is a horizontal divider rule used inside a [`Menu`](/components/Menu) to visually group menu items.
 
-You usually don't construct it directly — set `separator: true` on a [`MenuItemConfig`](/api/interfaces/MenuItemConfig) entry instead.
+You usually don't construct it directly — set `separator: true` on a [`MenuItemConfig`](/api/component/container/interfaces/MenuItemConfig) entry instead.
 
 ## Usage
 
 ```typescript
-import { MenuBar } from '@jimka/typescript-ui';
-
+import { MenuBar } from '@jimka/typescript-ui/component/menubar';
 const bar = new MenuBar([
     { label: 'File', items: [
         { text: 'New' },
@@ -30,5 +29,5 @@ const bar = new MenuBar([
 
 ## See also
 
-- [API: MenuSeparator](/api/classes/MenuSeparator)
+- [API: MenuSeparator](/api/component/container/classes/MenuSeparator)
 - [`Menu`](/components/Menu)

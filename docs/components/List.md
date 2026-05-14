@@ -1,12 +1,13 @@
 # List
 
-[`List`](/api/classes/List) is a single-selection scrollable list box backed by a `<select>` element. It extends [`ComboBox`](/components/ComboBox) but displays all options simultaneously by sizing the select to fit its item count.
+[`List`](/api/component/list/classes/List) is a single-selection scrollable list box backed by a `<select>` element. It extends [`ComboBox`](/components/ComboBox) but displays all options simultaneously by sizing the select to fit its item count.
 
 ## Usage
 
 ```typescript
-import { List, Option, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { Option } from '@jimka/typescript-ui/component/input';
+import { List } from '@jimka/typescript-ui/component/list';
 const fruits = new List();
 fruits.addItem(new Option('apple',  'Apple'));
 fruits.addItem(new Option('banana', 'Banana'));
@@ -34,6 +35,6 @@ The list refreshes automatically on store events.
 
 ## See also
 
-- [API: List](/api/classes/List)
+- [API: List](/api/component/list/classes/List)
 - [`MultiSelectList`](/components/MultiSelectList) — multi-selection variant
 - [`ComboBox`](/components/ComboBox) — drop-down version

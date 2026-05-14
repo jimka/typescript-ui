@@ -8,13 +8,12 @@ A cell that shows `$1,234.50` in display mode and `1234.50` in a numeric editor.
 
 ## Build the renderer
 
-A [`CellRenderer<T>`](/api/classes/CellRenderer) is responsible for the display side. Subclass it and override `setValue`:
+A [`CellRenderer<T>`](/api/component/table/classes/CellRenderer) is responsible for the display side. Subclass it and override `setValue`:
 
 ```typescript
-import {
-    CellRenderer, Text, AnchorType, FillType,
-} from '@jimka/typescript-ui';
-
+import { AnchorType, FillType } from '@jimka/typescript-ui/layout';
+import { Text } from '@jimka/typescript-ui/component/input';
+import { CellRenderer } from '@jimka/typescript-ui/component/table';
 class CurrencyRenderer extends CellRenderer<number> {
     private text: Text = Text();
 
@@ -39,13 +38,12 @@ class CurrencyRenderer extends CellRenderer<number> {
 
 ## Build the editor
 
-A [`CellEditor<T>`](/api/classes/CellEditor) takes over on double-click. Wrap a [`TextField`](/components/TextField) and parse the typed value back into a number:
+A [`CellEditor<T>`](/api/component/table/classes/CellEditor) takes over on double-click. Wrap a [`TextField`](/components/TextField) and parse the typed value back into a number:
 
 ```typescript
-import {
-    CellEditor, TextField, Event,
-} from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { TextField } from '@jimka/typescript-ui/component/input';
+import { CellEditor } from '@jimka/typescript-ui/component/table';
 class CurrencyEditor extends CellEditor<number> {
     private input: TextField = TextField();
 
@@ -68,11 +66,10 @@ class CurrencyEditor extends CellEditor<number> {
 
 ## Compose the cell
 
-A [`Cell<T>`](/api/classes/Cell) glues the renderer and editor together:
+A [`Cell<T>`](/api/component/table/classes/Cell) glues the renderer and editor together:
 
 ```typescript
-import { Cell } from '@jimka/typescript-ui';
-
+import { Cell } from '@jimka/typescript-ui/component/table';
 class CurrencyCell extends Cell<number> {
     constructor() {
         super('td', new CurrencyRenderer(), new CurrencyEditor());
@@ -82,11 +79,10 @@ class CurrencyCell extends Cell<number> {
 
 ## Use it in a Table
 
-The simplest route is to subclass [`Row`](/api/classes/TableRow) and pick `CurrencyCell` for fields whose name matches a "money" pattern:
+The simplest route is to subclass [`Row`](/api/component/table/classes/Row) and pick `CurrencyCell` for fields whose name matches a "money" pattern:
 
 ```typescript
-import { Row as TableRow } from '@jimka/typescript-ui';
-
+import { Row as TableRow } from '@jimka/typescript-ui/component/table';
 class MoneyAwareRow extends TableRow {
     protected createCellForField(fieldName: string, type: string): Cell<unknown> {
         if (fieldName === 'price' || fieldName === 'total') {
@@ -97,7 +93,7 @@ class MoneyAwareRow extends TableRow {
 }
 ```
 
-(Method names depend on the version — see [`TableRow`](/api/classes/TableRow) for the actual extension hooks.)
+(Method names depend on the version — see [`Row`](/api/component/table/classes/Row) for the actual extension hooks.)
 
 ## Lifecycle hooks
 
@@ -111,5 +107,5 @@ A custom cell automatically gets the standard edit lifecycle:
 ## See also
 
 - [Table internals](/components/TableInternals) — full overview of the cell pipeline
-- [API: Cell](/api/classes/Cell), [CellRenderer](/api/classes/CellRenderer), [CellEditor](/api/classes/CellEditor)
-- [`StringCell`](/api/classes/StringCell), [`NumberCell`](/api/classes/NumberCell), [`BooleanCell`](/api/classes/BooleanCell) — built-in references
+- [API: Cell](/api/component/table/classes/Cell), [CellRenderer](/api/component/table/classes/CellRenderer), [CellEditor](/api/component/table/classes/CellEditor)
+- [`StringCell`](/api/component/table/classes/StringCell), [`NumberCell`](/api/component/table/classes/NumberCell), [`BooleanCell`](/api/component/table/classes/BooleanCell) — built-in references

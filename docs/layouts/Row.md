@@ -1,6 +1,6 @@
 # Row
 
-[`Row`](/api/classes/Row) divides the container height equally among all children and places them top-to-bottom with a configurable gap. Unlike [`VBox`](/layouts/VBox) (which honours each child's preferred height), `Row` allocates equal slots regardless.
+[`Row`](/api/layout/classes/Row) divides the container height equally among all children and places them top-to-bottom with a configurable gap. Unlike [`VBox`](/layouts/VBox) (which honours each child's preferred height), `Row` allocates equal slots regardless.
 
 Despite the name, `Row` lays children out **vertically**. The name describes the row of equally sized slots that result.
 
@@ -18,8 +18,9 @@ Despite the name, `Row` lays children out **vertically**. The name describes the
 ## Usage
 
 ```typescript
-import { Component, Row, Button } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Row } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
 const sidebar = new Component();
 sidebar.setLayoutManager(new Row({ gap: 4 }));
 
@@ -28,7 +29,7 @@ sidebar.addComponent(new Button('Section 2'));
 sidebar.addComponent(new Button('Section 3'));
 ```
 
-[`RowOptions`](/api/interfaces/RowOptions) accepts `gap` declaratively; the `setGap` setter still works for runtime updates.
+[`RowOptions`](/api/layout/interfaces/RowOptions) accepts `gap` declaratively; the `setGap` setter still works for runtime updates.
 
 ## Per-child constraints
 
@@ -49,6 +50,6 @@ For preferred-height-driven stacking, use [`VBox`](/layouts/VBox).
 
 ## See also
 
-- [API: Row](/api/classes/Row)
+- [API: Row](/api/layout/classes/Row)
 - [`Column`](/layouts/Column) — horizontal counterpart
 - [`VBox`](/layouts/VBox) — vertical, preferred-height-driven

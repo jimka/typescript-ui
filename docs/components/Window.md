@@ -1,12 +1,12 @@
 # Window
 
-[`Window`](/api/classes/Window) is a floating, draggable, resizable panel with a title bar and a close button. Multiple windows stack with auto-managed `z-index`, and clicks outside the active window deactivate it.
+[`Window`](/api/core/classes/Window) is a floating, draggable, resizable panel with a title bar and a close button. Multiple windows stack with auto-managed `z-index`, and clicks outside the active window deactivate it.
 
 ## Usage
 
 ```typescript
-import { Body, Window, Text } from '@jimka/typescript-ui';
-
+import { Body, Window } from '@jimka/typescript-ui/core';
+import { Text } from '@jimka/typescript-ui/component/input';
 const win = new Window();
 win.setHeaderText('Settings');
 win.setSize(360, 240);
@@ -29,7 +29,7 @@ win.show();
 | `setResizeFps(fps)` | Throttle resize-driven layout (default 30). |
 | `addExitActionListener(fn)` | Called when the user clicks the × button. |
 
-The full surface — drag listeners, focus / activation events, viewport-clamping — is in the [API reference](/api/classes/Window).
+The full surface — drag listeners, focus / activation events, viewport-clamping — is in the [API reference](/api/core/classes/Window).
 
 ## DOM placement
 
@@ -43,6 +43,6 @@ Windows append themselves to `document.documentElement` (not `<body>`) so they c
 
 ## See also
 
-- [API: Window](/api/classes/Window)
+- [API: Window](/api/core/classes/Window)
 - [Mental model](/guide/mental-model)
-- Recipe: floating window with custom content (forthcoming).
+- Recipe: [Floating window](/recipes/floating-window)

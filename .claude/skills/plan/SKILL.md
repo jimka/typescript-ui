@@ -82,7 +82,18 @@ End with `---`.
 
 ### `## Verification` (when the plan ships behaviour the user will test)
 
-A numbered list of concrete checks: typecheck commands, grep invariants, manual smoke tests, theme-toggle tests, layout-regression checks, and `graphify update .` to refresh the knowledge graph. Be specific — name the demo screen or window the user should open.
+A numbered list of concrete checks: typecheck commands, grep invariants, manual smoke tests, theme-toggle tests, layout-regression checks, `npm run docs:build` (0 errors and 0 link warnings is the bar — the lone acceptable warning is typedoc's "unsupported TypeScript version" notice), and `graphify update .` to refresh the knowledge graph. Be specific — name the demo screen or window the user should open.
+
+### `## Documentation Impact` (when the plan adds, removes, or restructures public symbols)
+
+A short section enumerating the doc work required:
+
+- Which per-subpath barrel needs the new symbol exported (`src/typescript/lib/<group>/index.ts`). Every public symbol must travel through one and only one barrel — there is no root barrel.
+- Which curated `.md` page under `docs/<group>/` covers the symbol (create if it's a brand-new class; update the catalog `docs/<group>/index.md` and the sidebar in `docs/.vitepress/config.mts` either way).
+- Cross-bucket JSDoc references: the plan should call out any place where the new class is referenced from JSDoc in a *different* subpath — those references need the markdown link form `[\`Foo\`](/api/<subpath>/<kind>/Foo)` rather than `{@link Foo}`, since `{@link}` only resolves within the same entry-point bucket.
+- If the plan renames or removes an existing exported symbol: list every doc page that currently references it (a quick `grep -rln '\bOldName\b' docs/`) so the implementer doesn't miss a stale link or alias.
+
+Skip this section for bug fixes and internal refactors that don't touch the public API surface.
 
 ### `## Potential Challenges` (when there are real gotchas)
 

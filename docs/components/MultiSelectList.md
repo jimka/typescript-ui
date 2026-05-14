@@ -1,12 +1,13 @@
 # MultiSelectList
 
-[`MultiSelectList`](/api/classes/MultiSelectList) is a multi-selection list box backed by `<select multiple>`. Extends [`List`](/components/List) with `getValues()` / `setValues()` for reading and writing the multi-selection state.
+[`MultiSelectList`](/api/component/list/classes/MultiSelectList) is a multi-selection list box backed by `<select multiple>`. Extends [`List`](/components/List) with `getValues()` / `setValues()` for reading and writing the multi-selection state.
 
 ## Usage
 
 ```typescript
-import { MultiSelectList, Option, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { Option } from '@jimka/typescript-ui/component/input';
+import { MultiSelectList } from '@jimka/typescript-ui/component/list';
 const tags = new MultiSelectList();
 tags.addItem(new Option('urgent',     'Urgent'));
 tags.addItem(new Option('blocked',    'Blocked'));
@@ -30,7 +31,7 @@ panel.addComponent(tags);
 
 ## Binding
 
-Because `MultiSelectList` does not implement [`Bindable`](/api/interfaces/Bindable) directly (its value type is `string[]` rather than a single string), wire it via [explicit accessors](/data/binding#explicit-accessors):
+Because `MultiSelectList` does not implement [`Bindable`](/api/core/interfaces/Bindable) directly (its value type is `string[]` rather than a single string), wire it via [explicit accessors](/data/binding#explicit-accessors):
 
 ```typescript
 new Binding().bind('tags', tagsList, {
@@ -42,6 +43,6 @@ new Binding().bind('tags', tagsList, {
 
 ## See also
 
-- [API: MultiSelectList](/api/classes/MultiSelectList)
+- [API: MultiSelectList](/api/component/list/classes/MultiSelectList)
 - [`List`](/components/List) — single-selection variant
 - [Data binding › Explicit accessors](/data/binding#explicit-accessors)

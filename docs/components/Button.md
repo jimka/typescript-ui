@@ -1,12 +1,12 @@
 # Button
 
-[`Button`](/api/classes/Button) is a push button with a text label and a configurable pressed-state appearance. Maintains separate CSS rules for the normal and `:active` states so border, shadow, background, and foreground colour are independently controllable when pressed.
+[`Button`](/api/component/button/classes/Button) is a push button with a text label and a configurable pressed-state appearance. Maintains separate CSS rules for the normal and `:active` states so border, shadow, background, and foreground colour are independently controllable when pressed.
 
 ## Usage
 
 ```typescript
-import { Button, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { Button } from '@jimka/typescript-ui/component/button';
 const saveButton = new Button('Save');
 Event.addListener(saveButton, 'click', () => save());
 
@@ -25,18 +25,18 @@ button.setPressedForegroundColor('white');
 button.setPressedBorderRadius('8px');
 ```
 
-The full setter / getter list is in the [API reference](/api/classes/Button).
+The full setter / getter list is in the [API reference](/api/component/button/classes/Button).
 
 ## Notes
 
-- The label is a child [`Label`](/api/classes/Label); it inherits the button's foreground colour and theme font size.
+- The label is a child [`Label`](/api/component/input/classes/Label); it inherits the button's foreground colour and theme font size.
 - `setText(text)` updates the label.
 - For toggle behavior (selected / unselected) use [`ToggleButton`](/components/ToggleButton).
 - For radio-group behavior use [`RadioButton`](/components/RadioButton) plus [`ButtonGroup`](/components/ButtonGroup).
 
 ## See also
 
-- [API: Button](/api/classes/Button)
+- [API: Button](/api/component/button/classes/Button)
 - [`ToggleButton`](/components/ToggleButton)
 - [`SpinButton`](/components/SpinButton)
 - [`TabCloseButton`](/components/TabCloseButton)

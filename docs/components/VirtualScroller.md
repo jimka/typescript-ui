@@ -1,6 +1,6 @@
 # VirtualScroller
 
-[`VirtualScroller`](/api/classes/VirtualScroller) is the shared scroll machinery for transform-based virtual lists. It is what [`TableBody`](/api/classes/TableBody) and [`Tree`](/components/Tree) compose internally; you can compose it directly if you are building your own virtual-scroll surface.
+[`VirtualScroller`](/api/component/container/classes/VirtualScroller) is the shared scroll machinery for transform-based virtual lists. It is what the table's [`Body`](/api/component/table/classes/Body) and [`Tree`](/components/Tree) compose internally; you can compose it directly if you are building your own virtual-scroll surface.
 
 It owns four things on behalf of the owner component:
 
@@ -14,8 +14,8 @@ The owner sets `overflow:hidden` on its element so the browser doesn't try to sc
 ## Usage
 
 ```typescript
-import { Component, VirtualScroller } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { VirtualScroller } from '@jimka/typescript-ui/component/container';
 class MyList extends Component {
     private scroller: VirtualScroller | null = null;
     // ... pool, geometry, data ...
@@ -86,8 +86,8 @@ If your component is "a static list of N items," prefer a standard layout contai
 
 ## See also
 
-- [API: VirtualScroller](/api/classes/VirtualScroller)
+- [API: VirtualScroller](/api/component/container/classes/VirtualScroller)
 - [`Scrollbar`](/components/Scrollbar) — the visible scrollbar primitive used inside
-- [`TableBody`](/api/classes/TableBody) and [`Tree`](/components/Tree) — the in-tree consumers
+- The table [`Body`](/api/component/table/classes/Body) and [`Tree`](/components/Tree) — the in-tree consumers
 - [Virtualized lists recipe](/recipes/virtualized-list)
 - [Performance › Virtual scrolling](/concepts/performance#virtual-scrolling)

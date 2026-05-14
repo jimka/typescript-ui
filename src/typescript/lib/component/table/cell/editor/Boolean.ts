@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { CellEditor } from "./CellEditor.js";
-import { Checkbox } from "../../../../component/Checkbox.js";
-import { callable } from "../../../../Callable.js";
+import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
+import { Checkbox } from "~/component/input/Checkbox.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * An always-visible checkbox editor for boolean cell values.

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Model } from './Model.js';
-import { Proxy } from './proxy/Proxy.js';
-import { AbstractStore, AbstractStoreOptions } from './AbstractStore.js';
+import { Model } from '~/data/Model.js';
+import { Proxy } from '~/data/proxy/Proxy.js';
+import { AbstractStore, AbstractStoreOptions } from '~/data/AbstractStore.js';
 
 /**
  * Construction-time options for {@link Store}. May be passed as the first

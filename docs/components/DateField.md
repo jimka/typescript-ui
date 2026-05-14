@@ -1,14 +1,14 @@
 # DateField
 
-[`DateField`](/api/classes/DateField) is a date picker backed by an `<input type="date">` element. Returns `null` from `getValue` when the field is empty.
+[`DateField`](/api/component/input/classes/DateField) is a date picker backed by an `<input type="date">` element. Returns `null` from `getValue` when the field is empty.
 
-It implements [`Bindable<Date | null>`](/api/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
+It implements [`Bindable<Date | null>`](/api/core/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
 
 ## Usage
 
 ```typescript
-import { DateField, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { DateField } from '@jimka/typescript-ui/component/input';
 const dueDate = new DateField();
 dueDate.setValue(new Date('2026-12-31'));
 
@@ -35,6 +35,6 @@ panel.addComponent(dueDate);
 
 ## See also
 
-- [API: DateField](/api/classes/DateField)
+- [API: DateField](/api/component/input/classes/DateField)
 - [`TimeField`](/components/TimeField) — time-of-day variant
 - [Data binding](/data/binding)

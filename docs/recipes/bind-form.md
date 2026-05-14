@@ -9,11 +9,8 @@ Edit a person record across `TextField`, `Checkbox`, and `ComboBox` inputs. The 
 ## Set up the record
 
 ```typescript
-import {
-    Model, MemoryStore,
-    Binding, Event,
-} from '@jimka/typescript-ui';
-
+import { Binding, Event } from '@jimka/typescript-ui/core';
+import { Model, MemoryStore } from '@jimka/typescript-ui/data';
 const PersonModel = new Model([
     { name: 'name',   type: 'string'  },
     { name: 'email',  type: 'string'  },
@@ -30,11 +27,10 @@ await store.load();
 ## Build the form
 
 ```typescript
-import {
-    Component, VBox, HBox,
-    Label, TextField, Checkbox, ComboBox, Option, Button,
-} from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { VBox, HBox } from '@jimka/typescript-ui/layout';
+import { Label, TextField, Checkbox, ComboBox, Option } from '@jimka/typescript-ui/component/input';
+import { Button } from '@jimka/typescript-ui/component/button';
 const nameField   = TextField();
 const emailField  = TextField();
 const activeCheck = Checkbox();

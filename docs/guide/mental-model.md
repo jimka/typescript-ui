@@ -87,18 +87,18 @@ Entry point (your main.ts)
 
 ### Component system
 
-Every UI element extends [`Component`](/api/classes/Component), which manages:
+Every UI element extends [`Component`](/api/core/classes/Component), which manages:
 
 - Absolute position and size (with min / max / preferred bounds).
 - CSS styling (colors, borders, shadow, opacity).
 - Child component tree and the layout manager attached to it.
 - Deferred DOM rendering via `getElement()` — the actual `<div>` is not created until needed.
 
-[`BaseObject`](/api/classes/BaseObject) sits above `Component` and provides UUID-based identity. [`Body`](/api/classes/Body) is a singleton wrapping `document.body` that bootstraps the framework and listens for viewport resize events.
+[`BaseObject`](/api/core/classes/BaseObject) sits above `Component` and provides UUID-based identity. [`Body`](/api/core/classes/Body) is a singleton wrapping `document.body` that bootstraps the framework and listens for viewport resize events.
 
 ### Layout managers
 
-A [`LayoutManager`](/api/classes/LayoutManager) is attached to a container component and positions its children on each `doLayout()` call. All managers extend `LayoutManager`, which handles fill / anchor constraint resolution.
+A [`LayoutManager`](/api/layout/classes/LayoutManager) is attached to a container component and positions its children on each `doLayout()` call. All managers extend `LayoutManager`, which handles fill / anchor constraint resolution.
 
 See [Layouts](/layouts/) for the full list (Border, Card, Column, Fit, Grid, HBox, Row, Split, Tab, VBox, and more).
 

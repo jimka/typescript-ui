@@ -1,14 +1,13 @@
 # Body
 
-[`Body`](/api/classes/Body) is a singleton [`Component`](/api/classes/Component) that wraps the page's `<body>` element. It bootstraps the framework on first access and listens for viewport resize events to re-run layout from the root.
+[`Body`](/api/core/classes/Body) is a singleton [`Component`](/api/core/classes/Component) that wraps the page's `<body>` element. It bootstraps the framework on first access and listens for viewport resize events to re-run layout from the root.
 
 You don't usually instantiate components directly into `Body`; instead you attach top-level layout containers to it.
 
 ## Usage
 
 ```typescript
-import { Body, Window, ThemeManager, DefaultTheme } from '@jimka/typescript-ui';
-
+import { Body, Window, ThemeManager, DefaultTheme } from '@jimka/typescript-ui/core';
 ThemeManager.setTheme(DefaultTheme);
 
 const body = Body.getInstance();
@@ -26,6 +25,6 @@ win.show();
 
 ## See also
 
-- [API: Body](/api/classes/Body)
+- [API: Body](/api/core/classes/Body)
 - [Mental model](/guide/mental-model) — explains how `Body` fits into the component tree.
 - [Theming](/concepts/theming) — what `setTheme` does at startup.

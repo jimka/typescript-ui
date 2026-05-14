@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import {
-    Component,
-    DarkTheme,
-    DefaultTheme,
-    MemoryStore,
-    Model,
-    Table,
-    ThemeManager
-} from "@jimka/typescript-ui";
-
+import { Component, DarkTheme, DefaultTheme, ThemeManager } from '@jimka/typescript-ui/core';
+import { MemoryStore, Model } from '@jimka/typescript-ui/data';
+import { Table } from '@jimka/typescript-ui/component/table';
 /**
  * In-browser micro-benchmarks for the UI library. Not auto-run; invoke from
  * devtools via window.bench.

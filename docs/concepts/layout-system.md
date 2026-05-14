@@ -1,6 +1,6 @@
 # Layout system
 
-A [`LayoutManager`](/api/classes/LayoutManager) is attached to a container [`Component`](/api/classes/Component). On every `doLayout()` call it reads the size hints of each child, resolves each child's [`LayoutConstraints`](/layouts/Constraints), and writes pixel-level position and size values to the children.
+A [`LayoutManager`](/api/layout/classes/LayoutManager) is attached to a container [`Component`](/api/core/classes/Component). On every `doLayout()` call it reads the size hints of each child, resolves each child's [`LayoutConstraints`](/layouts/Constraints), and writes pixel-level position and size values to the children.
 
 The framework ships 12 layout managers covering the desktop UI repertoire — [`Border`](/layouts/Border), [`HBox`](/layouts/HBox), [`Grid`](/layouts/Grid), [`Split`](/layouts/Split), and so on. This page is about the underlying mechanics they share.
 
@@ -47,7 +47,7 @@ panel.addComponents(
 
 The same pair shape can appear in a constructor's `components` option for a fully declarative tree.
 
-The shared base [`LayoutConstraints`](/api/classes/LayoutConstraints) carries `fill` ([`FillType`](/api/enumerations/FillType)) and `anchor` ([`AnchorType`](/api/enumerations/AnchorType)) for managers that honour them. See the [Constraints reference](/layouts/Constraints).
+The shared base [`LayoutConstraints`](/api/layout/classes/LayoutConstraints) carries `fill` ([`FillType`](/api/layout/enumerations/FillType)) and `anchor` ([`AnchorType`](/api/layout/enumerations/AnchorType)) for managers that honour them. See the [Constraints reference](/layouts/Constraints).
 
 ## Fill and anchor resolution
 
@@ -83,11 +83,11 @@ For most code, `setPreferredSize` and friends do the right thing automatically.
 
 ## Building a custom layout manager
 
-If none of the built-in managers fit, subclass [`LayoutManager`](/api/classes/LayoutManager):
+If none of the built-in managers fit, subclass [`LayoutManager`](/api/layout/classes/LayoutManager):
 
 ```typescript
-import { LayoutManager, Component } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { LayoutManager } from '@jimka/typescript-ui/layout';
 class FlowLayout extends LayoutManager {
     private hgap = 8;
     private vgap = 8;

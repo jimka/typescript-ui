@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { FillType } from "./FillType.js";
-import { AnchorType } from "./AnchorType.js";
-import { LayoutConstraints } from "./LayoutConstraints";
-import { Size } from "../Size.js";
-import { Component } from "../Component.js";
-import { BaseObject } from "../BaseObject.js";
+import { FillType } from "~/layout/FillType.js";
+import { AnchorType } from "~/layout/AnchorType.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints";
+import { Size } from "~/primitive/Size.js";
+import { Component } from "~/core/Component.js";
+import { BaseObject } from "~/core/BaseObject.js";
 
 /**
  * Construction-time options shared by every {@link LayoutManager}.
@@ -43,7 +43,7 @@ export abstract class LayoutManager extends BaseObject {
      *
      * @param _options - The options bag carrying the values to apply.
      *
-     * @remarks The base implementation is a no-op because `LayoutManagerOptions`
+     * @remarks The base implementation is a no-op because [`LayoutManagerOptions`](/api/layout/interfaces/LayoutManagerOptions)
      * has no fields of its own. Subclasses override this method to dispatch
      * their additional fields (spacing, gap, stretching, etc.).
      */
@@ -119,7 +119,7 @@ export abstract class LayoutManager extends BaseObject {
      * @param fill - Optional. Fill strategy overriding the component's own constraints.
      * @param anchor - Optional. Anchor point overriding the component's own constraints.
      *
-     * @remarks The method checks the component's stored `LayoutConstraints` first;
+     * @remarks The method checks the component's stored [`LayoutConstraints`](/api/layout/classes/LayoutConstraints) first;
      * the `fill` and `anchor` parameters serve as fallbacks. After positioning,
      * `doLayout` is called on the child so nested layouts are updated in a single pass.
      */
@@ -301,7 +301,7 @@ export abstract class LayoutManager extends BaseObject {
      * @returns The y-offset to use when placing the child.
      *
      * @remarks Vertically centres the child within the row's text line height.
-     * Tall replaced elements (e.g. an inline `ProgressSpinner`) clamp to 0 and
+     * Tall replaced elements (e.g. an inline [`ProgressSpinner`](/api/component/display/classes/ProgressSpinner)) clamp to 0 and
      * extend below the text. Components that want to align with the surrounding
      * text baseline should expose a real baseline via `getBaseline()` rather
      * than relying on this null-child placement.

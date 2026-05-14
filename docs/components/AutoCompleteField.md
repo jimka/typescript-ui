@@ -1,14 +1,13 @@
 # AutoCompleteField
 
-[`AutoCompleteField`](/api/classes/AutoCompleteField) is a text field with type-ahead suggestions. Suggestions can come from a static array or from a data [`Store`](/data/store).
+[`AutoCompleteField`](/api/component/input/classes/AutoCompleteField) is a text field with type-ahead suggestions. Suggestions can come from a static array or from a data [`Store`](/data/store).
 
-It implements [`Bindable<string>`](/api/interfaces/Bindable).
+It implements [`Bindable<string>`](/api/core/interfaces/Bindable).
 
 ## Static suggestions
 
 ```typescript
-import { AutoCompleteField } from '@jimka/typescript-ui';
-
+import { AutoCompleteField } from '@jimka/typescript-ui/component/input';
 const fruit = new AutoCompleteField({
     suggestions: ['Apple', 'Banana', 'Blueberry', 'Cherry', 'Date'],
     placeholder: 'Type a fruit…',
@@ -24,8 +23,7 @@ panel.addComponent(fruit);
 ## Store-backed suggestions
 
 ```typescript
-import { AutoCompleteField } from '@jimka/typescript-ui';
-
+import { AutoCompleteField } from '@jimka/typescript-ui/component/input';
 const userPicker = new AutoCompleteField({
     store:        userStore,
     displayField: 'name',
@@ -37,7 +35,7 @@ const userPicker = new AutoCompleteField({
 
 ## AutoCompleteFieldConfig
 
-See [`AutoCompleteFieldConfig`](/api/interfaces/AutoCompleteFieldConfig) for the full option list. Highlights:
+See [`AutoCompleteFieldConfig`](/api/component/input/type-aliases/AutoCompleteFieldConfig) for the full option list. Highlights:
 
 | Option | Default | Purpose |
 | --- | --- | --- |
@@ -48,11 +46,11 @@ See [`AutoCompleteFieldConfig`](/api/interfaces/AutoCompleteFieldConfig) for the
 | `debounceMs` | `200` | Debounce on each keystroke. |
 | `maxSuggestions` | `10` | Cap on suggestions shown at once. |
 | `placeholder` | — | Empty-state placeholder text. |
-| `matchMode` | `'contains'` | How the typed query matches — `'contains'` or `'startsWith'` ([`AutoCompleteMatchMode`](/api/type-aliases/AutoCompleteMatchMode)). |
+| `matchMode` | `'contains'` | How the typed query matches — `'contains'` or `'startsWith'` ([`AutoCompleteMatchMode`](/api/component/input/type-aliases/AutoCompleteMatchMode)). |
 
 ## See also
 
-- [API: AutoCompleteField](/api/classes/AutoCompleteField)
-- [API: AutoCompleteFieldConfig](/api/interfaces/AutoCompleteFieldConfig)
+- [API: AutoCompleteField](/api/component/input/classes/AutoCompleteField)
+- [API: AutoCompleteFieldConfig](/api/component/input/type-aliases/AutoCompleteFieldConfig)
 - [`ComboBox`](/components/ComboBox) — non-typeahead drop-down
 - [`TextField`](/components/TextField) — plain text input

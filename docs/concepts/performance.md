@@ -31,7 +31,7 @@ Use this when:
 
 [`Table`](/components/Table) and [`Tree`](/components/Tree) both render only the rows visible in the viewport plus a small buffer. The mechanics:
 
-- A fixed pool of [`TableRow`](/api/classes/TableRow) (or tree row) components.
+- A fixed pool of table [`Row`](/api/component/table/classes/Row) (or tree row) components.
 - Scrolling is JS-owned via a [`VirtualScroller`](/components/VirtualScroller): the rows live inside a container whose `translate3d` transform exposes the requested viewport, and two custom [`Scrollbar`](/components/Scrollbar) overlays drive `scrollX` / `scrollY`. Wheel, touch (with 2D fling momentum), and keyboard navigation all funnel through the same `setScrollY` / `setScrollX` entry points.
 - Pool slots are rebound to new data via `setData()` only when their data index changes — DOM nodes stay in place and only their bound data shifts.
 
@@ -41,7 +41,7 @@ See the [Virtualized lists recipe](/recipes/virtualized-list) for an end-to-end 
 
 ## Web Worker for sort and filter
 
-[`AbstractStore`](/api/classes/AbstractStore) automatically offloads sort and filter operations to a Web Worker once the dataset crosses **1,000 rows**:
+[`AbstractStore`](/api/data/classes/AbstractStore) automatically offloads sort and filter operations to a Web Worker once the dataset crosses **1,000 rows**:
 
 ```typescript
 store.sort('value', 'desc');               // worker handles it for >1k rows
@@ -51,12 +51,12 @@ store.filterBy(r => r.get('value') > 500); // worker handles it for >1k rows
 You don't configure anything — the worker is created lazily on first use. Below the threshold the round-trip overhead exceeds the work, so operations run synchronously in-process.
 
 ::: warning Filter functions are serialised
-Custom filter predicates passed to `filterBy` must be **pure functions** with no captured non-serialisable state. They are sent to the worker via structured clone. For richer filter logic, use [`FilterDescriptor`](/api/type-aliases/FilterDescriptor) — a serialisable AST that the framework's filter evaluator runs identically on both sides of the worker boundary.
+Custom filter predicates passed to `filterBy` must be **pure functions** with no captured non-serialisable state. They are sent to the worker via structured clone. For richer filter logic, use [`FilterDescriptor`](/api/data/type-aliases/FilterDescriptor) — a serialisable AST that the framework's filter evaluator runs identically on both sides of the worker boundary.
 :::
 
 ## Disposing Text components
 
-[`Text`](/components/Text) and its subclasses ([`Label`](/components/Label), [`Header`](/components/Header), [`Legend`](/components/Legend)) subscribe to [`ThemeManager.onThemeChange`](/api/classes/ThemeManager) on construction so they re-measure on every theme change.
+[`Text`](/components/Text) and its subclasses ([`Label`](/components/Label), [`Header`](/components/Header), [`Legend`](/components/Legend)) subscribe to [`ThemeManager.onThemeChange`](/api/core/classes/ThemeManager) on construction so they re-measure on every theme change.
 
 **Custom components that create `Text` instances dynamically and remove them must call `text.dispose()`** to detach the listener:
 
@@ -90,11 +90,11 @@ A few patterns can defeat the rAF coalescing and force multiple layout passes pe
 
 Each component creates one CSS rule for itself on construction (and a second for `:active` state on [`Button`](/components/Button), `.selected` on [`ToggleButton`](/components/ToggleButton), etc.). For a typical app with hundreds of components this is fine. For lists rendering thousands of items, prefer the virtual-scrolling components which reuse a fixed pool of rules.
 
-If you find yourself building a custom virtual list, look at how [`TableBody`](/api/classes/TableBody) is implemented — it's the canonical reference. The scroll plumbing is reusable on its own via [`VirtualScroller`](/components/VirtualScroller).
+If you find yourself building a custom virtual list, look at how the table [`Body`](/api/component/table/classes/Body) is implemented — it's the canonical reference. The scroll plumbing is reusable on its own via [`VirtualScroller`](/components/VirtualScroller).
 
 ## See also
 
 - [Virtualized lists recipe](/recipes/virtualized-list)
 - [Component lifecycle](/concepts/component-lifecycle) — `pauseLayout` / `resumeLayout` API
 - [Layout system](/concepts/layout-system) — how `doLayout` actually runs
-- [API: AbstractStore](/api/classes/AbstractStore) — store-level worker offload
+- [API: AbstractStore](/api/data/classes/AbstractStore) — store-level worker offload

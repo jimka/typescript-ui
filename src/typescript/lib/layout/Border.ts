@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js"
-import { Component } from "../Component.js"
-import { LayoutConstraints } from "./LayoutConstraints.js";
-import { FillType } from "./FillType.js";
-import { Placement } from "../Placement.js";
-import { Size } from "../Size.js";
-import { callable } from "../Callable.js";
+import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js"
+import { Component } from "~/core/Component.js"
+import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import { FillType } from "~/layout/FillType.js";
+import { Placement } from "~/primitive/Placement.js";
+import { Size } from "~/primitive/Size.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * Construction-time options for the {@link Border} layout manager.
@@ -25,8 +25,9 @@ export interface BorderOptions extends LayoutManagerOptions {
  * north, south, east, west, and center.
  * North and south regions span the full width; east and west regions flank the center.
  *
- * Re-exported as `BorderLayout` from the package barrel to disambiguate from the
- * line-style `Border` utility.
+ * Exported from `@jimka/typescript-ui/layout`. Disambiguate from the line-style
+ * [`Border`](/api/primitive/classes/Border) utility (in `@jimka/typescript-ui/primitive`)
+ * by aliasing one of them on import — e.g. `import { Border as BorderLayout } from '@jimka/typescript-ui/layout';`.
  *
  * @category Layouts
  */

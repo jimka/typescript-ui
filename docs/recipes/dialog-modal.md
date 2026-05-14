@@ -1,12 +1,11 @@
 # Modal dialog with async result
 
-Use [`Dialog.show()`](/api/classes/Dialog) for one-shot prompts. The static method returns a `Promise<DialogResult>` that resolves to `'confirm'`, `'cancel'`, or `'close'`.
+Use [`Dialog.show()`](/api/core/classes/Dialog) for one-shot prompts. The static method returns a `Promise<DialogResult>` that resolves to `'confirm'`, `'cancel'`, or `'close'`.
 
 ## Confirm a destructive action
 
 ```typescript
-import { Dialog } from '@jimka/typescript-ui';
-
+import { Dialog } from '@jimka/typescript-ui/core';
 async function deleteRecord(record: ModelRecord) {
     const result = await Dialog.show({
         title:   'Delete record?',
@@ -30,10 +29,9 @@ async function deleteRecord(record: ModelRecord) {
 Replace `message` with `contentComponent` to embed a form or any other component:
 
 ```typescript
-import {
-    Dialog, VBox, Label, TextField,
-} from '@jimka/typescript-ui';
-
+import { Dialog } from '@jimka/typescript-ui/core';
+import { VBox } from '@jimka/typescript-ui/layout';
+import { Label, TextField } from '@jimka/typescript-ui/component/input';
 async function renameFile(currentName: string): Promise<string | null> {
     const nameField = TextField();
     nameField.setValue(currentName);
@@ -95,5 +93,5 @@ switch (result) {
 ## See also
 
 - [Dialog](/components/Dialog) — full surface
-- [API: DialogConfig](/api/interfaces/DialogConfig), [DialogButtonConfig](/api/interfaces/DialogButtonConfig), [DialogResult](/api/type-aliases/DialogResult)
+- [API: DialogConfig](/api/core/interfaces/DialogConfig), [DialogButtonConfig](/api/core/interfaces/DialogButtonConfig), [DialogResult](/api/core/type-aliases/DialogResult)
 - [Floating window](/recipes/floating-window) — for non-modal panels

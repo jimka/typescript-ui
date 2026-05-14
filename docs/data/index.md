@@ -11,11 +11,11 @@ The framework's data package gives you a model-store-proxy stack for record-orie
     custom)           sort, filter    Binding
 ```
 
-- A [`Model`](/api/classes/Model) defines the shape of a record (its fields and types).
-- A [`Proxy`](/api/classes/Proxy) handles transport — load records from memory, an HTTP endpoint, or a custom source.
-- A [`Store`](/api/classes/Store) orchestrates loading, sorting, filtering, and event notification.
-- A [`ModelRecord`](/api/classes/ModelRecord) is a single row produced by a store, with dirty tracking and commit / reject semantics.
-- A [`Binding`](/api/classes/Binding) wires a record to UI components for two-way edit / commit / reject.
+- A [`Model`](/api/data/classes/Model) defines the shape of a record (its fields and types).
+- A [`Proxy`](/api/data/classes/Proxy) handles transport — load records from memory, an HTTP endpoint, or a custom source.
+- A [`Store`](/api/data/classes/Store) orchestrates loading, sorting, filtering, and event notification.
+- A [`ModelRecord`](/api/data/classes/ModelRecord) is a single row produced by a store, with dirty tracking and commit / reject semantics.
+- A [`Binding`](/api/core/classes/Binding) wires a record to UI components for two-way edit / commit / reject.
 
 ## Pages
 

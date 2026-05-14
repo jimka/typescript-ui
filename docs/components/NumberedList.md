@@ -1,12 +1,11 @@
 # NumberedList
 
-[`NumberedList`](/api/classes/NumberedList) is an ordered list rendered as an `<ol>` element. Defaults to the [`DECIMAL`](/api/enumerations/NumberedListItemStyle) numbering style.
+[`NumberedList`](/api/component/list/classes/NumberedList) is an ordered list rendered as an `<ol>` element. Defaults to the [`DECIMAL`](/api/component/list/enumerations/NumberedListItemStyle) numbering style.
 
 ## Usage
 
 ```typescript
-import { NumberedList, ListItem, NumberedListItemStyle } from '@jimka/typescript-ui';
-
+import { NumberedList, ListItem, NumberedListItemStyle } from '@jimka/typescript-ui/component/list';
 const list = new NumberedList();
 list.setItemStyle(NumberedListItemStyle.UPPER_ROMAN);
 list.addItem(new ListItem('intro',  'Introduction'));
@@ -18,7 +17,7 @@ panel.addComponent(list);
 
 ## Numbering styles
 
-[`NumberedListItemStyle`](/api/enumerations/NumberedListItemStyle):
+[`NumberedListItemStyle`](/api/component/list/enumerations/NumberedListItemStyle):
 
 | Value | Example |
 | --- | --- |
@@ -32,7 +31,7 @@ panel.addComponent(list);
 
 ## See also
 
-- [API: NumberedList](/api/classes/NumberedList)
-- [API: NumberedListItemStyle](/api/enumerations/NumberedListItemStyle)
+- [API: NumberedList](/api/component/list/classes/NumberedList)
+- [API: NumberedListItemStyle](/api/component/list/enumerations/NumberedListItemStyle)
 - [`BulletedList`](/components/BulletedList) — unordered counterpart
 - [`ListItem`](/components/ListItem) — child component

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
-import { FillType } from "./FillType.js";
-import { Size } from "../Size.js";
-import { Component } from "../Component.js";
-import { callable } from "../Callable.js";
+import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { FillType } from "~/layout/FillType.js";
+import { Size } from "~/primitive/Size.js";
+import { Component } from "~/core/Component.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * Construction-time options for {@link Grid}.
@@ -326,7 +326,7 @@ class Grid extends LayoutManager {
      * @remarks When stretching is enabled (default) cells are equal-sized and each
      * child fills its cell. When stretching is disabled, columns remain uniform-width
      * but each row uses the natural heights of its children and components are
-     * baseline-aligned within their row, mirroring `HBox`'s baseline-aware placement.
+     * baseline-aligned within their row, mirroring [`HBox`](/api/layout/classes/HBox)'s baseline-aware placement.
      */
     doLayout() {
         let container = this.getContainer();

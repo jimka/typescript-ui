@@ -12,7 +12,7 @@ The package follows [Semantic Versioning](https://semver.org):
 - **Minor** — new features and additive changes. Existing code continues to work.
 - **Patch** — bug fixes and internal improvements with no API impact.
 
-The "public API" means everything re-exported from [`src/typescript/lib/index.ts`](https://github.com/jimka/typescript-ui/blob/master/src/typescript/lib/index.ts). Internal modules — even those exported as side-effect of a class hierarchy — are subject to change without notice.
+The "public API" means everything re-exported from the per-group barrels at `src/typescript/lib/<group>/index.ts` (the entries listed in the [`package.json` `exports` map](https://github.com/jimka/typescript-ui/blob/master/package.json)). Internal modules — even those exported as side-effect of a class hierarchy — are subject to change without notice.
 
 ## Pre-1.0 compatibility
 

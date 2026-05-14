@@ -1,12 +1,12 @@
 # MenuBar
 
-[`MenuBar`](/api/classes/MenuBar) is the top-of-window menu bar — File, Edit, View, etc. Construct it with a config array describing each top-level entry; the bar handles dropdown panels, keyboard navigation, and submenus internally.
+[`MenuBar`](/api/component/menubar/classes/MenuBar) is the top-of-window menu bar — File, Edit, View, etc. Construct it with a config array describing each top-level entry; the bar handles dropdown panels, keyboard navigation, and submenus internally.
 
 ## Usage
 
 ```typescript
-import { Body, MenuBar } from '@jimka/typescript-ui';
-
+import { Body } from '@jimka/typescript-ui/core';
+import { MenuBar } from '@jimka/typescript-ui/component/menubar';
 const bar = new MenuBar([
     { label: 'File', items: [
         { text: 'New',       shortcut: 'Ctrl+N', action: () => newFile() },
@@ -25,12 +25,12 @@ Body.getInstance().addComponent(bar);
 
 ## Config shape
 
-The config is `MenuConfig[]` (see [`MenuConfig`](/api/interfaces/MenuConfig)).
+The config is `MenuConfig[]` (see [`MenuConfig`](/api/component/container/interfaces/MenuConfig)).
 
 Each entry has:
 
 - `label` — bar button text.
-- `items` — array of [`MenuItemConfig`](/api/interfaces/MenuItemConfig) entries.
+- `items` — array of [`MenuItemConfig`](/api/component/container/interfaces/MenuItemConfig) entries.
 
 Each `MenuItemConfig` supports:
 
@@ -51,6 +51,6 @@ Each `MenuItemConfig` supports:
 
 ## See also
 
-- [API: MenuBar](/api/classes/MenuBar)
-- [API: MenuConfig](/api/interfaces/MenuConfig), [MenuItemConfig](/api/interfaces/MenuItemConfig)
+- [API: MenuBar](/api/component/menubar/classes/MenuBar)
+- [API: MenuConfig](/api/component/container/interfaces/MenuConfig), [MenuItemConfig](/api/component/container/interfaces/MenuItemConfig)
 - [`Menu`](/components/Menu) — the dropdown panel (also handles right-click context menus)

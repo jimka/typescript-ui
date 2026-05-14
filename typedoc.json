@@ -1,6 +1,20 @@
 {
     "$schema": "https://typedoc.org/schema.json",
-    "entryPoints": ["src/typescript/lib/index.ts"],
+    "entryPoints": [
+        "src/typescript/lib/core/index.ts",
+        "src/typescript/lib/primitive/index.ts",
+        "src/typescript/lib/layout/index.ts",
+        "src/typescript/lib/data/index.ts",
+        "src/typescript/lib/validation/index.ts",
+        "src/typescript/lib/component/input/index.ts",
+        "src/typescript/lib/component/button/index.ts",
+        "src/typescript/lib/component/display/index.ts",
+        "src/typescript/lib/component/list/index.ts",
+        "src/typescript/lib/component/container/index.ts",
+        "src/typescript/lib/component/menubar/index.ts",
+        "src/typescript/lib/component/table/index.ts",
+        "src/typescript/lib/component/tree/index.ts"
+    ],
     "tsconfig": "tsconfig.lib.json",
     "plugin": ["typedoc-plugin-markdown", "typedoc-vitepress-theme", "./typedoc-callable-plugin.mjs"],
     "out": "docs/api",

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from '../Component.js';
-import { Fit } from '../layout/Fit.js';
-import { Tooltip } from '../Tooltip.js';
-import { callable } from "../Callable.js";
+import { Component } from '~/core/Component.js';
+import { Fit } from '~/layout/Fit.js';
+import { Tooltip } from '~/core/Tooltip.js';
+import { callable } from "~/core/Callable.js";
 
 /**
  * A thin wrapper component that provides error visualisation for a field component.

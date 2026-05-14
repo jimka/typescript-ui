@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutConstraints } from "./LayoutConstraints.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 
 /**
  * Layout constraints for child components added to an {@link Accordion} container.

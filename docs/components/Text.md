@@ -1,14 +1,13 @@
 # Text
 
-[`Text`](/api/classes/Text) is the standard component for displaying text. It renders a `<span>` by default and uses an off-screen probe element to measure text dimensions, automatically updating its preferred size whenever the text or a font property changes.
+[`Text`](/api/component/input/classes/Text) is the standard component for displaying text. It renders a `<span>` by default and uses an off-screen probe element to measure text dimensions, automatically updating its preferred size whenever the text or a font property changes.
 
 Use `Text` for any standalone text — status messages, captions next to fields, headings, body content. Reach for [`Label`](/components/Label) only when the text is associated with a specific form control via the HTML `for` attribute, or [`Header`](/components/Header) for header bars.
 
 ## Usage
 
 ```typescript
-import { Text } from '@jimka/typescript-ui';
-
+import { Text } from '@jimka/typescript-ui/component/input';
 const status = new Text('Connected');
 status.setFontWeight('bold');
 status.setForegroundColor('rgb(60, 160, 60)');
@@ -34,6 +33,6 @@ The constructor signature is `new Text(text?, tag = "span")` — the second argu
 
 ## See also
 
-- [API: Text](/api/classes/Text)
+- [API: Text](/api/component/input/classes/Text)
 - [`Label`](/components/Label) — when the text is tied to a form control
 - [`Header`](/components/Header), [`Legend`](/components/Legend) — semantic wrappers

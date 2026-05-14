@@ -1,6 +1,6 @@
 # Grid
 
-[`Grid`](/api/classes/Grid) tiles children in a uniform grid of equal-sized cells. Row and column counts can be set explicitly or left at `0` for auto-calculation.
+[`Grid`](/api/layout/classes/Grid) tiles children in a uniform grid of equal-sized cells. Row and column counts can be set explicitly or left at `0` for auto-calculation.
 
 ```
 +------+------+------+
@@ -14,8 +14,9 @@
 ## Usage
 
 ```typescript
-import { Component, Grid, Button } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Grid } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
 const keypad = new Component();
 keypad.setLayoutManager(new Grid({ rows: 4, columns: 3 }));
 
@@ -24,7 +25,7 @@ keypad.setLayoutManager(new Grid({ rows: 4, columns: 3 }));
 });
 ```
 
-[`GridOptions`](/api/interfaces/GridOptions) accepts `rows`, `columns`, `spacing`, and `stretching` declaratively; the corresponding setters still work for runtime updates.
+[`GridOptions`](/api/layout/interfaces/GridOptions) accepts `rows`, `columns`, `spacing`, and `stretching` declaratively; the corresponding setters still work for runtime updates.
 
 ## Auto-sizing
 
@@ -70,6 +71,6 @@ For variable column widths, use a [`Border`](/layouts/Border) at top level with 
 
 ## See also
 
-- [API: Grid](/api/classes/Grid)
+- [API: Grid](/api/layout/classes/Grid)
 - [`Column`](/layouts/Column), [`Row`](/layouts/Row) — single-axis equivalents
 - [Layout constraints reference](/layouts/Constraints)

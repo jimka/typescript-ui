@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
-import { FillType } from "./FillType.js";
-import { Size } from "../Size.js";
-import { callable } from "../Callable.js";
+import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { FillType } from "~/layout/FillType.js";
+import { Size } from "~/primitive/Size.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * Construction-time options for {@link Column}.
@@ -241,7 +241,7 @@ class Column extends LayoutManager {
      * @remarks When stretching is enabled (default) every child fills the full
      * container height. When stretching is disabled the children use their
      * preferred heights and are baseline-aligned within the row, mirroring
-     * `HBox`'s baseline-aware placement.
+     * [`HBox`](/api/layout/classes/HBox)'s baseline-aware placement.
      */
     doLayout() {
         let container = this.getContainer();

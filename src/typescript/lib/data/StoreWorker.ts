@@ -6,7 +6,7 @@
 // every operation. Returns sorted indices into the snapshot — main thread maps
 // them back to ModelRecord instances itself.
 
-import { FilterDescriptor, matchesFilter } from "./FilterDescriptor.js";
+import { FilterDescriptor, matchesFilter } from "~/data/FilterDescriptor.js";
 
 type Direction = "asc" | "desc";
 
