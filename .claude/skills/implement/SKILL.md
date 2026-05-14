@@ -187,6 +187,11 @@ If a new class shows up under `docs/api/<bucket>/variables/` instead of `…/cla
 When making commits during implementation:
 
 - **No author or co-author attribution in commit messages.** Do not append a `Co-Authored-By:` trailer (for Claude, the user, or anyone else). Authorship lives in the git `Author`/`Committer` fields, not in the message body. Plain trailing-attribution lines like `Generated with …` are also out.
+- **Split the implementation into at least three commits, by concern.** Do not land everything in one mega-commit. The split is:
+  1. **Code** — `src/**` changes, plan-file move from `plans/` to `plans/implemented/`, and any demo-panel updates. There may be more than one code commit if the implementation has naturally independent slices (e.g. core change + unrelated refactor); keep each one focused.
+  2. **Documentation** — `docs/**` changes (curated pages, changelog, migration notes). Auto-generated `docs/api/**` output only appears here if a manual edit is genuinely necessary; usually it is regenerated and need not be committed alongside.
+  3. **Graphify** — `graphify-out/**` refresh from `graphify update . --directed`. Always its own commit, never mixed with code or docs, because the diff is large and machine-generated.
+  Commit in this order so a reviewer can read the code change first, then see how the docs follow, with the graph refresh as a trailing housekeeping commit.
 - **Do not merge branches.** When a feature branch is ready, leave it for the user to review and merge. Don't run `git merge`, `git rebase` onto a base branch, or any squash/fast-forward integration.
 - **Do not push to the remote.** No `git push` of any kind — not for feature branches, not for the working branch, not even for "harmless" doc-only updates. The user pushes when they decide the code is ready for the remote.
 
