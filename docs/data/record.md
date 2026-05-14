@@ -1,6 +1,6 @@
 # Record
 
-A [`ModelRecord`](/api/classes/ModelRecord) is a single row managed by a [store](/data/store). Records track which fields you have changed since the last commit and let you roll back unsaved edits.
+A [`ModelRecord`](/api/data/classes/ModelRecord) is a single row managed by a [store](/data/store). Records track which fields you have changed since the last commit and let you roll back unsaved edits.
 
 ## Get a record
 
@@ -38,8 +38,8 @@ record?.commit();                // clears dirty flag
 
 A record is **dirty** when at least one of its fields has been modified since the last `commit()`. The framework uses this state in two places:
 
-- The [`Table`](/api/classes/Table) component tints dirty rows differently (token: `table.row.dirty` — see [Theming](/concepts/theming)).
-- A [`Binding`](/api/classes/Binding) calls its `onChange` listeners whenever the dirty state changes.
+- The [`Table`](/api/component/table/classes/Table) component tints dirty rows differently (token: `table.row.dirty` — see [Theming](/concepts/theming)).
+- A [`Binding`](/api/core/classes/Binding) calls its `onChange` listeners whenever the dirty state changes.
 
 ```typescript
 record.isDirty();                 // any field dirty?

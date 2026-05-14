@@ -1,6 +1,6 @@
 # Binding
 
-[`Binding`](/api/classes/Binding) synchronises a [`ModelRecord`](/api/classes/ModelRecord) with a set of form components. Components that implement [`Bindable`](/api/interfaces/Bindable) — [`TextField`](/api/classes/TextField), [`Checkbox`](/api/classes/Checkbox), [`ComboBox`](/api/classes/ComboBox), [`DateField`](/api/classes/DateField), [`TimeField`](/api/classes/TimeField) — can be bound by field name. Any other component can be wired via explicit accessor callbacks.
+[`Binding`](/api/core/classes/Binding) synchronises a [`ModelRecord`](/api/data/classes/ModelRecord) with a set of form components. Components that implement [`Bindable`](/api/core/interfaces/Bindable) — [`TextField`](/api/component/input/classes/TextField), [`Checkbox`](/api/component/input/classes/Checkbox), [`ComboBox`](/api/component/input/classes/ComboBox), [`DateField`](/api/component/input/classes/DateField), [`TimeField`](/api/component/input/classes/TimeField) — can be bound by field name. Any other component can be wired via explicit accessor callbacks.
 
 `Binding` is **standalone** — it is not a layout component. You wire your own form layout and pass the input components to `binding.bind()`.
 
@@ -25,7 +25,7 @@ binding.commit();
 
 ## Explicit accessors
 
-Use the long form of `bind` for components that do not implement [`Bindable`](/api/interfaces/Bindable):
+Use the long form of `bind` for components that do not implement [`Bindable`](/api/core/interfaces/Bindable):
 
 ```typescript
 const binding = new Binding()
@@ -36,7 +36,7 @@ const binding = new Binding()
     });
 ```
 
-The accessor object matches [`BindingAccessors`](/api/interfaces/BindingAccessors). The `listen` callback is what tells the binding "the user just edited this field" — typically you wire it to whatever change event your component fires.
+The accessor object matches [`BindingAccessors`](/api/core/interfaces/BindingAccessors). The `listen` callback is what tells the binding "the user just edited this field" — typically you wire it to whatever change event your component fires.
 
 ## Listeners
 
@@ -69,5 +69,5 @@ binding.setRecord(store.getAt(1));   // discards uncommitted edits on record 0
 ## See also
 
 - [Record](/data/record) — what `setRecord` accepts.
-- [`Bindable`](/api/interfaces/Bindable) — the interface form components implement.
-- [`BindingAccessors`](/api/interfaces/BindingAccessors) — the explicit-accessor shape.
+- [`Bindable`](/api/core/interfaces/Bindable) — the interface form components implement.
+- [`BindingAccessors`](/api/core/interfaces/BindingAccessors) — the explicit-accessor shape.

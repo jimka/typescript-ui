@@ -1,7 +1,7 @@
 # PaginationBar
 
-[`PaginationBar`](/api/classes/PaginationBar) is a horizontal navigation bar
-that drives a paginated [`Store`](/api/classes/Store) — first / previous /
+[`PaginationBar`](/api/component/display/classes/PaginationBar) is a horizontal navigation bar
+that drives a paginated [`Store`](/api/data/classes/Store) — first / previous /
 next / last buttons plus a `Page X of Y` label.
 
 The bar listens to the store's `'pagechanged'` and `'load'` events and
@@ -10,7 +10,7 @@ keeps button-enabled state in sync automatically.
 ## Usage
 
 Pair the bar with any store that has had `setPageSize(n)` called on it.
-[`AjaxProxy`](/api/classes/AjaxProxy) is the typical proxy choice; it
+[`AjaxProxy`](/api/data/classes/AjaxProxy) is the typical proxy choice; it
 appends `?page=N&pageSize=M` and parses a `{ data, total }` envelope.
 
 ```typescript
@@ -81,7 +81,7 @@ attached bar before installing the replacement.
 
 ## See also
 
-- [API: PaginationBar](/api/classes/PaginationBar)
+- [API: PaginationBar](/api/component/display/classes/PaginationBar)
 - [Store](/data/store) — `setPageSize`, `nextPage`, `goToPage`, `getTotalPages`
 - [Proxy](/data/proxy) — server-side pagination contract
 - [TablePanel](/components/TablePanel) — `setPaginationBar(bar)` integration

@@ -311,7 +311,7 @@ class Text extends Component {
      *
      * @param enabled - When `false`, `setText` skips the off-screen probe and
      *                  leaves preferred size and baseline unchanged. Use only when
-     *                  the parent layout (e.g. {@link Fit}) sizes this Text from
+     *                  the parent layout (e.g. `Fit`) sizes this Text from
      *                  the container, so the measured preferred size is unused.
      *
      * @returns This component, for method chaining.

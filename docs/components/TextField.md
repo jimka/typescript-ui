@@ -1,6 +1,6 @@
 # TextField
 
-[`TextField`](/api/classes/TextField) is a single-line text input backed by an `<input type="text">` element. It implements [`Bindable<string>`](/api/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
+[`TextField`](/api/component/input/classes/TextField) is a single-line text input backed by an `<input type="text">` element. It implements [`Bindable<string>`](/api/core/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
 
 ## Usage
 
@@ -37,7 +37,7 @@ binding.setRecord(store.getAt(0));
 
 ## See also
 
-- [API: TextField](/api/classes/TextField)
+- [API: TextField](/api/component/input/classes/TextField)
 - [`PasswordField`](/components/PasswordField) — masked variant
 - [`TextArea`](/components/TextArea) — multi-line variant
 - [Data binding](/data/binding) — how to wire fields to a record

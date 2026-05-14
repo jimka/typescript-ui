@@ -1,6 +1,6 @@
 # Menu
 
-[`Menu`](/api/classes/Menu) is the framework's floating menu panel. It operates in one of two modes determined by the constructor:
+[`Menu`](/api/core/classes/Menu) is the framework's floating menu panel. It operates in one of two modes determined by the constructor:
 
 - **Rebuild mode** — `new Menu()` — a right-click context menu. Items are passed per `show(x, y, items)` call and rebuilt on each invocation. Best for menus whose contents depend on what the user clicked.
 - **Persistent mode** — `new Menu(items, onClose)` — a [`MenuBar`](/components/MenuBar) dropdown. Items are built once in the constructor and reused across `open()` / `close()` cycles. Used internally by `MenuBar`.
@@ -47,7 +47,7 @@ You usually don't construct a persistent-mode `Menu` directly — `MenuBar` does
 
 ## Item config
 
-Each entry follows [`MenuItemConfig`](/api/interfaces/MenuItemConfig):
+Each entry follows [`MenuItemConfig`](/api/component/container/interfaces/MenuItemConfig):
 
 | Field | Purpose |
 | --- | --- |
@@ -56,7 +56,7 @@ Each entry follows [`MenuItemConfig`](/api/interfaces/MenuItemConfig):
 | `enabled` | Defaults to `true`. Disabled items are dimmed and non-interactive. |
 | `shortcut` | Hint string displayed on the right (persistent mode renders it). |
 | `icon` | Glyph displayed on the left. |
-| `submenu` | Nested [`MenuConfig`](/api/interfaces/MenuConfig) (persistent mode only). |
+| `submenu` | Nested [`MenuConfig`](/api/component/container/interfaces/MenuConfig) (persistent mode only). |
 | `separator` | When `true`, render as a horizontal rule and ignore other fields. |
 
 ## Notes
@@ -68,8 +68,8 @@ Each entry follows [`MenuItemConfig`](/api/interfaces/MenuItemConfig):
 
 ## See also
 
-- [API: Menu](/api/classes/Menu)
-- [API: MenuItemConfig](/api/interfaces/MenuItemConfig), [MenuConfig](/api/interfaces/MenuConfig)
+- [API: Menu](/api/core/classes/Menu)
+- [API: MenuItemConfig](/api/component/container/interfaces/MenuItemConfig), [MenuConfig](/api/component/container/interfaces/MenuConfig)
 - [`MenuItem`](/components/MenuItem) and [`MenuSeparator`](/components/MenuSeparator) — the row components used internally.
 - [`MenuBar`](/components/MenuBar) — the primary persistent-mode consumer.
 - [Recipe: Right-click menu](/recipes/right-click-menu)

@@ -1,6 +1,6 @@
 # Fit
 
-[`Fit`](/api/classes/Fit) sizes a single child component to fill the container's entire inner bounds. It throws if the container holds more than one component.
+[`Fit`](/api/layout/classes/Fit) sizes a single child component to fill the container's entire inner bounds. It throws if the container holds more than one component.
 
 ```
 +--------------------------+
@@ -36,6 +36,6 @@ For multiple children, use [`HBox`](/layouts/HBox), [`VBox`](/layouts/VBox), or 
 
 ## See also
 
-- [API: Fit](/api/classes/Fit)
+- [API: Fit](/api/layout/classes/Fit)
 - [`Card`](/layouts/Card) — multiple children, one visible at a time
 - [`Border`](/layouts/Border) — five regions, one fills the centre

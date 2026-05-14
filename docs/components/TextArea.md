@@ -1,6 +1,6 @@
 # TextArea
 
-[`TextArea`](/api/classes/TextArea) is a multi-line text input backed by a `<textarea>` element. Internal text state stays in sync with the DOM on every input event.
+[`TextArea`](/api/component/input/classes/TextArea) is a multi-line text input backed by a `<textarea>` element. Internal text state stays in sync with the DOM on every input event.
 
 ## Usage
 
@@ -26,5 +26,5 @@ panel.addComponent(notes);
 
 ## See also
 
-- [API: TextArea](/api/classes/TextArea)
+- [API: TextArea](/api/component/input/classes/TextArea)
 - [`TextField`](/components/TextField) — single-line variant

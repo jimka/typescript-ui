@@ -1,6 +1,6 @@
 # ProgressBar
 
-[`ProgressBar`](/api/classes/ProgressBar) is a horizontal progress indicator with two modes:
+[`ProgressBar`](/api/component/display/classes/ProgressBar) is a horizontal progress indicator with two modes:
 
 - **Determinate** — `value` in `[0, 100]` controls the fill width.
 - **Indeterminate** — a sliding fill segment animates continuously, suitable for
@@ -51,6 +51,6 @@ progress.setValue(100);
 
 ## See also
 
-- [API: ProgressBar](/api/classes/ProgressBar)
+- [API: ProgressBar](/api/component/display/classes/ProgressBar)
 - [`ProgressSpinner`](/components/ProgressSpinner) — a circular alternative
 - [Theming](/concepts/theming)

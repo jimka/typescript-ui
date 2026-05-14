@@ -1,6 +1,6 @@
 # ProgressSpinner
 
-[`ProgressSpinner`](/api/classes/ProgressSpinner) is a circular loading indicator
+[`ProgressSpinner`](/api/component/display/classes/ProgressSpinner) is a circular loading indicator
 rendered as a rotating arc. Two usage modes:
 
 - **Inline** — instantiate, size, and add to any parent.
@@ -48,7 +48,7 @@ Calling `setSpinnerSize(n)` later disables theme tracking; the spinner stays at 
 A [`TablePanel`](/components/TablePanel) automatically shows a `ProgressSpinner`
 overlay whenever its store fires `'loadingchanged'` with `loading: true`.
 This happens during `store.load()` for stores backed by an async
-[`Proxy`](/api/classes/Proxy):
+[`Proxy`](/api/data/classes/Proxy):
 
 ```typescript
 const store = new Store(model, ajaxProxy);
@@ -70,7 +70,7 @@ to inspect it from elsewhere.
 
 ## See also
 
-- [API: ProgressSpinner](/api/classes/ProgressSpinner)
+- [API: ProgressSpinner](/api/component/display/classes/ProgressSpinner)
 - [`ProgressBar`](/components/ProgressBar) — a horizontal alternative
 - [`TablePanel`](/components/TablePanel) — auto-overlays during `store.load()`
-- [`AbstractStore`](/api/classes/AbstractStore) — emits `'loadingchanged'`
+- [`AbstractStore`](/api/data/classes/AbstractStore) — emits `'loadingchanged'`

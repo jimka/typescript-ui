@@ -1,6 +1,6 @@
 # Component lifecycle
 
-A [`Component`](/api/classes/Component) goes through a small, predictable sequence of phases from construction to destruction. Understanding it explains when DOM elements appear, when layout runs, and where to hook your own subclass code.
+A [`Component`](/api/core/classes/Component) goes through a small, predictable sequence of phases from construction to destruction. Understanding it explains when DOM elements appear, when layout runs, and where to hook your own subclass code.
 
 ## The phases
 

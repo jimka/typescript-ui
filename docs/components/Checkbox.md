@@ -1,6 +1,6 @@
 # Checkbox
 
-[`Checkbox`](/api/classes/Checkbox) is a boolean toggle backed by an `<input type="checkbox">` element. It implements [`Bindable<boolean>`](/api/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
+[`Checkbox`](/api/component/input/classes/Checkbox) is a boolean toggle backed by an `<input type="checkbox">` element. It implements [`Bindable<boolean>`](/api/core/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
 
 ## Usage
 
@@ -27,11 +27,11 @@ panel.addComponent(subscribe);
 
 ## Notes
 
-- The checkbox is a leaf component — it has no built-in label. Pair it with a [`Label`](/components/Label) or place it in an [`HBox`](/api/classes/HBox) with surrounding text.
+- The checkbox is a leaf component — it has no built-in label. Pair it with a [`Label`](/components/Label) or place it in an [`HBox`](/api/layout/classes/HBox) with surrounding text.
 - For an indeterminate "tri-state" appearance, set the DOM property directly via `getElement()` after render.
 
 ## See also
 
-- [API: Checkbox](/api/classes/Checkbox)
+- [API: Checkbox](/api/component/input/classes/Checkbox)
 - [`RadioButton`](/components/RadioButton) — single-selection alternative
 - [Data binding](/data/binding)

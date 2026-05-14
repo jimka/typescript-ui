@@ -1,6 +1,6 @@
 # NumberSpinner
 
-[`NumberSpinner`](/api/classes/NumberSpinner) is a numeric input field with up / down spin buttons. Combines a borderless [`TextField`](/components/TextField) and a vertical strip of two [`SpinButton`](/components/SpinButton)s into a single bordered control.
+[`NumberSpinner`](/api/component/input/classes/NumberSpinner) is a numeric input field with up / down spin buttons. Combines a borderless [`TextField`](/components/TextField) and a vertical strip of two [`SpinButton`](/components/SpinButton)s into a single bordered control.
 
 Supports min / max clamping, step-snapping, configurable display precision, click and click-and-hold increment / decrement, keyboard arrow keys, blur-on-invalid revert, and the framework `Bindable<number>` interface.
 
@@ -41,7 +41,7 @@ panel.addComponent(quantity);
 
 ## See also
 
-- [API: NumberSpinner](/api/classes/NumberSpinner)
+- [API: NumberSpinner](/api/component/input/classes/NumberSpinner)
 - [`SpinButton`](/components/SpinButton) — the up / down arrow primitives
 - [`Slider`](/components/Slider) — visual range alternative
 - [Data binding](/data/binding)

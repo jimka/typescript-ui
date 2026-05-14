@@ -32,9 +32,9 @@ The body keeps roughly 50 rows in the DOM at any time (viewport + buffer) regard
 
 ## Why this works
 
-[`TableBody`](/api/classes/TableBody):
+The table [`Body`](/api/component/table/classes/Body):
 
-- Maintains a fixed pool of reusable [`TableRow`](/api/classes/TableRow) components.
+- Maintains a fixed pool of reusable [`Row`](/api/component/table/classes/Row) components.
 - Scrolling is JS-owned via [`VirtualScroller`](/components/VirtualScroller): the rows live inside a transform-positioned container and two custom [`Scrollbar`](/components/Scrollbar) overlays drive both axes. Wheel, touch (with fling momentum), and keyboard nav all funnel through the same entry points.
 - Only rows whose data index changed get rebound on scroll — the rest sit at the same DOM position.
 

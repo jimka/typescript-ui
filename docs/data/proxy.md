@@ -1,15 +1,15 @@
 # Proxy
 
-A [`Proxy`](/api/classes/Proxy) is the transport layer of the data stack. Stores ask the proxy to fetch records; the proxy returns raw data which the store turns into [records](/data/record).
+A [`Proxy`](/api/data/classes/Proxy) is the transport layer of the data stack. Stores ask the proxy to fetch records; the proxy returns raw data which the store turns into [records](/data/record).
 
 Two proxies ship with the package:
 
-- [`MemoryProxy`](/api/classes/MemoryProxy) — serves an in-memory array.
-- [`AjaxProxy`](/api/classes/AjaxProxy) — fetches JSON from an HTTP endpoint.
+- [`MemoryProxy`](/api/data/classes/MemoryProxy) — serves an in-memory array.
+- [`AjaxProxy`](/api/data/classes/AjaxProxy) — fetches JSON from an HTTP endpoint.
 
 ## MemoryProxy
 
-Use this when you have data already in JavaScript (test fixtures, static lists, embedded JSON). For convenience, you can usually skip it and use [`MemoryStore`](/api/classes/MemoryStore) directly.
+Use this when you have data already in JavaScript (test fixtures, static lists, embedded JSON). For convenience, you can usually skip it and use [`MemoryStore`](/api/data/classes/MemoryStore) directly.
 
 ```typescript
 import { MemoryProxy, Store } from '@jimka/typescript-ui/data';
@@ -24,11 +24,11 @@ const store = new Store(PersonModel, proxy);
 await store.load();
 ```
 
-See [`MemoryProxyOptions`](/api/interfaces/MemoryProxyOptions) for the full options. The legacy alias `MemoryProxyConfig` remains as a deprecated type re-export.
+See [`MemoryProxyOptions`](/api/data/interfaces/MemoryProxyOptions) for the full options. The legacy alias `MemoryProxyConfig` remains as a deprecated type re-export.
 
 ## AjaxProxy
 
-Fetches JSON over HTTP via the browser's `fetch` API. For convenience, you can usually skip the proxy and use [`AjaxStore`](/api/classes/AjaxStore) directly, which constructs the proxy from the same config.
+Fetches JSON over HTTP via the browser's `fetch` API. For convenience, you can usually skip the proxy and use [`AjaxStore`](/api/data/classes/AjaxStore) directly, which constructs the proxy from the same config.
 
 ```typescript
 import { AjaxProxy, Store } from '@jimka/typescript-ui/data';
@@ -48,12 +48,12 @@ await store.load();
 | `method` | HTTP method (default `GET`) |
 | `root`   | JSON path to the records array (e.g. `'data'` for `{ data: [...] }`) |
 
-See [`AjaxProxyOptions`](/api/interfaces/AjaxProxyOptions) for the complete option list. The legacy alias `AjaxProxyConfig` remains as a deprecated type re-export.
+See [`AjaxProxyOptions`](/api/data/interfaces/AjaxProxyOptions) for the complete option list. The legacy alias `AjaxProxyConfig` remains as a deprecated type re-export.
 
 ### Server-side pagination
 
 When the [`Store`](/data/store) has had `setPageSize(n)` called on it, the
-store's `load()` forwards a [`ReadParams`](/api/interfaces/ReadParams) object to
+store's `load()` forwards a [`ReadParams`](/api/data/interfaces/ReadParams) object to
 `proxy.read()`. `AjaxProxy` appends `page` and `pageSize` as query-string
 parameters and expects an envelope response:
 
@@ -76,11 +76,11 @@ await store.load();
 If `root` is configured, the envelope is read from `json[root]` first, then
 `.data` and `.total` are extracted. The total count is exposed on the store
 via `getTotalCount()` and `getTotalPages()`, and on the proxy itself via
-[`getLastTotalCount()`](/api/classes/Proxy#getlasttotalcount).
+[`getLastTotalCount()`](/api/data/classes/Proxy#getlasttotalcount).
 
 ## Custom proxies
 
-Subclass [`Proxy`](/api/classes/Proxy) and implement `load()`. This is the path for GraphQL, WebSocket, IndexedDB, or any other transport.
+Subclass [`Proxy`](/api/data/classes/Proxy) and implement `load()`. This is the path for GraphQL, WebSocket, IndexedDB, or any other transport.
 
 ```typescript
 import { Proxy } from '@jimka/typescript-ui/data';

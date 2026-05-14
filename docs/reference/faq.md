@@ -52,7 +52,7 @@ For a custom theme, see the [custom theme recipe](/recipes/custom-theme).
 
 Three common causes:
 
-1. **No layout manager on the parent.** A bare [`Component`](/api/classes/Component) defaults to [`Absolute`](/layouts/Absolute), which positions nothing. Set a manager: `panel.setLayoutManager(VBox())`.
+1. **No layout manager on the parent.** A bare [`Component`](/api/core/classes/Component) defaults to [`Absolute`](/layouts/Absolute), which positions nothing. Set a manager: `panel.setLayoutManager(VBox())`.
 2. **No preferred size on a [`Text`](/components/Text)-derived component before its first measurement.** Wait until the parent has had a chance to lay out, or call `setPreferredSize` explicitly.
 3. **Custom CSS without `"px"` units.** See above.
 

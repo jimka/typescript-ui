@@ -1,6 +1,6 @@
 # Events
 
-The framework's [`Event`](/api/classes/Component) namespace centralises DOM event delegation. Instead of attaching one native listener per component, the framework attaches one listener per event type to a shared root and routes each fired event to the relevant component callback.
+The framework's [`Event`](/api/core/classes/Component) namespace centralises DOM event delegation. Instead of attaching one native listener per component, the framework attaches one listener per event type to a shared root and routes each fired event to the relevant component callback.
 
 This page covers the three listener flavours, when to use each, and the hover-event quirk that bites everyone at least once.
 
@@ -86,6 +86,6 @@ The DOM specification allows `mouseenter`/`mouseleave` to bubble, but Chrome imp
 
 ## See also
 
-- [API: Event](/api/classes/Component) (namespace)
+- [API: Event](/api/core/classes/Component) (namespace)
 - [Mental model](/guide/mental-model) — why event delegation works the way it does
 - Recipe: [Right-click menu](/recipes/right-click-menu) — a working `contextmenu` handler

@@ -1,6 +1,6 @@
 # Modal dialog with async result
 
-Use [`Dialog.show()`](/api/classes/Dialog) for one-shot prompts. The static method returns a `Promise<DialogResult>` that resolves to `'confirm'`, `'cancel'`, or `'close'`.
+Use [`Dialog.show()`](/api/core/classes/Dialog) for one-shot prompts. The static method returns a `Promise<DialogResult>` that resolves to `'confirm'`, `'cancel'`, or `'close'`.
 
 ## Confirm a destructive action
 
@@ -93,5 +93,5 @@ switch (result) {
 ## See also
 
 - [Dialog](/components/Dialog) — full surface
-- [API: DialogConfig](/api/interfaces/DialogConfig), [DialogButtonConfig](/api/interfaces/DialogButtonConfig), [DialogResult](/api/type-aliases/DialogResult)
+- [API: DialogConfig](/api/core/interfaces/DialogConfig), [DialogButtonConfig](/api/core/interfaces/DialogButtonConfig), [DialogResult](/api/core/type-aliases/DialogResult)
 - [Floating window](/recipes/floating-window) — for non-modal panels

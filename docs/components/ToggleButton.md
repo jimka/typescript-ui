@@ -1,6 +1,6 @@
 # ToggleButton
 
-[`ToggleButton`](/api/classes/ToggleButton) is a [`Button`](/components/Button) that switches between selected and unselected states on each click. Maintains a separate CSS rule for the `.selected` class so the active state can be styled independently.
+[`ToggleButton`](/api/component/button/classes/ToggleButton) is a [`Button`](/components/Button) that switches between selected and unselected states on each click. Maintains a separate CSS rule for the `.selected` class so the active state can be styled independently.
 
 ## Usage
 
@@ -40,7 +40,7 @@ Selected-state appearance comes from the `toggle.selected.*` token group — see
 
 ## See also
 
-- [API: ToggleButton](/api/classes/ToggleButton)
+- [API: ToggleButton](/api/component/button/classes/ToggleButton)
 - [`Button`](/components/Button) — base class
 - [`ButtonGroup`](/components/ButtonGroup) — single-selection enforcement
 - [`RadioButton`](/components/RadioButton) — for native radio semantics

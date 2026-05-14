@@ -95,7 +95,7 @@ const root = Component({
 
 ## Constraining columns
 
-Use a [`ColumnSpec`](/api/interfaces/ColumnSpec) to control widths and order:
+Use a [`ColumnSpec`](/api/component/table/interfaces/ColumnSpec) to control widths and order:
 
 ```typescript
 const table = Table(store, {

@@ -1,6 +1,6 @@
 # Slider
 
-[`Slider`](/api/classes/Slider) is a continuous-value range input backed by an `<input type="range">` element. Tracks min, max, step, and current value internally, keeping the DOM in sync on every input event.
+[`Slider`](/api/component/input/classes/Slider) is a continuous-value range input backed by an `<input type="range">` element. Tracks min, max, step, and current value internally, keeping the DOM in sync on every input event.
 
 ## Usage
 
@@ -36,5 +36,5 @@ panel.addComponent(volume);
 
 ## See also
 
-- [API: Slider](/api/classes/Slider)
+- [API: Slider](/api/component/input/classes/Slider)
 - [`NumberSpinner`](/components/NumberSpinner) — discrete numeric alternative

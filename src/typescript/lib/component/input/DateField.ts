@@ -21,7 +21,7 @@ export interface DateFieldOptions extends InputOptions {
 /**
  * A date-picker input component backed by an `<input type="date">` element.
  *
- * Implements {@link Bindable} so it can participate in a {@link Binding} directly.
+ * Implements {@link Bindable} so it can participate in a `Binding` directly.
  * Returns `null` from `getValue` when the field is empty.
  *
  * @category Components

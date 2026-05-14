@@ -1,6 +1,6 @@
 # Legend
 
-[`Legend`](/api/classes/Legend) is the title component embedded inside a [`FieldSet`](/components/FieldSet). It uses a `<legend>` element and static CSS positioning so the browser can render the title text inside the fieldset border.
+[`Legend`](/api/component/container/classes/Legend) is the title component embedded inside a [`FieldSet`](/components/FieldSet). It uses a `<legend>` element and static CSS positioning so the browser can render the title text inside the fieldset border.
 
 ## Usage
 
@@ -21,6 +21,6 @@ legend.setFontWeight('bold');
 
 ## See also
 
-- [API: Legend](/api/classes/Legend)
+- [API: Legend](/api/component/container/classes/Legend)
 - [`FieldSet`](/components/FieldSet) — primary consumer
 - [`Text`](/components/Text) — base class

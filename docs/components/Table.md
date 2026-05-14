@@ -1,8 +1,8 @@
 # Table
 
-[`Table`](/api/classes/Table) is a data-bound table component rendered as an HTML `<table>` element. It composes a header, a virtual-scrolling body, and an optional footer, all wired to an [`AbstractStore`](/data/store).
+[`Table`](/api/component/table/classes/Table) is a data-bound table component rendered as an HTML `<table>` element. It composes a header, a virtual-scrolling body, and an optional footer, all wired to an [`AbstractStore`](/data/store).
 
-When no [`ColumnSpec`](/api/interfaces/ColumnSpec) is supplied, the table auto-generates one column per model field with default sizing.
+When no [`ColumnSpec`](/api/component/table/interfaces/ColumnSpec) is supplied, the table auto-generates one column per model field with default sizing.
 
 ## Quickest example
 
@@ -27,7 +27,7 @@ panel.addComponent(table);
 
 ## Constraining columns
 
-Pass a [`ColumnSpec`](/api/interfaces/ColumnSpec) to control which columns appear, their widths, and visibility:
+Pass a [`ColumnSpec`](/api/component/table/interfaces/ColumnSpec) to control which columns appear, their widths, and visibility:
 
 ```typescript
 import { Table } from '@jimka/typescript-ui/component/table';
@@ -102,16 +102,16 @@ the column spec.
 
 ## Performance
 
-The body uses **virtual scrolling**: only rows visible in the viewport plus a small buffer are in the DOM at any time. A pool of reusable row components is rebound (not recreated) as the user scrolls. Scrolling itself is JS-owned via a [`VirtualScroller`](/components/VirtualScroller) — `translate3d` transform plus two custom [`Scrollbar`](/components/Scrollbar) overlays — with wheel, touch (fling momentum), and keyboard navigation funnelled through the same `setScrollY` / `setScrollX` entry points. See [`Body`](/api/classes/TableBody) for the implementation.
+The body uses **virtual scrolling**: only rows visible in the viewport plus a small buffer are in the DOM at any time. A pool of reusable row components is rebound (not recreated) as the user scrolls. Scrolling itself is JS-owned via a [`VirtualScroller`](/components/VirtualScroller) — `translate3d` transform plus two custom [`Scrollbar`](/components/Scrollbar) overlays — with wheel, touch (fling momentum), and keyboard navigation funnelled through the same `setScrollY` / `setScrollX` entry points. See [`Body`](/api/component/table/classes/Body) for the implementation.
 
 Horizontal scrolling kicks in automatically when the combined column width exceeds the table's width.
 
-For large datasets, [`AbstractStore`](/api/classes/AbstractStore) automatically offloads sort and filter operations to a Web Worker once the dataset exceeds 1,000 rows.
+For large datasets, [`AbstractStore`](/api/data/classes/AbstractStore) automatically offloads sort and filter operations to a Web Worker once the dataset exceeds 1,000 rows.
 
 ## See also
 
-- [API: Table](/api/classes/Table)
-- [API: ColumnSpec](/api/interfaces/ColumnSpec), [ColumnConfig](/api/interfaces/ColumnConfig), [ExportOptions](/api/interfaces/ExportOptions)
+- [API: Table](/api/component/table/classes/Table)
+- [API: ColumnSpec](/api/component/table/interfaces/ColumnSpec), [ColumnConfig](/api/component/table/interfaces/ColumnConfig), [ExportOptions](/api/component/table/interfaces/ExportOptions)
 - [`TablePanel`](/components/TablePanel) — table + add/remove/sync toolbar
 - [Data layer](/data/) — Model, Store, Proxy, Binding
 - Recipe: CRUD with a Table (forthcoming)
