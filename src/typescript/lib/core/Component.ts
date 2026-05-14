@@ -1977,6 +1977,51 @@ class Component extends BaseObject {
     }
 
     /**
+     * Inserts a child component at the given index, appends its element at the matching DOM position,
+     * wires preferred-size change propagation, and triggers layout.
+     *
+     * @param component - The child component to insert.
+     * @param index - Zero-based insertion index. Values outside `[0, children.length]` are clamped.
+     * @param constraints - Optional. Layout constraints to pass to the layout manager.
+     *
+     * @remarks
+     * Use this when child order matters — for example, placing a leading glyph before an existing
+     * label without removing and re-appending the label. `addComponent(c, …)` is the append-at-end
+     * shortcut for `insertComponent(c, children.length, …)`.
+     */
+    insertComponent(component: Component, index: number, constraints?: LayoutConstraints): this {
+        if (component._parent !== null) {
+            throw new Error(`Component ${component.getId()} already has a parent. Remove it first.`);
+        }
+
+        const clampedIndex = Math.max(0, Math.min(index, this.components.length));
+        this.components.splice(clampedIndex, 0, component);
+
+        this.setLayoutConstraints(component, constraints);
+
+        component._parent = this;
+        component.onPreferredSizeChange = () => {
+            this.scheduleLayout();
+
+            this.onPreferredSizeChange?.();
+        };
+
+        let element = this.getElement();
+        if (!element) {
+            return this;
+        }
+
+        let compElement = component.getElement(true);
+        const nextSibling = clampedIndex + 1 < this.components.length
+            ? this.components[clampedIndex + 1].getElement()
+            : null;
+        element.insertBefore(compElement, nextSibling ?? null);
+        this.scheduleLayout();
+
+        return this;
+    }
+
+    /**
      * Removes a child component by instance or index, detaches its element, and triggers layout.
      *
      * @param component - The Component instance to remove, or a Number index into the children array.
