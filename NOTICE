@@ -1,0 +1,28 @@
+This project includes third-party material under licenses different from
+the project's own (see LICENSE for the project license).
+
+================================================================================
+Font Awesome Free
+================================================================================
+
+Source:    https://fontawesome.com
+Author:    Fonticons, Inc.
+Icons:     Creative Commons Attribution 4.0 International (CC BY 4.0)
+           https://creativecommons.org/licenses/by/4.0/
+Fonts:     SIL OFL 1.1 (https://scripts.sil.org/OFL)
+Code:      MIT (https://opensource.org/licenses/MIT)
+Full text: src/resources/Base/script/fontawesome/LICENSE.txt
+           https://fontawesome.com/license/free
+
+This project redistributes Font Awesome Free in two forms:
+
+1. The unmodified Font Awesome Free distribution is vendored under
+   `src/resources/Base/script/fontawesome/` (CSS, JS, fonts, SVG sources,
+   metadata). All files retain their original licenses as described above.
+
+2. SVG path data extracted from individual Font Awesome icons is embedded
+   in `src/typescript/lib/component/display/Glyphs.ts` as entries of the
+   `Glyphs` registry. The following registry entries are sourced from
+   Font Awesome Free (CC BY 4.0):
+
+     - `times`  — fontawesome/svgs/solid/times.svg
