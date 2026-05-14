@@ -15,6 +15,16 @@ interface BoundEntry {
 }
 
 /**
+ * Listener consulted before a record change takes effect.
+ *
+ * Receives the *next* record (or `null`) and returns `false` to cancel the
+ * change. Any other return value (`true`, `undefined`, …) allows it.
+ *
+ * @category Data
+ */
+export type BeforeRecordListener = (next: ModelRecord | null) => boolean;
+
+/**
  * Synchronises a {@link ModelRecord} with a set of UI components.
  *
  * Components are registered with {@link bind}, either as {@link Bindable} implementors
@@ -51,6 +61,7 @@ export class Binding extends BaseObject {
     private changeListeners:  Array<(fieldName: string, value: unknown) => void> = [];
     private commitListeners:  Array<() => void> = [];
     private rejectListeners:  Array<() => void> = [];
+    private beforeRecordListeners: Array<BeforeRecordListener> = [];
     private validationConfigs: Map<string, FieldValidationConfig> = new Map();
     private globalValidateOnChange: boolean = false;
 
@@ -132,9 +143,20 @@ export class Binding extends BaseObject {
      * Loads a record into the binding. All registered components are immediately
      * populated with the corresponding field values. Pass `null` to clear the binding.
      *
+     * Before any state mutation, every listener registered via
+     * {@link addBeforeRecordListener} is consulted; if any returns `false` the
+     * call is a complete no-op (no validation reset, no field population) and
+     * `this` is returned unchanged.
+     *
      * @param record - The record to bind, or `null` to detach.
      */
     setRecord(record: ModelRecord | null): this {
+        for (const fn of this.beforeRecordListeners) {
+            if (fn(record) === false) {
+                return this;
+            }
+        }
+
         this.record = record;
 
         this.clearValidation();
@@ -221,6 +243,30 @@ export class Binding extends BaseObject {
      */
     addRejectListener(fn: () => void): void {
         this.rejectListeners.push(fn);
+    }
+
+    /**
+     * Registers a listener that is consulted before a record change takes effect.
+     *
+     * The listener receives the *next* record (or `null`) and returns `false`
+     * to cancel the change. Iteration stops on the first `false`; if any listener
+     * vetoes, {@link setRecord} returns without modifying any state. Returning
+     * `true` — or anything other than `false`, including `undefined` — allows
+     * the change.
+     *
+     * @remarks
+     * Async confirmation must be handled at the call site — {@link setRecord}
+     * stays synchronous. A caller that needs to reconcile its UI after a veto
+     * (e.g. reset a record-picker combo) should compare {@link getRecord} after
+     * the call. A listener that itself calls {@link setRecord} re-enters the
+     * same veto loop, which is supported but discouraged. `null` is a valid
+     * `next` value (it represents a clear); a listener that only wants to guard
+     * non-clear switches must short-circuit `next === null` itself.
+     *
+     * @param fn - Called with the next record (or `null`). Return `false` to veto.
+     */
+    addBeforeRecordListener(fn: BeforeRecordListener): void {
+        this.beforeRecordListeners.push(fn);
     }
 
     // ── Validation ───────────────────────────────────────────────────────────
