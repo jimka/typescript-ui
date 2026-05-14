@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { TextInput, TextInputOptions } from "./TextInput.js";
-import { Util } from "../Util.js";
-import { Event } from "../Event.js";
-import { Insets } from "../Insets.js";
-import { Bindable } from "../Bindable.js";
-import { ThemeManager } from "../Theme.js";
-import { callable } from "../Callable.js";
+import { TextInput, TextInputOptions } from "~/component/TextInput.js";
+import { Util } from "~/Util.js";
+import { Event } from "~/Event.js";
+import { Insets } from "~/Insets.js";
+import { Bindable } from "~/Bindable.js";
+import { ThemeManager } from "~/Theme.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link TextField}.

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { BaseObject } from "./BaseObject.js";
+import { BaseObject } from "~/BaseObject.js";
 
 /**
  * Represents the four directional inset (padding/margin) values for a rectangular area.

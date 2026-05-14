@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Event } from "../Event.js";
-import { Input, InputOptions } from "./Input.js";
-import { Bindable } from "../Bindable.js";
-import { ThemeManager } from "../Theme.js";
-import { callable } from "../Callable.js";
+import { Event } from "~/Event.js";
+import { Input, InputOptions } from "~/component/Input.js";
+import { Bindable } from "~/Bindable.js";
+import { ThemeManager } from "~/Theme.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link Checkbox}.

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { Event } from "../Event.js";
-import { Bindable } from "../Bindable.js";
-import { ThemeManager } from "../Theme.js";
-import { AbstractStore } from "../data/AbstractStore.js";
-import { TextField } from "./TextField.js";
-import { AutoCompleteDropdown } from "./AutoCompleteDropdown.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { Bindable } from "~/Bindable.js";
+import { ThemeManager } from "~/Theme.js";
+import { AbstractStore } from "~/data/AbstractStore.js";
+import { TextField } from "~/component/TextField.js";
+import { AutoCompleteDropdown } from "~/component/AutoCompleteDropdown.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Controls how typed input is matched against suggestion strings.

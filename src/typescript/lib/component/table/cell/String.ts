@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Cell } from "./Cell.js";
-import { StringRenderer } from "./renderer/String.js";
-import { StringEditor } from "./editor/String.js";
-import { callable } from "../../../Callable.js";
+import { Cell } from "~/component/table/cell/Cell.js";
+import { StringRenderer } from "~/component/table/cell/renderer/String.js";
+import { StringEditor } from "~/component/table/cell/editor/String.js";
+import { callable } from "~/Callable.js";
 
 /**
  * A table cell for string values.

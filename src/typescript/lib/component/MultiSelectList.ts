@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { List, ListOptions } from "./List.js";
-import { ModelRecord } from "../data/ModelRecord.js";
-import { callable } from "../Callable.js";
+import { List, ListOptions } from "~/component/List.js";
+import { ModelRecord } from "~/data/ModelRecord.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link MultiSelectList}.

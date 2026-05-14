@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager } from "./layout/LayoutManager.js";
-import { Absolute } from "./layout/Absolute.js";
-import { Border, BorderOptions } from "./Border.js";
-import { Size } from "./Size.js";
-import { Insets } from "./Insets.js";
-import { BaseObject } from "./BaseObject.js";
-import { LayoutConstraints } from "./layout/LayoutConstraints.js";
-import { Type } from "./Type.js";
-import { Util } from "./Util.js";
-import { CSS } from "./CSS.js";
-import { Position } from "./Position.js";
-import { Aria } from "./Aria.js";
-import { callable } from "./Callable.js";
+import { LayoutManager } from "~/layout/LayoutManager.js";
+import { Absolute } from "~/layout/Absolute.js";
+import { Border, BorderOptions } from "~/Border.js";
+import { Size } from "~/Size.js";
+import { Insets } from "~/Insets.js";
+import { BaseObject } from "~/BaseObject.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import { Type } from "~/Type.js";
+import { Util } from "~/Util.js";
+import { CSS } from "~/CSS.js";
+import { Position } from "~/Position.js";
+import { Aria } from "~/Aria.js";
+import { callable } from "~/Callable.js";
 
-//import { FastDom } from "./FastDom.js";
+//import { FastDom } from "~/FastDom.js";
 
 /**
  * Generic two-argument comparator returning a sort-order number.

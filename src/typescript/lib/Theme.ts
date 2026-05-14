@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { CSS } from './CSS.js';
-import { Util } from './Util.js';
+import { CSS } from '~/CSS.js';
+import { Util } from '~/Util.js';
 
 /**
  * Defines the full set of design tokens that make up a UI theme.

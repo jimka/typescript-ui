@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Border as BorderLayout } from "../layout/Border.js";
-import { Text, TextOptions } from "./Text.js";
-import { Insets } from "../Insets.js";
-import { AnchorType } from "../layout/AnchorType.js";
-import { FillType } from "../layout/FillType.js";
-import { Placement } from "../Placement.js";
-import { ThemeManager } from "../Theme.js";
-import { Panel } from "../Panel.js";
-import { callable } from "../Callable.js";
+import { Border as BorderLayout } from "~/layout/Border.js";
+import { Text, TextOptions } from "~/component/Text.js";
+import { Insets } from "~/Insets.js";
+import { AnchorType } from "~/layout/AnchorType.js";
+import { FillType } from "~/layout/FillType.js";
+import { Placement } from "~/Placement.js";
+import { ThemeManager } from "~/Theme.js";
+import { Panel } from "~/Panel.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link Header}. Text and font fields target

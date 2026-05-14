@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { Legend } from "./Legend.js";
-import { BorderStyle } from "../BorderStyle.js";
-import { Insets } from "../Insets.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { Legend } from "~/component/Legend.js";
+import { BorderStyle } from "~/BorderStyle.js";
+import { Insets } from "~/Insets.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link FieldSet}.

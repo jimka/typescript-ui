@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from '../Component.js';
-import { FieldDecorator } from './FieldDecorator.js';
+import { Component } from '~/Component.js';
+import { FieldDecorator } from '~/validation/FieldDecorator.js';
 
 /**
  * A discriminated union of all supported validation rule types.

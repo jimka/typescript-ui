@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Button, ButtonOptions } from "./Button.js";
-import { Insets } from "../Insets.js";
-import { callable } from "../Callable.js";
+import { Button, ButtonOptions } from "~/component/Button.js";
+import { Insets } from "~/Insets.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link TabCloseButton}.

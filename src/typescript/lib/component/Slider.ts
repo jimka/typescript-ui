@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Input, InputOptions } from "./Input.js";
-import { Event } from "../Event.js";
-import { ThemeManager } from "../Theme.js";
-import { callable } from "../Callable.js";
+import { Input, InputOptions } from "~/component/Input.js";
+import { Event } from "~/Event.js";
+import { ThemeManager } from "~/Theme.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link Slider}.

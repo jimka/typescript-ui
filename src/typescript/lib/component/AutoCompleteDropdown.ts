@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { Event } from "../Event.js";
-import { Position } from "../Position.js";
-import { BorderStyle } from "../BorderStyle.js";
-import { VBox } from "../layout/VBox.js";
-import { AutoCompleteItem } from "./AutoCompleteItem.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { Position } from "~/Position.js";
+import { BorderStyle } from "~/BorderStyle.js";
+import { VBox } from "~/layout/VBox.js";
+import { AutoCompleteItem } from "~/component/AutoCompleteItem.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link AutoCompleteDropdown}.

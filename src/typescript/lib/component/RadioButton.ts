@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { Event } from "../Event.js";
-import { HBox } from "../layout/HBox.js";
-import { Input } from "./Input.js";
-import { Label } from "./Label.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { HBox } from "~/layout/HBox.js";
+import { Input } from "~/component/Input.js";
+import { Label } from "~/component/Label.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link RadioButton}.

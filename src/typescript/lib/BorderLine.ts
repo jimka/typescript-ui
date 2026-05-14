@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { BorderStyle } from "./BorderStyle.js";
+import { BorderStyle } from "~/BorderStyle.js";
 
 /**
  * Represents a single side of a CSS border, holding its placement prefix,

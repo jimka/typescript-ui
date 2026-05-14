@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "./Component";
-import { Insets } from "./Insets";
-import { callable } from "./Callable.js";
+import { Component, ComponentOptions } from "~/Component";
+import { Insets } from "~/Insets";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link Panel}.

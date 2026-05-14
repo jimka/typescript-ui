@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Border } from "./layout/Border.js";
-import { BorderStyle } from "./BorderStyle.js";
-import { WindowHeader } from "./component/WindowHeader.js";
-import { WindowBorder, Direction } from "./component/WindowBorder.js";
-import { Event } from "./Event.js";
-import { Placement } from "./Placement.js";
-import { Panel } from "./Panel.js";
-import { callable } from "./Callable.js";
+import { Border } from "~/layout/Border.js";
+import { BorderStyle } from "~/BorderStyle.js";
+import { WindowHeader } from "~/component/WindowHeader.js";
+import { WindowBorder, Direction } from "~/component/WindowBorder.js";
+import { Event } from "~/Event.js";
+import { Placement } from "~/Placement.js";
+import { Panel } from "~/Panel.js";
+import { callable } from "~/Callable.js";
 
 /**
  * A floating, resizable, and draggable window component.

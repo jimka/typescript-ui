@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Event } from "../Event.js";
-import { ComboBox, ComboBoxOptions } from "./ComboBox.js";
-import { callable } from "../Callable.js";
+import { Event } from "~/Event.js";
+import { ComboBox, ComboBoxOptions } from "~/component/ComboBox.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link List}.

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { TextInput, TextInputOptions } from "./TextInput.js";
-import { Event } from "../Event.js";
-import { Insets } from "../Insets.js";
-import { callable } from "../Callable.js";
+import { TextInput, TextInputOptions } from "~/component/TextInput.js";
+import { Event } from "~/Event.js";
+import { Insets } from "~/Insets.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link TextArea}.

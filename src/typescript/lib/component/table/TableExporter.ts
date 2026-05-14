@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Column } from "./Column.js";
-import { ColumnConfig } from "./ColumnConfig.js";
-import { ModelRecord } from "../../data/ModelRecord.js";
-import { FieldType } from "../../data/Field.js";
+import { Column } from "~/component/table/Column.js";
+import { ColumnConfig } from "~/component/table/ColumnConfig.js";
+import { ModelRecord } from "~/data/ModelRecord.js";
+import { FieldType } from "~/data/Field.js";
 
 /**
  * Options controlling a {@link Table} export operation.

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { AbstractStore } from "../data/AbstractStore.js";
-import { HBox } from "../layout/HBox.js";
-import { Button } from "./Button.js";
-import { Text } from "./Text.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { AbstractStore } from "~/data/AbstractStore.js";
+import { HBox } from "~/layout/HBox.js";
+import { Button } from "~/component/Button.js";
+import { Text } from "~/component/Text.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link PaginationBar}.

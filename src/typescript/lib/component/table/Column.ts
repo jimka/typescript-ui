@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Field } from "../../data/Field.js";
-import { ColumnConfig, ColumnSpec } from "./ColumnConfig.js";
+import { Field } from "~/data/Field.js";
+import { ColumnConfig, ColumnSpec } from "~/component/table/ColumnConfig.js";
 
 /**
  * Resolved presentation descriptor for a single table column.

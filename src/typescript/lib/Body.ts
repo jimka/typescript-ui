@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Component.js";
-import { Util } from "./Util.js";
-import { Event } from "./Event.js";
-import { Size } from "./Size.js";
-import { ThemeManager, DefaultTheme } from "./Theme.js";
+import { Component } from "~/Component.js";
+import { Util } from "~/Util.js";
+import { Event } from "~/Event.js";
+import { Size } from "~/Size.js";
+import { ThemeManager, DefaultTheme } from "~/Theme.js";
 
 /**
  * A {@link Component} that wraps the page's `<body>` element.

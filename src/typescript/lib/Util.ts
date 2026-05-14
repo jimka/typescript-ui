@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Size } from "./Size.js";
+import { Size } from "~/Size.js";
 
 /**
  * Font options for off-screen text measurement.

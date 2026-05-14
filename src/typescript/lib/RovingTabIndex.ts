@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Component.js";
+import { Component } from "~/Component.js";
 
 /**
  * Manages the roving tabindex pattern for a group of sibling {@link Component} items.

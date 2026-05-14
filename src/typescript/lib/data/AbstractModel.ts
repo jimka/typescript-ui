@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Field, FieldOptions } from './Field.js';
-import { ModelRecord } from './ModelRecord.js';
+import { Field, FieldOptions } from '~/data/Field.js';
+import { ModelRecord } from '~/data/ModelRecord.js';
 
 /**
  * Base class for all data models.

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { DefaultCell } from "./Default.js";
-import { Event } from "../../../Event.js";
-import { Util } from "../../../Util.js";
-import { CSS } from "../../../CSS.js";
-import { Tooltip } from "../../../Tooltip.js";
-import { callable } from "../../../Callable.js";
+import { DefaultCell } from "~/component/table/cell/Default.js";
+import { Event } from "~/Event.js";
+import { Util } from "~/Util.js";
+import { CSS } from "~/CSS.js";
+import { Tooltip } from "~/Tooltip.js";
+import { callable } from "~/Callable.js";
 
 /**
  * A non-editable header cell rendered as a `<th>` element.

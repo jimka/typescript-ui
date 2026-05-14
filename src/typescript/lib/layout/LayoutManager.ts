@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { FillType } from "./FillType.js";
-import { AnchorType } from "./AnchorType.js";
-import { LayoutConstraints } from "./LayoutConstraints";
-import { Size } from "../Size.js";
-import { Component } from "../Component.js";
-import { BaseObject } from "../BaseObject.js";
+import { FillType } from "~/layout/FillType.js";
+import { AnchorType } from "~/layout/AnchorType.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints";
+import { Size } from "~/Size.js";
+import { Component } from "~/Component.js";
+import { BaseObject } from "~/BaseObject.js";
 
 /**
  * Construction-time options shared by every {@link LayoutManager}.

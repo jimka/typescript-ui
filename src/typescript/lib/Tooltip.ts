@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Component.js";
-import { Event } from "./Event.js";
-import { Util } from "./Util.js";
-import { BorderStyle } from "./BorderStyle.js";
-import { Text } from "./component/Text.js";
+import { Component } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { Util } from "~/Util.js";
+import { BorderStyle } from "~/BorderStyle.js";
+import { Text } from "~/component/Text.js";
 
 /**
  * Optional color overrides for a tooltip attachment.

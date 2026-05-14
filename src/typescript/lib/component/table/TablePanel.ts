@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../../Component.js";
-import { AbstractStore } from "../../data/AbstractStore.js";
-import { Border } from "../../layout/Border.js";
-import { HBox } from "../../layout/HBox.js";
-import { Panel } from "../../Panel.js";
-import { Placement } from "../../Placement.js";
-import { Button } from "../Button.js";
-import { PaginationBar } from "../PaginationBar.js";
-import { ProgressSpinner } from "../ProgressSpinner.js";
-import { Table } from "./Table.js";
-import { ExportOptions } from "./TableExporter.js";
-import { callable } from "../../Callable.js";
+import { Component } from "~/Component.js";
+import { AbstractStore } from "~/data/AbstractStore.js";
+import { Border } from "~/layout/Border.js";
+import { HBox } from "~/layout/HBox.js";
+import { Panel } from "~/Panel.js";
+import { Placement } from "~/Placement.js";
+import { Button } from "~/component/Button.js";
+import { PaginationBar } from "~/component/PaginationBar.js";
+import { ProgressSpinner } from "~/component/ProgressSpinner.js";
+import { Table } from "~/component/table/Table.js";
+import { ExportOptions } from "~/component/table/TableExporter.js";
+import { callable } from "~/Callable.js";
 
 /**
  * A composite panel that combines a {@link Table} with an add/remove/sync toolbar.

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractListComponent, AbstractListOptions } from "./AbstractListComponent.js";
-import { BulletedListItemStyle } from "./BulletedListItemStyle.js";
-import { callable } from "../Callable.js";
+import { AbstractListComponent, AbstractListOptions } from "~/component/AbstractListComponent.js";
+import { BulletedListItemStyle } from "~/component/BulletedListItemStyle.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link BulletedList}.

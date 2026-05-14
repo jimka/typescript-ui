@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Component.js";
-import { Event } from "./Event.js";
-import { RadioButton } from "./component/RadioButton.js";
-import { RovingTabIndex } from "./RovingTabIndex.js";
-import { ToggleButton } from "./component/ToggleButton.js";
-import { callable } from "./Callable.js";
+import { Component } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { RadioButton } from "~/component/RadioButton.js";
+import { RovingTabIndex } from "~/RovingTabIndex.js";
+import { ToggleButton } from "~/component/ToggleButton.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link ButtonGroup}.

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../../Component.js";
-import { Event } from "../../Event.js";
-import { HBox } from "../../layout/HBox.js";
-import { MenuBarButton } from "./MenuBarButton.js";
-import { Menu } from "../../Menu.js";
-import { MenuConfig } from "../MenuItem.js";
-import { callable } from "../../Callable.js";
+import { Component } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { HBox } from "~/layout/HBox.js";
+import { MenuBarButton } from "~/component/menubar/MenuBarButton.js";
+import { Menu } from "~/Menu.js";
+import { MenuConfig } from "~/component/MenuItem.js";
+import { callable } from "~/Callable.js";
 
 /**
  * A persistent horizontal menu bar that hosts top-level dropdown menus.
