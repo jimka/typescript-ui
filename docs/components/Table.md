@@ -114,4 +114,4 @@ For large datasets, [`AbstractStore`](/api/data/classes/AbstractStore) automatic
 - [API: ColumnSpec](/api/component/table/interfaces/ColumnSpec), [ColumnConfig](/api/component/table/interfaces/ColumnConfig), [ExportOptions](/api/component/table/interfaces/ExportOptions)
 - [`TablePanel`](/components/TablePanel) — table + add/remove/sync toolbar
 - [Data layer](/data/) — Model, Store, Proxy, Binding
-- Recipe: CRUD with a Table (forthcoming)
+- Recipe: [CRUD with a Table](/recipes/crud-table)
