@@ -84,6 +84,7 @@ export default defineConfig({
                     { text: 'Header',          link: '/components/Header' },
                     { text: 'Text',            link: '/components/Text' },
                     { text: 'Image',           link: '/components/Image' },
+                    { text: 'Glyph',           link: '/components/Glyph' },
                     { text: 'FontAwesomeIcon', link: '/components/FontAwesomeIcon' },
                     { text: 'FieldSet',        link: '/components/FieldSet' },
                     { text: 'Legend',          link: '/components/Legend' },
