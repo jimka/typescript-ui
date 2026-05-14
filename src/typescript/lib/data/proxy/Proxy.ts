@@ -8,7 +8,7 @@ import { ModelRecord } from '~/data/ModelRecord.js';
  *
  * @remarks
  * When `AbstractStore.setPageSize(n)` has been called, `AbstractStore.load()`
- * builds a `ReadParams` object describing the desired page and forwards it to
+ * builds a [`ReadParams`](/api/data/interfaces/ReadParams) object describing the desired page and forwards it to
  * the proxy. Proxies that do not understand pagination (e.g. {@link MemoryProxy})
  * are free to ignore the argument.
  *

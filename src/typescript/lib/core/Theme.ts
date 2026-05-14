@@ -687,7 +687,7 @@ export class ThemeManager {
      * @remarks Sets `document.documentElement.style.colorScheme`, `color`, `fontFamily`,
      * `fontSize`, and `document.body.style.backgroundColor` / `color` in addition to the CSS
      * custom properties, so both CSS-variable consumers and direct inline-style consumers
-     * are updated. `<html>` is targeted (in addition to `<body>`) because `Window` components
+     * are updated. `<html>` is targeted (in addition to `<body>`) because [`Window`](/api/core/classes/Window) components
      * are appended to `document.documentElement`, so text in floating windows must inherit
      * from `<html>`.
      */
@@ -712,7 +712,7 @@ export class ThemeManager {
     /**
      * Returns the currently active theme.
      *
-     * @returns The `Theme` object that was last passed to `setTheme`, defaulting to `DefaultTheme`.
+     * @returns The `Theme` object that was last passed to `setTheme`, defaulting to [`DefaultTheme`](/api/core/variables/DefaultTheme).
      */
     static getTheme(): Theme {
         return ThemeManager.current;

@@ -20,8 +20,8 @@ export interface ButtonGroupOptions {
  * Manages mutual exclusivity among a set of {@link RadioButton} or {@link ToggleButton} instances.
  *
  * When a button in the group becomes selected, all other buttons in the group are automatically deselected.
- * For `RadioButton` groups, a shared `name` attribute is applied so the browser handles keyboard navigation
- * natively. For `ToggleButton` groups, call `setContainer` to enable roving tabindex keyboard nav.
+ * For [`RadioButton`](/api/component/input/classes/RadioButton) groups, a shared `name` attribute is applied so the browser handles keyboard navigation
+ * natively. For [`ToggleButton`](/api/component/button/classes/ToggleButton) groups, call `setContainer` to enable roving tabindex keyboard nav.
  *
  * @category Core
  */
@@ -75,7 +75,7 @@ class ButtonGroup {
      * Returns the group's buttons as a {@link Component} array, suitable for passing
      * directly to {@link Component.addComponents}.
      *
-     * @returns A new array of the buttons, widened to `Component`.
+     * @returns A new array of the buttons, widened to [`Component`](/api/core/classes/Component).
      */
     getButtons(): Array<Component> {
         return this.buttons.slice();
@@ -86,7 +86,7 @@ class ButtonGroup {
      *
      * Each argument is either a button or an array of buttons; all forms can be freely mixed
      * in the same call. Each button is registered via {@link addButton}, so mutual-exclusivity
-     * wiring and (for `ToggleButton`) roving tabindex registration are applied to every entry.
+     * wiring and (for [`ToggleButton`](/api/component/button/classes/ToggleButton)) roving tabindex registration are applied to every entry.
      *
      * @param buttons - The buttons to add. Each entry is a bare button or an array of buttons.
      *
@@ -107,8 +107,8 @@ class ButtonGroup {
     /**
      * Adds a button to the group and wires its selection to enforce mutual exclusivity.
      *
-     * @remarks For `RadioButton` instances, a shared `name` attribute is applied for native browser grouping.
-     * For `ToggleButton` instances, the button is added to the roving tabindex group if a container has been set.
+     * @remarks For [`RadioButton`](/api/component/input/classes/RadioButton) instances, a shared `name` attribute is applied for native browser grouping.
+     * For [`ToggleButton`](/api/component/button/classes/ToggleButton) instances, the button is added to the roving tabindex group if a container has been set.
      * @param button - The button to add to the group.
      */
     addButton(button: RadioButton | ToggleButton): this {
@@ -149,10 +149,10 @@ class ButtonGroup {
     }
 
     /**
-     * Sets the container component for keyboard navigation of `ToggleButton` groups.
+     * Sets the container component for keyboard navigation of [`ToggleButton`](/api/component/button/classes/ToggleButton) groups.
      *
      * @remarks Registers Left/Right/Up/Down arrow key handlers on the container via subtree listener.
-     * Also initialises the {@link RovingTabIndex} and adds any already-registered `ToggleButton` members to it.
+     * Also initialises the {@link RovingTabIndex} and adds any already-registered [`ToggleButton`](/api/component/button/classes/ToggleButton) members to it.
      * @param container - The component that wraps the toggle buttons and should receive key events.
      */
     setContainer(container: Component): this {

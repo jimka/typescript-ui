@@ -21,7 +21,7 @@ const DEFAULT_REBUILD_WIDTH = 180;
  *
  * - **Rebuild mode** (`new Menu()`): a right-click context menu. Items are passed per
  *   `show(x, y, items)` call and disposed on the next show or hide.
- * - **Persistent mode** (`new Menu(items, onClose)`): a `MenuBar` dropdown. Items are
+ * - **Persistent mode** (`new Menu(items, onClose)`): a [`MenuBar`](/api/component/menubar/classes/MenuBar) dropdown. Items are
  *   built once in the constructor and reused across `open()` / `close()` cycles.
  *
  * The two API surfaces are disjoint by mode:
@@ -68,7 +68,7 @@ class Menu extends Component {
      */
     constructor();
     /**
-     * Constructs a persistent-mode (`MenuBar` dropdown) menu. Items are built immediately
+     * Constructs a persistent-mode ([`MenuBar`](/api/component/menubar/classes/MenuBar) dropdown) menu. Items are built immediately
      * and reused across `open()` / `close()` cycles.
      *
      * @param items - The menu item configurations.
@@ -405,7 +405,7 @@ class Menu extends Component {
      * Sets an element whose subtree is excluded from the outside-click-to-close check.
      * **Persistent-mode only.**
      *
-     * Used by `MenuBar` to prevent a mousedown on its own buttons from closing the panel
+     * Used by [`MenuBar`](/api/component/menubar/classes/MenuBar) to prevent a mousedown on its own buttons from closing the panel
      * before the button's click handler has a chance to toggle the menu.
      *
      * @param el - The element to exclude, or `null` to clear.
@@ -419,7 +419,7 @@ class Menu extends Component {
     }
 
     /**
-     * Disposes all `MenuItem` children, removing their Event listeners.
+     * Disposes all [`MenuItem`](/api/component/container/classes/MenuItem) children, removing their Event listeners.
      * **Persistent-mode only.**
      */
     dispose(): void {
@@ -539,7 +539,7 @@ class Menu extends Component {
      * Returns `true` if the item at the given index should be skipped during focus traversal.
      *
      * @param index - Zero-based item index.
-     * @returns Whether the item is a separator (or `MenuSeparator` instance).
+     * @returns Whether the item is a separator (or [`MenuSeparator`](/api/component/container/classes/MenuSeparator) instance).
      */
     private isItemSeparator(index: number): boolean {
         const item = this._menuItems[index];
@@ -556,12 +556,12 @@ class Menu extends Component {
     }
 
     /**
-     * Handles the open-submenu signal from a hovered or activated `MenuItem`.
+     * Handles the open-submenu signal from a hovered or activated [`MenuItem`](/api/component/container/classes/MenuItem).
      *
      * Closes any existing child submenu when the item has no submenu; opens or
      * switches to the child panel when it does.
      *
-     * @param item - The `MenuItem` that triggered the signal.
+     * @param item - The [`MenuItem`](/api/component/container/classes/MenuItem) that triggered the signal.
      */
     private handleItemOpenSubmenu(item: MenuItem): void {
         if (!item.hasSubmenu()) {

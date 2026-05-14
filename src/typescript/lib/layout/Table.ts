@@ -23,11 +23,11 @@ const CHAR_WIDTH    = 8;
 const HEADER_PAD    = 16;
 
 /**
- * A layout manager dedicated to the `Table` component.
+ * A layout manager dedicated to the [`Table`](/api/component/table/classes/Table) component.
  * Positions the header, body, and footer sections within the container and
  * triggers virtual-scroll rendering on the body after each layout pass.
  *
- * Per-column widths are stored on the `Table` component. On first render (or after
+ * Per-column widths are stored on the [`Table`](/api/component/table/classes/Table) component. On first render (or after
  * a model swap) widths are initialized based on field type and any `minWidth` /
  * `maxWidth` declared in the column spec: compact types (`boolean`, `number`, `date`)
  * receive a fixed base width floored at the header text width; string and auto columns
@@ -51,7 +51,7 @@ class Table extends LayoutManager {
     }
 
     /**
-     * Attaches to a container, throwing if it is not a `Table` component.
+     * Attaches to a container, throwing if it is not a [`Table`](/api/component/table/classes/Table) component.
      *
      * @param container - The container component to attach to.
      *

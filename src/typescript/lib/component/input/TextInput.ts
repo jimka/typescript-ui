@@ -78,9 +78,9 @@ class TextInput extends Input {
      * when sizing children; for a leaf input it does not visually push the
      * rendered element down, so it is excluded from the baseline. `padding` is
      * applied as real CSS padding (with `box-sizing: border-box`) and shifts
-     * the inner text down. Bare `Input` subclasses without inner text (e.g.
-     * `Checkbox`, the inner radio of `RadioButton`) inherit the default `null`
-     * baseline from `Component` and are treated as graphical elements by
+     * the inner text down. Bare [`Input`](/api/component/input/classes/Input) subclasses without inner text (e.g.
+     * [`Checkbox`](/api/component/input/classes/Checkbox), the inner radio of [`RadioButton`](/api/component/input/classes/RadioButton)) inherit the default `null`
+     * baseline from [`Component`](/api/core/classes/Component) and are treated as graphical elements by
      * horizontal layouts.
      */
     getBaseline(): number | null {

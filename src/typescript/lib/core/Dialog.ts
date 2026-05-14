@@ -162,7 +162,7 @@ class DialogButtonRow extends Component {
 
     /**
      * @param configs - Button definitions to render.
-     * @param onButton - Called with the resolved `DialogResult` when any button is clicked.
+     * @param onButton - Called with the resolved [`DialogResult`](/api/core/type-aliases/DialogResult) when any button is clicked.
      */
     constructor(configs: DialogButtonConfig[], onButton: (result: DialogResult) => void) {
         super();
@@ -351,7 +351,7 @@ class Dialog extends Component {
      * Displays the dialog, attaches event listeners, and returns a promise that
      * resolves when the dialog is dismissed.
      *
-     * @returns A promise resolving to the `DialogResult` of the closing action.
+     * @returns A promise resolving to the [`DialogResult`](/api/core/type-aliases/DialogResult) of the closing action.
      */
     show(): Promise<DialogResult> {
         return new Promise((resolve) => {
@@ -502,7 +502,7 @@ class Dialog extends Component {
     /**
      * Returns the content container component where custom content is rendered.
      *
-     * @returns The content container `Component`.
+     * @returns The content container [`Component`](/api/core/classes/Component).
      */
     getContentComponent(): Component {
         return this.contentContainer;
@@ -512,7 +512,7 @@ class Dialog extends Component {
      * Displays a modal dialog and returns a promise that resolves on dismissal.
      *
      * @param config - Dialog configuration.
-     * @returns A promise resolving to the `DialogResult` of the closing action.
+     * @returns A promise resolving to the [`DialogResult`](/api/core/type-aliases/DialogResult) of the closing action.
      *
      * @example
      * ```typescript
