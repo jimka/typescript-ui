@@ -1,22 +1,24 @@
 # Migration
 
-Version-to-version breaking-change notes. The framework is currently at **v1.0.0** — there is no prior version to migrate from.
+Version-to-version breaking-change notes. The framework is currently at **v0.0.0** — pre-release, not yet published. A `0.0.x` version signals that the API is not stabilized and the package is not yet recommended for use.
 
-This page will accumulate entries as the framework evolves.
+This page will accumulate entries once the framework starts publishing tagged releases.
 
 ## Versioning policy
 
-The package follows [Semantic Versioning](https://semver.org):
+The package follows [Semantic Versioning](https://semver.org), with the standard pre-1.0 caveat:
 
-- **Major** — breaking changes to the public API. Renamed or removed exports, changed function signatures, behaviour changes that require code updates.
-- **Minor** — new features and additive changes. Existing code continues to work.
-- **Patch** — bug fixes and internal improvements with no API impact.
+- **`0.x.y` (pre-release)** — anything may change in any release, including breaking the public API. The package is in active development and not yet recommended for use outside the project itself.
+- **`1.0.0` and beyond:**
+  - **Major** — breaking changes to the public API. Renamed or removed exports, changed function signatures, behaviour changes that require code updates.
+  - **Minor** — new features and additive changes. Existing code continues to work.
+  - **Patch** — bug fixes and internal improvements with no API impact.
 
 The "public API" means everything re-exported from the per-group barrels at `src/typescript/lib/<group>/index.ts` (the entries listed in the [`package.json` `exports` map](https://github.com/jimka/typescript-ui/blob/master/package.json)). Internal modules — even those exported as side-effect of a class hierarchy — are subject to change without notice.
 
 ## Pre-1.0 compatibility
 
-There is none. The framework's first published version is `1.0.0`. Earlier development snapshots of the source tree are not supported as upgrade targets.
+None. Anything in a `0.x.y` release may change without a migration note. Once `1.0.0` ships, this page will start tracking breaking changes between subsequent major versions.
 
 ## Upgrade procedure
 
