@@ -3,7 +3,9 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Fit } from "~/layout/Fit.js";
+import { HBox } from "~/layout/HBox.js";
 import { Text } from "~/component/input/Text.js";
+import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { AnchorType } from "~/layout/AnchorType.js";
@@ -19,6 +21,7 @@ import { callable } from "~/core/Callable.js";
  */
 export interface ButtonOptions extends ComponentOptions {
     text?:                   string;
+    glyph?:                  string | null;
     enabled?:                boolean;
     pressedBackgroundColor?: string | null;
     pressedBackgroundImage?: string | null;
@@ -49,6 +52,8 @@ export interface ButtonOptions extends ComponentOptions {
 class Button extends Component {
 
     private text: Text;
+    private _content: Component;
+    private _glyph: Glyph | null = null;
 
     private pressedCSSRule: CSSStyleRule;
 
@@ -77,7 +82,13 @@ class Button extends Component {
         this.text.setFontWeight("bold");
         this.text.setFontSize("--ts-ui-button-font-size");
 
-        this.addComponent(this.text, {
+        this._content = new Component();
+        this._content.setLayoutManager(new HBox({ spacing: 0 }));
+        this._content.setInsets(new Insets(0, 0, 0, 0));
+        this._content.setPointerEvents("none");
+        this._content.addComponent(this.text);
+
+        this.addComponent(this._content, {
             fill: FillType.NONE,
             anchor: AnchorType.CENTER
         });
@@ -110,6 +121,10 @@ class Button extends Component {
 
         if (options.text !== undefined) {
             this.text.setText(options.text);
+        }
+
+        if (options.glyph !== undefined) {
+            this.setGlyph(options.glyph);
         }
 
         if (options.enabled !== undefined) {
@@ -150,6 +165,49 @@ class Button extends Component {
      */
     getText() {
         return this.text;
+    }
+
+    /**
+     * Sets or clears an optional leading [`Glyph`](/api/component/display/classes/Glyph) shown alongside the button's text.
+     *
+     * @param name - Registry glyph name to display, or `null` to clear an existing glyph.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks
+     * The button's text always lives inside an [`HBox`](/api/layout/classes/HBox)-laid-out
+     * content row centred by the outer [`Fit`](/api/layout/classes/Fit) layout. This setter
+     * just swaps the leading glyph child of that row in or out — adding the glyph as the
+     * first child and re-appending the text after it to preserve the `[glyph, text]` order.
+     * Empty text combined with `setGlyph(name)` therefore renders as a glyph-only button
+     * with no visual artifacts at the default 0px spacing.
+     */
+    setGlyph(name: string | null): this {
+        if (this._glyph) {
+            this._content.removeComponent(this._glyph);
+            this._glyph = null;
+        }
+
+        if (!name) {
+            return this;
+        }
+
+        const glyph = new Glyph(name);
+        glyph.setPointerEvents("none");
+        this._glyph = glyph;
+
+        this._content.insertComponent(glyph, 0);
+
+        return this;
+    }
+
+    /**
+     * Returns the current leading glyph component, or null if none is set.
+     *
+     * @returns The [`Glyph`](/api/component/display/classes/Glyph) instance, or null.
+     */
+    getGlyph(): Glyph | null {
+        return this._glyph;
     }
 
     /**

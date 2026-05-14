@@ -542,6 +542,9 @@ class MiscPanel extends Panel {
         glyphRow.addComponent(new Glyph("arrow-down"));
         this.addComponent(glyphRow);
 
+        const buttonWithGlyph = new Button("Save", { glyph: "times" });
+        this.addComponent(buttonWithGlyph);
+
         const buttonOverlaySpinner = new Button("Overlay spinner on this panel for 2 s");
         buttonOverlaySpinner.addActionListener(() => {
             const overlay = new ProgressSpinner(48);
