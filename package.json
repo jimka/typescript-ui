@@ -1,6 +1,6 @@
 {
   "name": "@jimka/typescript-ui",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "A web-based layout manager and UI component framework written in TypeScript.",
   "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
   "type": "module",
