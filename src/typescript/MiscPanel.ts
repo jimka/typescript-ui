@@ -6,7 +6,7 @@ import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model, ModelRecord, Proxy, ReadParams, Store } from '@jimka/typescript-ui/data';
 import { AutoCompleteField, NumberSpinner, RadioButton, Text } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
-import { Image, PaginationBar, ProgressBar, ProgressSpinner } from '@jimka/typescript-ui/component/display';
+import { Glyph, Image, PaginationBar, ProgressBar, ProgressSpinner } from '@jimka/typescript-ui/component/display';
 import { FieldSet } from '@jimka/typescript-ui/component/container';
 import { ColumnSpec, Table, TablePanel } from '@jimka/typescript-ui/component/table';
 import { Tree } from '@jimka/typescript-ui/component/tree';
@@ -533,6 +533,14 @@ class MiscPanel extends Panel {
         spinnerDemoRow.addComponent(new Text("Inline ProgressSpinner:"));
         spinnerDemoRow.addComponent(inlineSpinner);
         this.addComponent(spinnerDemoRow);
+
+        const glyphRow = new Component();
+        glyphRow.setLayoutManager(new HBox());
+        glyphRow.addComponent(new Text("Glyphs:"));
+        glyphRow.addComponent(new Glyph("times"));
+        glyphRow.addComponent(new Glyph("arrow-right"));
+        glyphRow.addComponent(new Glyph("arrow-down"));
+        this.addComponent(glyphRow);
 
         const buttonOverlaySpinner = new Button("Overlay spinner on this panel for 2 s");
         buttonOverlaySpinner.addActionListener(() => {

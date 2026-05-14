@@ -50,6 +50,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Label`](/api/component/input/classes/Label) | Text tied to a form control via the HTML `for` attribute |
 | [`Header`](/api/component/display/classes/Header) | Title-bar / panel header text |
 | [`Image`](/api/component/display/classes/Image) | `<img>` wrapper |
+| [`Glyph`](/components/Glyph) | Self-contained icon — SVG or Unicode entry from a curated registry |
 | [`FontAwesomeIcon`](/api/component/display/classes/FontAwesomeIcon) | FontAwesome glyph (peer dep) |
 | [`FieldSet`](/api/component/container/classes/FieldSet) | Grouped form section with optional [`Legend`](/api/component/container/classes/Legend) |
 | [`ProgressBar`](/components/ProgressBar) | Horizontal progress indicator (determinate or indeterminate) |

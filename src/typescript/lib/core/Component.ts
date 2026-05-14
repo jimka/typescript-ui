@@ -2271,12 +2271,27 @@ class Component extends BaseObject {
     }
 
     /**
+     * Creates the root DOM element for this component.
+     *
+     * @remarks Override in subclasses that need a non-HTML namespace (e.g. SVG).
+     * The returned element is treated as an `HTMLElement` by the rest of the
+     * Component pipeline; non-HTML roots should use the API surface that is
+     * common to all Element types (`id`, `classList`, `setAttribute`,
+     * `appendChild`, `style`).
+     *
+     * @returns The newly created root element.
+     */
+    protected createRootElement(): HTMLElement {
+        return document.createElement(this.tag);
+    }
+
+    /**
      * Creates the DOM element from the tag name and initializes it via init().
      *
      * @returns The newly created and initialised HTMLElement.
      */
     protected render() {
-        let element = document.createElement(this.tag);
+        let element = this.createRootElement();
 
         this.init(element);
 

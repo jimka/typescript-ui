@@ -16,6 +16,11 @@ The package is at version `0.0.0` — pre-release, not yet published. Until a `0
 - Web Worker offload for store sort / filter on datasets ≥ 1,000 rows.
 - Full TypeDoc-generated API reference and curated documentation site.
 
+**Component additions** (additive):
+
+- **`Glyph`.** A self-contained icon component rendered from a curated registry (`Glyphs.ts`). SVG entries are mounted once as `<symbol>`s into a hidden sprite on `document.body`; each `Glyph` instance emits `<svg><use href="#ts-glyph-…"/></svg>`, so the path data is never duplicated regardless of how many copies of the same glyph are on screen. Unicode entries render as `<span>`. Both forms use `currentColor`, so a `Glyph` inherits the surrounding text colour without any new theme token. Existing `FontAwesomeIcon` call sites are unchanged — adoption is a separate pass. New exports from `@jimka/typescript-ui/component/display`: `Glyph` and `GlyphOptions`.
+- **`Component.createRootElement()`.** New protected hook called by `render()` to build the root element. Default returns `document.createElement(this.tag)`; subclasses needing a non-HTML namespace (e.g. `Glyph` for SVG) override it.
+
 **Data-binding additions** (additive):
 
 - **`Binding.addBeforeRecordListener`.** Registers a synchronous veto listener consulted before `setRecord` mutates any state. Listener returns `false` to cancel the change; iteration short-circuits on the first veto. Use it for programmatic guards such as "refuse to switch records while the current one is dirty". Async confirmation flows still belong at the call site — `setRecord` stays synchronous. New exported type `BeforeRecordListener` from `@jimka/typescript-ui/core`.
