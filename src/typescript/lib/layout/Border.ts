@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js"
-import { Component } from "~/Component.js"
+import { Component } from "~/core/Component.js"
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { FillType } from "~/layout/FillType.js";
-import { Placement } from "~/Placement.js";
-import { Size } from "~/Size.js";
-import { callable } from "~/Callable.js";
+import { Placement } from "~/primitive/Placement.js";
+import { Size } from "~/primitive/Size.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * Construction-time options for the {@link Border} layout manager.

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
-import { Text } from "~/component/Text.js";
-import { callable } from "~/Callable.js";
+import { Text } from "~/component/input/Text.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * A read-only renderer for time cell values.

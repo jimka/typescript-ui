@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/Component.js";
+import { Component } from "~/core/Component.js";
 import { Fit } from "~/layout/Fit.js";
-import { Insets } from "~/Insets.js";
-import { Text } from "~/component/Text.js";
-import { ThemeManager } from "~/Theme.js";
+import { Insets } from "~/primitive/Insets.js";
+import { Text } from "~/component/input/Text.js";
+import { ThemeManager } from "~/core/Theme.js";
 
 /**
  * Abstract base class for cell renderers.

@@ -3,10 +3,10 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { Table as TableComponent } from "~/component/table/Table.js";
 import { Column } from "~/component/table/Column.js";
-import { Component } from "~/Component.js";
-import { Util } from "~/Util.js";
-import { ThemeManager } from "~/Theme.js";
-import { callable } from "~/Callable.js";
+import { Component } from "~/core/Component.js";
+import { Util } from "~/core/Util.js";
+import { ThemeManager } from "~/core/Theme.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * Construction-time options for the {@link Table} layout manager.

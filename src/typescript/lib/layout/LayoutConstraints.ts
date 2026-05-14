@@ -2,7 +2,7 @@
 
 import { FillType } from "~/layout/FillType";
 import { AnchorType } from "~/layout/AnchorType";
-import { Placement } from "~/Placement";
+import { Placement } from "~/primitive/Placement";
 
 /**
  * Holds per-component layout hints passed to a {@link LayoutManager}.

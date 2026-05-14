@@ -3,7 +3,7 @@
 import { Cell } from "~/component/table/cell/Cell.js";
 import { NumberRenderer } from "~/component/table/cell/renderer/Number.js";
 import { NumberEditor } from "~/component/table/cell/editor/Number.js";
-import { callable } from "~/Callable.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * A table cell for numeric values.

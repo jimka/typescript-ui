@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
-import { SplitGutter } from "~/component/SplitGutter.js";
-import { Component } from "~/Component.js";
+import { SplitGutter } from "~/component/container/SplitGutter.js";
+import { Component } from "~/core/Component.js";
 import { FillType } from "~/layout/FillType.js";
-import { callable } from "~/Callable.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * Construction-time options for {@link Split}.

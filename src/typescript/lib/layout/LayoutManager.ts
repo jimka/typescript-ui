@@ -3,9 +3,9 @@
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints";
-import { Size } from "~/Size.js";
-import { Component } from "~/Component.js";
-import { BaseObject } from "~/BaseObject.js";
+import { Size } from "~/primitive/Size.js";
+import { Component } from "~/core/Component.js";
+import { BaseObject } from "~/core/BaseObject.js";
 
 /**
  * Construction-time options shared by every {@link LayoutManager}.
