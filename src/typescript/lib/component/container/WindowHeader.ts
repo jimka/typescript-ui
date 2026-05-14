@@ -2,8 +2,12 @@
 
 import { Header, HeaderOptions } from "~/component/display/Header.js";
 import { Button } from "~/component/button/Button.js";
-import { FontAwesomeIcon } from "~/component/display/FontAwesomeIcon.js";
+import { Component } from "~/core/Component.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { HBox } from "~/layout/HBox.js";
+import { Insets } from "~/primitive/Insets.js";
 import { FillType } from "~/layout/FillType.js";
+import { AnchorType } from "~/layout/AnchorType.js";
 import { Placement } from "~/primitive/Placement.js";
 import { callable } from "~/core/Callable.js";
 
@@ -14,12 +18,16 @@ import { callable } from "~/core/Callable.js";
  */
 export interface WindowHeaderOptions extends HeaderOptions {
     closeable?: boolean;
+    glyph?:     string | null;
 }
 
 /**
- * A window title bar component with a close button.
+ * A window title bar component with an embedded `times` glyph close button
+ * and an optional title icon shown to the west of the title text.
  *
- * Extends Header by adding a Font Awesome "times" exit button anchored to the east side.
+ * Extends [`Header`](/api/component/display/classes/Header) by anchoring a
+ * close button to the east side and exposing an optional title-icon slot on
+ * the west.
  *
  * @category Components
  */
@@ -27,6 +35,8 @@ class WindowHeader extends Header {
 
     private exitButton: Button;
     private activeBackgroundImage: string;
+    private _titleGlyph: Glyph | null = null;
+    private _titleRow: Component;
 
     constructor(text: string, options?: WindowHeaderOptions) {
         super(text);
@@ -34,16 +44,27 @@ class WindowHeader extends Header {
         this.activeBackgroundImage = "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))";
         this.setBackgroundImage(this.activeBackgroundImage);
 
-        this.exitButton = new Button();
-        this.exitButton.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
-        this.exitButton.setBorder();
-        this.exitButton.removeAllComponents();
+        // Reparent the inherited title text into a permanent HBox row that
+        // owns the Border WEST slot. setGlyph then only has to swap the
+        // optional leading glyph child in or out of this row.
+        const title = this.getText();
+        this.removeComponent(title);
 
-        let fontAwesomeIcon = new FontAwesomeIcon("fas", "times");
-        fontAwesomeIcon.setPointerEvents("none");
-        this.exitButton.addComponent(fontAwesomeIcon, {
-            fill: FillType.NONE
+        this._titleRow = new Component();
+        this._titleRow.setLayoutManager(new HBox({ spacing: 0 }));
+        this._titleRow.setInsets(new Insets(0, 0, 0, 0));
+        this._titleRow.setPointerEvents("none");
+        this._titleRow.addComponent(title);
+
+        this.addComponent(this._titleRow, {
+            placement: Placement.WEST,
+            anchor:    AnchorType.WEST,
+            fill:      FillType.HORIZONTAL
         });
+
+        this.exitButton = new Button(undefined, { glyph: "times" });
+        this.exitButton.setBackgroundImage(this.activeBackgroundImage);
+        this.exitButton.setBorder();
 
         this.addComponent(this.exitButton, { placement: Placement.EAST });
 
@@ -54,7 +75,7 @@ class WindowHeader extends Header {
 
     /**
      * Applies a {@link WindowHeaderOptions} bag, dispatching the closeable flag
-     * after inherited Header fields.
+     * and the optional title-glyph name after inherited Header fields.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -65,7 +86,52 @@ class WindowHeader extends Header {
             this.exitButton.setVisible(options.closeable);
         }
 
+        if (options.glyph !== undefined) {
+            this.setGlyph(options.glyph);
+        }
+
         return this;
+    }
+
+    /**
+     * Sets or clears the title icon shown to the west of the header text.
+     *
+     * @param name - Registry glyph name to display, or `null` to remove the icon.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks
+     * Swaps the optional leading glyph child of the permanent title row built
+     * by the constructor. The inherited title text always lives inside that
+     * row, so the two never overlap and Border's WEST slot only ever tracks
+     * one component.
+     */
+    setGlyph(name: string | null): this {
+        if (this._titleGlyph) {
+            this._titleRow.removeComponent(this._titleGlyph);
+            this._titleGlyph = null;
+        }
+
+        if (!name) {
+            return this;
+        }
+
+        const glyph = new Glyph(name);
+        glyph.setPointerEvents("none");
+        this._titleGlyph = glyph;
+
+        this._titleRow.insertComponent(glyph, 0);
+
+        return this;
+    }
+
+    /**
+     * Returns the current title-glyph component, or null if none is set.
+     *
+     * @returns The title [`Glyph`](/api/component/display/classes/Glyph), or null.
+     */
+    getGlyph(): Glyph | null {
+        return this._titleGlyph;
     }
 
     /**
