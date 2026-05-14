@@ -182,6 +182,16 @@ You don't need to do anything special when adding a new `callable()`-wrapped cla
 
 If a new class shows up under `docs/api/<bucket>/variables/` instead of `…/classes/` after `npm run docs:build`, check those three conditions before touching the plugin.
 
+### Git workflow
+
+When making commits during implementation:
+
+- **No author or co-author attribution in commit messages.** Do not append a `Co-Authored-By:` trailer (for Claude, the user, or anyone else). Authorship lives in the git `Author`/`Committer` fields, not in the message body. Plain trailing-attribution lines like `Generated with …` are also out.
+- **Do not merge branches.** When a feature branch is ready, leave it for the user to review and merge. Don't run `git merge`, `git rebase` onto a base branch, or any squash/fast-forward integration.
+- **Do not push to the remote.** No `git push` of any kind — not for feature branches, not for the working branch, not even for "harmless" doc-only updates. The user pushes when they decide the code is ready for the remote.
+
+Commit, branch, and stage freely; integration and publication are the user's call.
+
 ## Work Instructions
 
 1. Locate and read the referenced implementation plan in the {workspace}/plans folder.
