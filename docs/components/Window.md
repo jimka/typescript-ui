@@ -45,4 +45,4 @@ Windows append themselves to `document.documentElement` (not `<body>`) so they c
 
 - [API: Window](/api/core/classes/Window)
 - [Mental model](/guide/mental-model)
-- Recipe: floating window with custom content (forthcoming).
+- Recipe: [Floating window](/recipes/floating-window)

@@ -65,4 +65,4 @@ You don't configure anything — the worker is created lazily on first use.
 
 - [Table](/components/Table) and [Table internals](/components/TableInternals)
 - [Tree](/components/Tree)
-- [Performance](/concepts/performance) (forthcoming)
+- [Performance](/concepts/performance)

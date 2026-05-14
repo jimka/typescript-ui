@@ -73,7 +73,7 @@ class CurrencyCell extends Cell<number> {
 }
 ```
 
-A dedicated recipe page covering the full pattern is forthcoming.
+See [Custom cell type](/recipes/custom-cell) for the full pattern.
 
 ## See also
 
