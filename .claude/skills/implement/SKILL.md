@@ -140,12 +140,47 @@ this.setRadioName(groupId);             // HTML attr → typed setter → setEle
 
 When the implementation changes consumer-visible behaviour, update the matching doc surfaces under `docs/`:
 
-- **New public API symbol** (class, type, enum, exported function): re-export from `src/typescript/Base/index.ts`, add a `@category` tag to its TSDoc (Core / Components / Layouts / Data / Theme / Validation / Util), and verify it appears in the right section of `docs/api/index.md` after build.
+- **New public API symbol** (class, type, enum, exported function): re-export from the right per-subpath barrel in `src/typescript/lib/<group>/index.ts` (one of `core`, `primitive`, `layout`, `data`, `validation`, or `component/<sub>`). Add a `@category` tag to its TSDoc (Core / Components / Layouts / Data / Theme / Validation / Util) and verify the symbol appears in the right section of `docs/api/<group>/index.md` after build.
 - **New component / layout / data class / concept**: add a curated page under the matching `docs/<group>/` folder, link it in the sidebar (`docs/.vitepress/config.mts`), and add it to that group's `index.md` catalog.
 - **New recipe-worthy pattern**: add a page under `docs/recipes/`, link it in both the sidebar and `docs/recipes/index.md`.
 - **Behaviour change visible to consumers**: update the matching concept page in `docs/concepts/`, and update `docs/reference/faq.md` or `troubleshooting.md` if the change resolves or introduces a footgun.
 
 Run `npm run docs:build` and confirm 0 errors before declaring the implementation done. Bug fixes and internal refactors that don't change the public API surface usually need no doc edits.
+
+#### Writing navigable JSDoc
+
+Cross-bucket references in JSDoc need explicit markdown links because TypeDoc emits one entry-point bundle per subpath (`@jimka/typescript-ui/core`, `…/layout`, …) — a `{@link Foo}` tag only resolves to symbols *in the same bucket*. Bare backticks render as code-formatted text without navigation.
+
+Use this matrix:
+
+| Reference target | Form to write in JSDoc |
+| --- | --- |
+| Symbol in the **same file or same bucket** as the JSDoc you're writing | `{@link Foo}` — TypeDoc resolves it |
+| Symbol in a **different bucket** (e.g. `Window` from inside `component/display`) | `[\`Foo\`](/api/<subpath>/<kind>/Foo)` — site-relative markdown link |
+| The class itself (a class's JSDoc mentioning its own name) | Plain backticks `` `Foo` ``. A link back to the page you're already on is noise. |
+
+Subpath kinds: `classes`, `interfaces`, `enumerations`, `type-aliases`, `variables`, `functions`. For example: `[\`Field\`](/api/data/classes/Field)`, `[\`Bindable\`](/api/core/interfaces/Bindable)`, `[\`Direction\`](/api/component/container/enumerations/Direction)`.
+
+For names that collide across buckets (`Border` in `primitive` + `layout`; `Body`/`Header`/`Row`/`Column` in `core`/`component/display`/`component/table`/`layout`), spell out the subpath explicitly to avoid linking to the wrong one. In prose, mention the rename pattern consumers will use: `[\`Header\`](/api/component/table/classes/Header) (often aliased to \`TableHeader\` on import)`.
+
+Verify navigability:
+
+- `npm run docs:build` — must report **0 errors and 0 link warnings**. The lone acceptable warning is typedoc's pre-existing "unsupported TypeScript version" notice.
+- A `{@link Foo}` that doesn't resolve renders as plain text and surfaces as a typedoc warning. Either move the link target into scope (e.g. `import type { Foo } from '~/<group>/Foo.js';`) or convert it to the markdown form above.
+
+#### The typedoc-callable-plugin
+
+The framework's component classes are wrapped at module exit time via the `callable()` Proxy helper — `export { ButtonCallable as Button }`. To TypeScript and TypeDoc that looks like a `const`, so without intervention TypeDoc would emit `docs/api/<bucket>/variables/Button.md` containing just the typeof signature, with the class's methods and JSDoc unreachable.
+
+[`typedoc-callable-plugin.mjs`](../../../typedoc-callable-plugin.mjs) (registered in [`typedoc.json`](../../../typedoc.json)'s `plugin` array) inspects every variable whose initializer is `callable(X)`, locates the underlying class `X`, and re-emits the reflection as `docs/api/<bucket>/classes/Button.md` with the full class documentation (methods, constructors, JSDoc, inheritance) attached. On a clean docs build it prints `callable-plugin: promoting N callable variables to classes` where N is the count.
+
+You don't need to do anything special when adding a new `callable()`-wrapped class — the plugin picks it up automatically as long as:
+
+- The public export is `export { XCallable as X }` (or any alias of a `const X = callable(_X)`).
+- The inner class (`_X`) is a real TypeScript `class` declaration in the same file.
+- The wrapping call is literally `callable(...)` (the plugin matches the identifier name).
+
+If a new class shows up under `docs/api/<bucket>/variables/` instead of `…/classes/` after `npm run docs:build`, check those three conditions before touching the plugin.
 
 ## Work Instructions
 
