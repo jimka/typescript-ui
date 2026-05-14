@@ -4,8 +4,6 @@ export { Header } from '~/component/display/Header.js';
 export type { HeaderOptions } from '~/component/display/Header.js';
 export { Image } from '~/component/display/Image.js';
 export type { ImageOptions } from '~/component/display/Image.js';
-export { FontAwesomeIcon } from '~/component/display/FontAwesomeIcon.js';
-export type { FontAwesomeIconOptions } from '~/component/display/FontAwesomeIcon.js';
 export { Glyph } from '~/component/display/Glyph.js';
 export type { GlyphOptions } from '~/component/display/Glyph.js';
 export { IconText } from '~/component/display/IconText.js';
