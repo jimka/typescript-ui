@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../../Component.js";
-import { CSS } from "../../CSS.js";
-import { Event } from "../../Event.js";
-import { Text } from "../Text.js";
-import { callable } from "../../Callable.js";
+import { Component } from "~/core/Component.js";
+import { CSS } from "~/core/CSS.js";
+import { Event } from "~/core/Event.js";
+import { Text } from "~/component/input/Text.js";
+import { callable } from "~/core/Callable.js";
 
 /**
- * A single top-level button in a `MenuBar` (e.g. "File", "Edit").
+ * A single top-level button in a [`MenuBar`](/api/component/menubar/classes/MenuBar) (e.g. "File", "Edit").
  *
- * Renders as a flat label-style element with a hover CSS rule. Has no `Button`
+ * Renders as a flat label-style element with a hover CSS rule. Has no [`Button`](/api/component/button/classes/Button)
  * inheritance to avoid the ridge border and shadow of the standard button style.
  * Active state (open dropdown) is indicated by a persistent background fill.
  *
- * Communicates open/close intent back to `MenuBar` via callbacks passed at
+ * Communicates open/close intent back to [`MenuBar`](/api/component/menubar/classes/MenuBar) via callbacks passed at
  * construction time.
  *
  * @category Components

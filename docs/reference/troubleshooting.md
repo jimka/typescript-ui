@@ -6,7 +6,7 @@ Diagnostics for common runtime issues. For pre-flight questions, see the [FAQ](/
 
 The single most common issue. Run through this list:
 
-1. **Does the parent have a layout manager?** A bare [`Component`](/api/classes/Component) defaults to [`Absolute`](/layouts/Absolute), which positions nothing.
+1. **Does the parent have a layout manager?** A bare [`Component`](/api/core/classes/Component) defaults to [`Absolute`](/layouts/Absolute), which positions nothing.
 
    ```typescript
    panel.setLayoutManager(VBox());  // ← required
@@ -91,7 +91,7 @@ Built-in components attached and removed through normal `addComponent` / `remove
 
 The store offloads sort and filter to a Web Worker for datasets ≥ 1,000 rows. The worker uses **structured clone** to receive the data and predicate.
 
-- **Custom filter functions are not transferable.** Functions captured in `filterBy` callbacks fail to clone. Use [`FilterDescriptor`](/api/type-aliases/FilterDescriptor) — a serialisable filter algebra — for filters that need to cross the worker boundary.
+- **Custom filter functions are not transferable.** Functions captured in `filterBy` callbacks fail to clone. Use [`FilterDescriptor`](/api/data/type-aliases/FilterDescriptor) — a serialisable filter algebra — for filters that need to cross the worker boundary.
 - **Records with non-cloneable fields** (functions, DOM nodes, class instances with private state) trigger a clone error in the worker. Keep store data as plain objects.
 
 ## "Drag interactions feel laggy"
@@ -115,7 +115,7 @@ A known one-frame flicker comes from the browser's GPU compositor scrolling the 
 Mitigations:
 
 - Reduce the per-row height — fewer rows in the buffer means less work per frame.
-- Remove non-essential cell renderers (custom renderers are slower than the built-in [`StringRenderer`](/api/classes/StringRenderer) / [`NumberRenderer`](/api/classes/NumberRenderer)).
+- Remove non-essential cell renderers (custom renderers are slower than the built-in [`StringRenderer`](/api/component/table/classes/StringRenderer) / [`NumberRenderer`](/api/component/table/classes/NumberRenderer)).
 - For a fully glitch-free implementation, the framework would need to switch to a transform-based positioning strategy. This is a known trade-off, not a fixable bug at the current architectural layer.
 
 ## "I see TypeScript errors I didn't write"

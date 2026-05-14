@@ -1,14 +1,14 @@
 # ComboBox
 
-[`ComboBox`](/api/classes/ComboBox) is a drop-down selector backed by a `<select>` element. Populate it from an explicit list of [`Option`](/api/classes/Option) items, or bind it to a data [`Store`](/data/store) so the options track records as they load and change.
+[`ComboBox`](/api/component/input/classes/ComboBox) is a drop-down selector backed by a `<select>` element. Populate it from an explicit list of [`Option`](/api/component/input/classes/Option) items, or bind it to a data [`Store`](/data/store) so the options track records as they load and change.
 
-It implements [`Bindable<string>`](/api/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
+It implements [`Bindable<string>`](/api/core/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
 
 ## Static items
 
 ```typescript
-import { ComboBox, Option, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { ComboBox, Option } from '@jimka/typescript-ui/component/input';
 const role = new ComboBox();
 role.addItem(new Option('admin', 'Admin'));
 role.addItem(new Option('user',  'User'));
@@ -24,8 +24,8 @@ panel.addComponent(role);
 ## Backed by a store
 
 ```typescript
-import { ComboBox, MemoryStore, Model } from '@jimka/typescript-ui';
-
+import { MemoryStore, Model } from '@jimka/typescript-ui/data';
+import { ComboBox } from '@jimka/typescript-ui/component/input';
 const RoleModel = new Model([
     { name: 'id',   type: 'string' },
     { name: 'name', type: 'string' },
@@ -58,7 +58,7 @@ The combo refreshes automatically on store `datachanged` events.
 
 ## See also
 
-- [API: ComboBox](/api/classes/ComboBox)
+- [API: ComboBox](/api/component/input/classes/ComboBox)
 - [`List`](/components/List) — same options, displayed as an open list box
 - [`AutoCompleteField`](/components/AutoCompleteField) — typeahead variant
 - [Data binding](/data/binding)

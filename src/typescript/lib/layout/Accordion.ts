@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
-import { AccordionConstraints } from "./AccordionConstraints.js";
-import { AccordionHeader } from "../component/AccordionHeader.js";
-import { Component } from "../Component.js";
-import { Event } from "../Event.js";
-import { Position } from "../Position.js";
-import { Size } from "../Size.js";
-import { callable } from "../Callable.js";
+import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { AccordionConstraints } from "~/layout/AccordionConstraints.js";
+import { AccordionHeader } from "~/component/container/AccordionHeader.js";
+import { Component } from "~/core/Component.js";
+import { Event } from "~/core/Event.js";
+import { Position } from "~/primitive/Position.js";
+import { Size } from "~/primitive/Size.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * Callback invoked when a section is opened or closed.

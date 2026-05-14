@@ -9,12 +9,11 @@ A floating "Settings" window with two text fields and Save / Cancel buttons. Clo
 ## Construct the window
 
 ```typescript
-import {
-    Body, Window, Placement,
-    Component, VBox, HBox, Label, TextField, Button,
-    Event,
-} from '@jimka/typescript-ui';
-
+import { Body, Window, Component, Event } from '@jimka/typescript-ui/core';
+import { Placement } from '@jimka/typescript-ui/primitive';
+import { VBox, HBox } from '@jimka/typescript-ui/layout';
+import { Label, TextField } from '@jimka/typescript-ui/component/input';
+import { Button } from '@jimka/typescript-ui/component/button';
 const urlField = TextField();
 urlField.setValue('https://api.example.com');
 

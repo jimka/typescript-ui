@@ -1,25 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "@jimka/typescript-ui"
-import {
-    Button,
-    ButtonGroup,
-    callable,
-    Checkbox,
-    ComboBox,
-    FieldSet,
-    HBox,
-    List,
-    Panel,
-    PasswordField,
-    RadioButton,
-    Slider,
-    Text,
-    TextArea,
-    TextField,
-    ToggleButton
-} from "@jimka/typescript-ui";
-
+import { Component } from '@jimka/typescript-ui/core';
+import { ButtonGroup, callable, Panel } from '@jimka/typescript-ui/core';
+import { HBox } from '@jimka/typescript-ui/layout';
+import { Checkbox, ComboBox, PasswordField, RadioButton, Slider, Text, TextArea, TextField } from '@jimka/typescript-ui/component/input';
+import { Button, ToggleButton } from '@jimka/typescript-ui/component/button';
+import { List } from '@jimka/typescript-ui/component/list';
+import { FieldSet } from '@jimka/typescript-ui/component/container';
 class LayoutTestPanel extends Panel {
 
     constructor() {

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../../Component.js";
-import { Event } from "../../Event.js";
-import { VirtualScroller } from "../VirtualScroller.js";
-import { TreeNode } from "./TreeNode.js";
-import { TreeRow } from "./TreeRow.js";
-import { callable } from "../../Callable.js";
+import { Component } from "~/core/Component.js";
+import { Event } from "~/core/Event.js";
+import { VirtualScroller } from "~/component/container/VirtualScroller.js";
+import { TreeNode } from "~/component/tree/TreeNode.js";
+import { TreeRow } from "~/component/tree/TreeRow.js";
+import { callable } from "~/core/Callable.js";
 
 /** Pixels of indentation added per depth level. */
 const INDENT_PX = 16;

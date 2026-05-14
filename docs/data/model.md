@@ -1,14 +1,13 @@
 # Model
 
-A [`Model`](/api/classes/Model) defines the shape of a record — its field names, types, and defaults. Every store needs a model.
+A [`Model`](/api/data/classes/Model) defines the shape of a record — its field names, types, and defaults. Every store needs a model.
 
 ## Define a model
 
 Pass an array of field options to `Model`:
 
 ```typescript
-import { Model } from '@jimka/typescript-ui';
-
+import { Model } from '@jimka/typescript-ui/data';
 const PersonModel = new Model([
     { name: 'id',   type: 'number' },
     { name: 'name', type: 'string' },
@@ -16,7 +15,7 @@ const PersonModel = new Model([
 ]);
 ```
 
-Or pass a single [`ModelOptions`](/api/interfaces/ModelOptions) bag if you want to declare the primary key declaratively:
+Or pass a single [`ModelOptions`](/api/data/interfaces/ModelOptions) bag if you want to declare the primary key declaratively:
 
 ```typescript
 const PersonModel = new Model({
@@ -29,11 +28,10 @@ const PersonModel = new Model({
 });
 ```
 
-Or extend [`AbstractModel`](/api/classes/AbstractModel) to give the schema a named class — useful when you want to attach domain logic or pair it with a typed store:
+Or extend [`AbstractModel`](/api/data/classes/AbstractModel) to give the schema a named class — useful when you want to attach domain logic or pair it with a typed store:
 
 ```typescript
-import { AbstractModel } from '@jimka/typescript-ui';
-
+import { AbstractModel } from '@jimka/typescript-ui/data';
 class PersonModel extends AbstractModel {
     readonly fields = [
         { name: 'id',   type: 'number' },
@@ -56,11 +54,11 @@ Both forms are accepted everywhere a `Model` is expected.
 | `'boolean'` | True / false |
 | `'date'` | JavaScript `Date` object |
 
-The supported set lives in [`FieldType`](/api/type-aliases/FieldType).
+The supported set lives in [`FieldType`](/api/data/type-aliases/FieldType).
 
 ## Field configuration
 
-Each field accepts these options (see [`FieldOptions`](/api/interfaces/FieldOptions); the legacy alias `FieldConfig` is kept as a deprecated re-export):
+Each field accepts these options (see [`FieldOptions`](/api/data/interfaces/FieldOptions); the legacy alias `FieldConfig` is kept as a deprecated re-export):
 
 | Option | Purpose |
 | --- | --- |
@@ -85,4 +83,4 @@ This lets a UI use `camelCase` field names while the API uses `snake_case`.
 
 - [Store](/data/store) — pass your model to a store.
 - [Record](/data/record) — read and mutate field values via `get` / `set`.
-- [`Field`](/api/classes/Field) — the per-field runtime representation.
+- [`Field`](/api/data/classes/Field) — the per-field runtime representation.

@@ -1,12 +1,12 @@
 # Layout constraints reference
 
-Constraints are passed as the second argument to `addComponent` and tell a [`LayoutManager`](/api/classes/LayoutManager) how to position a child. Each manager defines its own constraint shape — see the per-layout pages for specifics.
+Constraints are passed as the second argument to `addComponent` and tell a [`LayoutManager`](/api/layout/classes/LayoutManager) how to position a child. Each manager defines its own constraint shape — see the per-layout pages for specifics.
 
 This page covers the **shared** constraint primitives that several managers consume.
 
 ## LayoutConstraints
 
-The base [`LayoutConstraints`](/api/classes/LayoutConstraints) exposes two universally relevant fields:
+The base [`LayoutConstraints`](/api/layout/classes/LayoutConstraints) exposes two universally relevant fields:
 
 | Field | Purpose |
 | --- | --- |
@@ -22,12 +22,12 @@ Plus optional metadata:
 
 Each manager subclasses this to add its own fields:
 
-- [`AccordionConstraints`](/api/classes/AccordionConstraints) — `label`, `initiallyOpen`
+- [`AccordionConstraints`](/api/layout/classes/AccordionConstraints) — `label`, `initiallyOpen`
 - The plain `{ region: Placement }` object passed to [`Border`](/layouts/Border)
 
 ## FillType
 
-[`FillType`](/api/enumerations/FillType) controls how a child expands to fill its allocated cell:
+[`FillType`](/api/layout/enumerations/FillType) controls how a child expands to fill its allocated cell:
 
 | Value | Behaviour |
 | --- | --- |
@@ -37,14 +37,13 @@ Each manager subclasses this to add its own fields:
 | `BOTH` | Fill the entire cell. |
 
 ```typescript
-import { FillType } from '@jimka/typescript-ui';
-
+import { FillType } from '@jimka/typescript-ui/layout';
 container.addComponent(input, { fill: FillType.HORIZONTAL });
 ```
 
 ## AnchorType
 
-[`AnchorType`](/api/enumerations/AnchorType) tells the layout where to position a child when its preferred size is smaller than its allocated cell. The values follow compass directions plus the centre:
+[`AnchorType`](/api/layout/enumerations/AnchorType) tells the layout where to position a child when its preferred size is smaller than its allocated cell. The values follow compass directions plus the centre:
 
 ```
 NORTHWEST  NORTH  NORTHEAST
@@ -53,8 +52,7 @@ SOUTHWEST  SOUTH  SOUTHEAST
 ```
 
 ```typescript
-import { AnchorType } from '@jimka/typescript-ui';
-
+import { AnchorType } from '@jimka/typescript-ui/layout';
 container.addComponent(label, {
     fill:   FillType.NONE,
     anchor: AnchorType.NORTHEAST,
@@ -63,7 +61,7 @@ container.addComponent(label, {
 
 ## Placement
 
-[`Placement`](/api/enumerations/Placement) is a separate enum used by [`Border`](/layouts/Border) for region selection (and by [`Window`](/components/Window) to describe edge-resize handles):
+[`Placement`](/api/primitive/enumerations/Placement) is a separate enum used by [`Border`](/layouts/Border) for region selection (and by [`Window`](/components/Window) to describe edge-resize handles):
 
 | Value | Region |
 | --- | --- |
@@ -76,5 +74,5 @@ container.addComponent(label, {
 ## See also
 
 - [Layouts overview](/layouts/)
-- [API: LayoutConstraints](/api/classes/LayoutConstraints)
-- [API: AnchorType](/api/enumerations/AnchorType), [FillType](/api/enumerations/FillType), [Placement](/api/enumerations/Placement)
+- [API: LayoutConstraints](/api/layout/classes/LayoutConstraints)
+- [API: AnchorType](/api/layout/enumerations/AnchorType), [FillType](/api/layout/enumerations/FillType), [Placement](/api/primitive/enumerations/Placement)

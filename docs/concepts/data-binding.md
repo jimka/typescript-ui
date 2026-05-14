@@ -2,11 +2,11 @@
 
 The framework's data layer is a three-piece system:
 
-- A [`Model`](/api/classes/Model) defines the shape of a record (its fields and types).
-- A [`Proxy`](/api/classes/Proxy) handles transport — load records from memory, an HTTP endpoint, or a custom source.
-- A [`Store`](/api/classes/Store) orchestrates loading, sorting, filtering, and event notification.
+- A [`Model`](/api/data/classes/Model) defines the shape of a record (its fields and types).
+- A [`Proxy`](/api/data/classes/Proxy) handles transport — load records from memory, an HTTP endpoint, or a custom source.
+- A [`Store`](/api/data/classes/Store) orchestrates loading, sorting, filtering, and event notification.
 
-A [`ModelRecord`](/api/classes/ModelRecord) is a single row produced by a store. A [`Binding`](/api/classes/Binding) wires a record to UI components for two-way edit / commit / reject.
+A [`ModelRecord`](/api/data/classes/ModelRecord) is a single row produced by a store. A [`Binding`](/api/core/classes/Binding) wires a record to UI components for two-way edit / commit / reject.
 
 The pages in this section walk each piece in detail:
 
@@ -18,15 +18,15 @@ The pages in this section walk each piece in detail:
 
 ## Why a data layer?
 
-The framework's [`Table`](/api/classes/Table), [`Tree`](/api/classes/Tree), [`ComboBox`](/api/classes/ComboBox), and [`List`](/api/classes/List) components all consume stores. Sharing one store across multiple components keeps everything in sync — sorting the table re-orders the list, committing an edit in a form clears the dirty flag in the table.
+The framework's [`Table`](/api/component/table/classes/Table), [`Tree`](/api/component/tree/classes/Tree), [`ComboBox`](/api/component/input/classes/ComboBox), and [`List`](/api/component/list/classes/List) components all consume stores. Sharing one store across multiple components keeps everything in sync — sorting the table re-orders the list, committing an edit in a form clears the dirty flag in the table.
 
-For form-based editing, [`Binding`](/api/classes/Binding) gives you two-way sync between a single record and a set of input components, with explicit `commit()` / `reject()` semantics — no implicit auto-save.
+For form-based editing, [`Binding`](/api/core/classes/Binding) gives you two-way sync between a single record and a set of input components, with explicit `commit()` / `reject()` semantics — no implicit auto-save.
 
 ## Quickest tour
 
 ```typescript
-import { Model, MemoryStore, Binding } from '@jimka/typescript-ui';
-
+import { Binding } from '@jimka/typescript-ui/core';
+import { Model, MemoryStore } from '@jimka/typescript-ui/data';
 const PersonModel = new Model([
     { name: 'id',   type: 'number' },
     { name: 'name', type: 'string' },

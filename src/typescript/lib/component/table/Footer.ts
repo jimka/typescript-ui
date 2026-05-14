@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../../Component.js";
-import { Row } from "./Row.js";
-import { BorderStyle } from "../../BorderStyle.js";
-import { callable } from "../../Callable.js";
+import { Component } from "~/core/Component.js";
+import { Row } from "~/component/table/Row.js";
+import { BorderStyle } from "~/primitive/BorderStyle.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * The footer section of a table, rendered as a `<tfoot>` element.

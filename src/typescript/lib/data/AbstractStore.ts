@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractModel } from './AbstractModel.js';
-import { ModelRecord } from './ModelRecord.js';
-import { Proxy, ReadParams } from './proxy/Proxy.js';
-import { FilterDescriptor, matchesFilter } from './FilterDescriptor.js';
-import { StoreWorkerClient } from './StoreWorkerClient.js';
+import { AbstractModel } from '~/data/AbstractModel.js';
+import { ModelRecord } from '~/data/ModelRecord.js';
+import { Proxy, ReadParams } from '~/data/proxy/Proxy.js';
+import { FilterDescriptor, matchesFilter } from '~/data/FilterDescriptor.js';
+import { StoreWorkerClient } from '~/data/StoreWorkerClient.js';
 
 /**
  * Datasets above this size are sorted/filtered on a Web Worker so the main
@@ -216,7 +216,7 @@ export abstract class AbstractStore {
      *
      * @remarks
      * Calling this method opts the store into the paginated `load()` path, where
-     * `ReadParams` are forwarded to the proxy. Paginated mode also causes
+     * [`ReadParams`](/api/data/interfaces/ReadParams) are forwarded to the proxy. Paginated mode also causes
      * `sort()` and `clearFilter()` to reset to page 1 and re-fetch from the proxy.
      * Fires `'pagechanged'`.
      */

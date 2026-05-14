@@ -1,20 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import {
-    Button,
-    callable,
-    ComboBox,
-    Component,
-    HBox,
-    Insets,
-    Panel,
-    ProgressBar,
-    RadioButton,
-    Text,
-    TextField,
-    VBox
-} from "@jimka/typescript-ui";
-
+import { callable, Component, Panel } from '@jimka/typescript-ui/core';
+import { Insets } from '@jimka/typescript-ui/primitive';
+import { HBox, VBox } from '@jimka/typescript-ui/layout';
+import { ComboBox, RadioButton, Text, TextField } from '@jimka/typescript-ui/component/input';
+import { Button } from '@jimka/typescript-ui/component/button';
+import { ProgressBar } from '@jimka/typescript-ui/component/display';
 class BaselinePanel extends Panel {
 
     constructor() {

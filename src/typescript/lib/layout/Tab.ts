@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
-import { Size } from "../Size.js";
-import { ToggleButton } from "../component/ToggleButton.js";
-import { Component } from "../Component.js";
-import { Event } from "../Event.js";
-import { Insets } from "../Insets.js";
-import { BorderStyle } from "../BorderStyle.js";
-import { FillType } from "./FillType.js";
-import { ButtonGroup } from "../ButtonGroup.js";
-import { RovingTabIndex } from "../RovingTabIndex.js";
-import { Column } from "./Column.js";
-import { HBox } from "./HBox.js";
-import { TabCloseButton } from "../component/TabCloseButton.js";
-import { callable } from "../Callable.js";
+import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { Size } from "~/primitive/Size.js";
+import { ToggleButton } from "~/component/button/ToggleButton.js";
+import { Component } from "~/core/Component.js";
+import { Event } from "~/core/Event.js";
+import { Insets } from "~/primitive/Insets.js";
+import { BorderStyle } from "~/primitive/BorderStyle.js";
+import { FillType } from "~/layout/FillType.js";
+import { ButtonGroup } from "~/core/ButtonGroup.js";
+import { RovingTabIndex } from "~/core/RovingTabIndex.js";
+import { Column } from "~/layout/Column.js";
+import { HBox } from "~/layout/HBox.js";
+import { TabCloseButton } from "~/component/button/TabCloseButton.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * Construction-time options for {@link Tab}.
@@ -262,7 +262,7 @@ class Tab extends LayoutManager {
      *
      * @remarks The button label is taken from `LayoutConstraints.name` when available;
      * otherwise the component's ID is used. When `constraints.closeable` is true, a
-     * `TabCloseButton` is appended to the wrapper after the toggle button.
+     * [`TabCloseButton`](/api/component/button/classes/TabCloseButton) is appended to the wrapper after the toggle button.
      */
     createTab(component: Component): void {
         let constraints = this.getLayoutConstraints(component);

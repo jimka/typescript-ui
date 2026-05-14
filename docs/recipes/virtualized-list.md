@@ -5,10 +5,9 @@ Both [`Table`](/components/Table) and [`Tree`](/components/Tree) render only the
 ## Table — 100k rows
 
 ```typescript
-import {
-    Model, MemoryStore, Table, Body,
-} from '@jimka/typescript-ui';
-
+import { Body } from '@jimka/typescript-ui/core';
+import { Model, MemoryStore } from '@jimka/typescript-ui/data';
+import { Table } from '@jimka/typescript-ui/component/table';
 const ItemModel = new Model([
     { name: 'id',    type: 'number' },
     { name: 'name',  type: 'string' },
@@ -33,9 +32,9 @@ The body keeps roughly 50 rows in the DOM at any time (viewport + buffer) regard
 
 ## Why this works
 
-[`TableBody`](/api/classes/TableBody):
+The table [`Body`](/api/component/table/classes/Body):
 
-- Maintains a fixed pool of reusable [`TableRow`](/api/classes/TableRow) components.
+- Maintains a fixed pool of reusable [`Row`](/api/component/table/classes/Row) components.
 - Scrolling is JS-owned via [`VirtualScroller`](/components/VirtualScroller): the rows live inside a transform-positioned container and two custom [`Scrollbar`](/components/Scrollbar) overlays drive both axes. Wheel, touch (with fling momentum), and keyboard nav all funnel through the same entry points.
 - Only rows whose data index changed get rebound on scroll — the rest sit at the same DOM position.
 
@@ -66,4 +65,4 @@ You don't configure anything — the worker is created lazily on first use.
 
 - [Table](/components/Table) and [Table internals](/components/TableInternals)
 - [Tree](/components/Tree)
-- [Performance](/concepts/performance) (forthcoming)
+- [Performance](/concepts/performance)

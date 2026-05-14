@@ -14,10 +14,7 @@ A scrollable, editable table of people. The user can:
 ## Define the model and store
 
 ```typescript
-import {
-    AbstractModel, AbstractStore, AjaxProxy,
-} from '@jimka/typescript-ui';
-
+import { AbstractModel, AbstractStore, AjaxProxy } from '@jimka/typescript-ui/data';
 class PersonModel extends AbstractModel {
     readonly fields = [
         { name: 'id',    type: 'number'  },
@@ -44,8 +41,8 @@ await store.load();
 [`TablePanel`](/components/TablePanel) gives you the toolbar (Add / Remove / Sync) for free:
 
 ```typescript
-import { TablePanel, Body } from '@jimka/typescript-ui';
-
+import { Body } from '@jimka/typescript-ui/core';
+import { TablePanel } from '@jimka/typescript-ui/component/table';
 const panel = TablePanel(store);
 Body.getInstance().addComponent(panel);
 ```
@@ -62,11 +59,11 @@ That's it for the full CRUD path. Let's break down what happens:
 If you need different buttons (e.g. an Export action), drop the `TablePanel` and lay it out yourself:
 
 ```typescript
-import {
-    Component, BorderLayout, Placement,
-    HBox, Button, Table, Event, Notification,
-} from '@jimka/typescript-ui';
-
+import { Component, Event, Notification } from '@jimka/typescript-ui/core';
+import { Placement } from '@jimka/typescript-ui/primitive';
+import { Border as BorderLayout, HBox } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
+import { Table } from '@jimka/typescript-ui/component/table';
 const addBtn    = Button('Add');
 const exportBtn = Button('Export CSV');
 const syncBtn   = Button('Sync');
@@ -98,7 +95,7 @@ const root = Component({
 
 ## Constraining columns
 
-Use a [`ColumnSpec`](/api/interfaces/ColumnSpec) to control widths and order:
+Use a [`ColumnSpec`](/api/component/table/interfaces/ColumnSpec) to control widths and order:
 
 ```typescript
 const table = Table(store, {

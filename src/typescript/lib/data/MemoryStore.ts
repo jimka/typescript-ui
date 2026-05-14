@@ -1,6 +1,6 @@
-import { AbstractStore, AbstractStoreOptions } from "./AbstractStore";
-import { Model } from "./Model";
-import { MemoryProxy } from "./proxy/MemoryProxy";
+import { AbstractStore, AbstractStoreOptions } from "~/data/AbstractStore";
+import { Model } from "~/data/Model";
+import { MemoryProxy } from "~/data/proxy/MemoryProxy";
 
 /**
  * Construction-time options for {@link MemoryStore}.

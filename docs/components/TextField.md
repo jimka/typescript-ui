@@ -1,12 +1,12 @@
 # TextField
 
-[`TextField`](/api/classes/TextField) is a single-line text input backed by an `<input type="text">` element. It implements [`Bindable<string>`](/api/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
+[`TextField`](/api/component/input/classes/TextField) is a single-line text input backed by an `<input type="text">` element. It implements [`Bindable<string>`](/api/core/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
 
 ## Usage
 
 ```typescript
-import { TextField, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { TextField } from '@jimka/typescript-ui/component/input';
 const nameField = new TextField();
 nameField.setValue('');
 nameField.setPreferredSize(240, 28);
@@ -30,15 +30,14 @@ panel.addComponent(nameField);
 ## Binding
 
 ```typescript
-import { Binding } from '@jimka/typescript-ui';
-
+import { Binding } from '@jimka/typescript-ui/core';
 const binding = new Binding().bind('name', nameField);
 binding.setRecord(store.getAt(0));
 ```
 
 ## See also
 
-- [API: TextField](/api/classes/TextField)
+- [API: TextField](/api/component/input/classes/TextField)
 - [`PasswordField`](/components/PasswordField) — masked variant
 - [`TextArea`](/components/TextArea) — multi-line variant
 - [Data binding](/data/binding) — how to wire fields to a record

@@ -1,14 +1,13 @@
 # SpinButton
 
-[`SpinButton`](/api/classes/SpinButton) is a small up- or down-arrow [`Button`](/components/Button) used inside a [`NumberSpinner`](/components/NumberSpinner). It inherits the standard pressed-state appearance and click handling, then adds a hold-repeat gesture: pressing and holding fires `tick` events at an accelerating cadence.
+[`SpinButton`](/api/component/input/classes/SpinButton) is a small up- or down-arrow [`Button`](/components/Button) used inside a [`NumberSpinner`](/components/NumberSpinner). It inherits the standard pressed-state appearance and click handling, then adds a hold-repeat gesture: pressing and holding fires `tick` events at an accelerating cadence.
 
 You usually use this indirectly via `NumberSpinner`. Reach for `SpinButton` directly only when you're building your own spinner-style control.
 
 ## Usage
 
 ```typescript
-import { SpinButton } from '@jimka/typescript-ui';
-
+import { SpinButton } from '@jimka/typescript-ui/component/input';
 const upButton = new SpinButton('up');
 upButton.addTickListener(() => increment());
 
@@ -34,6 +33,6 @@ This produces a quick ramp-up that feels responsive without runaway speed.
 
 ## See also
 
-- [API: SpinButton](/api/classes/SpinButton)
+- [API: SpinButton](/api/component/input/classes/SpinButton)
 - [`NumberSpinner`](/components/NumberSpinner) — the typical consumer
 - [`Button`](/components/Button) — base class

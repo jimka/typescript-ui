@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Field, FieldOptions } from './Field.js';
-import { ModelRecord } from './ModelRecord.js';
+import { Field, FieldOptions } from '~/data/Field.js';
+import { ModelRecord } from '~/data/ModelRecord.js';
 
 /**
  * Base class for all data models.
@@ -26,7 +26,7 @@ export abstract class AbstractModel {
      * Lazily builds the resolved fields list and name-to-field index on first access.
      *
      * @remarks
-     * Plain `FieldConfig` objects in the `fields` array are promoted to `Field` instances
+     * Plain [`FieldConfig`](/api/data/type-aliases/FieldConfig) objects in the `fields` array are promoted to [`Field`](/api/data/classes/Field) instances
      * on the first call; subsequent calls return immediately.
      */
     private ensureIndex(): void {

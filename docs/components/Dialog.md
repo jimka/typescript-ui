@@ -1,12 +1,11 @@
 # Dialog
 
-[`Dialog`](/api/classes/Dialog) is a modal panel with a title bar, scrollable content area, and a button row. The static `Dialog.show(config)` returns a `Promise<DialogResult>` resolving to `'confirm'`, `'cancel'`, or `'close'`.
+[`Dialog`](/api/core/classes/Dialog) is a modal panel with a title bar, scrollable content area, and a button row. The static `Dialog.show(config)` returns a `Promise<DialogResult>` resolving to `'confirm'`, `'cancel'`, or `'close'`.
 
 ## One-shot prompt
 
 ```typescript
-import { Dialog } from '@jimka/typescript-ui';
-
+import { Dialog } from '@jimka/typescript-ui/core';
 const result = await Dialog.show({
     title:   'Confirm deletion',
     message: 'Are you sure you want to delete this record?',
@@ -26,8 +25,9 @@ if (result === 'confirm') {
 Replace `message` with `contentComponent` to render any component as the dialog body:
 
 ```typescript
-import { Dialog, TextField, VBox } from '@jimka/typescript-ui';
-
+import { Dialog } from '@jimka/typescript-ui/core';
+import { VBox } from '@jimka/typescript-ui/layout';
+import { TextField } from '@jimka/typescript-ui/component/input';
 const form = new VBox();
 const nameField = new TextField();
 form.addComponent(nameField);
@@ -44,7 +44,7 @@ const result = await Dialog.show({
 
 ## DialogConfig
 
-See [`DialogConfig`](/api/interfaces/DialogConfig) for the full option list. Highlights:
+See [`DialogConfig`](/api/core/interfaces/DialogConfig) for the full option list. Highlights:
 
 | Option | Default | Purpose |
 | --- | --- | --- |
@@ -57,5 +57,5 @@ See [`DialogConfig`](/api/interfaces/DialogConfig) for the full option list. Hig
 
 ## See also
 
-- [API: Dialog](/api/classes/Dialog)
-- [API: DialogConfig](/api/interfaces/DialogConfig), [DialogButtonConfig](/api/interfaces/DialogButtonConfig), [DialogResult](/api/type-aliases/DialogResult)
+- [API: Dialog](/api/core/classes/Dialog)
+- [API: DialogConfig](/api/core/interfaces/DialogConfig), [DialogButtonConfig](/api/core/interfaces/DialogButtonConfig), [DialogResult](/api/core/type-aliases/DialogResult)

@@ -1,12 +1,12 @@
 # Slider
 
-[`Slider`](/api/classes/Slider) is a continuous-value range input backed by an `<input type="range">` element. Tracks min, max, step, and current value internally, keeping the DOM in sync on every input event.
+[`Slider`](/api/component/input/classes/Slider) is a continuous-value range input backed by an `<input type="range">` element. Tracks min, max, step, and current value internally, keeping the DOM in sync on every input event.
 
 ## Usage
 
 ```typescript
-import { Slider, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { Slider } from '@jimka/typescript-ui/component/input';
 const volume = new Slider();
 volume.setMin(0);
 volume.setMax(100);
@@ -36,5 +36,5 @@ panel.addComponent(volume);
 
 ## See also
 
-- [API: Slider](/api/classes/Slider)
+- [API: Slider](/api/component/input/classes/Slider)
 - [`NumberSpinner`](/components/NumberSpinner) — discrete numeric alternative

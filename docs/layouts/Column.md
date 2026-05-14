@@ -1,6 +1,6 @@
 # Column
 
-[`Column`](/api/classes/Column) divides the container width equally among all children and places them left-to-right with a configurable gap. Unlike [`HBox`](/layouts/HBox) (which honours each child's preferred width), `Column` allocates equal slots regardless.
+[`Column`](/api/layout/classes/Column) divides the container width equally among all children and places them left-to-right with a configurable gap. Unlike [`HBox`](/layouts/HBox) (which honours each child's preferred width), `Column` allocates equal slots regardless.
 
 Despite the name, `Column` lays children out **horizontally**. The name describes the column of equally sized slots that result.
 
@@ -14,8 +14,9 @@ Despite the name, `Column` lays children out **horizontally**. The name describe
 ## Usage
 
 ```typescript
-import { Component, Column, Button } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Column } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
 const tabs = new Component();
 tabs.setLayoutManager(new Column({ gap: 2 }));
 
@@ -24,7 +25,7 @@ tabs.addComponent(new Button('Edit'));
 tabs.addComponent(new Button('Help'));
 ```
 
-[`ColumnOptions`](/api/interfaces/ColumnOptions) accepts `gap` and `stretching` declaratively; the `setGap` / `setStretching` setters still work for runtime updates.
+[`ColumnOptions`](/api/layout/interfaces/ColumnOptions) accepts `gap` and `stretching` declaratively; the `setGap` / `setStretching` setters still work for runtime updates.
 
 ## Per-child constraints
 
@@ -54,6 +55,6 @@ For preferred-width-driven sequencing, use [`HBox`](/layouts/HBox).
 
 ## See also
 
-- [API: Column](/api/classes/Column)
+- [API: Column](/api/layout/classes/Column)
 - [`Row`](/layouts/Row) — vertical counterpart
 - [`HBox`](/layouts/HBox) — horizontal, preferred-width-driven

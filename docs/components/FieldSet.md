@@ -1,12 +1,13 @@
 # FieldSet
 
-[`FieldSet`](/api/classes/FieldSet) is a `<fieldset>` container with an embedded [`Legend`](/components/Legend) title. Use it to group related form fields with a visible border and title.
+[`FieldSet`](/api/component/container/classes/FieldSet) is a `<fieldset>` container with an embedded [`Legend`](/components/Legend) title. Use it to group related form fields with a visible border and title.
 
 ## Usage
 
 ```typescript
-import { FieldSet, VBox, TextField, Label } from '@jimka/typescript-ui';
-
+import { VBox } from '@jimka/typescript-ui/layout';
+import { TextField, Label } from '@jimka/typescript-ui/component/input';
+import { FieldSet } from '@jimka/typescript-ui/component/container';
 const profile = new FieldSet();
 profile.setLegendText('Profile');
 
@@ -32,5 +33,5 @@ panel.addComponent(profile);
 
 ## See also
 
-- [API: FieldSet](/api/classes/FieldSet)
+- [API: FieldSet](/api/component/container/classes/FieldSet)
 - [`Legend`](/components/Legend) — the title component used internally.

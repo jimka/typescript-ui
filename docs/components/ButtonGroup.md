@@ -1,14 +1,14 @@
 # ButtonGroup
 
-[`ButtonGroup`](/api/classes/ButtonGroup) enforces single-selection across a set of [`RadioButton`](/components/RadioButton) or [`ToggleButton`](/components/ToggleButton) instances.
+[`ButtonGroup`](/api/core/classes/ButtonGroup) enforces single-selection across a set of [`RadioButton`](/components/RadioButton) or [`ToggleButton`](/components/ToggleButton) instances.
 
 When any button in the group becomes selected, the others are automatically deselected. For radio groups, a shared `name` attribute is applied so the browser handles keyboard navigation natively. For toggle groups, call `setContainer` to enable roving-tabindex keyboard nav.
 
 ## Usage — radio group
 
 ```typescript
-import { RadioButton, ButtonGroup } from '@jimka/typescript-ui';
-
+import { ButtonGroup } from '@jimka/typescript-ui/core';
+import { RadioButton } from '@jimka/typescript-ui/component/input';
 const small  = new RadioButton('Small');
 const medium = new RadioButton('Medium');
 const large  = new RadioButton('Large');
@@ -22,8 +22,9 @@ group.addButton(large);
 ## Usage — toggle group with keyboard nav
 
 ```typescript
-import { ToggleButton, ButtonGroup, HBox } from '@jimka/typescript-ui';
-
+import { ButtonGroup } from '@jimka/typescript-ui/core';
+import { HBox } from '@jimka/typescript-ui/layout';
+import { ToggleButton } from '@jimka/typescript-ui/component/button';
 const toolbar = new HBox();
 
 const left   = new ToggleButton('Left');
@@ -60,7 +61,7 @@ group.addSelectionListener(button => {
 
 ## See also
 
-- [API: ButtonGroup](/api/classes/ButtonGroup)
+- [API: ButtonGroup](/api/core/classes/ButtonGroup)
 - [`RadioButton`](/components/RadioButton)
 - [`ToggleButton`](/components/ToggleButton)
-- [`RovingTabIndex`](/api/classes/RovingTabIndex) — the keyboard-nav primitive used internally.
+- [`RovingTabIndex`](/api/core/classes/RovingTabIndex) — the keyboard-nav primitive used internally.

@@ -1,47 +1,16 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import {
-    AutoCompleteField,
-    Button,
-    ButtonGroup,
-    callable,
-    ColumnSpec,
-    Component,
-    DarkTheme,
-    DefaultTheme,
-    Dialog,
-    Event,
-    FieldSet,
-    HBox,
-    Image,
-    Insets,
-    MemoryStore,
-    Menu,
-    Model,
-    ModelRecord,
-    Notification,
-    NumberSpinner,
-    PaginationBar,
-    Panel,
-    ProgressBar,
-    ProgressSpinner,
-    Proxy,
-    RadioButton,
-    ReadParams,
-    Store,
-    Table,
-    TablePanel,
-    Text,
-    ThemeManager,
-    Tooltip,
-    Tree,
-    VBox,
-    Window
-} from "@jimka/typescript-ui";
-import type {
-    TreeNode
-} from "@jimka/typescript-ui";
-
+import { ButtonGroup, callable, Component, DarkTheme, DefaultTheme, Dialog, Event, Menu, Notification, Panel, ThemeManager, Tooltip, Window } from '@jimka/typescript-ui/core';
+import { Insets } from '@jimka/typescript-ui/primitive';
+import { HBox, VBox } from '@jimka/typescript-ui/layout';
+import { MemoryStore, Model, ModelRecord, Proxy, ReadParams, Store } from '@jimka/typescript-ui/data';
+import { AutoCompleteField, NumberSpinner, RadioButton, Text } from '@jimka/typescript-ui/component/input';
+import { Button } from '@jimka/typescript-ui/component/button';
+import { Image, PaginationBar, ProgressBar, ProgressSpinner } from '@jimka/typescript-ui/component/display';
+import { FieldSet } from '@jimka/typescript-ui/component/container';
+import { ColumnSpec, Table, TablePanel } from '@jimka/typescript-ui/component/table';
+import { Tree } from '@jimka/typescript-ui/component/tree';
+import type { TreeNode } from '@jimka/typescript-ui/component/tree';
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and
  * pretends to be a slow network request so the spinner overlay is visible.
