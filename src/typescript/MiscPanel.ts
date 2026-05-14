@@ -559,6 +559,17 @@ class MiscPanel extends Panel {
         iconLabelRow.addComponent(iconLabelField);
         this.addComponent(iconLabelRow);
 
+        const buttonGlyphWindow = new Button("Show window with title glyph");
+        buttonGlyphWindow.addActionListener(() => {
+            const win = new Window("Settings", { glyph: "arrow-right" });
+            win.setX(220);
+            win.setY(180);
+            win.setWidth(300);
+            win.setHeight(180);
+            win.show();
+        });
+        this.addComponent(buttonGlyphWindow);
+
         const buttonOverlaySpinner = new Button("Overlay spinner on this panel for 2 s");
         buttonOverlaySpinner.addActionListener(() => {
             const overlay = new ProgressSpinner(48);
