@@ -51,9 +51,9 @@ export type AutoCompleteFieldConfig = AutoCompleteFieldOptions;
 /**
  * A typeahead/autocomplete text field.
  *
- * Wraps a `TextField` and an `AutoCompleteDropdown`. Suggestions may come
- * from a static string array or from an `AbstractStore`. Implements `Bindable<string>`
- * for use with the `Binding` system.
+ * Wraps a [`TextField`](/api/component/input/classes/TextField) and an `AutoCompleteDropdown`. Suggestions may come
+ * from a static string array or from an [`AbstractStore`](/api/data/classes/AbstractStore). Implements `Bindable<string>`
+ * for use with the [`Binding`](/api/core/classes/Binding) system.
  *
  * @example
  * ```typescript
@@ -134,7 +134,7 @@ class AutoCompleteField extends Component implements Bindable<string> {
     }
 
     /**
-     * Mirrors the preferred and max size from the inner `TextField` onto this component
+     * Mirrors the preferred and max size from the inner [`TextField`](/api/component/input/classes/TextField) onto this component
      * so that parent layout managers can calculate the correct row height.
      *
      * Called at construction time and after each theme change.
@@ -157,7 +157,7 @@ class AutoCompleteField extends Component implements Bindable<string> {
      *
      * @returns The baseline offset in pixels, or `null` when the text field has no baseline.
      *
-     * @remarks `doLayout` places the inner `TextField` at `(0, 0)` to fill this
+     * @remarks `doLayout` places the inner [`TextField`](/api/component/input/classes/TextField) at `(0, 0)` to fill this
      * component, so this baseline excludes `insets` (which are not used to
      * position the child) and only adds the component's own border.
      */

@@ -137,7 +137,7 @@ class Split extends LayoutManager {
     /**
      * Creates missing gutters, computes panel sizes, and positions all panels and gutters.
      *
-     * @remarks New `SplitGutter` instances are appended to the container's DOM element on first layout.
+     * @remarks New [`SplitGutter`](/api/component/container/classes/SplitGutter) instances are appended to the container's DOM element on first layout.
      * Existing gutters are reused on subsequent layouts.
      */
     doLayout() {

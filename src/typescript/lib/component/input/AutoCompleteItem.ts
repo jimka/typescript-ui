@@ -20,7 +20,7 @@ export interface AutoCompleteItemOptions extends ComponentOptions {
  * A single row inside an `AutoCompleteDropdown`.
  *
  * Renders a text label with hover and keyboard-highlight states. Unlike
- * `MenuItem`, this item is mutable after construction so the dropdown
+ * [`MenuItem`](/api/component/container/classes/MenuItem), this item is mutable after construction so the dropdown
  * can reuse the DOM pool across keystrokes.
  */
 class AutoCompleteItem extends Component {

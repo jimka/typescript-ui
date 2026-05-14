@@ -66,7 +66,7 @@ export class Border extends Object {
     /**
      * Returns the top border line definition.
      *
-     * @returns The `BorderLine` instance for the top side.
+     * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the top side.
      */
     getTop() {
         return this.top;
@@ -75,7 +75,7 @@ export class Border extends Object {
     /**
      * Returns the right border line definition.
      *
-     * @returns The `BorderLine` instance for the right side.
+     * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the right side.
      */
     getRight() {
         return this.right;
@@ -84,7 +84,7 @@ export class Border extends Object {
     /**
      * Returns the bottom border line definition.
      *
-     * @returns The `BorderLine` instance for the bottom side.
+     * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the bottom side.
      */
     getBottom() {
         return this.bottom;
@@ -93,7 +93,7 @@ export class Border extends Object {
     /**
      * Returns the left border line definition.
      *
-     * @returns The `BorderLine` instance for the left side.
+     * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the left side.
      */
     getLeft() {
         return this.left;
@@ -102,7 +102,7 @@ export class Border extends Object {
     /**
      * Sets all four sides to the same style, width, and color.
      *
-     * @param borderStyle - The `BorderStyle` enum value to apply to all sides.
+     * @param borderStyle - The [`BorderStyle`](/api/primitive/enumerations/BorderStyle) enum value to apply to all sides.
      * @param width - The border width in pixels to apply to all sides.
      * @param color - The border color string to apply to all sides.
      */

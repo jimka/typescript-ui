@@ -42,7 +42,7 @@ export class BorderLine extends Object {
     /**
      * Returns the border style enum value.
      *
-     * @returns The `BorderStyle` enum member for this border side.
+     * @returns The [`BorderStyle`](/api/primitive/enumerations/BorderStyle) enum member for this border side.
      */
     getStyle() {
         return this.borderStyle;
@@ -51,7 +51,7 @@ export class BorderLine extends Object {
     /**
      * Returns the border style as a lowercase CSS string (e.g. `"solid"`).
      *
-     * @returns The lowercased name of the `BorderStyle` enum member.
+     * @returns The lowercased name of the [`BorderStyle`](/api/primitive/enumerations/BorderStyle) enum member.
      */
     getStyleString() {
         return BorderStyle[this.getStyle()].toLowerCase();
@@ -78,7 +78,7 @@ export class BorderLine extends Object {
     /**
      * Sets the border style, width, and color.
      *
-     * @param borderStyle - The new `BorderStyle` enum value.
+     * @param borderStyle - The new [`BorderStyle`](/api/primitive/enumerations/BorderStyle) enum value.
      * @param width - The new border width in pixels.
      * @param color - The new border color string.
      */

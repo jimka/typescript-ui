@@ -25,8 +25,9 @@ export interface BorderOptions extends LayoutManagerOptions {
  * north, south, east, west, and center.
  * North and south regions span the full width; east and west regions flank the center.
  *
- * Re-exported as `BorderLayout` from the package barrel to disambiguate from the
- * line-style `Border` utility.
+ * Exported from `@jimka/typescript-ui/layout`. Disambiguate from the line-style
+ * [`Border`](/api/primitive/classes/Border) utility (in `@jimka/typescript-ui/primitive`)
+ * by aliasing one of them on import — e.g. `import { Border as BorderLayout } from '@jimka/typescript-ui/layout';`.
  *
  * @category Layouts
  */

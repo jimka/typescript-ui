@@ -13,7 +13,7 @@ export interface MenuSeparatorOptions extends ComponentOptions {
 }
 
 /**
- * A horizontal separator rule used inside a `Menu` panel to visually group menu items.
+ * A horizontal separator rule used inside a [`Menu`](/api/core/classes/Menu) panel to visually group menu items.
  *
  * Renders as a thin border line. Width is set externally by `Menu.doLayout()`.
  *

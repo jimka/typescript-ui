@@ -108,7 +108,7 @@ class ComboBox extends Component implements Bindable<string> {
      * @remarks Native `<select>` elements do not inherit `font-family` or `font-size`
      * from ancestors in Chromium/WebKit — they use the UA stylesheet defaults. We
      * therefore write the theme variables onto the per-component CSS rule explicitly,
-     * the same way `Input` does for `<input>` / `<textarea>`.
+     * the same way [`Input`](/api/component/input/classes/Input) does for `<input>` / `<textarea>`.
      */
     applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
@@ -128,7 +128,7 @@ class ComboBox extends Component implements Bindable<string> {
      * @remarks Native `<select>` elements have a slightly different baseline
      * from `<input>` elements at the same font size. The 1-pixel offset on top
      * of the cached input baseline approximates the empirical placement of the
-     * select's first-row text so a `Text` label next to a `ComboBox` lines up
+     * select's first-row text so a [`Text`](/api/component/input/classes/Text) label next to a `ComboBox` lines up
      * visually.
      */
     getBaseline(): number | null {

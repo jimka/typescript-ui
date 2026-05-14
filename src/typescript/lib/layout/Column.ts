@@ -241,7 +241,7 @@ class Column extends LayoutManager {
      * @remarks When stretching is enabled (default) every child fills the full
      * container height. When stretching is disabled the children use their
      * preferred heights and are baseline-aligned within the row, mirroring
-     * `HBox`'s baseline-aware placement.
+     * [`HBox`](/api/layout/classes/HBox)'s baseline-aware placement.
      */
     doLayout() {
         let container = this.getContainer();

@@ -30,7 +30,7 @@ export interface NumberSpinnerOptions extends ComponentOptions {
 /**
  * A numeric input field with flanking up/down spin buttons.
  *
- * Combines a borderless `TextField` and a vertical strip of two `SpinButton`s
+ * Combines a borderless [`TextField`](/api/component/input/classes/TextField) and a vertical strip of two [`SpinButton`](/api/component/input/classes/SpinButton)s
  * into a single bordered control. Supports min/max clamping, step-snapping,
  * configurable display precision, click and click-and-hold increment/decrement,
  * keyboard arrow keys, blur-on-invalid revert, and the framework `Bindable<number>`

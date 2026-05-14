@@ -216,7 +216,7 @@ export abstract class AbstractStore {
      *
      * @remarks
      * Calling this method opts the store into the paginated `load()` path, where
-     * `ReadParams` are forwarded to the proxy. Paginated mode also causes
+     * [`ReadParams`](/api/data/interfaces/ReadParams) are forwarded to the proxy. Paginated mode also causes
      * `sort()` and `clearFilter()` to reset to page 1 and re-fetch from the proxy.
      * Fires `'pagechanged'`.
      */

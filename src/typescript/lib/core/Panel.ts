@@ -18,10 +18,10 @@ export interface PanelOptions extends ComponentOptions {
 }
 
 /**
- * A `Component` subclass that applies a default 4-pixel inset on all sides.
+ * A [`Component`](/api/core/classes/Component) subclass that applies a default 4-pixel inset on all sides.
  *
  * Use `Panel` as the base class for grouped UI containers where children
- * should not sit flush against the outer edge. Plain `Component` defaults
+ * should not sit flush against the outer edge. Plain [`Component`](/api/core/classes/Component) defaults
  * to zero insets to keep leaf widgets pixel-predictable; `Panel` opts into
  * the visual breathing room that grouped layouts typically want.
  *

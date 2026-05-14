@@ -326,7 +326,7 @@ class Grid extends LayoutManager {
      * @remarks When stretching is enabled (default) cells are equal-sized and each
      * child fills its cell. When stretching is disabled, columns remain uniform-width
      * but each row uses the natural heights of its children and components are
-     * baseline-aligned within their row, mirroring `HBox`'s baseline-aware placement.
+     * baseline-aligned within their row, mirroring [`HBox`](/api/layout/classes/HBox)'s baseline-aware placement.
      */
     doLayout() {
         let container = this.getContainer();

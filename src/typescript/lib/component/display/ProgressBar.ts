@@ -101,7 +101,7 @@ class ProgressBar extends Component {
 
     /**
      * Returns a baseline near the bottom of the bar so that, when placed in an
-     * `HBox` next to text labels, the bar sits with its bottom roughly on the
+     * [`HBox`](/api/layout/classes/HBox) next to text labels, the bar sits with its bottom roughly on the
      * surrounding text baseline (CSS replaced-element behaviour, with a 2 px
      * lift so it doesn't sit visually lower than the text descenders).
      *

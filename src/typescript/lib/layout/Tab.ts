@@ -262,7 +262,7 @@ class Tab extends LayoutManager {
      *
      * @remarks The button label is taken from `LayoutConstraints.name` when available;
      * otherwise the component's ID is used. When `constraints.closeable` is true, a
-     * `TabCloseButton` is appended to the wrapper after the toggle button.
+     * [`TabCloseButton`](/api/component/button/classes/TabCloseButton) is appended to the wrapper after the toggle button.
      */
     createTab(component: Component): void {
         let constraints = this.getLayoutConstraints(component);

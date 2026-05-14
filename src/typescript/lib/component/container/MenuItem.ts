@@ -22,16 +22,16 @@ export interface MenuItemOptions extends ComponentOptions {
  * Selects which CSS-variable family a `MenuItem` reads its colours from.
  *
  * `'menu-bar'` resolves to `--ts-ui-menu-bar-item-*` tokens; `'context-menu'`
- * resolves to `--ts-ui-context-menu-item-*` tokens. The `Menu` class chooses
+ * resolves to `--ts-ui-context-menu-item-*` tokens. The [`Menu`](/api/core/classes/Menu) class chooses
  * the prefix based on its mode.
  */
 export type MenuItemCSSVarPrefix = "menu-bar" | "context-menu";
 
 /**
- * Describes a leaf action item, submenu trigger, or separator row inside a `Menu`.
+ * Describes a leaf action item, submenu trigger, or separator row inside a [`Menu`](/api/core/classes/Menu).
  *
  * @remarks When `separator` is true all other fields are ignored; the item renders as
- * a thin horizontal rule. When `submenu` is set the item opens a child `Menu`
+ * a thin horizontal rule. When `submenu` is set the item opens a child [`Menu`](/api/core/classes/Menu)
  * instead of calling `action`.
  *
  * @category Components
@@ -54,7 +54,7 @@ export interface MenuItemConfig {
 }
 
 /**
- * Describes one top-level entry in a `MenuBar`.
+ * Describes one top-level entry in a [`MenuBar`](/api/component/menubar/classes/MenuBar).
  *
  * @category Components
  */
@@ -66,7 +66,7 @@ export interface MenuConfig {
 }
 
 /**
- * A single row inside a `Menu` panel.
+ * A single row inside a [`Menu`](/api/core/classes/Menu) panel.
  *
  * Renders a four-zone layout: icon | text | shortcut | chevron. When
  * `config.separator` is true the item renders instead as a thin horizontal
@@ -276,7 +276,7 @@ class MenuItem extends Component {
     /**
      * Returns the submenu config, or `null` if this item has no submenu.
      *
-     * @returns The `MenuConfig` for the child panel, or null.
+     * @returns The [`MenuConfig`](/api/component/container/interfaces/MenuConfig) for the child panel, or null.
      */
     getSubmenuConfig(): MenuConfig | null {
         return this._config.submenu ?? null;

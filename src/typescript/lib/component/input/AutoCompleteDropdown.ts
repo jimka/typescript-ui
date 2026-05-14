@@ -18,7 +18,7 @@ export interface AutoCompleteDropdownOptions extends ComponentOptions {
 }
 
 /**
- * Floating dropdown panel for `AutoCompleteField`.
+ * Floating dropdown panel for [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField).
  *
  * Maintains a reusable pool of `AutoCompleteItem` rows — items are updated
  * in place rather than destroyed and recreated on each keystroke.
