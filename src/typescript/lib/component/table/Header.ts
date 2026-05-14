@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/Component.js";
+import { Component } from "~/core/Component.js";
 import { Row } from "~/component/table/Row.js";
 import { AbstractModel } from "~/data/AbstractModel.js";
 import { AbstractStore, SortDescriptor } from "~/data/AbstractStore.js";
 import { Field } from "~/data/Field.js";
 import { HeaderCell } from "~/component/table/cell/Header.js";
-import { BorderStyle } from "~/BorderStyle.js";
-import { callable } from "~/Callable.js";
+import { BorderStyle } from "~/primitive/BorderStyle.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * The header section of a table, rendered as a `<thead>` element.

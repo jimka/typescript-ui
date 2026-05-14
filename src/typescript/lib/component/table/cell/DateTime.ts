@@ -3,7 +3,7 @@
 import { Cell } from "~/component/table/cell/Cell.js";
 import { DateTimeRenderer } from "~/component/table/cell/renderer/DateTime.js";
 import { DateTimeEditor } from "~/component/table/cell/editor/DateTime.js";
-import { callable } from "~/Callable.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * A table cell for date-time values.

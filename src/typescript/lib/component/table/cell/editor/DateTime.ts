@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
-import { BorderStyle } from "~/BorderStyle.js";
-import { callable } from "~/Callable.js";
+import { BorderStyle } from "~/primitive/BorderStyle.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * An in-place editor for date-time cell values.

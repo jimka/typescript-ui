@@ -4,7 +4,7 @@ import { BooleanEditor } from "~/component/table/cell/editor/Boolean.js";
 import { Cell } from "~/component/table/cell/Cell.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
-import { callable } from "~/Callable.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * A table cell for boolean values, rendered as a checkbox.

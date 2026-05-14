@@ -3,7 +3,7 @@
 import { Cell } from "~/component/table/cell/Cell.js";
 import { StringRenderer } from "~/component/table/cell/renderer/String.js";
 import { StringEditor } from "~/component/table/cell/editor/String.js";
-import { callable } from "~/Callable.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * A table cell for string values.

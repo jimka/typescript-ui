@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
-import { TextField } from "~/component/TextField.js";
+import { TextField } from "~/component/input/TextField.js";
 import { AnchorType } from "~/layout/AnchorType.js";
-import { BorderStyle } from "~/BorderStyle.js";
-import { Event } from "~/Event.js";
-import { callable } from "~/Callable.js";
+import { BorderStyle } from "~/primitive/BorderStyle.js";
+import { Event } from "~/core/Event.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * An in-place editor for numeric cell values.

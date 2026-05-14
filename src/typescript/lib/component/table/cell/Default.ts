@@ -2,7 +2,7 @@
 
 import { StringRenderer } from "~/component/table/cell/renderer/String.js";
 import { Cell } from "~/component/table/cell/Cell.js";
-import { callable } from "~/Callable.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * A plain string-rendering cell with no editor.

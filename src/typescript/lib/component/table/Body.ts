@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/Component.js";
+import { Component } from "~/core/Component.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
 import { Cell } from "~/component/table/cell/Cell.js";
-import { Event } from "~/Event.js";
-import { VirtualScroller } from "~/component/VirtualScroller.js";
-import { ThemeManager } from "~/Theme.js";
+import { Event } from "~/core/Event.js";
+import { VirtualScroller } from "~/component/container/VirtualScroller.js";
+import { ThemeManager } from "~/core/Theme.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
-import { callable } from "~/Callable.js";
+import { callable } from "~/core/Callable.js";
 
 const SCROLL_BUFFER = 2;
 

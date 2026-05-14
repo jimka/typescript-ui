@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/Component.js";
+import { Component } from "~/core/Component.js";
 import { AbstractModel } from "~/data/AbstractModel.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Cell } from "~/component/table/cell/Cell.js";
@@ -13,7 +13,7 @@ import { TimeCell } from "~/component/table/cell/Time.js";
 import { DateTimeCell } from "~/component/table/cell/DateTime.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
-import { callable } from "~/Callable.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * A single data row in the table, rendered as a `<tr>` element.

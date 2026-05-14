@@ -2,8 +2,8 @@
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
-import { Size } from "~/Size.js";
-import { callable } from "~/Callable.js";
+import { Size } from "~/primitive/Size.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * Construction-time options for {@link Column}.

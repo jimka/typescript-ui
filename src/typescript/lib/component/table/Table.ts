@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Event } from "~/Event.js";
+import { Event } from "~/core/Event.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Table as TableLayout } from "~/layout/Table.js";
 import { Header } from "~/component/table/Header.js";
@@ -8,17 +8,17 @@ import { Body } from "~/component/table/Body.js";
 import { FooterRow } from "~/component/table/Footer.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
-import { BorderStyle } from "~/BorderStyle.js";
-import { Insets } from "~/Insets.js";
-import { Menu } from "~/Menu.js";
-import { MenuItemConfig } from "~/component/MenuItem.js";
+import { BorderStyle } from "~/primitive/BorderStyle.js";
+import { Insets } from "~/primitive/Insets.js";
+import { Menu } from "~/core/Menu.js";
+import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { Column } from "~/component/table/Column.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { ColumnSpec } from "~/component/table/ColumnConfig.js";
-import { Component } from "~/Component.js";
-import { Util } from "~/Util.js";
+import { Component } from "~/core/Component.js";
+import { Util } from "~/core/Util.js";
 import { TableExporter, ExportOptions } from "~/component/table/TableExporter.js";
-import { callable } from "~/Callable.js";
+import { callable } from "~/core/Callable.js";
 
 /**
  * A data-bound table component rendered as an HTML `<table>` element.
