@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+//
+// SVG path data for individual entries below is sourced from third-party
+// icon sets under their own licenses. See the project NOTICE file at the
+// repository root for full attribution and license texts.
+//
+// Font Awesome Free (CC BY 4.0, https://fontawesome.com/license/free):
+//   - times  -> fontawesome/svgs/solid/times.svg
 
 /**
  * Tagged union describing how a glyph is rendered.
