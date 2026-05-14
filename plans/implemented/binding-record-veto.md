@@ -2,9 +2,9 @@
 
 ## Overview
 
-[Binding.setRecord()](../src/typescript/Base/Binding.ts#L135) currently swaps the bound record unconditionally. There is no way for a caller to intercept a record switch and abort it — for example, when the current record is dirty or has live validation errors. The fix is a new listener channel, `addBeforeRecordListener(fn)`, where each registered listener receives the *next* record and returns a `boolean`: `false` vetoes the change, anything else allows it. If any listener vetoes, `setRecord()` returns without touching state.
+[Binding.setRecord()](../src/typescript/lib/core/Binding.ts#L137) currently swaps the bound record unconditionally. There is no way for a caller to intercept a record switch and abort it — for example, when the current record is dirty or has live validation errors. The fix is a new listener channel, `addBeforeRecordListener(fn)`, where each registered listener receives the *next* record and returns a `boolean`: `false` vetoes the change, anything else allows it. If any listener vetoes, `setRecord()` returns the binding instance without touching state (it still returns `this` to preserve its chainable signature).
 
-The change is contained to [Binding.ts](../src/typescript/Base/Binding.ts). It does not modify [ModelRecord](../src/typescript/Base/data/ModelRecord.ts), the [Bindable](../src/typescript/Base/Bindable.ts) interface, or any consuming panels. Existing callers ([BindingPanel.ts:196](../src/typescript/BindingPanel.ts#L196), [BindingPanel.ts:204](../src/typescript/BindingPanel.ts#L204), [MultiSelectListPanel.ts:154](../src/typescript/MultiSelectListPanel.ts#L154)) keep working unchanged because no listeners are registered by default.
+The change is contained to [Binding.ts](../src/typescript/lib/core/Binding.ts). It does not modify [ModelRecord](../src/typescript/lib/data/ModelRecord.ts), the [Bindable](../src/typescript/lib/core/Bindable.ts) interface, or any consuming panels. Existing callers ([BindingPanel.ts:197](../src/typescript/BindingPanel.ts#L197), [BindingPanel.ts:205](../src/typescript/BindingPanel.ts#L205), [MultiSelectListPanel.ts:158](../src/typescript/MultiSelectListPanel.ts#L158)) keep working unchanged because no listeners are registered by default.
 
 ---
 
@@ -61,7 +61,7 @@ export class Binding extends BaseObject {
 }
 ```
 
-`setRecord()`'s public signature is unchanged; only its body grows the veto check.
+`setRecord()`'s public signature is unchanged (it still returns `this`); only its body grows the veto check.
 
 ---
 
@@ -77,13 +77,13 @@ Declared alongside the existing `changeListeners` / `commitListeners` / `rejectL
 
 ### `setRecord()` change
 
-The current body at [Binding.ts:135-151](../src/typescript/Base/Binding.ts#L135-L151) gains a single guard at the top:
+The current body at [Binding.ts:137-155](../src/typescript/lib/core/Binding.ts#L137-L155) gains a single guard at the top. Note that `setRecord` returns `this` (it is chainable), so the veto early-return must return `this` as well:
 
 ```typescript
-setRecord(record: ModelRecord | null): void {
+setRecord(record: ModelRecord | null): this {
     for (const fn of this.beforeRecordListeners) {
         if (fn(record) === false) {
-            return;
+            return this;
         }
     }
 
@@ -97,7 +97,7 @@ Strict `=== false` comparison so a listener that forgets to return (returns `und
 
 ### `addBeforeRecordListener()`
 
-Mirror the shape of [addCommitListener](../src/typescript/Base/Binding.ts#L209) and [addRejectListener](../src/typescript/Base/Binding.ts#L216):
+Mirror the shape of [addCommitListener](../src/typescript/lib/core/Binding.ts#L215) and [addRejectListener](../src/typescript/lib/core/Binding.ts#L222):
 
 ```typescript
 addBeforeRecordListener(fn: BeforeRecordListener): void {
@@ -105,7 +105,7 @@ addBeforeRecordListener(fn: BeforeRecordListener): void {
 }
 ```
 
-Placed in the `// ── Listeners ──` section between the existing `addRecordListener` slots, immediately after `addRejectListener`.
+Placed in the `// ── Listeners ──` section immediately after `addRejectListener`.
 
 ---
 
@@ -113,22 +113,26 @@ Placed in the `// ── Listeners ──` section between the existing `addReco
 
 ### Step 1 — Add the type and field
 
-In [Binding.ts](../src/typescript/Base/Binding.ts):
+In [Binding.ts](../src/typescript/lib/core/Binding.ts):
 
 1. Above the class (file-level), export `BeforeRecordListener` as shown in the API section.
-2. Inside the class, add `private beforeRecordListeners: Array<BeforeRecordListener> = [];` next to the existing listener arrays at lines 49-51.
+2. Inside the class, add `private beforeRecordListeners: Array<BeforeRecordListener> = [];` next to the existing listener arrays at lines 51-53.
 
 ### Step 2 — Add the registration method
 
-Add `addBeforeRecordListener(fn)` in the `// ── Listeners ──` section, after [addRejectListener](../src/typescript/Base/Binding.ts#L216).
+Add `addBeforeRecordListener(fn)` in the `// ── Listeners ──` section, after [addRejectListener](../src/typescript/lib/core/Binding.ts#L222).
 
 ### Step 3 — Insert the veto check in `setRecord()`
 
-Prepend the veto loop to [setRecord()](../src/typescript/Base/Binding.ts#L135) — first statement in the method, before `this.record = record;`. Return early on `=== false`.
+Prepend the veto loop to [setRecord()](../src/typescript/lib/core/Binding.ts#L137) — first statement in the method, before `this.record = record;`. Return `this` early on `=== false`.
 
 ### Step 4 — Re-export the type
 
-In [Base/index.ts](../src/typescript/Base/index.ts) line 5, extend the `Bindable, BindingAccessors` re-export line — or add a sibling line — to also export `BeforeRecordListener` from `./Binding.js`. This keeps the public type surface importable for callers writing typed listeners.
+In [lib/core/index.ts](../src/typescript/lib/core/index.ts) (next to the existing `export { Binding }` / `export type { Bindable, BindingAccessors }` lines at the bottom of the file), add a sibling re-export so the public type surface is importable for callers writing typed listeners:
+
+```typescript
+export type { BeforeRecordListener } from '~/core/Binding.js';
+```
 
 ### Step 5 — Type-check
 
@@ -152,7 +156,7 @@ Edit a field on Alice, switch the record combo to Bob — the combo selection vi
 
 ### Step 7 — Refresh graphify
 
-Per [CLAUDE.md](../CLAUDE.md): `graphify update .` after the change lands.
+Per [CLAUDE.md](../CLAUDE.md): `graphify update . --directed` after the change lands (the `--directed` flag preserves import-edge direction).
 
 ---
 
@@ -160,8 +164,8 @@ Per [CLAUDE.md](../CLAUDE.md): `graphify update .` after the change lands.
 
 | Action | File |
 |---|---|
-| Modify | `src/typescript/Base/Binding.ts` |
-| Modify | `src/typescript/Base/index.ts` |
+| Modify | `src/typescript/lib/core/Binding.ts` |
+| Modify | `src/typescript/lib/core/index.ts` |
 
 No new files. No deletions.
 
@@ -171,7 +175,7 @@ No new files. No deletions.
 
 1. **Type-check**: `npx tsc --noEmit` reports no new errors.
 2. **No regression**: existing BindingPanel and MultiSelectListPanel work unchanged with no listeners registered (default behaviour identical).
-3. **Veto path**: with the smoke-test listener from Step 6, the record combo *visually* selects Bob but [Binding.getRecord()](../src/typescript/Base/Binding.ts#L156) still returns Alice and the form fields show Alice's values.
+3. **Veto path**: with the smoke-test listener from Step 6, the record combo *visually* selects Bob but [Binding.getRecord()](../src/typescript/lib/core/Binding.ts#L160) still returns Alice and the form fields show Alice's values.
 4. **Allow path**: returning `true` (or omitting the listener) results in the existing behaviour byte-for-byte.
 5. **Multi-listener short-circuit**: register two listeners where the first returns `false`; verify the second is *not* called (add a `console.log` inside the second listener for the test, then remove).
 6. **Stray-return safety**: register a listener with no `return` statement (returns `undefined`); verify the change still happens.
@@ -180,7 +184,7 @@ No new files. No deletions.
 
 ## Potential Challenges
 
-- **The caller must reconcile its UI after a veto.** The record combo in [BindingPanel.ts:200-205](../src/typescript/BindingPanel.ts#L200-L205) reads `recordCombo.getElement().value` and calls `binding.setRecord(record)`. If the binding vetoes, the combo's selected value still points at the rejected record while the binding is on the previous one. The plan does **not** solve this — it is the call site's job to detect the veto (e.g. compare `binding.getRecord()` after the call) and reset the combo. Worth flagging in the JSDoc on `addBeforeRecordListener`.
+- **The caller must reconcile its UI after a veto.** The record combo in [BindingPanel.ts:202-207](../src/typescript/BindingPanel.ts#L202-L207) reads the combo value and calls `binding.setRecord(record)`. If the binding vetoes, the combo's selected value still points at the rejected record while the binding is on the previous one. The plan does **not** solve this — it is the call site's job to detect the veto (e.g. compare `binding.getRecord()` after the call) and reset the combo. Worth flagging in the JSDoc on `addBeforeRecordListener`.
 - **Re-entrancy**: a listener that calls `binding.setRecord(...)` would trigger the loop recursively. The current implementation will handle this correctly (the inner call goes through the same veto check) but listeners should be discouraged from doing so. Note this in the JSDoc.
 - **`null` is a valid `next`**: passing `null` to `setRecord()` clears the binding, and listeners must be free to veto a clear too. The signature `(next: ModelRecord | null)` makes this explicit; listeners that only want to guard *switches* (not clears) need their own `if (next === null) return true;` check.
 
@@ -188,11 +192,11 @@ No new files. No deletions.
 
 ## Critical Files
 
-- [src/typescript/Base/Binding.ts](../src/typescript/Base/Binding.ts) — the file being modified
-- [src/typescript/Base/data/ModelRecord.ts](../src/typescript/Base/data/ModelRecord.ts) — defines `isDirty()`, the most likely veto trigger
+- [src/typescript/lib/core/Binding.ts](../src/typescript/lib/core/Binding.ts) — the file being modified
+- [src/typescript/lib/data/ModelRecord.ts](../src/typescript/lib/data/ModelRecord.ts) — defines `isDirty()`, the most likely veto trigger
 - [src/typescript/BindingPanel.ts](../src/typescript/BindingPanel.ts) — reference call site for the smoke test
 - [src/typescript/MultiSelectListPanel.ts](../src/typescript/MultiSelectListPanel.ts) — second call site to confirm no regression
-- [src/typescript/Base/index.ts](../src/typescript/Base/index.ts) — public export surface
+- [src/typescript/lib/core/index.ts](../src/typescript/lib/core/index.ts) — public export surface (subpath barrel for `core`)
 
 ---
 

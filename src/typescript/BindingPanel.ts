@@ -198,11 +198,38 @@ class BindingPanel extends Panel {
             });
         });
 
+        // Veto record switches while the current record has uncommitted edits.
+        // Demonstrates addBeforeRecordListener: returning false cancels setRecord().
+        binding.addBeforeRecordListener((next) => {
+            const current = binding.getRecord();
+
+            if (current && current !== next && current.isDirty()) {
+                Notification.show('Commit or reject your changes before switching record.', 'error');
+
+                return false;
+            }
+
+            return true;
+        });
+
         recordCombo.addActionListener(() => {
             const selected = recordCombo.getElement();
             const id = Number(selected.value);
             const record = personStore.find('id', id);
-            if (record) binding.setRecord(record);
+
+            if (!record) {
+                return;
+            }
+
+            binding.setRecord(record);
+
+            // If the veto fired, the binding is still on the previous record —
+            // snap the combo back so its selection matches reality.
+            const active = binding.getRecord();
+
+            if (active && active !== record) {
+                recordCombo.getElement().value = String(active.get('id'));
+            }
         });
     }
 }
