@@ -7,8 +7,8 @@ It implements [`Bindable<Date | null>`](/api/interfaces/Bindable), so it can par
 ## Usage
 
 ```typescript
-import { DateField, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { DateField } from '@jimka/typescript-ui/component/input';
 const dueDate = new DateField();
 dueDate.setValue(new Date('2026-12-31'));
 

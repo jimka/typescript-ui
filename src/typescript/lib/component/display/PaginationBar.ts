@@ -31,7 +31,9 @@ export interface PaginationBarOptions extends ComponentOptions {
  *
  * @example
  * ```typescript
- * import { AjaxProxy, PaginationBar, Store, TablePanel } from '@jimka/typescript-ui';
+ * import { AjaxProxy, Store } from '@jimka/typescript-ui/data';
+ * import { PaginationBar } from '@jimka/typescript-ui/component/display';
+ * import { TablePanel } from '@jimka/typescript-ui/component/table';
  *
  * const store = new Store({ model, proxy: new AjaxProxy({ url: '/api/users' }) });
  * store.setPageSize(25);

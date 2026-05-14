@@ -13,8 +13,7 @@ rendered as a rotating arc. Two usage modes:
 Inline:
 
 ```typescript
-import { ProgressSpinner } from '@jimka/typescript-ui';
-
+import { ProgressSpinner } from '@jimka/typescript-ui/component/display';
 // No size argument: matches the theme's --ts-ui-font-size and re-syncs on theme change
 const inline = new ProgressSpinner();
 panel.addComponent(inline);

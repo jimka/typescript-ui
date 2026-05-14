@@ -10,8 +10,7 @@ The two API surfaces are disjoint. `show()` / `hide()` / `setMenuWidth()` are va
 ## Rebuild mode (right-click context menu)
 
 ```typescript
-import { Menu, Event } from '@jimka/typescript-ui';
-
+import { Menu, Event } from '@jimka/typescript-ui/core';
 const menu = new Menu();
 
 Event.addListener(myComponent, 'contextmenu', (e: MouseEvent) => {
@@ -30,8 +29,7 @@ Reuse one `Menu` instance across the app — `show()` disposes the previous item
 ## Persistent mode (MenuBar dropdown)
 
 ```typescript
-import { Menu } from '@jimka/typescript-ui';
-
+import { Menu } from '@jimka/typescript-ui/core';
 const panel = new Menu(
     [
         { text: 'Save',     shortcut: 'Ctrl+S', action: () => save()   },

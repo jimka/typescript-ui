@@ -7,8 +7,7 @@ This page covers the three listener flavours, when to use each, and the hover-ev
 ## addListener
 
 ```typescript
-import { Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
 Event.addListener(button, 'click', () => save());
 ```
 

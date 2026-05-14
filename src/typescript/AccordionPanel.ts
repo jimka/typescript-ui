@@ -1,22 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import {
-    Accordion,
-    AccordionConstraints,
-    Button,
-    callable,
-    Checkbox,
-    Component,
-    Fit,
-    HBox,
-    Insets,
-    List,
-    Panel,
-    Text,
-    TextField,
-    VBox
-} from "@jimka/typescript-ui";
-
+import { callable, Component, Panel } from '@jimka/typescript-ui/core';
+import { Insets } from '@jimka/typescript-ui/primitive';
+import { Accordion, AccordionConstraints, Fit, HBox, VBox } from '@jimka/typescript-ui/layout';
+import { Checkbox, Text, TextField } from '@jimka/typescript-ui/component/input';
+import { Button } from '@jimka/typescript-ui/component/button';
+import { List } from '@jimka/typescript-ui/component/list';
 /**
  * Demonstrates the Accordion layout manager with multiple collapsible sections,
  * programmatic open/close controls, and single-open mode toggling.

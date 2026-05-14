@@ -5,8 +5,8 @@
 ## Usage
 
 ```typescript
-import { TabCloseButton, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { TabCloseButton } from '@jimka/typescript-ui/component/button';
 const closeBtn = new TabCloseButton();
 Event.addListener(closeBtn, 'click', () => closeTab());
 

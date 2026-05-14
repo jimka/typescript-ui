@@ -22,8 +22,8 @@ A [`LayoutManager`](/api/classes/LayoutManager) is attached to a container [`Com
 ## Attach a layout
 
 ```typescript
-import { Component, Border } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Border } from '@jimka/typescript-ui/primitive';
 const panel = Component({
     layoutManager: Border(),
     components: [

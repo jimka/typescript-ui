@@ -21,8 +21,8 @@ const actions = {
 ## Build the menu
 
 ```typescript
-import { Body, MenuBar } from '@jimka/typescript-ui';
-
+import { Body } from '@jimka/typescript-ui/core';
+import { MenuBar } from '@jimka/typescript-ui/component/menubar';
 const bar = MenuBar([
     { label: 'File', items: [
         { text: 'New',  shortcut: 'Ctrl+N', action: actions.new  },

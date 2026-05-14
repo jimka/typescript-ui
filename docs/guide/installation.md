@@ -1,6 +1,8 @@
 # Installation
 
-`@jimka/typescript-ui` is published on npm and ships ESM, UMD, and `.d.ts` declarations. The package has zero runtime npm dependencies; FontAwesome is an optional peer for [FontAwesomeIcon](/api/classes/FontAwesomeIcon).
+`@jimka/typescript-ui` is published on npm and ships ESM bundles and `.d.ts` declarations. The package has zero runtime npm dependencies; FontAwesome is an optional peer for [FontAwesomeIcon](/api/classes/FontAwesomeIcon).
+
+The public API is exposed only through **subpath exports** — there is no bare `@jimka/typescript-ui` entry. Import each symbol from its group: `core`, `primitive`, `layout`, `data`, `validation`, or `component/<group>` (where `<group>` is `input`, `button`, `display`, `list`, `container`, `menubar`, `table`, or `tree`).
 
 ## Install
 
@@ -32,15 +34,14 @@ The library is bundler-agnostic. Verified configurations:
 
 - **Vite** — works out of the box.
 - **Webpack 5 / Rollup** — works with default ESM resolution.
-- **Plain `<script type="module">`** — use the UMD bundle from `dist/lib/typescript-ui.umd.js` or import the ESM build from a CDN.
+- **Plain `<script type="module">`** — import the ESM build from a CDN that supports per-subpath resolution.
 
 ## Theming bootstrap
 
 Theming uses runtime-injected CSS custom properties. There is **no `.css` file to import**. Call [`ThemeManager.setTheme`](/api/classes/ThemeManager) once on startup before mounting any component:
 
 ```typescript
-import { ThemeManager, DefaultTheme } from '@jimka/typescript-ui';
-
+import { ThemeManager, DefaultTheme } from '@jimka/typescript-ui/core';
 ThemeManager.setTheme(DefaultTheme);
 ```
 
@@ -65,7 +66,7 @@ Open `http://localhost:8015`. The demo app renders a tabbed showcase of every la
 | --- | --- |
 | `npm run dev` | Vite dev server on port 8015 with hot reload |
 | `npm run build` | Production bundle of the demo app to `dist/` |
-| `npm run build:lib` | Library bundle (ESM + UMD + `.d.ts`) to `dist/lib/` |
+| `npm run build:lib` | Per-subpath ESM bundles + `.d.ts` declarations to `dist/lib/` |
 | `npm run preview` | Preview the production build locally |
 | `npm run typecheck` | Strict TypeScript type check (no emit) |
 | `npm run docs:dev` | Serve this documentation site locally |

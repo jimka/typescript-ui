@@ -5,8 +5,7 @@
 ## Usage
 
 ```typescript
-import { Tree } from '@jimka/typescript-ui';
-
+import { Tree } from '@jimka/typescript-ui/component/tree';
 const tree = new Tree();
 tree.setNodes([
     { label: 'Fruits', children: [

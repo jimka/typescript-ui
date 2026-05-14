@@ -9,8 +9,7 @@ A blue-tinted theme with custom button gradients, a softer page background, and 
 ## Spread + override
 
 ```typescript
-import { Theme, ThemeManager, DefaultTheme } from '@jimka/typescript-ui';
-
+import { Theme, ThemeManager, DefaultTheme } from '@jimka/typescript-ui/core';
 const BrandTheme: Theme = {
     ...DefaultTheme,
 
@@ -41,8 +40,7 @@ ThemeManager.setTheme(BrandTheme);
 Call `setTheme` **before** mounting any component so the first render reads the correct CSS variables:
 
 ```typescript
-import { ThemeManager, DefaultTheme, Body } from '@jimka/typescript-ui';
-
+import { ThemeManager, DefaultTheme, Body } from '@jimka/typescript-ui/core';
 ThemeManager.setTheme(BrandTheme);
 
 const root = buildAppLayout();
@@ -54,8 +52,8 @@ Body.getInstance().addComponent(root);
 `setTheme` rewrites CSS custom properties on `:root` so every component updates without re-rendering:
 
 ```typescript
-import { Button, Event, ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui';
-
+import { Event, ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui/core';
+import { Button } from '@jimka/typescript-ui/component/button';
 const toggle = Button('Toggle theme');
 let dark = false;
 

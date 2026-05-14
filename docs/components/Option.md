@@ -5,8 +5,7 @@
 ## Usage
 
 ```typescript
-import { ComboBox, Option } from '@jimka/typescript-ui';
-
+import { ComboBox, Option } from '@jimka/typescript-ui/component/input';
 const role = new ComboBox();
 role.addItem(new Option('admin', 'Admin'));
 role.addItem(new Option('user',  'User'));

@@ -7,8 +7,7 @@
 ## Usage
 
 ```typescript
-import { BulletedList, ListItem } from '@jimka/typescript-ui';
-
+import { BulletedList, ListItem } from '@jimka/typescript-ui/component/list';
 const list = new BulletedList();
 list.addItem(new ListItem('apple',  'Apple'));
 list.addItem(new ListItem('banana', 'Banana'));

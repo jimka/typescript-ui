@@ -5,8 +5,7 @@ Use [`Dialog.show()`](/api/classes/Dialog) for one-shot prompts. The static meth
 ## Confirm a destructive action
 
 ```typescript
-import { Dialog } from '@jimka/typescript-ui';
-
+import { Dialog } from '@jimka/typescript-ui/core';
 async function deleteRecord(record: ModelRecord) {
     const result = await Dialog.show({
         title:   'Delete record?',
@@ -30,10 +29,9 @@ async function deleteRecord(record: ModelRecord) {
 Replace `message` with `contentComponent` to embed a form or any other component:
 
 ```typescript
-import {
-    Dialog, VBox, Label, TextField,
-} from '@jimka/typescript-ui';
-
+import { Dialog } from '@jimka/typescript-ui/core';
+import { VBox } from '@jimka/typescript-ui/layout';
+import { Label, TextField } from '@jimka/typescript-ui/component/input';
 async function renameFile(currentName: string): Promise<string | null> {
     const nameField = TextField();
     nameField.setValue(currentName);

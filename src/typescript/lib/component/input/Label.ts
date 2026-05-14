@@ -19,8 +19,8 @@ export interface LabelOptions extends TextOptions {
  *
  * @example
  * ```typescript
- * import { Label, TextField } from '@jimka/typescript-ui';
- *
+ * import { Label, TextField } from '@jimka/typescript-ui/component/input';
+*
  * const field = new TextField();
  * const label = new Label('Name:', field.getId());
  * panel.addComponent(label);

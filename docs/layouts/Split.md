@@ -14,8 +14,10 @@
 ## Usage
 
 ```typescript
-import { Component, Split, Tree, Table } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Split } from '@jimka/typescript-ui/layout';
+import { Table } from '@jimka/typescript-ui/component/table';
+import { Tree } from '@jimka/typescript-ui/component/tree';
 const workspace = new Component();
 workspace.setLayoutManager(new Split({ direction: 'horizontal' }));
 

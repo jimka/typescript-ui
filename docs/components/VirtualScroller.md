@@ -14,8 +14,8 @@ The owner sets `overflow:hidden` on its element so the browser doesn't try to sc
 ## Usage
 
 ```typescript
-import { Component, VirtualScroller } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { VirtualScroller } from '@jimka/typescript-ui/component/container';
 class MyList extends Component {
     private scroller: VirtualScroller | null = null;
     // ... pool, geometry, data ...

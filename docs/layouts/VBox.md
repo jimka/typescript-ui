@@ -16,8 +16,9 @@
 ## Usage
 
 ```typescript
-import { Component, VBox, Label, TextField } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { VBox } from '@jimka/typescript-ui/layout';
+import { Label, TextField } from '@jimka/typescript-ui/component/input';
 const form = new Component();
 form.setLayoutManager(new VBox({ spacing: 8 }));
 
@@ -40,8 +41,7 @@ form.addComponent(emailField);
 - `anchor` — [`AnchorType`](/api/enumerations/AnchorType).
 
 ```typescript
-import { FillType } from '@jimka/typescript-ui';
-
+import { FillType } from '@jimka/typescript-ui/layout';
 form.addComponent(textField, { fill: FillType.HORIZONTAL });
 ```
 

@@ -35,8 +35,8 @@ export interface ComboBoxOptions extends ComponentOptions {
  *
  * @example
  * ```typescript
- * import { ComboBox, Option } from '@jimka/typescript-ui';
- *
+ * import { ComboBox, Option } from '@jimka/typescript-ui/component/input';
+*
  * const combo = new ComboBox();
  * combo.addItem(new Option('admin', 'Admin'));
  * combo.addItem(new Option('user',  'User'));

@@ -5,8 +5,9 @@
 ## Usage
 
 ```typescript
-import { List, Option, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { Option } from '@jimka/typescript-ui/component/input';
+import { List } from '@jimka/typescript-ui/component/list';
 const fruits = new List();
 fruits.addItem(new Option('apple',  'Apple'));
 fruits.addItem(new Option('banana', 'Banana'));

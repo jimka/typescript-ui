@@ -7,8 +7,9 @@ This is the standalone header component. The table's column-header strip — als
 ## Usage
 
 ```typescript
-import { Header, Border, VBox } from '@jimka/typescript-ui';
-
+import { Border } from '@jimka/typescript-ui/primitive';
+import { VBox } from '@jimka/typescript-ui/layout';
+import { Header } from '@jimka/typescript-ui/component/display';
 const panel = new VBox();
 panel.addComponent(new Header('Settings'));
 panel.addComponent(content);

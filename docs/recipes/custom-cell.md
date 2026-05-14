@@ -11,10 +11,9 @@ A cell that shows `$1,234.50` in display mode and `1234.50` in a numeric editor.
 A [`CellRenderer<T>`](/api/classes/CellRenderer) is responsible for the display side. Subclass it and override `setValue`:
 
 ```typescript
-import {
-    CellRenderer, Text, AnchorType, FillType,
-} from '@jimka/typescript-ui';
-
+import { AnchorType, FillType } from '@jimka/typescript-ui/layout';
+import { Text } from '@jimka/typescript-ui/component/input';
+import { CellRenderer } from '@jimka/typescript-ui/component/table';
 class CurrencyRenderer extends CellRenderer<number> {
     private text: Text = Text();
 
@@ -42,10 +41,9 @@ class CurrencyRenderer extends CellRenderer<number> {
 A [`CellEditor<T>`](/api/classes/CellEditor) takes over on double-click. Wrap a [`TextField`](/components/TextField) and parse the typed value back into a number:
 
 ```typescript
-import {
-    CellEditor, TextField, Event,
-} from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { TextField } from '@jimka/typescript-ui/component/input';
+import { CellEditor } from '@jimka/typescript-ui/component/table';
 class CurrencyEditor extends CellEditor<number> {
     private input: TextField = TextField();
 
@@ -71,8 +69,7 @@ class CurrencyEditor extends CellEditor<number> {
 A [`Cell<T>`](/api/classes/Cell) glues the renderer and editor together:
 
 ```typescript
-import { Cell } from '@jimka/typescript-ui';
-
+import { Cell } from '@jimka/typescript-ui/component/table';
 class CurrencyCell extends Cell<number> {
     constructor() {
         super('td', new CurrencyRenderer(), new CurrencyEditor());
@@ -85,8 +82,7 @@ class CurrencyCell extends Cell<number> {
 The simplest route is to subclass [`Row`](/api/classes/TableRow) and pick `CurrencyCell` for fields whose name matches a "money" pattern:
 
 ```typescript
-import { Row as TableRow } from '@jimka/typescript-ui';
-
+import { Row as TableRow } from '@jimka/typescript-ui/layout';
 class MoneyAwareRow extends TableRow {
     protected createCellForField(fieldName: string, type: string): Cell<unknown> {
         if (fieldName === 'price' || fieldName === 'total') {

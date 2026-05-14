@@ -14,8 +14,9 @@
 ## Usage
 
 ```typescript
-import { Component, Grid, Button } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Grid } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
 const keypad = new Component();
 keypad.setLayoutManager(new Grid({ rows: 4, columns: 3 }));
 

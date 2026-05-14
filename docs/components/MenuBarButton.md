@@ -7,8 +7,8 @@ Has no [`Button`](/components/Button) inheritance to avoid the ridge border and 
 ## Usage
 
 ```typescript
-import { MenuBarButton, Menu } from '@jimka/typescript-ui';
-
+import { Menu } from '@jimka/typescript-ui/core';
+import { MenuBarButton } from '@jimka/typescript-ui/component/menubar';
 const filePanel = new Menu(
     [{ text: 'Save', shortcut: 'Ctrl+S', action: () => save() }],
     () => button.close()

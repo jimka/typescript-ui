@@ -7,8 +7,7 @@ Use `Text` for any standalone text — status messages, captions next to fields,
 ## Usage
 
 ```typescript
-import { Text } from '@jimka/typescript-ui';
-
+import { Text } from '@jimka/typescript-ui/component/input';
 const status = new Text('Connected');
 status.setFontWeight('bold');
 status.setForegroundColor('rgb(60, 160, 60)');

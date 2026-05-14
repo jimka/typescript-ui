@@ -10,8 +10,20 @@
         "noUnusedParameters": true,
         "removeComments": true,
         "paths": {
-            "@jimka/typescript-ui": ["./src/typescript/lib/index.ts"],
-            "~/*": ["./src/typescript/lib/*"]
+            "@jimka/typescript-ui/core":                ["./src/typescript/lib/core/index.ts"],
+            "@jimka/typescript-ui/primitive":           ["./src/typescript/lib/primitive/index.ts"],
+            "@jimka/typescript-ui/layout":              ["./src/typescript/lib/layout/index.ts"],
+            "@jimka/typescript-ui/data":                ["./src/typescript/lib/data/index.ts"],
+            "@jimka/typescript-ui/validation":          ["./src/typescript/lib/validation/index.ts"],
+            "@jimka/typescript-ui/component/input":     ["./src/typescript/lib/component/input/index.ts"],
+            "@jimka/typescript-ui/component/button":    ["./src/typescript/lib/component/button/index.ts"],
+            "@jimka/typescript-ui/component/display":   ["./src/typescript/lib/component/display/index.ts"],
+            "@jimka/typescript-ui/component/list":      ["./src/typescript/lib/component/list/index.ts"],
+            "@jimka/typescript-ui/component/container": ["./src/typescript/lib/component/container/index.ts"],
+            "@jimka/typescript-ui/component/menubar":   ["./src/typescript/lib/component/menubar/index.ts"],
+            "@jimka/typescript-ui/component/table":     ["./src/typescript/lib/component/table/index.ts"],
+            "@jimka/typescript-ui/component/tree":      ["./src/typescript/lib/component/tree/index.ts"],
+            "~/*":                                       ["./src/typescript/lib/*"]
         }
     }
 }

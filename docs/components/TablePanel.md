@@ -7,8 +7,7 @@ This is the convenience component for CRUD UIs that don't need a custom toolbar 
 ## Usage
 
 ```typescript
-import { TablePanel } from '@jimka/typescript-ui';
-
+import { TablePanel } from '@jimka/typescript-ui/component/table';
 const panel = new TablePanel(store);
 container.addComponent(panel);
 ```
@@ -30,8 +29,8 @@ When the store is paginated (via `setPageSize`), drop a
 [`PaginationBar`](/components/PaginationBar) into the south region:
 
 ```typescript
-import { PaginationBar, TablePanel } from '@jimka/typescript-ui';
-
+import { PaginationBar } from '@jimka/typescript-ui/component/display';
+import { TablePanel } from '@jimka/typescript-ui/component/table';
 store.setPageSize(25);
 
 const panel = new TablePanel(store);

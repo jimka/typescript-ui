@@ -7,8 +7,8 @@ When no [`ColumnSpec`](/api/interfaces/ColumnSpec) is supplied, the table auto-g
 ## Quickest example
 
 ```typescript
-import { Model, MemoryStore, Table } from '@jimka/typescript-ui';
-
+import { Model, MemoryStore } from '@jimka/typescript-ui/data';
+import { Table } from '@jimka/typescript-ui/component/table';
 const PersonModel = new Model([
     { name: 'id',   type: 'number' },
     { name: 'name', type: 'string' },
@@ -30,8 +30,7 @@ panel.addComponent(table);
 Pass a [`ColumnSpec`](/api/interfaces/ColumnSpec) to control which columns appear, their widths, and visibility:
 
 ```typescript
-import { Table } from '@jimka/typescript-ui';
-
+import { Table } from '@jimka/typescript-ui/component/table';
 const table = new Table(store, {
     columns: [
         { field: 'name', minWidth: 120 },

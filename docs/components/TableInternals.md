@@ -52,8 +52,7 @@ For `DateCell`, `TimeCell`, and `DateTimeCell`, committing an empty editor write
 Subclass [`Cell<T>`](/api/classes/Cell) with your own [`CellRenderer`](/api/classes/CellRenderer) and optional [`CellEditor`](/api/classes/CellEditor). The renderer displays the value; the editor takes over on double-click, commits on blur or Enter, and reverts on Escape.
 
 ```typescript
-import { Cell, CellRenderer, CellEditor } from '@jimka/typescript-ui';
-
+import { Cell, CellRenderer, CellEditor } from '@jimka/typescript-ui/component/table';
 class CurrencyRenderer extends CellRenderer<number> { /* … */ }
 class CurrencyEditor   extends CellEditor<number>   { /* … */ }
 

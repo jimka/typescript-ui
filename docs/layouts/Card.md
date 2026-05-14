@@ -14,8 +14,9 @@
 ## Usage
 
 ```typescript
-import { Component, Card, Button } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Card } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
 const stack = new Component();
 stack.setLayoutManager(new Card({ visibleComponentId: contentPanel.getId() }));
 

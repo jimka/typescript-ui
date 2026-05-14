@@ -16,8 +16,9 @@
 ## Usage
 
 ```typescript
-import { Component, Absolute, Button } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Absolute } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
 const canvas = new Component();
 canvas.setLayoutManager(new Absolute());
 
