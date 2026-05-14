@@ -195,7 +195,10 @@ Commit, branch, and stage freely; integration and publication are the user's cal
 ## Work Instructions
 
 1. Locate and read the referenced implementation plan in the {workspace}/plans folder.
-2. Perform the implementation.
-3. If applicable, extend the demo panel(s) to show off the implemented feature.
-4. When done, move the implementation plan to the {workspace}/plans/implemented folder.
-5. Update the documentation in `docs/` per _Documentation updates_ above.
+2. Check the current codebase for incompatibilities and changes that would impact the implementation (e.g. APIs renamed/removed, signatures changed, files relocated, dependencies shifted, assumptions in the plan no longer holding). Update the implementation plan in place under {workspace}/plans to reflect the current reality, and save it.
+3. If incompatibilities were found, stop and ask the user to review the necessary changes before continuing. Do not proceed with implementation until the user confirms.
+4. Check the current git branch. If it is `master`, create and check out a new branch whose name reflects the feature being implemented (e.g. `feature/<short-feature-slug>`). If it is not `master`, stay on the current branch and assume all commits for this implementation belong on it.
+5. Perform the implementation.
+6. If applicable, extend the demo panel(s) to show off the implemented feature.
+7. When done, move the implementation plan to the {workspace}/plans/implemented folder.
+8. Update the documentation in `docs/` per _Documentation updates_ above.
