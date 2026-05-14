@@ -51,7 +51,8 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Header`](/api/component/display/classes/Header) | Title-bar / panel header text |
 | [`Image`](/api/component/display/classes/Image) | `<img>` wrapper |
 | [`Glyph`](/components/Glyph) | Self-contained icon — SVG or Unicode entry from a curated registry |
-| [`FontAwesomeIcon`](/api/component/display/classes/FontAwesomeIcon) | FontAwesome glyph (peer dep) |
+| [`IconText`](/components/IconText) | Glyph + standalone [`Text`](/api/component/input/classes/Text), horizontal flow |
+| [`IconLabel`](/components/IconLabel) | Glyph + form-control [`Label`](/api/component/input/classes/Label), horizontal flow |
 | [`FieldSet`](/api/component/container/classes/FieldSet) | Grouped form section with optional [`Legend`](/api/component/container/classes/Legend) |
 | [`ProgressBar`](/components/ProgressBar) | Horizontal progress indicator (determinate or indeterminate) |
 | [`ProgressSpinner`](/components/ProgressSpinner) | Circular loading spinner; supports inline and overlay use |
@@ -91,7 +92,7 @@ A [`Table`](/api/component/table/classes/Table) ties columns to a [`Store`](/api
 | [`Row`](/api/component/table/classes/Row) | Row component, recycled by `Body` (import as `TableRow` to avoid collision with `layout`) |
 | [`Column`](/api/component/table/classes/Column) | Per-column metadata (import as `TableColumn` to avoid collision with `layout`) |
 | [`Cell`](/api/component/table/classes/Cell) | Cell base class |
-| [`BooleanCell`](/api/component/table/classes/BooleanCell), [`NumberCell`](/api/component/table/classes/NumberCell), [`StringCell`](/api/component/table/classes/StringCell), [`HeaderCell`](/api/component/table/classes/HeaderCell) | Built-in cell types |
+| [`BooleanCell`](/api/component/table/classes/BooleanCell), [`NumberCell`](/api/component/table/classes/NumberCell), [`StringCell`](/api/component/table/classes/StringCell), [`HeaderCell`](/api/component/table/classes/HeaderCell), [`GlyphCell`](/api/component/table/classes/GlyphCell) | Built-in cell types |
 | [`CellEditor`](/api/component/table/classes/CellEditor), [`BooleanEditor`](/api/component/table/classes/BooleanEditor), [`NumberEditor`](/api/component/table/classes/NumberEditor), [`StringEditor`](/api/component/table/classes/StringEditor) | Inline editors per cell type |
 | [`CellRenderer`](/api/component/table/classes/CellRenderer), [`NumberRenderer`](/api/component/table/classes/NumberRenderer), [`StringRenderer`](/api/component/table/classes/StringRenderer) | Display renderers per cell type |
 
