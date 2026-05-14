@@ -5,7 +5,7 @@
  *
  * @category Data
  */
-export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'time' | 'datetime' | 'auto';
+export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'time' | 'datetime' | 'glyph' | 'auto';
 
 /**
  * Construction-time options for a {@link Field}.

@@ -1,10 +1,23 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { CSS } from "~/core/CSS.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
+import { Glyph } from "~/component/display/Glyph.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * Construction-time options for {@link MenuBarButton}.
+ *
+ * @category Components
+ */
+export interface MenuBarButtonOptions extends ComponentOptions {
+    glyph?: string | null;
+}
+
+const GLYPH_TEXT_GAP = 0;
+const HORIZONTAL_PAD = 10;
 
 /**
  * A single top-level button in a [`MenuBar`](/api/component/menubar/classes/MenuBar) (e.g. "File", "Edit").
@@ -14,7 +27,8 @@ import { callable } from "~/core/Callable.js";
  * Active state (open dropdown) is indicated by a persistent background fill.
  *
  * Communicates open/close intent back to [`MenuBar`](/api/component/menubar/classes/MenuBar) via callbacks passed at
- * construction time.
+ * construction time. Supports an optional leading [`Glyph`](/api/component/display/classes/Glyph) shown to the
+ * left of the label.
  *
  * @category Components
  */
@@ -24,6 +38,8 @@ class MenuBarButton extends Component {
     private readonly _hoverRule: CSSStyleRule;
     private readonly _onClickHandler: () => void;
     private readonly _onMouseOverHandler: () => void;
+    private readonly _label: string;
+    private _glyph: Glyph | null = null;
 
     /**
      * Constructs a `MenuBarButton`.
@@ -31,15 +47,18 @@ class MenuBarButton extends Component {
      * @param text - The label shown in the bar (e.g. `"File"`).
      * @param onClick - Called when the user clicks this button.
      * @param onHover - Called when the mouse enters this button while a menu is open (quick-switch).
+     * @param options - Optional configuration bag (e.g. leading glyph).
      */
-    constructor(text: string, onClick: () => void, onHover: () => void) {
+    constructor(text: string, onClick: () => void, onHover: () => void, options?: MenuBarButtonOptions) {
         super();
+
+        this._label = text;
 
         this.setBackgroundColor("var(--ts-ui-menu-bar-btn-bg, transparent)");
         this.setForegroundColor("var(--ts-ui-menu-bar-btn-fg, inherit)");
         this.setElementCSSRule("fontSize", "var(--ts-ui-button-font-size, 12px)");
         this.setCursor("pointer");
-        this.setPreferredSize(text.length * 7 + 24, 28);
+        this.recomputePreferredSize();
 
         this._hoverRule = CSS.createComponentRule(this.getId() + ":hover") as CSSStyleRule;
         this._hoverRule.style.setProperty(
@@ -62,6 +81,61 @@ class MenuBarButton extends Component {
 
         Event.addListener(this, "click", this._onClickHandler);
         Event.addListener(this, "mouseover", this._onMouseOverHandler);
+
+        if (this.constructor === MenuBarButton && options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link MenuBarButtonOptions} bag, dispatching the optional
+     * leading-glyph name after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: MenuBarButtonOptions): this {
+        super.applyOptions(options);
+
+        if (options.glyph !== undefined) {
+            this.setGlyph(options.glyph);
+        }
+
+        return this;
+    }
+
+    /**
+     * Sets or clears an optional leading [`Glyph`](/api/component/display/classes/Glyph) shown to the left of the label.
+     *
+     * @param name - Registry glyph name to display, or `null` to clear an existing glyph.
+     *
+     * @returns This component, for method chaining.
+     */
+    setGlyph(name: string | null): this {
+        if (this._glyph) {
+            this.removeComponent(this._glyph);
+            this._glyph = null;
+        }
+
+        if (name) {
+            const glyph = new Glyph(name);
+            glyph.setPointerEvents("none");
+            this.addComponent(glyph);
+            this._glyph = glyph;
+        }
+
+        this.recomputePreferredSize();
+        this.doLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the current leading glyph component, or null if none is set.
+     *
+     * @returns The [`Glyph`](/api/component/display/classes/Glyph) instance, or null.
+     */
+    getGlyph(): Glyph | null {
+        return this._glyph;
     }
 
     /**
@@ -91,21 +165,52 @@ class MenuBarButton extends Component {
     }
 
     /**
-     * Positions the label with horizontal padding inside the button bounds.
+     * Positions the label with horizontal padding inside the button bounds, plus the optional leading glyph.
      *
      * @returns This component, for method chaining.
      */
     doLayout(): this {
         super.doLayout();
 
-        const pad = 10;
+        const height = this.getHeight();
+        const width  = this.getWidth();
 
-        this._text.setX(pad);
-        this._text.setY(0);
-        this._text.setWidth(Math.max(0, this.getWidth() - pad * 2));
-        this._text.setHeight(this.getHeight());
+        if (this._glyph) {
+            const glyphSize = this._glyph.getPreferredSize() ?? { width: 16, height: 16 };
+            const glyphY    = Math.max(0, (height - glyphSize.height) / 2);
+
+            this._glyph.setX(HORIZONTAL_PAD);
+            this._glyph.setY(glyphY);
+            this._glyph.setWidth(glyphSize.width);
+            this._glyph.setHeight(glyphSize.height);
+
+            const textX = HORIZONTAL_PAD + glyphSize.width + GLYPH_TEXT_GAP;
+            this._text.setX(textX);
+            this._text.setY(0);
+            this._text.setWidth(Math.max(0, width - textX - HORIZONTAL_PAD));
+            this._text.setHeight(height);
+        } else {
+            this._text.setX(HORIZONTAL_PAD);
+            this._text.setY(0);
+            this._text.setWidth(Math.max(0, width - HORIZONTAL_PAD * 2));
+            this._text.setHeight(height);
+        }
 
         return this;
+    }
+
+    /**
+     * Recomputes the button's preferred size from the label width plus, when present, the leading glyph's width.
+     */
+    private recomputePreferredSize(): void {
+        let width = this._label.length * 7 + HORIZONTAL_PAD * 2;
+
+        if (this._glyph) {
+            const glyphSize = this._glyph.getPreferredSize() ?? { width: 16, height: 16 };
+            width += glyphSize.width + GLYPH_TEXT_GAP;
+        }
+
+        this.setPreferredSize(width, 28);
     }
 }
 

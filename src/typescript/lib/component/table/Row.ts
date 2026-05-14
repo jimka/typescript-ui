@@ -11,6 +11,7 @@ import { NumberCell } from "~/component/table/cell/Number.js";
 import { DateCell } from "~/component/table/cell/Date.js";
 import { TimeCell } from "~/component/table/cell/Time.js";
 import { DateTimeCell } from "~/component/table/cell/DateTime.js";
+import { GlyphCell } from "~/component/table/cell/Glyph.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { callable } from "~/core/Callable.js";
@@ -78,6 +79,9 @@ class Row extends Component {
                         break;
                     case "datetime":
                         cell = new DateTimeCell(columnConfigs.get(field.getName())?.showSeconds ?? false);
+                        break;
+                    case "glyph":
+                        cell = new GlyphCell();
                         break;
                     default:
                         cell = new DefaultCell();

@@ -13,17 +13,19 @@ export interface TabCloseButtonOptions extends ButtonOptions {
 }
 
 /**
- * A compact close button displaying a "×" glyph, sized to sit flush inside a tab header.
+ * A compact close button displaying the `times` glyph, sized to sit flush inside a tab header.
  *
  * @category Components
  */
 class TabCloseButton extends Button {
 
     /**
-     * Creates a TabCloseButton with a "×" label sized for use in a tab toolbar.
+     * Creates a TabCloseButton seeded with the `times` glyph and sized for use in a tab toolbar.
      */
     constructor(options?: TabCloseButtonOptions) {
-        super("×");
+        super();
+
+        this.setGlyph("times");
 
         this.setPreferredSize(16, 16);
         this.setInsets(new Insets(0, 0, 0, 0));

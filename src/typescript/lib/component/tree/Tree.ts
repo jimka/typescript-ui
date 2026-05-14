@@ -427,10 +427,13 @@ class Tree extends Component {
                 continue;
             }
 
-            const toggleEl = row.getToggle().getElement();
-            if (toggleEl && target === toggleEl) {
-                this._onToggle(node);
-                return;
+            const toggle = row.getToggle();
+            if (toggle) {
+                const toggleEl = toggle.getElement();
+                if (toggleEl && (target === toggleEl || toggleEl.contains(target))) {
+                    this._onToggle(node);
+                    return;
+                }
             }
 
             const rowEl = row.getElement();

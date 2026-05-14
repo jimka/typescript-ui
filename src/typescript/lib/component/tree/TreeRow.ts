@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Text } from "~/component/input/Text.js";
+import { Glyph } from "~/component/display/Glyph.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
 import { callable } from "~/core/Callable.js";
 
@@ -17,14 +18,17 @@ export const TOGGLE_WIDTH = 20;
  * own dimensions are updated.
  *
  * @remarks
- * The toggle and label {@link Text} sub-components are appended directly to the
- * row's DOM element in `init()` rather than via `addComponent`, so their
- * preferred-size change notifications do not propagate up to the Tree and
- * trigger unnecessary layout passes.
+ * The toggle ([`Glyph`](/api/component/display/classes/Glyph)) and label
+ * {@link Text} sub-components are appended directly to the row's DOM element
+ * in `init()` rather than via `addComponent`, so their preferred-size change
+ * notifications do not propagate up to the Tree and trigger unnecessary
+ * layout passes. Leaf rows have no toggle; non-leaf rows swap in a fresh
+ * `arrow-down` / `arrow-right` glyph on each state change rather than
+ * mutating a single character.
  */
 class TreeRow extends Component {
 
-    private _toggle: Text;
+    private _toggle: Glyph | null = null;
     private _nodeLabel: Text;
     private _node: TreeNode | null = null;
     private _depth: number = 0;
@@ -34,23 +38,17 @@ class TreeRow extends Component {
 
         this.getAria().setRole("treeitem");
 
-        this._toggle = new Text();
-        this._toggle.setCursor("pointer");
-        this._toggle.setInsets(null);
-        this._toggle.setAutoMeasure(false);
-        this._toggle.getAria().setHidden(true);
-
         this._nodeLabel = new Text();
         this._nodeLabel.setInsets(null);
         this._nodeLabel.setAutoMeasure(false);
     }
 
     /**
-     * Returns the toggle icon Text component.
+     * Returns the toggle icon glyph, or null when the bound node is a leaf.
      *
-     * @returns The toggle Text instance (shows ▶, ▼, or blank).
+     * @returns The toggle [`Glyph`](/api/component/display/classes/Glyph) instance, or null.
      */
-    getToggle(): Text {
+    getToggle(): Glyph | null {
         return this._toggle;
     }
 
@@ -95,7 +93,27 @@ class TreeRow extends Component {
         this._node = node;
         this._depth = depth;
 
-        this._toggle.setText(hasChildren ? (expanded ? "▼" : "▶") : "");
+        if (this._toggle) {
+            const el = this.getElement();
+            if (el) {
+                el.removeChild(this._toggle.getElement(true));
+            }
+            this._toggle = null;
+        }
+
+        if (hasChildren) {
+            const toggle = new Glyph(expanded ? "arrow-down" : "arrow-right");
+            toggle.setCursor("pointer");
+            toggle.setInsets(null);
+            toggle.getAria().setHidden(true);
+            this._toggle = toggle;
+
+            const el = this.getElement();
+            if (el) {
+                el.appendChild(toggle.getElement(true));
+            }
+        }
+
         this._nodeLabel.setText(node.label);
         // Texts have setAutoMeasure(false); cache label width explicitly so
         // getContentWidth reflects the current text.
@@ -118,16 +136,14 @@ class TreeRow extends Component {
     layoutChildren(rowHeight: number, indentPx: number): void {
         const indent = this._depth * indentPx;
 
-        this._toggle.setAutoCommitStyle(false);
-        this._toggle.setX(indent);
-        this._toggle.setY(0);
-        this._toggle.setWidth(TOGGLE_WIDTH);
-        this._toggle.setHeight(rowHeight);
-        // Sync line-height to row height so the glyph renders vertically
-        // centered within the row. autoMeasure is off, so this skips the
-        // DOM measurement and only writes the CSS rule.
-        this._toggle.setLineHeight(rowHeight);
-        this._toggle.setAutoCommitStyle(true);
+        if (this._toggle) {
+            this._toggle.setAutoCommitStyle(false);
+            this._toggle.setX(indent);
+            this._toggle.setY(0);
+            this._toggle.setWidth(TOGGLE_WIDTH);
+            this._toggle.setHeight(rowHeight);
+            this._toggle.setAutoCommitStyle(true);
+        }
 
         const labelX = indent + TOGGLE_WIDTH;
         const labelWidth = this._nodeLabel.getPreferredSize()?.width ?? 0;
@@ -155,7 +171,8 @@ class TreeRow extends Component {
     }
 
     /**
-     * Appends the toggle and label sub-component elements to the row's DOM element.
+     * Appends the label sub-component element to the row's DOM element. The toggle
+     * glyph (if any) is appended on demand by `setRowData`.
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
@@ -167,7 +184,6 @@ class TreeRow extends Component {
             return this;
         }
 
-        el.appendChild(this._toggle.getElement(true));
         el.appendChild(this._nodeLabel.getElement(true));
 
         return this;

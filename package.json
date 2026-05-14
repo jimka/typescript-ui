@@ -36,14 +36,6 @@
     "docs:preview": "vitepress preview docs",
     "clean": "rimraf dist/*"
   },
-  "peerDependencies": {
-    "@fortawesome/fontawesome-free": ">=5.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@fortawesome/fontawesome-free": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "concurrently": "^6.3.0",
     "google-closure-compiler": "^20200406.0.0",

@@ -2,3 +2,4 @@
 
 export { MenuBar } from '~/component/menubar/MenuBar.js';
 export { MenuBarButton } from '~/component/menubar/MenuBarButton.js';
+export type { MenuBarButtonOptions } from '~/component/menubar/MenuBarButton.js';
