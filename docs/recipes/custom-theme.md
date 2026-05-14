@@ -1,6 +1,6 @@
 # Custom brand theme
 
-Build a theme that reflects your brand by overriding tokens in [`DefaultTheme`](/api/variables/DefaultTheme).
+Build a theme that reflects your brand by overriding tokens in [`DefaultTheme`](/api/core/variables/DefaultTheme).
 
 ## Goal
 
@@ -83,4 +83,4 @@ Custom components that subscribe to `onThemeChange` should always store the unsu
 ## See also
 
 - [Theming](/concepts/theming) — full token table and behaviour notes
-- [API: Theme](/api/interfaces/Theme), [DefaultTheme](/api/variables/DefaultTheme), [DarkTheme](/api/variables/DarkTheme)
+- [API: Theme](/api/core/interfaces/Theme), [DefaultTheme](/api/core/variables/DefaultTheme), [DarkTheme](/api/core/variables/DarkTheme)

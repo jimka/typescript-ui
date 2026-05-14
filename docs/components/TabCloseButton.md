@@ -1,6 +1,6 @@
 # TabCloseButton
 
-[`TabCloseButton`](/api/classes/TabCloseButton) is a compact [`Button`](/components/Button) displaying a "×" glyph, sized to sit flush inside a tab header. The [`Tab`](/api/classes/Tab) layout uses it internally for closeable tabs; you'd reach for it directly only when assembling your own tab-strip variant.
+[`TabCloseButton`](/api/component/button/classes/TabCloseButton) is a compact [`Button`](/components/Button) displaying a "×" glyph, sized to sit flush inside a tab header. The [`Tab`](/api/layout/classes/Tab) layout uses it internally for closeable tabs; you'd reach for it directly only when assembling your own tab-strip variant.
 
 ## Usage
 
@@ -20,6 +20,6 @@ tabHeader.addComponent(closeBtn);
 
 ## See also
 
-- [API: TabCloseButton](/api/classes/TabCloseButton)
-- [`Tab`](/api/classes/Tab) layout — primary consumer
+- [API: TabCloseButton](/api/component/button/classes/TabCloseButton)
+- [`Tab`](/api/layout/classes/Tab) layout — primary consumer
 - [`Button`](/components/Button)

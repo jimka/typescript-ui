@@ -4,9 +4,9 @@ Terms used throughout the documentation, in alphabetical order.
 
 ## A
 
-**`AnchorType`** — Enum describing how to position a child within its allocated cell when the child does not fill the cell. Values follow compass directions plus `CENTER`. See [`AnchorType`](/api/enumerations/AnchorType) and the [Constraints reference](/layouts/Constraints#anchortype).
+**`AnchorType`** — Enum describing how to position a child within its allocated cell when the child does not fill the cell. Values follow compass directions plus `CENTER`. See [`AnchorType`](/api/layout/enumerations/AnchorType) and the [Constraints reference](/layouts/Constraints#anchortype).
 
-**`Aria`** — Typed accessor for WAI-ARIA attributes on a [`Component`](/api/classes/Component). Obtained via `component.getAria()`. See [Accessibility](/concepts/accessibility).
+**`Aria`** — Typed accessor for WAI-ARIA attributes on a [`Component`](/api/core/classes/Component). Obtained via `component.getAria()`. See [Accessibility](/concepts/accessibility).
 
 **Auto-commit style** — When `true` (the default), every CSS-style setter on a component flushes immediately to the DOM. Set `false` for batching multiple setters into one DOM write.
 
@@ -24,7 +24,7 @@ Terms used throughout the documentation, in alphabetical order.
 
 ## C
 
-**Cell** — In the table system, a single (row, column) intersection that combines a [`CellRenderer`](/api/classes/CellRenderer) for display and an optional [`CellEditor`](/api/classes/CellEditor) for in-place editing. See [Table internals](/components/TableInternals).
+**Cell** — In the table system, a single (row, column) intersection that combines a [`CellRenderer`](/api/component/table/classes/CellRenderer) for display and an optional [`CellEditor`](/api/component/table/classes/CellEditor) for in-place editing. See [Table internals](/components/TableInternals).
 
 **`Component`** — Base class for all UI elements. Manages the DOM element lifecycle, CSS styles, child tree, and layout manager. See [Component lifecycle](/concepts/component-lifecycle).
 
@@ -42,7 +42,7 @@ Terms used throughout the documentation, in alphabetical order.
 
 **`FillType`** — Enum controlling how a child expands to fill its layout cell. Values: `NONE`, `HORIZONTAL`, `VERTICAL`, `BOTH`. See [Constraints reference](/layouts/Constraints#filltype).
 
-**`FilterDescriptor`** — Serialisable filter algebra for [`AbstractStore`](/data/store). Plain objects that can cross the worker boundary via structured clone. See [API: FilterDescriptor](/api/type-aliases/FilterDescriptor).
+**`FilterDescriptor`** — Serialisable filter algebra for [`AbstractStore`](/data/store). Plain objects that can cross the worker boundary via structured clone. See [API: FilterDescriptor](/api/data/type-aliases/FilterDescriptor).
 
 ## I
 
@@ -66,7 +66,7 @@ Terms used throughout the documentation, in alphabetical order.
 
 **Preferred size** — A component's size hint expressing what it would like to be given the chance. Layout managers honour it within min / max bounds. See [Sizing](/concepts/sizing).
 
-**`Proxy`** — Transport layer for the data system. Built-in proxies: [`MemoryProxy`](/api/classes/MemoryProxy), [`AjaxProxy`](/api/classes/AjaxProxy). Custom proxies subclass [`Proxy`](/api/classes/Proxy).
+**`Proxy`** — Transport layer for the data system. Built-in proxies: [`MemoryProxy`](/api/data/classes/MemoryProxy), [`AjaxProxy`](/api/data/classes/AjaxProxy). Custom proxies subclass [`Proxy`](/api/data/classes/Proxy).
 
 ## R
 

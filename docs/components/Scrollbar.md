@@ -1,6 +1,6 @@
 # Scrollbar
 
-[`Scrollbar`](/api/classes/Scrollbar) is a custom virtual scrollbar overlay for components that own their own scroll state and don't expose native browser scrolling. It's the visible UI half of [`VirtualScroller`](/components/VirtualScroller), but exposed as a standalone primitive so you can build your own scroll surface.
+[`Scrollbar`](/api/component/container/classes/Scrollbar) is a custom virtual scrollbar overlay for components that own their own scroll state and don't expose native browser scrolling. It's the visible UI half of [`VirtualScroller`](/components/VirtualScroller), but exposed as a standalone primitive so you can build your own scroll surface.
 
 The owner pushes viewport / content metrics in via `setMetrics`, the bar renders a thumb sized to the viewport-to-content ratio, and user input on the thumb (drag) or track (tap to page) flows back out via a scroll listener.
 
@@ -71,6 +71,6 @@ The track-width constant (12 px) is shared across orientations and exposed via `
 
 ## See also
 
-- [API: Scrollbar](/api/classes/Scrollbar)
+- [API: Scrollbar](/api/component/container/classes/Scrollbar)
 - [`VirtualScroller`](/components/VirtualScroller) — bundles two Scrollbars with rows-container transform and wheel / touch / momentum handlers
-- [`TableBody`](/api/classes/TableBody) and [`Tree`](/components/Tree) — the in-tree consumers
+- The table [`Body`](/api/component/table/classes/Body) and [`Tree`](/components/Tree) — the in-tree consumers

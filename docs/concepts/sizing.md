@@ -1,6 +1,6 @@
 # Sizing
 
-Every [`Component`](/api/classes/Component) carries up to four pieces of size information. Understanding how they interact is the difference between layouts that "just work" and layouts that mysteriously collapse to 0×0.
+Every [`Component`](/api/core/classes/Component) carries up to four pieces of size information. Understanding how they interact is the difference between layouts that "just work" and layouts that mysteriously collapse to 0×0.
 
 ## The four size hints
 
@@ -66,7 +66,7 @@ Missing units silently produce zero-height components — an early bug fixed in 
 
 ## Inner size vs outer size
 
-[`getSize()`](/api/classes/Component) returns the component's outer size — the rectangle including border and padding. [`getInnerSize()`](/api/classes/Component) returns the rectangle available *inside* the component for children to lay out within.
+[`getSize()`](/api/core/classes/Component) returns the component's outer size — the rectangle including border and padding. [`getInnerSize()`](/api/core/classes/Component) returns the rectangle available *inside* the component for children to lay out within.
 
 Layout managers operate on `getInnerSize()` of their container. Use this when you need the rectangle a child can actually occupy, accounting for the container's borders and padding.
 
@@ -84,5 +84,5 @@ When a layout finds at least one child with a real baseline it picks the largest
 
 - [Component lifecycle](/concepts/component-lifecycle)
 - [Layout system](/concepts/layout-system)
-- [`Insets`](/api/classes/Insets) — padding / margin values
-- [API: Size](/api/interfaces/Size), [PerimeterSize](/api/interfaces/PerimeterSize)
+- [`Insets`](/api/primitive/classes/Insets) — padding / margin values
+- [API: Size](/api/primitive/interfaces/Size), [PerimeterSize](/api/core/interfaces/PerimeterSize)

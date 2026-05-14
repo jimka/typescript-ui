@@ -69,4 +69,4 @@ The framework intentionally stays out of this; the `shortcut` field is just a la
 ## See also
 
 - [MenuBar](/components/MenuBar)
-- [API: MenuItemConfig](/api/interfaces/MenuItemConfig)
+- [API: MenuItemConfig](/api/component/container/interfaces/MenuItemConfig)

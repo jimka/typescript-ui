@@ -1,6 +1,6 @@
 # BulletedList
 
-[`BulletedList`](/api/classes/BulletedList) is an unordered list rendered as a `<ul>` element. Defaults to the [`DISC`](/api/enumerations/BulletedListItemStyle) bullet style.
+[`BulletedList`](/api/component/list/classes/BulletedList) is an unordered list rendered as a `<ul>` element. Defaults to the [`DISC`](/api/component/list/enumerations/BulletedListItemStyle) bullet style.
 
 ## Usage
 
@@ -17,7 +17,7 @@ panel.addComponent(list);
 
 ## Bullet styles
 
-[`BulletedListItemStyle`](/api/enumerations/BulletedListItemStyle):
+[`BulletedListItemStyle`](/api/component/list/enumerations/BulletedListItemStyle):
 
 | Value | Bullet glyph |
 | --- | --- |
@@ -28,7 +28,7 @@ panel.addComponent(list);
 
 ## See also
 
-- [API: BulletedList](/api/classes/BulletedList)
-- [API: BulletedListItemStyle](/api/enumerations/BulletedListItemStyle)
+- [API: BulletedList](/api/component/list/classes/BulletedList)
+- [API: BulletedListItemStyle](/api/component/list/enumerations/BulletedListItemStyle)
 - [`NumberedList`](/components/NumberedList) — ordered counterpart
 - [`ListItem`](/components/ListItem) — child component

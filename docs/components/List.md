@@ -1,6 +1,6 @@
 # List
 
-[`List`](/api/classes/List) is a single-selection scrollable list box backed by a `<select>` element. It extends [`ComboBox`](/components/ComboBox) but displays all options simultaneously by sizing the select to fit its item count.
+[`List`](/api/component/list/classes/List) is a single-selection scrollable list box backed by a `<select>` element. It extends [`ComboBox`](/components/ComboBox) but displays all options simultaneously by sizing the select to fit its item count.
 
 ## Usage
 
@@ -35,6 +35,6 @@ The list refreshes automatically on store events.
 
 ## See also
 
-- [API: List](/api/classes/List)
+- [API: List](/api/component/list/classes/List)
 - [`MultiSelectList`](/components/MultiSelectList) — multi-selection variant
 - [`ComboBox`](/components/ComboBox) — drop-down version

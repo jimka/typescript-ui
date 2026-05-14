@@ -1,10 +1,10 @@
 # Store
 
-A [`Store`](/api/classes/Store) holds an ordered collection of [records](/data/record), pulled in by a [proxy](/data/proxy) and shaped by a [model](/data/model).
+A [`Store`](/api/data/classes/Store) holds an ordered collection of [records](/data/record), pulled in by a [proxy](/data/proxy) and shaped by a [model](/data/model).
 
 ## Load from memory
 
-[`MemoryStore`](/api/classes/MemoryStore) is a convenience subclass that wires a [`MemoryProxy`](/api/classes/MemoryProxy) internally:
+[`MemoryStore`](/api/data/classes/MemoryStore) is a convenience subclass that wires a [`MemoryProxy`](/api/data/classes/MemoryProxy) internally:
 
 ```typescript
 import { MemoryStore } from '@jimka/typescript-ui/data';
@@ -21,7 +21,7 @@ store.on('load', () => {
 await store.load();
 ```
 
-Or pass a single [`MemoryStoreOptions`](/api/interfaces/MemoryStoreOptions) bag — useful when you also want pagination defaults, initial sorters/filters, or to register listeners declaratively:
+Or pass a single [`MemoryStoreOptions`](/api/data/interfaces/MemoryStoreOptions) bag — useful when you also want pagination defaults, initial sorters/filters, or to register listeners declaratively:
 
 ```typescript
 const store = new MemoryStore({
@@ -36,7 +36,7 @@ const store = new MemoryStore({
 
 ## Load from a REST endpoint
 
-[`AjaxStore`](/api/classes/AjaxStore) is a convenience subclass that wires an [`AjaxProxy`](/api/classes/AjaxProxy) internally — pass the proxy config straight to the store:
+[`AjaxStore`](/api/data/classes/AjaxStore) is a convenience subclass that wires an [`AjaxProxy`](/api/data/classes/AjaxProxy) internally — pass the proxy config straight to the store:
 
 ```typescript
 import { AjaxStore } from '@jimka/typescript-ui/data';
@@ -48,7 +48,7 @@ const store = new AjaxStore(PersonModel, {
 await store.load();
 ```
 
-If you prefer to wire the proxy yourself (for example to share one `AjaxProxy` instance across stores), use [`Store`](/api/classes/Store) directly:
+If you prefer to wire the proxy yourself (for example to share one `AjaxProxy` instance across stores), use [`Store`](/api/data/classes/Store) directly:
 
 ```typescript
 import { AjaxProxy, Store } from '@jimka/typescript-ui/data';
@@ -58,7 +58,7 @@ const store = new Store(PersonModel, proxy);
 await store.load();
 ```
 
-The same `Store` constructor accepts a [`StoreOptions`](/api/interfaces/StoreOptions) bag if you want to set pagination, sorters, filters, or `autoLoad` declaratively:
+The same `Store` constructor accepts a [`StoreOptions`](/api/data/interfaces/StoreOptions) bag if you want to set pagination, sorters, filters, or `autoLoad` declaratively:
 
 ```typescript
 const store = new Store({
@@ -69,11 +69,11 @@ const store = new Store({
 });
 ```
 
-See [Proxy](/data/proxy) for the full set of [`AjaxProxy`](/api/classes/AjaxProxy) options.
+See [Proxy](/data/proxy) for the full set of [`AjaxProxy`](/api/data/classes/AjaxProxy) options.
 
 ## Typed subclasses
 
-Extend [`AbstractStore`](/api/classes/AbstractStore) to bake in the model and proxy, and add domain-specific methods. Combine with an `AbstractModel` subclass to keep the schema self-contained:
+Extend [`AbstractStore`](/api/data/classes/AbstractStore) to bake in the model and proxy, and add domain-specific methods. Combine with an `AbstractModel` subclass to keep the schema self-contained:
 
 ```typescript
 import { AbstractModel, AbstractStore, AjaxProxy } from '@jimka/typescript-ui/data';
@@ -113,7 +113,7 @@ Multiple `filter` / `filterBy` calls **stack** — every active predicate must p
 
 ### Multi-column sort
 
-`sort()` is overloaded: pass a [`SortDescriptor[]`](/api/interfaces/SortDescriptor) to apply a stable multi-column sort. The first descriptor is the primary key; ties are broken by the next one, and so on.
+`sort()` is overloaded: pass a [`SortDescriptor[]`](/api/data/interfaces/SortDescriptor) to apply a stable multi-column sort. The first descriptor is the primary key; ties are broken by the next one, and so on.
 
 ```typescript
 store.sort([
@@ -145,7 +145,7 @@ store.remove(newPerson);
 ## Server-side pagination
 
 Opt in by calling `setPageSize(n)`. From that point onward `load()` forwards a
-[`ReadParams`](/api/interfaces/ReadParams) object to the proxy, and the store
+[`ReadParams`](/api/data/interfaces/ReadParams) object to the proxy, and the store
 tracks the current page and total count returned by the server. Stores that
 never call `setPageSize` keep the legacy single-fetch behaviour.
 
@@ -193,11 +193,11 @@ The user can resolve the block in two ways:
 | `pagechanged`       | Page or page size changes via the pagination API |
 | `pagechangeblocked` | Page navigation was blocked because the store has pending changes |
 
-The full event surface is typed as [`StoreEvent`](/api/type-aliases/StoreEvent).
+The full event surface is typed as [`StoreEvent`](/api/data/type-aliases/StoreEvent).
 
 ## See also
 
 - [Model](/data/model) — the schema you pass to a store.
 - [Proxy](/data/proxy) — the transport layer.
 - [Record](/data/record) — what `getAt` / `find` returns.
-- [`StoreWorker`](/api/classes/Store) — offload heavy sort / filter to a Web Worker (advanced).
+- [`StoreWorker`](/api/data/classes/Store) — offload heavy sort / filter to a Web Worker (advanced).

@@ -1,6 +1,6 @@
 # VBox
 
-[`VBox`](/api/classes/VBox) places children in a single vertical column, using each child's preferred height. An optional stretching mode expands children horizontally to fill the column's width.
+[`VBox`](/api/layout/classes/VBox) places children in a single vertical column, using each child's preferred height. An optional stretching mode expands children horizontally to fill the column's width.
 
 ```
 +----------------+
@@ -31,14 +31,14 @@ form.addComponent(new Label('Email', emailField.getId()));
 form.addComponent(emailField);
 ```
 
-[`VBoxOptions`](/api/interfaces/VBoxOptions) accepts `spacing` and `stretching` declaratively. The legacy positional `new VBox(spacing)` form and the `setSpacing` / `setStretching` setters still work.
+[`VBoxOptions`](/api/layout/interfaces/VBoxOptions) accepts `spacing` and `stretching` declaratively. The legacy positional `new VBox(spacing)` form and the `setSpacing` / `setStretching` setters still work.
 
 ## Per-child constraints
 
 [`LayoutConstraints`](/layouts/Constraints):
 
-- `fill` — [`FillType`](/api/enumerations/FillType).
-- `anchor` — [`AnchorType`](/api/enumerations/AnchorType).
+- `fill` — [`FillType`](/api/layout/enumerations/FillType).
+- `anchor` — [`AnchorType`](/api/layout/enumerations/AnchorType).
 
 ```typescript
 import { FillType } from '@jimka/typescript-ui/layout';
@@ -54,7 +54,7 @@ form.addComponent(textField, { fill: FillType.HORIZONTAL });
 
 ## See also
 
-- [API: VBox](/api/classes/VBox)
+- [API: VBox](/api/layout/classes/VBox)
 - [`Row`](/layouts/Row) — equal-height vertical sequence
 - [`HBox`](/layouts/HBox) — horizontal equivalent
 - [Layout constraints reference](/layouts/Constraints)

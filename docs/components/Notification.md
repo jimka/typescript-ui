@@ -1,6 +1,6 @@
 # Notification
 
-[`Notification`](/api/classes/Notification) shows a toast in the bottom-right corner of the viewport that auto-dismisses after a configurable duration. Multiple toasts stack upward; each has a manual × dismiss button.
+[`Notification`](/api/core/classes/Notification) shows a toast in the bottom-right corner of the viewport that auto-dismisses after a configurable duration. Multiple toasts stack upward; each has a manual × dismiss button.
 
 ## Usage
 
@@ -33,5 +33,5 @@ Each severity has its own background and border tokens — see the `notification
 
 ## See also
 
-- [API: Notification](/api/classes/Notification)
-- [API: NotificationType](/api/type-aliases/NotificationType)
+- [API: Notification](/api/core/classes/Notification)
+- [API: NotificationType](/api/core/type-aliases/NotificationType)

@@ -1,6 +1,6 @@
 # RadioButton
 
-[`RadioButton`](/api/classes/RadioButton) is a single-selection input composed of an `<input type="radio">` and an associated [`Label`](/components/Label). Clicking the label toggles the radio because the label's `for` attribute is wired to the input's ID.
+[`RadioButton`](/api/component/input/classes/RadioButton) is a single-selection input composed of an `<input type="radio">` and an associated [`Label`](/components/Label). Clicking the label toggles the radio because the label's `for` attribute is wired to the input's ID.
 
 `RadioButton` is meant to be used inside a [`ButtonGroup`](/components/ButtonGroup), which enforces the mutual-exclusivity contract.
 
@@ -45,6 +45,6 @@ panel.addComponent(large);
 
 ## See also
 
-- [API: RadioButton](/api/classes/RadioButton)
+- [API: RadioButton](/api/component/input/classes/RadioButton)
 - [`ButtonGroup`](/components/ButtonGroup)
 - [`ToggleButton`](/components/ToggleButton) — alternative for non-radio button toggles

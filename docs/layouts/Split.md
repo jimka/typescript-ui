@@ -1,6 +1,6 @@
 # Split
 
-[`Split`](/api/classes/Split) divides the container into two or more resizable panels separated by draggable [`SplitGutter`](/api/classes/SplitGutter) elements. Direction can be `'horizontal'` (panels side by side) or `'vertical'` (panels stacked).
+[`Split`](/api/layout/classes/Split) divides the container into two or more resizable panels separated by draggable [`SplitGutter`](/api/component/container/classes/SplitGutter) elements. Direction can be `'horizontal'` (panels side by side) or `'vertical'` (panels stacked).
 
 ```
 +--------+║+----------------+
@@ -25,7 +25,7 @@ workspace.addComponent(treeView);   // left
 workspace.addComponent(detailTable); // right
 ```
 
-[`SplitOptions`](/api/interfaces/SplitOptions) accepts `direction` declaratively. The legacy positional `new Split('horizontal')` form and the `setDirection` setter still work.
+[`SplitOptions`](/api/layout/interfaces/SplitOptions) accepts `direction` declaratively. The legacy positional `new Split('horizontal')` form and the `setDirection` setter still work.
 
 ## Three+ panes
 
@@ -56,6 +56,6 @@ The constraint object can carry a `weight` to specify the initial size ratio. Wi
 
 ## See also
 
-- [API: Split](/api/classes/Split)
-- [`SplitGutter`](/api/classes/SplitGutter) — the drag handle
+- [API: Split](/api/layout/classes/Split)
+- [`SplitGutter`](/api/component/container/classes/SplitGutter) — the drag handle
 - [`Border`](/layouts/Border) — fixed dividers

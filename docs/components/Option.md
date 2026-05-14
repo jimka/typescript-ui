@@ -1,6 +1,6 @@
 # Option
 
-[`Option`](/api/classes/Option) is an item backed by an `<option>` element for use inside a [`ComboBox`](/components/ComboBox) or [`List`](/components/List). It suppresses framework positioning styles so the browser renders the option natively.
+[`Option`](/api/component/input/classes/Option) is an item backed by an `<option>` element for use inside a [`ComboBox`](/components/ComboBox) or [`List`](/components/List). It suppresses framework positioning styles so the browser renders the option natively.
 
 ## Usage
 
@@ -31,6 +31,6 @@ The constructor takes `(key, value)`:
 
 ## See also
 
-- [API: Option](/api/classes/Option)
+- [API: Option](/api/component/input/classes/Option)
 - [`ComboBox`](/components/ComboBox), [`List`](/components/List) — typical consumers
 - [`ListItem`](/components/ListItem) — for `BulletedList` / `NumberedList`

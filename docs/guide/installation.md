@@ -1,6 +1,6 @@
 # Installation
 
-`@jimka/typescript-ui` is published on npm and ships ESM bundles and `.d.ts` declarations. The package has zero runtime npm dependencies; FontAwesome is an optional peer for [FontAwesomeIcon](/api/classes/FontAwesomeIcon).
+`@jimka/typescript-ui` is published on npm and ships ESM bundles and `.d.ts` declarations. The package has zero runtime npm dependencies; FontAwesome is an optional peer for [FontAwesomeIcon](/api/component/display/classes/FontAwesomeIcon).
 
 The public API is exposed only through **subpath exports** — there is no bare `@jimka/typescript-ui` entry. Import each symbol from its group: `core`, `primitive`, `layout`, `data`, `validation`, or `component/<group>` (where `<group>` is `input`, `button`, `display`, `list`, `container`, `menubar`, `table`, or `tree`).
 
@@ -10,7 +10,7 @@ The public API is exposed only through **subpath exports** — there is no bare 
 npm install @jimka/typescript-ui
 ```
 
-For [FontAwesomeIcon](/api/classes/FontAwesomeIcon) glyphs, also install:
+For [FontAwesomeIcon](/api/component/display/classes/FontAwesomeIcon) glyphs, also install:
 
 ```bash
 npm install @fortawesome/fontawesome-free
@@ -38,7 +38,7 @@ The library is bundler-agnostic. Verified configurations:
 
 ## Theming bootstrap
 
-Theming uses runtime-injected CSS custom properties. There is **no `.css` file to import**. Call [`ThemeManager.setTheme`](/api/classes/ThemeManager) once on startup before mounting any component:
+Theming uses runtime-injected CSS custom properties. There is **no `.css` file to import**. Call [`ThemeManager.setTheme`](/api/core/classes/ThemeManager) once on startup before mounting any component:
 
 ```typescript
 import { ThemeManager, DefaultTheme } from '@jimka/typescript-ui/core';

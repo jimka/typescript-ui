@@ -1,6 +1,6 @@
 # HBox
 
-[`HBox`](/api/classes/HBox) places children in a single horizontal row, using each child's preferred width. An optional stretching mode expands children vertically to fill the row's height.
+[`HBox`](/api/layout/classes/HBox) places children in a single horizontal row, using each child's preferred width. An optional stretching mode expands children vertically to fill the row's height.
 
 ```
 +--------------------------+
@@ -23,14 +23,14 @@ toolbar.addComponent(new Button('Copy'));
 toolbar.addComponent(new Button('Paste'));
 ```
 
-The same options ([`HBoxOptions`](/api/interfaces/HBoxOptions)) can be passed to set `spacing` and `stretching` declaratively. The legacy `setSpacing` / `setStretching` setters still work for runtime updates.
+The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `spacing` and `stretching` declaratively. The legacy `setSpacing` / `setStretching` setters still work for runtime updates.
 
 ## Per-child constraints
 
 [`LayoutConstraints`](/layouts/Constraints):
 
-- `fill` — [`FillType`](/api/enumerations/FillType): `NONE` (preferred size), `HORIZONTAL`, `VERTICAL`, `BOTH`.
-- `anchor` — [`AnchorType`](/api/enumerations/AnchorType): used when the cell is larger than the child.
+- `fill` — [`FillType`](/api/layout/enumerations/FillType): `NONE` (preferred size), `HORIZONTAL`, `VERTICAL`, `BOTH`.
+- `anchor` — [`AnchorType`](/api/layout/enumerations/AnchorType): used when the cell is larger than the child.
 
 ```typescript
 import { FillType, AnchorType } from '@jimka/typescript-ui/layout';
@@ -62,7 +62,7 @@ If no child reports a baseline, `HBox` falls back to the legacy top-aligned layo
 
 ## See also
 
-- [API: HBox](/api/classes/HBox)
+- [API: HBox](/api/layout/classes/HBox)
 - [`Column`](/layouts/Column) — equal-width horizontal sequence
 - [`VBox`](/layouts/VBox) — vertical equivalent
 - [Layout constraints reference](/layouts/Constraints)

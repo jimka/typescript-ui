@@ -1,6 +1,6 @@
 # Dialog
 
-[`Dialog`](/api/classes/Dialog) is a modal panel with a title bar, scrollable content area, and a button row. The static `Dialog.show(config)` returns a `Promise<DialogResult>` resolving to `'confirm'`, `'cancel'`, or `'close'`.
+[`Dialog`](/api/core/classes/Dialog) is a modal panel with a title bar, scrollable content area, and a button row. The static `Dialog.show(config)` returns a `Promise<DialogResult>` resolving to `'confirm'`, `'cancel'`, or `'close'`.
 
 ## One-shot prompt
 
@@ -44,7 +44,7 @@ const result = await Dialog.show({
 
 ## DialogConfig
 
-See [`DialogConfig`](/api/interfaces/DialogConfig) for the full option list. Highlights:
+See [`DialogConfig`](/api/core/interfaces/DialogConfig) for the full option list. Highlights:
 
 | Option | Default | Purpose |
 | --- | --- | --- |
@@ -57,5 +57,5 @@ See [`DialogConfig`](/api/interfaces/DialogConfig) for the full option list. Hig
 
 ## See also
 
-- [API: Dialog](/api/classes/Dialog)
-- [API: DialogConfig](/api/interfaces/DialogConfig), [DialogButtonConfig](/api/interfaces/DialogButtonConfig), [DialogResult](/api/type-aliases/DialogResult)
+- [API: Dialog](/api/core/classes/Dialog)
+- [API: DialogConfig](/api/core/interfaces/DialogConfig), [DialogButtonConfig](/api/core/interfaces/DialogButtonConfig), [DialogResult](/api/core/type-aliases/DialogResult)

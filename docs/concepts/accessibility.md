@@ -1,10 +1,10 @@
 # Accessibility
 
-Every [`Component`](/api/classes/Component) exposes ARIA attributes through a typed [`Aria`](/api/classes/Aria) accessor. The framework also provides [`RovingTabIndex`](/api/classes/RovingTabIndex) for keyboard navigation across grouped controls. The built-in components wire both correctly out of the box; this page is for when you build custom UI.
+Every [`Component`](/api/core/classes/Component) exposes ARIA attributes through a typed [`Aria`](/api/core/classes/Aria) accessor. The framework also provides [`RovingTabIndex`](/api/core/classes/RovingTabIndex) for keyboard navigation across grouped controls. The built-in components wire both correctly out of the box; this page is for when you build custom UI.
 
 ## ARIA via Component.getAria()
 
-Each component has its own [`Aria`](/api/classes/Aria) instance. Get it with `getAria()`:
+Each component has its own [`Aria`](/api/core/classes/Aria) instance. Get it with `getAria()`:
 
 ```typescript
 import { Component } from '@jimka/typescript-ui/core';
@@ -29,7 +29,7 @@ component.getAria().setHasPopup('menu');
 
 State you set before the DOM exists is replayed onto the element when it's first rendered. After render, sets propagate immediately.
 
-See [`Aria`](/api/classes/Aria) for the full list of attribute methods.
+See [`Aria`](/api/core/classes/Aria) for the full list of attribute methods.
 
 ## Roles used by built-in components
 
@@ -49,7 +49,7 @@ You don't need to set these on built-in components; they're applied at construct
 
 ## Keyboard navigation: RovingTabIndex
 
-[`RovingTabIndex`](/api/classes/RovingTabIndex) implements the standard pattern where exactly one item in a group has `tabindex=0` at any time, and arrow keys move focus among the items:
+[`RovingTabIndex`](/api/core/classes/RovingTabIndex) implements the standard pattern where exactly one item in a group has `tabindex=0` at any time, and arrow keys move focus among the items:
 
 ```typescript
 import { RovingTabIndex } from '@jimka/typescript-ui/core';
@@ -142,6 +142,6 @@ status.setElementAttribute('aria-atomic', 'true');
 
 ## See also
 
-- [API: Aria](/api/classes/Aria), [AriaRole](/api/type-aliases/AriaRole), [AriaSort](/api/type-aliases/AriaSort)
-- [API: RovingTabIndex](/api/classes/RovingTabIndex)
+- [API: Aria](/api/core/classes/Aria), [AriaRole](/api/core/type-aliases/AriaRole), [AriaSort](/api/core/type-aliases/AriaSort)
+- [API: RovingTabIndex](/api/core/classes/RovingTabIndex)
 - [`ButtonGroup`](/components/ButtonGroup) — uses `RovingTabIndex` internally

@@ -1,12 +1,12 @@
 # MenuItem
 
-[`MenuItem`](/api/classes/MenuItem) is a single row inside a [`Menu`](/components/Menu). Renders a four-zone layout: icon | text | shortcut | chevron. Hovering opens an attached submenu after a 150 ms delay (persistent-mode menus only).
+[`MenuItem`](/api/component/container/classes/MenuItem) is a single row inside a [`Menu`](/components/Menu). Renders a four-zone layout: icon | text | shortcut | chevron. Hovering opens an attached submenu after a 150 ms delay (persistent-mode menus only).
 
-You usually pass [`MenuItemConfig`](/api/interfaces/MenuItemConfig) objects to [`MenuBar`](/components/MenuBar) or `Menu.show(...)` instead of constructing `MenuItem`s directly.
+You usually pass [`MenuItemConfig`](/api/component/container/interfaces/MenuItemConfig) objects to [`MenuBar`](/components/MenuBar) or `Menu.show(...)` instead of constructing `MenuItem`s directly.
 
 ## Config shape
 
-[`MenuItemConfig`](/api/interfaces/MenuItemConfig):
+[`MenuItemConfig`](/api/component/container/interfaces/MenuItemConfig):
 
 | Field | Purpose |
 | --- | --- |
@@ -15,7 +15,7 @@ You usually pass [`MenuItemConfig`](/api/interfaces/MenuItemConfig) objects to [
 | `enabled` | Defaults to `true`. Disabled items are dimmed and non-interactive. |
 | `shortcut` | Hint string displayed on the right. |
 | `icon` | Glyph displayed on the left. |
-| `submenu` | Nested [`MenuConfig`](/api/interfaces/MenuConfig); opens a submenu instead of firing `action` (persistent-mode only). |
+| `submenu` | Nested [`MenuConfig`](/api/component/container/interfaces/MenuConfig); opens a submenu instead of firing `action` (persistent-mode only). |
 | `separator` | When `true`, render as a horizontal rule and ignore other fields. |
 
 ## Layout
@@ -37,6 +37,6 @@ The chevron only appears for items with a `submenu`.
 
 ## See also
 
-- [API: MenuItem](/api/classes/MenuItem)
-- [API: MenuItemConfig](/api/interfaces/MenuItemConfig)
+- [API: MenuItem](/api/component/container/classes/MenuItem)
+- [API: MenuItemConfig](/api/component/container/interfaces/MenuItemConfig)
 - [`Menu`](/components/Menu) — primary consumer

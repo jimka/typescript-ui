@@ -15,7 +15,7 @@ export interface AccordionHeaderOptions extends ButtonOptions {
 }
 
 /**
- * A flat header button used by {@link Accordion} to represent a collapsible section.
+ * A flat header button used by `Accordion` (from `@jimka/typescript-ui/layout`) to represent a collapsible section.
  *
  * Extends {@link Button} with a triangular expand/collapse indicator appended as a
  * raw `<span>` inside the button element (analogous to the resize handle in HeaderCell).

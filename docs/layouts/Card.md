@@ -1,6 +1,6 @@
 # Card
 
-[`Card`](/api/classes/Card) shows exactly one child component at a time, sized to fill the container's inner bounds. The visible child is selected by component ID; all others are hidden.
+[`Card`](/api/layout/classes/Card) shows exactly one child component at a time, sized to fill the container's inner bounds. The visible child is selected by component ID; all others are hidden.
 
 ```
 +--------------------------+
@@ -25,7 +25,7 @@ stack.addComponent(contentPanel);
 stack.addComponent(errorPanel);
 ```
 
-[`CardOptions`](/api/interfaces/CardOptions) accepts `visibleComponentId` declaratively. The `setVisibleComponentId` setter still works for runtime switching:
+[`CardOptions`](/api/layout/interfaces/CardOptions) accepts `visibleComponentId` declaratively. The `setVisibleComponentId` setter still works for runtime switching:
 
 ```typescript
 card.setVisibleComponentId(errorPanel.getId());
@@ -48,6 +48,6 @@ None. The active child is selected by ID via `card.setVisibleComponent(id)`.
 
 ## See also
 
-- [API: Card](/api/classes/Card)
+- [API: Card](/api/layout/classes/Card)
 - [`Tab`](/layouts/Tab) — same one-at-a-time semantics, plus a button toolbar
 - [`Fit`](/layouts/Fit) — single fixed child

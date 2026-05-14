@@ -1,6 +1,6 @@
 # Tooltip
 
-[`Tooltip`](/api/classes/Tooltip) is a singleton hover hint. Use `Tooltip.attach(component, text)` to wire a 500 ms delay tooltip onto any component, or `Tooltip.show` / `Tooltip.hide` for manual control.
+[`Tooltip`](/api/core/classes/Tooltip) is a singleton hover hint. Use `Tooltip.attach(component, text)` to wire a 500 ms delay tooltip onto any component, or `Tooltip.show` / `Tooltip.hide` for manual control.
 
 ## Attach to a component
 
@@ -23,7 +23,7 @@ Tooltip.hide();
 
 ## Custom colors
 
-Pass [`TooltipColors`](/api/interfaces/TooltipColors) to override theme defaults for a single attachment:
+Pass [`TooltipColors`](/api/core/interfaces/TooltipColors) to override theme defaults for a single attachment:
 
 ```typescript
 Tooltip.attach(myButton, 'Danger zone', {
@@ -41,5 +41,5 @@ Tooltip.attach(myButton, 'Danger zone', {
 
 ## See also
 
-- [API: Tooltip](/api/classes/Tooltip)
-- [API: TooltipColors](/api/interfaces/TooltipColors)
+- [API: Tooltip](/api/core/classes/Tooltip)
+- [API: TooltipColors](/api/core/interfaces/TooltipColors)
