@@ -5,8 +5,8 @@
 ## Usage
 
 ```typescript
-import { TextArea, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { TextArea } from '@jimka/typescript-ui/component/input';
 const notes = new TextArea('Initial text');
 notes.setPreferredSize(360, 120);
 

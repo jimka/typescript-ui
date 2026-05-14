@@ -42,8 +42,7 @@ See the [Mental model](/guide/mental-model) for the full reasoning.
 Call [`ThemeManager.setTheme(Theme)`](/concepts/theming). The call writes new CSS custom properties on `:root` and the cascade does the rest — no re-render needed:
 
 ```typescript
-import { ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui';
-
+import { ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui/core';
 ThemeManager.setTheme(DarkTheme);
 ```
 

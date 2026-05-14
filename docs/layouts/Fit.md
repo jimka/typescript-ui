@@ -15,8 +15,9 @@
 ## Usage
 
 ```typescript
-import { Component, Fit, Table } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Fit } from '@jimka/typescript-ui/layout';
+import { Table } from '@jimka/typescript-ui/component/table';
 const wrapper = new Component();
 wrapper.setLayoutManager(new Fit());
 wrapper.addComponent(table);

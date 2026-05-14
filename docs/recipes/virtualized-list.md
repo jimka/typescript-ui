@@ -5,10 +5,9 @@ Both [`Table`](/components/Table) and [`Tree`](/components/Tree) render only the
 ## Table — 100k rows
 
 ```typescript
-import {
-    Model, MemoryStore, Table, Body,
-} from '@jimka/typescript-ui';
-
+import { Body } from '@jimka/typescript-ui/core';
+import { Model, MemoryStore } from '@jimka/typescript-ui/data';
+import { Table } from '@jimka/typescript-ui/component/table';
 const ItemModel = new Model([
     { name: 'id',    type: 'number' },
     { name: 'name',  type: 'string' },

@@ -34,7 +34,8 @@ import { callable } from "~/core/Callable.js";
  *
  * @example
  * ```typescript
- * import { Model, MemoryStore, Table } from '@jimka/typescript-ui';
+ * import { Model, MemoryStore } from '@jimka/typescript-ui/data';
+ * import { Table } from '@jimka/typescript-ui/component/table';
  *
  * const PersonModel = new Model([
  *     { name: 'id',   type: 'number' },

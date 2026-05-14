@@ -14,10 +14,9 @@ Pair the bar with any store that has had `setPageSize(n)` called on it.
 appends `?page=N&pageSize=M` and parses a `{ data, total }` envelope.
 
 ```typescript
-import {
-    AjaxProxy, Field, Model, PaginationBar, Store, TablePanel
-} from '@jimka/typescript-ui';
-
+import { AjaxProxy, Field, Model, Store } from '@jimka/typescript-ui/data';
+import { PaginationBar } from '@jimka/typescript-ui/component/display';
+import { TablePanel } from '@jimka/typescript-ui/component/table';
 const model = new Model({ fields: [
     new Field({ name: 'id',   type: 'number' }),
     new Field({ name: 'name', type: 'string' }),

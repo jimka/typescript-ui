@@ -5,8 +5,8 @@
 ## Usage
 
 ```typescript
-import { Checkbox, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { Checkbox } from '@jimka/typescript-ui/component/input';
 const subscribe = new Checkbox();
 subscribe.setSelected(true);
 

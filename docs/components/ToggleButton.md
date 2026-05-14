@@ -5,8 +5,8 @@
 ## Usage
 
 ```typescript
-import { ToggleButton, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { ToggleButton } from '@jimka/typescript-ui/component/button';
 const boldButton = new ToggleButton('Bold');
 
 Event.addListener(boldButton, 'change', () => {

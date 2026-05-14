@@ -18,8 +18,9 @@ Despite the name, `Row` lays children out **vertically**. The name describes the
 ## Usage
 
 ```typescript
-import { Component, Row, Button } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Row } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
 const sidebar = new Component();
 sidebar.setLayoutManager(new Row({ gap: 4 }));
 

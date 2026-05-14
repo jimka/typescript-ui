@@ -7,8 +7,7 @@ Every [`Component`](/api/classes/Component) exposes ARIA attributes through a ty
 Each component has its own [`Aria`](/api/classes/Aria) instance. Get it with `getAria()`:
 
 ```typescript
-import { Component } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
 class CustomGrid extends Component {
     constructor() {
         super('div');
@@ -53,8 +52,7 @@ You don't need to set these on built-in components; they're applied at construct
 [`RovingTabIndex`](/api/classes/RovingTabIndex) implements the standard pattern where exactly one item in a group has `tabindex=0` at any time, and arrow keys move focus among the items:
 
 ```typescript
-import { RovingTabIndex } from '@jimka/typescript-ui';
-
+import { RovingTabIndex } from '@jimka/typescript-ui/core';
 const tabs = new RovingTabIndex();
 tabs.add(button1);
 tabs.add(button2);
@@ -76,8 +74,7 @@ tabs.moveTo(0); // button1 is now the active item
 A custom selectable list is the simplest non-trivial case:
 
 ```typescript
-import { Component, Event, RovingTabIndex } from '@jimka/typescript-ui';
-
+import { Component, Event, RovingTabIndex } from '@jimka/typescript-ui/core';
 class SelectableList extends Component {
     private items: Component[] = [];
     private rti = new RovingTabIndex();

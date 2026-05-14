@@ -12,8 +12,9 @@
 ## Usage
 
 ```typescript
-import { Component, HBox, Button } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { HBox } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
 const toolbar = new Component();
 toolbar.setLayoutManager(new HBox({ spacing: 8 }));
 
@@ -32,8 +33,7 @@ The same options ([`HBoxOptions`](/api/interfaces/HBoxOptions)) can be passed to
 - `anchor` — [`AnchorType`](/api/enumerations/AnchorType): used when the cell is larger than the child.
 
 ```typescript
-import { FillType, AnchorType } from '@jimka/typescript-ui';
-
+import { FillType, AnchorType } from '@jimka/typescript-ui/layout';
 toolbar.addComponent(button, {
     fill:   FillType.VERTICAL,    // stretch to row height
     anchor: AnchorType.CENTER,    // center horizontally within its slot

@@ -102,8 +102,7 @@ A [`Table`](/api/classes/Table) ties columns to a [`Store`](/api/classes/Store) 
 | [`TreeNode`](/api/interfaces/TreeNode) | Data interface: `{ label, children? }` |
 
 ```typescript
-import { Tree } from '@jimka/typescript-ui';
-
+import { Tree } from '@jimka/typescript-ui/component/tree';
 const tree = Tree();
 tree.setNodes([
     { label: 'Fruits', children: [

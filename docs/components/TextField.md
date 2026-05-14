@@ -5,8 +5,8 @@
 ## Usage
 
 ```typescript
-import { TextField, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { TextField } from '@jimka/typescript-ui/component/input';
 const nameField = new TextField();
 nameField.setValue('');
 nameField.setPreferredSize(240, 28);
@@ -30,8 +30,7 @@ panel.addComponent(nameField);
 ## Binding
 
 ```typescript
-import { Binding } from '@jimka/typescript-ui';
-
+import { Binding } from '@jimka/typescript-ui/core';
 const binding = new Binding().bind('name', nameField);
 binding.setRecord(store.getAt(0));
 ```

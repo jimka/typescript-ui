@@ -5,8 +5,7 @@
 ## Usage
 
 ```typescript
-import { BulletedList, ListItem, BulletedListItemStyle } from '@jimka/typescript-ui';
-
+import { BulletedList, ListItem, BulletedListItemStyle } from '@jimka/typescript-ui/component/list';
 const list = new BulletedList();
 list.setItemStyle(BulletedListItemStyle.SQUARE);
 list.addItem(new ListItem('apple',  'Apple'));

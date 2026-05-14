@@ -36,7 +36,8 @@ export interface ButtonOptions extends ComponentOptions {
  *
  * @example
  * ```typescript
- * import { Button, Event } from '@jimka/typescript-ui';
+ * import { Event } from '@jimka/typescript-ui/core';
+ * import { Button } from '@jimka/typescript-ui/component/button';
  *
  * const button = new Button('Save');
  * Event.addListener(button, 'click', () => save());

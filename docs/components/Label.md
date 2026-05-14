@@ -7,8 +7,7 @@ For standalone text without a form-control association, use [`Text`](/components
 ## Usage
 
 ```typescript
-import { Label, TextField } from '@jimka/typescript-ui';
-
+import { Label, TextField } from '@jimka/typescript-ui/component/input';
 const field = new TextField();
 const label = new Label('Name:', field.getId());
 

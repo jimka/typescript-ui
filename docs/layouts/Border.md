@@ -19,12 +19,12 @@ Re-exported as **`BorderLayout`** from the package barrel to disambiguate from t
 ## Usage
 
 ```typescript
-import {
-    Component, BorderLayout,
-    Header, MenuBar, Table,
-    Placement,
-} from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Placement } from '@jimka/typescript-ui/primitive';
+import { Border as BorderLayout } from '@jimka/typescript-ui/layout';
+import { Header } from '@jimka/typescript-ui/component/display';
+import { MenuBar } from '@jimka/typescript-ui/component/menubar';
+import { Table } from '@jimka/typescript-ui/component/table';
 const app = new Component();
 app.setLayoutManager(new BorderLayout({ gap: 4 }));
 

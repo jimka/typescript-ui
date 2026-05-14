@@ -5,8 +5,7 @@ Use [`Notification`](/components/Notification) for transient feedback that doesn
 ## Severity ladder
 
 ```typescript
-import { Notification } from '@jimka/typescript-ui';
-
+import { Notification } from '@jimka/typescript-ui/core';
 Notification.show('Saved.',                'success');             // 3 s default
 Notification.show('Cache rebuilt.',        'info');                // 3 s
 Notification.show('Disk almost full.',     'warning', 6000);       // 6 s

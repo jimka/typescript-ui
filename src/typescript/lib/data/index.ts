@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+export { AbstractModel } from '~/data/AbstractModel.js';
+export { Field } from '~/data/Field.js';
+export type { FieldOptions, FieldConfig, FieldType } from '~/data/Field.js';
+export { Model } from '~/data/Model.js';
+export type { ModelOptions } from '~/data/Model.js';
+export { ModelRecord } from '~/data/ModelRecord.js';
+export { AbstractStore } from '~/data/AbstractStore.js';
+export type { AbstractStoreOptions, StoreEvent, StoreListener, SortDescriptor } from '~/data/AbstractStore.js';
+export { Store } from '~/data/Store.js';
+export type { StoreOptions } from '~/data/Store.js';
+export { MemoryStore } from '~/data/MemoryStore.js';
+export type { MemoryStoreOptions } from '~/data/MemoryStore.js';
+export { AjaxStore } from '~/data/AjaxStore.js';
+export type { AjaxStoreOptions } from '~/data/AjaxStore.js';
+export type { FilterDescriptor } from '~/data/FilterDescriptor.js';
+
+export { Proxy } from '~/data/proxy/Proxy.js';
+export type { ReadParams } from '~/data/proxy/Proxy.js';
+export { MemoryProxy } from '~/data/proxy/MemoryProxy.js';
+export type { MemoryProxyOptions, MemoryProxyConfig } from '~/data/proxy/MemoryProxy.js';
+export { AjaxProxy } from '~/data/proxy/AjaxProxy.js';
+export type { AjaxProxyOptions, AjaxProxyConfig } from '~/data/proxy/AjaxProxy.js';

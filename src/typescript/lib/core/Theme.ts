@@ -654,8 +654,8 @@ function themeToVars(theme: Theme): Record<string, string> {
  *
  * @example
  * ```typescript
- * import { ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui';
- *
+ * import { ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui/core';
+*
  * ThemeManager.setTheme(DefaultTheme); // light
  * ThemeManager.setTheme(DarkTheme);    // dark
  * ```

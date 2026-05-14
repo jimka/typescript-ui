@@ -15,8 +15,8 @@
 ## Usage
 
 ```typescript
-import { Component, Tab } from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Tab } from '@jimka/typescript-ui/layout';
 const tabbed = new Component();
 tabbed.setLayoutManager(new Tab({
     onTabClose: removed => console.log('closed', removed.getId()),

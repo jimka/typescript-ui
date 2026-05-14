@@ -11,8 +11,7 @@ Available in vertical (default) and horizontal orientations.
 The minimal contract: instantiate, position over your content area, push metrics whenever the scroll state changes, and subscribe to user-driven scroll changes.
 
 ```typescript
-import { Scrollbar } from '@jimka/typescript-ui';
-
+import { Scrollbar } from '@jimka/typescript-ui/component/container';
 const bar = new Scrollbar('vertical');
 // Owner sizes and positions the track on the cross axis:
 bar.setHeight(400);                 // track length on the scroll axis

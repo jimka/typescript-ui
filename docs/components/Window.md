@@ -5,8 +5,8 @@
 ## Usage
 
 ```typescript
-import { Body, Window, Text } from '@jimka/typescript-ui';
-
+import { Body, Window } from '@jimka/typescript-ui/core';
+import { Text } from '@jimka/typescript-ui/component/input';
 const win = new Window();
 win.setHeaderText('Settings');
 win.setSize(360, 240);

@@ -9,8 +9,7 @@
 ## Usage
 
 ```typescript
-import { ProgressBar } from '@jimka/typescript-ui';
-
+import { ProgressBar } from '@jimka/typescript-ui/component/display';
 const progress = new ProgressBar(0);
 progress.setPreferredSize(300, 12);
 panel.addComponent(progress);

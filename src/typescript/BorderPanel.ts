@@ -1,19 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import {
-    BorderLayout,
-    BulletedList,
-    callable,
-    Component,
-    List,
-    ListItem,
-    NumberedList,
-    Panel,
-    Placement,
-    Text,
-    TextArea
-} from "@jimka/typescript-ui";
-
+import { callable, Component, Panel } from '@jimka/typescript-ui/core';
+import { Placement } from '@jimka/typescript-ui/primitive';
+import { Border as BorderLayout } from '@jimka/typescript-ui/layout';
+import { Text, TextArea } from '@jimka/typescript-ui/component/input';
+import { BulletedList, List, ListItem, NumberedList } from '@jimka/typescript-ui/component/list';
 class BorderPanel extends Panel {
 
     constructor() {

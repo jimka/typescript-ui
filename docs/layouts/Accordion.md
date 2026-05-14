@@ -14,11 +14,9 @@
 ## Usage
 
 ```typescript
-import {
-    Component, Accordion, AccordionConstraints,
-    Text,
-} from '@jimka/typescript-ui';
-
+import { Component } from '@jimka/typescript-ui/core';
+import { Accordion, AccordionConstraints } from '@jimka/typescript-ui/layout';
+import { Text } from '@jimka/typescript-ui/component/input';
 const sidebar = new Component();
 sidebar.setLayoutManager(new Accordion({
     singleOpen       : true,        // only one section open at a time
@@ -52,8 +50,7 @@ sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 Pass `onSectionToggle` in the constructor (preferred) or call `setOnSectionToggle` later:
 
 ```typescript
-import { SectionToggleCallback } from '@jimka/typescript-ui';
-
+import { SectionToggleCallback } from '@jimka/typescript-ui/layout';
 const onToggle: SectionToggleCallback = (index, open) => {
     console.log(`section ${index} now ${open ? 'open' : 'closed'}`);
 };

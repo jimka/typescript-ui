@@ -3,14 +3,21 @@
   "version": "1.0.0",
   "description": "A web-based layout manager and UI component framework written in TypeScript.",
   "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
-  "main": "dist/lib/typescript-ui.umd.js",
-  "module": "dist/lib/typescript-ui.es.js",
-  "types": "dist/lib/types/index.d.ts",
+  "type": "module",
   "exports": {
-    ".": {
-      "import": "./dist/lib/typescript-ui.es.js",
-      "require": "./dist/lib/typescript-ui.umd.js"
-    }
+    "./core":                { "import": "./dist/lib/core.es.js",                "types": "./dist/lib/types/core/index.d.ts" },
+    "./primitive":           { "import": "./dist/lib/primitive.es.js",           "types": "./dist/lib/types/primitive/index.d.ts" },
+    "./layout":              { "import": "./dist/lib/layout.es.js",              "types": "./dist/lib/types/layout/index.d.ts" },
+    "./data":                { "import": "./dist/lib/data.es.js",                "types": "./dist/lib/types/data/index.d.ts" },
+    "./validation":          { "import": "./dist/lib/validation.es.js",          "types": "./dist/lib/types/validation/index.d.ts" },
+    "./component/input":     { "import": "./dist/lib/component/input.es.js",     "types": "./dist/lib/types/component/input/index.d.ts" },
+    "./component/button":    { "import": "./dist/lib/component/button.es.js",    "types": "./dist/lib/types/component/button/index.d.ts" },
+    "./component/display":   { "import": "./dist/lib/component/display.es.js",   "types": "./dist/lib/types/component/display/index.d.ts" },
+    "./component/list":      { "import": "./dist/lib/component/list.es.js",      "types": "./dist/lib/types/component/list/index.d.ts" },
+    "./component/container": { "import": "./dist/lib/component/container.es.js", "types": "./dist/lib/types/component/container/index.d.ts" },
+    "./component/menubar":   { "import": "./dist/lib/component/menubar.es.js",   "types": "./dist/lib/types/component/menubar/index.d.ts" },
+    "./component/table":     { "import": "./dist/lib/component/table.es.js",     "types": "./dist/lib/types/component/table/index.d.ts" },
+    "./component/tree":      { "import": "./dist/lib/component/tree.es.js",      "types": "./dist/lib/types/component/tree/index.d.ts" }
   },
   "files": [
     "dist/lib"

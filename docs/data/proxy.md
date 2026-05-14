@@ -12,8 +12,7 @@ Two proxies ship with the package:
 Use this when you have data already in JavaScript (test fixtures, static lists, embedded JSON). For convenience, you can usually skip it and use [`MemoryStore`](/api/classes/MemoryStore) directly.
 
 ```typescript
-import { MemoryProxy, Store } from '@jimka/typescript-ui';
-
+import { MemoryProxy, Store } from '@jimka/typescript-ui/data';
 const proxy = new MemoryProxy({
     data: [
         { id: 1, name: 'Alice' },
@@ -32,8 +31,7 @@ See [`MemoryProxyOptions`](/api/interfaces/MemoryProxyOptions) for the full opti
 Fetches JSON over HTTP via the browser's `fetch` API. For convenience, you can usually skip the proxy and use [`AjaxStore`](/api/classes/AjaxStore) directly, which constructs the proxy from the same config.
 
 ```typescript
-import { AjaxProxy, Store } from '@jimka/typescript-ui';
-
+import { AjaxProxy, Store } from '@jimka/typescript-ui/data';
 const proxy = new AjaxProxy({
     url:    '/api/people',
     root:   'data',         // extract response.data instead of using the whole body
@@ -85,8 +83,7 @@ via `getTotalCount()` and `getTotalPages()`, and on the proxy itself via
 Subclass [`Proxy`](/api/classes/Proxy) and implement `load()`. This is the path for GraphQL, WebSocket, IndexedDB, or any other transport.
 
 ```typescript
-import { Proxy } from '@jimka/typescript-ui';
-
+import { Proxy } from '@jimka/typescript-ui/data';
 class GraphQLProxy extends Proxy {
     constructor(private query: string) { super(); }
 

@@ -5,8 +5,8 @@
 ## Usage
 
 ```typescript
-import { Slider, Event } from '@jimka/typescript-ui';
-
+import { Event } from '@jimka/typescript-ui/core';
+import { Slider } from '@jimka/typescript-ui/component/input';
 const volume = new Slider();
 volume.setMin(0);
 volume.setMax(100);

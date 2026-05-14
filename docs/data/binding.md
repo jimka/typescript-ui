@@ -7,8 +7,7 @@
 ## Quick start
 
 ```typescript
-import { Binding } from '@jimka/typescript-ui';
-
+import { Binding } from '@jimka/typescript-ui/core';
 const binding = new Binding()
     .bind('name',   nameField)
     .bind('active', activeCheckbox)

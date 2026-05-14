@@ -7,8 +7,7 @@ A [`Store`](/api/classes/Store) holds an ordered collection of [records](/data/r
 [`MemoryStore`](/api/classes/MemoryStore) is a convenience subclass that wires a [`MemoryProxy`](/api/classes/MemoryProxy) internally:
 
 ```typescript
-import { MemoryStore } from '@jimka/typescript-ui';
-
+import { MemoryStore } from '@jimka/typescript-ui/data';
 const store = new MemoryStore(PersonModel, [
     { id: 1, name: 'Alice', age: 30 },
     { id: 2, name: 'Bob',   age: 25 },
@@ -40,8 +39,7 @@ const store = new MemoryStore({
 [`AjaxStore`](/api/classes/AjaxStore) is a convenience subclass that wires an [`AjaxProxy`](/api/classes/AjaxProxy) internally — pass the proxy config straight to the store:
 
 ```typescript
-import { AjaxStore } from '@jimka/typescript-ui';
-
+import { AjaxStore } from '@jimka/typescript-ui/data';
 const store = new AjaxStore(PersonModel, {
     url:  '/api/people',
     root: 'data',     // extracts response.data array
@@ -53,8 +51,7 @@ await store.load();
 If you prefer to wire the proxy yourself (for example to share one `AjaxProxy` instance across stores), use [`Store`](/api/classes/Store) directly:
 
 ```typescript
-import { AjaxProxy, Store } from '@jimka/typescript-ui';
-
+import { AjaxProxy, Store } from '@jimka/typescript-ui/data';
 const proxy = new AjaxProxy({ url: '/api/people', root: 'data' });
 const store = new Store(PersonModel, proxy);
 
@@ -79,8 +76,7 @@ See [Proxy](/data/proxy) for the full set of [`AjaxProxy`](/api/classes/AjaxProx
 Extend [`AbstractStore`](/api/classes/AbstractStore) to bake in the model and proxy, and add domain-specific methods. Combine with an `AbstractModel` subclass to keep the schema self-contained:
 
 ```typescript
-import { AbstractModel, AbstractStore, AjaxProxy } from '@jimka/typescript-ui';
-
+import { AbstractModel, AbstractStore, AjaxProxy } from '@jimka/typescript-ui/data';
 class PersonModel extends AbstractModel {
     readonly fields = [
         { name: 'id',   type: 'number' },
