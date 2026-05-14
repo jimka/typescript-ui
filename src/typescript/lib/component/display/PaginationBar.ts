@@ -26,7 +26,7 @@ export interface PaginationBarOptions extends ComponentOptions {
  * The bar displays first / previous / next / last buttons and a `Page X of Y`
  * label, all driven by the store's pagination state. It subscribes to the
  * store's `'pagechanged'` and `'load'` events and updates button-enabled
- * state automatically. The bar can be embedded anywhere — `TablePanel`'s
+ * state automatically. The bar can be embedded anywhere — [`TablePanel`](/api/component/table/classes/TablePanel)'s
  * `setPaginationBar()` is one consumer, but it is not required.
  *
  * @example
@@ -131,7 +131,7 @@ class PaginationBar extends Component {
      *
      * @remarks
      * Call this when permanently removing the bar (e.g. before discarding it,
-     * or when replacing it via `TablePanel.setPaginationBar`). After
+     * or when replacing it via [`TablePanel.setPaginationBar`](/api/component/table/classes/TablePanel#setpaginationbar)). After
      * disposal the bar will no longer track the store.
      */
     dispose(): void {

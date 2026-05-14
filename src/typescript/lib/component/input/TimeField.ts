@@ -21,7 +21,7 @@ export interface TimeFieldOptions extends InputOptions {
 /**
  * A time-picker input component backed by an `<input type="time">` element.
  *
- * Implements {@link Bindable} so it can participate in a `Binding` directly.
+ * Implements {@link Bindable} so it can participate in a [`Binding`](/api/core/classes/Binding) directly.
  * The Date value uses the local date for its date portion; only hours and minutes
  * are meaningful. Returns `null` from `getValue` when the field is empty.
  *
