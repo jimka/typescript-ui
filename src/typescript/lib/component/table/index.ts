@@ -20,6 +20,7 @@ export { StringCell } from '~/component/table/cell/String.js';
 export { DateCell } from '~/component/table/cell/Date.js';
 export { TimeCell } from '~/component/table/cell/Time.js';
 export { DateTimeCell } from '~/component/table/cell/DateTime.js';
+export { GlyphCell } from '~/component/table/cell/Glyph.js';
 
 export { CellEditor } from '~/component/table/cell/editor/CellEditor.js';
 export { BooleanEditor } from '~/component/table/cell/editor/Boolean.js';
@@ -35,3 +36,4 @@ export { StringRenderer } from '~/component/table/cell/renderer/String.js';
 export { DateRenderer } from '~/component/table/cell/renderer/Date.js';
 export { TimeRenderer } from '~/component/table/cell/renderer/Time.js';
 export { DateTimeRenderer } from '~/component/table/cell/renderer/DateTime.js';
+export { GlyphRenderer } from '~/component/table/cell/renderer/Glyph.js';

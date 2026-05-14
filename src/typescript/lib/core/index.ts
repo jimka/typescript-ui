@@ -17,6 +17,7 @@ export { Body } from '~/core/Body.js';
 export { ButtonGroup } from '~/core/ButtonGroup.js';
 export type { ButtonGroupOptions } from '~/core/ButtonGroup.js';
 export { Window } from '~/core/Window.js';
+export type { WindowOptions } from '~/core/Window.js';
 export { Menu } from '~/core/Menu.js';
 export { Tooltip } from '~/core/Tooltip.js';
 export type { TooltipColors } from '~/core/Tooltip.js';

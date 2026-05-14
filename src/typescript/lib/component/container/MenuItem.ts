@@ -45,7 +45,7 @@ export interface MenuItemConfig {
     enabled?: boolean;
     /** Keyboard shortcut hint displayed on the right (e.g. `"Ctrl+S"`). */
     shortcut?: string;
-    /** Icon or glyph displayed on the left (e.g. a Unicode character or FontAwesome code). */
+    /** Icon or glyph displayed on the left (e.g. a Unicode character). */
     icon?: string;
     /** When present this item opens a submenu rather than calling `action`. */
     submenu?: MenuConfig;

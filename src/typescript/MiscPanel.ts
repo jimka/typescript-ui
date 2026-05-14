@@ -4,9 +4,9 @@ import { ButtonGroup, callable, Component, DarkTheme, DefaultTheme, Dialog, Even
 import { Insets } from '@jimka/typescript-ui/primitive';
 import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model, ModelRecord, Proxy, ReadParams, Store } from '@jimka/typescript-ui/data';
-import { AutoCompleteField, NumberSpinner, RadioButton, Text } from '@jimka/typescript-ui/component/input';
+import { AutoCompleteField, NumberSpinner, RadioButton, Text, TextField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
-import { Glyph, Image, PaginationBar, ProgressBar, ProgressSpinner } from '@jimka/typescript-ui/component/display';
+import { Glyph, IconLabel, IconText, Image, PaginationBar, ProgressBar, ProgressSpinner } from '@jimka/typescript-ui/component/display';
 import { FieldSet } from '@jimka/typescript-ui/component/container';
 import { ColumnSpec, Table, TablePanel } from '@jimka/typescript-ui/component/table';
 import { Tree } from '@jimka/typescript-ui/component/tree';
@@ -541,6 +541,34 @@ class MiscPanel extends Panel {
         glyphRow.addComponent(new Glyph("arrow-right"));
         glyphRow.addComponent(new Glyph("arrow-down"));
         this.addComponent(glyphRow);
+
+        const buttonWithGlyph = new Button("Save", { glyph: "times" });
+        this.addComponent(buttonWithGlyph);
+
+        const iconTextRow = new Component();
+        iconTextRow.setLayoutManager(new HBox());
+        iconTextRow.addComponent(new Text("IconText:"));
+        iconTextRow.addComponent(new IconText("times", "Close"));
+        iconTextRow.addComponent(new IconText("arrow-right", "Next"));
+        this.addComponent(iconTextRow);
+
+        const iconLabelField = new TextField();
+        const iconLabelRow = new Component();
+        iconLabelRow.setLayoutManager(new HBox());
+        iconLabelRow.addComponent(new IconLabel("times", "Email:", iconLabelField.getId()));
+        iconLabelRow.addComponent(iconLabelField);
+        this.addComponent(iconLabelRow);
+
+        const buttonGlyphWindow = new Button("Show window with title glyph");
+        buttonGlyphWindow.addActionListener(() => {
+            const win = new Window("Settings", { glyph: "arrow-right" });
+            win.setX(220);
+            win.setY(180);
+            win.setWidth(300);
+            win.setHeight(180);
+            win.show();
+        });
+        this.addComponent(buttonGlyphWindow);
 
         const buttonOverlaySpinner = new Button("Overlay spinner on this panel for 2 s");
         buttonOverlaySpinner.addActionListener(() => {

@@ -6,8 +6,18 @@ import { WindowHeader } from "~/component/container/WindowHeader.js";
 import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
 import { Event } from "~/core/Event.js";
 import { Placement } from "~/primitive/Placement.js";
-import { Panel } from "~/core/Panel.js";
+import { Panel, PanelOptions } from "~/core/Panel.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * Construction-time options for {@link Window}.
+ *
+ * @category Core
+ */
+export interface WindowOptions extends PanelOptions {
+    headerText?: string;
+    glyph?:      string | null;
+}
 
 /**
  * A floating, resizable, and draggable window component.
@@ -62,7 +72,7 @@ class Window extends Panel {
     private readonly boundOnDrag: (e: MouseEvent) => void = (e: MouseEvent) => this.onDrag(e);
     private readonly boundOnMouseUp: () => void = () => this.onMouseUp();
 
-    constructor(headerText: string) {
+    constructor(headerText: string, options?: WindowOptions) {
         super();
 
         this.setLayoutManager(new Border());
@@ -104,6 +114,40 @@ class Window extends Panel {
 
         Event.addListener(this.header, "mousedown", () => this.onMouseDown());
         Event.addSubtreeListener(this, "mousedown", () => this.bringToFront());
+
+        if (this.constructor === Window && options) {
+            this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies a {@link WindowOptions} bag, dispatching the header text and
+     * title-icon glyph after inherited Panel fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: WindowOptions): this {
+        super.applyOptions(options);
+
+        if (options.headerText !== undefined) {
+            this.setHeaderText(options.headerText);
+        }
+
+        if (options.glyph !== undefined) {
+            this.header.setGlyph(options.glyph);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the window's title-bar component.
+     *
+     * @returns The internal {@link WindowHeader} instance, exposing the close
+     *          button, title text, and optional title-icon slot.
+     */
+    getHeader(): WindowHeader {
+        return this.header;
     }
 
     /**
