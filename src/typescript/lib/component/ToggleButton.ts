@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { CSS } from "../CSS.js";
-import { Event } from "../Event.js";
-import { Button, ButtonOptions } from "./Button.js";
-import { callable } from "../Callable.js";
+import { CSS } from "~/CSS.js";
+import { Event } from "~/Event.js";
+import { Button, ButtonOptions } from "~/component/Button.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link ToggleButton}.

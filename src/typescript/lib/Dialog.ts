@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Component.js";
-import { Event } from "./Event.js";
-import { Position } from "./Position.js";
-import { Util } from "./Util.js";
-import { BorderStyle } from "./BorderStyle.js";
-import { Text } from "./component/Text.js";
-import { Button } from "./component/Button.js";
-import { DialogBackdrop } from "./component/DialogBackdrop.js";
-import { Border as BorderLayout } from "./layout/Border.js";
-import { Fit } from "./layout/Fit.js";
-import { Placement } from "./Placement.js";
-import { Insets } from "./Insets.js";
-import { callable } from "./Callable.js";
+import { Component } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { Position } from "~/Position.js";
+import { Util } from "~/Util.js";
+import { BorderStyle } from "~/BorderStyle.js";
+import { Text } from "~/component/Text.js";
+import { Button } from "~/component/Button.js";
+import { DialogBackdrop } from "~/component/DialogBackdrop.js";
+import { Border as BorderLayout } from "~/layout/Border.js";
+import { Fit } from "~/layout/Fit.js";
+import { Placement } from "~/Placement.js";
+import { Insets } from "~/Insets.js";
+import { callable } from "~/Callable.js";
 
 /**
  * The result produced when a dialog is dismissed.

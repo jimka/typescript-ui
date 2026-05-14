@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
-import { Event } from "../Event.js";
-import { Position } from "../Position.js";
-import { Util } from "../Util.js";
-import { callable } from "../Callable.js";
+import { Component } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { Position } from "~/Position.js";
+import { Util } from "~/Util.js";
+import { callable } from "~/Callable.js";
 
 const TRACK_WIDTH    = 12;
 const THUMB_INSET    = 2;

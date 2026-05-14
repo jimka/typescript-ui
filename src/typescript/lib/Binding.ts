@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { BaseObject } from './BaseObject.js';
-import { ModelRecord } from './data/ModelRecord.js';
-import { Bindable, BindingAccessors } from './Bindable.js';
-import { Component } from './Component.js';
-import { ValidationRule, FieldValidationConfig } from './validation/ValidationRule.js';
-import { FieldDecorator } from './validation/FieldDecorator.js';
-import { applyRule } from './validation/Validator.js';
+import { BaseObject } from '~/BaseObject.js';
+import { ModelRecord } from '~/data/ModelRecord.js';
+import { Bindable, BindingAccessors } from '~/Bindable.js';
+import { Component } from '~/Component.js';
+import { ValidationRule, FieldValidationConfig } from '~/validation/ValidationRule.js';
+import { FieldDecorator } from '~/validation/FieldDecorator.js';
+import { applyRule } from '~/validation/Validator.js';
 
 interface BoundEntry {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

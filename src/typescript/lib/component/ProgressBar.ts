@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { CSS } from "../CSS.js";
-import { Position } from "../Position.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { CSS } from "~/CSS.js";
+import { Position } from "~/Position.js";
+import { callable } from "~/Callable.js";
 
 CSS.ensureKeyframes(
     'ts-ui-progress-indeterminate',

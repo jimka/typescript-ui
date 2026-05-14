@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { Event } from "../Event.js";
-import { Insets } from "../Insets.js";
-import { LayoutConstraints } from "../layout/LayoutConstraints.js";
-import { BulletedListItemStyle } from "./BulletedListItemStyle.js";
-import { NumberedListItemStyle } from "./NumberedListItemStyle.js";
-import { ListItem } from "./ListItem.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { Insets } from "~/Insets.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import { BulletedListItemStyle } from "~/component/BulletedListItemStyle.js";
+import { NumberedListItemStyle } from "~/component/NumberedListItemStyle.js";
+import { ListItem } from "~/component/ListItem.js";
 
 /**
  * Construction-time options for {@link AbstractListComponent}.

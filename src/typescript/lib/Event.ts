@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Component.js";
+import { Component } from "~/Component.js";
 
 /**
  * Event routing system that manages DOM event listeners on behalf of components.

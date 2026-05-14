@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { Option } from "./Option.js";
-import { Event } from "../Event.js";
-import { Type } from "../Type.js";
-import { Util } from "../Util.js";
-import { AbstractStore } from "../data/AbstractStore.js";
-import { ModelRecord } from "../data/ModelRecord.js";
-import { Bindable } from "../Bindable.js";
-import { ThemeManager } from "../Theme.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { Option } from "~/component/Option.js";
+import { Event } from "~/Event.js";
+import { Type } from "~/Type.js";
+import { Util } from "~/Util.js";
+import { AbstractStore } from "~/data/AbstractStore.js";
+import { ModelRecord } from "~/data/ModelRecord.js";
+import { Bindable } from "~/Bindable.js";
+import { ThemeManager } from "~/Theme.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link ComboBox}.

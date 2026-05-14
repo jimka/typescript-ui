@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Util } from "./Util.js"
+import { Util } from "~/Util.js"
 
 /**
  * Base class for all library objects.

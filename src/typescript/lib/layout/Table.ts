@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
-import { Table as TableComponent } from "../component/table/Table.js";
-import { Column } from "../component/table/Column.js";
-import { Component } from "../Component.js";
-import { Util } from "../Util.js";
-import { ThemeManager } from "../Theme.js";
-import { callable } from "../Callable.js";
+import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { Table as TableComponent } from "~/component/table/Table.js";
+import { Column } from "~/component/table/Column.js";
+import { Component } from "~/Component.js";
+import { Util } from "~/Util.js";
+import { ThemeManager } from "~/Theme.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for the {@link Table} layout manager.

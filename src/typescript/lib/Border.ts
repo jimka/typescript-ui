@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { BorderLine } from "./BorderLine.js";
-import { BorderStyle } from "./BorderStyle.js";
+import { BorderLine } from "~/BorderLine.js";
+import { BorderStyle } from "~/BorderStyle.js";
 
 /**
  * Configuration options for a single border side.

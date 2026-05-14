@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { Util } from "../Util.js";
-import { Event } from "../Event.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { Util } from "~/Util.js";
+import { Event } from "~/Event.js";
+import { callable } from "~/Callable.js";
 
 /**
  * The eight edge / corner positions used by {@link WindowBorder} to identify

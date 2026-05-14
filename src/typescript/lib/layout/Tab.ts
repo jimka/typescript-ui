@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "./LayoutManager.js";
-import { Size } from "../Size.js";
-import { ToggleButton } from "../component/ToggleButton.js";
-import { Component } from "../Component.js";
-import { Event } from "../Event.js";
-import { Insets } from "../Insets.js";
-import { BorderStyle } from "../BorderStyle.js";
-import { FillType } from "./FillType.js";
-import { ButtonGroup } from "../ButtonGroup.js";
-import { RovingTabIndex } from "../RovingTabIndex.js";
-import { Column } from "./Column.js";
-import { HBox } from "./HBox.js";
-import { TabCloseButton } from "../component/TabCloseButton.js";
-import { callable } from "../Callable.js";
+import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { Size } from "~/Size.js";
+import { ToggleButton } from "~/component/ToggleButton.js";
+import { Component } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { Insets } from "~/Insets.js";
+import { BorderStyle } from "~/BorderStyle.js";
+import { FillType } from "~/layout/FillType.js";
+import { ButtonGroup } from "~/ButtonGroup.js";
+import { RovingTabIndex } from "~/RovingTabIndex.js";
+import { Column } from "~/layout/Column.js";
+import { HBox } from "~/layout/HBox.js";
+import { TabCloseButton } from "~/component/TabCloseButton.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link Tab}.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { ValidationRule } from './ValidationRule.js';
-import { FieldValidationResult } from './ValidationResult.js';
+import { ValidationRule } from '~/validation/ValidationRule.js';
+import { FieldValidationResult } from '~/validation/ValidationResult.js';
 
 /**
  * Evaluates a single {@link ValidationRule} against a field value.

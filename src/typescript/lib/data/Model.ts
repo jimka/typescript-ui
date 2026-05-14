@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Field, FieldOptions } from './Field.js';
-import { AbstractModel } from './AbstractModel.js';
+import { Field, FieldOptions } from '~/data/Field.js';
+import { AbstractModel } from '~/data/AbstractModel.js';
 
 /**
  * Construction-time options for {@link Model}.

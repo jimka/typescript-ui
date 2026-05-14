@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "./Component.js";
+import { Component } from "~/Component.js";
 
 /**
  * Valid WAI-ARIA landmark and widget roles used by this framework.

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Text, TextOptions } from "./Text.js"
-import { Position } from "../Position.js";
-import { callable } from "../Callable.js";
+import { Text, TextOptions } from "~/component/Text.js"
+import { Position } from "~/Position.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link Legend}.

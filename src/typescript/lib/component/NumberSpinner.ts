@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { Event } from "../Event.js";
-import { TextField } from "./TextField.js";
-import { SpinButton } from "./SpinButton.js";
-import { HBox } from "../layout/HBox.js";
-import { VBox } from "../layout/VBox.js";
-import { Insets } from "../Insets.js";
-import { Bindable } from "../Bindable.js";
-import { BorderStyle } from "../BorderStyle.js";
-import { Util } from "../Util.js";
-import { ThemeManager } from "../Theme.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { TextField } from "~/component/TextField.js";
+import { SpinButton } from "~/component/SpinButton.js";
+import { HBox } from "~/layout/HBox.js";
+import { VBox } from "~/layout/VBox.js";
+import { Insets } from "~/Insets.js";
+import { Bindable } from "~/Bindable.js";
+import { BorderStyle } from "~/BorderStyle.js";
+import { Util } from "~/Util.js";
+import { ThemeManager } from "~/Theme.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link NumberSpinner}.

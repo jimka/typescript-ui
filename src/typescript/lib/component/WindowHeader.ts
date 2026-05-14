@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Header, HeaderOptions } from "./Header.js";
-import { Button } from "./Button.js";
-import { FontAwesomeIcon } from "./FontAwesomeIcon.js";
-import { FillType } from "../layout/FillType.js";
-import { Placement } from "../Placement.js";
-import { callable } from "../Callable.js";
+import { Header, HeaderOptions } from "~/component/Header.js";
+import { Button } from "~/component/Button.js";
+import { FontAwesomeIcon } from "~/component/FontAwesomeIcon.js";
+import { FillType } from "~/layout/FillType.js";
+import { Placement } from "~/Placement.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link WindowHeader}.

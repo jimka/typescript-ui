@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { Event } from "../Event.js";
-import { Fit } from "../layout/Fit.js";
-import { Text } from "./Text.js";
-import { FillType } from "../layout/FillType.js";
-import { BorderStyle } from "../BorderStyle.js";
-import { AnchorType } from "../layout/AnchorType.js";
-import { CSS } from "../CSS.js";
-import { Border, BorderOptions } from "../Border.js";
-import { Insets } from "../Insets.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { Fit } from "~/layout/Fit.js";
+import { Text } from "~/component/Text.js";
+import { FillType } from "~/layout/FillType.js";
+import { BorderStyle } from "~/BorderStyle.js";
+import { AnchorType } from "~/layout/AnchorType.js";
+import { CSS } from "~/CSS.js";
+import { Border, BorderOptions } from "~/Border.js";
+import { Insets } from "~/Insets.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link Button}.

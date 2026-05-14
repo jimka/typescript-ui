@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Button, ButtonOptions } from "./Button.js";
-import { Event } from "../Event.js";
-import { Util } from "../Util.js";
-import { ThemeManager } from "../Theme.js";
-import { BorderStyle } from "../BorderStyle.js";
-import { Insets } from "../Insets.js";
-import { callable } from "../Callable.js";
+import { Button, ButtonOptions } from "~/component/Button.js";
+import { Event } from "~/Event.js";
+import { Util } from "~/Util.js";
+import { ThemeManager } from "~/Theme.js";
+import { BorderStyle } from "~/BorderStyle.js";
+import { Insets } from "~/Insets.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link SpinButton}.

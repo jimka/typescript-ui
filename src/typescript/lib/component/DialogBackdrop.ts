@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import { Event } from "../Event.js";
-import { Position } from "../Position.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import { Event } from "~/Event.js";
+import { Position } from "~/Position.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link DialogBackdrop}.

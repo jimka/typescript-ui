@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractModel } from './AbstractModel.js';
+import { AbstractModel } from '~/data/AbstractModel.js';
 
 /**
  * A single data record managed by a store.

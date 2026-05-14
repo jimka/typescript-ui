@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../Component.js";
-import { Scrollbar } from "./Scrollbar.js";
+import { Component } from "~/Component.js";
+import { Scrollbar } from "~/component/Scrollbar.js";
 
 /**
  * Callback fired by {@link VirtualScroller} whenever the scroll position

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { ModelRecord } from '../ModelRecord.js';
+import { ModelRecord } from '~/data/ModelRecord.js';
 
 /**
  * Optional parameters passed to {@link Proxy.read} when the store opts in to

@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../../Component.js";
-import { AbstractModel } from "../../data/AbstractModel.js";
-import { ModelRecord } from "../../data/ModelRecord.js";
-import { Cell } from "./cell/Cell.js";
-import { DefaultCell } from "./cell/Default.js";
-import { StringCell } from "./cell/String.js";
-import { BooleanCell } from "./cell/Boolean.js";
-import { NumberCell } from "./cell/Number.js";
-import { DateCell } from "./cell/Date.js";
-import { TimeCell } from "./cell/Time.js";
-import { DateTimeCell } from "./cell/DateTime.js";
-import type { ColumnConfig } from "./ColumnConfig.js";
-import { LayoutConstraints } from "../../layout/LayoutConstraints.js";
-import { callable } from "../../Callable.js";
+import { Component } from "~/Component.js";
+import { AbstractModel } from "~/data/AbstractModel.js";
+import { ModelRecord } from "~/data/ModelRecord.js";
+import { Cell } from "~/component/table/cell/Cell.js";
+import { DefaultCell } from "~/component/table/cell/Default.js";
+import { StringCell } from "~/component/table/cell/String.js";
+import { BooleanCell } from "~/component/table/cell/Boolean.js";
+import { NumberCell } from "~/component/table/cell/Number.js";
+import { DateCell } from "~/component/table/cell/Date.js";
+import { TimeCell } from "~/component/table/cell/Time.js";
+import { DateTimeCell } from "~/component/table/cell/DateTime.js";
+import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import { callable } from "~/Callable.js";
 
 /**
  * A single data row in the table, rendered as a `<tr>` element.

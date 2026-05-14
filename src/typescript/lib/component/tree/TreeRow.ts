@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../../Component.js";
-import { Text } from "../Text.js";
-import { TreeNode } from "./TreeNode.js";
-import { callable } from "../../Callable.js";
+import { Component } from "~/Component.js";
+import { Text } from "~/component/Text.js";
+import { TreeNode } from "~/component/tree/TreeNode.js";
+import { callable } from "~/Callable.js";
 
 /** Width in pixels reserved for the expand/collapse toggle icon. */
 export const TOGGLE_WIDTH = 20;

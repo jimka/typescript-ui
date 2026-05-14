@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "../Component.js";
-import type { MenuItemCSSVarPrefix } from "./MenuItem.js";
-import { callable } from "../Callable.js";
+import { Component, ComponentOptions } from "~/Component.js";
+import type { MenuItemCSSVarPrefix } from "~/component/MenuItem.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link MenuSeparator}.

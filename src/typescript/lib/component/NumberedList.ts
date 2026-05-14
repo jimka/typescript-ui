@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractListComponent, AbstractListOptions } from "./AbstractListComponent.js";
-import { NumberedListItemStyle } from "./NumberedListItemStyle.js";
-import { callable } from "../Callable.js";
+import { AbstractListComponent, AbstractListOptions } from "~/component/AbstractListComponent.js";
+import { NumberedListItemStyle } from "~/component/NumberedListItemStyle.js";
+import { callable } from "~/Callable.js";
 
 /**
  * Construction-time options for {@link NumberedList}.

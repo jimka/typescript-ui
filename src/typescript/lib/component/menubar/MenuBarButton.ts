@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "../../Component.js";
-import { CSS } from "../../CSS.js";
-import { Event } from "../../Event.js";
-import { Text } from "../Text.js";
-import { callable } from "../../Callable.js";
+import { Component } from "~/Component.js";
+import { CSS } from "~/CSS.js";
+import { Event } from "~/Event.js";
+import { Text } from "~/component/Text.js";
+import { callable } from "~/Callable.js";
 
 /**
  * A single top-level button in a `MenuBar` (e.g. "File", "Edit").
