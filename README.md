@@ -55,3 +55,5 @@ win.show();
 ## License
 
 Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Free for personal and educational use; commercial use is not permitted.
+
+Third-party material redistributed with this project (Font Awesome Free icons) is covered by its own license — see [NOTICE](NOTICE) for attribution and license details.
