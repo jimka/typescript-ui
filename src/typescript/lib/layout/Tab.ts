@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Size } from "~/primitive/Size.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { Component } from "~/core/Component.js";
@@ -28,11 +29,24 @@ export interface TabOptions extends LayoutManagerOptions {
     onTabClose?: (component: Component) => void;
 }
 
-/** Bookkeeping record for one tab slot. */
+/**
+ * Bookkeeping record for one tab slot.
+ *
+ * @remarks `component` is `null` for entries registered via `addLazyTab` until the
+ * first activation; on materialization, the factory runs and the produced component
+ * is cached here. Eager entries (created by `createTab`) populate `component`
+ * immediately and leave `factory` null. The component reference is stored on the
+ * entry rather than looked up by index in `container.getComponents()` because lazy
+ * tabs may materialize out of order — `Component.addComponent` always appends, so
+ * indices between `tabs[]` and the container's component list do not stay aligned.
+ */
 interface TabEntry {
     wrapper: Component;
     button: ToggleButton;
     closeButton?: TabCloseButton;
+    component: Component | null;
+    factory: (() => Component) | null;
+    constraints?: LayoutConstraints;
 }
 
 /**
@@ -137,9 +151,10 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Returns the child component at the currently selected tab index.
+     * Returns the child component at the currently selected tab index, materializing
+     * a lazily-registered panel on first access.
      *
-     * @returns The visible component, or `null` if the container is empty or not attached.
+     * @returns The visible component, or `null` if no entry is registered at the selected index or the container is not attached.
      */
     getVisibleComponent(): Component | null {
         let container = this.getContainer();
@@ -147,9 +162,18 @@ class Tab extends LayoutManager {
             return null;
         }
 
-        let components = container.getComponents();
+        const entry = this.tabs[this.selectedTabIndex];
+        if (entry) {
+            if (entry.component) {
+                return entry.component;
+            }
 
-        return components[this.selectedTabIndex];
+            if (entry.factory) {
+                return this.materialize(this.selectedTabIndex);
+            }
+        }
+
+        return container.getComponents()[this.selectedTabIndex] ?? null;
     }
 
     /**
@@ -264,24 +288,16 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Creates a tab entry for a component and adds it to the toolbar.
+     * Builds the toolbar wrapper, toggle button, and optional close button for one
+     * tab slot, registers them with the button group / roving tab index, and pushes
+     * the entry onto `this.tabs`. The component-side ARIA wiring is left to the
+     * caller because the content component may not exist yet (lazy entries).
      *
-     * @param component - The content component for which a tab entry should be created.
-     *
-     * @remarks The button label is taken from `LayoutConstraints.name` when available;
-     * otherwise the component's ID is used. When `constraints.closeable` is true, a
-     * [`TabCloseButton`](/api/component/button/classes/TabCloseButton) is appended to the wrapper after the toggle button.
+     * @param name - The visible label for the tab button.
+     * @param constraints - Optional layout constraints; `constraints.closeable` adds a close button.
+     * @returns The newly-registered tab entry with `component` and `factory` set to `null`.
      */
-    createTab(component: Component): void {
-        let constraints = this.getLayoutConstraints(component);
-        let name: string;
-
-        if (constraints && constraints.name) {
-            name = constraints.name;
-        } else {
-            name = component.getId();
-        }
-
+    private buildTabEntry(name: string, constraints?: LayoutConstraints): TabEntry {
         let tabButton = new ToggleButton(name);
 
         tabButton.setBackgroundColor("var(--ts-ui-tab-button-bg, #b8b8c3)");
@@ -316,7 +332,14 @@ class Tab extends LayoutManager {
             wrapper.addComponent(closeButton);
         }
 
-        const entry: TabEntry = { wrapper, button: tabButton, closeButton };
+        const entry: TabEntry = {
+            wrapper,
+            button: tabButton,
+            closeButton,
+            component: null,
+            factory: null,
+            constraints
+        };
 
         if (closeButton) {
             closeButton.addActionListener(() => this.closeTab(entry));
@@ -336,11 +359,118 @@ class Tab extends LayoutManager {
 
         tabButton.getAria().setRole("tab");
         tabButton.getAria().setSelected(isSelected);
-        tabButton.getAria().setControls(component.getId());
+
+        return entry;
+    }
+
+    /**
+     * Wires the component-side ARIA so the panel is announced as the tabpanel
+     * controlled by the tab button.
+     *
+     * @param entry - The tab entry whose button labels and controls the component.
+     * @param component - The content component to attach ARIA roles to.
+     */
+    private wireComponentAria(entry: TabEntry, component: Component): void {
+        entry.button.getAria().setControls(component.getId());
 
         component.getAria().setRole("tabpanel");
         component.getAria().setTabIndex(-1);
-        component.getAria().setLabelledBy(tabButton.getId());
+        component.getAria().setLabelledBy(entry.button.getId());
+    }
+
+    /**
+     * Creates a tab entry for a component and adds it to the toolbar.
+     *
+     * @param component - The content component for which a tab entry should be created.
+     *
+     * @remarks The button label is taken from `LayoutConstraints.name` when available;
+     * otherwise the component's ID is used. When `constraints.closeable` is true, a
+     * [`TabCloseButton`](/api/component/button/classes/TabCloseButton) is appended to the wrapper after the toggle button.
+     */
+    createTab(component: Component): void {
+        let constraints = this.getLayoutConstraints(component);
+        let name: string;
+
+        if (constraints && constraints.name) {
+            name = constraints.name;
+        } else {
+            name = component.getId();
+        }
+
+        const entry = this.buildTabEntry(name, constraints);
+
+        entry.component = component;
+        entry.factory = null;
+
+        this.wireComponentAria(entry, component);
+    }
+
+    /**
+     * Registers a tab whose content component is built on first activation rather
+     * than at registration time. The tab button is created immediately so the tab
+     * strip renders fully on first paint; the factory runs only when the tab is
+     * first selected (or laid out as the initial tab).
+     *
+     * @param factory - A zero-argument function that produces the content component on first activation.
+     * @param name - The visible label for the tab button.
+     * @param constraints - Optional layout constraints; forwarded to `container.addComponent` when the component is materialized.
+     *
+     * @remarks Once a `Tab` contains any lazy entries, mixing direct
+     * `container.addComponent(c, {...})` calls is not supported: `tabs.length`
+     * may equal or exceed `componentCount`, which causes the auto-`createTab`
+     * loop in `doLayout` to skip the eager component. Use `addLazyTab` for all
+     * subsequent additions, or stay fully eager.
+     *
+     * @example
+     * ```typescript
+     * const layout = new Tab();
+     * body.setLayoutManager(layout);
+     * layout.addLazyTab(() => new HeavyPanel(), "Heavy");
+     * ```
+     */
+    addLazyTab(factory: () => Component, name: string, constraints?: LayoutConstraints): void {
+        const entry = this.buildTabEntry(name, constraints);
+
+        entry.factory = factory;
+        entry.component = null;
+    }
+
+    /**
+     * Ensures the tab entry at `idx` has a built content component, running the
+     * factory and attaching the component to the container on first call.
+     *
+     * @param idx - Zero-based index into `this.tabs`.
+     * @returns The component associated with the entry, or `null` if the index is out of range or no container is attached.
+     */
+    private materialize(idx: number): Component | null {
+        const entry = this.tabs[idx];
+        if (!entry) {
+            return null;
+        }
+
+        if (entry.component) {
+            return entry.component;
+        }
+
+        if (!entry.factory) {
+            return null;
+        }
+
+        const container = this.getContainer();
+        if (!container) {
+            return null;
+        }
+
+        const component = entry.factory();
+
+        entry.component = component;
+        entry.factory = null;
+
+        container.addComponent(component, entry.constraints);
+
+        this.wireComponentAria(entry, component);
+
+        return component;
     }
 
     /**
@@ -453,14 +583,16 @@ class Tab extends LayoutManager {
             return;
         }
 
-        const components = container.getComponents();
-        const contentComponent = components[entryIndex];
+        const contentComponent = entry.component;
 
         this.buttonGroup.removeButton(entry.button);
         this.rovingTabIndex.remove(entry.button);
         this.tabs.splice(entryIndex, 1);
         this.toolbar.removeComponent(entry.wrapper);
-        container.removeComponent(contentComponent);
+
+        if (contentComponent) {
+            container.removeComponent(contentComponent);
+        }
 
         if (this.onTabClose && contentComponent) {
             this.onTabClose(contentComponent);

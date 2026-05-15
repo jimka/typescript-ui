@@ -30,53 +30,22 @@ let body = Body.getInstance();
 let layoutManager = new Tab();
 body.setLayoutManager(layoutManager);
 
-let miscPanel = new MiscPanel();
-body.addComponent(miscPanel, { name: "Misc." });
-
-let bindingPanel = new BindingPanel();
-body.addComponent(bindingPanel, { name: "Binding" });
-
-let rowPanel = new RowPanel();
-body.addComponent(rowPanel, { name: "Row" });
-
-let columnPanel = new ColumnPanel();
-body.addComponent(columnPanel, { name: "Column" });
-
-let fitPanel = new FitPanel();
-body.addComponent(fitPanel, { name: "Fit" });
-
-let splitPanel = new SplitPanel();
-body.addComponent(splitPanel, { name: "Split" });
-
-let borderPanel = new BorderPanel();
-body.addComponent(borderPanel, { name: "Border" });
-
-let hboxPanel = new HBoxPanel();
-body.addComponent(hboxPanel, { name: "HBox" });
-
-let vboxPanel = new VBoxPanel();
-body.addComponent(vboxPanel, { name: "VBox" });
-
-let gridPanel = new GridPanel();
-body.addComponent(gridPanel, { name: "Grid" });
-
-let complexPanel = new ComplexUIPanel();
-body.addComponent(complexPanel, { name: "Complex" });
-
-let accordionPanel = new AccordionPanel();
-body.addComponent(accordionPanel, { name: "Accordion" });
-
-let tabPanel = new TabPanel();
-body.addComponent(tabPanel, { name: "Tab" });
-
-let menuBarPanel = new MenuBarPanel();
-body.addComponent(menuBarPanel, { name: "MenuBar" });
-
-let multiSelectListPanel = new MultiSelectListPanel();
-body.addComponent(multiSelectListPanel, { name: "MultiSelect" });
-
-let baselinePanel = new BaselinePanel();
-body.addComponent(baselinePanel, { name: "Baseline" });
+layoutManager.addLazyTab(() => new MiscPanel(),            "Misc."      );
+layoutManager.addLazyTab(() => new BindingPanel(),         "Binding"    );
+layoutManager.addLazyTab(() => new RowPanel(),             "Row"        );
+layoutManager.addLazyTab(() => new ColumnPanel(),          "Column"     );
+layoutManager.addLazyTab(() => new FitPanel(),             "Fit"        );
+layoutManager.addLazyTab(() => new SplitPanel(),           "Split"      );
+layoutManager.addLazyTab(() => new BorderPanel(),          "Border"     );
+layoutManager.addLazyTab(() => new HBoxPanel(),            "HBox"       );
+layoutManager.addLazyTab(() => new VBoxPanel(),            "VBox"       );
+layoutManager.addLazyTab(() => new GridPanel(),            "Grid"       );
+layoutManager.addLazyTab(() => new ComplexUIPanel(),       "Complex"    );
+layoutManager.addLazyTab(() => new AccordionPanel(),       "Accordion"  );
+layoutManager.addLazyTab(() => new TabPanel(),             "Tab"        );
+layoutManager.addLazyTab(() => new MenuBarPanel(),         "MenuBar"    );
+layoutManager.addLazyTab(() => new MultiSelectListPanel(), "MultiSelect");
+layoutManager.addLazyTab(() => new BaselinePanel(),        "Baseline"   );
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number'                  },
