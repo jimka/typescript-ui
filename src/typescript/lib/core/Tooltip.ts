@@ -3,8 +3,11 @@
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
+import { Animation } from "~/core/Animation.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Text } from "~/component/input/Text.js";
+
+const TOOLTIP_ANIM_DURATION_MS: number = 100;
 
 /**
  * Optional color overrides for a tooltip attachment.
@@ -50,6 +53,12 @@ export class Tooltip extends Component {
     private static instance: Tooltip | null = null;
     private static showTimer: ReturnType<typeof setTimeout> | null = null;
     private static attachments: Map<string, TooltipAttachment> = new Map();
+
+    // Set true while a fade-out is in flight; reset to false when the fade-out
+    // completes (so the deferred removeElement fires) or when a fresh `show()`
+    // re-displays the tooltip mid-fade (the deferred removeElement is then
+    // skipped because the tooltip is back on screen).
+    private static dismissing: boolean = false;
 
     private static readonly H_PADDING: number = 16;
     private static readonly V_PADDING: number = 8;
@@ -139,6 +148,17 @@ export class Tooltip extends Component {
         document.documentElement.appendChild(el);
 
         inst.setVisible(true);
+
+        // Cancel a pending fade-out's removeElement so a fresh show during the
+        // outgoing transition keeps the element in the DOM.
+        Tooltip.dismissing = false;
+
+        Animation.play(el, {
+            from:       { opacity: "0" },
+            to:         { opacity: "1" },
+            durationMs: TOOLTIP_ANIM_DURATION_MS,
+            properties: ["opacity"],
+        });
     }
 
     /**
@@ -153,9 +173,27 @@ export class Tooltip extends Component {
         }
 
         const inst = Tooltip.getInstance();
+        const el   = inst.getElement();
 
-        inst.setVisible(false);
-        inst.removeElement();
+        if (!el) {
+            return;
+        }
+
+        Tooltip.dismissing = true;
+
+        Animation.play(el, {
+            to:         { opacity: "0" },
+            durationMs: TOOLTIP_ANIM_DURATION_MS,
+            properties: ["opacity"],
+            onComplete: () => {
+                if (!Tooltip.dismissing) {
+                    return;
+                }
+                Tooltip.dismissing = false;
+                inst.setVisible(false);
+                inst.removeElement();
+            },
+        });
     }
 
     /**

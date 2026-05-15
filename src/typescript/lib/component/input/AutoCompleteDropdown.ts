@@ -2,11 +2,14 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { Animation } from "~/core/Animation.js";
 import { Position } from "~/primitive/Position.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { VBox } from "~/layout/VBox.js";
 import { AutoCompleteItem } from "~/component/input/AutoCompleteItem.js";
 import { callable } from "~/core/Callable.js";
+
+const AUTOCOMPLETE_ANIM_DURATION_MS: number = 100;
 
 /**
  * Construction-time options for {@link AutoCompleteDropdown}.
@@ -32,6 +35,11 @@ class AutoCompleteDropdown extends Component {
     private readonly onViewportMouseDown: (e: MouseEvent) => void;
     private open: boolean = false;
     private maxItems: number | null = null;
+    // Set true while a fade-out is in flight; reset to false either when the
+    // fade completes (so the deferred detach runs) or when a fresh `show()`
+    // re-displays the dropdown mid-fade (the deferred detach skips because
+    // the dropdown is back on screen).
+    private dismissing: boolean = false;
 
     /**
      * @param onSelect - Called with the selected suggestion string when the user picks an item.
@@ -146,6 +154,17 @@ class AutoCompleteDropdown extends Component {
         this.setVisible(true);
         this.open = true;
 
+        // Cancel a pending fade-out's deferred detach so a fresh show during
+        // the outgoing transition keeps the element in the DOM.
+        this.dismissing = false;
+
+        Animation.play(el, {
+            from:       { opacity: "0" },
+            to:         { opacity: "1" },
+            durationMs: AUTOCOMPLETE_ANIM_DURATION_MS,
+            properties: ["opacity"],
+        });
+
         Event.addViewportListener(this, "mousedown", this.onViewportMouseDown);
 
         return this;
@@ -155,12 +174,35 @@ class AutoCompleteDropdown extends Component {
      * Hides the dropdown, detaches it from the DOM, and fires the `onHide` callback.
      */
     hide(): this {
-        this.setVisible(false);
-        this.removeElement();
         this.open = false;
-
         Event.removeViewportListener(this, "mousedown", this.onViewportMouseDown);
-        this.onHide();
+
+        const el = this.getElement();
+        const finalize = (): void => {
+            this.setVisible(false);
+            this.removeElement();
+            this.onHide();
+        };
+
+        if (!el) {
+            finalize();
+            return this;
+        }
+
+        this.dismissing = true;
+
+        Animation.play(el, {
+            to:         { opacity: "0" },
+            durationMs: AUTOCOMPLETE_ANIM_DURATION_MS,
+            properties: ["opacity"],
+            onComplete: () => {
+                if (!this.dismissing) {
+                    return;
+                }
+                this.dismissing = false;
+                finalize();
+            },
+        });
 
         return this;
     }
