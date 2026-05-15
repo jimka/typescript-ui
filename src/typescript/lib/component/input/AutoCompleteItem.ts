@@ -60,7 +60,7 @@ class AutoCompleteItem extends Component {
 
         this.textComponent = new Text(text);
         this.textComponent.setPointerEvents("none");
-        this.textComponent.setElementCSSRule("lineHeight", AutoCompleteItem.HEIGHT + "px");
+        this.textComponent.centerInHeight(AutoCompleteItem.HEIGHT);
         this.textComponent.setElementCSSRule("whiteSpace", "nowrap");
         this.textComponent.setElementCSSRule("overflow", "hidden");
         this.textComponent.setElementCSSRule("textOverflow", "ellipsis");

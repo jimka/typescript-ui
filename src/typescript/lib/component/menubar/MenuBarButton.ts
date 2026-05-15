@@ -16,8 +16,16 @@ export interface MenuBarButtonOptions extends ComponentOptions {
     glyph?: string | null;
 }
 
-const GLYPH_TEXT_GAP = 0;
+const GLYPH_TEXT_GAP = 4;
 const HORIZONTAL_PAD = 10;
+
+/**
+ * Fixed row height shared by every `MenuBarButton` and by the parent
+ * [`MenuBar`](/api/component/menubar/classes/MenuBar) container's `setMinSize`. Exported so the two stay in
+ * lockstep — changing one without the other would let the bar grow taller
+ * than its buttons.
+ */
+export const MENU_BAR_BUTTON_HEIGHT: number = 28;
 
 /**
  * A single top-level button in a [`MenuBar`](/api/component/menubar/classes/MenuBar) (e.g. "File", "Edit").
@@ -58,7 +66,6 @@ class MenuBarButton extends Component {
         this.setForegroundColor("var(--ts-ui-menu-bar-btn-fg, inherit)");
         this.setElementCSSRule("fontSize", "var(--ts-ui-button-font-size, 12px)");
         this.setCursor("pointer");
-        this.recomputePreferredSize();
 
         this._hoverRule = CSS.createComponentRule(this.getId() + ":hover") as CSSStyleRule;
         this._hoverRule.style.setProperty(
@@ -70,7 +77,10 @@ class MenuBarButton extends Component {
         this._text.setPointerEvents("none");
         this._text.setElementCSSRule("userSelect", "none");
         this._text.setElementCSSRule("whiteSpace", "nowrap");
+        this._text.centerInHeight(MENU_BAR_BUTTON_HEIGHT);
         this.addComponent(this._text);
+
+        this.recomputePreferredSize();
 
         this.getAria().setRole("menuitem");
         this.getAria().setHasPopup("menu");
@@ -200,17 +210,23 @@ class MenuBarButton extends Component {
     }
 
     /**
-     * Recomputes the button's preferred size from the label width plus, when present, the leading glyph's width.
+     * Recomputes the button's preferred size from the measured label width plus,
+     * when present, the leading glyph's width.
+     *
+     * @remarks Reads `_text.getPreferredSize()` rather than estimating from the
+     * label string length, so glyph-heavy labels like "View" no longer underflow
+     * their text box.
      */
     private recomputePreferredSize(): void {
-        let width = this._label.length * 7 + HORIZONTAL_PAD * 2;
+        const textWidth = this._text.getPreferredSize()?.width ?? this._label.length * 7;
+        let   width     = textWidth + HORIZONTAL_PAD * 2;
 
         if (this._glyph) {
             const glyphSize = this._glyph.getPreferredSize() ?? { width: 16, height: 16 };
             width += glyphSize.width + GLYPH_TEXT_GAP;
         }
 
-        this.setPreferredSize(width, 28);
+        this.setPreferredSize(width, MENU_BAR_BUTTON_HEIGHT);
     }
 }
 
