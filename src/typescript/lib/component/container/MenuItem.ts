@@ -199,16 +199,16 @@ class MenuItem extends Component {
         this._titleText = new Text(config.text ?? "");
         this._titleText.setPointerEvents("none");
         this._titleText.centerInHeight(MenuItem.HEIGHT);
-        this._titleText.setElementCSSRule("whiteSpace", "nowrap");
-        this._titleText.setElementCSSRule("overflow", "hidden");
-        this._titleText.setElementCSSRule("textOverflow", "ellipsis");
+        this._titleText.setWhiteSpace("nowrap");
+        this._titleText.setOverflow("hidden");
+        this._titleText.setTextOverflow("ellipsis");
         this.addComponent(this._titleText);
 
         if (config.shortcut) {
             this._shortcutText = new Text(config.shortcut);
             this._shortcutText.setPointerEvents("none");
             this._shortcutText.centerInHeight(MenuItem.HEIGHT);
-            this._shortcutText.setElementCSSRule("textAlign", "right");
+            this._shortcutText.setTextAlign("right");
             this._shortcutText.setForegroundColor(
                 `var(--ts-ui-${cssVarPrefix}-item-shortcut-color, rgb(140, 140, 140))`
             );
@@ -219,7 +219,7 @@ class MenuItem extends Component {
             this._chevronText = new Text("▶");
             this._chevronText.setPointerEvents("none");
             this._chevronText.centerInHeight(MenuItem.HEIGHT);
-            this._chevronText.setElementCSSRule("textAlign", "center");
+            this._chevronText.setTextAlign("center");
             this._chevronText.setForegroundColor(
                 `var(--ts-ui-${cssVarPrefix}-item-shortcut-color, rgb(140, 140, 140))`
             );

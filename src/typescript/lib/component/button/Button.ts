@@ -458,12 +458,12 @@ class Button extends Component {
         this._enabled = enabled;
 
         if (enabled) {
-            this.removeElementAttribute("disabled");
+            this.setDisabledAttribute(false);
             this.setOpacity(null);
             this.setCursor(this._enabledCursor);
         } else {
             this._enabledCursor = this.getCursor() ?? "pointer";
-            this.setElementAttribute("disabled", "");
+            this.setDisabledAttribute(true);
             this.setOpacity(0.5);
             this.setCursor("not-allowed");
         }

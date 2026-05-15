@@ -26,6 +26,9 @@ class TextInput extends Input {
 
     private text: String = "";
     private textAlign: string | null = null;
+    private placeholder: string | null = null;
+    private readOnly: boolean = false;
+    private maxLength: number | null = null;
 
     constructor(options?: TextInputOptions) {
         super({ tag: options?.tag ?? "input" });
@@ -54,15 +57,15 @@ class TextInput extends Input {
         }
 
         if (options.placeholder !== undefined) {
-            this.setElementAttribute("placeholder", options.placeholder);
+            this.setPlaceholder(options.placeholder);
         }
 
         if (options.readOnly !== undefined) {
-            this.setElementAttribute("readonly", options.readOnly ? "" : null);
+            this.setReadOnly(options.readOnly);
         }
 
         if (options.maxLength !== undefined) {
-            this.setElementAttribute("maxlength", String(options.maxLength));
+            this.setMaxLength(options.maxLength);
         }
 
         return this;
@@ -136,6 +139,80 @@ class TextInput extends Input {
         }
 
         element.value = this.text.valueOf();
+
+        return this;
+    }
+
+    /**
+     * Returns the placeholder text shown when the input is empty, or null if none is set.
+     *
+     * @returns The placeholder string, or null.
+     */
+    getPlaceholder(): string | null {
+        return this.placeholder;
+    }
+
+    /**
+     * Sets the HTML `placeholder` attribute on the underlying input.
+     *
+     * @param value - The placeholder text.
+     *
+     * @returns This component, for method chaining.
+     */
+    setPlaceholder(value: string): this {
+        this.placeholder = value;
+        this.setElementAttribute("placeholder", value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the input is in read-only mode.
+     *
+     * @returns True if the `readonly` attribute is set.
+     */
+    isReadOnly(): boolean {
+        return this.readOnly;
+    }
+
+    /**
+     * Sets the HTML `readonly` attribute on the underlying input.
+     *
+     * @param value - True to mark the input as read-only, false to remove the attribute.
+     *
+     * @returns This component, for method chaining.
+     */
+    setReadOnly(value: boolean): this {
+        this.readOnly = value;
+
+        if (value) {
+            this.setElementAttribute("readonly", "");
+        } else {
+            this.removeElementAttribute("readonly");
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the configured maximum text length, or null if unset.
+     *
+     * @returns The maxlength value, or null.
+     */
+    getMaxLength(): number | null {
+        return this.maxLength;
+    }
+
+    /**
+     * Sets the HTML `maxlength` attribute on the underlying input.
+     *
+     * @param value - The maximum number of characters allowed.
+     *
+     * @returns This component, for method chaining.
+     */
+    setMaxLength(value: number): this {
+        this.maxLength = value;
+        this.setElementAttribute("maxlength", String(value));
 
         return this;
     }

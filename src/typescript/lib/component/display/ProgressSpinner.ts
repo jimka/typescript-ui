@@ -81,7 +81,7 @@ class ProgressSpinner extends Component {
             color: "var(--ts-ui-progress-spinner-color, rgb(30, 100, 200))",
             top  : { style: BorderStyle.SOLID, width: ARC_BORDER_WIDTH, color: "transparent" },
         });
-        this.arc.setElementCSSRule("animation", "ts-ui-progress-spinner-rotate 0.8s linear infinite");
+        this.arc.setAnimation("ts-ui-progress-spinner-rotate 0.8s linear infinite");
 
         super.addComponent(this.arc);
 

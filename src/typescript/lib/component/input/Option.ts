@@ -26,6 +26,7 @@ class Option extends Component {
 
     private key: string;
     private value: string;
+    private selected: boolean = false;
 
     constructor(key: string, value: string, options?: OptionOptions) {
         super({ tag: "option" });
@@ -64,11 +65,39 @@ class Option extends Component {
         }
 
         if (options.selected !== undefined) {
-            this.setElementAttribute("selected", options.selected ? "" : null);
+            this.setSelected(options.selected);
         }
 
         if (options.disabled !== undefined) {
-            this.setElementAttribute("disabled", options.disabled ? "" : null);
+            this.setDisabledAttribute(options.disabled);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether the option is marked as the default selection.
+     *
+     * @returns True when the `selected` attribute is set.
+     */
+    isSelected(): boolean {
+        return this.selected;
+    }
+
+    /**
+     * Sets the HTML `selected` attribute on the underlying option.
+     *
+     * @param value - True to mark the option as the default selection, false to remove the attribute.
+     *
+     * @returns This component, for method chaining.
+     */
+    setSelected(value: boolean): this {
+        this.selected = value;
+
+        if (value) {
+            this.setElementAttribute("selected", "");
+        } else {
+            this.removeElementAttribute("selected");
         }
 
         return this;

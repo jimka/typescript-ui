@@ -61,9 +61,9 @@ class AutoCompleteItem extends Component {
         this.textComponent = new Text(text);
         this.textComponent.setPointerEvents("none");
         this.textComponent.centerInHeight(AutoCompleteItem.HEIGHT);
-        this.textComponent.setElementCSSRule("whiteSpace", "nowrap");
-        this.textComponent.setElementCSSRule("overflow", "hidden");
-        this.textComponent.setElementCSSRule("textOverflow", "ellipsis");
+        this.textComponent.setWhiteSpace("nowrap");
+        this.textComponent.setOverflow("hidden");
+        this.textComponent.setTextOverflow("ellipsis");
         this.addComponent(this.textComponent);
 
         this.clickListener = () => {
