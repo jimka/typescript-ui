@@ -40,6 +40,31 @@ tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 
 Tabs are selected by clicking their button. To set programmatically, look up the underlying [`ToggleButton`](/components/ToggleButton) via the layout's API and call `setSelected(true)`. The full surface is at the [API page](/api/layout/classes/Tab).
 
+## Lazy panel construction
+
+For tabs whose content is expensive to build (large forms, virtualised tables, charts), register them with `addLazyTab` so the factory only runs when the user first activates that tab:
+
+```typescript
+import { Component } from '@jimka/typescript-ui/core';
+import { Tab } from '@jimka/typescript-ui/layout';
+
+const container = new Component();
+const layout = new Tab();
+container.setLayoutManager(layout);
+
+layout.addLazyTab(() => new GeneralPanel(),  'General' );
+layout.addLazyTab(() => new NetworkPanel(),  'Network' );
+layout.addLazyTab(() => new AdvancedPanel(), 'Advanced');
+```
+
+The tab buttons render on first paint; the panels are constructed on first activation and cached thereafter. Re-clicking a previously-built tab is instant — scroll position and form state are preserved.
+
+`addLazyTab(factory, name, constraints?)` accepts the same per-child constraints as `addComponent` (including `closeable`). The constraints are stored on the lazy entry and applied when the panel materializes.
+
+::: warning Don't mix `addLazyTab` and `addComponent` on the same `Tab`
+Once a `Tab` has any lazy entries, subsequent calls to `container.addComponent(c, {...})` may not create a tab button. Pick one registration style per `Tab` instance.
+:::
+
 ## Tab-switch animation
 
 When the selected tab changes, the newly-visible child fades in over 120 ms via [`Animation`](/api/core/classes/Animation). The fade fires only on actual selection changes — a pure relayout (window resize, scheduleLayout from elsewhere) doesn't re-trigger it. Honours `prefers-reduced-motion: reduce`.
