@@ -40,7 +40,7 @@ class IconText extends Component {
 
     private _glyph: Glyph;
     private _text:  Text;
-    private _gap:   number = 0;
+    private _gap:   number = 2;
 
     /**
      * Constructs an `IconText` pairing the named glyph with the given label text.

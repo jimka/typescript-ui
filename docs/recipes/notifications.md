@@ -46,9 +46,26 @@ menu.show(x, y, [
 
 ## Behaviour notes
 
+- **Severity badge** — every toast leads with an SVG glyph tinted with the severity's border-colour token.
 - **Stacking** — multiple toasts stack upward from the bottom-right corner.
-- **Hover-pause** — the auto-dismiss timer pauses while the pointer is over the toast and resumes when it leaves.
-- **Manual dismiss** — every toast has a × button. Persistent toasts (`duration === 0`) require manual dismiss.
+- **Hover-pause is global** — hovering *any* toast freezes *every* visible toast's timer until the pointer leaves the last one. New toasts shown during the paused window start paused too.
+- **Two-line clamp** — long messages are clamped to two lines with a trailing ellipsis. Double-click the toast to open a modal dialog with the full content.
+- **Entrance + exit animation** — toasts slide in from the right and fade in over 200ms when they appear, and slide out + fade over 200ms on dismiss.
+- **Manual dismiss** — every toast has a × button. Persistent toasts (`duration === 0`) require manual dismiss. `prefers-reduced-motion: reduce` skips both the entrance and exit animations.
+
+## Pausing toasts during your own modal flow
+
+`Notification.pauseAll()` and `Notification.resumeAll()` pause every active toast timer. Use them when you open a custom modal that should also hold the notification stack in place — the framework only wires this in automatically for the built-in double-click detail dialog.
+
+```typescript
+import { Notification, Dialog } from '@jimka/typescript-ui/core';
+
+Notification.pauseAll();
+await Dialog.show({ title: 'Confirm', message: 'Discard the in-progress draft?' });
+Notification.resumeAll();
+```
+
+`resumeAll` restarts each timer with at least 8 seconds remaining, so the user has time to read the stack after the modal closes.
 
 ## Anti-patterns
 

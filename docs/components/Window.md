@@ -28,7 +28,7 @@ win.show();
 | Option | Type | Purpose |
 | --- | --- | --- |
 | `headerText` | `string` | Overrides the positional `headerText`. Last-write-wins. |
-| `glyph`      | `string \| null` | Registry [`Glyph`](/components/Glyph) name shown to the left of the title text. `null` clears an existing title icon. |
+| `glyph`      | `string \| null` | Registry [`Glyph`](/components/Glyph) name shown to the left of the title text. Omit to get the default `window` glyph; pass `null` to render a window with no title icon. |
 
 Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields.
 
@@ -48,6 +48,10 @@ The full surface — drag listeners, focus / activation events, viewport-clampin
 ## DOM placement
 
 Windows append themselves to `document.documentElement` (not `<body>`) so they can layer above any backdrop. This is also why theme tokens cascade from `<html>` rather than `<body>` — see [Theming › How it works](/concepts/theming#how-it-works).
+
+## Animation
+
+`show()` fades the window in over 150 ms with a small `scale(0.97 → 1)` lift, matching [`Dialog`](/components/Dialog)'s open transition. `onExitAction()` reverses the same fade-and-shrink before the destructor runs, so the window doesn't pop out from under the cursor. Both transitions honour `prefers-reduced-motion: reduce` and skip the animation when motion is reduced.
 
 ## Gotchas
 

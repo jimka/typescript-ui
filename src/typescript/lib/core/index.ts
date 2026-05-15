@@ -2,6 +2,7 @@
 
 export { BaseObject } from '~/core/BaseObject.js';
 export { Event } from '~/core/Event.js';
+export { Animation } from '~/core/Animation.js';
 export { Util } from '~/core/Util.js';
 export type { TextMeasureOptions, TextMetrics } from '~/core/Util.js';
 export { callable } from '~/core/Callable.js';
@@ -23,7 +24,7 @@ export { Tooltip } from '~/core/Tooltip.js';
 export type { TooltipColors } from '~/core/Tooltip.js';
 export { Notification } from '~/core/Notification.js';
 export type { NotificationType } from '~/core/Notification.js';
-export { Dialog } from '~/core/Dialog.js';
+export { Dialog, DialogTitleBar } from '~/core/Dialog.js';
 export type { DialogConfig, DialogButtonConfig, DialogResult } from '~/core/Dialog.js';
 
 export { ThemeManager, DefaultTheme, DarkTheme } from '~/core/Theme.js';

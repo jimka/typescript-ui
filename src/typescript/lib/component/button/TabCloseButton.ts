@@ -23,9 +23,7 @@ class TabCloseButton extends Button {
      * Creates a TabCloseButton seeded with the `times` glyph and sized for use in a tab toolbar.
      */
     constructor(options?: TabCloseButtonOptions) {
-        super();
-
-        this.setGlyph("times");
+        super({ glyph: "times" });
 
         this.setPreferredSize(16, 16);
         this.setInsets(new Insets(0, 0, 0, 0));

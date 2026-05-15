@@ -247,7 +247,9 @@ class Text extends Component {
             this.measuredBaseline = baseline;
             this.setCalculatedSize(width, height);
         } else {
-            this.measuredBaseline = 0;
+            // No glyphs means no baseline — report null so HBox doesn't try
+            // to baseline-align surrounding components against an empty box.
+            this.measuredBaseline = null;
             this.setCalculatedSize(0, 0);
         }
     }
@@ -619,6 +621,29 @@ class Text extends Component {
         this.calculateSize();
 
         return this;
+    }
+
+    /**
+     * Sets the line-height equal to the given pixel height so a single-line
+     * text sits vertically centred in a fixed-height inline box.
+     *
+     * @param px - Pixel value matching the container's height, or `null` to
+     *             revert to the theme's `--ts-ui-line-height` multiplier.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @example
+     * ```typescript
+     * const label = new Text("File");
+     * label.centerInHeight(28);
+     * ```
+     */
+    centerInHeight(px: number | null): this {
+        if (px === null) {
+            return this.setLineHeight("--ts-ui-line-height");
+        }
+
+        return this.setLineHeight(px);
     }
 
     /**

@@ -38,6 +38,7 @@ Tooltip.attach(myButton, 'Danger zone', {
 - Singleton — there is only ever one tooltip on screen.
 - Tooltip pixels are not part of the component tree; the tooltip element appends to `document.documentElement` and floats above everything.
 - Themed via the `tooltip.*` token group — see [Theming](/concepts/theming#theme-keys).
+- Shows and hides with a 100 ms opacity fade via [`Animation`](/api/core/classes/Animation). A fresh `show()` during a fade-out cancels the deferred detach, so rapid hover-then-rehover is seamless. Honours `prefers-reduced-motion: reduce`.
 
 ## See also
 
