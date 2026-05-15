@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { Text } from "~/component/input/Text.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
+import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
+import { LabelTreeNodeRenderer } from "~/component/tree/renderer/Label.js";
 import { callable } from "~/core/Callable.js";
 
 /** Width in pixels reserved for the expand/collapse toggle icon. */
@@ -14,33 +15,33 @@ export const TOGGLE_WIDTH = 20;
  *
  * Each pool slot holds one {@link TreeNode} at a time. The {@link Tree} calls
  * {@link setRowData} to rebind a slot to a different node and
- * {@link layoutChildren} to reposition the toggle and label after the row's
+ * {@link layoutChildren} to reposition the toggle and renderer after the row's
  * own dimensions are updated.
  *
  * @remarks
- * The toggle ([`Glyph`](/api/component/display/classes/Glyph)) and label
- * {@link Text} sub-components are appended directly to the row's DOM element
- * in `init()` rather than via `addComponent`, so their preferred-size change
- * notifications do not propagate up to the Tree and trigger unnecessary
- * layout passes. Leaf rows have no toggle; non-leaf rows swap in a fresh
- * `arrow-down` / `arrow-right` glyph on each state change rather than
- * mutating a single character.
+ * The toggle ([`Glyph`](/api/component/display/classes/Glyph)) and content
+ * renderer are appended directly to the row's DOM element in `init()` rather
+ * than via `addComponent`, so their preferred-size change notifications do not
+ * propagate up to the Tree and trigger unnecessary layout passes. Leaf rows
+ * have no toggle; non-leaf rows swap in a fresh `arrow-down` / `arrow-right`
+ * glyph on each state change rather than mutating a single character. The row
+ * content area (everything to the right of the toggle) is owned by a
+ * [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) supplied
+ * via the constructor factory.
  */
 class TreeRow extends Component {
 
-    private _toggle: Glyph | null = null;
-    private _nodeLabel: Text;
-    private _node: TreeNode | null = null;
-    private _depth: number = 0;
+    private _toggle:   Glyph | null      = null;
+    private _renderer: TreeNodeRenderer;
+    private _node:     TreeNode | null   = null;
+    private _depth:    number            = 0;
 
-    constructor() {
+    constructor(rendererFactory: () => TreeNodeRenderer = () => new LabelTreeNodeRenderer()) {
         super();
 
         this.getAria().setRole("treeitem");
 
-        this._nodeLabel = new Text();
-        this._nodeLabel.clearInsets();
-        this._nodeLabel.setAutoMeasure(false);
+        this._renderer = rendererFactory();
     }
 
     /**
@@ -53,12 +54,42 @@ class TreeRow extends Component {
     }
 
     /**
-     * Returns the node label Text component.
+     * Returns the renderer currently bound to this pool row.
      *
-     * @returns The label Text instance.
+     * @returns The active [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer).
      */
-    getNodeLabel(): Text {
-        return this._nodeLabel;
+    getRenderer(): TreeNodeRenderer {
+        return this._renderer;
+    }
+
+    /**
+     * Replaces this row's content renderer, swapping the underlying DOM
+     * element in place.
+     *
+     * @param renderer - The new renderer instance to install.
+     * @returns This row, for method chaining.
+     *
+     * @remarks
+     * The new renderer's element is appended to the row immediately. The
+     * caller is expected to follow up with `setRowData` (typically via the
+     * Tree's next render pass) so the renderer receives an `update()` before
+     * being laid out.
+     */
+    setRenderer(renderer: TreeNodeRenderer): this {
+        const el = this.getElement();
+
+        if (el) {
+            const oldEl = this._renderer.getElement();
+            if (oldEl && oldEl.parentNode === el) {
+                el.removeChild(oldEl);
+            }
+
+            el.appendChild(renderer.getElement(true));
+        }
+
+        this._renderer = renderer;
+
+        return this;
     }
 
     /**
@@ -80,7 +111,8 @@ class TreeRow extends Component {
     }
 
     /**
-     * Binds this pool slot to a new node, updating the toggle icon, label text, and ARIA positional attributes.
+     * Binds this pool slot to a new node, updating the toggle icon, content
+     * renderer, and ARIA positional attributes.
      *
      * @param node - The tree node to display.
      * @param depth - The zero-based nesting depth (controls indentation).
@@ -88,8 +120,9 @@ class TreeRow extends Component {
      * @param expanded - Whether the node is currently expanded.
      * @param siblingCount - Total number of siblings at this level under the same parent.
      * @param posInSet - 1-based position of this node among its siblings.
+     * @param selected - Whether the node is currently selected.
      */
-    setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number): this {
+    setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number, selected: boolean): this {
         this._node = node;
         this._depth = depth;
 
@@ -114,10 +147,7 @@ class TreeRow extends Component {
             }
         }
 
-        this._nodeLabel.setText(node.label);
-        // Texts have setAutoMeasure(false); cache label width explicitly so
-        // getContentWidth reflects the current text.
-        this._nodeLabel.measure();
+        this._renderer.update({ node, depth, expanded, selected, hasChildren });
 
         this.getAria().setLevel(depth + 1);
         this.getAria().setExpanded(hasChildren ? expanded : null);
@@ -128,7 +158,7 @@ class TreeRow extends Component {
     }
 
     /**
-     * Positions the toggle and label sub-components within the row's bounds.
+     * Positions the toggle and renderer sub-components within the row's bounds.
      *
      * @param rowHeight - The current height of this row in pixels.
      * @param indentPx - Pixels of indentation per depth level.
@@ -142,37 +172,40 @@ class TreeRow extends Component {
             this._toggle.setY(0);
             this._toggle.setWidth(TOGGLE_WIDTH);
             this._toggle.setHeight(rowHeight);
+            this._toggle.setLineHeight(rowHeight);
             this._toggle.setAutoCommitStyle(true);
         }
 
-        const labelX = indent + TOGGLE_WIDTH;
-        const labelWidth = this._nodeLabel.getPreferredSize()?.width ?? 0;
+        const labelX     = indent + TOGGLE_WIDTH;
+        const rowWidth   = this.getWidth() || 0;
+        const labelBoxW  = Math.max(0, rowWidth - labelX);
 
-        this._nodeLabel.setAutoCommitStyle(false);
-        this._nodeLabel.setX(labelX);
-        this._nodeLabel.setY(0);
-        this._nodeLabel.setWidth(labelWidth);
-        this._nodeLabel.setHeight(rowHeight);
-        this._nodeLabel.setLineHeight(rowHeight);
-        this._nodeLabel.setAutoCommitStyle(true);
+        this._renderer.setAutoCommitStyle(false);
+        this._renderer.setX(labelX);
+        this._renderer.setY(0);
+        this._renderer.setWidth(labelBoxW);
+        this._renderer.setHeight(rowHeight);
+        this._renderer.setAutoCommitStyle(true);
+
+        this._renderer.layoutChildren(labelBoxW, rowHeight);
     }
 
     /**
      * Returns the natural pixel width needed to display this row's full content
-     * (indent + toggle + label text) without horizontal clipping.
+     * (indent + toggle + renderer content) without horizontal clipping.
      *
      * @param indentPx - Pixels of indentation per depth level.
      */
     getContentWidth(indentPx: number): number {
         const indent = this._depth * indentPx;
-        const labelWidth = this._nodeLabel.getPreferredSize()?.width ?? 0;
+        const contentW = this._renderer.getContentWidth();
 
-        return indent + TOGGLE_WIDTH + labelWidth;
+        return indent + TOGGLE_WIDTH + contentW;
     }
 
     /**
-     * Appends the label sub-component element to the row's DOM element. The toggle
-     * glyph (if any) is appended on demand by `setRowData`.
+     * Appends the renderer sub-component element to the row's DOM element.
+     * The toggle glyph (if any) is appended on demand by `setRowData`.
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
@@ -184,7 +217,7 @@ class TreeRow extends Component {
             return this;
         }
 
-        el.appendChild(this._nodeLabel.getElement(true));
+        el.appendChild(this._renderer.getElement(true));
 
         return this;
     }
