@@ -2,13 +2,14 @@
 
 import { Cell } from "~/component/table/cell/Cell.js";
 import { StringRenderer } from "~/component/table/cell/renderer/String.js";
-import { StringEditor } from "~/component/table/cell/editor/String.js";
 import { callable } from "~/core/Callable.js";
 
 /**
  * A table cell for string values.
  *
- * Uses a {@link StringRenderer} for display and a {@link StringEditor} for in-place editing.
+ * Uses a [`StringRenderer`](/api/component/table/classes/StringRenderer) for display and borrows
+ * a shared [`StringEditor`](/api/component/table/classes/StringEditor) from the body's
+ * {@link CellEditorPool} on edit.
  *
  * @category Components
  */
@@ -16,9 +17,17 @@ class StringCell extends Cell<String> {
 
     constructor() {
         let renderer = new StringRenderer();
-        let editor = new StringEditor();
 
-        super("td", renderer, editor);
+        super("td", renderer);
+    }
+
+    /**
+     * Returns the pool key for the shared {@link StringEditor}.
+     *
+     * @returns The string `"string"`.
+     */
+    getEditorKey(): string {
+        return "string";
     }
 
     /**
@@ -26,7 +35,7 @@ class StringCell extends Cell<String> {
      *
      * @param value - The string value to display.
      */
-    setValue(value: String) : this {
+    setValue(value: String): this {
         this.getRenderer().setValue(value);
 
         return this;

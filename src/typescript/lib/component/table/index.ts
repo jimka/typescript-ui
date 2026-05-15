@@ -29,6 +29,8 @@ export { StringEditor } from '~/component/table/cell/editor/String.js';
 export { DateEditor } from '~/component/table/cell/editor/Date.js';
 export { TimeEditor } from '~/component/table/cell/editor/Time.js';
 export { DateTimeEditor } from '~/component/table/cell/editor/DateTime.js';
+export { CellEditorPool } from '~/component/table/cell/editor/CellEditorPool.js';
+export type { CellEditorFactory } from '~/component/table/cell/editor/CellEditorPool.js';
 
 export { CellRenderer } from '~/component/table/cell/renderer/CellRenderer.js';
 export { NumberRenderer } from '~/component/table/cell/renderer/Number.js';

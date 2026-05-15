@@ -6,6 +6,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { Card } from "~/layout/Card.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
+import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { ThemeManager } from "~/core/Theme.js";
 
@@ -26,6 +27,8 @@ export class Cell<T> extends Component {
     private readOnly: Boolean;
     private renderer: CellRenderer<T>;
     private editor: CellEditor<T> | undefined;
+    private editorPool: CellEditorPool | null = null;
+    protected activeEditor: CellEditor<T> | null = null;
     private onCommit: ((value: T) => void) | undefined;
     private _onEditEnd: (() => void) | undefined;
 
@@ -57,6 +60,33 @@ export class Cell<T> extends Component {
         }
 
         Event.addListener(renderer, 'dblclick', () => this.startEdit());
+    }
+
+    /**
+     * Returns the pool-key that selects which shared editor this cell should borrow on edit.
+     *
+     * @returns A string key registered on the {@link CellEditorPool}, or `null` to opt out of
+     * the shared-editor mechanism.
+     *
+     * @remarks The default implementation returns `null` so user-authored cells that pass an
+     * editor through the constructor (the legacy path) keep working unchanged. Built-in typed
+     * cells override this to return their variant key (e.g. `"string"`, `"time:seconds"`).
+     */
+    getEditorKey(): string | null {
+        return null;
+    }
+
+    /**
+     * Attaches this cell to a {@link CellEditorPool} so that {@link Cell.startEdit} can borrow
+     * a shared editor instead of allocating one.
+     *
+     * @param pool - The pool to borrow from, or `null` to disable shared-editor mode.
+     * @returns This cell, for method chaining.
+     */
+    setEditorPool(pool: CellEditorPool | null): this {
+        this.editorPool = pool;
+
+        return this;
     }
 
     /**
@@ -104,12 +134,12 @@ export class Cell<T> extends Component {
     }
 
     /**
-     * Returns true if the editor is currently the visible card layer.
+     * Returns true if an editor is currently mounted on this cell.
      *
      * @returns True if the cell is in edit mode.
      */
-    isEditing() {
-        return this.editor && this.getLayoutManager().getVisibleComponentId() === this.editor.getId();
+    isEditing(): boolean {
+        return this.activeEditor !== null;
     }
 
     /**
@@ -123,50 +153,60 @@ export class Cell<T> extends Component {
 
     /**
      * Switches to the editor view, copies the renderer's value, and focuses the editor.
+     *
+     * @remarks When the cell was constructed with a per-cell editor (legacy mode), that editor
+     * is used. Otherwise the cell asks its {@link CellEditorPool} for the shared editor matching
+     * {@link Cell.getEditorKey} and parents it into this cell for the duration of the edit.
      */
-    startEdit() {
-        console.log("START EDIT!");
+    startEdit(): void {
         if (this.isReadOnly() || this.isEditing()) {
             return;
         }
 
-        let editor = this.getEditor();
-        if (!editor) {
-            return;
+        if (this.editor) {
+            this.activeEditor = this.editor;
+        } else {
+            const key = this.getEditorKey();
+            if (!key || !this.editorPool) {
+                return;
+            }
+
+            const shared = this.editorPool.acquire(key, this);
+            if (!shared) {
+                return;
+            }
+
+            this.activeEditor = shared as CellEditor<T>;
+            this.addComponent(this.activeEditor);
         }
 
-        let layoutManager = this.getLayoutManager();
-        let renderer = this.getRenderer();
+        const editor = this.activeEditor;
+        const renderer = this.renderer;
 
         editor.setValue(renderer.getValue());
 
-        layoutManager.setVisibleComponentId(editor.getId());
+        this.getLayoutManager().setVisibleComponentId(editor.getId());
         this.doLayout();
         editor.focus();
     }
 
     /**
      * Saves the editor value to the renderer, fires onCommit, and returns to renderer view.
+     *
+     * @returns This cell, for method chaining.
      */
-    commitEdit() : this {
+    commitEdit(): this {
         if (this.isReadOnly() || !this.isEditing()) {
             return this;
         }
 
-        let editor = this.getEditor();
-        if (!editor) {
-            return this;
-        }
+        const editor = this.activeEditor!;
+        const value = editor.getValue();
 
-        let layoutManager = this.getLayoutManager();
-        let renderer = this.getRenderer();
+        this.renderer.setValue(value);
+        this.onCommit?.(value as T);
 
-        let text = editor.getValue();
-        renderer.setValue(text);
-        this.onCommit?.(text as T);
-
-        layoutManager.setVisibleComponentId(renderer.getId());
-        this.doLayout();
+        this.detachEditor();
 
         return this;
     }
@@ -174,21 +214,38 @@ export class Cell<T> extends Component {
     /**
      * Discards the editor value and returns to renderer view.
      */
-    cancelEdit() {
+    cancelEdit(): void {
         if (this.isReadOnly() || !this.isEditing()) {
             return;
         }
 
-        let editor = this.getEditor();
+        this.detachEditor();
+    }
+
+    /**
+     * Restores the renderer as the visible card layer and, in shared-editor mode, detaches the
+     * borrowed editor from this cell so the pool can lend it to the next cell.
+     *
+     * @remarks `activeEditor` is cleared **before** the Card swap because hiding the editor
+     * pulls focus off its `<input>` and synchronously fires `blur`. The pool's blur listener
+     * routes back into `commitEdit`, which would otherwise re-enter here and double-remove the
+     * element — clearing the pointer first makes the re-entrant `isEditing()` check short-circuit.
+     */
+    private detachEditor(): void {
+        const editor = this.activeEditor;
         if (!editor) {
             return;
         }
 
-        let layoutManager = this.getLayoutManager();
-        let renderer = this.getRenderer();
+        this.activeEditor = null;
 
-        layoutManager.setVisibleComponentId(renderer.getId());
+        this.getLayoutManager().setVisibleComponentId(this.renderer.getId());
         this.doLayout();
+
+        if (this.editor !== editor) {
+            this.removeComponent(editor);
+            this.editorPool?.release();
+        }
     }
 
     /**

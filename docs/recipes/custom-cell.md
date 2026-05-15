@@ -66,7 +66,11 @@ class CurrencyEditor extends CellEditor<number> {
 
 ## Compose the cell
 
-A [`Cell<T>`](/api/component/table/classes/Cell) glues the renderer and editor together:
+A [`Cell<T>`](/api/component/table/classes/Cell) glues the renderer and editor together. There are two ways to wire the editor: the legacy "one editor per cell" path (simple, one-line constructor) and the shared-editor path that the built-in typed cells use to avoid allocating an editor per cell.
+
+### Quick way — one editor per cell
+
+Pass the editor straight to the base-class constructor. Each cell instance allocates its own editor up front, exactly like older versions of the framework:
 
 ```typescript
 import { Cell } from '@jimka/typescript-ui/component/table';
@@ -76,6 +80,30 @@ class CurrencyCell extends Cell<number> {
     }
 }
 ```
+
+This is the right shape for a one-off cell or a table with only a handful of rows. The cost grows with the row-pool size: a virtual table holding 30 pool slots × 10 currency columns allocates 300 editors that all sit idle except for the at-most-one cell currently being edited.
+
+### Shared-editor way — borrow from the body's pool
+
+A [`CellEditorPool`](/api/component/table/classes/CellEditorPool) lives on every [`Body`](/api/component/table/classes/Body) and hands out the same editor instance to every cell that asks for the same key. Override `getEditorKey()` instead of passing an editor to `super()`, then register a factory on the body's pool *before* the first edit:
+
+```typescript
+import { Cell } from '@jimka/typescript-ui/component/table';
+class CurrencyCell extends Cell<number> {
+    constructor() {
+        super('td', new CurrencyRenderer());
+    }
+
+    getEditorKey(): string {
+        return 'currency';
+    }
+}
+
+// At table setup time, before the user can interact with the table:
+table.getBody().getEditorPool().register('currency', () => new CurrencyEditor());
+```
+
+At most one `CurrencyEditor` is ever constructed for the whole table — the pool re-parents it into the active cell on `startEdit` and detaches it on commit/cancel. Pool keys are namespaced strings; pick a name unique to your cell type. If your cell takes a configuration flag that changes the editor (e.g. a `precision` setting), encode it into the key (`'currency:precision-4'`) so two columns with different configurations don't share the wrong editor.
 
 ## Use it in a Table
 
