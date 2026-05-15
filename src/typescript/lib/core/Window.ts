@@ -2,10 +2,14 @@
 
 import { Border } from "~/layout/Border.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
+import { Component } from "~/core/Component.js";
 import { WindowHeader } from "~/component/container/WindowHeader.js";
 import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
+import { Fit } from "~/layout/Fit.js";
+import { FillType } from "~/layout/FillType.js";
+import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { Placement } from "~/primitive/Placement.js";
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { callable } from "~/core/Callable.js";
@@ -18,8 +22,14 @@ const WINDOW_ANIM_DURATION_MS: number = 150;
  * @category Core
  */
 export interface WindowOptions extends PanelOptions {
-    headerText?: string;
-    glyph?:      string;
+    headerText?:     string;
+    glyph?:          string;
+    x?:              number;
+    y?:              number;
+    width?:          number;
+    height?:         number;
+    contentFactory?: () => Component;
+    onReady?:        (component: Component) => void;
 }
 
 /**
@@ -72,6 +82,8 @@ class Window extends Panel {
     private _dragStartTop: number = 0;
     private _dragDX: number = 0;
     private _dragDY: number = 0;
+    private contentFactory: (() => Component) | null = null;
+    private contentReadyCallback: ((component: Component) => void) | null = null;
     private readonly boundOnDrag: (e: MouseEvent) => void = (e: MouseEvent) => this.onDrag(e);
     private readonly boundOnMouseUp: () => void = () => this.onMouseUp();
 
@@ -107,6 +119,13 @@ class Window extends Panel {
         });
         this.header.addExitButtonListener(() => this.onExitAction());
 
+        // Sensible default geometry so `new Window(title).show()` produces
+        // a usable, on-screen window. WindowOptions overrides any of these.
+        this.setX(50);
+        this.setY(50);
+        this.setWidth(400);
+        this.setHeight(300);
+
         this.setVisible(false);
         this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" });
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
@@ -140,6 +159,26 @@ class Window extends Panel {
             this.header.setGlyph(options.glyph);
         }
 
+        if (options.x !== undefined) {
+            this.setX(options.x);
+        }
+
+        if (options.y !== undefined) {
+            this.setY(options.y);
+        }
+
+        if (options.width !== undefined) {
+            this.setWidth(options.width);
+        }
+
+        if (options.height !== undefined) {
+            this.setHeight(options.height);
+        }
+
+        if (options.contentFactory !== undefined) {
+            this.setContentFactory(options.contentFactory, options.onReady);
+        }
+
         return this;
     }
 
@@ -155,6 +194,13 @@ class Window extends Panel {
 
     /**
      * Appends the window element to the document root, triggers layout, and makes it visible.
+     *
+     * @remarks When a content factory has been registered via
+     * {@link Window.setContentFactory}, the window opens with a centred
+     * `ProgressSpinner` in its content area and the factory is invoked behind
+     * a two-rAF yield via [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize).
+     * The entrance scale-in and the spinner pause run concurrently, so by the
+     * time the window finishes scaling in the spinner is already on screen.
      */
     show(): this {
         const el = this.getElement(true);
@@ -178,6 +224,74 @@ class Window extends Panel {
             durationMs: WINDOW_ANIM_DURATION_MS,
             properties: ["opacity", "transform"],
         });
+
+        if (this.contentFactory) {
+            const factory  = this.contentFactory;
+            const onReady  = this.contentReadyCallback;
+            this.contentFactory       = null;
+            this.contentReadyCallback = null;
+
+            // The 24 px diameter matches `TablePanel`'s store-loading
+            // spinner so a slow window-content build and a slow data load
+            // look identical from the user's perspective.
+            const spinner = new Component();
+            spinner.setLayoutManager(new Fit({ fill: FillType.NONE }));
+            spinner.addComponent(new ProgressSpinner(24));
+
+            Animation.materialize({
+                host:             this,
+                factory:          factory,
+                spinnerComponent: spinner,
+                onReady:          onReady ?? undefined
+            });
+        }
+
+        return this;
+    }
+
+    /**
+     * Registers a factory that produces the window's content on first paint
+     * instead of at construction time, and optionally a callback to run once
+     * the produced component is attached, laid out, and faded in.
+     *
+     * @param factory - Zero-argument function returning the content component.
+     * @param onReady - Optional callback fired after the content fade-in
+     * completes (or immediately, under `prefers-reduced-motion: reduce`).
+     * Receives the component the factory returned, fully attached and sized.
+     *
+     * @returns This window, for method chaining.
+     *
+     * @remarks Use when the content tree is expensive to build. `show()`
+     * opens the window immediately with a spinner in the content area and
+     * invokes the factory after a two-rAF yield via
+     * [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize),
+     * so the open-animation reaches the screen before the main-thread build
+     * cost is incurred. Calling `show()` without a factory keeps the eager
+     * `addComponent` lifecycle unchanged.
+     *
+     * Use the `onReady` callback for work that must happen after the content
+     * is on screen and sized — for example kicking off an async data load
+     * whose loading spinner is rendered by the content tree itself. Running
+     * such work before `onReady` would emit `loadingchanged: true` before
+     * the panel had subscribed (or before the target had a size).
+     *
+     * @example
+     * ```typescript
+     * const win = new Window("Heavy");
+     * win.setSize({ width: 800, height: 600 });
+     * win.setContentFactory(
+     *     () => new TablePanel(store),
+     *     () => void store.load()
+     * );
+     * win.show();
+     * ```
+     */
+    setContentFactory(
+        factory: () => Component,
+        onReady?: (component: Component) => void
+    ): this {
+        this.contentFactory       = factory;
+        this.contentReadyCallback = onReady ?? null;
 
         return this;
     }
@@ -207,6 +321,12 @@ class Window extends Panel {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
         }
+
+        // Drop any pending factory / onReady closure so its captured
+        // references are free for GC if the window is closed before show()
+        // ran the factory.
+        this.contentFactory       = null;
+        this.contentReadyCallback = null;
 
         if (Window.activeWindow === this) {
             Window.activeWindow = null;

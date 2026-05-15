@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { Component } from "~/core/Component.js";
+
 /**
  * Small helpers for playing CSS transitions on raw DOM elements.
  *
@@ -132,5 +134,99 @@ export namespace Animation {
         } else {
             applyTransitionAndTo();
         }
+    }
+
+    /** Default duration of the cross-fade between spinner and materialized content. */
+    const MATERIALIZE_FADE_DURATION_MS = 160;
+
+    /**
+     * Configuration for {@link Animation.materialize}.
+     *
+     * @category Core
+     */
+    export interface MaterializeConfig {
+        /**
+         * Container that hosts the spinner during the yield and receives the
+         * factory's output once it has been built. The spinner is added as a
+         * child of this component and removed once the cross-fade completes.
+         */
+        host: Component;
+
+        /**
+         * Synchronous component factory. Runs after the two-rAF yield so the
+         * spinner has reached the screen before the main-thread build cost
+         * is incurred.
+         */
+        factory: () => Component;
+
+        /**
+         * Caller-constructed spinner component (typically a `ProgressSpinner`
+         * wrapped in a centring layout). Passed in rather than created here
+         * so `~/core/Animation` stays free of `~/component/display` imports
+         * — and so call sites can customise the spinner shape per surface.
+         */
+        spinnerComponent: Component;
+
+        /**
+         * Duration of the opacity transition that fades the built component
+         * in over the spinner.
+         *
+         * @defaultValue 160
+         */
+        fadeMs?: number;
+
+        /**
+         * Fires after the materialized component's fade-in completes (or
+         * immediately when reduced-motion is set). Receives the component
+         * the factory returned so the caller can wire up post-attach state.
+         */
+        onReady?: (component: Component) => void;
+    }
+
+    /**
+     * Mounts the spinner, yields two animation frames so it actually reaches
+     * the screen, runs the factory, then cross-fades the built component in
+     * over the spinner. Both `Tab.materializeAsync` and `Window.show` (when
+     * a content factory is set) drive activation through this helper so the
+     * yield-and-fade lifecycle lives in one place.
+     *
+     * @param config - Host, factory, spinner, and fade options.
+     *
+     * @remarks Two `requestAnimationFrame` callbacks are needed because a
+     * single rAF still races layout in Firefox — the same two-rAF dance
+     * `play()` performs for entrance transitions. The spinner is removed in
+     * the fade's `onComplete` so the brief overlap reads as "spinner fades
+     * into content" without an extra animation.
+     */
+    export function materialize(config: MaterializeConfig): void {
+        const host    = config.host;
+        const factory = config.factory;
+        const spinner = config.spinnerComponent;
+        const fadeMs  = config.fadeMs ?? MATERIALIZE_FADE_DURATION_MS;
+
+        host.addComponent(spinner);
+        host.scheduleLayout();
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const component = factory();
+                host.addComponent(component);
+
+                const el = component.getElement(true);
+                host.scheduleLayout();
+
+                play(el, {
+                    from:       { opacity: "0" },
+                    to:         { opacity: "1" },
+                    durationMs: fadeMs,
+                    properties: ["opacity"],
+                    onComplete: () => {
+                        host.removeComponent(spinner);
+                        host.scheduleLayout();
+                        config.onReady?.(component);
+                    },
+                });
+            });
+        });
     }
 }
