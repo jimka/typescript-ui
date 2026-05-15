@@ -62,6 +62,8 @@ class Text extends Component {
     private lineHeightCSSRule: string | null = "var(--ts-ui-line-height, 1.2)";
     private measuredBaseline: number | null = null;
     private autoMeasure: boolean = true;
+    private wordBreak: string | null = null;
+    private lineClamp: number | null = null;
 
     constructor(text?: String, options?: TextOptions) {
         super({ tag: options?.tag ?? "span" });
@@ -668,6 +670,92 @@ class Text extends Component {
      */
     setWhiteSpace(value: string): this {
         this.setElementCSSRule("whiteSpace", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the current CSS `word-break` value, or null if not set.
+     *
+     * @returns The word-break string, or null.
+     */
+    getWordBreak(): string | null {
+        return this.wordBreak;
+    }
+
+    /**
+     * Sets the CSS `word-break` property on the component's CSS rule.
+     *
+     * @param value - A CSS word-break value (e.g. "break-word", "normal", "keep-all").
+     *
+     * @returns This component, for method chaining.
+     */
+    setWordBreak(value: string): this {
+        if (this.wordBreak === value) {
+            return this;
+        }
+
+        this.wordBreak = value;
+        this.setElementCSSRule("wordBreak", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the current line-clamp line count, or null if no clamp is applied.
+     *
+     * @returns The maximum line count, or null.
+     */
+    getLineClamp(): number | null {
+        return this.lineClamp;
+    }
+
+    /**
+     * Clamps the rendered text to a maximum line count via CSS line-clamp.
+     *
+     * Writes `display: -webkit-box`, `-webkit-box-orient: vertical`,
+     * `-webkit-line-clamp`, `overflow: hidden`, and `text-overflow: ellipsis`
+     * in a single call. Use {@link Text.clearLineClamp} to remove the clamp.
+     *
+     * @param lines - The maximum number of lines to display before the ellipsis.
+     *
+     * @returns This component, for method chaining.
+     */
+    setLineClamp(lines: number): this {
+        if (this.lineClamp === lines) {
+            return this;
+        }
+
+        this.lineClamp = lines;
+        this.setElementCSSRules({
+            display: "-webkit-box",
+            webkitBoxOrient: "vertical",
+            webkitLineClamp: String(lines),
+            overflow: "hidden",
+            textOverflow: "ellipsis"
+        });
+
+        return this;
+    }
+
+    /**
+     * Removes the line-clamp styling previously applied by {@link Text.setLineClamp}.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearLineClamp(): this {
+        if (this.lineClamp === null) {
+            return this;
+        }
+
+        this.lineClamp = null;
+        this.setElementCSSRules({
+            display: null,
+            webkitBoxOrient: null,
+            webkitLineClamp: null,
+            overflow: null,
+            textOverflow: null
+        });
 
         return this;
     }

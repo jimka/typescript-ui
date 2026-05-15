@@ -182,6 +182,11 @@ class Component extends BaseObject {
     private minSize              : Size | null             = { width: 0, height: 0 };
     private maxSize              : Size                    = { width: Number.MAX_VALUE, height: Number.MAX_VALUE };
     private overflow             : string | null           = "hidden";
+    private overflowX            : string | null           = null;
+    private overflowY            : string | null           = null;
+    private contain              : string | null           = null;
+    private animation            : string | null           = null;
+    private disabledAttribute    : boolean                 = false;
     private border               : Border | null           = null;
     private borderCSS            : string | null           = null;
     private borderRadius         : string | null           = null;
@@ -1687,6 +1692,187 @@ class Component extends BaseObject {
         this.overflow = overflow;
 
         this.cssRule.style.overflow = overflow;
+
+        return this;
+    }
+
+    /**
+     * Returns the CSS overflow-x value, or null if not set.
+     *
+     * @returns The CSS overflow-x string, or null.
+     */
+    getOverflowX(): string | null {
+        return this.overflowX;
+    }
+
+    /**
+     * Sets the CSS overflow-x property on the component's CSS rule.
+     *
+     * @param value - A CSS overflow value (e.g. "hidden", "auto", "visible").
+     *
+     * @returns This component, for method chaining.
+     */
+    setOverflowX(value: string): this {
+        if (this.overflowX === value) {
+            return this;
+        }
+
+        this.overflowX = value;
+        this.setElementCSSRule("overflowX", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the CSS overflow-y value, or null if not set.
+     *
+     * @returns The CSS overflow-y string, or null.
+     */
+    getOverflowY(): string | null {
+        return this.overflowY;
+    }
+
+    /**
+     * Sets the CSS overflow-y property on the component's CSS rule.
+     *
+     * @param value - A CSS overflow value (e.g. "hidden", "auto", "visible").
+     *
+     * @returns This component, for method chaining.
+     */
+    setOverflowY(value: string): this {
+        if (this.overflowY === value) {
+            return this;
+        }
+
+        this.overflowY = value;
+        this.setElementCSSRule("overflowY", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the CSS `contain` value, or null if not set.
+     *
+     * @returns The CSS contain string, or null.
+     */
+    getContain(): string | null {
+        return this.contain;
+    }
+
+    /**
+     * Sets the CSS `contain` property on the component's CSS rule. Hints the
+     * rendering engine that descendants are isolated from external layout/paint.
+     *
+     * @param value - A CSS contain value (e.g. "layout", "strict", "layout paint").
+     *
+     * @returns This component, for method chaining.
+     */
+    setContain(value: string): this {
+        if (this.contain === value) {
+            return this;
+        }
+
+        this.contain = value;
+        this.setElementCSSRule("contain", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the CSS `animation` shorthand value, or null if not set.
+     *
+     * @returns The CSS animation string, or null.
+     */
+    getAnimation(): string | null {
+        return this.animation;
+    }
+
+    /**
+     * Sets the CSS `animation` shorthand on the component's CSS rule.
+     *
+     * @param value - A CSS animation shorthand (e.g. "ts-ui-spin 0.8s linear infinite").
+     *
+     * @returns This component, for method chaining.
+     */
+    setAnimation(value: string): this {
+        if (this.animation === value) {
+            return this;
+        }
+
+        this.animation = value;
+        this.setElementCSSRule("animation", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the CSS `animation` property from the component's CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearAnimation(): this {
+        if (this.animation === null) {
+            return this;
+        }
+
+        this.animation = null;
+        this.setElementCSSRule("animation", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the cached state of the HTML `disabled` attribute on the element.
+     *
+     * @returns True when the `disabled` attribute is set, false otherwise.
+     */
+    getDisabledAttribute(): boolean {
+        return this.disabledAttribute;
+    }
+
+    /**
+     * Sets the HTML `disabled` attribute on the underlying element.
+     *
+     * Distinct from `setEnabled` on input subclasses, which carries semantic +
+     * ARIA + visual state. This setter only toggles the HTML attribute.
+     *
+     * @param value - True to add `disabled`, false to remove it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setDisabledAttribute(value: boolean): this {
+        if (this.disabledAttribute === value) {
+            return this;
+        }
+
+        this.disabledAttribute = value;
+
+        if (value) {
+            this.setElementAttribute("disabled", "");
+        } else {
+            this.removeElementAttribute("disabled");
+        }
+
+        return this;
+    }
+
+    /**
+     * Applies an ARIA attribute on this component's element. Used by the
+     * {@link Aria} helper.
+     *
+     * @param name - The full attribute name (e.g. `"aria-label"`, `"role"`, `"tabindex"`).
+     * @param value - The string value to set, or null to remove the attribute.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @internal Consumers should use {@link Component.getAria} to access typed ARIA setters.
+     */
+    applyAriaAttribute(name: string, value: string | null): this {
+        if (value === null) {
+            this.removeElementAttribute(name);
+        } else {
+            this.setElementAttribute(name, value);
+        }
 
         return this;
     }
