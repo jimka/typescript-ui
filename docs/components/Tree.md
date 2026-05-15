@@ -38,6 +38,36 @@ Nodes with a non-empty `children` array render as expandable parents; nodes with
 | `setNodes(nodes[])` | Replace the entire tree. |
 | `expandAll()` / `collapseAll()` | Bulk-toggle expansion. |
 | `addSelectionListener(fn)` | Subscribe to user-driven selection changes. |
+| `setRendererFactory(fn)` | Replace the content renderer used for every row. |
+
+## Custom row renderers
+
+Each pool slot's content (everything to the right of the expand/collapse toggle) is owned by a [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) instance. The tree holds a zero-argument factory; one renderer is created per pool slot when the pool grows and rebound via `update(context)` when the slot is mapped to a different node.
+
+Built-in renderers:
+
+| Class | Output |
+| --- | --- |
+| [`LabelTreeNodeRenderer`](/api/component/tree/classes/LabelTreeNodeRenderer) | Plain text label. Used as the default factory. |
+| [`IconLabelTreeNodeRenderer`](/api/component/tree/classes/IconLabelTreeNodeRenderer) | [`Glyph`](/api/component/display/classes/Glyph) icon + label. The glyph name is resolved per row by a caller-supplied [`IconLabelGlyphResolver`](/api/component/tree/type-aliases/IconLabelGlyphResolver). |
+
+```typescript
+import { IconLabelTreeNodeRenderer, Tree } from '@jimka/typescript-ui/component/tree';
+
+const tree = new Tree();
+tree.setRendererFactory(() => new IconLabelTreeNodeRenderer(
+    (node) => (node.children && node.children.length > 0) ? 'chevron-down' : 'file',
+));
+tree.setNodes(rootNodes);
+```
+
+To write a fully custom renderer, subclass [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) and implement three methods:
+
+- `update(context)` — bind the renderer to the new node. The [`TreeNodeRenderContext`](/api/component/tree/interfaces/TreeNodeRenderContext) carries the node, depth, expanded/selected flags, and whether the node has children.
+- `getContentWidth()` — return the natural pixel width of the rendered content so the tree can size its horizontal scroll extent.
+- `layoutChildren(width, height)` — position internal sub-components within the allocated box.
+
+The renderer never sees the toggle or the row-level selection highlight — those stay under the tree's structural control. Plain selection style changes (background, focus ring) do not flow through `update()`; expansion changes do, because they force a full re-bind.
 
 ## Notes
 
@@ -51,4 +81,7 @@ Nodes with a non-empty `children` array render as expandable parents; nodes with
 
 - [API: Tree](/api/component/tree/classes/Tree)
 - [API: TreeNode](/api/component/tree/interfaces/TreeNode)
+- [API: TreeNodeRenderer](/api/component/tree/classes/TreeNodeRenderer)
+- [API: LabelTreeNodeRenderer](/api/component/tree/classes/LabelTreeNodeRenderer)
+- [API: IconLabelTreeNodeRenderer](/api/component/tree/classes/IconLabelTreeNodeRenderer)
 - [Performance › Virtual scrolling](/concepts/performance)

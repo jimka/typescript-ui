@@ -136,6 +136,54 @@ this.setForegroundColor("red");         // CSS  → Component setter
 this.setRadioName(groupId);             // HTML attr → typed setter → setElementAttribute internally
 ```
 
+#### Three non-negotiable rules for every DOM write
+
+These rules apply to **every** use of the protected escape hatches — `setElementCSSRule`, `setElementCSSRules`, `setElementStyle`, `setElementStyles`, `setElementAttribute`, `removeElementAttribute`, and any matching `remove*` / `clear*` companions:
+
+1. **Always go through a specialized typed setter method.** No call site outside a typed setter (or its matching `clearX` / `removeX`) may call those low-level APIs. Constructors count as call sites — if a constructor needs to seed a property, it must call the same typed setter the rest of the class uses, not write through `setElementCSSRule` directly. If the typed setter doesn't exist yet, add it. This keeps the contract for "how property X is written" in one place.
+2. **Always cache the value in a class instance variable.** Every DOM write must update a private backing field (`private _foo: string | null = null;` declared next to the other class fields). Reads return the field, never `element.style.foo` or `element.getAttribute("foo")`. Forcing a future read to hit the DOM both costs a forced style-recalc and re-introduces the bug class this rule exists to prevent.
+3. **Always expose the property on the class's `XOptions` bag.** Every typed setter must have a matching optional field on the class's `ComponentOptions`-derived options interface, and the class's overridden `applyOptions(options)` must forward it to the setter. This keeps the construction-time API (`new Foo({ lineHeight: 24 })`) and the post-construction API (`foo.setLineHeight(24)`) in lockstep — the options bag is just the declarative form of the same setter set.
+
+```typescript
+// Wrong: constructor writes through the low-level API, no backing field, options bag not extended
+constructor() {
+    super();
+    this.setElementCSSRule("lineHeight", "1");
+}
+
+// Right: typed setter owns the write; constructor routes through it; field caches; options bag carries it
+export interface FooOptions extends ComponentOptions {
+    lineHeight?: number | string;
+}
+
+private _lineHeight: string | null = null;
+
+constructor(options?: FooOptions) {
+    super();
+    this.setLineHeight("1");
+}
+
+setLineHeight(value: number | string): this {
+    this._lineHeight = typeof value === "number" ? value + "px" : value;
+    this.setElementCSSRule("lineHeight", this._lineHeight);
+    return this;
+}
+
+getLineHeight(): string | null {
+    return this._lineHeight;
+}
+
+protected applyOptions(options: FooOptions): this {
+    super.applyOptions(options);
+
+    if (options.lineHeight !== undefined) {
+        this.setLineHeight(options.lineHeight);
+    }
+
+    return this;
+}
+```
+
 ### Documentation updates
 
 When the implementation changes consumer-visible behaviour, update the matching doc surfaces under `docs/`:
