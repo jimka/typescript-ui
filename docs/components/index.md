@@ -94,6 +94,7 @@ A [`Table`](/api/component/table/classes/Table) ties columns to a [`Store`](/api
 | [`Cell`](/api/component/table/classes/Cell) | Cell base class |
 | [`BooleanCell`](/api/component/table/classes/BooleanCell), [`NumberCell`](/api/component/table/classes/NumberCell), [`StringCell`](/api/component/table/classes/StringCell), [`HeaderCell`](/api/component/table/classes/HeaderCell), [`GlyphCell`](/api/component/table/classes/GlyphCell) | Built-in cell types |
 | [`CellEditor`](/api/component/table/classes/CellEditor), [`BooleanEditor`](/api/component/table/classes/BooleanEditor), [`NumberEditor`](/api/component/table/classes/NumberEditor), [`StringEditor`](/api/component/table/classes/StringEditor) | Inline editors per cell type |
+| [`CellEditorPool`](/api/component/table/classes/CellEditorPool) | Body-owned registry that shares one editor instance per variant across cells |
 | [`CellRenderer`](/api/component/table/classes/CellRenderer), [`NumberRenderer`](/api/component/table/classes/NumberRenderer), [`StringRenderer`](/api/component/table/classes/StringRenderer) | Display renderers per cell type |
 
 ## Tree
