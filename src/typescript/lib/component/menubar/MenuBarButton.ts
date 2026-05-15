@@ -13,7 +13,7 @@ import { callable } from "~/core/Callable.js";
  * @category Components
  */
 export interface MenuBarButtonOptions extends ComponentOptions {
-    glyph?: string | null;
+    glyph?: string;
 }
 
 const GLYPH_TEXT_GAP = 4;
@@ -75,8 +75,8 @@ class MenuBarButton extends Component {
 
         this._text = new Text(text);
         this._text.setPointerEvents("none");
-        this._text.setElementCSSRule("userSelect", "none");
-        this._text.setElementCSSRule("whiteSpace", "nowrap");
+        this._text.setUserSelect("none");
+        this._text.setWhiteSpace("nowrap");
         this._text.centerInHeight(MENU_BAR_BUTTON_HEIGHT);
         this.addComponent(this._text);
 
@@ -120,21 +120,35 @@ class MenuBarButton extends Component {
      *
      * @returns This component, for method chaining.
      */
-    setGlyph(name: string | null): this {
+    setGlyph(name: string): this {
         if (this._glyph) {
             this.removeComponent(this._glyph);
             this._glyph = null;
         }
 
-        if (name) {
-            const glyph = new Glyph(name);
-            glyph.setPointerEvents("none");
-            this.addComponent(glyph);
-            this._glyph = glyph;
-        }
+        const glyph = new Glyph(name);
+        glyph.setPointerEvents("none");
+        this.addComponent(glyph);
+        this._glyph = glyph;
 
         this.recomputePreferredSize();
         this.doLayout();
+
+        return this;
+    }
+
+    /**
+     * Removes the leading glyph from the menu-bar button, if one is present.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearGlyph(): this {
+        if (this._glyph) {
+            this.removeComponent(this._glyph);
+            this._glyph = null;
+            this.recomputePreferredSize();
+            this.doLayout();
+        }
 
         return this;
     }

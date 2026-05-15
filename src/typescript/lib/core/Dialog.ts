@@ -161,10 +161,10 @@ class DialogTitleBar extends Component {
         this.closeButton = new Button({ glyph: "times" });
         this.closeButton.setInsets(new Insets(0, 0, 0, 0));
         this.closeButton.setBorder({ style: BorderStyle.NONE });
-        this.closeButton.setBackgroundImage(null);
+        this.closeButton.clearBackgroundImage();
         this.closeButton.setBackgroundColor("transparent");
-        this.closeButton.setShadow(null);
-        this.closeButton.setPressedShadow(null);
+        this.closeButton.clearShadow();
+        this.closeButton.clearPressedShadow();
         this.closeButton.setPreferredSize(CLOSE_SIZE, CLOSE_SIZE);
         this.addComponent(this.closeButton);
 
@@ -193,21 +193,34 @@ class DialogTitleBar extends Component {
      * notification-detail path uses this slot, and the glyph never coexists with
      * other left-side decoration on a Dialog title bar.
      */
-    setGlyph(name: string | null): this {
+    setGlyph(name: string): this {
         if (this._titleGlyph) {
             this.removeComponent(this._titleGlyph);
             this._titleGlyph = null;
         }
 
-        if (name) {
-            const glyph = new Glyph(name);
-            glyph.setPointerEvents("none");
-            glyph.setPreferredSize(16, 16);
-            this._titleGlyph = glyph;
-            this.addComponent(glyph);
-        }
+        const glyph = new Glyph(name);
+        glyph.setPointerEvents("none");
+        glyph.setPreferredSize(16, 16);
+        this._titleGlyph = glyph;
+        this.addComponent(glyph);
 
         this.doLayout();
+
+        return this;
+    }
+
+    /**
+     * Removes the leading title-bar glyph from the dialog, if one is present.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearGlyph(): this {
+        if (this._titleGlyph) {
+            this.removeComponent(this._titleGlyph);
+            this._titleGlyph = null;
+            this.doLayout();
+        }
 
         return this;
     }
@@ -420,7 +433,7 @@ class Dialog extends Component {
         this.setShadow("var(--ts-ui-dialog-shadow)");
         this.setOverflow("hidden");
         // Fixed dimensions, hidden overflow, no escaping descendants — full strict containment.
-        this.setElementCSSRule("contain", "strict");
+        this.setContain("strict");
 
         const layout = new BorderLayout();
         layout.setComponentGap(0);
@@ -433,15 +446,15 @@ class Dialog extends Component {
         this.contentContainer.setLayoutManager(new Fit());
         // Vertical scrolling only — a horizontal scrollbar would cover the
         // bottom rows of body text and is rarely useful for dialog content.
-        this.contentContainer.setElementCSSRule("overflowY", "auto");
-        this.contentContainer.setElementCSSRule("overflowX", "hidden");
+        this.contentContainer.setOverflowY("auto");
+        this.contentContainer.setOverflowX("hidden");
 
         if (config.contentComponent) {
             this.contentContainer.addComponent(config.contentComponent);
         } else {
             const messageText = new Text(config.message ?? '');
-            messageText.setElementCSSRule("whiteSpace", "normal");
-            messageText.setElementCSSRule("wordBreak", "break-word");
+            messageText.setWhiteSpace("normal");
+            messageText.setWordBreak("break-word");
             messageText.setPadding(new Insets(16, 16, 16, 16));
             this.contentContainer.addComponent(messageText);
         }

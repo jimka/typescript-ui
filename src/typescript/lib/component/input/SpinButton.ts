@@ -42,8 +42,8 @@ class SpinButton extends Button {
         this.updateSize();
         ThemeManager.onThemeChange(() => this.updateSize());
 
-        this.setShadow(null);
-        this.setPressedShadow(null);
+        this.clearShadow();
+        this.clearPressedShadow();
         this.setBorder({ style: BorderStyle.NONE });
         this.setBorderRadius("0");
         this.setInsets(new Insets(0, 0, 0, 0));

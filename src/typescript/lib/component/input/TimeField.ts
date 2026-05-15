@@ -63,7 +63,7 @@ class TimeField extends Input implements Bindable<Date | null> {
         }
 
         if (options.enabled !== undefined) {
-            this.setElementAttribute("disabled", options.enabled ? null : "");
+            this.setDisabledAttribute(!options.enabled);
         }
 
         return this;

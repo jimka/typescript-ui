@@ -81,7 +81,7 @@ class RadioButton extends Component {
         }
 
         if (options.enabled !== undefined) {
-            this.radio.setElementAttribute("disabled", options.enabled ? null : "");
+            this.radio.setDisabledAttribute(!options.enabled);
         }
 
         return this;
@@ -125,7 +125,7 @@ class RadioButton extends Component {
      */
     setRadioName(name: string): this {
         this._radioName = name;
-        this.radio.setElementAttribute("name", name);
+        this.radio.setName(name);
 
         return this;
     }
@@ -174,11 +174,11 @@ class RadioButton extends Component {
     render() {
         let element = <HTMLInputElement>super.render();
 
-        this.radio.setElementAttribute("type", "radio");
+        this.radio.setType("radio");
         this.radio.getElement().checked = this.isSelected();
 
         if (this._radioName !== null) {
-            this.radio.setElementAttribute("name", this._radioName);
+            this.radio.setName(this._radioName);
         }
 
         return element;

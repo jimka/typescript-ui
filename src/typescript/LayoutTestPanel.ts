@@ -47,7 +47,7 @@ class LayoutTestPanel extends Panel {
         this.addComponent(passwordField);
 
         let radioButtonComponent = new Component();
-        radioButtonComponent.setInsets(null);
+        radioButtonComponent.clearInsets();
         radioButtonComponent.setLayoutManager(new HBox());
 
         let buttonGroup = new ButtonGroup();

@@ -212,10 +212,10 @@ class ProgressBar extends Component {
     private applyIndeterminate(value: boolean): void {
         if (value) {
             this.fill.setBackgroundColor("var(--ts-ui-progress-indeterminate-bg, rgb(30, 100, 200))");
-            this.fill.setElementCSSRule("animation", "ts-ui-progress-indeterminate 1.4s ease-in-out infinite");
+            this.fill.setAnimation("ts-ui-progress-indeterminate 1.4s ease-in-out infinite");
         } else {
             this.fill.setBackgroundColor("var(--ts-ui-progress-fill-bg, rgb(30, 100, 200))");
-            this.fill.setElementCSSRule("animation", null);
+            this.fill.clearAnimation();
         }
     }
 }

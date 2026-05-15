@@ -507,7 +507,7 @@ class Menu extends Component {
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-menu-bar-panel-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
         this.getAria().setRole("menu");
-        this.setElementCSSRule("contain", "layout");
+        this.setContain("layout");
     }
 
     /**
@@ -525,7 +525,7 @@ class Menu extends Component {
         });
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-context-menu-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
-        this.setElementCSSRule("contain", "layout");
+        this.setContain("layout");
     }
 
     /**

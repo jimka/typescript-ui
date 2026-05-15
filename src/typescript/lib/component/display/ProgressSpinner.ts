@@ -70,7 +70,7 @@ class ProgressSpinner extends Component {
         // Use no insets so the arc fills the declared size — otherwise the
         // default 4-pixel inset shrinks a 24-pixel spinner's arc to 16 pixels
         // and leaves 8 pixels of empty space around it.
-        this.setInsets(null);
+        this.clearInsets();
 
         this.arc = new Component();
         this.arc.setPosition(Position.ABSOLUTE);
@@ -81,7 +81,7 @@ class ProgressSpinner extends Component {
             color: "var(--ts-ui-progress-spinner-color, rgb(30, 100, 200))",
             top  : { style: BorderStyle.SOLID, width: ARC_BORDER_WIDTH, color: "transparent" },
         });
-        this.arc.setElementCSSRule("animation", "ts-ui-progress-spinner-rotate 0.8s linear infinite");
+        this.arc.setAnimation("ts-ui-progress-spinner-rotate 0.8s linear infinite");
 
         super.addComponent(this.arc);
 
@@ -205,7 +205,7 @@ class ProgressSpinner extends Component {
 
         this.removeElement();
 
-        this.setBackgroundColor(null);
+        this.clearBackgroundColor();
         this.setZIndex(0);
     }
 
