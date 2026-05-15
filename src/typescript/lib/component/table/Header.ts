@@ -311,7 +311,7 @@ class Header extends Component {
             if (entry) {
                 cell.setSortState(entry.dir, showPriority ? entry.priority : null);
             } else {
-                cell.setSortState(null);
+                cell.clearSortState();
             }
         });
     }

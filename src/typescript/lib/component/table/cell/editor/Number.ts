@@ -35,7 +35,7 @@ class NumberEditor extends CellEditor<Number> {
         });
 
         this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
-        this.textField.setPadding(null);
+        this.textField.clearPadding();
         this.setBorderRadius("0");
         this.textField.setBorder({ style: BorderStyle.SOLID, width: 0, color: 'transparent' });
         this.textField.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-editor-border, rgba(30, 100, 200, 0.6))');

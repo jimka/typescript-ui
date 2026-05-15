@@ -52,17 +52,17 @@ Setting any size hint schedules a layout pass on the parent. The framework's rAF
 
 ## Always include "px" units in custom CSS
 
-If you write your own CSS rules via `setElementStyle` or `setElementCSSRule`, include the `"px"` unit explicitly. The framework does this automatically for its own setters, but raw CSS:
+When you write raw CSS inside a `Component` subclass — e.g. `setElementStyle('padding', value)` or `setElementCSSRule('margin', value)` (both `protected`, reachable only from a subclass that needs a property the typed API doesn't yet expose) — include the `"px"` unit explicitly:
 
 ```typescript
 // WRONG — silently ignored by the browser
-component.setElementStyle('padding', '8');
+this.setElementStyle('padding', '8');
 
 // RIGHT
-component.setElementStyle('padding', '8px');
+this.setElementStyle('padding', '8px');
 ```
 
-Missing units silently produce zero-height components — an early bug fixed in the framework but still possible to reintroduce in custom code.
+Missing units silently produce zero-height components — an early bug fixed in the framework but still possible to reintroduce in custom subclass code.
 
 ## Inner size vs outer size
 

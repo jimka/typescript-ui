@@ -295,12 +295,12 @@ class NumberSpinner extends Component implements Bindable<number> {
         this._enabled = enabled;
 
         if (enabled) {
-            this.input.setElementAttribute("disabled", null);
+            this.input.setDisabledAttribute(false);
             this.upBtn.setPointerEvents("auto");
             this.downBtn.setPointerEvents("auto");
-            this.setOpacity(null);
+            this.clearOpacity();
         } else {
-            this.input.setElementAttribute("disabled", "true");
+            this.input.setDisabledAttribute(true);
             this.upBtn.setPointerEvents("none");
             this.downBtn.setPointerEvents("none");
             this.setOpacity(0.5);

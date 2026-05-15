@@ -61,7 +61,7 @@ export class Body extends Component {
 
         let me = this;
         this.setSize(viewportSize);
-        this.setInsets(null);
+        this.clearInsets();
 
         Event.addViewportResizeListener(function (size: Size) {
             me.setSize(size);

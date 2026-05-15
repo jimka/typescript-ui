@@ -37,7 +37,7 @@ class FieldDecorator extends Component {
 
         // Every Component defaults to 4px insets on all sides.  Zero them out so
         // the Fit layout gives the field the decorator's full content area.
-        this.setInsets(null);
+        this.clearInsets();
 
         // Inherit the theme border radius so the outline follows the field's rounded corners.
         this.setBorderRadius('var(--ts-ui-border-radius)');
@@ -85,7 +85,7 @@ class FieldDecorator extends Component {
      * Removes the error outline and detaches the error tooltip.
      */
     clearError(): this {
-        this.setOutline(null);
+        this.clearOutline();
         Tooltip.detach(this);
 
         return this;

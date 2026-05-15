@@ -108,7 +108,7 @@ export class Notification extends Component {
         this.setHeight(Notification.HEIGHT);
         this.setOverflow("hidden");
         // Fixed size, fixed position, hidden overflow — full strict containment.
-        this.setElementCSSRule("contain", "strict");
+        this.setContain("strict");
 
         const bgVar     = `var(--ts-ui-notification-${type}-bg)`;
         const borderVar = `var(--ts-ui-notification-${type}-border)`;
@@ -129,22 +129,18 @@ export class Notification extends Component {
         // Webkit-prefixed line clamp is now cross-browser (Chrome, Edge, Safari,
         // Firefox 68+). Clamped to two lines so a long message gets a trailing
         // ellipsis — the full text is reachable via double-click → detail dialog.
-        this.messageText.setElementCSSRule("display", "-webkit-box");
-        this.messageText.setElementCSSRule("webkitBoxOrient", "vertical");
-        this.messageText.setElementCSSRule("webkitLineClamp", "2");
-        this.messageText.setElementCSSRule("whiteSpace", "normal");
-        this.messageText.setElementCSSRule("wordBreak", "break-word");
-        this.messageText.setOverflow("hidden");
-        this.messageText.setElementCSSRule("textOverflow", "ellipsis");
+        this.messageText.setLineClamp(2);
+        this.messageText.setWhiteSpace("normal");
+        this.messageText.setWordBreak("break-word");
         this.addComponent(this.messageText);
 
         this.closeButton = new Button({ glyph: "times" });
         this.closeButton.setInsets(new Insets(0, 0, 0, 0));
         this.closeButton.setBorder({ style: BorderStyle.NONE });
-        this.closeButton.setBackgroundImage(null);
+        this.closeButton.clearBackgroundImage();
         this.closeButton.setBackgroundColor("transparent");
-        this.closeButton.setShadow(null);
-        this.closeButton.setPressedShadow(null);
+        this.closeButton.clearShadow();
+        this.closeButton.clearPressedShadow();
         this.closeButton.setForegroundColor("var(--ts-ui-text-color, rgb(0, 0, 0))");
         this.closeButton.setPreferredSize(Notification.CLOSE_SIZE, Notification.CLOSE_SIZE);
         this.addComponent(this.closeButton);
@@ -396,8 +392,8 @@ export class Notification extends Component {
 
         const content = new Text(this.fullMessage);
         content.setAutoMeasure(false);
-        content.setElementCSSRule("whiteSpace", "pre-wrap");
-        content.setElementCSSRule("wordBreak", "break-word");
+        content.setWhiteSpace("pre-wrap");
+        content.setWordBreak("break-word");
         content.setPadding(new Insets(16, 16, 16, 16));
 
         const dialog = new _Dialog({

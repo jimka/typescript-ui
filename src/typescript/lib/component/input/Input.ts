@@ -22,6 +22,8 @@ export interface InputOptions extends ComponentOptions {
  */
 class Input extends Component {
 
+    private name: string | null = null;
+
     constructor(options?: InputOptions) {
         super({ tag: options?.tag ?? "input" });
 
@@ -43,8 +45,47 @@ class Input extends Component {
         super.applyOptions(options);
 
         if (options.name !== undefined) {
-            this.setElementAttribute("name", options.name);
+            this.setName(options.name);
         }
+
+        return this;
+    }
+
+    /**
+     * Sets the HTML `type` attribute on the underlying input element.
+     *
+     * Typically called once at construction time by subclasses (e.g. `RadioButton`
+     * sets `"radio"`). Most consumers should not need this directly.
+     *
+     * @param value - The input type (e.g. "text", "radio", "checkbox").
+     *
+     * @returns This component, for method chaining.
+     */
+    setType(value: string): this {
+        this.setElementAttribute("type", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the HTML `name` attribute value, or null if unset.
+     *
+     * @returns The name string, or null.
+     */
+    getName(): string | null {
+        return this.name;
+    }
+
+    /**
+     * Sets the HTML `name` attribute on the underlying input.
+     *
+     * @param value - The name used for form submission and radio grouping.
+     *
+     * @returns This component, for method chaining.
+     */
+    setName(value: string): this {
+        this.name = value;
+        this.setElementAttribute("name", value);
 
         return this;
     }

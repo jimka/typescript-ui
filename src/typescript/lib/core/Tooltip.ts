@@ -87,11 +87,11 @@ export class Tooltip extends Component {
         this.setPointerEvents("none");
         // Top-level overlay, dynamic size — layout+paint containment scopes reflow without
         // committing to a fixed size.
-        this.setElementCSSRule("contain", "layout paint");
+        this.setContain("layout paint");
 
         this.text = new Text();
         this.text.setPointerEvents("none");
-        this.text.setElementCSSRule("whiteSpace", "nowrap");
+        this.text.setWhiteSpace("nowrap");
         this.addComponent(this.text);
     }
 

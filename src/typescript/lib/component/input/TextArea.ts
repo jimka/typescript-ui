@@ -25,6 +25,10 @@ export interface TextAreaOptions extends TextInputOptions {
  */
 class TextArea extends TextInput {
 
+    private rows: number | null = null;
+    private cols: number | null = null;
+    private wrap: string | null = null;
+
     constructor(text: string = "", options?: TextAreaOptions) {
         super({ tag: "textarea" });
 
@@ -54,16 +58,85 @@ class TextArea extends TextInput {
         super.applyOptions(options);
 
         if (options.rows !== undefined) {
-            this.setElementAttribute("rows", String(options.rows));
+            this.setRows(options.rows);
         }
 
         if (options.cols !== undefined) {
-            this.setElementAttribute("cols", String(options.cols));
+            this.setCols(options.cols);
         }
 
         if (options.wrap !== undefined) {
-            this.setElementAttribute("wrap", options.wrap);
+            this.setWrap(options.wrap);
         }
+
+        return this;
+    }
+
+    /**
+     * Returns the configured `rows` attribute value, or null if not set.
+     *
+     * @returns The row count, or null.
+     */
+    getRows(): number | null {
+        return this.rows;
+    }
+
+    /**
+     * Sets the HTML `rows` attribute on the underlying textarea.
+     *
+     * @param value - The number of visible text rows.
+     *
+     * @returns This component, for method chaining.
+     */
+    setRows(value: number): this {
+        this.rows = value;
+        this.setElementAttribute("rows", String(value));
+
+        return this;
+    }
+
+    /**
+     * Returns the configured `cols` attribute value, or null if not set.
+     *
+     * @returns The column count, or null.
+     */
+    getCols(): number | null {
+        return this.cols;
+    }
+
+    /**
+     * Sets the HTML `cols` attribute on the underlying textarea.
+     *
+     * @param value - The visible width in average character widths.
+     *
+     * @returns This component, for method chaining.
+     */
+    setCols(value: number): this {
+        this.cols = value;
+        this.setElementAttribute("cols", String(value));
+
+        return this;
+    }
+
+    /**
+     * Returns the configured `wrap` attribute value, or null if not set.
+     *
+     * @returns The wrap mode, or null.
+     */
+    getWrap(): string | null {
+        return this.wrap;
+    }
+
+    /**
+     * Sets the HTML `wrap` attribute on the underlying textarea.
+     *
+     * @param value - The wrap mode (e.g. "hard", "soft", "off").
+     *
+     * @returns This component, for method chaining.
+     */
+    setWrap(value: string): this {
+        this.wrap = value;
+        this.setElementAttribute("wrap", value);
 
         return this;
     }

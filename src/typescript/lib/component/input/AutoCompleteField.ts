@@ -104,7 +104,7 @@ class AutoCompleteField extends Component implements Bindable<string> {
         this.textField = new TextField();
 
         if (options?.placeholder) {
-            this.textField.setElementAttribute("placeholder", options.placeholder);
+            this.textField.setPlaceholder(options.placeholder);
         }
 
         this.addComponent(this.textField);
