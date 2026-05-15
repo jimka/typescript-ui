@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { Event } from "~/core/Event.js";
+import { Animation } from "~/core/Animation.js";
 import { Position } from "~/primitive/Position.js";
 import { Util } from "~/core/Util.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Text } from "~/component/input/Text.js";
 import { Button } from "~/component/button/Button.js";
+import { Glyph } from "~/component/display/Glyph.js";
 import { DialogBackdrop } from "~/component/container/DialogBackdrop.js";
 import { Border as BorderLayout } from "~/layout/Border.js";
 import { Fit } from "~/layout/Fit.js";
@@ -33,6 +34,8 @@ export interface DialogButtonConfig {
     result? : DialogResult;
     /** When true, renders the button with primary (confirm) styling. */
     primary?: boolean;
+    /** Optional registry glyph name shown to the left of the button label. */
+    glyph?  : string;
 }
 
 /**
@@ -71,6 +74,39 @@ const BUTTON_GAP    : number = 8;
 const BUTTON_V_PAD  : number = 11;
 const CLOSE_SIZE    : number = 20;
 const TITLE_H_PAD   : number = 12;
+const MIN_DIALOG_WIDTH : number = 320;
+const MIN_DIALOG_HEIGHT: number = 160;
+const MIN_CONTENT_HEIGHT: number = 80;
+
+/**
+ * Shared duration (ms) for the dialog entrance/exit transition. The backdrop
+ * fade and the panel's opacity + scale all run for this many milliseconds.
+ */
+const DIALOG_ANIM_DURATION_MS: number = 150;
+
+/**
+ * Vertical breathing room reserved above and below the title text inside the
+ * `TITLE_HEIGHT` row. 4 px on each side: keeps the bold label off the divider
+ * border and gives a balanced visual cap height. Used both for the text's
+ * line-height (via {@link Text.centerInHeight}) and for its laid-out height
+ * inside the bar.
+ */
+const TITLE_V_PAD: number = 4;
+
+/**
+ * Horizontal gap between the close button and the right edge of the title
+ * bar, plus the gap between the title text and the close button. Two
+ * separate offsets share the same value so the close-button column reads as
+ * a balanced `[gap][icon][gap]` strip.
+ */
+const TITLE_RIGHT_GAP: number = 4;
+
+/**
+ * Horizontal gap between the optional leading glyph and the title text.
+ * Matches the 8 px gutter the WindowHeader uses between its title icon and
+ * label so the two surfaces feel consistent.
+ */
+const TITLE_GLYPH_TEXT_GAP: number = 8;
 
 // ---------------------------------------------------------------------------
 // Private: DialogTitleBar
@@ -78,16 +114,27 @@ const TITLE_H_PAD   : number = 12;
 
 /**
  * Title bar that occupies the NORTH slot of a Dialog's border layout.
- * Contains a text label on the left and a close (×) button on the right.
+ * Contains a text label on the left, an optional leading glyph, and a glyph
+ * close button on the right.
+ *
+ * @remarks
+ * Reach this instance via [`Dialog.getTitleBar()`](/api/core/classes/Dialog#gettitlebar) — there is no public
+ * constructor. The supported surface is `getTitleText()` (for tinting the
+ * title text colour), `setGlyph()` / `getGlyph()` (for the optional leading
+ * icon), and any inherited [`Component`](/api/core/classes/Component) setter
+ * (e.g. `setBackgroundColor`).
+ *
+ * @category Core
  */
 class DialogTitleBar extends Component {
 
-    private readonly titleText : Text;
-    private readonly closeIcon: Text;
+    private readonly titleText  : Text;
+    private readonly closeButton: Button;
+    private _titleGlyph: Glyph | null = null;
 
     /**
      * @param title - Text to display in the title bar.
-     * @param onClose - Called when the user clicks the × close button.
+     * @param onClose - Called when the user clicks the close button.
      */
     constructor(title: string, onClose: () => void) {
         super();
@@ -106,43 +153,118 @@ class DialogTitleBar extends Component {
         this.titleText.setOverflow("hidden");
         this.titleText.setTextOverflow("ellipsis");
         this.titleText.setWhiteSpace("nowrap");
+        // Centre the label within the inner area of the row (TITLE_HEIGHT
+        // minus the top + bottom TITLE_V_PAD breathing room).
+        this.titleText.centerInHeight(TITLE_HEIGHT - TITLE_V_PAD * 2);
         this.addComponent(this.titleText);
 
-        this.closeIcon = new Text("×");
-        this.closeIcon.setCursor("pointer");
-        this.closeIcon.setTextAlign("center");
-        this.closeIcon.setLineHeight(CLOSE_SIZE);
-        this.closeIcon.setUserSelect("none");
-        this.closeIcon.setForegroundColor("var(--ts-ui-text-color)");
-        this.addComponent(this.closeIcon);
+        this.closeButton = new Button({ glyph: "times" });
+        this.closeButton.setInsets(new Insets(0, 0, 0, 0));
+        this.closeButton.setBorder({ style: BorderStyle.NONE });
+        this.closeButton.setBackgroundImage(null);
+        this.closeButton.setBackgroundColor("transparent");
+        this.closeButton.setShadow(null);
+        this.closeButton.setPressedShadow(null);
+        this.closeButton.setPreferredSize(CLOSE_SIZE, CLOSE_SIZE);
+        this.addComponent(this.closeButton);
 
-        Event.addListener(this.closeIcon, "click", onClose);
+        this.closeButton.addActionListener(onClose);
     }
 
     /**
-     * Positions the title label and close button within the title bar bounds.
+     * Returns the title-text component, for callers that need to tint or
+     * otherwise restyle it from outside the title bar.
+     *
+     * @returns The internal title [`Text`](/api/component/input/classes/Text) instance.
+     */
+    getTitleText(): Text {
+        return this.titleText;
+    }
+
+    /**
+     * Sets or clears an optional leading glyph shown to the left of the title text.
+     *
+     * @param name - Registry glyph name to display, or `null` to clear an existing glyph.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks
+     * The current implementation positions the glyph in `doLayout`; only the
+     * notification-detail path uses this slot, and the glyph never coexists with
+     * other left-side decoration on a Dialog title bar.
+     */
+    setGlyph(name: string | null): this {
+        if (this._titleGlyph) {
+            this.removeComponent(this._titleGlyph);
+            this._titleGlyph = null;
+        }
+
+        if (name) {
+            const glyph = new Glyph(name);
+            glyph.setPointerEvents("none");
+            glyph.setPreferredSize(16, 16);
+            this._titleGlyph = glyph;
+            this.addComponent(glyph);
+        }
+
+        this.doLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the optional leading title-glyph component, or null if none is set.
+     *
+     * @returns The leading [`Glyph`](/api/component/display/classes/Glyph) instance, or null.
+     */
+    getGlyph(): Glyph | null {
+        return this._titleGlyph;
+    }
+
+    /**
+     * Positions the title label, optional leading glyph, and close button within
+     * the title bar bounds.
      *
      * @returns This component, for method chaining.
      */
     doLayout(): this {
         super.doLayout();
 
-        const w          = this.getWidth();
-        const h          = this.getHeight();
-        const closeX     = w - CLOSE_SIZE - 4;
-        const centerY    = Math.floor((h - CLOSE_SIZE) / 2);
-        const labelWidth = closeX - TITLE_H_PAD - 4;
-        const labelH     = h - 8;
+        const w       = this.getWidth();
+        const h       = this.getHeight();
+        const closeX  = w - CLOSE_SIZE - TITLE_RIGHT_GAP;
+        const centerY = Math.floor((h - CLOSE_SIZE) / 2);
 
-        this.titleText.setX(TITLE_H_PAD);
-        this.titleText.setY(4);
+        let labelX = TITLE_H_PAD;
+
+        if (this._titleGlyph) {
+            const glyphSize = this._titleGlyph.getPreferredSize() ?? { width: 16, height: 16 };
+            const glyphY    = Math.max(0, Math.floor((h - glyphSize.height) / 2));
+
+            this._titleGlyph.setX(TITLE_H_PAD);
+            this._titleGlyph.setY(glyphY);
+            this._titleGlyph.setWidth(glyphSize.width);
+            this._titleGlyph.setHeight(glyphSize.height);
+
+            labelX = TITLE_H_PAD + glyphSize.width + TITLE_GLYPH_TEXT_GAP;
+        }
+
+        // Reserve TITLE_RIGHT_GAP of space between the label and the close button.
+        const labelWidth = Math.max(0, closeX - labelX - TITLE_RIGHT_GAP);
+        const labelH     = h - TITLE_V_PAD * 2;
+
+        this.titleText.setX(labelX);
+        this.titleText.setY(TITLE_V_PAD);
         this.titleText.setWidth(labelWidth);
         this.titleText.setHeight(labelH);
 
-        this.closeIcon.setX(closeX);
-        this.closeIcon.setY(centerY);
-        this.closeIcon.setWidth(CLOSE_SIZE);
-        this.closeIcon.setHeight(CLOSE_SIZE);
+        this.closeButton.setX(closeX);
+        this.closeButton.setY(centerY);
+        this.closeButton.setWidth(CLOSE_SIZE);
+        this.closeButton.setHeight(CLOSE_SIZE);
+        // setX/setY/setWidth/setHeight don't cascade — explicitly relayout the
+        // close button so its internal Fit layout sizes the times glyph.
+        this.closeButton.doLayout();
 
         return this;
     }
@@ -177,7 +299,7 @@ class DialogButtonRow extends Component {
         this.setPreferredSize(0, BUTTON_HEIGHT);
 
         for (const cfg of configs) {
-            const btn    = new Button(cfg.text);
+            const btn    = new Button(cfg.text, cfg.glyph !== undefined ? { glyph: cfg.glyph } : undefined);
             const result = cfg.result ?? 'cancel';
 
             if (cfg.primary) {
@@ -231,7 +353,7 @@ const DIALOG_BASE_Z: number = 10101;
 
 /** Default button set when no buttons are supplied in config. */
 const DEFAULT_BUTTONS: DialogButtonConfig[] = [
-    { text: 'OK', result: 'confirm', primary: true },
+    { text: 'OK', result: 'confirm', primary: true, glyph: "check-circle" },
 ];
 
 /**
@@ -281,10 +403,13 @@ class Dialog extends Component {
         this.instanceZ = instanceCounter;
         instanceCounter += 1;
 
-        const dialogWidth  = config.width ?? 480;
+        const dialogWidth  = Math.max(MIN_DIALOG_WIDTH, config.width ?? 480);
         const buttons      = config.buttons ?? DEFAULT_BUTTONS;
-        const contentHeight = this.computeContentHeight(config);
-        const dialogHeight  = config.height ?? (TITLE_HEIGHT + contentHeight + BUTTON_HEIGHT);
+        const contentHeight = Math.max(MIN_CONTENT_HEIGHT, this.computeContentHeight(config));
+        const dialogHeight  = Math.max(
+            MIN_DIALOG_HEIGHT,
+            config.height ?? (TITLE_HEIGHT + contentHeight + BUTTON_HEIGHT)
+        );
 
         this.setPosition(Position.FIXED);
         this.setWidth(dialogWidth);
@@ -306,7 +431,10 @@ class Dialog extends Component {
 
         this.contentContainer = new Component();
         this.contentContainer.setLayoutManager(new Fit());
-        this.contentContainer.setOverflow("auto");
+        // Vertical scrolling only — a horizontal scrollbar would cover the
+        // bottom rows of body text and is rarely useful for dialog content.
+        this.contentContainer.setElementCSSRule("overflowY", "auto");
+        this.contentContainer.setElementCSSRule("overflowX", "hidden");
 
         if (config.contentComponent) {
             this.contentContainer.addComponent(config.contentComponent);
@@ -378,11 +506,42 @@ class Dialog extends Component {
 
         this.scheduleLayout();
         this.center();
+        this.animateIn();
 
         document.addEventListener('keydown', this.boundKeyHandler, true);
         window.addEventListener('resize', this.boundResizeHandler);
 
         this.focusFirst();
+    }
+
+    /**
+     * Fades the backdrop in and the dialog panel in from `opacity: 0` +
+     * `scale(0.97)` to `opacity: 1` + `scale(1)` over 150ms. No-op when
+     * `prefers-reduced-motion: reduce` is set.
+     */
+    private animateIn(): void {
+        const el   = this.getElement();
+        const bdEl = this.backdrop.getElement();
+
+        if (!el) {
+            return;
+        }
+
+        Animation.play(el, {
+            from:       { opacity: "0", transform: "scale(0.97)" },
+            to:         { opacity: "1", transform: "scale(1)"    },
+            durationMs: DIALOG_ANIM_DURATION_MS,
+            properties: ["opacity", "transform"],
+        });
+
+        if (bdEl) {
+            Animation.play(bdEl, {
+                from:       { opacity: "0" },
+                to:         { opacity: "1" },
+                durationMs: DIALOG_ANIM_DURATION_MS,
+                properties: ["opacity"],
+            });
+        }
     }
 
     /**
@@ -473,27 +632,56 @@ class Dialog extends Component {
     }
 
     /**
-     * Dismisses the dialog, restores focus, and resolves the promise.
+     * Dismisses the dialog with a brief fade-and-scale animation, restores
+     * focus, and resolves the promise.
      *
      * @param result - The result to resolve the promise with.
+     *
+     * @remarks Honours `prefers-reduced-motion: reduce` — the transition is
+     * skipped when motion is reduced.
      */
     hide(result: DialogResult): this {
         document.removeEventListener('keydown', this.boundKeyHandler, true);
         window.removeEventListener('resize', this.boundResizeHandler);
 
-        this.backdrop.destroy();
-        this.removeElement();
-        this.destructor();
+        const finalize = (): void => {
+            this.backdrop.destroy();
+            this.removeElement();
+            this.destructor();
 
-        instanceCounter = Math.max(0, instanceCounter - 1);
+            instanceCounter = Math.max(0, instanceCounter - 1);
 
-        if (this.previousFocus && 'focus' in this.previousFocus) {
-            (this.previousFocus as HTMLElement).focus();
+            if (this.previousFocus && 'focus' in this.previousFocus) {
+                (this.previousFocus as HTMLElement).focus();
+            }
+
+            if (this.resolvePromise) {
+                this.resolvePromise(result);
+                this.resolvePromise = null;
+            }
+        };
+
+        const el   = this.getElement();
+        const bdEl = this.backdrop.getElement();
+
+        if (!el) {
+            finalize();
+            return this;
         }
 
-        if (this.resolvePromise) {
-            this.resolvePromise(result);
-            this.resolvePromise = null;
+        Animation.play(el, {
+            to:         { opacity: "0", transform: "scale(0.97)" },
+            durationMs: DIALOG_ANIM_DURATION_MS,
+            properties: ["opacity", "transform"],
+            onComplete: finalize,
+        });
+
+        if (bdEl) {
+            Animation.play(bdEl, {
+                to:         { opacity: "0" },
+                durationMs: DIALOG_ANIM_DURATION_MS,
+                properties: ["opacity"],
+            });
         }
 
         return this;
@@ -506,6 +694,22 @@ class Dialog extends Component {
      */
     getContentComponent(): Component {
         return this.contentContainer;
+    }
+
+    /**
+     * Returns the dialog's title-bar component.
+     *
+     * @returns The internal title-bar instance, exposing `getText()` and
+     *          `setGlyph()` for callers (e.g. the notification detail dialog)
+     *          that need to tint or decorate the header.
+     *
+     * @remarks
+     * The `DialogTitleBar` class itself is not exported — callers reach it
+     * only through this accessor and interact via its few public methods
+     * (`getText`, `setGlyph`, `getGlyph`).
+     */
+    getTitleBar(): DialogTitleBar {
+        return this.titleBar;
     }
 
     /**
@@ -547,8 +751,8 @@ class Dialog extends Component {
             title,
             message,
             buttons: [
-                { text: 'Cancel',  result: 'cancel',  primary: true },
-                { text: 'Confirm', result: 'confirm'                },
+                { text: 'Cancel',  result: 'cancel',  primary: true, glyph: "times"        },
+                { text: 'Confirm', result: 'confirm',                glyph: "check-circle" },
             ],
         });
 
@@ -560,5 +764,6 @@ const DialogCallable = callable(Dialog);
 type DialogCallable = Dialog;
 export {
     Dialog         as _Dialog,
-    DialogCallable as Dialog
+    DialogCallable as Dialog,
+    DialogTitleBar
 };
