@@ -132,6 +132,20 @@ class WindowHeader extends Header {
     }
 
     /**
+     * Removes the title icon from the header, if one is present.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearGlyph(): this {
+        if (this._titleGlyph) {
+            this._titleRow.removeComponent(this._titleGlyph);
+            this._titleGlyph = null;
+        }
+
+        return this;
+    }
+
+    /**
      * Returns the current title-glyph component, or null if none is set.
      *
      * @returns The title [`Glyph`](/api/component/display/classes/Glyph), or null.

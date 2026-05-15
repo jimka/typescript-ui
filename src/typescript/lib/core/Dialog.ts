@@ -213,6 +213,21 @@ class DialogTitleBar extends Component {
     }
 
     /**
+     * Removes the leading title-bar glyph from the dialog, if one is present.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearGlyph(): this {
+        if (this._titleGlyph) {
+            this.removeComponent(this._titleGlyph);
+            this._titleGlyph = null;
+            this.doLayout();
+        }
+
+        return this;
+    }
+
+    /**
      * Returns the optional leading title-glyph component, or null if none is set.
      *
      * @returns The leading [`Glyph`](/api/component/display/classes/Glyph) instance, or null.

@@ -246,6 +246,20 @@ class Button extends Component {
     }
 
     /**
+     * Removes the leading glyph from the button, if one is present.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearGlyph(): this {
+        if (this._glyph) {
+            this._content.removeComponent(this._glyph);
+            this._glyph = null;
+        }
+
+        return this;
+    }
+
+    /**
      * Returns the current leading glyph component, or null if none is set.
      *
      * @returns The [`Glyph`](/api/component/display/classes/Glyph) instance, or null.
@@ -304,6 +318,18 @@ class Button extends Component {
     }
 
     /**
+     * Removes the background-color from the :active CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearPressedBackgroundColor(): this {
+        this.pressedBackgroundColor = null;
+        this.pressedCSSRule.style.removeProperty('background-color');
+
+        return this;
+    }
+
+    /**
      * Returns the background image applied when the button is in the :active state.
      *
      * @returns The CSS background-image string, or null if not set.
@@ -331,6 +357,18 @@ class Button extends Component {
     }
 
     /**
+     * Removes the background-image from the :active CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearPressedBackgroundImage(): this {
+        this.pressedBackgroundImage = null;
+        this.pressedCSSRule.style.removeProperty('background-image');
+
+        return this;
+    }
+
+    /**
      * Returns the text color applied when the button is in the :active state.
      *
      * @returns The CSS color string, or null if not set.
@@ -353,6 +391,18 @@ class Button extends Component {
         } else {
             this.pressedCSSRule.style.removeProperty('color');
         }
+
+        return this;
+    }
+
+    /**
+     * Removes the color (foreground) from the :active CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearPressedForegroundColor(): this {
+        this.pressedForegroundColor = null;
+        this.pressedCSSRule.style.removeProperty('color');
 
         return this;
     }
@@ -413,6 +463,18 @@ class Button extends Component {
     }
 
     /**
+     * Removes the border-radius from the :active CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearPressedBorderRadius(): this {
+        this.pressedBorderRadius = null;
+        this.pressedCSSRule.style.removeProperty('border-radius');
+
+        return this;
+    }
+
+    /**
      * Returns the box shadow applied when the button is in the :active state.
      *
      * @returns The CSS box-shadow string, or null if not set.
@@ -435,6 +497,18 @@ class Button extends Component {
         } else {
             this.pressedCSSRule.style.removeProperty('box-shadow');
         }
+
+        return this;
+    }
+
+    /**
+     * Removes the box-shadow from the :active CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearPressedShadow(): this {
+        this.pressedShadow = null;
+        this.pressedCSSRule.style.removeProperty('box-shadow');
 
         return this;
     }
