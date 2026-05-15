@@ -5,6 +5,7 @@ import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
 import { Cell } from "~/component/table/cell/Cell.js";
+import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { Event } from "~/core/Event.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -62,6 +63,7 @@ class Body extends Component {
     private selectedRecords : Set<ModelRecord>          = new Set();
     private anchorRecord    : ModelRecord | null        = null;
     private _focusedColIndex: number                    = 0;
+    private editorPool      : CellEditorPool            = new CellEditorPool();
 
     constructor(store: AbstractStore) {
         super({ tag: "tbody" });
@@ -233,6 +235,18 @@ class Body extends Component {
     }
 
     /**
+     * Returns the shared editor pool that backs in-place editing for every cell in this body.
+     *
+     * @returns The {@link CellEditorPool} owned by this body.
+     *
+     * @remarks Use this to register a custom editor factory for a cell-specific key. Built-in
+     * factories for the seven standard typed cells are seeded automatically.
+     */
+    getEditorPool(): CellEditorPool {
+        return this.editorPool;
+    }
+
+    /**
      * Sets the JS-controlled vertical scroll position. Delegates to the
      * underlying {@link VirtualScroller}.
      *
@@ -399,6 +413,11 @@ class Body extends Component {
                 this.columnConfigs,
                 (record) => this.store.notifyRecordChanged(record),
             );
+
+            for (const cell of row.getComponents() as Cell<any>[]) {
+                cell.setEditorPool(this.editorPool);
+            }
+
             const rowEl = row.getElement(true);
 
             growFragment.appendChild(rowEl);
