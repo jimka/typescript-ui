@@ -3,6 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
+import { Animation } from "~/core/Animation.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { VBox } from "~/layout/VBox.js";
@@ -15,6 +16,9 @@ const PANEL_WIDTH = 220;
 
 /** Default pixel width used for rebuild-mode (right-click) `Menu` panels. */
 const DEFAULT_REBUILD_WIDTH = 180;
+
+/** Duration (ms) of the fade-in / fade-out transitions on every menu panel. */
+const MENU_ANIM_DURATION_MS = 120;
 
 /**
  * A floating menu panel that operates in one of two modes:
@@ -61,6 +65,11 @@ class Menu extends Component {
     private _openSubmenuItem: MenuItem | null = null;
     private _excludedEl: HTMLElement | null = null;
     private _menuWidth: number = DEFAULT_REBUILD_WIDTH;
+    // Set true while a fade-out is in flight; reset to false when the fade
+    // completes (so the deferred removeElement fires) or when a fresh
+    // `show()` / `open()` is invoked mid-fade (the pending removeElement is
+    // skipped because the panel is back on screen).
+    private _dismissing: boolean = false;
     private readonly _onViewportMouseDown: (e: MouseEvent) => void;
 
     /**
@@ -171,6 +180,7 @@ class Menu extends Component {
         document.documentElement.appendChild(el);
 
         this.setVisible(true);
+        this.fadeIn(el);
 
         Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
 
@@ -185,10 +195,9 @@ class Menu extends Component {
     hide(): this {
         this.assertRebuildMode("hide");
 
-        this.setVisible(false);
-        this.removeElement();
-
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
+
+        this.fadeOutAndDetach();
 
         return this;
     }
@@ -276,6 +285,7 @@ class Menu extends Component {
 
         this.setVisible(true);
         this.doLayout();
+        this.fadeIn(this.getElement(true));
 
         Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
 
@@ -297,12 +307,62 @@ class Menu extends Component {
         }
 
         this.setFocusedIndex(-1);
-        this.setVisible(false);
-        this.removeElement();
 
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
 
+        this.fadeOutAndDetach();
+
         return this;
+    }
+
+    /**
+     * Plays the standard menu-panel entrance fade on the given element.
+     * Cancels any in-flight fade-out so the deferred detach skips removing
+     * the still-visible panel.
+     *
+     * @param el - The panel's root element.
+     */
+    private fadeIn(el: HTMLElement): void {
+        this._dismissing = false;
+
+        Animation.play(el, {
+            from:       { opacity: "0" },
+            to:         { opacity: "1" },
+            durationMs: MENU_ANIM_DURATION_MS,
+            properties: ["opacity"],
+        });
+    }
+
+    /**
+     * Plays the standard menu-panel exit fade, then hides and detaches the
+     * panel from the DOM when the transition completes. A fresh `show()` /
+     * `open()` during the fade cancels the deferred detach by flipping the
+     * `_dismissing` flag, so the panel stays mounted.
+     */
+    private fadeOutAndDetach(): void {
+        const el = this.getElement();
+
+        if (!el) {
+            this.setVisible(false);
+            this.removeElement();
+            return;
+        }
+
+        this._dismissing = true;
+
+        Animation.play(el, {
+            to:         { opacity: "0" },
+            durationMs: MENU_ANIM_DURATION_MS,
+            properties: ["opacity"],
+            onComplete: () => {
+                if (!this._dismissing) {
+                    return;
+                }
+                this._dismissing = false;
+                this.setVisible(false);
+                this.removeElement();
+            },
+        });
     }
 
     /**
