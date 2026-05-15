@@ -62,6 +62,7 @@ class Text extends Component {
     private lineHeightCSSRule: string | null = "var(--ts-ui-line-height, 1.2)";
     private measuredBaseline: number | null = null;
     private autoMeasure: boolean = true;
+    private measurementDirty: boolean = true;
     private wordBreak: string | null = null;
     private lineClamp: number | null = null;
 
@@ -93,7 +94,10 @@ class Text extends Component {
             this.calculateSize();
         });
 
-        this.calculateSize();
+        // Off-screen text measurement is deferred until the first
+        // getPreferredSize / getBaseline call so construction stays JS-only
+        // (no forced layout from `Util.measureTextMetrics`).
+        this.measurementDirty = true;
 
         if (this.constructor === Text && options) {
             this.applyOptions(options);
@@ -231,6 +235,8 @@ class Text extends Component {
      * No-op when {@link setAutoMeasure} is `false` — the parent layout is expected to size this Text.
      */
     private calculateSize(): void {
+        this.measurementDirty = false;
+
         if (!this.autoMeasure) {
             return;
         }
@@ -274,9 +280,35 @@ class Text extends Component {
      *
      * @returns The baseline offset from the component's outer top, in pixels,
      * or `null` when no text has been measured yet.
+     *
+     * @remarks Forces a measurement when the cached value is stale — the
+     * off-screen probe is deferred from construction so first-call timing
+     * shifts to whoever asks for a size first (usually `doLayout`).
      */
     getBaseline(): number | null {
+        if (this.measurementDirty) {
+            this.calculateSize();
+        }
+
         return this.wrapInnerBaseline(this.measuredBaseline);
+    }
+
+    /**
+     * Returns the preferred size, lazily measuring the text on the first call.
+     *
+     * @returns The preferred Size, or `null` per the inherited contract.
+     *
+     * @remarks Construction no longer eagerly probes `document.body` for text
+     * dimensions; the first reader of the preferred size pays the measurement
+     * cost. After attach this is `doLayout`, so the probe happens at layout
+     * time rather than construction time.
+     */
+    getPreferredSize() {
+        if (this.measurementDirty) {
+            this.calculateSize();
+        }
+
+        return super.getPreferredSize();
     }
 
     /**
@@ -298,7 +330,8 @@ class Text extends Component {
     setText(text: String): this {
         this.text = text || "";
 
-        this.calculateSize();
+        this.measurementDirty = true;
+        this.scheduleLayout();
 
         let element = this.getElement();
         if (!element) {
@@ -395,7 +428,8 @@ class Text extends Component {
 
         this.setElementCSSRule("fontFamily", value);
 
-        this.calculateSize();
+        this.measurementDirty = true;
+        this.scheduleLayout();
 
         return this;
     }
@@ -460,7 +494,8 @@ class Text extends Component {
             this.setElementCSSRule("fontSize", this.fontSizeCSSRule);
         }
 
-        this.calculateSize();
+        this.measurementDirty = true;
+        this.scheduleLayout();
 
         return this;
     }
@@ -582,7 +617,8 @@ class Text extends Component {
 
         this.setElementCSSRule("fontWeight", value);
 
-        this.calculateSize();
+        this.measurementDirty = true;
+        this.scheduleLayout();
 
         return this;
     }
@@ -620,7 +656,8 @@ class Text extends Component {
             this.setElementCSSRule("lineHeight", this.lineHeightCSSRule);
         }
 
-        this.calculateSize();
+        this.measurementDirty = true;
+        this.scheduleLayout();
 
         return this;
     }

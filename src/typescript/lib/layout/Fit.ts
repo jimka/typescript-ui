@@ -11,16 +11,23 @@ import { callable } from "~/core/Callable.js";
  * @category Layouts
  */
 export interface FitOptions extends LayoutManagerOptions {
+    fill?: FillType;
 }
 
 /**
- * A layout manager that expects exactly one child component and sizes it to
- * fill the container's entire inner bounds.
- * Throws if the container holds more than one component.
+ * A layout manager that expects exactly one child component and positions it
+ * inside the container's entire inner bounds. The default fill mode is
+ * `FillType.BOTH` — the child stretches to fill the bounds. Pass
+ * `fill: FillType.NONE` (or call {@link Fit.setFill}) to centre the child at
+ * its preferred size instead; `HORIZONTAL` / `VERTICAL` stretch on one axis
+ * and centre on the other. Throws if the container holds more than one
+ * component.
  *
  * @category Layouts
  */
 class Fit extends LayoutManager {
+
+    private fill: FillType = FillType.BOTH;
 
     constructor(options?: FitOptions) {
         super();
@@ -28,6 +35,44 @@ class Fit extends LayoutManager {
         if (options) {
             this.applyOptions(options);
         }
+    }
+
+    /**
+     * Applies a {@link FitOptions} bag, dispatching the fill mode after the
+     * inherited LayoutManager defaults.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: FitOptions): void {
+        super.applyOptions(options);
+
+        if (options.fill !== undefined) {
+            this.setFill(options.fill);
+        }
+    }
+
+    /**
+     * Returns the fill mode applied to the single child.
+     *
+     * @returns The current [`FillType`](/api/layout/enumerations/FillType).
+     */
+    getFill(): FillType {
+        return this.fill;
+    }
+
+    /**
+     * Sets the fill mode applied to the single child.
+     *
+     * @param fill - `BOTH` stretches the child to fill (default), `NONE`
+     * centres it at its preferred size, `HORIZONTAL` / `VERTICAL` stretch on
+     * one axis and centre on the other.
+     *
+     * @returns This layout manager, for method chaining.
+     */
+    setFill(fill: FillType): this {
+        this.fill = fill;
+
+        return this;
     }
 
     /**
@@ -155,9 +200,13 @@ class Fit extends LayoutManager {
     }
 
     /**
-     * Sizes the single child component to fill the container's inner bounds.
+     * Places the single child component inside the container's inner bounds
+     * using the configured fill mode.
      *
-     * @remarks Throws if the container holds more than one component.
+     * @remarks Throws if the container holds more than one component. With
+     * the default `FillType.BOTH` the child is sized to the full bounds;
+     * with `FillType.NONE` it is placed at its preferred size and centred
+     * via the inherited anchor-displacement logic in `placeComponent`.
      */
     doLayout() {
         let container = this.getContainer();
@@ -190,7 +239,7 @@ class Fit extends LayoutManager {
             containerInsets ? containerInsets.getTop() : 0,
             containerSize ? containerSize.width : 0,
             containerSize ? containerSize.height : 0,
-            FillType.BOTH
+            this.fill
         );
     }
 }

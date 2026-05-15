@@ -92,8 +92,7 @@ class MiscPanel extends Panel {
             win.setWidth(400);
             win.setHeight(200);
 
-            let image = new Image("https://arachnoid.com/JWX/graphics/grayscale_test_image_small.jpg?blah");
-            win.addComponent(image);
+            win.setContentFactory(() => new Image("https://arachnoid.com/JWX/graphics/grayscale_test_image_small.jpg?blah"));
 
             win.show();
         });
@@ -108,96 +107,97 @@ class MiscPanel extends Panel {
             win2.setWidth(800);
             win2.setHeight(600);
 
-            let tableModel = new Model([
-                { name: "col1", type: "string",  description: "desc1", order: 4 },
-                { name: "col2", type: "boolean", description: "desc2", order: 3 },
-                { name: "col3", type: "number",  description: "desc3", order: 2 },
-                { name: "col4", type: "string",  description: "desc4", order: 1 },
-                { name: "col5", type: "string",  description: "desc5", order: 0 },
-            ]);
+            win2.setContentFactory(() => {
+                let tableModel = new Model([
+                    { name: "col1", type: "string",  description: "desc1", order: 4 },
+                    { name: "col2", type: "boolean", description: "desc2", order: 3 },
+                    { name: "col3", type: "number",  description: "desc3", order: 2 },
+                    { name: "col4", type: "string",  description: "desc4", order: 1 },
+                    { name: "col5", type: "string",  description: "desc5", order: 0 },
+                ]);
 
-            let tableStore = new MemoryStore(tableModel);
-            let tablePanel = new TablePanel(tableStore);
+                let tableStore = new MemoryStore(tableModel);
+                let tablePanel = new TablePanel(tableStore);
 
-            tablePanel.setExportMenuEnabled(true);
+                tablePanel.setExportMenuEnabled(true);
 
-            const rows = [
-                // Declare rows with arrays. Array index is matched by the column order value;
-                // col5(0), col4(1), col3(2), col2(3), col1(4)
-                ["World", "Goodbye", 1        , false    , "Hello"],
-                ["World", "Goodbye", 8        , undefined, "Hello"],
-                ["World", undefined, undefined, false    , "Hello"],
-                ["World", "Goodbye", 3        , false    , "Hello"],
-                ["World", "Goodbye", 10       , undefined, "Hello"],
-                ["World", undefined, undefined, false    , "Hello"],
-                ["World", "Goodbye", 5        , false    , "Hello"],
-                ["World", "Goodbye", 12       , undefined, "Hello"],
-                ["World", undefined, undefined, false    , "Hello"],
-                ["World", "Goodbye", 7        , false    , "Hello"],
-                ["World", "Goodbye", 14       , undefined, "Hello"],
+                const rows = [
+                    // Declare rows with arrays. Array index is matched by the column order value;
+                    // col5(0), col4(1), col3(2), col2(3), col1(4)
+                    ["World", "Goodbye", 1        , false    , "Hello"],
+                    ["World", "Goodbye", 8        , undefined, "Hello"],
+                    ["World", undefined, undefined, false    , "Hello"],
+                    ["World", "Goodbye", 3        , false    , "Hello"],
+                    ["World", "Goodbye", 10       , undefined, "Hello"],
+                    ["World", undefined, undefined, false    , "Hello"],
+                    ["World", "Goodbye", 5        , false    , "Hello"],
+                    ["World", "Goodbye", 12       , undefined, "Hello"],
+                    ["World", undefined, undefined, false    , "Hello"],
+                    ["World", "Goodbye", 7        , false    , "Hello"],
+                    ["World", "Goodbye", 14       , undefined, "Hello"],
 
-                // Declare rows with dicts.
-                { col1: "Hello", col2: false                                , col5: "World" },
-                { col1: "Hello", col2: true,  col3: 2      , col4: "Goodbye", col5: "World" },
-                { col1: "Hello",              col3: 9      , col4: "Goodbye"                },
-                { col1: "Hello", col2: false                                , col5: "World" },
-                { col1: "Hello", col2: false, col3: 4      , col4: "Goodbye", col5: "World" },
-                { col1: "Hello",              col3: 11     , col4: "Goodbye"                },
-                { col1: "Hello", col2: false                                , col5: "World" },
-                { col1: "Hello", col2: false, col3: 6      , col4: "Goodbye", col5: "World" },
-                { col1: "Hello",              col3: 13     , col4: "Goodbye"                },
-                { col1: "Hello", col2: false                                , col5: "World" },
-            ];
+                    // Declare rows with dicts.
+                    { col1: "Hello", col2: false                                , col5: "World" },
+                    { col1: "Hello", col2: true,  col3: 2      , col4: "Goodbye", col5: "World" },
+                    { col1: "Hello",              col3: 9      , col4: "Goodbye"                },
+                    { col1: "Hello", col2: false                                , col5: "World" },
+                    { col1: "Hello", col2: false, col3: 4      , col4: "Goodbye", col5: "World" },
+                    { col1: "Hello",              col3: 11     , col4: "Goodbye"                },
+                    { col1: "Hello", col2: false                                , col5: "World" },
+                    { col1: "Hello", col2: false, col3: 6      , col4: "Goodbye", col5: "World" },
+                    { col1: "Hello",              col3: 13     , col4: "Goodbye"                },
+                    { col1: "Hello", col2: false                                , col5: "World" },
+                ];
 
-            tableStore.add([
-                ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows,
-                ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows
-            ]);
+                tableStore.add([
+                    ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows,
+                    ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows, ...rows
+                ]);
 
-            // TODO: Will this lead to a race condition if we don't 'await'?
-            tableStore.sync()
+                // TODO: Will this lead to a race condition if we don't 'await'?
+                tableStore.sync();
 
-            win2.addComponent(tablePanel);
+                return tablePanel;
+            });
 
             win2.show();
         });
         this.addComponent(buttonWindowTable);
 
-        let buttonPaginatedTable = new Button("Show window with paginated table!");
-        buttonPaginatedTable.addActionListener(function () {
-            const winPag = new Window("Paginated table (server-side)");
-            winPag.setX(150);
-            winPag.setY(150);
-            winPag.setWidth(700);
-            winPag.setHeight(500);
+        let buttonPaginatedTable = new Button("Show window with paginated table!")
+            .addActionListener(function () {
+                const pagModel = new Model([
+                    { name: "id"    , type: "number" , description: "id"    , order: 0 },
+                    { name: "name"  , type: "string" , description: "name"  , order: 1 },
+                    { name: "score" , type: "number" , description: "score" , order: 2 },
+                    { name: "active", type: "boolean", description: "active", order: 3 },
+                ]);
 
-            const pagModel = new Model([
-                { name: "id"    , type: "number" , description: "id"    , order: 0 },
-                { name: "name"  , type: "string" , description: "name"  , order: 1 },
-                { name: "score" , type: "number" , description: "score" , order: 2 },
-                { name: "active", type: "boolean", description: "active", order: 3 },
-            ]);
+                const all = Array.from({ length: 237 }, (_, i) => ({
+                    id    : i + 1,
+                    name  : "Person " + (i + 1),
+                    score : Math.round(Math.random() * 1000) / 10,
+                    active: i % 3 !== 0,
+                }));
 
-            const all = Array.from({ length: 237 }, (_, i) => ({
-                id    : i + 1,
-                name  : "Person " + (i + 1),
-                score : Math.round(Math.random() * 1000) / 10,
-                active: i % 3 !== 0,
-            }));
+                const pagProxy = new PaginatingDemoProxy(all, 800);
+                const pagStore = new Store(pagModel, pagProxy);
 
-            const pagProxy = new PaginatingDemoProxy(all, 800);
-            const pagStore = new Store(pagModel, pagProxy);
+                pagStore.setPageSize(25);
 
-            pagStore.setPageSize(25);
+                Window("Paginated table (server-side)", {
+                    x: 150, y: 150,
+                    width: 700, height: 500,
+                    contentFactory: () => {
+                        const pagPanel = new TablePanel(pagStore);
 
-            const pagPanel = new TablePanel(pagStore);
-            pagPanel.setPaginationBar(new PaginationBar(pagStore));
-            pagPanel.setExportMenuEnabled(true);
+                        pagPanel.setPaginationBar(new PaginationBar(pagStore));
+                        pagPanel.setExportMenuEnabled(true);
 
-            winPag.addComponent(pagPanel);
-            winPag.show();
-
-            void pagStore.load();
+                        return pagPanel;
+                    },
+                    onReady: () => void pagStore.load()
+                }).show();
         });
         this.addComponent(buttonPaginatedTable);
 
@@ -210,47 +210,50 @@ class MiscPanel extends Panel {
             win3.setWidth(800);
             win3.setHeight(400);
 
-            let specModel = new Model([
-                { name: "Name"      , type: "string"  , description: "col1", order: 0 },
-                { name: "Active"    , type: "boolean" , description: "col2", order: 1 },
-                { name: "Score"     , type: "number"  , description: "col3", order: 2 },
-                { name: "Joined"    , type: "date"    , description: "col5", order: 3 },
-                { name: "Meeting"   , type: "time"    , description: "col6", order: 4 },
-                { name: "LastSeen"  , type: "datetime", description: "col7", order: 5 },
-                { name: "Notes"     , type: "string"  , description: "col4", order: 6 },
-            ]);
+            win3.setContentFactory(() => {
+                let specModel = new Model([
+                    { name: "Name"      , type: "string"  , description: "col1", order: 0 },
+                    { name: "Active"    , type: "boolean" , description: "col2", order: 1 },
+                    { name: "Score"     , type: "number"  , description: "col3", order: 2 },
+                    { name: "Joined"    , type: "date"    , description: "col5", order: 3 },
+                    { name: "Meeting"   , type: "time"    , description: "col6", order: 4 },
+                    { name: "LastSeen"  , type: "datetime", description: "col7", order: 5 },
+                    { name: "Notes"     , type: "string"  , description: "col4", order: 6 },
+                ]);
 
-            let specStore = new MemoryStore(specModel);
+                let specStore = new MemoryStore(specModel);
 
-            specStore.add([
-                { Name: "Alice", Active: true , Score: 95, Joined: new Date(2021,  2, 15), Meeting: new Date(1970, 0, 1,  9, 30, 20), LastSeen: new Date(2024,  0, 10, 14, 25), Notes: "Top performer"   },
-                { Name: "Bob"  , Active: false, Score: 72, Joined: new Date(2022,  7,  3), Meeting: new Date(1970, 0, 1, 14,  0, 30), LastSeen: new Date(2024,  3, 22,  8, 10), Notes: "Needs follow-up" },
-                { Name: "Carol", Active: true , Score: 88, Joined: new Date(2020, 11, 20), Meeting: null                        , LastSeen: new Date(2023, 11,  5, 17, 45)    , Notes: "On track"        },
-                { Name: "David", Active: true , Score: 61, Joined: null                  , Meeting: new Date(1970, 0, 1, 11, 15, 40), LastSeen: null                          , Notes: "Check in soon"   },
-                { Name: "Eve"  , Active: false, Score: 45, Joined: new Date(2023,  4,  9), Meeting: new Date(1970, 0, 1, 16, 45, 50), LastSeen: new Date(2024,  5,  1,  9,  0), Notes: "At risk"         },
-            ]);
+                specStore.add([
+                    { Name: "Alice", Active: true , Score: 95, Joined: new Date(2021,  2, 15), Meeting: new Date(1970, 0, 1,  9, 30, 20), LastSeen: new Date(2024,  0, 10, 14, 25), Notes: "Top performer"   },
+                    { Name: "Bob"  , Active: false, Score: 72, Joined: new Date(2022,  7,  3), Meeting: new Date(1970, 0, 1, 14,  0, 30), LastSeen: new Date(2024,  3, 22,  8, 10), Notes: "Needs follow-up" },
+                    { Name: "Carol", Active: true , Score: 88, Joined: new Date(2020, 11, 20), Meeting: null                        , LastSeen: new Date(2023, 11,  5, 17, 45)    , Notes: "On track"        },
+                    { Name: "David", Active: true , Score: 61, Joined: null                  , Meeting: new Date(1970, 0, 1, 11, 15, 40), LastSeen: null                          , Notes: "Check in soon"   },
+                    { Name: "Eve"  , Active: false, Score: 45, Joined: new Date(2023,  4,  9), Meeting: new Date(1970, 0, 1, 16, 45, 50), LastSeen: new Date(2024,  5,  1,  9,  0), Notes: "At risk"         },
+                ]);
 
-            // TODO: Will this lead to a race condition if we don't 'await'?
-            specStore.sync();
+                // TODO: Will this lead to a race condition if we don't 'await'?
+                specStore.sync();
 
-            // Partial spec: Name gets a minWidth; Score gets a maxWidth.
-            // Notes is hidden initially. col2 (Active) is not listed but is
-            // auto-appended because appendUnlisted defaults to true.
-            const spec: ColumnSpec = {
-                columns: [
-                    { field: 'Name'    , minWidth: 150                    },
-                    { field: 'Active'  , maxWidth: 100                    },
-                    { field: 'Joined'  , minWidth: 120                    },
-                    { field: 'Meeting' , minWidth: 100, showSeconds: true },
-                    { field: 'LastSeen', minWidth: 160                    },
-                    { field: 'Notes'   , hidden  : true                   },
-                ],
-            };
+                // Partial spec: Name gets a minWidth; Score gets a maxWidth.
+                // Notes is hidden initially. col2 (Active) is not listed but is
+                // auto-appended because appendUnlisted defaults to true.
+                const spec: ColumnSpec = {
+                    columns: [
+                        { field: 'Name'    , minWidth: 150                    },
+                        { field: 'Active'  , maxWidth: 100                    },
+                        { field: 'Joined'  , minWidth: 120                    },
+                        { field: 'Meeting' , minWidth: 100, showSeconds: true },
+                        { field: 'LastSeen', minWidth: 160                    },
+                        { field: 'Notes'   , hidden  : true                   },
+                    ],
+                };
 
-            let specTable = new Table(specStore, spec);
-            specTable.setExportMenuEnabled(true);
+                let specTable = new Table(specStore, spec);
+                specTable.setExportMenuEnabled(true);
 
-            win3.addComponent(specTable);
+                return specTable;
+            });
+
             win3.show();
         });
         this.addComponent(buttonWindowTableSpec);
@@ -296,38 +299,42 @@ class MiscPanel extends Panel {
             win.setWidth(300);
             win.setHeight(400);
 
-            const treeData: TreeNode[] = [
-                {
-                    label: "Animals", children: [
-                        {
-                            label: "Mammals", children: [
-                                { label: "Dog" },
-                                { label: "Cat" },
-                                { label: "Horse" },
-                            ],
-                        },
-                        {
-                            label: "Birds", children: [
-                                { label: "Eagle" },
-                                { label: "Parrot" },
-                            ],
-                        },
-                        { label: "Fish" },
-                    ],
-                },
-                {
-                    label: "Plants", children: [
-                        { label: "Trees" },
-                        { label: "Flowers" },
-                        { label: "Ferns" },
-                    ],
-                },
-                { label: "Fungi" },
-            ];
+            win.setContentFactory(() => {
+                const treeData: TreeNode[] = [
+                    {
+                        label: "Animals", children: [
+                            {
+                                label: "Mammals", children: [
+                                    { label: "Dog" },
+                                    { label: "Cat" },
+                                    { label: "Horse" },
+                                ],
+                            },
+                            {
+                                label: "Birds", children: [
+                                    { label: "Eagle" },
+                                    { label: "Parrot" },
+                                ],
+                            },
+                            { label: "Fish" },
+                        ],
+                    },
+                    {
+                        label: "Plants", children: [
+                            { label: "Trees" },
+                            { label: "Flowers" },
+                            { label: "Ferns" },
+                        ],
+                    },
+                    { label: "Fungi" },
+                ];
 
-            const tree = new Tree();
-            tree.setNodes(treeData);
-            win.addComponent(tree);
+                const tree = new Tree();
+                tree.setNodes(treeData);
+
+                return tree;
+            });
+
             win.show();
         });
         this.addComponent(buttonTree);

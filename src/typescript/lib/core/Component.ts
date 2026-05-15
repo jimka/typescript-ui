@@ -202,7 +202,7 @@ class Component extends BaseObject {
     private display              : string;
     private userSelect           : string | null;
     private verticalAlign        : string | null;
-    private cssRule              : CSSStyleRule;
+    private cssRule              : CSSStyleRule | null = null;
     private dirtyStyle           : Style = {};
     private dirtyCSSRule         : Style = {};
 
@@ -217,7 +217,8 @@ class Component extends BaseObject {
         super();
 
         // Structural setup that doesn't map to ComponentOptions.
-        this.cssRule       = CSS.createComponentRule(this.getId()) as CSSStyleRule;
+        // `cssRule` stays null until the element actually needs to render; the
+        // dirty-style path queues writes until then. See `ensureCSSRule`.
         this.layoutManager = new Absolute();
         this.components    = [];
         this.attributes    = new Map<String, String>();
@@ -318,8 +319,37 @@ class Component extends BaseObject {
      * Returns the component's dedicated CSS style rule for applying class-level styles.
      *
      * @returns The CSSStyleRule scoped to this component's ID.
+     *
+     * @remarks Forces the underlying stylesheet rule to materialize on first
+     * access. After {@link Component.ensureCSSRule} runs, any pending writes
+     * in `dirtyCSSRule` are flushed onto the live rule so callers can read /
+     * mutate it directly.
      */
-    protected getCSSRule() {
+    protected getCSSRule(): CSSStyleRule {
+        return this.ensureCSSRule();
+    }
+
+    /**
+     * Lazily creates the component's dedicated CSS rule and flushes any
+     * dirty-style entries that accumulated before the rule existed.
+     *
+     * @returns The live `CSSStyleRule` scoped to this component's ID.
+     *
+     * @remarks Until this is called the component has no stylesheet entry —
+     * setters write into `dirtyCSSRule` only. Defers the stylesheet insertion
+     * (which would force a paint) to the moment the component renders, so
+     * detached construction stays JS-only.
+     */
+    private ensureCSSRule(): CSSStyleRule {
+        if (!this.cssRule) {
+            this.cssRule = CSS.createComponentRule(this.getId()) as CSSStyleRule;
+
+            if (Object.keys(this.dirtyCSSRule).length > 0) {
+                Object.assign(this.cssRule.style, this.dirtyCSSRule);
+                this.dirtyCSSRule = {};
+            }
+        }
+
         return this.cssRule;
     }
 
@@ -549,14 +579,26 @@ class Component extends BaseObject {
 
     /**
      * Flushes all queued CSS rule changes to the component's CSS rule and clears the dirty map.
+     *
+     * @remarks Skips the flush entirely when the element has not yet been
+     * rendered — the dirty entries stay queued and are picked up by the next
+     * {@link Component.ensureCSSRule} call (typically driven by `render()`).
+     * Avoids inserting a stylesheet rule for components that are constructed
+     * but never attached.
      */
     protected commitCSSRule(): this {
-        var me = this;
+        if (Object.keys(this.dirtyCSSRule).length === 0) {
+            return this;
+        }
 
-        Object.assign(me.cssRule.style, me.dirtyCSSRule);
+        if (!this.getElement()) {
+            return this;
+        }
 
-        me.dirtyCSSRule = {};
-        
+        Object.assign(this.ensureCSSRule().style, this.dirtyCSSRule);
+
+        this.dirtyCSSRule = {};
+
         return this;
     }
 
@@ -781,7 +823,7 @@ class Component extends BaseObject {
         }
 
         this.padding = padding;
-        this.cssRule.style.padding = padding.render() as string;
+        this.setElementCSSRule("padding", padding.render() as string);
 
         return this;
     }
@@ -797,7 +839,7 @@ class Component extends BaseObject {
      */
     clearPadding(): this {
         this.padding = null;
-        this.cssRule.style.padding = "0px 0px 0px 0px";
+        this.setElementCSSRule("padding", "0px 0px 0px 0px");
 
         return this;
     }
@@ -824,7 +866,7 @@ class Component extends BaseObject {
         }
 
         this.backgroundColor = backgroundColor;
-        this.cssRule.style.setProperty('background-color', backgroundColor);
+        this.setElementCSSRule("backgroundColor", backgroundColor);
 
         return this;
     }
@@ -840,7 +882,7 @@ class Component extends BaseObject {
         }
 
         this.backgroundColor = null;
-        this.cssRule.style.removeProperty('background-color');
+        this.setElementCSSRule("backgroundColor", null);
 
         return this;
     }
@@ -863,7 +905,7 @@ class Component extends BaseObject {
      */
     setBackgroundImage(backgroundImage: string): this {
         this.backgroundImage = backgroundImage;
-        this.cssRule.style.setProperty('background-image', backgroundImage);
+        this.setElementCSSRule("backgroundImage", backgroundImage);
 
         return this;
     }
@@ -875,7 +917,7 @@ class Component extends BaseObject {
      */
     clearBackgroundImage(): this {
         this.backgroundImage = null;
-        this.cssRule.style.removeProperty('background-image');
+        this.setElementCSSRule("backgroundImage", null);
 
         return this;
     }
@@ -902,7 +944,7 @@ class Component extends BaseObject {
         }
 
         this.foregroundColor = foregroundColor;
-        this.cssRule.style.setProperty('color', foregroundColor);
+        this.setElementCSSRule("color", foregroundColor);
 
         return this;
     }
@@ -918,7 +960,7 @@ class Component extends BaseObject {
         }
 
         this.foregroundColor = null;
-        this.cssRule.style.removeProperty('color');
+        this.setElementCSSRule("color", null);
 
         return this;
     }
@@ -933,7 +975,7 @@ class Component extends BaseObject {
     setColorScheme(colorScheme: string): this {
         this.colorScheme = colorScheme;
 
-        this.cssRule.style.setProperty('color-scheme', colorScheme);
+        this.setElementCSSRule("colorScheme", colorScheme);
 
         return this;
     }
@@ -957,7 +999,7 @@ class Component extends BaseObject {
     clearBorder(): this {
         this.borderCSS = null;
         this.border    = new Border();
-        this.border.applyOnCSSRule(this.cssRule);
+        this.setElementCSSRules(this.border.toStyle());
 
         return this;
     }
@@ -972,7 +1014,7 @@ class Component extends BaseObject {
     setBorder(options: BorderOptions | string): this {
         if (typeof options === 'string' && options.trimStart().startsWith('var(')) {
             this.borderCSS = options;
-            this.cssRule.style.setProperty('border', options);
+            this.setElementCSSRule("border", options);
 
             const varName  = options.match(/var\((--[^,)]+)/)?.[1];
             const resolved = varName
@@ -983,11 +1025,11 @@ class Component extends BaseObject {
         } else if (typeof options === 'string') {
             this.borderCSS = null;
             this.border    = Border.fromString(options);
-            this.border.applyOnCSSRule(this.cssRule);
+            this.setElementCSSRules(this.border.toStyle());
         } else {
             this.borderCSS = null;
             this.border    = new Border(options);
-            this.border.applyOnCSSRule(this.cssRule);
+            this.setElementCSSRules(this.border.toStyle());
         }
 
         return this;
@@ -1078,7 +1120,7 @@ class Component extends BaseObject {
      */
     setShadow(shadow: string): this {
         this.shadow = shadow;
-        this.cssRule.style.setProperty('box-shadow', shadow);
+        this.setElementCSSRule("boxShadow", shadow);
 
         return this;
     }
@@ -1091,7 +1133,7 @@ class Component extends BaseObject {
      */
     clearShadow(): this {
         this.shadow = null;
-        this.cssRule.style.setProperty('box-shadow', 'none');
+        this.setElementCSSRule("boxShadow", "none");
 
         return this;
     }
@@ -1104,7 +1146,7 @@ class Component extends BaseObject {
      * @returns This component, for method chaining.
      */
     setOutline(outline: string): this {
-        this.cssRule.style.setProperty('outline', outline);
+        this.setElementCSSRule("outline", outline);
 
         return this;
     }
@@ -1115,7 +1157,7 @@ class Component extends BaseObject {
      * @returns This component, for method chaining.
      */
     clearOutline(): this {
-        this.cssRule.style.removeProperty('outline');
+        this.setElementCSSRule("outline", null);
 
         return this;
     }
@@ -1128,8 +1170,10 @@ class Component extends BaseObject {
      * @returns This component, for method chaining.
      */
     setAppearance(value: string): this {
-        this.cssRule.style.setProperty('-webkit-appearance', value);
-        this.cssRule.style.setProperty('appearance', value);
+        this.setElementCSSRules({
+            webkitAppearance: value,
+            appearance:       value
+        });
 
         return this;
     }
@@ -1140,8 +1184,10 @@ class Component extends BaseObject {
      * @returns This component, for method chaining.
      */
     clearAppearance(): this {
-        this.cssRule.style.removeProperty('-webkit-appearance');
-        this.cssRule.style.removeProperty('appearance');
+        this.setElementCSSRules({
+            webkitAppearance: null,
+            appearance:       null
+        });
 
         return this;
     }
@@ -1154,7 +1200,7 @@ class Component extends BaseObject {
      * @returns This component, for method chaining.
      */
     setBorderImage(value: string): this {
-        this.cssRule.style.setProperty('border-image', value);
+        this.setElementCSSRule("borderImage", value);
 
         return this;
     }
@@ -1165,7 +1211,7 @@ class Component extends BaseObject {
      * @returns This component, for method chaining.
      */
     clearBorderImage(): this {
-        this.cssRule.style.removeProperty('border-image');
+        this.setElementCSSRule("borderImage", null);
 
         return this;
     }
@@ -1178,7 +1224,7 @@ class Component extends BaseObject {
      * @returns This component, for method chaining.
      */
     setTransform(value: string): this {
-        this.cssRule.style.setProperty('transform', value);
+        this.setElementCSSRule("transform", value);
 
         return this;
     }
@@ -1189,7 +1235,7 @@ class Component extends BaseObject {
      * @returns This component, for method chaining.
      */
     clearTransform(): this {
-        this.cssRule.style.removeProperty('transform');
+        this.setElementCSSRule("transform", null);
 
         return this;
     }
@@ -1307,8 +1353,10 @@ class Component extends BaseObject {
             height: height
         };
 
-        this.cssRule.style.minWidth = this.minSize.width + "px";
-        this.cssRule.style.minHeight = this.minSize.height + "px";
+        this.setElementCSSRules({
+            minWidth:  this.minSize.width  + "px",
+            minHeight: this.minSize.height + "px"
+        });
 
         return this;
     }
@@ -1373,8 +1421,10 @@ class Component extends BaseObject {
             height: height
         };
 
-        this.cssRule.style.maxWidth = this.maxSize.width === Number.MAX_VALUE ? "none" : this.maxSize.width + "px";
-        this.cssRule.style.maxHeight = this.maxSize.height === Number.MAX_VALUE ? "none" : this.maxSize.height + "px";
+        this.setElementCSSRules({
+            maxWidth:  this.maxSize.width  === Number.MAX_VALUE ? "none" : this.maxSize.width  + "px",
+            maxHeight: this.maxSize.height === Number.MAX_VALUE ? "none" : this.maxSize.height + "px"
+        });
 
         this.setAttribute("maxSize", this.maxSize.width + " " + this.maxSize.height);
 
@@ -1807,7 +1857,7 @@ class Component extends BaseObject {
     setOverflow(overflow: string): this {
         this.overflow = overflow;
 
-        this.cssRule.style.overflow = overflow;
+        this.setElementCSSRule("overflow", overflow);
 
         return this;
     }
@@ -2043,7 +2093,7 @@ class Component extends BaseObject {
     setUserSelect(value: string): this {
         this.userSelect = value;
 
-        this.cssRule.style.userSelect = value;
+        this.setElementCSSRule("userSelect", value);
 
         return this;
     }
@@ -2094,38 +2144,44 @@ class Component extends BaseObject {
     applyStyle(element: HTMLElement): this {
         element.removeAttribute("style");
 
+        // Materialize the stylesheet rule once and write directly to it from
+        // this method. applyStyle runs during render() before `this.element`
+        // has been cached, so routing through setElementCSSRule (which gates
+        // on getElement()) would no-op.
+        const rule = this.ensureCSSRule();
+
         if (this.boxSizing) {
-            this.cssRule.style.boxSizing = this.boxSizing;
+            rule.style.boxSizing = this.boxSizing;
         }
 
         if (this.position) {
-            this.cssRule.style.position = this.position;
+            rule.style.position = this.position;
         }
 
         if (this.visible != null) {
-            this.cssRule.style.visibility = this.visible ? "visible" : "hidden";
+            rule.style.visibility = this.visible ? "visible" : "hidden";
         } else {
-            this.cssRule.style.visibility = "inherit";
+            rule.style.visibility = "inherit";
         }
 
         if (this.displayed != null) {
-            this.cssRule.style.display = this.displayed ? this.display : "none";
+            rule.style.display = this.displayed ? this.display : "none";
         }
 
         if (this.cursor) {
-            this.cssRule.style.cursor = this.cursor;
+            rule.style.cursor = this.cursor;
         }
 
         if (this.foregroundColor) {
-            this.cssRule.style.setProperty('color', this.foregroundColor);
+            rule.style.setProperty('color', this.foregroundColor);
         }
 
         if (this.backgroundColor) {
-            this.cssRule.style.setProperty('background-color', this.backgroundColor);
+            rule.style.setProperty('background-color', this.backgroundColor);
         }
 
         if (this.backgroundImage) {
-            this.cssRule.style.setProperty('background-image', this.backgroundImage);
+            rule.style.setProperty('background-image', this.backgroundImage);
         }
 
         // NaN means "never assigned by a setter" — skip the DOM write for those.
@@ -2147,38 +2203,38 @@ class Component extends BaseObject {
         }
 
         if (this.minSize) {
-            this.cssRule.style.minWidth = this.minSize.width + "px";
-            this.cssRule.style.minHeight = this.minSize.height + "px";
+            rule.style.minWidth = this.minSize.width + "px";
+            rule.style.minHeight = this.minSize.height + "px";
         }
 
         if (this.maxSize) {
-            this.cssRule.style.maxWidth = this.maxSize.width === Number.MAX_VALUE ? "none" : this.maxSize.width + "px";
-            this.cssRule.style.maxHeight = this.maxSize.height === Number.MAX_VALUE ? "none" : this.maxSize.height + "px";
+            rule.style.maxWidth = this.maxSize.width === Number.MAX_VALUE ? "none" : this.maxSize.width + "px";
+            rule.style.maxHeight = this.maxSize.height === Number.MAX_VALUE ? "none" : this.maxSize.height + "px";
             this.setAttribute("maxSize", this.maxSize.width + " " + this.maxSize.height);
         }
 
         if (this.overflow) {
-            this.cssRule.style.overflow = this.overflow;
+            rule.style.overflow = this.overflow;
         }
 
         if (this.whiteSpace) {
-            this.cssRule.style.whiteSpace = this.whiteSpace;
+            rule.style.whiteSpace = this.whiteSpace;
         }
 
         if (this.borderCSS) {
-            this.cssRule.style.setProperty('border', this.borderCSS);
+            rule.style.setProperty('border', this.borderCSS);
         } else if (this.border) {
-            this.border.applyOnCSSRule(this.cssRule);
+            this.border.applyOnCSSRule(rule);
         } else {
-            this.cssRule.style.removeProperty("border");
+            rule.style.removeProperty("border");
         }
 
         if (this.borderRadius) {
-            this.cssRule.style.borderRadius = this.borderRadius;
+            rule.style.borderRadius = this.borderRadius;
         }
 
         if (this.shadow) {
-            this.cssRule.style.setProperty('box-shadow', this.shadow);
+            rule.style.setProperty('box-shadow', this.shadow);
         }
 
         if (this.pointerEvents) {
@@ -2190,18 +2246,18 @@ class Component extends BaseObject {
         }
 
         if (this.userSelect) {
-            this.cssRule.style.userSelect = this.userSelect;
+            rule.style.userSelect = this.userSelect;
         }
 
         if (this.padding) {
-            this.cssRule.style.padding = this.padding.render();
+            rule.style.padding = this.padding.render();
         }
 
         if (this.insets) {
             this.setAttribute("insets", this.insets.render());
         }
 
-        this.cssRule.style.margin = "0px 0px 0px 0px";
+        rule.style.margin = "0px 0px 0px 0px";
 
         return this;
     }
