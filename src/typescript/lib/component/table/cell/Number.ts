@@ -2,13 +2,14 @@
 
 import { Cell } from "~/component/table/cell/Cell.js";
 import { NumberRenderer } from "~/component/table/cell/renderer/Number.js";
-import { NumberEditor } from "~/component/table/cell/editor/Number.js";
 import { callable } from "~/core/Callable.js";
 
 /**
  * A table cell for numeric values.
  *
- * Uses a {@link NumberRenderer} for display and a {@link NumberEditor} for in-place editing.
+ * Uses a [`NumberRenderer`](/api/component/table/classes/NumberRenderer) for display and borrows
+ * a shared [`NumberEditor`](/api/component/table/classes/NumberEditor) from the body's
+ * {@link CellEditorPool} on edit.
  *
  * @category Components
  */
@@ -16,9 +17,17 @@ class NumberCell extends Cell<Number> {
 
     constructor() {
         let renderer = new NumberRenderer();
-        let editor = new NumberEditor();
 
-        super("td", renderer, editor);
+        super("td", renderer);
+    }
+
+    /**
+     * Returns the pool key for the shared {@link NumberEditor}.
+     *
+     * @returns The string `"number"`.
+     */
+    getEditorKey(): string {
+        return "number";
     }
 
     /**
@@ -26,7 +35,7 @@ class NumberCell extends Cell<Number> {
      *
      * @param value - The numeric value to display.
      */
-    setValue(value: Number) : this {
+    setValue(value: Number): this {
         this.getRenderer().setValue(value);
 
         return this;

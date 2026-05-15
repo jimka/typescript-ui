@@ -57,6 +57,14 @@ For `DateCell`, `TimeCell`, and `DateTimeCell`, committing an empty editor write
 
 [`HeaderCell`](/api/component/table/classes/HeaderCell) extends `DefaultCell` with sort indicators, click-to-sort, and a resize drag handle.
 
+## Shared editor pool
+
+Only one cell in the body is ever being edited at a time, so the built-in typed cells share editor instances through a [`CellEditorPool`](/api/component/table/classes/CellEditorPool) owned by [`Body`](/api/component/table/classes/Body). On `startEdit`, the cell asks the pool for the editor matching its `getEditorKey()` (e.g. `"string"`, `"time:seconds"`), re-parents that single editor into the active cell, and on commit/cancel detaches it again. The renderer side remains one component per cell — every visible row paints its own value.
+
+[`BooleanCell`](/api/component/table/classes/BooleanCell) opts out: its `BooleanEditor` doubles as the renderer, so each row needs its own checkbox. Its `getEditorKey()` returns `null` and the cell allocates the editor up front exactly as before. [`GlyphCell`](/api/component/table/classes/GlyphCell) and [`DefaultCell`](/api/component/table/classes/DefaultCell) are read-only and have no editor.
+
+Custom cell authors can opt in by overriding `getEditorKey()` and registering a factory on `body.getEditorPool()` — see [Custom cell type](/recipes/custom-cell).
+
 ## Building a custom cell type
 
 Subclass [`Cell<T>`](/api/component/table/classes/Cell) with your own [`CellRenderer`](/api/component/table/classes/CellRenderer) and optional [`CellEditor`](/api/component/table/classes/CellEditor). The renderer displays the value; the editor takes over on double-click, commits on blur or Enter, and reverts on Escape.
