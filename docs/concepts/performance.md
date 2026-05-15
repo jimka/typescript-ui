@@ -96,9 +96,32 @@ layout.addLazyTab(() => new HeavyPanel(), 'Heavy');
 
 Subsequent activations reuse the cached instance, so scroll position and form state are preserved. See [Tab » Lazy panel construction](/layouts/Tab#lazy-panel-construction) for details.
 
+The same yield-and-fade lifecycle is available for floating windows whose content is expensive to build via [`Window.setContentFactory`](/api/core/classes/Window): the window opens immediately with a spinner in its content area, the factory runs after a two-rAF yield, and the built tree fades in over the spinner.
+
+```typescript
+const win = new Window('Heavy');
+win.setSize({ width: 800, height: 600 });
+win.setContentFactory(() => new HeavyContent());
+win.show();
+```
+
+`setContentFactory` accepts an optional second argument that fires after the built component has been attached, laid out, and faded in — use it for work that must happen against a rendered subtree, such as kicking off an async data load whose loading spinner is rendered by the content itself:
+
+```typescript
+win.setContentFactory(
+    () => new TablePanel(store),
+    () => void store.load()
+);
+win.show();
+```
+
+Running `store.load()` before the callback would emit `loadingchanged: true` before `TablePanel` had subscribed (and before the table had a size for its overlay spinner to mount against). The `onReady` callback is the supported hook for any "after content is on screen" side effect.
+
+Both code paths share [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize), which composes the spinner mount, two-rAF yield, factory invocation, and cross-fade in one call.
+
 ## CSS rule generation cost
 
-Each component creates one CSS rule for itself on construction (and a second for `:active` state on [`Button`](/components/Button), `.selected` on [`ToggleButton`](/components/ToggleButton), etc.). For a typical app with hundreds of components this is fine. For lists rendering thousands of items, prefer the virtual-scrolling components which reuse a fixed pool of rules.
+Each component creates one CSS rule for itself the first time it renders. Construction itself is JS-only — no stylesheet inserts, no forced layout, no `document.body` probes — so building a detached subtree before attaching it to the live document is cheap and predictable. The rule materialises during the first `render()` pass (typically driven by `Component.addComponent` or `Window.show`). [`Button`](/components/Button) (`:active`), [`ToggleButton`](/components/ToggleButton) (`.selected`), and similar pseudo-state classes add a second rule each on top of that. For a typical app with hundreds of components this is fine. For lists rendering thousands of items, prefer the virtual-scrolling components which reuse a fixed pool of rules.
 
 If you find yourself building a custom virtual list, look at how the table [`Body`](/api/component/table/classes/Body) is implemented — it's the canonical reference. The scroll plumbing is reusable on its own via [`VirtualScroller`](/components/VirtualScroller).
 

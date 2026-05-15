@@ -6,16 +6,17 @@
 
 ```typescript
 import { Body, Window } from '@jimka/typescript-ui/core';
-import { Text } from '@jimka/typescript-ui/component/input';
+import { TablePanel } from '@jimka/typescript-ui/component/table';
 
-// Constructor + options bag: title text, optional title-icon glyph,
-// and any common ComponentOptions field.
-const win = new Window('Settings', { glyph: 'times' });
-win.setSize(360, 240);
-win.setPosition(200, 100);
-
-const message = new Text('Welcome to Settings');
-win.addComponent(message);
+// Constructor + options bag: title text, geometry, optional title-icon
+// glyph, and any common ComponentOptions field. For expensive content,
+// `contentFactory` + `onReady` defer construction behind a spinner.
+const win = new Window('Settings', {
+    x: 200, y: 100, width: 360, height: 240,
+    glyph: 'times',
+    contentFactory: () => new TablePanel(store),
+    onReady:        () => void store.load()
+});
 
 Body.getInstance().addComponent(win);
 win.show();
@@ -29,8 +30,12 @@ win.show();
 | --- | --- | --- |
 | `headerText` | `string` | Overrides the positional `headerText`. Last-write-wins. |
 | `glyph`      | `string \| null` | Registry [`Glyph`](/components/Glyph) name shown to the left of the title text. Omit to get the default `window` glyph; pass `null` to render a window with no title icon. |
+| `x` / `y`    | `number` | Initial top-left corner in viewport coordinates. Default `50` / `50`. |
+| `width` / `height` | `number` | Initial size in pixels. Default `400` / `300`. |
+| `contentFactory` | `() => Component` | Deferred content builder. When set, `show()` opens the window immediately with a spinner in the content area and runs the factory after a two-rAF yield via [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize). |
+| `onReady` | `(component) => void` | Optional callback fired after the factory's component has been attached, laid out, and faded in. Use for work that must happen against a rendered subtree (e.g. `store.load()` for a TablePanel's loading overlay). |
 
-Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields.
+Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields. Geometry defaults mean `new Window(title).show()` produces a 400 × 300 window at `(50, 50)` without further setters.
 
 ## Common methods
 

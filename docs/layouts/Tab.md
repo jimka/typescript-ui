@@ -59,6 +59,8 @@ layout.addLazyTab(() => new AdvancedPanel(), 'Advanced');
 
 The tab buttons render on first paint; the panels are constructed on first activation and cached thereafter. Re-clicking a previously-built tab is instant — scroll position and form state are preserved.
 
+Materialization is asynchronous: clicking a lazy tab selects the button immediately, mounts a centred [`ProgressSpinner`](/components/ProgressSpinner) in the content area, and runs the factory after a two-rAF yield via [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize). The newly-built panel fades in over the spinner, so the spinner is briefly visible during construction and the UI stays responsive throughout. Layout-sizing queries (`getPreferredSize` / `getMinSize` / `getMaxSize`) observe the spinner placeholder until the build completes — they no longer trigger factory invocations.
+
 `addLazyTab(factory, name, constraints?)` accepts the same per-child constraints as `addComponent` (including `closeable`). The constraints are stored on the lazy entry and applied when the panel materializes.
 
 ::: warning Don't mix `addLazyTab` and `addComponent` on the same `Tab`
