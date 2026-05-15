@@ -13,8 +13,10 @@ import { FillType } from "~/layout/FillType.js";
 import { ButtonGroup } from "~/core/ButtonGroup.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
 import { Column } from "~/layout/Column.js";
+import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
+import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { callable } from "~/core/Callable.js";
 
 /** Duration (ms) of the cross-tab fade-in transition. */
@@ -30,6 +32,20 @@ export interface TabOptions extends LayoutManagerOptions {
 }
 
 /**
+ * Lifecycle state of a tab slot.
+ *
+ * - `"ready"` — `component` is built and attached. `getVisibleComponent`
+ *   returns it directly.
+ * - `"lazy"` — `factory` is registered but has not run. First activation
+ *   transitions to `"building"`.
+ * - `"building"` — the materialize helper has mounted `spinner` into the
+ *   container and queued the factory behind a two-rAF yield. `onReady`
+ *   moves the entry to `"ready"`. Re-entering this state is suppressed
+ *   so spam-clicks during a build do not start a second factory run.
+ */
+type TabEntryState = "lazy" | "building" | "ready";
+
+/**
  * Bookkeeping record for one tab slot.
  *
  * @remarks `component` is `null` for entries registered via `addLazyTab` until the
@@ -39,6 +55,11 @@ export interface TabOptions extends LayoutManagerOptions {
  * entry rather than looked up by index in `container.getComponents()` because lazy
  * tabs may materialize out of order — `Component.addComponent` always appends, so
  * indices between `tabs[]` and the container's component list do not stay aligned.
+ *
+ * `spinner` carries the placeholder Component that `Animation.materialize`
+ * mounts into the container during the factory's two-rAF yield, so the
+ * layout pass can surface it as the visible child while the build is in
+ * flight.
  */
 interface TabEntry {
     wrapper: Component;
@@ -47,6 +68,8 @@ interface TabEntry {
     component: Component | null;
     factory: (() => Component) | null;
     constraints?: LayoutConstraints;
+    spinner: Component | null;
+    state: TabEntryState;
 }
 
 /**
@@ -116,6 +139,11 @@ class Tab extends LayoutManager {
         if (idx >= 0) {
             this.selectedTabIndex = idx;
             this.rovingTabIndex.moveTo(idx);
+
+            const entry = this.tabs[idx];
+            if (entry.state === "lazy") {
+                this.materializeAsync(idx);
+            }
         }
 
         this.getContainer()?.scheduleLayout();
@@ -168,9 +196,11 @@ class Tab extends LayoutManager {
                 return entry.component;
             }
 
-            if (entry.factory) {
-                return this.materialize(this.selectedTabIndex);
+            if (entry.state === "building" && entry.spinner) {
+                return entry.spinner;
             }
+
+            return null;
         }
 
         return container.getComponents()[this.selectedTabIndex] ?? null;
@@ -338,7 +368,9 @@ class Tab extends LayoutManager {
             closeButton,
             component: null,
             factory: null,
-            constraints
+            constraints,
+            spinner: null,
+            state: "lazy"
         };
 
         if (closeButton) {
@@ -401,6 +433,7 @@ class Tab extends LayoutManager {
 
         entry.component = component;
         entry.factory = null;
+        entry.state = "ready";
 
         this.wireComponentAria(entry, component);
     }
@@ -415,7 +448,18 @@ class Tab extends LayoutManager {
      * @param name - The visible label for the tab button.
      * @param constraints - Optional layout constraints; forwarded to `container.addComponent` when the component is materialized.
      *
-     * @remarks Once a `Tab` contains any lazy entries, mixing direct
+     * @remarks Materialization is asynchronous: on first activation the tab
+     * strip selects the new tab immediately, a centred `ProgressSpinner` is
+     * mounted into the container, and the factory runs after a two-rAF yield
+     * via [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize)
+     * so the spinner reaches the screen before the main-thread build cost is
+     * incurred. The materialized component fades in over the spinner.
+     *
+     * Layout-sizing queries (`getPreferredSize` / `getMinSize` / `getMaxSize`)
+     * do not trigger factory invocations — they observe the spinner placeholder
+     * until the build completes.
+     *
+     * Once a `Tab` contains any lazy entries, mixing direct
      * `container.addComponent(c, {...})` calls is not supported: `tabs.length`
      * may equal or exceed `componentCount`, which causes the auto-`createTab`
      * loop in `doLayout` to skip the eager component. Use `addLazyTab` for all
@@ -431,46 +475,76 @@ class Tab extends LayoutManager {
     addLazyTab(factory: () => Component, name: string, constraints?: LayoutConstraints): void {
         const entry = this.buildTabEntry(name, constraints);
 
-        entry.factory = factory;
+        entry.factory   = factory;
         entry.component = null;
+        entry.state     = "lazy";
     }
 
     /**
-     * Ensures the tab entry at `idx` has a built content component, running the
-     * factory and attaching the component to the container on first call.
+     * Builds the spinner placeholder for a tab entry: a fixed-size
+     * `ProgressSpinner` wrapped in a [`Fit`](/api/layout/classes/Fit) layout
+     * configured with `FillType.NONE` so the spinner sits at its preferred
+     * size in the geometric centre of the container's content area. The
+     * diameter (24 px) matches `TablePanel`'s store-loading spinner so a
+     * slow lazy panel and a slow data load look identical.
+     *
+     * @returns A Component owning a single `ProgressSpinner` child.
+     */
+    private createSpinnerWrap(): Component {
+        const wrap = new Component();
+        wrap.setLayoutManager(new Fit({ fill: FillType.NONE }));
+        wrap.addComponent(new ProgressSpinner(24));
+
+        return wrap;
+    }
+
+    /**
+     * Mounts a spinner into the container, yields two animation frames so it
+     * reaches the screen, then runs the entry's factory and fades the built
+     * component in over the spinner. Re-entry while a build is in flight is
+     * suppressed via the entry's `state` field.
      *
      * @param idx - Zero-based index into `this.tabs`.
-     * @returns The component associated with the entry, or `null` if the index is out of range or no container is attached.
+     *
+     * @remarks Replaces the previous synchronous `materialize` path. Layout-
+     * sizing queries (`getPreferredSize` / `getMinSize` / `getMaxSize`) no
+     * longer trigger factory invocations — they observe the spinner placeholder
+     * until the build completes.
      */
-    private materialize(idx: number): Component | null {
+    private materializeAsync(idx: number): void {
         const entry = this.tabs[idx];
-        if (!entry) {
-            return null;
+        if (!entry || entry.state !== "lazy") {
+            return;
         }
 
-        if (entry.component) {
-            return entry.component;
-        }
-
-        if (!entry.factory) {
-            return null;
+        const factory = entry.factory;
+        if (!factory) {
+            return;
         }
 
         const container = this.getContainer();
         if (!container) {
-            return null;
+            return;
         }
 
-        const component = entry.factory();
+        const spinner = this.createSpinnerWrap();
+        entry.spinner = spinner;
+        entry.state   = "building";
 
-        entry.component = component;
-        entry.factory = null;
+        Animation.materialize({
+            host:             container,
+            factory:          factory,
+            spinnerComponent: spinner,
+            onReady:          (component) => {
+                entry.component = component;
+                entry.factory   = null;
+                entry.spinner   = null;
+                entry.state     = "ready";
 
-        container.addComponent(component, entry.constraints);
-
-        this.wireComponentAria(entry, component);
-
-        return component;
+                this.wireComponentAria(entry, component);
+                container.scheduleLayout();
+            }
+        });
     }
 
     /**
@@ -496,6 +570,14 @@ class Tab extends LayoutManager {
         for (let i = this.tabs.length; i < componentCount; i += 1) {
             let component = components[i];
             this.createTab(component);
+        }
+
+        // The initial tab is never explicitly clicked, so its factory has to
+        // be kicked off the first time we lay the container out. Subsequent
+        // selections route through onTabPressed.
+        const initialEntry = this.tabs[this.selectedTabIndex];
+        if (initialEntry && initialEntry.state === "lazy") {
+            this.materializeAsync(this.selectedTabIndex);
         }
 
         for (let idx in components) {
@@ -541,9 +623,13 @@ class Tab extends LayoutManager {
         );
 
         // Fade the newly-visible child in only when the selection actually
-        // changed since the last layout. Skipping the no-op case prevents
-        // every resize / relayout pass from re-fading the same tab.
-        if (this.lastFadedTabIndex !== this.selectedTabIndex) {
+        // changed since the last layout AND the entry is fully built — for a
+        // lazy tab still mid-build, the spinner placeholder is what's on
+        // screen and `Animation.materialize` runs the content fade itself.
+        const selectedEntry = this.tabs[this.selectedTabIndex];
+        const isReady       = selectedEntry?.state === "ready";
+
+        if (isReady && this.lastFadedTabIndex !== this.selectedTabIndex) {
             this.lastFadedTabIndex = this.selectedTabIndex;
 
             const el = component.getElement();

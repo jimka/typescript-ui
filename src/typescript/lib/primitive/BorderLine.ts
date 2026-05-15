@@ -105,11 +105,38 @@ export class BorderLine extends Object {
      * @param rule - The `CSSStyleRule` to apply the border properties to.
      *
      * @remarks Sets three separate CSS properties using the placement prefix:
-     * `<placement>-width`, `<placement>-style`, and `<placement>-color`.
+     * `<placement>-width`, `<placement>-style`, and `<placement>-color`. Thin
+     * wrapper over {@link BorderLine.toStyle} retained for callers that hold a
+     * pseudo-class rule (e.g. Button's `:active` rule).
      */
-    applyOnCSSRule(rule: CSSStyleRule) {
-        rule.style.setProperty(this.placement.valueOf() + "-width", this.getWidth() + "px");
-        rule.style.setProperty(this.placement.valueOf() + "-style", this.getStyleString());
-        rule.style.setProperty(this.placement.valueOf() + "-color", this.getColor());
+    applyOnCSSRule(rule: CSSStyleRule): void {
+        const style = this.toStyle();
+
+        for (const key in style) {
+            const value = style[key];
+
+            if (value === null) {
+                rule.style.removeProperty(key);
+            } else {
+                rule.style.setProperty(key, value);
+            }
+        }
+    }
+
+    /**
+     * Returns this side's width / style / color as a [`Style`](/api/core/interfaces/Style)
+     * map so callers can batch the writes through `Component.setElementCSSRules`
+     * rather than mutating a live `CSSStyleRule`.
+     *
+     * @returns A map of CSS property names to string values.
+     */
+    toStyle(): { [key: string]: string | null } {
+        const prefix = this.placement.valueOf();
+
+        return {
+            [prefix + "-width"]: this.getWidth() + "px",
+            [prefix + "-style"]: this.getStyleString(),
+            [prefix + "-color"]: this.getColor()
+        };
     }
 };
