@@ -5,9 +5,12 @@ import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { WindowHeader } from "~/component/container/WindowHeader.js";
 import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
 import { Event } from "~/core/Event.js";
+import { Animation } from "~/core/Animation.js";
 import { Placement } from "~/primitive/Placement.js";
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { callable } from "~/core/Callable.js";
+
+const WINDOW_ANIM_DURATION_MS: number = 150;
 
 /**
  * Construction-time options for {@link Window}.
@@ -169,6 +172,13 @@ class Window extends Panel {
 
         this.setVisible(true);
 
+        Animation.play(el, {
+            from:       { opacity: "0", transform: "scale(0.97)" },
+            to:         { opacity: "1", transform: "scale(1)"    },
+            durationMs: WINDOW_ANIM_DURATION_MS,
+            properties: ["opacity", "transform"],
+        });
+
         return this;
     }
 
@@ -208,8 +218,23 @@ class Window extends Panel {
             window.removeEventListener('mousedown', Window.deactivateIfOutside, true);
         }
 
-        this.setVisible(false);
-        this.destructor();
+        const el = this.getElement();
+        const finalize = (): void => {
+            this.setVisible(false);
+            this.destructor();
+        };
+
+        if (!el) {
+            finalize();
+            return;
+        }
+
+        Animation.play(el, {
+            to:         { opacity: "0", transform: "scale(0.97)" },
+            durationMs: WINDOW_ANIM_DURATION_MS,
+            properties: ["opacity", "transform"],
+            onComplete: finalize,
+        });
     }
 
     /**

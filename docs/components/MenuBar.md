@@ -30,6 +30,7 @@ The config is `MenuConfig[]` (see [`MenuConfig`](/api/component/container/interf
 Each entry has:
 
 - `label` — bar button text.
+- `glyph` *(optional)* — registry [`Glyph`](/components/Glyph) name displayed to the left of the bar button's label (e.g. `"file"`, `"pen-to-square"`, `"eye"`, `"info-circle"`).
 - `items` — array of [`MenuItemConfig`](/api/component/container/interfaces/MenuItemConfig) entries.
 
 Each `MenuItemConfig` supports:
@@ -40,7 +41,8 @@ Each `MenuItemConfig` supports:
 | `action` | Called when the item is activated (click or Enter). |
 | `enabled` | Defaults to `true`. Disabled items are dimmed. |
 | `shortcut` | Hint string displayed on the right (e.g. `"Ctrl+S"`). |
-| `icon` | Glyph displayed on the left. |
+| `glyph` | Registry [`Glyph`](/components/Glyph) name displayed on the left. Takes precedence over `icon` when both are set. |
+| `icon` | Legacy single-character icon displayed on the left. Prefer `glyph`. |
 | `submenu` | Nested `MenuConfig`; opens a child panel instead of calling `action`. |
 | `separator` | When `true`, render a horizontal rule and ignore other fields. |
 

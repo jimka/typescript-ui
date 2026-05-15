@@ -65,6 +65,7 @@ Each entry follows [`MenuItemConfig`](/api/component/container/interfaces/MenuIt
 - Rebuild-mode coordinates are in viewport space (`clientX` / `clientY`).
 - Submenus inside right-click context menus are not in scope — submenu config is honoured only in persistent mode.
 - Rebuild mode reads the `--ts-ui-context-menu-*` theme tokens; persistent mode reads `--ts-ui-menu-bar-panel-*` tokens. The visual style of each mode therefore matches its host.
+- Opens and closes with a 120 ms opacity fade via [`Animation`](/api/core/classes/Animation). A fresh `show()` / `open()` during a fade-out cancels the deferred detach, so a quick close-then-reopen keeps the panel mounted. Honours `prefers-reduced-motion: reduce`.
 
 ## See also
 

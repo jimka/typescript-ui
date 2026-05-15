@@ -32,10 +32,12 @@ class SpinButton extends Button {
     private repeatDelay  : number = 400;
 
     /**
-     * @param symbol - The arrow glyph rendered inside the button (`"▲"` or `"▼"`).
+     * @param symbol - The arrow rendered inside the button (`"▲"` or `"▼"`).
+     *                 Mapped internally to the matching SVG glyph in the
+     *                 framework's glyph registry.
      */
     constructor(symbol: "▲" | "▼", options?: SpinButtonOptions) {
-        super(symbol);
+        super({ glyph: symbol === "▲" ? "chevron-up" : "chevron-down" });
 
         this.updateSize();
         ThemeManager.onThemeChange(() => this.updateSize());
@@ -45,8 +47,17 @@ class SpinButton extends Button {
         this.setBorder({ style: BorderStyle.NONE });
         this.setBorderRadius("0");
         this.setInsets(new Insets(0, 0, 0, 0));
-        this.getText().setFontSize(9);
-        this.getText().setLineHeight(9);
+
+        // Shrink the glyph so it fits the half-height (≈11 px) spin-button.
+        // The 1 px upward translate compensates for sub-pixel rounding in the
+        // Button's centring math: the measured input height is often odd,
+        // making `(halfHeight - 8) / 2` a fractional value that the browser
+        // resolves toward the bottom of the cell.
+        const glyph = this.getGlyph();
+        if (glyph) {
+            glyph.setPreferredSize(8, 8);
+            glyph.setTranslate(0, -1);
+        }
 
         Event.addListener(this, "mousedown", () => this.onMouseDown());
         Event.addViewportListener(this, "mouseup", () => this.onMouseUp());

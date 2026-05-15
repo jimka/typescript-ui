@@ -3,7 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
-import { MenuBarButton } from "~/component/menubar/MenuBarButton.js";
+import { MenuBarButton, MENU_BAR_BUTTON_HEIGHT } from "~/component/menubar/MenuBarButton.js";
 import { Menu } from "~/core/Menu.js";
 import { MenuConfig } from "~/component/container/MenuItem.js";
 import { callable } from "~/core/Callable.js";
@@ -61,7 +61,7 @@ class MenuBar extends Component {
             "borderBottom",
             "1px solid var(--ts-ui-menu-bar-border, rgb(220, 220, 220))"
         );
-        this.setMinSize(0, 28);
+        this.setMinSize(0, MENU_BAR_BUTTON_HEIGHT);
 
         this.getAria().setRole("menubar");
         this.getAria().setLabel("Main menu");
@@ -157,7 +157,8 @@ class MenuBar extends Component {
                     if (this._quickSwitchActive && this._openIndex !== index) {
                         this.openMenu(index);
                     }
-                }
+                },
+                menu.glyph !== undefined ? { glyph: menu.glyph } : undefined
             );
 
             const panel = new Menu(menu.items, () => { this.closeMenu(); });

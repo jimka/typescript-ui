@@ -67,8 +67,43 @@ class Button extends Component {
     private _enabled: boolean = true;
     private _enabledCursor: string = "pointer";
 
-    constructor(text?: string, options?: ButtonOptions) {
+    /**
+     * Constructs a Button. At least one of `text` (positional or via options)
+     * or `options.glyph` must be supplied; a button with neither is rejected
+     * at runtime.
+     *
+     * @example
+     * ```typescript
+     * new Button('Save');
+     * new Button({ glyph: 'times' });
+     * new Button('Save', { glyph: 'check-circle' });
+     * ```
+     */
+    constructor(text?: string, options?: ButtonOptions);
+    constructor(options: ButtonOptions);
+    constructor(textOrOptions?: string | ButtonOptions, options?: ButtonOptions) {
         super({ tag: "button" });
+
+        // Normalise the overload: a non-string first argument is the options bag.
+        let text: string | undefined;
+        if (typeof textOrOptions === "string") {
+            text = textOrOptions;
+        } else if (textOrOptions !== undefined) {
+            options = textOrOptions;
+        }
+
+        // Fall back to `options.text` when no positional text was supplied.
+        // Lets `super({ text: "Save" })` from a subclass actually display the
+        // label even though applyOptions is gated on `this.constructor === Button`.
+        if (text === undefined) {
+            text = options?.text;
+        }
+
+        const hasText  = text !== undefined;
+        const hasGlyph = options?.glyph !== undefined && options.glyph !== null;
+        if (!hasText && !hasGlyph) {
+            throw new Error("Button must be given a `text` label or a `glyph` option (or both).");
+        }
 
         this.pressedCSSRule = CSS.createComponentRule(this.getId() + ":active") as CSSStyleRule;
 
@@ -83,7 +118,7 @@ class Button extends Component {
         this.text.setFontSize("--ts-ui-button-font-size");
 
         this._content = new Component();
-        this._content.setLayoutManager(new HBox({ spacing: 0 }));
+        this._content.setLayoutManager(new HBox({ spacing: 2 }));
         this._content.setInsets(new Insets(0, 0, 0, 0));
         this._content.setPointerEvents("none");
         this._content.addComponent(this.text);
@@ -104,6 +139,15 @@ class Button extends Component {
         this.setPressedBackgroundColor("var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))");
         this.setPressedBackgroundImage("var(--ts-ui-button-pressed-bg, none)");
         this.setPressedShadow("var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset)");
+
+        // Mount the glyph eagerly so `super({ glyph: ... })` from a subclass
+        // (TabCloseButton, SpinButton, …) renders correctly without each
+        // subclass having to repeat the setGlyph call. The rest of the
+        // options bag is still gated on `this.constructor === Button` so
+        // subclasses can apply their own options at their own time.
+        if (options?.glyph) {
+            this.setGlyph(options.glyph);
+        }
 
         if (this.constructor === Button && options) {
             this.applyOptions(options);

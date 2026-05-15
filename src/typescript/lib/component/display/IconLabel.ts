@@ -45,7 +45,7 @@ class IconLabel extends Component {
 
     private _glyph: Glyph;
     private _label: Label;
-    private _gap:   number = 0;
+    private _gap:   number = 2;
 
     /**
      * Constructs an `IconLabel` pairing the named glyph with a `<label for="…">`.

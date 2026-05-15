@@ -5,6 +5,7 @@ import { Size } from "~/primitive/Size.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { Animation } from "~/core/Animation.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { FillType } from "~/layout/FillType.js";
@@ -14,6 +15,9 @@ import { Column } from "~/layout/Column.js";
 import { HBox } from "~/layout/HBox.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { callable } from "~/core/Callable.js";
+
+/** Duration (ms) of the cross-tab fade-in transition. */
+const TAB_FADE_DURATION_MS = 120;
 
 /**
  * Construction-time options for {@link Tab}.
@@ -46,6 +50,10 @@ class Tab extends LayoutManager {
     private buttonGroup: ButtonGroup = new ButtonGroup();
     private rovingTabIndex: RovingTabIndex = new RovingTabIndex();
     private selectedTabIndex: number = 0;
+    // Last tab index that was faded in during a doLayout pass. Compared
+    // against `selectedTabIndex` so the cross-tab fade fires only on actual
+    // selection changes (not on every relayout, e.g. window resize).
+    private lastFadedTabIndex: number = -1;
     private onTabClose: ((component: Component) => void) | null = null;
 
     /**
@@ -401,6 +409,23 @@ class Tab extends LayoutManager {
             containerSize ? containerSize.height - toolbarHeight : 0,
             FillType.BOTH
         );
+
+        // Fade the newly-visible child in only when the selection actually
+        // changed since the last layout. Skipping the no-op case prevents
+        // every resize / relayout pass from re-fading the same tab.
+        if (this.lastFadedTabIndex !== this.selectedTabIndex) {
+            this.lastFadedTabIndex = this.selectedTabIndex;
+
+            const el = component.getElement();
+            if (el) {
+                Animation.play(el, {
+                    from:       { opacity: "0" },
+                    to:         { opacity: "1" },
+                    durationMs: TAB_FADE_DURATION_MS,
+                    properties: ["opacity"],
+                });
+            }
+        }
     }
 
     /**
