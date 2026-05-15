@@ -25,7 +25,19 @@ The constructor signature is `new Text(text?, tag = "span")` — the second argu
 | `setFontFamily(value)` / `setFontSize(value)` / `setLineHeight(value)` | Font controls. |
 | `setFontWeight(value)` / `setFontStyle(value)` / `setFontVariant(value)` | Font style controls. |
 | `setTextAlign(value)` / `setTextShadow(value)` | Text appearance. |
+| `centerInHeight(px)` | Set line-height equal to a container's height so a single-line text sits vertically centred. Pass `null` to revert to the theme's line-height multiplier. |
 | `dispose()` | Detach the theme-change listener — call this before removing a `Text` from the page so the listener doesn't leak. |
+
+## Centring text in a fixed-height box
+
+A common pitfall is text sitting at the top of a fixed-height inline box. The fix is to set `line-height` equal to the container's height. `Text#centerInHeight(px)` packages that:
+
+```typescript
+const label = new Text('Cancel');
+label.centerInHeight(28);   // single-line label, centred in a 28px row
+```
+
+Pass `null` to drop back to the theme's `--ts-ui-line-height` multiplier — useful when the text starts wrapping and you want the multiplier-based spacing back.
 
 ## Memory leaks
 

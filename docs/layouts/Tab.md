@@ -40,6 +40,10 @@ tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 
 Tabs are selected by clicking their button. To set programmatically, look up the underlying [`ToggleButton`](/components/ToggleButton) via the layout's API and call `setSelected(true)`. The full surface is at the [API page](/api/layout/classes/Tab).
 
+## Tab-switch animation
+
+When the selected tab changes, the newly-visible child fades in over 120 ms via [`Animation`](/api/core/classes/Animation). The fade fires only on actual selection changes — a pure relayout (window resize, scheduleLayout from elsewhere) doesn't re-trigger it. Honours `prefers-reduced-motion: reduce`.
+
 ## Theming
 
 The toolbar strip is themed via the `tab.toolbar.*` and `tab.button.*` token groups — see [Theming](/concepts/theming#theme-keys).
