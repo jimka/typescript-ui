@@ -86,6 +86,16 @@ A few patterns can defeat the rAF coalescing and force multiple layout passes pe
 - **Mutating during a layout callback.** Adding or removing components from inside `doLayout` (or a layout-triggered listener) re-enters the layout pass. The framework handles this safely, but the immediate call you triggered won't see the new children — they land on the next frame.
 - **Missing `pauseLayout` for large bulk operations.** rAF coalescing helps, but for thousands of changes you'll also pay queue-management overhead. `pauseLayout` skips that.
 
+## Deferring expensive panel construction
+
+When a [`Tab`](/layouts/Tab) layout has more than a handful of panels, building all of them up-front delays first paint for content the user may never visit. [`Tab.addLazyTab`](/api/layout/classes/Tab) registers a tab button immediately and runs the panel factory only on first activation:
+
+```typescript
+layout.addLazyTab(() => new HeavyPanel(), 'Heavy');
+```
+
+Subsequent activations reuse the cached instance, so scroll position and form state are preserved. See [Tab » Lazy panel construction](/layouts/Tab#lazy-panel-construction) for details.
+
 ## CSS rule generation cost
 
 Each component creates one CSS rule for itself on construction (and a second for `:active` state on [`Button`](/components/Button), `.selected` on [`ToggleButton`](/components/ToggleButton), etc.). For a typical app with hundreds of components this is fine. For lists rendering thousands of items, prefer the virtual-scrolling components which reuse a fixed pool of rules.
