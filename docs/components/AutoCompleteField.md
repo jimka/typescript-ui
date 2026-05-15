@@ -48,6 +48,10 @@ See [`AutoCompleteFieldConfig`](/api/component/input/type-aliases/AutoCompleteFi
 | `placeholder` | — | Empty-state placeholder text. |
 | `matchMode` | `'contains'` | How the typed query matches — `'contains'` or `'startsWith'` ([`AutoCompleteMatchMode`](/api/component/input/type-aliases/AutoCompleteMatchMode)). |
 
+## Notes
+
+- The suggestion dropdown fades in / out over 100 ms via [`Animation`](/api/core/classes/Animation). A fresh `show()` during a fade-out cancels the deferred detach, so a fast hide-then-reshow (typical when typing rapidly) doesn't snap. Honours `prefers-reduced-motion: reduce`.
+
 ## See also
 
 - [API: AutoCompleteField](/api/component/input/classes/AutoCompleteField)
