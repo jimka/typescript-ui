@@ -77,7 +77,7 @@ export class Aria {
      */
     setRole(role: AriaRole): this {
         this.role = role;
-        this.component.setElementAttribute("role", role);
+        this.component.applyAriaAttribute("role", role);
 
         return this;
     }
@@ -98,12 +98,7 @@ export class Aria {
      */
     setTabIndex(value: number | null): this {
         this.tabIndex = value;
-
-        if (value !== null) {
-            this.component.setElementAttribute("tabindex", String(value));
-        } else {
-            this.component.removeElementAttribute("tabindex");
-        }
+        this.component.applyAriaAttribute("tabindex", value !== null ? String(value) : null);
 
         return this;
     }
@@ -235,7 +230,7 @@ export class Aria {
             this.setAttribute("expanded", String(value));
         } else {
             this.attributes.delete("expanded");
-            this.component.removeElementAttribute("aria-expanded");
+            this.component.applyAriaAttribute("aria-expanded", null);
         }
 
         return this;
@@ -344,7 +339,7 @@ export class Aria {
     setActiveDescendant(id: string): this {
         if (id === "") {
             this.attributes.delete("activedescendant");
-            this.component.removeElementAttribute("aria-activedescendant");
+            this.component.applyAriaAttribute("aria-activedescendant", null);
         } else {
             this.setAttribute("activedescendant", id);
         }
@@ -543,7 +538,7 @@ export class Aria {
     setValueMin(value: number | null): this {
         if (value === null) {
             this.attributes.delete("valuemin");
-            this.component.removeElementAttribute("aria-valuemin");
+            this.component.applyAriaAttribute("aria-valuemin", null);
         } else {
             this.setAttribute("valuemin", String(value));
         }
@@ -570,7 +565,7 @@ export class Aria {
     setValueMax(value: number | null): this {
         if (value === null) {
             this.attributes.delete("valuemax");
-            this.component.removeElementAttribute("aria-valuemax");
+            this.component.applyAriaAttribute("aria-valuemax", null);
         } else {
             this.setAttribute("valuemax", String(value));
         }
@@ -638,6 +633,6 @@ export class Aria {
      */
     private setAttribute(name: string, value: string): void {
         this.attributes.set(name, value);
-        this.component.setElementAttribute("aria-" + name, value);
+        this.component.applyAriaAttribute("aria-" + name, value);
     }
 }

@@ -75,8 +75,8 @@ class MenuBarButton extends Component {
 
         this._text = new Text(text);
         this._text.setPointerEvents("none");
-        this._text.setElementCSSRule("userSelect", "none");
-        this._text.setElementCSSRule("whiteSpace", "nowrap");
+        this._text.setUserSelect("none");
+        this._text.setWhiteSpace("nowrap");
         this._text.centerInHeight(MENU_BAR_BUTTON_HEIGHT);
         this.addComponent(this._text);
 

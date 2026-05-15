@@ -111,7 +111,7 @@ class Window extends Panel {
         this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" });
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         // Resizable — size containment unsafe; layout containment scopes reflow to the window subtree.
-        this.setElementCSSRule("contain", "layout");
+        this.setContain("layout");
         this.setShadow("var(--ts-ui-window-shadow, 3px 3px 2px rgba(0, 0, 0, 0.4))");
         this.setBackgroundColor("var(--ts-ui-body-bg, rgb(241, 241, 241))");
 

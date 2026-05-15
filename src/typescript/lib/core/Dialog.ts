@@ -420,7 +420,7 @@ class Dialog extends Component {
         this.setShadow("var(--ts-ui-dialog-shadow)");
         this.setOverflow("hidden");
         // Fixed dimensions, hidden overflow, no escaping descendants — full strict containment.
-        this.setElementCSSRule("contain", "strict");
+        this.setContain("strict");
 
         const layout = new BorderLayout();
         layout.setComponentGap(0);
@@ -433,15 +433,15 @@ class Dialog extends Component {
         this.contentContainer.setLayoutManager(new Fit());
         // Vertical scrolling only — a horizontal scrollbar would cover the
         // bottom rows of body text and is rarely useful for dialog content.
-        this.contentContainer.setElementCSSRule("overflowY", "auto");
-        this.contentContainer.setElementCSSRule("overflowX", "hidden");
+        this.contentContainer.setOverflowY("auto");
+        this.contentContainer.setOverflowX("hidden");
 
         if (config.contentComponent) {
             this.contentContainer.addComponent(config.contentComponent);
         } else {
             const messageText = new Text(config.message ?? '');
-            messageText.setElementCSSRule("whiteSpace", "normal");
-            messageText.setElementCSSRule("wordBreak", "break-word");
+            messageText.setWhiteSpace("normal");
+            messageText.setWordBreak("break-word");
             messageText.setPadding(new Insets(16, 16, 16, 16));
             this.contentContainer.addComponent(messageText);
         }

@@ -395,7 +395,7 @@ class Accordion extends LayoutManager {
         wrapper.setOverflow('hidden');
         // Animation wrapper clips content via overflow:hidden — layout+paint containment scopes
         // reflow during the height transition without affecting the rest of the document.
-        wrapper.setElementCSSRule("contain", "layout paint");
+        wrapper.setContain("layout paint");
 
         // CSS transitions have no Component API setter; element.style is necessary here.
         wrapper.getElement(true).style.transition = `height ${this._animationDuration}ms ease`;
