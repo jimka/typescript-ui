@@ -5,6 +5,8 @@ import { Event } from "~/core/Event.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
 import { TreeRow } from "~/component/tree/TreeRow.js";
+import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
+import { LabelTreeNodeRenderer } from "~/component/tree/renderer/Label.js";
 import { callable } from "~/core/Callable.js";
 
 /** Pixels of indentation added per depth level. */
@@ -71,6 +73,7 @@ class Tree extends Component {
     private _anchorNode         : TreeNode | null                                         = null;
     private _focusNode          : TreeNode | null                                         = null;
     private _selectionListeners : Function[]                                              = [];
+    private _rendererFactory    : () => TreeNodeRenderer                                  = () => new LabelTreeNodeRenderer();
 
     constructor() {
         super();
@@ -148,6 +151,48 @@ class Tree extends Component {
      */
     addSelectionListener(listener: (nodes: TreeNode[]) => void): void {
         this._selectionListeners.push(listener);
+    }
+
+    /**
+     * Sets the renderer factory used to create one
+     * [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer)
+     * instance per pool slot.
+     *
+     * @param factory - Zero-argument function returning a new
+     *                  [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer).
+     *                  Defaults to `() => new LabelTreeNodeRenderer()`.
+     * @returns This tree, for method chaining.
+     *
+     * @remarks
+     * If pool rows already exist, each one's renderer is replaced in place via
+     * `TreeRow.setRenderer(factory())`. The DOM pool itself is preserved.
+     * Bindings are cleared so the next render pass rebinds and updates the
+     * new renderers.
+     */
+    setRendererFactory(factory: () => TreeNodeRenderer): this {
+        this._rendererFactory = factory;
+
+        for (const row of this._rowPool) {
+            row.setRenderer(factory());
+        }
+
+        this._boundIndices.fill(-1);
+        this._invalidateGeom();
+
+        if (this.getElement()) {
+            this._renderWindow();
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the renderer factory currently in use.
+     *
+     * @returns The zero-argument factory function.
+     */
+    getRendererFactory(): () => TreeNodeRenderer {
+        return this._rendererFactory;
     }
 
     /**
@@ -619,7 +664,7 @@ class Tree extends Component {
         const growFragment  = document.createDocumentFragment();
 
         while (this._rowPool.length < poolTarget) {
-            const row   = new TreeRow();
+            const row   = new TreeRow(this._rendererFactory);
             const rowEl = row.getElement(true);
 
             growFragment.appendChild(rowEl);
@@ -659,7 +704,8 @@ class Tree extends Component {
             const wasRebound  = this._boundIndices[i] !== dataIndex;
 
             if (wasRebound) {
-                row.setRowData(flatRow.node, flatRow.depth, hasChildren, expanded, flatRow.siblingCount, flatRow.posInSet);
+                const selected = this._selectedNodes.has(flatRow.node);
+                row.setRowData(flatRow.node, flatRow.depth, hasChildren, expanded, flatRow.siblingCount, flatRow.posInSet, selected);
                 this._boundIndices[i] = dataIndex;
             }
 

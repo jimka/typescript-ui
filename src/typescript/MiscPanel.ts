@@ -9,7 +9,7 @@ import { Button } from '@jimka/typescript-ui/component/button';
 import { Glyph, IconLabel, IconText, Image, PaginationBar, ProgressBar, ProgressSpinner } from '@jimka/typescript-ui/component/display';
 import { FieldSet } from '@jimka/typescript-ui/component/container';
 import { ColumnSpec, Table, TablePanel } from '@jimka/typescript-ui/component/table';
-import { Tree } from '@jimka/typescript-ui/component/tree';
+import { IconLabelTreeNodeRenderer, Tree } from '@jimka/typescript-ui/component/tree';
 import type { TreeNode } from '@jimka/typescript-ui/component/tree';
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and
@@ -338,6 +338,49 @@ class MiscPanel extends Panel {
             win.show();
         });
         this.addComponent(buttonTree);
+
+        const buttonTreeIcons = new Button("Show tree component (icon renderer)");
+        buttonTreeIcons.addActionListener(() => {
+            const win = new Window("Tree — IconLabel renderer");
+            win.setX(220);
+            win.setY(170);
+            win.setWidth(320);
+            win.setHeight(400);
+
+            win.setContentFactory(() => {
+                const treeData: TreeNode[] = [
+                    {
+                        label: "src", children: [
+                            {
+                                label: "lib", children: [
+                                    { label: "Component.ts" },
+                                    { label: "Event.ts" },
+                                ],
+                            },
+                            { label: "main.ts" },
+                        ],
+                    },
+                    {
+                        label: "docs", children: [
+                            { label: "guide.md" },
+                            { label: "api.md" },
+                        ],
+                    },
+                    { label: "package.json" },
+                ];
+
+                const tree = new Tree();
+                tree.setRendererFactory(() => new IconLabelTreeNodeRenderer(
+                    (node) => (node.children && node.children.length > 0) ? "chevron-down" : "file",
+                ));
+                tree.setNodes(treeData);
+
+                return tree;
+            });
+
+            win.show();
+        });
+        this.addComponent(buttonTreeIcons);
 
         const buttonNotificationInfo = new Button("Notification — info");
         buttonNotificationInfo.addActionListener(() => {
