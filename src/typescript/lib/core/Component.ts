@@ -77,20 +77,20 @@ export interface ComponentOptions {
     zIndex?:          number;
     insets?:          Insets;
     padding?:         Insets;
-    backgroundColor?: string | null;
-    backgroundImage?: string | null;
-    foregroundColor?: string | null;
+    backgroundColor?: string;
+    backgroundImage?: string;
+    foregroundColor?: string;
     colorScheme?:     string;
     border?:          BorderOptions | string;
-    borderRadius?:    string | null;
-    shadow?:          string | null;
-    outline?:         string | null;
+    borderRadius?:    string;
+    shadow?:          string;
+    outline?:         string;
     cursor?:          string;
     preferredSize?:   Size;
     minSize?:         Size;
     maxSize?:         Size;
-    transform?:       string | null;
-    opacity?:         number | null;
+    transform?:       string;
+    opacity?:         number;
     position?:        Position;
     overflow?:        string;
     pointerEvents?:   string;
@@ -726,24 +726,15 @@ class Component extends BaseObject {
     }
 
     /**
-     * Sets the component's insets; null resets to zero insets.
+     * Sets the component's insets. Use {@link Component.clearInsets} to reset to zero.
      *
-     * @param insets - The new Insets, or null to reset to zero on all sides.
+     * @param insets - The new Insets.
      *
      * @returns This component, for method chaining.
      */
-    setInsets(insets: Insets | null): this {
-        if (!insets) {
-            this.insets = new Insets(0, 0, 0, 0);
-        } else {
-            this.insets = insets;
-        }
-
-        if (this.insets) {
-            this.setAttribute("insets", this.insets.render());
-        } else {
-            this.delAttribute("insets");
-        }
+    setInsets(insets: Insets): this {
+        this.insets = insets;
+        this.setAttribute("insets", this.insets.render());
 
         return this;
     }
@@ -774,24 +765,23 @@ class Component extends BaseObject {
     }
 
     /**
-     * Sets the CSS padding; null resets to zero.
+     * Sets the CSS padding. Use {@link Component.clearPadding} to reset to `"0px 0px 0px 0px"`.
      *
-     * @param padding - The new padding Insets, or null to reset to "0px 0px 0px 0px".
+     * @param padding - The new padding Insets.
      *
      * @returns This component, for method chaining.
      */
-    setPadding(padding: Insets | null): this {
-        if (this.padding === padding ||
-            (this.padding && padding &&
-             this.padding.getTop()    === padding.getTop()    &&
-             this.padding.getRight()  === padding.getRight()  &&
-             this.padding.getBottom() === padding.getBottom() &&
-             this.padding.getLeft()   === padding.getLeft())) {
+    setPadding(padding: Insets): this {
+        if (this.padding &&
+            this.padding.getTop()    === padding.getTop()    &&
+            this.padding.getRight()  === padding.getRight()  &&
+            this.padding.getBottom() === padding.getBottom() &&
+            this.padding.getLeft()   === padding.getLeft()) {
             return this;
         }
 
         this.padding = padding;
-        this.cssRule.style.padding = padding ? padding.render() as string : "0px 0px 0px 0px";
+        this.cssRule.style.padding = padding.render() as string;
 
         return this;
     }
@@ -822,24 +812,19 @@ class Component extends BaseObject {
     }
 
     /**
-     * Sets the background color CSS property; null removes the property to inherit.
+     * Sets the background color CSS property. Use {@link Component.clearBackgroundColor} to inherit.
      *
-     * @param backgroundColor - A CSS color string, or null to remove the property and inherit.
+     * @param backgroundColor - A CSS color string.
      *
      * @returns This component, for method chaining.
      */
-    setBackgroundColor(backgroundColor: string | null): this {
+    setBackgroundColor(backgroundColor: string): this {
         if (this.backgroundColor === backgroundColor) {
             return this;
         }
 
         this.backgroundColor = backgroundColor;
-
-        if (backgroundColor) {
-            this.cssRule.style.setProperty('background-color', backgroundColor);
-        } else {
-            this.cssRule.style.removeProperty('background-color');
-        }
+        this.cssRule.style.setProperty('background-color', backgroundColor);
 
         return this;
     }
@@ -870,20 +855,15 @@ class Component extends BaseObject {
     }
 
     /**
-     * Sets the CSS background-image property; null removes it.
+     * Sets the CSS background-image property. Use {@link Component.clearBackgroundImage} to remove.
      *
-     * @param backgroundImage - A CSS background-image string, or null to remove the property.
+     * @param backgroundImage - A CSS background-image string.
      *
      * @returns This component, for method chaining.
      */
-    setBackgroundImage(backgroundImage: string | null): this {
+    setBackgroundImage(backgroundImage: string): this {
         this.backgroundImage = backgroundImage;
-
-        if (backgroundImage) {
-            this.cssRule.style.setProperty('background-image', backgroundImage);
-        } else {
-            this.cssRule.style.removeProperty('background-image');
-        }
+        this.cssRule.style.setProperty('background-image', backgroundImage);
 
         return this;
     }
@@ -910,24 +890,19 @@ class Component extends BaseObject {
     }
 
     /**
-     * Sets the CSS color (text color); null removes the property to inherit.
+     * Sets the CSS color (text color). Use {@link Component.clearForegroundColor} to inherit.
      *
-     * @param foregroundColor - A CSS color string, or null to remove the property and inherit.
+     * @param foregroundColor - A CSS color string.
      *
      * @returns This component, for method chaining.
      */
-    setForegroundColor(foregroundColor: string | null): this {
+    setForegroundColor(foregroundColor: string): this {
         if (this.foregroundColor === foregroundColor) {
             return this;
         }
 
         this.foregroundColor = foregroundColor;
-
-        if (foregroundColor) {
-            this.cssRule.style.setProperty('color', foregroundColor);
-        } else {
-            this.cssRule.style.removeProperty('color');
-        }
+        this.cssRule.style.setProperty('color', foregroundColor);
 
         return this;
     }
@@ -973,13 +948,6 @@ class Component extends BaseObject {
     }
 
     /**
-     * Creates and applies a border from options, or clears the border CSS property.
-     *
-     * @param options - Optional. Border configuration (style, width, color). Omit to apply a default border.
-     *
-     * @returns This component, for method chaining.
-     */
-    /**
      * Clears the component's border by applying an explicit 0-width, none-style,
      * black-colour border on every side. The longhand writes guarantee the cleared
      * state overrides any inherited or class-level border styling.
@@ -994,7 +962,14 @@ class Component extends BaseObject {
         return this;
     }
 
-    setBorder(options?: BorderOptions | string): this {
+    /**
+     * Creates and applies a border from options.
+     *
+     * @param options - Border configuration (style, width, color), or a CSS border shorthand string. Use {@link Component.clearBorder} to clear the border explicitly.
+     *
+     * @returns This component, for method chaining.
+     */
+    setBorder(options: BorderOptions | string): this {
         if (typeof options === 'string' && options.trimStart().startsWith('var(')) {
             this.borderCSS = options;
             this.cssRule.style.setProperty('border', options);
@@ -1012,12 +987,7 @@ class Component extends BaseObject {
         } else {
             this.borderCSS = null;
             this.border    = new Border(options);
-
-            if (this.border) {
-                this.border.applyOnCSSRule(this.cssRule);
-            } else {
-                this.cssRule.style.removeProperty('border');
-            }
+            this.border.applyOnCSSRule(this.cssRule);
         }
 
         return this;
@@ -1059,13 +1029,13 @@ class Component extends BaseObject {
     }
 
     /**
-     * Sets the CSS border-radius on the element; null clears it.
+     * Sets the CSS border-radius on the element. Use {@link Component.clearBorderRadius} to remove.
      *
-     * @param borderRadius - Optional. A CSS border-radius string (e.g. "4px"), or null to clear.
+     * @param borderRadius - A CSS border-radius string (e.g. "4px").
      *
      * @returns This component, for method chaining.
      */
-    setBorderRadius(borderRadius: string | null = null): this {
+    setBorderRadius(borderRadius: string): this {
         if (this.borderRadius === borderRadius) {
             return this;
         }
@@ -1100,16 +1070,15 @@ class Component extends BaseObject {
     }
 
     /**
-     * Sets the CSS box-shadow; null sets it to 'none'.
+     * Sets the CSS box-shadow. Use {@link Component.clearShadow} to set the shadow to `"none"`.
      *
-     * @param shadow - A CSS box-shadow string, or null to set the shadow to "none".
+     * @param shadow - A CSS box-shadow string.
      *
      * @returns This component, for method chaining.
      */
-    setShadow(shadow: string | null): this {
+    setShadow(shadow: string): this {
         this.shadow = shadow;
-
-        this.cssRule.style.setProperty('box-shadow', this.shadow || 'none');
+        this.cssRule.style.setProperty('box-shadow', shadow);
 
         return this;
     }
@@ -1128,18 +1097,14 @@ class Component extends BaseObject {
     }
 
     /**
-     * Sets the CSS outline on the element; null removes the property.
+     * Sets the CSS outline on the element. Use {@link Component.clearOutline} to remove.
      *
-     * @param outline - A CSS outline value (e.g. "none", "2px solid blue"), or null to inherit.
+     * @param outline - A CSS outline value (e.g. "none", "2px solid blue").
      *
      * @returns This component, for method chaining.
      */
-    setOutline(outline: string | null): this {
-        if (outline !== null) {
-            this.cssRule.style.setProperty('outline', outline);
-        } else {
-            this.cssRule.style.removeProperty('outline');
-        }
+    setOutline(outline: string): this {
+        this.cssRule.style.setProperty('outline', outline);
 
         return this;
     }
@@ -1156,20 +1121,15 @@ class Component extends BaseObject {
     }
 
     /**
-     * Sets the CSS appearance on the element; null removes the property.
+     * Sets the CSS appearance on the element. Use {@link Component.clearAppearance} to remove.
      *
-     * @param value - A CSS appearance value (e.g. "none", "auto"), or null to remove.
+     * @param value - A CSS appearance value (e.g. "none", "auto").
      *
      * @returns This component, for method chaining.
      */
-    setAppearance(value: string | null): this {
-        if (value !== null) {
-            this.cssRule.style.setProperty('-webkit-appearance', value);
-            this.cssRule.style.setProperty('appearance', value);
-        } else {
-            this.cssRule.style.removeProperty('-webkit-appearance');
-            this.cssRule.style.removeProperty('appearance');
-        }
+    setAppearance(value: string): this {
+        this.cssRule.style.setProperty('-webkit-appearance', value);
+        this.cssRule.style.setProperty('appearance', value);
 
         return this;
     }
@@ -1187,18 +1147,14 @@ class Component extends BaseObject {
     }
 
     /**
-     * Sets the CSS border-image shorthand on the element; null removes the property.
+     * Sets the CSS border-image shorthand on the element. Use {@link Component.clearBorderImage} to remove.
      *
-     * @param value - A CSS border-image value (e.g. "none"), or null to remove.
+     * @param value - A CSS border-image value (e.g. "none").
      *
      * @returns This component, for method chaining.
      */
-    setBorderImage(value: string | null): this {
-        if (value !== null) {
-            this.cssRule.style.setProperty('border-image', value);
-        } else {
-            this.cssRule.style.removeProperty('border-image');
-        }
+    setBorderImage(value: string): this {
+        this.cssRule.style.setProperty('border-image', value);
 
         return this;
     }
@@ -1215,18 +1171,14 @@ class Component extends BaseObject {
     }
 
     /**
-     * Sets the CSS transform on the element; null removes the property.
+     * Sets the CSS transform on the element. Use {@link Component.clearTransform} to remove.
      *
-     * @param value - A CSS transform value (e.g. "translateY(-1px)"), or null to remove.
+     * @param value - A CSS transform value (e.g. "translateY(-1px)").
      *
      * @returns This component, for method chaining.
      */
-    setTransform(value: string | null): this {
-        if (value !== null) {
-            this.cssRule.style.setProperty('transform', value);
-        } else {
-            this.cssRule.style.removeProperty('transform');
-        }
+    setTransform(value: string): this {
+        this.cssRule.style.setProperty('transform', value);
 
         return this;
     }
@@ -2059,12 +2011,12 @@ class Component extends BaseObject {
     /**
      * Sets the CSS opacity property on the element.
      *
-     * @param value - A number between `0` (fully transparent) and `1` (fully opaque), or `null` to clear the property.
+     * @param value - A number between `0` (fully transparent) and `1` (fully opaque). Use {@link Component.clearOpacity} to remove the property.
      *
      * @returns This component, for method chaining.
      */
-    setOpacity(value: number | null): this {
-        this.setElementStyle("opacity", value === null ? null : String(value));
+    setOpacity(value: number): this {
+        this.setElementStyle("opacity", String(value));
 
         return this;
     }

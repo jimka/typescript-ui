@@ -39,7 +39,7 @@ class TreeRow extends Component {
         this.getAria().setRole("treeitem");
 
         this._nodeLabel = new Text();
-        this._nodeLabel.setInsets(null);
+        this._nodeLabel.clearInsets();
         this._nodeLabel.setAutoMeasure(false);
     }
 
@@ -104,7 +104,7 @@ class TreeRow extends Component {
         if (hasChildren) {
             const toggle = new Glyph(expanded ? "arrow-down" : "arrow-right");
             toggle.setCursor("pointer");
-            toggle.setInsets(null);
+            toggle.clearInsets();
             toggle.getAria().setHidden(true);
             this._toggle = toggle;
 

@@ -21,14 +21,14 @@ import { callable } from "~/core/Callable.js";
  */
 export interface ButtonOptions extends ComponentOptions {
     text?:                   string;
-    glyph?:                  string | null;
+    glyph?:                  string;
     enabled?:                boolean;
-    pressedBackgroundColor?: string | null;
-    pressedBackgroundImage?: string | null;
-    pressedForegroundColor?: string | null;
+    pressedBackgroundColor?: string;
+    pressedBackgroundImage?: string;
+    pressedForegroundColor?: string;
     pressedBorder?:          BorderOptions;
-    pressedBorderRadius?:    string | null;
-    pressedShadow?:          string | null;
+    pressedBorderRadius?:    string;
+    pressedShadow?:          string;
 }
 
 /**
@@ -226,14 +226,10 @@ class Button extends Component {
      * Empty text combined with `setGlyph(name)` therefore renders as a glyph-only button
      * with no visual artifacts at the default 0px spacing.
      */
-    setGlyph(name: string | null): this {
+    setGlyph(name: string): this {
         if (this._glyph) {
             this._content.removeComponent(this._glyph);
             this._glyph = null;
-        }
-
-        if (!name) {
-            return this;
         }
 
         const glyph = new Glyph(name);
@@ -306,13 +302,9 @@ class Button extends Component {
      *
      * @returns This component, for method chaining.
      */
-    setPressedBackgroundColor(backgroundColor: string | null): this {
+    setPressedBackgroundColor(backgroundColor: string): this {
         this.pressedBackgroundColor = backgroundColor;
-        if (this.pressedBackgroundColor) {
-            this.pressedCSSRule.style.setProperty('background-color', this.pressedBackgroundColor);
-        } else {
-            this.pressedCSSRule.style.removeProperty('background-color');
-        }
+        this.pressedCSSRule.style.setProperty('background-color', backgroundColor);
 
         return this;
     }
@@ -345,13 +337,9 @@ class Button extends Component {
      *
      * @returns This component, for method chaining.
      */
-    setPressedBackgroundImage(backgroundImage: string | null = null): this {
+    setPressedBackgroundImage(backgroundImage: string): this {
         this.pressedBackgroundImage = backgroundImage;
-        if (this.pressedBackgroundImage) {
-            this.pressedCSSRule.style.setProperty('background-image', this.pressedBackgroundImage);
-        } else {
-            this.pressedCSSRule.style.removeProperty('background-image');
-        }
+        this.pressedCSSRule.style.setProperty('background-image', backgroundImage);
 
         return this;
     }
@@ -384,13 +372,9 @@ class Button extends Component {
      *
      * @returns This component, for method chaining.
      */
-    setPressedForegroundColor(foregroundColor: string | null): this {
+    setPressedForegroundColor(foregroundColor: string): this {
         this.pressedForegroundColor = foregroundColor;
-        if (this.pressedForegroundColor) {
-            this.pressedCSSRule.style.setProperty('color', this.pressedForegroundColor);
-        } else {
-            this.pressedCSSRule.style.removeProperty('color');
-        }
+        this.pressedCSSRule.style.setProperty('color', foregroundColor);
 
         return this;
     }
@@ -451,13 +435,9 @@ class Button extends Component {
      *
      * @returns This component, for method chaining.
      */
-    setPressedBorderRadius(borderRadius: string | null = null): this {
+    setPressedBorderRadius(borderRadius: string): this {
         this.pressedBorderRadius = borderRadius;
-        if (this.pressedBorderRadius) {
-            this.pressedCSSRule.style.setProperty('border-radius', this.pressedBorderRadius);
-        } else {
-            this.pressedCSSRule.style.removeProperty('border-radius');
-        }
+        this.pressedCSSRule.style.setProperty('border-radius', borderRadius);
 
         return this;
     }
@@ -490,13 +470,9 @@ class Button extends Component {
      *
      * @returns This component, for method chaining.
      */
-    setPressedShadow(shadow: string | null): this {
+    setPressedShadow(shadow: string): this {
         this.pressedShadow = shadow;
-        if (this.pressedShadow) {
-            this.pressedCSSRule.style.setProperty('box-shadow', this.pressedShadow);
-        } else {
-            this.pressedCSSRule.style.removeProperty('box-shadow');
-        }
+        this.pressedCSSRule.style.setProperty('box-shadow', shadow);
 
         return this;
     }
@@ -533,7 +509,7 @@ class Button extends Component {
 
         if (enabled) {
             this.setDisabledAttribute(false);
-            this.setOpacity(null);
+            this.clearOpacity();
             this.setCursor(this._enabledCursor);
         } else {
             this._enabledCursor = this.getCursor() ?? "pointer";

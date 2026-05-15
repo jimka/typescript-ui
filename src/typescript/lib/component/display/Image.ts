@@ -30,7 +30,7 @@ class Image extends Component {
         super({ tag: "img" });
 
         this.src = src;
-        this.setInsets(null);
+        this.clearInsets();
         this.setMinSize(20, 20);
 
         if (options) {

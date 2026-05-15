@@ -13,7 +13,7 @@ import { callable } from "~/core/Callable.js";
  * @category Components
  */
 export interface MenuBarButtonOptions extends ComponentOptions {
-    glyph?: string | null;
+    glyph?: string;
 }
 
 const GLYPH_TEXT_GAP = 4;
@@ -120,18 +120,16 @@ class MenuBarButton extends Component {
      *
      * @returns This component, for method chaining.
      */
-    setGlyph(name: string | null): this {
+    setGlyph(name: string): this {
         if (this._glyph) {
             this.removeComponent(this._glyph);
             this._glyph = null;
         }
 
-        if (name) {
-            const glyph = new Glyph(name);
-            glyph.setPointerEvents("none");
-            this.addComponent(glyph);
-            this._glyph = glyph;
-        }
+        const glyph = new Glyph(name);
+        glyph.setPointerEvents("none");
+        this.addComponent(glyph);
+        this._glyph = glyph;
 
         this.recomputePreferredSize();
         this.doLayout();

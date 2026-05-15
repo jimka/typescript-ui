@@ -298,7 +298,7 @@ class NumberSpinner extends Component implements Bindable<number> {
             this.input.setDisabledAttribute(false);
             this.upBtn.setPointerEvents("auto");
             this.downBtn.setPointerEvents("auto");
-            this.setOpacity(null);
+            this.clearOpacity();
         } else {
             this.input.setDisabledAttribute(true);
             this.upBtn.setPointerEvents("none");
