@@ -399,7 +399,7 @@ class Component extends BaseObject {
      *
      * @returns This component, for method chaining.
      */
-    setElementAttribute(key: string, value: Object | null | undefined): this {
+    protected setElementAttribute(key: string, value: Object | null | undefined): this {
         let element = this.getElement();
         if (!element) {
             //console.warn("Component #" + this.id + " is not yet in the DOM. Attribute '" + key + "' will not be set.");
@@ -422,7 +422,7 @@ class Component extends BaseObject {
      *
      * @returns This component, for method chaining.
      */
-    removeElementAttribute(key: string): this {
+    protected removeElementAttribute(key: string): this {
         let element = this.getElement();
         if (!element) {
             //console.warn("Component #" + this.id + " is not yet in the DOM. Attribute '" + key + "' will not be removed.");
@@ -442,7 +442,7 @@ class Component extends BaseObject {
      *
      * @remarks Immediately flushes to the DOM unless autoCommitStyle is false.
      */
-    setElementStyle(key: string, value: Object | null): this {
+    protected setElementStyle(key: string, value: Object | null): this {
         this.dirtyStyle[key] = value ? String(value) : null;
 
         if (this.autoCommitStyle) {
@@ -459,7 +459,7 @@ class Component extends BaseObject {
      *
      * @remarks Immediately flushes to the DOM unless autoCommitStyle is false.
      */
-    setElementStyles(values: Style): this {
+    protected setElementStyles(values: Style): this {
         Object.assign(this.dirtyStyle, values);
 
         if (this.autoCommitStyle) {
@@ -497,7 +497,7 @@ class Component extends BaseObject {
     /**
      * Flushes all queued inline style changes to the DOM element and clears the dirty map.
      */
-    commitElementStyle(): this {
+    protected commitElementStyle(): this {
         var me = this;
         let element = me.getElement();
 
@@ -519,7 +519,7 @@ class Component extends BaseObject {
      *
      * @remarks Immediately flushes to the CSS rule unless autoCommitStyle is false.
      */
-    setElementCSSRules(values: Style): this {
+    protected setElementCSSRules(values: Style): this {
         Object.assign(this.dirtyCSSRule, values);
 
         if (this.autoCommitStyle) {
@@ -537,7 +537,7 @@ class Component extends BaseObject {
      *
      * @remarks Immediately flushes to the CSS rule unless autoCommitStyle is false.
      */
-    setElementCSSRule(key: string, value: Object | null): this {
+    protected setElementCSSRule(key: string, value: Object | null): this {
         this.dirtyCSSRule[key] = value ? String(value) : null;
 
         if (this.autoCommitStyle) {
@@ -550,7 +550,7 @@ class Component extends BaseObject {
     /**
      * Flushes all queued CSS rule changes to the component's CSS rule and clears the dirty map.
      */
-    commitCSSRule(): this {
+    protected commitCSSRule(): this {
         var me = this;
 
         Object.assign(me.cssRule.style, me.dirtyCSSRule);
