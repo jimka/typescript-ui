@@ -123,16 +123,14 @@ The pattern: set the role, manage `aria-selected` on items, wire arrow keys via 
 
 For dynamic announcements (toasts, status messages), the framework's [`Notification`](/components/Notification) component is the right tool — its container has `role="alert"` semantics so screen readers announce new toasts as they appear.
 
-For your own live regions, set the role and `aria-live`:
+For your own live regions, set the role:
 
 ```typescript
-const status = new Component('div');
+const status = new Component();
 status.getAria().setRole('status');
-status.setElementAttribute('aria-live', 'polite');
-status.setElementAttribute('aria-atomic', 'true');
 ```
 
-`Aria` exposes typed setters for the most common attributes; for less-common ones, fall through to `setElementAttribute` directly.
+`role="status"` implies `aria-live="polite"` and `aria-atomic="true"` per the [ARIA spec](https://www.w3.org/TR/wai-aria/#status), so screen readers announce updates without any further configuration. `Aria` exposes typed setters for every ARIA attribute the framework writes — if you need one that isn't there yet, extend `Aria` in `src/typescript/lib/core/Aria.ts` rather than reaching into the now-protected `setElementAttribute`.
 
 ## Testing
 
