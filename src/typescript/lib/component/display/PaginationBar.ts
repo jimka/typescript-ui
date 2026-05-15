@@ -72,11 +72,19 @@ class PaginationBar extends Component {
         layout.setComponentSpacing(4);
         this.setLayoutManager(layout);
 
-        this.firstBtn = new Button("<<");
-        this.prevBtn  = new Button("<");
-        this.pageText = new Text("");
-        this.nextBtn  = new Button(">");
-        this.lastBtn  = new Button(">>");
+        this.firstBtn = new Button({ glyph: "angles-left"  });
+        this.prevBtn  = new Button({ glyph: "angle-left"   });
+        this.pageText = new Text("Page x of y");
+        this.nextBtn  = new Button({ glyph: "angle-right"  });
+        this.lastBtn  = new Button({ glyph: "angles-right" });
+
+        this.firstBtn.setPreferredSize(28, 28);
+        this.prevBtn.setPreferredSize(28, 28);
+        this.nextBtn.setPreferredSize(28, 28);
+        this.lastBtn.setPreferredSize(28, 28);
+
+        // Match the buttons' 28px row height so the page label baseline lines up.
+        this.pageText.centerInHeight(28);
 
         this.firstBtn.addActionListener(() => this.store.goToPage(1));
         this.prevBtn.addActionListener(() => this.store.prevPage());

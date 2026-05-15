@@ -11,6 +11,7 @@ import { PaginationBar } from "~/component/display/PaginationBar.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { Table } from "~/component/table/Table.js";
 import { ExportOptions } from "~/component/table/TableExporter.js";
+import { Tooltip } from "~/core/Tooltip.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -37,20 +38,28 @@ class TablePanel extends Panel {
         this.toolbar = new Component();
         this.toolbar.setLayoutManager(new HBox());
 
-        const addBtn = new Button("+");
+        const addBtn = new Button({ glyph: "plus" });
+        addBtn.setPreferredSize(28, 28);
         addBtn.addActionListener(() => this.table.addRow());
+        Tooltip.attach(addBtn, "Add row");
         this.toolbar.addComponent(addBtn);
 
-        const removeBtn = new Button("−");
+        const removeBtn = new Button({ glyph: "minus" });
+        removeBtn.setPreferredSize(28, 28);
         removeBtn.addActionListener(() => this.table.removeSelectedRow());
+        Tooltip.attach(removeBtn, "Remove selected row");
         this.toolbar.addComponent(removeBtn);
 
-        this.syncBtn = new Button("Sync");
+        this.syncBtn = new Button({ glyph: "sync" });
+        this.syncBtn.setPreferredSize(28, 28);
         this.syncBtn.addActionListener(() => this.table.sync());
+        Tooltip.attach(this.syncBtn, "Sync pending changes");
         this.toolbar.addComponent(this.syncBtn);
 
-        this.rejectBtn = new Button("Reject");
+        this.rejectBtn = new Button({ glyph: "ban" });
+        this.rejectBtn.setPreferredSize(28, 28);
         this.rejectBtn.addActionListener(() => this.table.reject());
+        Tooltip.attach(this.rejectBtn, "Reject pending changes");
         this.toolbar.addComponent(this.rejectBtn);
 
         this.table = new Table(store);

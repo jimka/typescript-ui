@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
+import { Glyph } from "~/component/display/Glyph.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -45,8 +46,19 @@ export interface MenuItemConfig {
     enabled?: boolean;
     /** Keyboard shortcut hint displayed on the right (e.g. `"Ctrl+S"`). */
     shortcut?: string;
-    /** Icon or glyph displayed on the left (e.g. a Unicode character). */
+    /**
+     * Icon displayed on the left (e.g. a Unicode character).
+     *
+     * @remarks Prefer `glyph` for crisp SVG output from the framework's glyph
+     * registry; `icon` remains supported for callers that want to embed a raw
+     * character.
+     */
     icon?: string;
+    /**
+     * Registry glyph name displayed on the left of the item row. Takes
+     * precedence over `icon` when both are provided.
+     */
+    glyph?: string;
     /** When present this item opens a submenu rather than calling `action`. */
     submenu?: MenuConfig;
     /** When `true` the item renders as a separator; all other fields are ignored. */
@@ -63,6 +75,12 @@ export interface MenuConfig {
     label: string;
     /** Ordered list of items in the dropdown panel. */
     items: MenuItemConfig[];
+    /**
+     * Optional registry glyph name displayed to the left of the bar button's
+     * label (e.g. `"file"`, `"eye"`, `"info-circle"`). Omit for a text-only
+     * menu button.
+     */
+    glyph?: string;
 }
 
 /**
@@ -94,6 +112,7 @@ class MenuItem extends Component {
     private readonly _cssVarPrefix: MenuItemCSSVarPrefix;
 
     private _iconText: Text | null = null;
+    private _iconGlyph: Glyph | null = null;
     private _titleText: Text | null = null;
     private _shortcutText: Text | null = null;
     private _chevronText: Text | null = null;
@@ -164,15 +183,22 @@ class MenuItem extends Component {
             this.getAria().setDisabled(true);
         }
 
-        this._iconText = new Text(config.icon ?? "");
-        this._iconText.setPointerEvents("none");
-        this._iconText.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
-        this._iconText.setVisible(!!config.icon);
-        this.addComponent(this._iconText);
+        if (config.glyph) {
+            this._iconGlyph = new Glyph(config.glyph);
+            this._iconGlyph.setPointerEvents("none");
+            this._iconGlyph.setPreferredSize(16, 16);
+            this.addComponent(this._iconGlyph);
+        } else {
+            this._iconText = new Text(config.icon ?? "");
+            this._iconText.setPointerEvents("none");
+            this._iconText.centerInHeight(MenuItem.HEIGHT);
+            this._iconText.setVisible(!!config.icon);
+            this.addComponent(this._iconText);
+        }
 
         this._titleText = new Text(config.text ?? "");
         this._titleText.setPointerEvents("none");
-        this._titleText.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
+        this._titleText.centerInHeight(MenuItem.HEIGHT);
         this._titleText.setElementCSSRule("whiteSpace", "nowrap");
         this._titleText.setElementCSSRule("overflow", "hidden");
         this._titleText.setElementCSSRule("textOverflow", "ellipsis");
@@ -181,7 +207,7 @@ class MenuItem extends Component {
         if (config.shortcut) {
             this._shortcutText = new Text(config.shortcut);
             this._shortcutText.setPointerEvents("none");
-            this._shortcutText.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
+            this._shortcutText.centerInHeight(MenuItem.HEIGHT);
             this._shortcutText.setElementCSSRule("textAlign", "right");
             this._shortcutText.setForegroundColor(
                 `var(--ts-ui-${cssVarPrefix}-item-shortcut-color, rgb(140, 140, 140))`
@@ -192,7 +218,7 @@ class MenuItem extends Component {
         if (this.hasSubmenu()) {
             this._chevronText = new Text("▶");
             this._chevronText.setPointerEvents("none");
-            this._chevronText.setElementCSSRule("lineHeight", MenuItem.HEIGHT + "px");
+            this._chevronText.centerInHeight(MenuItem.HEIGHT);
             this._chevronText.setElementCSSRule("textAlign", "center");
             this._chevronText.setForegroundColor(
                 `var(--ts-ui-${cssVarPrefix}-item-shortcut-color, rgb(140, 140, 140))`
@@ -375,7 +401,7 @@ class MenuItem extends Component {
 
         const H = MenuItem.HEIGHT;
         const totalWidth = this.getWidth();
-        const hasIcon = !!this._config.icon;
+        const hasIcon = !!this._config.icon || !!this._config.glyph;
         const hasShortcut = !!this._config.shortcut && this._shortcutText !== null;
         const hasSub = this.hasSubmenu();
 
@@ -387,7 +413,15 @@ class MenuItem extends Component {
             totalWidth - textStart - MenuItem.RIGHT_PAD - chevronReserve - shortcutReserve
         );
 
-        if (this._iconText) {
+        if (this._iconGlyph) {
+            const size  = this._iconGlyph.getPreferredSize() ?? { width: 16, height: 16 };
+            const iconY = Math.max(0, Math.floor((H - size.height) / 2));
+
+            this._iconGlyph.setX(4);
+            this._iconGlyph.setY(iconY);
+            this._iconGlyph.setWidth(size.width);
+            this._iconGlyph.setHeight(size.height);
+        } else if (this._iconText) {
             this._iconText.setX(4);
             this._iconText.setY(0);
             this._iconText.setWidth(20);

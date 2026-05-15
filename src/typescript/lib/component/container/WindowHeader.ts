@@ -51,7 +51,7 @@ class WindowHeader extends Header {
         this.removeComponent(title);
 
         this._titleRow = new Component();
-        this._titleRow.setLayoutManager(new HBox({ spacing: 0 }));
+        this._titleRow.setLayoutManager(new HBox({ spacing: 8 }));
         this._titleRow.setInsets(new Insets(0, 0, 0, 0));
         this._titleRow.setPointerEvents("none");
         this._titleRow.addComponent(title);
@@ -62,11 +62,17 @@ class WindowHeader extends Header {
             fill:      FillType.HORIZONTAL
         });
 
-        this.exitButton = new Button(undefined, { glyph: "times" });
+        this.exitButton = new Button({ glyph: "times" });
         this.exitButton.setBackgroundImage(this.activeBackgroundImage);
         this.exitButton.setBorder();
 
         this.addComponent(this.exitButton, { placement: Placement.EAST });
+
+        // Default title icon: applied before applyOptions so an explicit
+        // `glyph: null` in the options bag still clears it back to no icon.
+        if (options?.glyph === undefined) {
+            this.setGlyph("window");
+        }
 
         if (options) {
             this.applyOptions(options);
