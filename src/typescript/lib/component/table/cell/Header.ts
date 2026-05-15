@@ -110,18 +110,18 @@ class HeaderCell extends DefaultCell {
     }
 
     /**
-     * Updates the label to show a sort direction arrow suffix, or removes it,
-     * and toggles the multi-sort priority badge.
+     * Updates the label to show a sort direction arrow suffix and toggles the
+     * multi-sort priority badge.
      *
-     * @param state - 'asc', 'desc', or null to clear the indicator.
+     * @param state - 'asc' or 'desc'. Use `clearSortState()` to remove the indicator.
      * @param priority - Optional 1-based position of this sorter in a multi-sort.
      *   The badge is only shown when priority is at least 2.
      */
-    setSortState(state: 'asc' | 'desc' | null, priority?: number | null): this {
-        const arrow = state === 'asc' ? ' ▲' : state === 'desc' ? ' ▼' : '';
+    setSortState(state: 'asc' | 'desc', priority?: number | null): this {
+        const arrow = state === 'asc' ? ' ▲' : ' ▼';
 
         this.getRenderer().getText().setText(this.text + arrow);
-        this.getAria().setSort(state === 'asc' ? 'ascending' : state === 'desc' ? 'descending' : 'none');
+        this.getAria().setSort(state === 'asc' ? 'ascending' : 'descending');
 
         if (this.priorityBadge) {
             const showBadge = priority != null && priority >= 2;

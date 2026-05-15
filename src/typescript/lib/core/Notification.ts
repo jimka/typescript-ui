@@ -137,10 +137,10 @@ export class Notification extends Component {
         this.closeButton = new Button({ glyph: "times" });
         this.closeButton.setInsets(new Insets(0, 0, 0, 0));
         this.closeButton.setBorder({ style: BorderStyle.NONE });
-        this.closeButton.setBackgroundImage(null);
+        this.closeButton.clearBackgroundImage();
         this.closeButton.setBackgroundColor("transparent");
-        this.closeButton.setShadow(null);
-        this.closeButton.setPressedShadow(null);
+        this.closeButton.clearShadow();
+        this.closeButton.clearPressedShadow();
         this.closeButton.setForegroundColor("var(--ts-ui-text-color, rgb(0, 0, 0))");
         this.closeButton.setPreferredSize(Notification.CLOSE_SIZE, Notification.CLOSE_SIZE);
         this.addComponent(this.closeButton);

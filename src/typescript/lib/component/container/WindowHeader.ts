@@ -18,7 +18,7 @@ import { callable } from "~/core/Callable.js";
  */
 export interface WindowHeaderOptions extends HeaderOptions {
     closeable?: boolean;
-    glyph?:     string | null;
+    glyph?:     string;
 }
 
 /**
@@ -64,12 +64,12 @@ class WindowHeader extends Header {
 
         this.exitButton = new Button({ glyph: "times" });
         this.exitButton.setBackgroundImage(this.activeBackgroundImage);
-        this.exitButton.setBorder();
+        this.exitButton.clearBorder();
 
         this.addComponent(this.exitButton, { placement: Placement.EAST });
 
-        // Default title icon: applied before applyOptions so an explicit
-        // `glyph: null` in the options bag still clears it back to no icon.
+        // Default title icon: applied unless an explicit glyph name was passed.
+        // Call clearGlyph() on the resulting WindowHeader to opt out entirely.
         if (options?.glyph === undefined) {
             this.setGlyph("window");
         }
@@ -112,14 +112,10 @@ class WindowHeader extends Header {
      * row, so the two never overlap and Border's WEST slot only ever tracks
      * one component.
      */
-    setGlyph(name: string | null): this {
+    setGlyph(name: string): this {
         if (this._titleGlyph) {
             this._titleRow.removeComponent(this._titleGlyph);
             this._titleGlyph = null;
-        }
-
-        if (!name) {
-            return this;
         }
 
         const glyph = new Glyph(name);
@@ -162,9 +158,9 @@ class WindowHeader extends Header {
     setActive(active: boolean): this {
         if (active) {
             this.setBackgroundImage(this.activeBackgroundImage);
-            this.setBackgroundColor(null);
+            this.clearBackgroundColor();
         } else {
-            this.setBackgroundImage(null);
+            this.clearBackgroundImage();
             this.setBackgroundColor("var(--ts-ui-gutter-bg, rgb(200, 200, 200))");
         }
 

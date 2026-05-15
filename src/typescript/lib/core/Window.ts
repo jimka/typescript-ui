@@ -19,7 +19,7 @@ const WINDOW_ANIM_DURATION_MS: number = 150;
  */
 export interface WindowOptions extends PanelOptions {
     headerText?: string;
-    glyph?:      string | null;
+    glyph?:      string;
 }
 
 /**

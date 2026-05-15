@@ -68,7 +68,7 @@ class Tab extends LayoutManager {
         columnLayout.setGap(0);
         this.toolbar.setLayoutManager(columnLayout);
         this.toolbar.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
-        this.toolbar.setInsets(null);
+        this.toolbar.clearInsets();
         this.toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
         this.toolbar.setPreferredSize(0, 30);
 
@@ -285,9 +285,9 @@ class Tab extends LayoutManager {
         let tabButton = new ToggleButton(name);
 
         tabButton.setBackgroundColor("var(--ts-ui-tab-button-bg, #b8b8c3)");
-        tabButton.setBorder();
-        tabButton.setBorderRadius();
-        tabButton.setShadow(null);
+        tabButton.clearBorder();
+        tabButton.clearBorderRadius();
+        tabButton.clearShadow();
         tabButton.setInsets(new Insets(0, 4, 0, 4));
         tabButton.getText().setInsets(new Insets(0, 4, 0, 4));
 
@@ -300,8 +300,8 @@ class Tab extends LayoutManager {
         const wrapper = new Component();
         wrapper.setLayoutManager(wrapperHBox);
         wrapper.setBackgroundColor("transparent");
-        wrapper.setBorder();
-        wrapper.setShadow(null);
+        wrapper.clearBorder();
+        wrapper.clearShadow();
         wrapper.setInsets(new Insets(0, 0, 0, 0));
 
         wrapper.addComponent(tabButton, { weight: 1 });
@@ -310,9 +310,9 @@ class Tab extends LayoutManager {
 
         if (constraints?.closeable) {
             closeButton = new TabCloseButton();
-            closeButton.setBorder();
-            closeButton.setBorderRadius();
-            closeButton.setShadow(null);
+            closeButton.clearBorder();
+            closeButton.clearBorderRadius();
+            closeButton.clearShadow();
             wrapper.addComponent(closeButton);
         }
 

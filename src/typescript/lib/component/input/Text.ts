@@ -71,7 +71,7 @@ class Text extends Component {
         this.text       = text;
         this.lineHeight = this.readThemeLineHeightPx();
 
-        this.setInsets(null);
+        this.clearInsets();
         this.setElementCSSRule("lineHeight", this.lineHeightCSSRule);
 
         this.unsubscribeTheme = ThemeManager.onThemeChange(() => {

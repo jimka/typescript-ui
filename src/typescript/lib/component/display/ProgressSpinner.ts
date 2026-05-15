@@ -70,7 +70,7 @@ class ProgressSpinner extends Component {
         // Use no insets so the arc fills the declared size — otherwise the
         // default 4-pixel inset shrinks a 24-pixel spinner's arc to 16 pixels
         // and leaves 8 pixels of empty space around it.
-        this.setInsets(null);
+        this.clearInsets();
 
         this.arc = new Component();
         this.arc.setPosition(Position.ABSOLUTE);
@@ -205,7 +205,7 @@ class ProgressSpinner extends Component {
 
         this.removeElement();
 
-        this.setBackgroundColor(null);
+        this.clearBackgroundColor();
         this.setZIndex(0);
     }
 
