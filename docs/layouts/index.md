@@ -11,7 +11,7 @@ A [`LayoutManager`](/api/layout/classes/LayoutManager) is attached to a containe
 | [`Border`](/api/layout/classes/Border) | Five-region layout: north, south, east, west, center |
 | [`Card`](/api/layout/classes/Card) | Stacked layers — one visible at a time |
 | [`Column`](/api/layout/classes/Column) | Horizontal sequence with gap control |
-| [`Fit`](/api/layout/classes/Fit) | Expands one child to fill the entire container |
+| [`Fit`](/api/layout/classes/Fit) | Places one child inside the container — stretch to fill (default) or centre at preferred size via `FillType.NONE` |
 | [`Grid`](/api/layout/classes/Grid) | Two-dimensional grid |
 | [`HBox`](/api/layout/classes/HBox) | Horizontal stack with configurable spacing |
 | [`Row`](/api/layout/classes/Row) | Vertical sequence with gap control |
