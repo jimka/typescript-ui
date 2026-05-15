@@ -134,6 +134,23 @@ class HeaderCell extends DefaultCell {
     }
 
     /**
+     * Clears the sort indicator arrow and hides the multi-sort priority badge.
+     *
+     * @returns This cell, for method chaining.
+     */
+    clearSortState(): this {
+        this.getRenderer().getText().setText(this.text);
+        this.getAria().setSort('none');
+
+        if (this.priorityBadge) {
+            this.priorityBadge.textContent   = '';
+            this.priorityBadge.style.display = 'none';
+        }
+
+        return this;
+    }
+
+    /**
      * Registers the callback invoked when the user clicks to sort this column.
      *
      * @param fn - Receives the field name for this column and whether the

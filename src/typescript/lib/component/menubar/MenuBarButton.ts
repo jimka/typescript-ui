@@ -140,6 +140,22 @@ class MenuBarButton extends Component {
     }
 
     /**
+     * Removes the leading glyph from the menu-bar button, if one is present.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearGlyph(): this {
+        if (this._glyph) {
+            this.removeComponent(this._glyph);
+            this._glyph = null;
+            this.recomputePreferredSize();
+            this.doLayout();
+        }
+
+        return this;
+    }
+
+    /**
      * Returns the current leading glyph component, or null if none is set.
      *
      * @returns The [`Glyph`](/api/component/display/classes/Glyph) instance, or null.

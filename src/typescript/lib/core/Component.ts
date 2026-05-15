@@ -749,6 +749,22 @@ class Component extends BaseObject {
     }
 
     /**
+     * Resets the component's insets to zero on all sides.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks Companion to {@link Component.setInsets}. Resets to
+     * `new Insets(0, 0, 0, 0)` — semantically a "reset to default" rather than
+     * a CSS-level clear.
+     */
+    clearInsets(): this {
+        this.insets = new Insets(0, 0, 0, 0);
+        this.setAttribute("insets", this.insets.render());
+
+        return this;
+    }
+
+    /**
      * Returns the CSS padding insets for this component.
      *
      * @returns The current padding Insets, or null if none are set.
@@ -776,6 +792,22 @@ class Component extends BaseObject {
 
         this.padding = padding;
         this.cssRule.style.padding = padding ? padding.render() as string : "0px 0px 0px 0px";
+
+        return this;
+    }
+
+    /**
+     * Resets the CSS padding to zero on all sides.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks Companion to {@link Component.setPadding}. Writes
+     * `"0px 0px 0px 0px"` rather than removing the property — preserves the
+     * legacy `setPadding(null)` behaviour as a reset, not a CSS-level clear.
+     */
+    clearPadding(): this {
+        this.padding = null;
+        this.cssRule.style.padding = "0px 0px 0px 0px";
 
         return this;
     }
@@ -813,6 +845,22 @@ class Component extends BaseObject {
     }
 
     /**
+     * Removes the background-color CSS property so the element inherits from its parent.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearBackgroundColor(): this {
+        if (this.backgroundColor === null) {
+            return this;
+        }
+
+        this.backgroundColor = null;
+        this.cssRule.style.removeProperty('background-color');
+
+        return this;
+    }
+
+    /**
      * Returns the background image CSS value, or null if none is set.
      *
      * @returns The CSS background-image string, or null.
@@ -836,6 +884,18 @@ class Component extends BaseObject {
         } else {
             this.cssRule.style.removeProperty('background-image');
         }
+
+        return this;
+    }
+
+    /**
+     * Removes the background-image CSS property from the component's CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearBackgroundImage(): this {
+        this.backgroundImage = null;
+        this.cssRule.style.removeProperty('background-image');
 
         return this;
     }
@@ -872,6 +932,22 @@ class Component extends BaseObject {
         return this;
     }
 
+    /**
+     * Removes the color (foreground) CSS property so the element inherits from its parent.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearForegroundColor(): this {
+        if (this.foregroundColor === null) {
+            return this;
+        }
+
+        this.foregroundColor = null;
+        this.cssRule.style.removeProperty('color');
+
+        return this;
+    }
+
     getColorScheme() {
         return this.colorScheme;
     }
@@ -903,6 +979,21 @@ class Component extends BaseObject {
      *
      * @returns This component, for method chaining.
      */
+    /**
+     * Clears the component's border by applying an explicit 0-width, none-style,
+     * black-colour border on every side. The longhand writes guarantee the cleared
+     * state overrides any inherited or class-level border styling.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearBorder(): this {
+        this.borderCSS = null;
+        this.border    = new Border();
+        this.border.applyOnCSSRule(this.cssRule);
+
+        return this;
+    }
+
     setBorder(options?: BorderOptions | string): this {
         if (typeof options === 'string' && options.trimStart().startsWith('var(')) {
             this.borderCSS = options;
@@ -985,6 +1076,21 @@ class Component extends BaseObject {
     }
 
     /**
+     * Removes the border-radius CSS property from the element.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearBorderRadius(): this {
+        if (this.borderRadius === null) {
+            return this;
+        }
+        this.borderRadius = null;
+        this.setElementStyle("borderRadius", null);
+
+        return this;
+    }
+
+    /**
      * Returns the CSS box-shadow value, or null if not set.
      *
      * @returns The CSS box-shadow string, or null.
@@ -1009,6 +1115,19 @@ class Component extends BaseObject {
     }
 
     /**
+     * Removes the box-shadow by writing `"none"` (preserving the legacy
+     * `setShadow(null)` semantic — not a removeProperty).
+     *
+     * @returns This component, for method chaining.
+     */
+    clearShadow(): this {
+        this.shadow = null;
+        this.cssRule.style.setProperty('box-shadow', 'none');
+
+        return this;
+    }
+
+    /**
      * Sets the CSS outline on the element; null removes the property.
      *
      * @param outline - A CSS outline value (e.g. "none", "2px solid blue"), or null to inherit.
@@ -1021,6 +1140,17 @@ class Component extends BaseObject {
         } else {
             this.cssRule.style.removeProperty('outline');
         }
+
+        return this;
+    }
+
+    /**
+     * Removes the outline CSS property from the element.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearOutline(): this {
+        this.cssRule.style.removeProperty('outline');
 
         return this;
     }
@@ -1045,6 +1175,18 @@ class Component extends BaseObject {
     }
 
     /**
+     * Removes both the `-webkit-appearance` and `appearance` CSS properties.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearAppearance(): this {
+        this.cssRule.style.removeProperty('-webkit-appearance');
+        this.cssRule.style.removeProperty('appearance');
+
+        return this;
+    }
+
+    /**
      * Sets the CSS border-image shorthand on the element; null removes the property.
      *
      * @param value - A CSS border-image value (e.g. "none"), or null to remove.
@@ -1062,6 +1204,17 @@ class Component extends BaseObject {
     }
 
     /**
+     * Removes the border-image CSS property from the element.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearBorderImage(): this {
+        this.cssRule.style.removeProperty('border-image');
+
+        return this;
+    }
+
+    /**
      * Sets the CSS transform on the element; null removes the property.
      *
      * @param value - A CSS transform value (e.g. "translateY(-1px)"), or null to remove.
@@ -1074,6 +1227,17 @@ class Component extends BaseObject {
         } else {
             this.cssRule.style.removeProperty('transform');
         }
+
+        return this;
+    }
+
+    /**
+     * Removes the transform CSS property from the element.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearTransform(): this {
+        this.cssRule.style.removeProperty('transform');
 
         return this;
     }
@@ -1901,6 +2065,18 @@ class Component extends BaseObject {
      */
     setOpacity(value: number | null): this {
         this.setElementStyle("opacity", value === null ? null : String(value));
+
+        return this;
+    }
+
+    /**
+     * Removes the opacity property from the element's inline style, restoring
+     * full opacity from the CSS rule or default.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearOpacity(): this {
+        this.setElementStyle("opacity", null);
 
         return this;
     }
