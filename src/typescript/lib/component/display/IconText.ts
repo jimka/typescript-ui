@@ -19,6 +19,19 @@ export interface IconTextOptions extends ComponentOptions {
 }
 
 /**
+ * User-overridable defaults forwarded to `super` via the options bag. The
+ * cascade dispatches each present setter once with the final value. `gap`
+ * is included even though its setter touches `getLayoutManager()`: it is
+ * pure-bag-written by `applyOptions` and dispatched after the HBox is built.
+ * `layoutManager` is *not* listed because each instance needs its own fresh
+ * HBox — sharing one instance across components would corrupt layout state.
+ */
+const _defaultIconTextOptions: Partial<IconTextOptions> = {
+    gap:    2,
+    insets: new Insets(0, 0, 0, 0),
+};
+
+/**
  * A small composite pairing a leading [`Glyph`](/api/component/display/classes/Glyph)
  * with a trailing standalone [`Text`](/api/component/input/classes/Text), laid out
  * horizontally with a configurable gap (default 0).
@@ -36,11 +49,10 @@ export interface IconTextOptions extends ComponentOptions {
  *
  * @category Components
  */
-class IconText extends Component {
+class IconText extends Component<IconTextOptions> {
 
-    private _glyph: Glyph;
-    private _text:  Text;
-    private _gap:   number = 2;
+    private _glyph!: Glyph;
+    private _text!:  Text;
 
     /**
      * Constructs an `IconText` pairing the named glyph with the given label text.
@@ -50,10 +62,21 @@ class IconText extends Component {
      * @param options - Optional configuration bag (gap override, common Component fields).
      */
     constructor(glyph: string, text: string, options?: IconTextOptions) {
-        super();
+        // Merge defaults → consumer options. `gap` is in the bag but its setter
+        // touches `getLayoutManager()`, which doesn't exist yet — `applyOptions`
+        // writes it pure to `_options` and we dispatch from the bag once the
+        // HBox is wired up below.
+        super({
+            ..._defaultIconTextOptions,
+            ...(options ?? {}),
+        });
 
-        this.setLayoutManager(new HBox({ spacing: this._gap }));
-        this.setInsets(new Insets(0, 0, 0, 0));
+        // Per-instance layout manager. Reads the merged `_options.gap` so a
+        // consumer override of `gap` (or the default) flows into the HBox
+        // spacing on first build.
+        if (this._options.layoutManager === undefined) {
+            this.setLayoutManager(new HBox({ spacing: this._options.gap }));
+        }
 
         this._glyph = new Glyph(glyph);
         this._text  = new Text(text);
@@ -61,31 +84,34 @@ class IconText extends Component {
         this.addComponent(this._glyph);
         this.addComponent(this._text);
 
-        if (this.constructor === IconText && options) {
-            this.applyOptions(options);
+        // Late-built state: `gap` and `glyph`/`text` setters reach into
+        // children that didn't exist during `super`'s cascade. Dispatch from
+        // `_options` now that the row is built.
+        if (this._options.gap !== undefined) {
+            (this.getLayoutManager() as HBox).setComponentSpacing(this._options.gap);
+        }
+        if (this._options.glyph !== undefined) {
+            this.setGlyph(this._options.glyph);
+        }
+        if (this._options.text !== undefined) {
+            this.setText(this._options.text);
         }
     }
 
     /**
-     * Applies an {@link IconTextOptions} bag, dispatching the glyph name, label
-     * text, and gap after inherited Component fields.
+     * Applies an {@link IconTextOptions} bag. Inherited Component fields cascade
+     * through `super.applyOptions`; the gap/glyph/text fields are written pure
+     * to `_options` here and dispatched from the constructor body once children
+     * exist.
      *
      * @param options - The options bag carrying the values to apply.
      */
     protected applyOptions(options: IconTextOptions): this {
         super.applyOptions(options);
 
-        if (options.gap !== undefined) {
-            this.setGap(options.gap);
-        }
-
-        if (options.glyph !== undefined) {
-            this.setGlyph(options.glyph);
-        }
-
-        if (options.text !== undefined) {
-            this.setText(options.text);
-        }
+        if (options.gap   !== undefined) this._options.gap   = options.gap;
+        if (options.glyph !== undefined) this._options.glyph = options.glyph;
+        if (options.text  !== undefined) this._options.text  = options.text;
 
         return this;
     }
@@ -127,7 +153,7 @@ class IconText extends Component {
      * @returns This component, for method chaining.
      */
     setGap(px: number): this {
-        this._gap = px;
+        this._options.gap = px;
         (this.getLayoutManager() as HBox).setComponentSpacing(px);
 
         return this;

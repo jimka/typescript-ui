@@ -19,6 +19,20 @@ export interface DateFieldOptions extends InputOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins. `preferredSize` /
+ * `maxSize` are *not* listed because `updateHeight` derives them from the
+ * live measured input height (and re-fires on theme changes).
+ */
+const _defaultDateFieldOptions: Partial<DateFieldOptions> = {
+    cursor:          "text",
+    padding:         new Insets(3, 3, 3, 3),
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+    foregroundColor: "var(--ts-ui-text-color, black)",
+};
+
+/**
  * A date-picker input component backed by an `<input type="date">` element.
  *
  * Implements {@link Bindable} so it can participate in a [`Binding`](/api/core/classes/Binding) directly.
@@ -26,26 +40,15 @@ export interface DateFieldOptions extends InputOptions {
  *
  * @category Components
  */
-class DateField extends Input implements Bindable<Date | null> {
+class DateField<TOptions extends DateFieldOptions = DateFieldOptions> extends Input<TOptions> implements Bindable<Date | null> {
 
-    private _value: Date | null = null;
-
-    constructor(options?: DateFieldOptions) {
-        super();
-
-        this.setCursor("text");
-        this.setPadding(new Insets(3, 3, 3, 3));
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
-        this.setForegroundColor("var(--ts-ui-text-color, black)");
+    constructor(options?: TOptions) {
+        super({ ..._defaultDateFieldOptions, ...(options ?? {}) } as TOptions);
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
 
         Event.addListener(this, "input", this.onInput);
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
@@ -54,7 +57,7 @@ class DateField extends Input implements Bindable<Date | null> {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: DateFieldOptions): this {
+    protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
         if (options.value !== undefined) {
@@ -89,12 +92,12 @@ class DateField extends Input implements Bindable<Date | null> {
         const raw = element.value;
 
         if (!raw) {
-            this._value = null;
+            this._options.value = null;
             return;
         }
 
         // "YYYY-MM-DD" — append local midnight to avoid UTC offset shifting the day.
-        this._value = new Date(raw + "T00:00:00");
+        this._options.value = new Date(raw + "T00:00:00");
     }
 
     /**
@@ -114,7 +117,7 @@ class DateField extends Input implements Bindable<Date | null> {
      * @param value - The Date to display, or null to clear the field.
      */
     setValue(value: Date | null): this {
-        this._value = value;
+        this._options.value = value;
 
         const element = this.getElement();
 
@@ -133,7 +136,7 @@ class DateField extends Input implements Bindable<Date | null> {
      * @returns The selected Date, or null.
      */
     getValue(): Date | null {
-        return this._value;
+        return this._options.value ?? null;
     }
 
     /**
@@ -180,14 +183,15 @@ class DateField extends Input implements Bindable<Date | null> {
         const element = super.render();
 
         element.setAttribute("type", "date");
-        element.value = this._value ? this.formatDate(this._value) : "";
+        const value = this._options.value ?? null;
+        element.value = value ? this.formatDate(value) : "";
 
         return element;
     }
 }
 
 const DateFieldCallable = callable(DateField);
-type DateFieldCallable = DateField;
+type DateFieldCallable<TOptions extends DateFieldOptions = DateFieldOptions> = DateField<TOptions>;
 export {
     DateField         as _DateField,
     DateFieldCallable as DateField

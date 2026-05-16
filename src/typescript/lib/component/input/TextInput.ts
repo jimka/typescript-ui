@@ -22,20 +22,10 @@ export interface TextInputOptions extends InputOptions {
  *
  * Tracks the current text value and text-align internally and exposes text selection support.
  */
-class TextInput extends Input {
+class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends Input<TOptions> {
 
-    private text: String = "";
-    private textAlign: string | null = null;
-    private placeholder: string | null = null;
-    private readOnly: boolean = false;
-    private maxLength: number | null = null;
-
-    constructor(options?: TextInputOptions) {
-        super({ tag: options?.tag ?? "input" });
-
-        if (this.constructor === TextInput && options) {
-            this.applyOptions(options);
-        }
+    constructor(options?: TOptions) {
+        super({ ...(options ?? {}), tag: options?.tag ?? "input" } as TOptions);
     }
 
     /**
@@ -45,7 +35,7 @@ class TextInput extends Input {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: TextInputOptions): this {
+    protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -95,8 +85,8 @@ class TextInput extends Input {
      *
      * @returns The CSS text-align string, or null if not set.
      */
-    getTextAlign() {
-        return this.textAlign;
+    getTextAlign(): string | null {
+        return this._options.textAlign ?? null;
     }
 
     /**
@@ -107,7 +97,7 @@ class TextInput extends Input {
      * @returns This component, for method chaining.
      */
     setTextAlign(align: string): this {
-        this.textAlign = align;
+        this._options.textAlign = align;
 
         this.setElementCSSRule("textAlign", align);
 
@@ -119,8 +109,8 @@ class TextInput extends Input {
      *
      * @returns The current text string.
      */
-    getText(): String {
-        return this.text;
+    getText(): string {
+        return this._options.text ?? "";
     }
 
     /**
@@ -130,15 +120,15 @@ class TextInput extends Input {
      *
      * @returns This component, for method chaining.
      */
-    setText(text: String): this {
-        this.text = text || "";
+    setText(text: string): this {
+        this._options.text = text || "";
 
         let element = this.getElement();
         if (!element) {
             return this;
         }
 
-        element.value = this.text.valueOf();
+        element.value = this._options.text;
 
         return this;
     }
@@ -149,7 +139,7 @@ class TextInput extends Input {
      * @returns The placeholder string, or null.
      */
     getPlaceholder(): string | null {
-        return this.placeholder;
+        return this._options.placeholder ?? null;
     }
 
     /**
@@ -160,7 +150,7 @@ class TextInput extends Input {
      * @returns This component, for method chaining.
      */
     setPlaceholder(value: string): this {
-        this.placeholder = value;
+        this._options.placeholder = value;
         this.setElementAttribute("placeholder", value);
 
         return this;
@@ -172,7 +162,7 @@ class TextInput extends Input {
      * @returns True if the `readonly` attribute is set.
      */
     isReadOnly(): boolean {
-        return this.readOnly;
+        return this._options.readOnly ?? false;
     }
 
     /**
@@ -183,7 +173,7 @@ class TextInput extends Input {
      * @returns This component, for method chaining.
      */
     setReadOnly(value: boolean): this {
-        this.readOnly = value;
+        this._options.readOnly = value;
 
         if (value) {
             this.setElementAttribute("readonly", "");
@@ -200,7 +190,7 @@ class TextInput extends Input {
      * @returns The maxlength value, or null.
      */
     getMaxLength(): number | null {
-        return this.maxLength;
+        return this._options.maxLength ?? null;
     }
 
     /**
@@ -211,7 +201,7 @@ class TextInput extends Input {
      * @returns This component, for method chaining.
      */
     setMaxLength(value: number): this {
-        this.maxLength = value;
+        this._options.maxLength = value;
         this.setElementAttribute("maxlength", String(value));
 
         return this;
@@ -235,8 +225,9 @@ class TextInput extends Input {
             start = 0;
         }
 
-        if (!end || end > this.text.length) {
-            end = this.text.length + 1;
+        const text = this._options.text ?? "";
+        if (!end || end > text.length) {
+            end = text.length + 1;
         }
 
         element.setSelectionRange(start, end);
@@ -253,7 +244,7 @@ class TextInput extends Input {
         super.applyStyle(element);
 
         let rule = this.getCSSRule();
-        rule.style.textAlign = this.textAlign ? this.textAlign : "";
+        rule.style.textAlign = this._options.textAlign ?? "";
 
         return this;
     }
@@ -266,14 +257,14 @@ class TextInput extends Input {
     protected render() {
         let element = super.render();
 
-        element.value = this.text.valueOf();
+        element.value = this._options.text ?? "";
 
         return element;
     }
 }
 
 const TextInputCallable = callable(TextInput);
-type TextInputCallable = TextInput;
+type TextInputCallable<TOptions extends TextInputOptions = TextInputOptions> = TextInput<TOptions>;
 export {
     TextInput         as _TextInput,
     TextInputCallable as TextInput

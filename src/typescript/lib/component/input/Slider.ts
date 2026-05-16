@@ -18,6 +18,20 @@ export interface SliderOptions extends InputOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins. `colorScheme` is
+ * *not* listed here because it must be read from the live `ThemeManager` at
+ * each construction (the const would freeze the value at module-load time);
+ * the in-body guard below keeps that lookup dynamic.
+ */
+const _defaultSliderOptions: Partial<SliderOptions> = {
+    preferredSize:   { width: 200, height: 20 } as SliderOptions["preferredSize"],
+    maxSize:         { width: Number.MAX_SAFE_INTEGER, height: 20 } as SliderOptions["maxSize"],
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+};
+
+/**
  * A range slider input component backed by an `<input type="range">` element.
  *
  * Tracks min, max, step, and current value internally and keeps the DOM element
@@ -25,22 +39,16 @@ export interface SliderOptions extends InputOptions {
  *
  * @category Components
  */
-class Slider extends Input {
+class Slider<TOptions extends SliderOptions = SliderOptions> extends Input<TOptions> {
 
-    private minValue: number = 0;
-    private maxValue: number = 100;
-    private value: number = 50;
-    private step: number = 1;
-
-    constructor(options?: SliderOptions) {
-        super();
+    constructor(options?: TOptions) {
+        super({ ..._defaultSliderOptions, ...(options ?? {}) } as TOptions);
 
         let me = this;
 
-        this.setPreferredSize(200, 20);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, 20);
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
-        this.setColorScheme(ThemeManager.getTheme().colorScheme);
+        if (this._options.colorScheme === undefined) {
+            this.setColorScheme(ThemeManager.getTheme().colorScheme);
+        }
 
         ThemeManager.onThemeChange(() => this.setColorScheme(ThemeManager.getTheme().colorScheme));
 
@@ -52,10 +60,6 @@ class Slider extends Input {
 
             me.setValue(Number(target.value));
         });
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
@@ -64,7 +68,7 @@ class Slider extends Input {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: SliderOptions): this {
+    protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
         if (options.minValue !== undefined) {
@@ -91,8 +95,8 @@ class Slider extends Input {
      *
      * @returns The minimum value.
      */
-    getMinValue() {
-        return this.minValue;
+    getMinValue(): number {
+        return this._options.minValue ?? 0;
     }
 
     /**
@@ -103,7 +107,7 @@ class Slider extends Input {
      * @returns This component, for method chaining.
      */
     setMinValue(value: number): this {
-        this.minValue = value;
+        this._options.minValue = value;
 
         this.setElementAttribute("min", value);
 
@@ -115,8 +119,8 @@ class Slider extends Input {
      *
      * @returns The maximum value.
      */
-    getMaxValue() {
-        return this.maxValue;
+    getMaxValue(): number {
+        return this._options.maxValue ?? 100;
     }
 
     /**
@@ -127,7 +131,7 @@ class Slider extends Input {
      * @returns This component, for method chaining.
      */
     setMaxValue(value: number): this {
-        this.maxValue = value;
+        this._options.maxValue = value;
 
         this.setElementAttribute("max", value);
 
@@ -139,8 +143,8 @@ class Slider extends Input {
      *
      * @returns The step value.
      */
-    getStep() {
-        return this.step;
+    getStep(): number {
+        return this._options.step ?? 1;
     }
 
     /**
@@ -151,7 +155,7 @@ class Slider extends Input {
      * @returns This component, for method chaining.
      */
     setStep(value: number): this {
-        this.step = value;
+        this._options.step = value;
 
         this.setElementAttribute("step", value);
 
@@ -163,8 +167,8 @@ class Slider extends Input {
      *
      * @returns The current value.
      */
-    getValue() {
-        return this.value;
+    getValue(): number {
+        return this._options.value ?? 50;
     }
 
     /**
@@ -175,7 +179,7 @@ class Slider extends Input {
      * @returns This component, for method chaining.
      */
     setValue(value: number): this {
-        this.value = value;
+        this._options.value = value;
 
         this.setElementAttribute("value", value);
 
@@ -204,17 +208,17 @@ class Slider extends Input {
         let element = super.render();
 
         element.setAttribute("type", "range");
-        element.setAttribute("min", String(this.minValue));
-        element.setAttribute("max", String(this.maxValue));
-        element.setAttribute("step", String(this.step));
-        element.setAttribute("value", String(this.value));
+        element.setAttribute("min", String(this.getMinValue()));
+        element.setAttribute("max", String(this.getMaxValue()));
+        element.setAttribute("step", String(this.getStep()));
+        element.setAttribute("value", String(this.getValue()));
 
         return element;
     }
 }
 
 const SliderCallable = callable(Slider);
-type SliderCallable = Slider;
+type SliderCallable<TOptions extends SliderOptions = SliderOptions> = Slider<TOptions>;
 export {
     Slider         as _Slider,
     SliderCallable as Slider

@@ -27,6 +27,17 @@ export interface GlyphOptions extends ComponentOptions {
 }
 
 /**
+ * User-overridable defaults forwarded to `super` via the options bag. The
+ * cascade dispatches each present setter once with the final value. Only
+ * defaults that apply unconditionally for every Glyph kind live here — the
+ * char-only `lineHeight`/`textAlign` defaults stay in the constructor body
+ * because they depend on the per-instance `def.kind`.
+ */
+const _defaultGlyphOptions: Partial<GlyphOptions> = {
+    preferredSize: { width: 16, height: 16 } as GlyphOptions["preferredSize"],
+};
+
+/**
  * A small icon rendered from the internal `Glyphs` registry.
  *
  * @remarks
@@ -51,12 +62,10 @@ export interface GlyphOptions extends ComponentOptions {
  *
  * @category Components
  */
-class Glyph extends Component {
+class Glyph extends Component<GlyphOptions> {
 
-    private _name:       string;
-    private _def:        GlyphDef;
-    private _lineHeight: string | null = null;
-    private _textAlign:  string | null = null;
+    private _name: string;
+    private _def:  GlyphDef;
 
     /**
      * Constructs a Glyph for the registry entry with the given name.
@@ -70,20 +79,29 @@ class Glyph extends Component {
             throw new Error("Unknown glyph: " + name);
         }
 
-        super({ tag: def.kind === "svg" ? "svg" : "span" });
+        // Merge defaults → consumer options → non-overridable structural keys.
+        // `super` dispatches every present setter through the cascade once with
+        // the final value (e.g. `setPreferredSize(16, 16)` for the default).
+        super({
+            ..._defaultGlyphOptions,
+            ...(options ?? {}),
+            tag: def.kind === "svg" ? "svg" : "span",
+        });
 
         this._name = name;
         this._def  = def;
 
-        this.setPreferredSize(16, 16);
-
+        // Char-mode glyphs need a line-height and text-align that SVG glyphs
+        // should not get. Keep these guards in the constructor body since they
+        // depend on per-instance `def.kind` rather than a static default.
         if (def.kind === "char") {
-            this.setLineHeight("1");
-            this.setTextAlign("center");
-        }
+            if (this._options.lineHeight === undefined) {
+                this.setLineHeight("1");
+            }
 
-        if (this.constructor === Glyph && options) {
-            this.applyOptions(options);
+            if (this._options.textAlign === undefined) {
+                this.setTextAlign("center");
+            }
         }
     }
 
@@ -109,7 +127,12 @@ class Glyph extends Component {
      * a forced style read.
      */
     getLineHeight(): string | null {
-        return this._lineHeight;
+        const value = this._options.lineHeight;
+        if (value === undefined) {
+            return null;
+        }
+
+        return typeof value === "number" ? value + "px" : value;
     }
 
     /**
@@ -130,8 +153,8 @@ class Glyph extends Component {
      * regardless.
      */
     setLineHeight(value: number | string): this {
-        this._lineHeight = typeof value === "number" ? value + "px" : value;
-        this.setElementCSSRule("lineHeight", this._lineHeight);
+        this._options.lineHeight = value;
+        this.setElementCSSRule("lineHeight", typeof value === "number" ? value + "px" : value);
 
         return this;
     }
@@ -150,7 +173,7 @@ class Glyph extends Component {
      * `element.style.textAlign` to avoid a forced style read.
      */
     getTextAlign(): string | null {
-        return this._textAlign;
+        return this._options.textAlign ?? null;
     }
 
     /**
@@ -161,8 +184,8 @@ class Glyph extends Component {
      * @returns This Glyph, for method chaining.
      */
     setTextAlign(value: string): this {
-        this._textAlign = value;
-        this.setElementCSSRule("textAlign", this._textAlign);
+        this._options.textAlign = value;
+        this.setElementCSSRule("textAlign", value);
 
         return this;
     }

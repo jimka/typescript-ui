@@ -17,30 +17,33 @@ export interface TextFieldOptions extends TextInputOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins.
+ */
+const _defaultTextFieldOptions: Partial<TextFieldOptions> = {
+    cursor:          "text",
+    padding:         new Insets(3, 3, 3, 3),
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+    foregroundColor: "var(--ts-ui-text-color, black)",
+};
+
+/**
  * A single-line text field component backed by an `<input type="text">` element.
  *
  * Keeps internal text state in sync with the DOM on every input event.
  *
  * @category Components
  */
-class TextField extends TextInput implements Bindable<string> {
+class TextField extends TextInput<TextFieldOptions> implements Bindable<string> {
 
     constructor(options?: TextFieldOptions) {
-        super();
-
-        this.setCursor("text");
-        this.setPadding(new Insets(3, 3, 3, 3));
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
-        this.setForegroundColor("var(--ts-ui-text-color, black)");
+        super({ ..._defaultTextFieldOptions, ...(options ?? {}) });
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
 
         Event.addListener(this, "input", this.onInput);
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**

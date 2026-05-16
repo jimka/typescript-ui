@@ -28,6 +28,24 @@ export interface NumberSpinnerOptions extends ComponentOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins. `preferredSize` /
+ * `maxSize` are *not* listed because `updateHeight` derives them from the
+ * live measured input height (and re-fires on theme changes). `min`/`max`/
+ * `step`/`precision`/`value`/`enabled` are late-built state — they touch
+ * the inner `input`/`upBtn`/`downBtn` which don't exist yet — so they are
+ * written pure by `applyOptions` and dispatched from the constructor body
+ * once the children are built.
+ */
+const _defaultNumberSpinnerOptions: Partial<NumberSpinnerOptions> = {
+    insets:          new Insets(0, 0, 0, 0),
+    border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-button-border, rgb(200, 200, 200))" },
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+};
+
+/**
  * A numeric input field with flanking up/down spin buttons.
  *
  * Combines a borderless [`TextField`](/api/component/input/classes/TextField) and a vertical strip of two [`SpinButton`](/api/component/input/classes/SpinButton)s
@@ -38,19 +56,12 @@ export interface NumberSpinnerOptions extends ComponentOptions {
  *
  * @category Components
  */
-class NumberSpinner extends Component implements Bindable<number> {
+class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<number> {
 
-    private input  : TextField;
-    private upBtn  : SpinButton;
-    private downBtn: SpinButton;
-    private btnBox : Component;
-
-    private value    : number = 0;
-    private min      : number = -Infinity;
-    private max      : number = Infinity;
-    private step     : number = 1;
-    private precision: number | null = null;
-    private _enabled : boolean = true;
+    private input!  : TextField;
+    private upBtn!  : SpinButton;
+    private downBtn!: SpinButton;
+    private btnBox! : Component;
 
     private bindingListeners: Array<() => void>              = [];
     private changeListeners : Array<(value: number) => void> = [];
@@ -59,7 +70,14 @@ class NumberSpinner extends Component implements Bindable<number> {
      * Constructs a new NumberSpinner with default value `0`, step `1`, and unbounded min/max.
      */
     constructor(options?: NumberSpinnerOptions) {
-        super();
+        // Merge defaults → consumer options. The cascade in `super` dispatches
+        // every cascade-safe setter (inherited Component fields, plus the
+        // visual defaults above) once with the final value. The late-built
+        // fields (`min`/`max`/`step`/`precision`/`value`/`enabled`) are
+        // pure-written into `_options` by `applyOptions` because they touch
+        // children that don't exist yet — we dispatch them once the row is
+        // built below.
+        super({ ..._defaultNumberSpinnerOptions, ...(options ?? {}) });
 
         this.input = new TextField();
         this.input.setTextAlign("right");
@@ -87,19 +105,14 @@ class NumberSpinner extends Component implements Bindable<number> {
         hbox.setComponentSpacing(0);
         hbox.setStretching(true);
         this.setLayoutManager(hbox);
-        this.setInsets(new Insets(0, 0, 0, 0));
         this.addComponent(this.input, { weight: 1 });
         this.addComponent(this.btnBox);
 
-        this.upBtn.addTickListener(() => this.applyValue(this.value + this.step));
-        this.downBtn.addTickListener(() => this.applyValue(this.value - this.step));
+        this.upBtn.addTickListener(() => this.applyValue(this.getValue() + this.getStep()));
+        this.downBtn.addTickListener(() => this.applyValue(this.getValue() - this.getStep()));
 
         Event.addListener(this.input, "blur", () => this.onBlur());
         Event.addListener(this.input, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
-
-        this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-button-border, rgb(200, 200, 200))" });
-        this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
@@ -107,43 +120,35 @@ class NumberSpinner extends Component implements Bindable<number> {
         this.getAria().setRole("spinbutton");
         this.getAria().setValueNow(0);
 
-        if (options) {
-            this.applyOptions(options);
-        }
+        // Late-built state: `applyOptions` wrote these pure into `_options`
+        // because the inner `input`/`upBtn`/`downBtn` didn't exist yet.
+        // Dispatch now via the real setters so aria/text/disabled propagate.
+        if (this._options.min       !== undefined) this.setMin(this._options.min);
+        if (this._options.max       !== undefined) this.setMax(this._options.max);
+        if (this._options.step      !== undefined) this.setStep(this._options.step);
+        if (this._options.precision !== undefined) this.setPrecision(this._options.precision);
+        if (this._options.value     !== undefined) this.setValue(this._options.value);
+        if (this._options.enabled   !== undefined) this.setEnabled(this._options.enabled);
     }
 
     /**
-     * Applies a {@link NumberSpinnerOptions} bag, dispatching range, step,
-     * precision, value, and enabled state after inherited Component fields.
+     * Applies a {@link NumberSpinnerOptions} bag. Inherited Component fields
+     * cascade through `super.applyOptions`; the late-built fields
+     * (`min`/`max`/`step`/`precision`/`value`/`enabled`, all of which touch
+     * inner `input`/`upBtn`/`downBtn`) are written pure to `_options` here
+     * and dispatched from the constructor body once children exist.
      *
      * @param options - The options bag carrying the values to apply.
      */
     protected applyOptions(options: NumberSpinnerOptions): this {
         super.applyOptions(options);
 
-        if (options.min !== undefined) {
-            this.setMin(options.min);
-        }
-
-        if (options.max !== undefined) {
-            this.setMax(options.max);
-        }
-
-        if (options.step !== undefined) {
-            this.setStep(options.step);
-        }
-
-        if (options.precision !== undefined) {
-            this.setPrecision(options.precision);
-        }
-
-        if (options.value !== undefined) {
-            this.setValue(options.value);
-        }
-
-        if (options.enabled !== undefined) {
-            this.setEnabled(options.enabled);
-        }
+        if (options.min       !== undefined) this._options.min       = options.min;
+        if (options.max       !== undefined) this._options.max       = options.max;
+        if (options.step      !== undefined) this._options.step      = options.step;
+        if (options.precision !== undefined) this._options.precision = options.precision;
+        if (options.value     !== undefined) this._options.value     = options.value;
+        if (options.enabled   !== undefined) this._options.enabled   = options.enabled;
 
         return this;
     }
@@ -173,7 +178,7 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @returns The most recently committed value.
      */
     getValue(): number {
-        return this.value;
+        return this._options.value ?? 0;
     }
 
     /**
@@ -196,7 +201,7 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @returns The minimum allowed value (defaults to `-Infinity`).
      */
     getMin(): number {
-        return this.min;
+        return this._options.min ?? -Infinity;
     }
 
     /**
@@ -205,7 +210,7 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @param n - The new minimum value. Pass `-Infinity` to remove the lower bound.
      */
     setMin(n: number): this {
-        this.min = n;
+        this._options.min = n;
 
         this.getAria().setValueMin(isFinite(n) ? n : null);
 
@@ -218,7 +223,7 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @returns The maximum allowed value (defaults to `Infinity`).
      */
     getMax(): number {
-        return this.max;
+        return this._options.max ?? Infinity;
     }
 
     /**
@@ -227,7 +232,7 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @param n - The new maximum value. Pass `Infinity` to remove the upper bound.
      */
     setMax(n: number): this {
-        this.max = n;
+        this._options.max = n;
 
         this.getAria().setValueMax(isFinite(n) ? n : null);
 
@@ -240,7 +245,7 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @returns The current step (defaults to `1`).
      */
     getStep(): number {
-        return this.step;
+        return this._options.step ?? 1;
     }
 
     /**
@@ -249,7 +254,7 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @param n - The new step value.
      */
     setStep(n: number): this {
-        this.step = n;
+        this._options.step = n;
 
         return this;
     }
@@ -260,7 +265,7 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @returns The precision, or null if not explicitly set.
      */
     getPrecision(): number | null {
-        return this.precision;
+        return this._options.precision ?? null;
     }
 
     /**
@@ -269,9 +274,9 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @param decimals - The number of decimal places, or `null` to derive from `step`.
      */
     setPrecision(decimals: number | null): this {
-        this.precision = decimals;
+        this._options.precision = decimals;
 
-        this.input.setText(this.formatValue(this.value));
+        this.input.setText(this.formatValue(this.getValue()));
 
         return this;
     }
@@ -282,7 +287,7 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @returns `true` if enabled, `false` if disabled.
      */
     isEnabled(): boolean {
-        return this._enabled;
+        return this._options.enabled ?? true;
     }
 
     /**
@@ -292,7 +297,7 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @param enabled - `true` to enable, `false` to disable.
      */
     setEnabled(enabled: boolean): this {
-        this._enabled = enabled;
+        this._options.enabled = enabled;
 
         if (enabled) {
             this.input.setDisabledAttribute(false);
@@ -333,18 +338,18 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @param n - The proposed new value (raw, before clamping and snapping).
      */
     private applyValue(n: number): void {
-        if (!this._enabled) {
+        if (!this.isEnabled()) {
             return;
         }
 
         const next = this.normalize(n);
-        if (next === this.value) {
+        if (next === this.getValue()) {
             this.input.setText(this.formatValue(next));
 
             return;
         }
 
-        this.value = next;
+        this._options.value = next;
         this.input.setText(this.formatValue(next));
         this.getAria().setValueNow(next);
 
@@ -365,7 +370,7 @@ class NumberSpinner extends Component implements Bindable<number> {
     private _setValueSilent(n: number): void {
         const next = this.normalize(n);
 
-        this.value = next;
+        this._options.value = next;
         this.input.setText(this.formatValue(next));
         this.getAria().setValueNow(next);
     }
@@ -378,8 +383,8 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @returns The normalised value ready to be stored.
      */
     private normalize(n: number): number {
-        let v = Math.min(this.max, Math.max(this.min, n));
-        v = Math.round(v / this.step) * this.step;
+        let v = Math.min(this.getMax(), Math.max(this.getMin(), n));
+        v = Math.round(v / this.getStep()) * this.getStep();
         v = parseFloat(v.toFixed(this.derivePrecision()));
 
         return v;
@@ -391,7 +396,7 @@ class NumberSpinner extends Component implements Bindable<number> {
     private onBlur(): void {
         const parsed = parseFloat(this.input.getText().valueOf());
         if (isNaN(parsed)) {
-            this.input.setText(this.formatValue(this.value));
+            this.input.setText(this.formatValue(this.getValue()));
 
             return;
         }
@@ -407,14 +412,14 @@ class NumberSpinner extends Component implements Bindable<number> {
     private onKeyDown(e: KeyboardEvent): void {
         if (e.key === "ArrowUp") {
             e.preventDefault();
-            this.applyValue(this.value + this.step);
+            this.applyValue(this.getValue() + this.getStep());
 
             return;
         }
 
         if (e.key === "ArrowDown") {
             e.preventDefault();
-            this.applyValue(this.value - this.step);
+            this.applyValue(this.getValue() - this.getStep());
 
             return;
         }
@@ -441,11 +446,12 @@ class NumberSpinner extends Component implements Bindable<number> {
      * @returns The number of decimal places to render.
      */
     private derivePrecision(): number {
-        if (this.precision !== null) {
-            return this.precision;
+        const precision = this._options.precision ?? null;
+        if (precision !== null) {
+            return precision;
         }
 
-        const stepStr = String(this.step);
+        const stepStr = String(this.getStep());
         const dotIdx  = stepStr.indexOf(".");
 
         return dotIdx >= 0 ? stepStr.length - dotIdx - 1 : 0;
