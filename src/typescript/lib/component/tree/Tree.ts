@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
@@ -32,6 +32,18 @@ interface FlatRow {
 }
 
 /**
+ * Construction-time options for {@link Tree}.
+ *
+ * Tree currently has no own configurable options — root nodes are set via
+ * `setNodes()` and the renderer factory via `setRendererFactory()`. This
+ * minimal extension exists so `this._options` is typed at the leaf class.
+ *
+ * @category Components
+ */
+export interface TreeOptions extends ComponentOptions {
+}
+
+/**
  * A hierarchical data view with collapsible nodes and virtual scrolling.
  *
  * Pass root nodes via {@link Tree.setNodes}. The tree flattens the currently
@@ -58,7 +70,7 @@ interface FlatRow {
  *
  * @category Components
  */
-class Tree extends Component {
+class Tree extends Component<TreeOptions> {
 
     private _nodes              : TreeNode[]                                              = [];
     private _expandedNodes      : Set<TreeNode>                                           = new Set();
@@ -812,7 +824,7 @@ class Tree extends Component {
      * @returns This component, for method chaining.
      *
      * @remarks
-     * Overrides {@link Component.doLayout} so that layout-manager-driven size changes
+     * Overrides [`Component.doLayout`](/api/core/classes/Component#doLayout) so that layout-manager-driven size changes
      * (e.g. from a parent Tab or Split) automatically update the rendered row window.
      */
     doLayout(): this {

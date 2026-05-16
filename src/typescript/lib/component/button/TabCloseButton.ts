@@ -13,25 +13,37 @@ export interface TabCloseButtonOptions extends ButtonOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * Layered on top of [`Button`](/api/component/button/classes/Button)'s own
+ * defaults, then overlaid with consumer options before the seed `glyph`
+ * pins the close icon.
+ */
+const _defaultTabCloseButtonOptions: Partial<TabCloseButtonOptions> = {
+    preferredSize:   { width: 16, height: 16 },
+    insets:          new Insets(0, 0, 0, 0),
+    foregroundColor: "var(--ts-ui-close-button-fg, #555)",
+};
+
+/**
  * A compact close button displaying the `times` glyph, sized to sit flush inside a tab header.
  *
  * @category Components
  */
-class TabCloseButton extends Button {
+class TabCloseButton extends Button<TabCloseButtonOptions> {
 
     /**
      * Creates a TabCloseButton seeded with the `times` glyph and sized for use in a tab toolbar.
      */
     constructor(options?: TabCloseButtonOptions) {
-        super({ glyph: "times" });
-
-        this.setPreferredSize(16, 16);
-        this.setInsets(new Insets(0, 0, 0, 0));
-        this.setForegroundColor("var(--ts-ui-close-button-fg, #555)");
-
-        if (options) {
-            this.applyOptions(options);
-        }
+        // Merge defaults → consumer options → non-overridable structural keys.
+        // Button is a children-build class; its constructor forwards its own
+        // merged defaults plus this bag into Component's super cascade, where
+        // every cascade-safe setter is dispatched once with the final value.
+        super({
+            ..._defaultTabCloseButtonOptions,
+            ...(options ?? {}),
+            glyph: "times",
+        });
     }
 }
 

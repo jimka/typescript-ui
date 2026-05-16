@@ -30,6 +30,8 @@ export type { DialogConfig, DialogButtonConfig, DialogResult } from '~/core/Dial
 export { ThemeManager, DefaultTheme, DarkTheme } from '~/core/Theme.js';
 export type { Theme } from '~/core/Theme.js';
 
+export { StyleTarget, StyleRule, InlineStyle } from '~/core/StyleTarget.js';
+
 export { Binding } from '~/core/Binding.js';
 export type { BeforeRecordListener } from '~/core/Binding.js';
 export type { Bindable, BindingAccessors } from '~/core/Bindable.js';

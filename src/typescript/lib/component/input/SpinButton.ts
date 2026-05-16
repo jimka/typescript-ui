@@ -17,6 +17,20 @@ export interface SpinButtonOptions extends ButtonOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * Strips [`Button`](/api/component/button/classes/Button)'s chrome (border /
+ * radius / insets) so the spinner sits flush in its NumberSpinner cell. The
+ * `shadow`/`pressedShadow` clears can't ride here — they're `clear*` calls
+ * with no equivalent option value — so they stay in the constructor body
+ * guarded on the consumer options bag.
+ */
+const _defaultSpinButtonOptions: Partial<SpinButtonOptions> = {
+    border:       { style: BorderStyle.NONE },
+    borderRadius: "0",
+    insets:       new Insets(0, 0, 0, 0),
+};
+
+/**
  * A small up- or down-arrow button used inside a NumberSpinner.
  *
  * Extends Button to inherit the pressed-state appearance and click handling, then
@@ -25,7 +39,7 @@ export interface SpinButtonOptions extends ButtonOptions {
  *
  * @category Components
  */
-class SpinButton extends Button {
+class SpinButton extends Button<SpinButtonOptions> {
 
     private tickListeners: Array<() => void> = [];
     private repeatHandle : ReturnType<typeof setTimeout> | null = null;
@@ -37,16 +51,30 @@ class SpinButton extends Button {
      *                 framework's glyph registry.
      */
     constructor(symbol: "▲" | "▼", options?: SpinButtonOptions) {
-        super({ glyph: symbol === "▲" ? "chevron-up" : "chevron-down" });
+        // Merge defaults → seed glyph → consumer options. Button is a
+        // children-build class; its constructor forwards its own merged
+        // defaults plus this bag into Component's super cascade. The
+        // symbol-derived glyph sits between defaults and consumer options
+        // so a caller-supplied `glyph` still wins.
+        super({
+            ..._defaultSpinButtonOptions,
+            glyph: symbol === "▲" ? "chevron-up" : "chevron-down",
+            ...(options ?? {}),
+        });
 
         this.updateSize();
         ThemeManager.onThemeChange(() => this.updateSize());
 
-        this.clearShadow();
-        this.clearPressedShadow();
-        this.setBorder({ style: BorderStyle.NONE });
-        this.setBorderRadius("0");
-        this.setInsets(new Insets(0, 0, 0, 0));
+        // `clearShadow` / `clearPressedShadow` have no representable option
+        // value (they write `box-shadow: none` and `_options.shadow = undefined`
+        // — distinct from `setShadow("none")` which stores the literal string),
+        // so they stay in the body, guarded on the consumer bag.
+        if (options?.shadow === undefined) {
+            this.clearShadow();
+        }
+        if (options?.pressedShadow === undefined) {
+            this.clearPressedShadow();
+        }
 
         // Shrink the glyph so it fits the half-height (≈11 px) spin-button.
         // The 1 px upward translate compensates for sub-pixel rounding in the
@@ -62,10 +90,6 @@ class SpinButton extends Button {
         Event.addListener(this, "mousedown", () => this.onMouseDown());
         Event.addViewportListener(this, "mouseup", () => this.onMouseUp());
         Event.addViewportListener(this, "mouseleave", () => this.onMouseUp());
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**

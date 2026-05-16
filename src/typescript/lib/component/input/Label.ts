@@ -29,7 +29,7 @@ export interface LabelOptions extends TextOptions {
  *
  * @category Components
  */
-class Label extends Text {
+class Label extends Text<LabelOptions> {
 
     forId: string;
 
@@ -38,13 +38,9 @@ class Label extends Text {
             throw new Error("Label requires a non-empty forId. Use Text for standalone text.");
         }
 
-        super(text, { tag: "label" });
+        super(text, { ...(options ?? {}), tag: options?.tag ?? "label" });
 
         this.forId = forId;
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**

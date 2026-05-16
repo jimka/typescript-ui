@@ -20,6 +20,19 @@ export interface IconLabelOptions extends ComponentOptions {
 }
 
 /**
+ * User-overridable defaults forwarded to `super` via the options bag. The
+ * cascade dispatches each present setter once with the final value.
+ * `layoutManager` is *not* listed — each instance needs its own fresh HBox.
+ * `gap`/`glyph`/`text`/`forId` are late-built state (their setters reach into
+ * children) and are written pure by `applyOptions`, then dispatched from the
+ * constructor body once the row exists.
+ */
+const _defaultIconLabelOptions: Partial<IconLabelOptions> = {
+    gap:    2,
+    insets: new Insets(0, 0, 0, 0),
+};
+
+/**
  * A small composite pairing a leading [`Glyph`](/api/component/display/classes/Glyph)
  * with a trailing [`Label`](/api/component/input/classes/Label), laid out
  * horizontally with a configurable gap (default 0).
@@ -41,11 +54,10 @@ export interface IconLabelOptions extends ComponentOptions {
  *
  * @category Components
  */
-class IconLabel extends Component {
+class IconLabel extends Component<IconLabelOptions> {
 
-    private _glyph: Glyph;
-    private _label: Label;
-    private _gap:   number = 2;
+    private _glyph!: Glyph;
+    private _label!: Label;
 
     /**
      * Constructs an `IconLabel` pairing the named glyph with a `<label for="…">`.
@@ -57,46 +69,59 @@ class IconLabel extends Component {
      * @param options - Optional configuration bag (gap override, common Component fields).
      */
     constructor(glyph: string, text: string, forId: string, options?: IconLabelOptions) {
-        super();
+        // Merge defaults → consumer options. `gap`/`glyph`/`text`/`forId` are
+        // written pure to `_options` by `applyOptions` because their setters
+        // reach into children that don't exist yet — we dispatch them once the
+        // row is built below.
+        super({
+            ..._defaultIconLabelOptions,
+            ...(options ?? {}),
+        });
 
-        this.setLayoutManager(new HBox({ spacing: this._gap }));
-        this.setInsets(new Insets(0, 0, 0, 0));
+        // Per-instance layout manager seeded with the merged `_options.gap`
+        // so a consumer override (or the default) flows into the HBox spacing.
+        this.setLayoutManager(new HBox({ spacing: this._options.gap }));
 
-        this._glyph = new Glyph(glyph);
-        this._label = new Label(text, forId);
+        // Build children with the effective values up front so the late-built
+        // dispatch below has nothing to overwrite. The bag-written values
+        // from the cascade take precedence over the positional arguments.
+        // `setGlyph` would rebuild the inner Glyph, and `setText`/`setForId`
+        // would push the same value into the Label a second time — so we
+        // resolve the effective value here once.
+        const effectiveGlyph = this._options.glyph ?? glyph;
+        const effectiveText  = this._options.text  ?? text;
+        const effectiveForId = this._options.forId ?? forId;
+
+        this._glyph = new Glyph(effectiveGlyph);
+        this._label = new Label(effectiveText, effectiveForId);
 
         this.addComponent(this._glyph);
         this.addComponent(this._label);
 
-        if (this.constructor === IconLabel && options) {
-            this.applyOptions(options);
+        // Late-built state: bag-written by `applyOptions`. Only `gap` needs
+        // post-construction dispatch — the HBox's spacing was seeded from
+        // the bag at construction, but a later cascade-time write to
+        // `_options.gap` (consumer override) needs to push into the HBox.
+        if (this._options.gap !== undefined) {
+            (this.getLayoutManager() as HBox).setComponentSpacing(this._options.gap);
         }
     }
 
     /**
-     * Applies an {@link IconLabelOptions} bag, dispatching the glyph name,
-     * label text, `forId` association, and gap after inherited Component fields.
+     * Applies an {@link IconLabelOptions} bag. Inherited Component fields
+     * cascade through `super.applyOptions`; the gap/glyph/text/forId fields
+     * are written pure to `_options` here and dispatched from the constructor
+     * body once children exist.
      *
      * @param options - The options bag carrying the values to apply.
      */
     protected applyOptions(options: IconLabelOptions): this {
         super.applyOptions(options);
 
-        if (options.gap !== undefined) {
-            this.setGap(options.gap);
-        }
-
-        if (options.glyph !== undefined) {
-            this.setGlyph(options.glyph);
-        }
-
-        if (options.text !== undefined) {
-            this.setText(options.text);
-        }
-
-        if (options.forId !== undefined) {
-            this.setForId(options.forId);
-        }
+        if (options.gap   !== undefined) this._options.gap   = options.gap;
+        if (options.glyph !== undefined) this._options.glyph = options.glyph;
+        if (options.text  !== undefined) this._options.text  = options.text;
+        if (options.forId !== undefined) this._options.forId = options.forId;
 
         return this;
     }
@@ -151,7 +176,7 @@ class IconLabel extends Component {
      * @returns This component, for method chaining.
      */
     setGap(px: number): this {
-        this._gap = px;
+        this._options.gap = px;
         (this.getLayoutManager() as HBox).setComponentSpacing(px);
 
         return this;

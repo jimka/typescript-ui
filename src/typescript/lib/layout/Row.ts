@@ -42,7 +42,7 @@ class Row extends LayoutManager {
         super.applyOptions(options);
 
         if (options.gap !== undefined) {
-            this.gap = options.gap;
+            this.setGap(options.gap);
         }
     }
 

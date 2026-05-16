@@ -23,11 +23,10 @@ export interface AccordionHeaderOptions extends ButtonOptions {
  *
  * @category Components
  */
-class AccordionHeader extends Button {
+class AccordionHeader extends Button<AccordionHeaderOptions> {
 
     private static _stylesCreated: boolean = false;
 
-    private _expanded: boolean = false;
     private _indicatorEl: HTMLSpanElement | null = null;
 
     /**
@@ -65,21 +64,25 @@ class AccordionHeader extends Button {
      * @param label - Text displayed in the header button.
      */
     constructor(label: string, options?: AccordionHeaderOptions) {
-        super(label);
+        // Forward `options` through Button's constructor so the super-time
+        // cascade dispatches inherited Component/Button fields plus this
+        // class's `expanded` (via `applyOptions` polymorphism). `setExpanded`
+        // is guarded on `_indicatorEl`, so it's safe to fire before `init`
+        // creates the indicator element.
+        super(label, options);
 
         AccordionHeader.createStyles();
 
         this.getText().setTextAlign('left');
         this.getText().setInsets(new Insets(0, 0, 0, 8));
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
      * Applies an {@link AccordionHeaderOptions} bag, dispatching the indicator
-     * `expanded` state after inherited Button/Component fields.
+     * `expanded` state after inherited Button/Component fields. The `expanded`
+     * setter is guarded on `_indicatorEl`, so a super-time cascade dispatch
+     * before `init()` runs is a no-op write to `_options.expanded`; the
+     * indicator picks up the value when it appears.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -122,7 +125,7 @@ class AccordionHeader extends Button {
      * @param expanded - True to rotate the indicator to the expanded position.
      */
     setExpanded(expanded: boolean): this {
-        this._expanded = expanded;
+        this._options.expanded = expanded;
 
         if (this._indicatorEl) {
             if (expanded) {
@@ -141,7 +144,7 @@ class AccordionHeader extends Button {
      * @returns True if expanded.
      */
     isExpanded(): boolean {
-        return this._expanded;
+        return this._options.expanded ?? false;
     }
 }
 

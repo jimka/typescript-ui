@@ -18,6 +18,15 @@ export interface PanelOptions extends ComponentOptions {
 }
 
 /**
+ * User-overridable defaults forwarded to `super` via the options bag. The
+ * cascade in `Component`'s constructor dispatches `setInsets` once with the
+ * final value, so a caller-supplied `insets` wins over the panel default.
+ */
+const _defaultPanelOptions: Partial<PanelOptions> = {
+    insets: new Insets(4, 4, 4, 4),
+};
+
+/**
  * A [`Component`](/api/core/classes/Component) subclass that applies a default 4-pixel inset on all sides.
  *
  * Use `Panel` as the base class for grouped UI containers where children
@@ -27,7 +36,7 @@ export interface PanelOptions extends ComponentOptions {
  *
  * @category Core
  */
-class Panel extends Component {
+class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOptions> {
 
     /**
      * Creates a panel with 4-pixel insets on all sides by default.
@@ -37,19 +46,17 @@ class Panel extends Component {
      *   a different element (e.g. `"header"`, `"section"`). `options.insets`
      *   overrides the default `(4, 4, 4, 4)` perimeter.
      */
-    constructor(options?: PanelOptions) {
-        super({ tag: options?.tag ?? "div" });
-
-        this.setInsets(options?.insets ?? new Insets(4, 4, 4, 4));
-
-        if (this.constructor === Panel && options) {
-            this.applyOptions(options);
-        }
+    constructor(options?: TOptions) {
+        super({
+            ..._defaultPanelOptions,
+            ...(options ?? {}),
+            tag: options?.tag ?? "div",
+        } as TOptions);
     }
 }
 
 const PanelCallable = callable(Panel);
-type PanelCallable = Panel;
+type PanelCallable<TOptions extends PanelOptions = PanelOptions> = Panel<TOptions>;
 export {
     Panel as _Panel,
     PanelCallable as Panel

@@ -15,10 +15,23 @@ import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { Column } from "~/component/table/Column.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { ColumnSpec } from "~/component/table/ColumnConfig.js";
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { TableExporter, ExportOptions } from "~/component/table/TableExporter.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * Construction-time options for {@link Table}.
+ *
+ * Table's primary configuration is the positional `(store, spec)` constructor
+ * pair; this options bag carries only inherited Component styling. Defined
+ * here so `this._options` is typed at the leaf class and Phase 6 has a place
+ * to grow if Table starts accepting an options object.
+ *
+ * @category Components
+ */
+export interface TableOptions extends ComponentOptions {
+}
 
 /**
  * A data-bound table component rendered as an HTML `<table>` element.
@@ -55,7 +68,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-class Table extends Component {
+class Table extends Component<TableOptions> {
 
     private store            : AbstractStore;
     private spec             : ColumnSpec | undefined;

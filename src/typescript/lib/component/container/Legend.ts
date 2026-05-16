@@ -19,17 +19,18 @@ export interface LegendOptions extends TextOptions {
  *
  * @category Components
  */
-class Legend extends Text {
+class Legend extends Text<LegendOptions> {
 
     constructor(options?: LegendOptions) {
-        super(undefined, { tag: "legend" });
-
-        // Needs to be static for the browser to position the title text properly.
-        this.setPosition(Position.STATIC);
-
-        if (options) {
-            this.applyOptions(options);
-        }
+        // `position` and `tag` are structural — the legend only renders inside
+        // its fieldset's border when positioned statically, and the element
+        // type is by definition `<legend>`. Both go after the consumer spread
+        // so they can't be overridden.
+        super(undefined, {
+            ...(options ?? {}),
+            tag:      "legend",
+            position: Position.STATIC,
+        });
     }
 }
 

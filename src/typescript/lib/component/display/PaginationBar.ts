@@ -46,7 +46,7 @@ export interface PaginationBarOptions extends ComponentOptions {
  *
  * @category Components
  */
-class PaginationBar extends Component {
+class PaginationBar extends Component<PaginationBarOptions> {
 
     private store: AbstractStore;
 

@@ -18,6 +18,20 @@ export interface CheckboxOptions extends InputOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins. `colorScheme` is
+ * *not* listed here because it must be read from the live `ThemeManager` at
+ * each construction (the const would freeze the value at module-load time);
+ * the in-body guard below keeps that lookup dynamic.
+ */
+const _defaultCheckboxOptions: Partial<CheckboxOptions> = {
+    preferredSize: { width: 16, height: 16 } as CheckboxOptions["preferredSize"],
+    maxSize:       { width: 16, height: 16 } as CheckboxOptions["maxSize"],
+    cursor:        "pointer",
+};
+
+/**
  * A checkbox input component.
  *
  * Wraps an `<input type="checkbox">` element and tracks checked state internally,
@@ -25,25 +39,18 @@ export interface CheckboxOptions extends InputOptions {
  *
  * @category Components
  */
-class Checkbox extends Input implements Bindable<boolean> {
+class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions> extends Input<TOptions> implements Bindable<boolean> {
 
-    private selected: boolean = false;
+    constructor(options?: TOptions) {
+        super({ ..._defaultCheckboxOptions, ...(options ?? {}) } as TOptions);
 
-    constructor(options?: CheckboxOptions) {
-        super();
-
-        this.setPreferredSize(16, 16);
-        this.setMaxSize(16, 16);
-        this.setCursor("pointer");
-        this.setColorScheme(ThemeManager.getTheme().colorScheme);
+        if (this._options.colorScheme === undefined) {
+            this.setColorScheme(ThemeManager.getTheme().colorScheme);
+        }
 
         ThemeManager.onThemeChange(() => this.setColorScheme(ThemeManager.getTheme().colorScheme));
 
         this.addActionListener(this.onAction);
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
@@ -52,7 +59,7 @@ class Checkbox extends Input implements Bindable<boolean> {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: CheckboxOptions): this {
+    protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
         if (options.selected !== undefined) {
@@ -75,7 +82,7 @@ class Checkbox extends Input implements Bindable<boolean> {
      */
     onAction() {
         let element = this.getElement();
-        this.selected = element.checked;
+        this._options.selected = element.checked;
     }
 
     /**
@@ -115,7 +122,7 @@ class Checkbox extends Input implements Bindable<boolean> {
      * @returns This component, for method chaining.
      */
     setSelected(value: boolean): this {
-        this.selected = !!value;
+        this._options.selected = !!value;
 
         let element = this.getElement();
         if (!element) {
@@ -132,8 +139,8 @@ class Checkbox extends Input implements Bindable<boolean> {
      *
      * @returns True if the checkbox is checked.
      */
-    isSelected() {
-        return this.selected;
+    isSelected(): boolean {
+        return this._options.selected ?? false;
     }
 
     /**
@@ -152,7 +159,7 @@ class Checkbox extends Input implements Bindable<boolean> {
 }
 
 const CheckboxCallable = callable(Checkbox);
-type CheckboxCallable = Checkbox;
+type CheckboxCallable<TOptions extends CheckboxOptions = CheckboxOptions> = Checkbox<TOptions>;
 export {
     Checkbox         as _Checkbox,
     CheckboxCallable as Checkbox
