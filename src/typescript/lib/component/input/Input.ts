@@ -16,23 +16,28 @@ export interface InputOptions extends ComponentOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins.
+ */
+const _defaultInputOptions: Partial<InputOptions> = {
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
+};
+
+/**
  * Base class for input elements (`<input>` and `<textarea>`).
  *
  * Sets a white background by default and applies a sans-serif 12px font via the CSS rule.
  */
-class Input extends Component {
+class Input<TOptions extends InputOptions = InputOptions> extends Component<TOptions> {
 
-    private name: string | null = null;
-
-    constructor(options?: InputOptions) {
-        super({ tag: options?.tag ?? "input" });
-
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
-        this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
-
-        if (this.constructor === Input && options) {
-            this.applyOptions(options);
-        }
+    constructor(options?: TOptions) {
+        super({
+            ..._defaultInputOptions,
+            ...(options ?? {}),
+            tag: options?.tag ?? "input",
+        } as TOptions);
     }
 
     /**
@@ -41,7 +46,7 @@ class Input extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: InputOptions): this {
+    protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
         if (options.name !== undefined) {
@@ -73,7 +78,7 @@ class Input extends Component {
      * @returns The name string, or null.
      */
     getName(): string | null {
-        return this.name;
+        return this._options.name ?? null;
     }
 
     /**
@@ -84,7 +89,7 @@ class Input extends Component {
      * @returns This component, for method chaining.
      */
     setName(value: string): this {
-        this.name = value;
+        this._options.name = value;
         this.setElementAttribute("name", value);
 
         return this;
@@ -127,7 +132,7 @@ class Input extends Component {
 }
 
 const InputCallable = callable(Input);
-type InputCallable = Input;
+type InputCallable<TOptions extends InputOptions = InputOptions> = Input<TOptions>;
 export {
     Input         as _Input,
     InputCallable as Input

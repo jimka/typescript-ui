@@ -13,6 +13,15 @@ export interface ListOptions extends ComboBoxOptions {
 }
 
 /**
+ * User-overridable defaults forwarded to `super` via the options bag. The
+ * cascade in `ComboBox`/`Component` dispatches each present setter once with
+ * the final value, so any field the caller supplied wins.
+ */
+const _defaultListOptions: Partial<ListOptions> = {
+    overflow: "auto",
+};
+
+/**
  * A scrollable list box component backed by a `<select>` element.
  *
  * Extends ComboBox to display all options simultaneously by sizing the select element
@@ -20,18 +29,13 @@ export interface ListOptions extends ComboBoxOptions {
  *
  * @category Components
  */
-class List extends ComboBox {
+class List<TOptions extends ListOptions = ListOptions> extends ComboBox<TOptions> {
 
-    constructor(options?: ListOptions) {
-        super();
+    constructor(options?: TOptions) {
+        super({ ..._defaultListOptions, ...(options ?? {}) } as TOptions);
 
         this.getAria().setRole("listbox");
-        this.setOverflow("auto");
         this.updateHeight();
-
-        if (this.constructor === List && options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
@@ -49,7 +53,7 @@ class List extends ComboBox {
      *
      * @returns Always `null`.
      *
-     * @remarks Overrides {@link ComboBox.getBaseline}: a list's box height is far
+     * @remarks Overrides [`ComboBox.getBaseline`](/api/component/input/classes/ComboBox#getbaseline): a list's box height is far
      * larger than its first visible row of text, so participating in baseline
      * alignment would drag every surrounding text label down by the list's
      * vertical extent.

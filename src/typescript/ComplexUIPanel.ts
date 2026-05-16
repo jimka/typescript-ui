@@ -11,9 +11,7 @@ import { Table } from '@jimka/typescript-ui/component/table';
 class ComplexUIPanel extends Panel {
 
     constructor() {
-        super();
-
-        this.setLayoutManager(new VBox({ stretching: true }));
+        super({ layoutManager: new VBox({ stretching: true }) });
 
         this.initLayout();
     }

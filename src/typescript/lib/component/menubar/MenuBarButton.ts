@@ -16,6 +16,19 @@ export interface MenuBarButtonOptions extends ComponentOptions {
     glyph?: string;
 }
 
+/**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins. `glyph` is handled
+ * in the constructor body once the inner `_text` child exists — it's written
+ * pure into `_options` by `applyOptions` and dispatched from there.
+ */
+const _defaultMenuBarButtonOptions: Partial<MenuBarButtonOptions> = {
+    backgroundColor: "var(--ts-ui-menu-bar-btn-bg, transparent)",
+    foregroundColor: "var(--ts-ui-menu-bar-btn-fg, inherit)",
+    cursor:          "pointer",
+};
+
 const GLYPH_TEXT_GAP = 4;
 const HORIZONTAL_PAD = 10;
 
@@ -40,7 +53,7 @@ export const MENU_BAR_BUTTON_HEIGHT: number = 28;
  *
  * @category Components
  */
-class MenuBarButton extends Component {
+class MenuBarButton extends Component<MenuBarButtonOptions> {
 
     private readonly _text: Text;
     private readonly _hoverRule: CSSStyleRule;
@@ -58,14 +71,14 @@ class MenuBarButton extends Component {
      * @param options - Optional configuration bag (e.g. leading glyph).
      */
     constructor(text: string, onClick: () => void, onHover: () => void, options?: MenuBarButtonOptions) {
-        super();
+        // Merge defaults → consumer options. `glyph` touches `this._text` (a
+        // child built below), so `applyOptions` writes it pure into `_options`
+        // and the constructor body dispatches it once the child exists.
+        super({ ..._defaultMenuBarButtonOptions, ...(options ?? {}) });
 
         this._label = text;
 
-        this.setBackgroundColor("var(--ts-ui-menu-bar-btn-bg, transparent)");
-        this.setForegroundColor("var(--ts-ui-menu-bar-btn-fg, inherit)");
         this.setElementCSSRule("fontSize", "var(--ts-ui-button-font-size, 12px)");
-        this.setCursor("pointer");
 
         this._hoverRule = CSS.createComponentRule(this.getId() + ":hover") as CSSStyleRule;
         this._hoverRule.style.setProperty(
@@ -92,23 +105,25 @@ class MenuBarButton extends Component {
         Event.addListener(this, "click", this._onClickHandler);
         Event.addListener(this, "mouseover", this._onMouseOverHandler);
 
-        if (this.constructor === MenuBarButton && options) {
-            this.applyOptions(options);
+        // Late-built state: `glyph` was written pure to `_options` by the
+        // super-time cascade. Dispatch it now that `this._text` exists.
+        if (this._options.glyph !== undefined) {
+            this.setGlyph(this._options.glyph);
         }
     }
 
     /**
-     * Applies a {@link MenuBarButtonOptions} bag, dispatching the optional
-     * leading-glyph name after inherited Component fields.
+     * Applies a {@link MenuBarButtonOptions} bag. Inherited Component fields
+     * cascade through `super.applyOptions`; the optional leading-glyph name is
+     * written pure into `_options` here and dispatched from the constructor
+     * body once `this._text` exists.
      *
      * @param options - The options bag carrying the values to apply.
      */
     protected applyOptions(options: MenuBarButtonOptions): this {
         super.applyOptions(options);
 
-        if (options.glyph !== undefined) {
-            this.setGlyph(options.glyph);
-        }
+        if (options.glyph !== undefined) this._options.glyph = options.glyph;
 
         return this;
     }

@@ -10,6 +10,7 @@ import { FillType } from "~/layout/FillType.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Border, BorderOptions } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
@@ -32,6 +33,28 @@ export interface ButtonOptions extends ComponentOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins. Includes the
+ * `pressedX` defaults because `pressedStyleRule` is a lazy getter — pressed*
+ * setters are safe to fire during the super cascade and queue their writes
+ * until the rule materialises.
+ */
+const _defaultButtonOptions: Partial<ButtonOptions> = {
+    cursor:                 "pointer",
+    foregroundColor:        "var(--ts-ui-text-color, black)",
+    border:                 { style: BorderStyle.RIDGE, width: 2, color: "var(--ts-ui-button-border, rgb(200, 200, 200))" },
+    borderRadius:           "var(--ts-ui-border-radius, 4px)",
+    shadow:                 "var(--ts-ui-button-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2))",
+    backgroundImage:        "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))",
+    insets:                 new Insets(4, 4, 4, 4),
+    pressedForegroundColor: "var(--ts-ui-button-pressed-fg, rgb(150, 150, 150))",
+    pressedBackgroundColor: "var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))",
+    pressedBackgroundImage: "var(--ts-ui-button-pressed-bg, none)",
+    pressedShadow:          "var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset)",
+};
+
+/**
  * A push button component with a text label and configurable pressed-state appearance.
  *
  * Maintains separate CSS rules for the normal and `:active` states, allowing
@@ -49,22 +72,23 @@ export interface ButtonOptions extends ComponentOptions {
  *
  * @category Components
  */
-class Button extends Component {
+class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<TOptions> {
 
-    private text: Text;
-    private _content: Component;
+    private text!:    Text;
+    private _content!: Component;
     private _glyph: Glyph | null = null;
 
-    private pressedCSSRule: CSSStyleRule;
-
+    // Lazy `:active` rule. The backing field is undefined until first access
+    // so the getter is safe to call from the `super` cascade — which runs
+    // before subclass field initializers — when pressed* setters fire from
+    // the merged options bag. The underlying `CSSStyleRule` itself stays
+    // unmaterialised until `pressedStyleRule.ensure()` runs.
+    private _pressedStyleRule?: StyleRule;
+    private get pressedStyleRule(): StyleRule {
+        return this._pressedStyleRule ??= new StyleRule(() => CSS.createComponentRule(this.getId() + ":active") as CSSStyleRule);
+    }
     private pressedBorder: Border | null = null;
-    private pressedBorderRadius: string | null = null;
-    private pressedShadow: string | null = null;
-    private pressedForegroundColor: string | null = null;
-    private pressedBackgroundColor: string | null = null;
-    private pressedBackgroundImage: string | null = null;
 
-    private _enabled: boolean = true;
     private _enabledCursor: string = "pointer";
 
     /**
@@ -82,8 +106,6 @@ class Button extends Component {
     constructor(text?: string, options?: ButtonOptions);
     constructor(options: ButtonOptions);
     constructor(textOrOptions?: string | ButtonOptions, options?: ButtonOptions) {
-        super({ tag: "button" });
-
         // Normalise the overload: a non-string first argument is the options bag.
         let text: string | undefined;
         if (typeof textOrOptions === "string") {
@@ -92,112 +114,83 @@ class Button extends Component {
             options = textOrOptions;
         }
 
-        // Fall back to `options.text` when no positional text was supplied.
-        // Lets `super({ text: "Save" })` from a subclass actually display the
-        // label even though applyOptions is gated on `this.constructor === Button`.
-        if (text === undefined) {
-            text = options?.text;
-        }
-
-        const hasText  = text !== undefined;
+        // Validate before `super` because the cascade dispatches setters with
+        // side effects.
+        const hasText  = text !== undefined || options?.text !== undefined;
         const hasGlyph = options?.glyph !== undefined && options.glyph !== null;
         if (!hasText && !hasGlyph) {
             throw new Error("Button must be given a `text` label or a `glyph` option (or both).");
         }
 
-        this.pressedCSSRule = CSS.createComponentRule(this.getId() + ":active") as CSSStyleRule;
+        // Merge defaults → consumer options → non-overridable structural keys.
+        // The cascade in `super` dispatches every cascade-safe setter once with
+        // the final value, including pressed* (the StyleRule getter is lazy)
+        // and inherited Component fields. Children-touching options (text,
+        // glyph) are written pure to `_options` by the leaf `applyOptions` and
+        // dispatched from the constructor body below once children exist.
+        super({
+            ..._defaultButtonOptions,
+            ...(options ?? {}),
+            tag: "button",
+        } as TOptions);
 
+        // Structural state — can't go through the bag because consumers must
+        // not be able to override it.
         this.setLayoutManager(new Fit());
-        this.text = new Text(text);
 
-        this.text.setPointerEvents("none");
-
-        this.setInsets(new Insets(4, 4, 4, 4));
-        this.text.setTextAlign("center");
-        this.text.setFontWeight("bold");
-        this.text.setFontSize("--ts-ui-button-font-size");
-
+        // Build the text/glyph content row.
+        this.text     = new Text();
         this._content = new Component();
         this._content.setLayoutManager(new HBox({ spacing: 2 }));
         this._content.setInsets(new Insets(0, 0, 0, 0));
         this._content.setPointerEvents("none");
         this._content.addComponent(this.text);
 
+        this.text.setPointerEvents("none");
+        this.text.setTextAlign("center");
+        this.text.setFontWeight("bold");
+        this.text.setFontSize("--ts-ui-button-font-size");
+
         this.addComponent(this._content, {
             fill: FillType.NONE,
             anchor: AnchorType.CENTER
         });
 
-        this.setCursor("pointer");
-        this.setForegroundColor("var(--ts-ui-text-color, black)");
-        this.setBorder({ style: BorderStyle.RIDGE, width: 2, color: "var(--ts-ui-button-border, rgb(200, 200, 200))" });
-        this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
-        this.setShadow("var(--ts-ui-button-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2))");
-        this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
-
-        this.setPressedForegroundColor("var(--ts-ui-button-pressed-fg, rgb(150, 150, 150))");
-        this.setPressedBackgroundColor("var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))");
-        this.setPressedBackgroundImage("var(--ts-ui-button-pressed-bg, none)");
-        this.setPressedShadow("var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset)");
-
-        // Mount the glyph eagerly so `super({ glyph: ... })` from a subclass
-        // (TabCloseButton, SpinButton, …) renders correctly without each
-        // subclass having to repeat the setGlyph call. The rest of the
-        // options bag is still gated on `this.constructor === Button` so
-        // subclasses can apply their own options at their own time.
-        if (options?.glyph) {
-            this.setGlyph(options.glyph);
+        // Late-built state: applyOptions wrote `text`/`glyph` into `_options`
+        // pure (no setter dispatch) because `this.text`/`_content` didn't exist
+        // yet. Dispatch them now that children are wired up.
+        const effectiveText = this._options.text ?? text;
+        if (effectiveText !== undefined) {
+            this.text.setText(effectiveText);
         }
-
-        if (this.constructor === Button && options) {
-            this.applyOptions(options);
+        if (this._options.glyph !== undefined) {
+            this.setGlyph(this._options.glyph);
         }
     }
 
     /**
-     * Applies a {@link ButtonOptions} bag, dispatching button-specific text,
-     * enabled state, and pressed-state styling after inherited Component fields.
+     * Applies a {@link ButtonOptions} bag. Inherited Component fields cascade
+     * through `super.applyOptions`; pressed-state and `enabled` fields cascade
+     * through their own setters (the lazy `pressedStyleRule` getter makes them
+     * safe to fire during the super-time cascade). `text` and `glyph` are
+     * written pure into `_options` here and dispatched from the constructor
+     * body once children exist.
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: ButtonOptions): this {
+    protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.text !== undefined) {
-            this.text.setText(options.text);
-        }
+        if (options.text                   !== undefined) this._options.text  = options.text;
+        if (options.glyph                  !== undefined) this._options.glyph = options.glyph;
 
-        if (options.glyph !== undefined) {
-            this.setGlyph(options.glyph);
-        }
-
-        if (options.enabled !== undefined) {
-            this.setEnabled(options.enabled);
-        }
-
-        if (options.pressedBackgroundColor !== undefined) {
-            this.setPressedBackgroundColor(options.pressedBackgroundColor);
-        }
-
-        if (options.pressedBackgroundImage !== undefined) {
-            this.setPressedBackgroundImage(options.pressedBackgroundImage);
-        }
-
-        if (options.pressedForegroundColor !== undefined) {
-            this.setPressedForegroundColor(options.pressedForegroundColor);
-        }
-
-        if (options.pressedBorder !== undefined) {
-            this.setPressedBorder(options.pressedBorder);
-        }
-
-        if (options.pressedBorderRadius !== undefined) {
-            this.setPressedBorderRadius(options.pressedBorderRadius);
-        }
-
-        if (options.pressedShadow !== undefined) {
-            this.setPressedShadow(options.pressedShadow);
-        }
+        if (options.enabled                !== undefined) this.setEnabled(options.enabled);
+        if (options.pressedForegroundColor !== undefined) this.setPressedForegroundColor(options.pressedForegroundColor);
+        if (options.pressedBackgroundColor !== undefined) this.setPressedBackgroundColor(options.pressedBackgroundColor);
+        if (options.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(options.pressedBackgroundImage);
+        if (options.pressedShadow          !== undefined) this.setPressedShadow(options.pressedShadow);
+        if (options.pressedBorder          !== undefined) this.setPressedBorder(options.pressedBorder);
+        if (options.pressedBorderRadius    !== undefined) this.setPressedBorderRadius(options.pressedBorderRadius);
 
         return this;
     }
@@ -291,8 +284,8 @@ class Button extends Component {
      *
      * @returns The CSS color string, or null if not set.
      */
-    getPressedBackgroundColor() {
-        return this.pressedBackgroundColor;
+    getPressedBackgroundColor(): string | null {
+        return this._options.pressedBackgroundColor ?? null;
     }
 
     /**
@@ -303,8 +296,8 @@ class Button extends Component {
      * @returns This component, for method chaining.
      */
     setPressedBackgroundColor(backgroundColor: string): this {
-        this.pressedBackgroundColor = backgroundColor;
-        this.pressedCSSRule.style.setProperty('background-color', backgroundColor);
+        this._options.pressedBackgroundColor = backgroundColor;
+        this.pressedStyleRule.set("backgroundColor", backgroundColor);
 
         return this;
     }
@@ -315,8 +308,8 @@ class Button extends Component {
      * @returns This component, for method chaining.
      */
     clearPressedBackgroundColor(): this {
-        this.pressedBackgroundColor = null;
-        this.pressedCSSRule.style.removeProperty('background-color');
+        this._options.pressedBackgroundColor = undefined;
+        this.pressedStyleRule.set("backgroundColor", null);
 
         return this;
     }
@@ -326,8 +319,8 @@ class Button extends Component {
      *
      * @returns The CSS background-image string, or null if not set.
      */
-    getPressedBackgroundImage() {
-        return this.pressedBackgroundImage;
+    getPressedBackgroundImage(): string | null {
+        return this._options.pressedBackgroundImage ?? null;
     }
 
     /**
@@ -338,8 +331,8 @@ class Button extends Component {
      * @returns This component, for method chaining.
      */
     setPressedBackgroundImage(backgroundImage: string): this {
-        this.pressedBackgroundImage = backgroundImage;
-        this.pressedCSSRule.style.setProperty('background-image', backgroundImage);
+        this._options.pressedBackgroundImage = backgroundImage;
+        this.pressedStyleRule.set("backgroundImage", backgroundImage);
 
         return this;
     }
@@ -350,8 +343,8 @@ class Button extends Component {
      * @returns This component, for method chaining.
      */
     clearPressedBackgroundImage(): this {
-        this.pressedBackgroundImage = null;
-        this.pressedCSSRule.style.removeProperty('background-image');
+        this._options.pressedBackgroundImage = undefined;
+        this.pressedStyleRule.set("backgroundImage", null);
 
         return this;
     }
@@ -361,8 +354,8 @@ class Button extends Component {
      *
      * @returns The CSS color string, or null if not set.
      */
-    getPressedForegroundColor() {
-        return this.pressedForegroundColor;
+    getPressedForegroundColor(): string | null {
+        return this._options.pressedForegroundColor ?? null;
     }
 
     /**
@@ -373,8 +366,8 @@ class Button extends Component {
      * @returns This component, for method chaining.
      */
     setPressedForegroundColor(foregroundColor: string): this {
-        this.pressedForegroundColor = foregroundColor;
-        this.pressedCSSRule.style.setProperty('color', foregroundColor);
+        this._options.pressedForegroundColor = foregroundColor;
+        this.pressedStyleRule.set("color", foregroundColor);
 
         return this;
     }
@@ -385,8 +378,8 @@ class Button extends Component {
      * @returns This component, for method chaining.
      */
     clearPressedForegroundColor(): this {
-        this.pressedForegroundColor = null;
-        this.pressedCSSRule.style.removeProperty('color');
+        this._options.pressedForegroundColor = undefined;
+        this.pressedStyleRule.set("color", null);
 
         return this;
     }
@@ -396,7 +389,7 @@ class Button extends Component {
      *
      * @returns The Border instance for the :active state, or null if not set.
      */
-    getPressedBorder() {
+    getPressedBorder(): Border | null {
         return this.pressedBorder;
     }
 
@@ -409,12 +402,7 @@ class Button extends Component {
      */
     setPressedBorder(options?: BorderOptions): this {
         this.pressedBorder = new Border(options);
-
-        if (this.pressedBorder) {
-            this.pressedBorder.applyOnCSSRule(this.pressedCSSRule);
-        } else {
-            this.pressedCSSRule.style.removeProperty("border");
-        }
+        this.pressedBorder.applyOnCSSRule(this.pressedStyleRule.ensure());
 
         return this;
     }
@@ -424,8 +412,8 @@ class Button extends Component {
      *
      * @returns The CSS border-radius string, or null if not set.
      */
-    getPressedBorderRadius() {
-        return this.pressedBorderRadius;
+    getPressedBorderRadius(): string | null {
+        return this._options.pressedBorderRadius ?? null;
     }
 
     /**
@@ -436,8 +424,8 @@ class Button extends Component {
      * @returns This component, for method chaining.
      */
     setPressedBorderRadius(borderRadius: string): this {
-        this.pressedBorderRadius = borderRadius;
-        this.pressedCSSRule.style.setProperty('border-radius', borderRadius);
+        this._options.pressedBorderRadius = borderRadius;
+        this.pressedStyleRule.set("borderRadius", borderRadius);
 
         return this;
     }
@@ -448,8 +436,8 @@ class Button extends Component {
      * @returns This component, for method chaining.
      */
     clearPressedBorderRadius(): this {
-        this.pressedBorderRadius = null;
-        this.pressedCSSRule.style.removeProperty('border-radius');
+        this._options.pressedBorderRadius = undefined;
+        this.pressedStyleRule.set("borderRadius", null);
 
         return this;
     }
@@ -459,8 +447,8 @@ class Button extends Component {
      *
      * @returns The CSS box-shadow string, or null if not set.
      */
-    getPressedShadow() {
-        return this.pressedShadow;
+    getPressedShadow(): string | null {
+        return this._options.pressedShadow ?? null;
     }
 
     /**
@@ -471,8 +459,8 @@ class Button extends Component {
      * @returns This component, for method chaining.
      */
     setPressedShadow(shadow: string): this {
-        this.pressedShadow = shadow;
-        this.pressedCSSRule.style.setProperty('box-shadow', shadow);
+        this._options.pressedShadow = shadow;
+        this.pressedStyleRule.set("boxShadow", shadow);
 
         return this;
     }
@@ -483,8 +471,8 @@ class Button extends Component {
      * @returns This component, for method chaining.
      */
     clearPressedShadow(): this {
-        this.pressedShadow = null;
-        this.pressedCSSRule.style.removeProperty('box-shadow');
+        this._options.pressedShadow = undefined;
+        this.pressedStyleRule.set("boxShadow", null);
 
         return this;
     }
@@ -501,11 +489,11 @@ class Button extends Component {
      * Re-enabling restores the previous cursor and clears the opacity override.
      */
     setEnabled(enabled: boolean): this {
-        if (this._enabled === enabled) {
+        if ((this._options.enabled ?? true) === enabled) {
             return this;
         }
 
-        this._enabled = enabled;
+        this._options.enabled = enabled;
 
         if (enabled) {
             this.setDisabledAttribute(false);
@@ -527,12 +515,12 @@ class Button extends Component {
      * @returns True if the button accepts user interaction.
      */
     isEnabled(): boolean {
-        return this._enabled;
+        return this._options.enabled ?? true;
     }
 }
 
 const ButtonCallable = callable(Button);
-type ButtonCallable = Button;
+type ButtonCallable<TOptions extends ButtonOptions = ButtonOptions> = Button<TOptions>;
 export {
     Button         as _Button,
     ButtonCallable as Button

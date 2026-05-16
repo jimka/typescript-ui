@@ -27,21 +27,29 @@ export interface RadioButtonOptions extends ComponentOptions {
  *
  * @category Components
  */
-class RadioButton extends Component {
+class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions> extends Component<TOptions> {
 
-    private selected: boolean = false;
-    private label: Label;
-    private radio: Input;
-    private _radioName: string | null = null;
+    private label!: Label;
+    private radio!: Input;
 
     constructor(text? : string, options?: RadioButtonOptions) {
-        super();
+        // Forward options through the super cascade. `text`/`radioName`/
+        // `selected`/`enabled` are late-built state (their setters reach into
+        // `this.label` / `this.radio` which don't exist yet), so `applyOptions`
+        // writes them pure to `_options` and they're dispatched from the body
+        // below once the children are built.
+        super({ ...(options ?? {}) } as TOptions);
 
         this.setLayoutManager(new HBox());
 
         this.radio = new Input();
 
-        this.label = new Label(text ?? "", this.radio.getId());
+        // Build the label with empty text — the late-built dispatch below
+        // calls `setText` with the effective value (either the consumer's
+        // `options.text` written into `_options` by the cascade, or the
+        // positional `text` argument). Constructing with the value up-front
+        // and then setting it again would be a double-write.
+        this.label = new Label("", this.radio.getId());
 
         this.addComponent(this.radio);
         this.addComponent(this.label);
@@ -51,38 +59,42 @@ class RadioButton extends Component {
         this.radio.setCursor("pointer");
 
         this.addActionListener(() => {
-            this.selected = this.radio.getElement().checked;
+            this._options.selected = this.radio.getElement().checked;
         });
 
-        if (options) {
-            this.applyOptions(options);
+        // Late-built state: `applyOptions` wrote these pure into `_options`
+        // because `this.label`/`this.radio` didn't exist yet. Dispatch now.
+        const effectiveText = this._options.text ?? text;
+        if (effectiveText !== undefined) {
+            this.label.setText(effectiveText);
+        }
+        if (this._options.radioName !== undefined) {
+            this.setRadioName(this._options.radioName);
+        }
+        if (this._options.selected !== undefined) {
+            this.setSelected(this._options.selected);
+        }
+        if (this._options.enabled !== undefined) {
+            this.radio.setDisabledAttribute(!this._options.enabled);
         }
     }
 
     /**
-     * Applies a {@link RadioButtonOptions} bag, dispatching label text, radio
-     * group name, selection, and enabled state after inherited Component fields.
+     * Applies a {@link RadioButtonOptions} bag. Inherited Component fields
+     * cascade through `super.applyOptions`; the late-built fields
+     * (`text`/`radioName`/`selected`/`enabled`, all of which touch
+     * `this.label`/`this.radio`) are written pure to `_options` here and
+     * dispatched from the constructor body once children exist.
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: RadioButtonOptions): this {
+    protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.text !== undefined) {
-            this.label.setText(options.text);
-        }
-
-        if (options.radioName !== undefined) {
-            this.setRadioName(options.radioName);
-        }
-
-        if (options.selected !== undefined) {
-            this.setSelected(options.selected);
-        }
-
-        if (options.enabled !== undefined) {
-            this.radio.setDisabledAttribute(!options.enabled);
-        }
+        if (options.text      !== undefined) this._options.text      = options.text;
+        if (options.radioName !== undefined) this._options.radioName = options.radioName;
+        if (options.selected  !== undefined) this._options.selected  = options.selected;
+        if (options.enabled   !== undefined) this._options.enabled   = options.enabled;
 
         return this;
     }
@@ -124,7 +136,7 @@ class RadioButton extends Component {
      * @param name - The name to set on the radio input element.
      */
     setRadioName(name: string): this {
-        this._radioName = name;
+        this._options.radioName = name;
         this.radio.setName(name);
 
         return this;
@@ -136,7 +148,7 @@ class RadioButton extends Component {
      * @returns The name string, or null.
      */
     getRadioName(): string | null {
-        return this._radioName;
+        return this._options.radioName ?? null;
     }
 
     /**
@@ -145,7 +157,7 @@ class RadioButton extends Component {
      * @param value - True to select the radio button, false to deselect it.
      */
     setSelected(value: boolean) : this {
-        this.selected = !!value;
+        this._options.selected = !!value;
 
         let element = this.radio.getElement();
         if (!element) {
@@ -162,8 +174,8 @@ class RadioButton extends Component {
      *
      * @returns True if the radio button is checked.
      */
-    isSelected() {
-        return this.selected;
+    isSelected(): boolean {
+        return this._options.selected ?? false;
     }
 
     /**
@@ -177,8 +189,8 @@ class RadioButton extends Component {
         this.radio.setType("radio");
         this.radio.getElement().checked = this.isSelected();
 
-        if (this._radioName !== null) {
-            this.radio.setName(this._radioName);
+        if (this._options.radioName !== undefined) {
+            this.radio.setName(this._options.radioName);
         }
 
         return element;
@@ -186,7 +198,7 @@ class RadioButton extends Component {
 }
 
 const RadioButtonCallable = callable(RadioButton);
-type RadioButtonCallable = RadioButton;
+type RadioButtonCallable<TOptions extends RadioButtonOptions = RadioButtonOptions> = RadioButton<TOptions>;
 export {
     RadioButton         as _RadioButton,
     RadioButtonCallable as RadioButton

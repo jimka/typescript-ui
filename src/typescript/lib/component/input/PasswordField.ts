@@ -15,26 +15,29 @@ export interface PasswordFieldOptions extends TextInputOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins.
+ */
+const _defaultPasswordFieldOptions: Partial<PasswordFieldOptions> = {
+    padding:         new Insets(3, 3, 3, 3),
+    cursor:          "text",
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+    foregroundColor: "var(--ts-ui-text-color, black)",
+};
+
+/**
  * A password input component that renders an `<input type="password">` element.
  *
  * @category Components
  */
-class PasswordField extends TextInput {
+class PasswordField extends TextInput<PasswordFieldOptions> {
 
     constructor(options?: PasswordFieldOptions) {
-        super();
-
-        this.setPadding(new Insets(3, 3, 3, 3));
-        this.setCursor("text");
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
-        this.setForegroundColor("var(--ts-ui-text-color, black)");
+        super({ ..._defaultPasswordFieldOptions, ...(options ?? {}) });
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**

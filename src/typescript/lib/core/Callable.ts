@@ -19,9 +19,8 @@ export type Callable<T extends new (...args: any[]) => any> =
  * @returns A Proxy that forwards both `[[Call]]` and `[[Construct]]` to `Cls`.
  *
  * @remarks `instance.constructor` continues to point at the original class
- * because the Proxy forwards `[[Construct]]` via `Reflect.construct`. Leaf-only
- * checks like `this.constructor === Foo` inside subclass constructors keep
- * working, and `instanceof` resolves through the default
+ * because the Proxy forwards `[[Construct]]` via `Reflect.construct`, and
+ * `instanceof` resolves through the default
  * `Function.prototype[Symbol.hasInstance]` which walks the prototype chain.
  *
  * @example

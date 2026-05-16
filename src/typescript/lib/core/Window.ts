@@ -33,6 +33,26 @@ export interface WindowOptions extends PanelOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins. `headerText`,
+ * `glyph`, `contentFactory`, and `onReady` touch `this.header` or the
+ * `contentFactory` field (both initialised after `super`), so `applyOptions`
+ * writes them pure into `_options` and the constructor body dispatches them
+ * once the children/fields exist.
+ */
+const _defaultWindowOptions: Partial<WindowOptions> = {
+    x:               50,
+    y:               50,
+    width:           400,
+    height:          300,
+    border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" },
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
+    shadow:          "var(--ts-ui-window-shadow, 3px 3px 2px rgba(0, 0, 0, 0.4))",
+    backgroundColor: "var(--ts-ui-body-bg, rgb(241, 241, 241))",
+};
+
+/**
  * A floating, resizable, and draggable window component.
  *
  * Renders a titled panel with eight border-handle strips that the user can
@@ -40,7 +60,7 @@ export interface WindowOptions extends PanelOptions {
  *
  * @category Core
  */
-class Window extends Panel {
+class Window extends Panel<WindowOptions> {
 
     private static zIndexCounter: number = 9000;
     private static activeWindow: Window | null = null;
@@ -88,7 +108,12 @@ class Window extends Panel {
     private readonly boundOnMouseUp: () => void = () => this.onMouseUp();
 
     constructor(headerText: string, options?: WindowOptions) {
-        super();
+        // Merge defaults → consumer options. `headerText`, `glyph`,
+        // `contentFactory`, and `onReady` touch `this.header` or the
+        // `contentFactory` field (both initialised after `super`), so
+        // `applyOptions` writes them pure into `_options` and the constructor
+        // body dispatches them once the children/fields exist.
+        super({ ..._defaultWindowOptions, ...(options ?? {}) });
 
         this.setLayoutManager(new Border());
 
@@ -112,72 +137,61 @@ class Window extends Panel {
         this.borderComponents.south.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
         this.borderComponents.southwest.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
 
-        this.header = new WindowHeader(headerText || "Window");
+        // Build the header with the effective text up front (consumer's
+        // `options.headerText` from the cascade-written `_options`, falling
+        // back to the positional argument, falling back to "Window"). The
+        // late-built dispatch below skips `setHeaderText` because the header
+        // already carries the right text — re-setting it would write the
+        // same value twice.
+        const effectiveHeaderText = this._options.headerText ?? headerText ?? "Window";
+        this.header = new WindowHeader(effectiveHeaderText);
         this.addComponent(this.header, {
             placement: Placement.NORTH,
             ignoreParentInsets: true
         });
         this.header.addExitButtonListener(() => this.onExitAction());
 
-        // Sensible default geometry so `new Window(title).show()` produces
-        // a usable, on-screen window. WindowOptions overrides any of these.
-        this.setX(50);
-        this.setY(50);
-        this.setWidth(400);
-        this.setHeight(300);
-
         this.setVisible(false);
-        this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" });
-        this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         // Resizable — size containment unsafe; layout containment scopes reflow to the window subtree.
         this.setContain("layout");
-        this.setShadow("var(--ts-ui-window-shadow, 3px 3px 2px rgba(0, 0, 0, 0.4))");
-        this.setBackgroundColor("var(--ts-ui-body-bg, rgb(241, 241, 241))");
 
         Event.addListener(this.header, "mousedown", () => this.onMouseDown());
         Event.addSubtreeListener(this, "mousedown", () => this.bringToFront());
 
-        if (this.constructor === Window && options) {
-            this.applyOptions(options);
+        // Late-built state: glyph / contentFactory fields were written pure
+        // to `_options` by the super-time cascade. Dispatch them now that
+        // `this.header` and the `contentFactory` field exist.
+        if (this._options.glyph !== undefined) {
+            this.header.setGlyph(this._options.glyph);
+        }
+        if (this._options.contentFactory !== undefined) {
+            this.setContentFactory(this._options.contentFactory, this._options.onReady);
         }
     }
 
     /**
-     * Applies a {@link WindowOptions} bag, dispatching the header text and
-     * title-icon glyph after inherited Panel fields.
+     * Applies a {@link WindowOptions} bag. Inherited Panel/Component fields
+     * cascade through `super.applyOptions`; `headerText` / `glyph` /
+     * `contentFactory` / `onReady` are written pure into `_options` here and
+     * dispatched from the constructor body once `this.header` and the
+     * `contentFactory` field exist. `x`, `y`, `width`, `height` cascade
+     * directly through their setters — they write to local fields and skip
+     * the DOM until an element exists.
      *
      * @param options - The options bag carrying the values to apply.
      */
     protected applyOptions(options: WindowOptions): this {
         super.applyOptions(options);
 
-        if (options.headerText !== undefined) {
-            this.setHeaderText(options.headerText);
-        }
+        if (options.headerText     !== undefined) this._options.headerText     = options.headerText;
+        if (options.glyph          !== undefined) this._options.glyph          = options.glyph;
+        if (options.contentFactory !== undefined) this._options.contentFactory = options.contentFactory;
+        if (options.onReady        !== undefined) this._options.onReady        = options.onReady;
 
-        if (options.glyph !== undefined) {
-            this.header.setGlyph(options.glyph);
-        }
-
-        if (options.x !== undefined) {
-            this.setX(options.x);
-        }
-
-        if (options.y !== undefined) {
-            this.setY(options.y);
-        }
-
-        if (options.width !== undefined) {
-            this.setWidth(options.width);
-        }
-
-        if (options.height !== undefined) {
-            this.setHeight(options.height);
-        }
-
-        if (options.contentFactory !== undefined) {
-            this.setContentFactory(options.contentFactory, options.onReady);
-        }
+        if (options.x      !== undefined) this.setX(options.x);
+        if (options.y      !== undefined) this.setY(options.y);
+        if (options.width  !== undefined) this.setWidth(options.width);
+        if (options.height !== undefined) this.setHeight(options.height);
 
         return this;
     }
