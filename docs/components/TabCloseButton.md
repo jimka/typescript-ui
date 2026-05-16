@@ -7,7 +7,7 @@
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
 import { TabCloseButton } from '@jimka/typescript-ui/component/button';
-const closeBtn = new TabCloseButton();
+const closeBtn = TabCloseButton();
 Event.addListener(closeBtn, 'click', () => closeTab());
 
 tabHeader.addComponent(closeBtn);

@@ -6,11 +6,11 @@
 
 ```typescript
 import { BulletedList, ListItem, BulletedListItemStyle } from '@jimka/typescript-ui/component/list';
-const list = new BulletedList();
+const list = BulletedList();
 list.setItemStyle(BulletedListItemStyle.SQUARE);
-list.addItem(new ListItem('apple',  'Apple'));
-list.addItem(new ListItem('banana', 'Banana'));
-list.addItem(new ListItem('cherry', 'Cherry'));
+list.addItem(ListItem('apple',  'Apple'));
+list.addItem(ListItem('banana', 'Banana'));
+list.addItem(ListItem('cherry', 'Cherry'));
 
 panel.addComponent(list);
 ```

@@ -126,7 +126,7 @@ For dynamic announcements (toasts, status messages), the framework's [`Notificat
 For your own live regions, set the role:
 
 ```typescript
-const status = new Component();
+const status = Component();
 status.getAria().setRole('status');
 ```
 

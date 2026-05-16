@@ -17,8 +17,8 @@
 import { Component } from '@jimka/typescript-ui/core';
 import { Card } from '@jimka/typescript-ui/layout';
 import { Button } from '@jimka/typescript-ui/component/button';
-const stack = new Component();
-stack.setLayoutManager(new Card({ visibleComponentId: contentPanel.getId() }));
+const stack = Component();
+stack.setLayoutManager(Card({ visibleComponentId: contentPanel.getId() }));
 
 stack.addComponent(loadingPanel);
 stack.addComponent(contentPanel);

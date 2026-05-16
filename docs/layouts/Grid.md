@@ -17,11 +17,11 @@
 import { Component } from '@jimka/typescript-ui/core';
 import { Grid } from '@jimka/typescript-ui/layout';
 import { Button } from '@jimka/typescript-ui/component/button';
-const keypad = new Component();
-keypad.setLayoutManager(new Grid({ rows: 4, columns: 3 }));
+const keypad = Component();
+keypad.setLayoutManager(Grid({ rows: 4, columns: 3 }));
 
 ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].forEach(text => {
-    keypad.addComponent(new Button(text));
+    keypad.addComponent(Button(text));
 });
 ```
 
@@ -48,16 +48,16 @@ If you set only one of `setRows` or `setColumns` (leaving the other at `0`), the
 By default, `Grid` makes every cell the same size and stretches children to fill them. Call `setStretching(false)` to keep the uniform cell grid (so the layout still fills its container) but let children inside each row use their preferred heights and baseline-align with each other — the same alignment rules as [`HBox`](/layouts/HBox#baseline-alignment).
 
 ```typescript
-panel.setLayoutManager(new Grid({
+panel.setLayoutManager(Grid({
     columns   : 2,
     stretching: false, // per-row baseline alignment
 }));
 
 // Useful for label/field form grids:
-panel.addComponent(new Text('Name:'));
-panel.addComponent(new TextField());
-panel.addComponent(new Text('Age:'));
-panel.addComponent(new NumberSpinner());
+panel.addComponent(Text('Name:'));
+panel.addComponent(TextField());
+panel.addComponent(Text('Age:'));
+panel.addComponent(NumberSpinner());
 ```
 
 ## When to use it

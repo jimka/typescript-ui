@@ -28,8 +28,8 @@ const store = new Store({
 });
 store.setPageSize(25);
 
-const panel = new TablePanel(store);
-panel.setPaginationBar(new PaginationBar(store));
+const panel = TablePanel(store);
+panel.setPaginationBar(PaginationBar(store));
 
 void store.load();
 ```
@@ -70,7 +70,7 @@ Call `bar.dispose()` when permanently removing the bar to detach its
 store listeners:
 
 ```typescript
-const bar = new PaginationBar(store);
+const bar = PaginationBar(store);
 panel.setPaginationBar(bar);
 // ...later
 bar.dispose();

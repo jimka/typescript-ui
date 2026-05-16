@@ -17,20 +17,20 @@
 import { Component } from '@jimka/typescript-ui/core';
 import { Accordion, AccordionConstraints } from '@jimka/typescript-ui/layout';
 import { Text } from '@jimka/typescript-ui/component/input';
-const sidebar = new Component();
-sidebar.setLayoutManager(new Accordion({
+const sidebar = Component();
+sidebar.setLayoutManager(Accordion({
     singleOpen       : true,        // only one section open at a time
     headerHeight     : 32,
     animationDuration: 150,
     onSectionToggle  : (idx, open) => console.log(idx, open),
 }));
 
-const section1 = new Component();
-section1.addComponent(new Text('Content of section 1'));
+const section1 = Component();
+section1.addComponent(Text('Content of section 1'));
 sidebar.addComponent(section1, new AccordionConstraints('Section 1', true));
 
-const section2 = new Component();
-section2.addComponent(new Text('Content of section 2'));
+const section2 = Component();
+section2.addComponent(Text('Content of section 2'));
 sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 ```
 

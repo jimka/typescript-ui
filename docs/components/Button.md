@@ -7,7 +7,7 @@
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
 import { Button } from '@jimka/typescript-ui/component/button';
-const saveButton = new Button('Save');
+const saveButton = Button('Save');
 Event.addListener(saveButton, 'click', () => save());
 
 panel.addComponent(saveButton);

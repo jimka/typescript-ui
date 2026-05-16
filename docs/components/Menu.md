@@ -2,8 +2,8 @@
 
 [`Menu`](/api/core/classes/Menu) is the framework's floating menu panel. It operates in one of two modes determined by the constructor:
 
-- **Rebuild mode** — `new Menu()` — a right-click context menu. Items are passed per `show(x, y, items)` call and rebuilt on each invocation. Best for menus whose contents depend on what the user clicked.
-- **Persistent mode** — `new Menu(items, onClose)` — a [`MenuBar`](/components/MenuBar) dropdown. Items are built once in the constructor and reused across `open()` / `close()` cycles. Used internally by `MenuBar`.
+- **Rebuild mode** — `Menu()` — a right-click context menu. Items are passed per `show(x, y, items)` call and rebuilt on each invocation. Best for menus whose contents depend on what the user clicked.
+- **Persistent mode** — `Menu(items, onClose)` — a [`MenuBar`](/components/MenuBar) dropdown. Items are built once in the constructor and reused across `open()` / `close()` cycles. Used internally by `MenuBar`.
 
 The two API surfaces are disjoint. `show()` / `hide()` / `setMenuWidth()` are valid only in rebuild mode; `open()` / `close()` and the focus / submenu helpers are valid only in persistent mode. Calling a method outside its mode throws.
 
@@ -11,7 +11,7 @@ The two API surfaces are disjoint. `show()` / `hide()` / `setMenuWidth()` are va
 
 ```typescript
 import { Menu, Event } from '@jimka/typescript-ui/core';
-const menu = new Menu();
+const menu = Menu();
 
 Event.addListener(myComponent, 'contextmenu', (e: MouseEvent) => {
     e.preventDefault();
@@ -30,7 +30,7 @@ Reuse one `Menu` instance across the app — `show()` disposes the previous item
 
 ```typescript
 import { Menu } from '@jimka/typescript-ui/core';
-const panel = new Menu(
+const panel = Menu(
     [
         { text: 'Save',     shortcut: 'Ctrl+S', action: () => save()   },
         { text: 'Save As…', shortcut: 'Ctrl+Shift+S', action: () => saveAs() },

@@ -8,8 +8,8 @@ For standalone text without a form-control association, use [`Text`](/components
 
 ```typescript
 import { Label, TextField } from '@jimka/typescript-ui/component/input';
-const field = new TextField();
-const label = new Label('Name:', field.getId());
+const field = TextField();
+const label = Label('Name:', field.getId());
 
 panel.addComponent(label);
 panel.addComponent(field);

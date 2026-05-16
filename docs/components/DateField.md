@@ -9,7 +9,7 @@ It implements [`Bindable<Date | null>`](/api/core/interfaces/Bindable), so it ca
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
 import { DateField } from '@jimka/typescript-ui/component/input';
-const dueDate = new DateField();
+const dueDate = DateField();
 dueDate.setValue(new Date('2026-12-31'));
 
 Event.addListener(dueDate, 'change', () => {

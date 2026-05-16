@@ -20,8 +20,8 @@ Default — stretch to fill (e.g. wrap a `Table` so it tracks the bounds):
 import { Component } from '@jimka/typescript-ui/core';
 import { Fit } from '@jimka/typescript-ui/layout';
 
-const wrapper = new Component();
-wrapper.setLayoutManager(new Fit());
+const wrapper = Component();
+wrapper.setLayoutManager(Fit());
 wrapper.addComponent(table);
 ```
 
@@ -31,9 +31,9 @@ Centred at preferred size — useful for floating a single status icon or spinne
 import { Fit, FillType } from '@jimka/typescript-ui/layout';
 import { ProgressSpinner } from '@jimka/typescript-ui/component/display';
 
-const wrapper = new Component();
-wrapper.setLayoutManager(new Fit({ fill: FillType.NONE }));
-wrapper.addComponent(new ProgressSpinner(24));
+const wrapper = Component();
+wrapper.setLayoutManager(Fit({ fill: FillType.NONE }));
+wrapper.addComponent(ProgressSpinner(24));
 ```
 
 `FillType.HORIZONTAL` / `FillType.VERTICAL` stretch on one axis and centre on the other.

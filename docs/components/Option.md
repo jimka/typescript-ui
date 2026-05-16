@@ -6,10 +6,10 @@
 
 ```typescript
 import { ComboBox, Option } from '@jimka/typescript-ui/component/input';
-const role = new ComboBox();
-role.addItem(new Option('admin', 'Admin'));
-role.addItem(new Option('user',  'User'));
-role.addItem(new Option('guest', 'Guest'));
+const role = ComboBox();
+role.addItem(Option('admin', 'Admin'));
+role.addItem(Option('user',  'User'));
+role.addItem(Option('guest', 'Guest'));
 ```
 
 The constructor takes `(key, value)`:

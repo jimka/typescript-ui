@@ -8,7 +8,7 @@ You usually use this indirectly via `NumberSpinner`. Reach for `SpinButton` dire
 
 ```typescript
 import { SpinButton } from '@jimka/typescript-ui/component/input';
-const upButton = new SpinButton('up');
+const upButton = SpinButton('up');
 upButton.addTickListener(() => increment());
 
 panel.addComponent(upButton);

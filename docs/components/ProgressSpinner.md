@@ -15,18 +15,18 @@ Inline:
 ```typescript
 import { ProgressSpinner } from '@jimka/typescript-ui/component/display';
 // No size argument: matches the theme's --ts-ui-font-size and re-syncs on theme change
-const inline = new ProgressSpinner();
+const inline = ProgressSpinner();
 panel.addComponent(inline);
 
 // Explicit pixel size: stays fixed regardless of theme
-const fixed = new ProgressSpinner(24);
+const fixed = ProgressSpinner(24);
 panel.addComponent(fixed);
 ```
 
 Overlay:
 
 ```typescript
-const overlay = new ProgressSpinner(48);
+const overlay = ProgressSpinner(48);
 overlay.showOverlay(targetPanel);
 
 doAsyncWork().finally(() => overlay.hideOverlay());
@@ -52,7 +52,7 @@ This happens during `store.load()` for stores backed by an async
 
 ```typescript
 const store = new Store(model, ajaxProxy);
-const panel = new TablePanel(store);
+const panel = TablePanel(store);
 
 store.load(); // spinner appears, hides automatically when load resolves
 ```

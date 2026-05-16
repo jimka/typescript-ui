@@ -5,20 +5,25 @@
 ## Usage
 
 ```typescript
+import { Component } from '@jimka/typescript-ui/core';
 import { VBox } from '@jimka/typescript-ui/layout';
 import { TextField, Label } from '@jimka/typescript-ui/component/input';
 import { FieldSet } from '@jimka/typescript-ui/component/container';
-const profile = new FieldSet();
+const profile = FieldSet();
 profile.setLegendText('Profile');
 
-const nameField  = new TextField();
-const emailField = new TextField();
+const nameField  = TextField();
+const emailField = TextField();
 
-const body = new VBox();
-body.addComponent(new Label('Name:',  nameField.getId()));
-body.addComponent(nameField);
-body.addComponent(new Label('Email:', emailField.getId()));
-body.addComponent(emailField);
+const body = Component({
+    layoutManager: VBox(),
+    components: [
+        Label('Name:',  nameField.getId()),
+        nameField,
+        Label('Email:', emailField.getId()),
+        emailField,
+    ],
+});
 
 profile.addComponent(body);
 panel.addComponent(profile);

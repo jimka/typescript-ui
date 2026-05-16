@@ -7,12 +7,13 @@ This is the standalone header component, exported from `@jimka/typescript-ui/com
 ## Usage
 
 ```typescript
-import { Border } from '@jimka/typescript-ui/primitive';
+import { Component } from '@jimka/typescript-ui/core';
 import { VBox } from '@jimka/typescript-ui/layout';
 import { Header } from '@jimka/typescript-ui/component/display';
-const panel = new VBox();
-panel.addComponent(new Header('Settings'));
-panel.addComponent(content);
+const panel = Component({
+    layoutManager: VBox(),
+    components:    [Header('Settings'), content],
+});
 ```
 
 ## Common methods

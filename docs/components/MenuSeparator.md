@@ -8,7 +8,7 @@ You usually don't construct it directly — set `separator: true` on a [`MenuIte
 
 ```typescript
 import { MenuBar } from '@jimka/typescript-ui/component/menubar';
-const bar = new MenuBar([
+const bar = MenuBar([
     { label: 'File', items: [
         { text: 'New' },
         { text: 'Open' },

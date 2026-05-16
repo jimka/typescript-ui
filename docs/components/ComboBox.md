@@ -9,10 +9,10 @@ It implements [`Bindable<string>`](/api/core/interfaces/Bindable), so it can par
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
 import { ComboBox, Option } from '@jimka/typescript-ui/component/input';
-const role = new ComboBox();
-role.addItem(new Option('admin', 'Admin'));
-role.addItem(new Option('user',  'User'));
-role.addItem(new Option('guest', 'Guest'));
+const role = ComboBox();
+role.addItem(Option('admin', 'Admin'));
+role.addItem(Option('user',  'User'));
+role.addItem(Option('guest', 'Guest'));
 
 Event.addListener(role, 'change', () => {
     console.log('selected:', role.getValue());
@@ -37,7 +37,7 @@ const store = new MemoryStore(RoleModel, [
 ]);
 await store.load();
 
-const role = new ComboBox();
+const role = ComboBox();
 role.setStore(store);
 role.setValueField('id');
 role.setDisplayField('name');

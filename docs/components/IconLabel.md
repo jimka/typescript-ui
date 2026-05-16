@@ -10,9 +10,9 @@ Use this when the icon belongs to a **form control**: the trailing element is a 
 import { IconLabel } from '@jimka/typescript-ui/component/display';
 import { TextField } from '@jimka/typescript-ui/component/input';
 
-const field = new TextField();
+const field = TextField();
 
-panel.addComponent(new IconLabel('times', 'Email:', field.getId()));
+panel.addComponent(IconLabel('times', 'Email:', field.getId()));
 panel.addComponent(field);
 ```
 
@@ -20,7 +20,7 @@ Clicking either the glyph area or the label text focuses the field, because the 
 
 ## Construction
 
-`new IconLabel(glyph, text, forId, options?)` — `glyph`, `text`, and `forId` are required positional arguments. `forId` mirrors [`Label`](/api/component/input/classes/Label)'s constructor contract: it must be non-empty and should match the `id` of the form control this label is associated with.
+`IconLabel(glyph, text, forId, options?)` — `glyph`, `text`, and `forId` are required positional arguments. `forId` mirrors [`Label`](/api/component/input/classes/Label)'s constructor contract: it must be non-empty and should match the `id` of the form control this label is associated with.
 
 | Option | Type | Default | Purpose |
 | --- | --- | --- | --- |
