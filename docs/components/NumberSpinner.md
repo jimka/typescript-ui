@@ -9,7 +9,7 @@ Supports min / max clamping, step-snapping, configurable display precision, clic
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
 import { NumberSpinner } from '@jimka/typescript-ui/component/input';
-const quantity = new NumberSpinner();
+const quantity = NumberSpinner();
 quantity.setMin(0);
 quantity.setMax(100);
 quantity.setStep(1);

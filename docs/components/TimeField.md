@@ -11,7 +11,7 @@ It implements [`Bindable<Date | null>`](/api/core/interfaces/Bindable).
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
 import { TimeField } from '@jimka/typescript-ui/component/input';
-const startTime = new TimeField();
+const startTime = TimeField();
 const morning = new Date();
 morning.setHours(9, 0, 0, 0);
 startTime.setValue(morning);

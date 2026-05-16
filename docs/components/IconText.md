@@ -9,13 +9,13 @@ Use this when you need an icon next to free-floating text (a status line, a tool
 ```typescript
 import { IconText } from '@jimka/typescript-ui/component/display';
 
-panel.addComponent(new IconText('times', 'Close'));
-panel.addComponent(new IconText('arrow-right', 'Next', { gap: 12 }));
+panel.addComponent(IconText('times', 'Close'));
+panel.addComponent(IconText('arrow-right', 'Next', { gap: 12 }));
 ```
 
 ## Construction
 
-`new IconText(glyph, text, options?)` — both `glyph` and `text` are required positional arguments. The `glyph` name must exist in the [`Glyphs`](/components/Glyph#registry) registry.
+`IconText(glyph, text, options?)` — both `glyph` and `text` are required positional arguments. The `glyph` name must exist in the [`Glyphs`](/components/Glyph#registry) registry.
 
 | Option | Type | Default | Purpose |
 | --- | --- | --- | --- |

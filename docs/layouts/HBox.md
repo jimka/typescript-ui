@@ -15,12 +15,12 @@
 import { Component } from '@jimka/typescript-ui/core';
 import { HBox } from '@jimka/typescript-ui/layout';
 import { Button } from '@jimka/typescript-ui/component/button';
-const toolbar = new Component();
-toolbar.setLayoutManager(new HBox({ spacing: 8 }));
+const toolbar = Component();
+toolbar.setLayoutManager(HBox({ spacing: 8 }));
 
-toolbar.addComponent(new Button('Cut'));
-toolbar.addComponent(new Button('Copy'));
-toolbar.addComponent(new Button('Paste'));
+toolbar.addComponent(Button('Cut'));
+toolbar.addComponent(Button('Copy'));
+toolbar.addComponent(Button('Paste'));
 ```
 
 The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `spacing` and `stretching` declaratively. The legacy `setSpacing` / `setStretching` setters still work for runtime updates.

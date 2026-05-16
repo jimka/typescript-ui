@@ -6,11 +6,11 @@
 
 ```typescript
 import { NumberedList, ListItem, NumberedListItemStyle } from '@jimka/typescript-ui/component/list';
-const list = new NumberedList();
+const list = NumberedList();
 list.setItemStyle(NumberedListItemStyle.UPPER_ROMAN);
-list.addItem(new ListItem('intro',  'Introduction'));
-list.addItem(new ListItem('body',   'Main argument'));
-list.addItem(new ListItem('outro',  'Conclusion'));
+list.addItem(ListItem('intro',  'Introduction'));
+list.addItem(ListItem('body',   'Main argument'));
+list.addItem(ListItem('outro',  'Conclusion'));
 
 panel.addComponent(list);
 ```

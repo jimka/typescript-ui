@@ -8,14 +8,14 @@ Use `Text` for any standalone text — status messages, captions next to fields,
 
 ```typescript
 import { Text } from '@jimka/typescript-ui/component/input';
-const status = new Text('Connected');
+const status = Text('Connected');
 status.setFontWeight('bold');
 status.setForegroundColor('rgb(60, 160, 60)');
 
 panel.addComponent(status);
 ```
 
-The constructor signature is `new Text(text?, tag = "span")` — the second argument lets subclasses (e.g. `Label`) override the underlying tag.
+The constructor signature is `Text(text?, tag = "span")` — the second argument lets subclasses (e.g. `Label`) override the underlying tag.
 
 ## Common methods
 
@@ -33,7 +33,7 @@ The constructor signature is `new Text(text?, tag = "span")` — the second argu
 A common pitfall is text sitting at the top of a fixed-height inline box. The fix is to set `line-height` equal to the container's height. `Text#centerInHeight(px)` packages that:
 
 ```typescript
-const label = new Text('Cancel');
+const label = Text('Cancel');
 label.centerInHeight(28);   // single-line label, centred in a 28px row
 ```
 

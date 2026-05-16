@@ -9,11 +9,11 @@
 ```typescript
 import { ButtonGroup, Event } from '@jimka/typescript-ui/core';
 import { RadioButton } from '@jimka/typescript-ui/component/input';
-const small  = new RadioButton('Small');
-const medium = new RadioButton('Medium');
-const large  = new RadioButton('Large');
+const small  = RadioButton('Small');
+const medium = RadioButton('Medium');
+const large  = RadioButton('Large');
 
-const group = new ButtonGroup();
+const group = ButtonGroup();
 group.addButton(small);
 group.addButton(medium);
 group.addButton(large);

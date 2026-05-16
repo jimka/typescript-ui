@@ -7,7 +7,7 @@
 You usually don't construct a `Legend` directly — `FieldSet` creates and manages one for you. Reach for it via `fieldSet.getLegend()` if you need to customise the title beyond what `setLegendText` exposes.
 
 ```typescript
-const fieldSet = new FieldSet();
+const fieldSet = FieldSet();
 fieldSet.setLegendText('Profile');
 
 const legend = fieldSet.getLegend();

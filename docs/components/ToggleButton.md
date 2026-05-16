@@ -7,7 +7,7 @@
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
 import { ToggleButton } from '@jimka/typescript-ui/component/button';
-const boldButton = new ToggleButton('Bold');
+const boldButton = ToggleButton('Bold');
 
 Event.addListener(boldButton, 'change', () => {
     if (boldButton.isSelected()) {

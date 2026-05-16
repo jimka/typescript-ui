@@ -25,14 +25,14 @@ import { Border as BorderLayout } from '@jimka/typescript-ui/layout';
 import { Header } from '@jimka/typescript-ui/component/display';
 import { MenuBar } from '@jimka/typescript-ui/component/menubar';
 import { Table } from '@jimka/typescript-ui/component/table';
-const app = new Component();
-app.setLayoutManager(new BorderLayout({ gap: 4 }));
+const app = Component();
+app.setLayoutManager(BorderLayout({ gap: 4 }));
 
-app.addComponent(new MenuBar([/* ... */]),       { region: Placement.NORTH  });
-app.addComponent(new Header('Status'),           { region: Placement.SOUTH  });
+app.addComponent(MenuBar([/* ... */]),       { region: Placement.NORTH  });
+app.addComponent(Header('Status'),           { region: Placement.SOUTH  });
 app.addComponent(sidebar,                         { region: Placement.WEST   });
 app.addComponent(detailPanel,                     { region: Placement.EAST   });
-app.addComponent(new Table(store),                { region: Placement.CENTER });
+app.addComponent(Table(store),                { region: Placement.CENTER });
 ```
 
 [`BorderOptions`](/api/layout/interfaces/BorderOptions) accepts `gap` declaratively (the inter-region pixel gap); the `setComponentGap` setter still works for runtime updates.
