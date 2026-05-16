@@ -195,3 +195,21 @@ class MyPanel extends Panel {} // still works
 ```
 
 Both forms compile and behave identically; pick whichever reads better at the call site. The bare-call form composes naturally with the `components: [...]` option to express a full UI tree as a single expression. See [Mental model — JSX-shaped, without JSX](/guide/mental-model#jsx-shaped-without-jsx) for the underlying mechanism.
+
+## Forwarding options from a subclass via `super(options)`
+
+A subclass of `Component` or `Panel` may pass an options bag to its parent constructor:
+
+```typescript
+class ComplexUIPanel extends Panel {
+    constructor() {
+        super({ layoutManager: new VBox({ stretching: true }) });
+
+        this.addComponents(/* … */);
+    }
+}
+```
+
+Each level of the super chain applies the options it receives, so `layoutManager`, `border`, `padding`, and any other `ComponentOptions` field is honoured even though the leaf class is the one being instantiated. `addComponent` is a no-op when the child is already attached to the same parent, which keeps `applyOptions` safely idempotent if more than one level along the chain carries a `components` array.
+
+Ordering note: when a subclass both accepts consumer-supplied options and builds its own internal children, anything passed up through `super(options)` is applied **before** the subclass's constructor body runs. If the consumer's options need to be applied last (for example, to override defaults the subclass sets), call `super()` with no arguments and invoke the setters at the end of the subclass constructor instead.
