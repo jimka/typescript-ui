@@ -76,6 +76,22 @@ Event.addSubtreeListener(panel, 'mouseleave', onUnhover); // ❌
 
 The DOM specification allows `mouseenter`/`mouseleave` to bubble, but Chrome implements them as non-bubbling for compatibility with older code. Firefox and Safari behave the same way. The framework's documented hover patterns all use `mouseover` / `mouseout`.
 
+## Scroll, wheel, and touch listeners are passive
+
+Listeners registered through `Event.addListener`, `Event.addSubtreeListener`, or `Event.addViewportListener` for `scroll`, `wheel`, `touchstart`, and `touchmove` are installed as **passive**. The browser does not wait for the handler to return before scrolling, which keeps scroll inertia on the compositor thread.
+
+The trade-off: calling `event.preventDefault()` from such a handler is silently ignored and logs `[Intervention] Unable to preventDefault inside passive event listener` in the console.
+
+```typescript
+// Fires; preventDefault is silently dropped:
+Event.addListener(grid, 'wheel', (e: WheelEvent) => {
+    e.preventDefault();        // ❌ no effect
+    customScroll(e.deltaY);
+});
+```
+
+If you need to suppress the browser's default scroll/wheel/touch behaviour (e.g. trapping wheel input for a custom JS-controlled scroll surface), attach the listener directly to the element with `{ passive: false }` — the framework's own `VirtualScroller` is the in-tree precedent.
+
 ## When to use which
 
 | Listener | Use for |
