@@ -8,10 +8,10 @@
 import { Event } from '@jimka/typescript-ui/core';
 import { Option } from '@jimka/typescript-ui/component/input';
 import { List } from '@jimka/typescript-ui/component/list';
-const fruits = new List();
-fruits.addItem(new Option('apple',  'Apple'));
-fruits.addItem(new Option('banana', 'Banana'));
-fruits.addItem(new Option('cherry', 'Cherry'));
+const fruits = List();
+fruits.addItem(Option('apple',  'Apple'));
+fruits.addItem(Option('banana', 'Banana'));
+fruits.addItem(Option('cherry', 'Cherry'));
 fruits.setPreferredSize(180, 120);
 
 Event.addListener(fruits, 'change', () => {

@@ -11,7 +11,7 @@ import { Body, Window, ThemeManager, DefaultTheme } from '@jimka/typescript-ui/c
 ThemeManager.setTheme(DefaultTheme);
 
 const body = Body.getInstance();
-const win  = new Window();
+const win  = Window();
 win.setHeaderText('Hello');
 body.addComponent(win);
 win.show();
@@ -19,7 +19,7 @@ win.show();
 
 ## Notes
 
-- **Singleton** — created automatically on first `Body.getInstance()`. Do not `new Body()` yourself.
+- **Singleton** — created automatically on first `Body.getInstance()`. Do not `Body()` yourself.
 - **Resize listener** — `Body` listens for `window.resize` and re-runs layout from itself. Adding a top-level component to `Body` is what wires it into the responsive layout pass.
 - **Theme bootstrap** — call `ThemeManager.setTheme(DefaultTheme)` (or any theme) before adding components, so style rules pick up the right CSS variables.
 

@@ -8,7 +8,7 @@ It implements [`Bindable<string>`](/api/core/interfaces/Bindable).
 
 ```typescript
 import { AutoCompleteField } from '@jimka/typescript-ui/component/input';
-const fruit = new AutoCompleteField({
+const fruit = AutoCompleteField({
     suggestions: ['Apple', 'Banana', 'Blueberry', 'Cherry', 'Date'],
     placeholder: 'Type a fruit…',
 });
@@ -24,7 +24,7 @@ panel.addComponent(fruit);
 
 ```typescript
 import { AutoCompleteField } from '@jimka/typescript-ui/component/input';
-const userPicker = new AutoCompleteField({
+const userPicker = AutoCompleteField({
     store:        userStore,
     displayField: 'name',
     minChars:     2,

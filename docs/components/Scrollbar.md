@@ -12,7 +12,7 @@ The minimal contract: instantiate, position over your content area, push metrics
 
 ```typescript
 import { Scrollbar } from '@jimka/typescript-ui/component/container';
-const bar = new Scrollbar('vertical');
+const bar = Scrollbar('vertical');
 // Owner sizes and positions the track on the cross axis:
 bar.setHeight(400);                 // track length on the scroll axis
 bar.setX(container.getWidth() - 12);// place on the right edge
@@ -36,7 +36,7 @@ The scrollbar hides itself automatically when `contentSize <= viewportSize`.
 ## Horizontal orientation
 
 ```typescript
-const bar = new Scrollbar('horizontal');
+const bar = Scrollbar('horizontal');
 bar.setWidth(800);                          // primary axis = width
 bar.setY(container.getHeight() - 12);       // cross axis = bottom edge
 bar.addScrollListener(x => contentEl.scrollLeft = x);

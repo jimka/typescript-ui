@@ -11,10 +11,10 @@ import { TablePanel } from '@jimka/typescript-ui/component/table';
 // Constructor + options bag: title text, geometry, optional title-icon
 // glyph, and any common ComponentOptions field. For expensive content,
 // `contentFactory` + `onReady` defer construction behind a spinner.
-const win = new Window('Settings', {
+const win = Window('Settings', {
     x: 200, y: 100, width: 360, height: 240,
     glyph: 'times',
-    contentFactory: () => new TablePanel(store),
+    contentFactory: () => TablePanel(store),
     onReady:        () => void store.load()
 });
 
@@ -24,7 +24,7 @@ win.show();
 
 ## Construction
 
-`new Window(headerText, options?)` — the title text is the first positional argument; `options` is a [`WindowOptions`](/api/core/interfaces/WindowOptions) bag.
+`Window(headerText, options?)` — the title text is the first positional argument; `options` is a [`WindowOptions`](/api/core/interfaces/WindowOptions) bag.
 
 | Option | Type | Purpose |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ win.show();
 | `contentFactory` | `() => Component` | Deferred content builder. When set, `show()` opens the window immediately with a spinner in the content area and runs the factory after a two-rAF yield via [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize). |
 | `onReady` | `(component) => void` | Optional callback fired after the factory's component has been attached, laid out, and faded in. Use for work that must happen against a rendered subtree (e.g. `store.load()` for a TablePanel's loading overlay). |
 
-Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields. Geometry defaults mean `new Window(title).show()` produces a 400 × 300 window at `(50, 50)` without further setters.
+Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields. Geometry defaults mean `Window(title).show()` produces a 400 × 300 window at `(50, 50)` without further setters.
 
 ## Common methods
 

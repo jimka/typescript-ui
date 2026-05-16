@@ -7,7 +7,7 @@
 ```typescript
 import { Tooltip } from '@jimka/typescript-ui/core';
 import { Button } from '@jimka/typescript-ui/component/button';
-const saveButton = new Button('Save');
+const saveButton = Button('Save');
 Tooltip.attach(saveButton, 'Save the document (Ctrl+S)');
 ```
 

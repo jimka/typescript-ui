@@ -8,7 +8,7 @@ This is the convenience component for CRUD UIs that don't need a custom toolbar 
 
 ```typescript
 import { TablePanel } from '@jimka/typescript-ui/component/table';
-const panel = new TablePanel(store);
+const panel = TablePanel(store);
 container.addComponent(panel);
 ```
 
@@ -33,8 +33,8 @@ import { PaginationBar } from '@jimka/typescript-ui/component/display';
 import { TablePanel } from '@jimka/typescript-ui/component/table';
 store.setPageSize(25);
 
-const panel = new TablePanel(store);
-panel.setPaginationBar(new PaginationBar(store));
+const panel = TablePanel(store);
+panel.setPaginationBar(PaginationBar(store));
 ```
 
 `setPaginationBar(bar)` replaces any previously attached bar and disposes

@@ -18,7 +18,7 @@ For each file in the scope, replace every occurrence of `new <CallableName>(` wi
 
 ```bash
 # Adjust the file list per pass — see "Files to touch" below.
-NAMES='Panel|Button|HBox|VBox|Text|Component|Grid|Border|Window|Dialog|ComboBox|FieldSet|RadioButton|ButtonGroup|TextField|TextArea|Card|Tab|Split|Column|Row|Accordion|MenuBar|Menu|Table|List|MultiSelectList|Tree|Image|Slider|SpinButton|Checkbox|Label|Header|MenuItem|MenuSeparator|Notification|DateField|TimeField|Tooltip|PaginationBar|ProgressBar|ProgressSpinner|NumberSpinner|AutoCompleteField|ToggleButton|PasswordField|BulletedList|NumberedList|FontAwesomeIcon|Option|TablePanel|Body|BorderLayout|Absolute|Fit|ListItem|MenuBarButton|TabCloseButton'
+NAMES='Panel|Button|HBox|VBox|Text|Component|Grid|Border|Window|Dialog|ComboBox|FieldSet|RadioButton|ButtonGroup|TextField|TextArea|Card|Tab|Split|Column|Row|Accordion|MenuBar|Menu|Table|List|MultiSelectList|Tree|Image|Slider|SpinButton|Checkbox|Label|Header|MenuItem|MenuSeparator|DateField|TimeField|PaginationBar|ProgressBar|ProgressSpinner|NumberSpinner|AutoCompleteField|ToggleButton|PasswordField|BulletedList|NumberedList|Glyph|IconLabel|IconText|Option|TablePanel|Body|BorderLayout|Absolute|Fit|ListItem|MenuBarButton|TabCloseButton|Legend|SplitGutter|AccordionHeader|Scrollbar'
 
 for f in docs/components/*.md docs/layouts/*.md docs/concepts/accessibility.md docs/concepts/performance.md; do
     sed -i -E "s/\bnew (${NAMES})\(/\1(/g" "$f"
@@ -27,11 +27,21 @@ done
 
 `\b` ensures word-boundary matching; the alternation list contains only names that are actually callable per the rollout. The `(` anchor is required to avoid clobbering identifiers like `new ButtonGroup` followed by a non-call usage (rare in docs but defensive).
 
+**Codebase-divergence corrections (from pre-implementation audit):**
+
+- `FontAwesomeIcon` was removed and replaced by the `Glyph` / `IconLabel` / `IconText` triplet (all callable). The doc pages `Glyph.md`, `IconLabel.md`, `IconText.md` exist; no `FontAwesomeIcon.md`.
+- `Tooltip` and `Notification` are **not** callable — they expose static methods only (`Tooltip.attach`, `Notification.show`). Their doc pages use the static form and require no sweep.
+- `VirtualScroller` is **not** callable — it must be constructed with `new`. The doc page already uses the `new` form correctly.
+- `TableHeader`, `TableBody`, `TableFooter`, `TableRow` from the original allowlist are not the real export names — the table subpath exports them as bare `Header`, `Body`, `FooterRow`, `Row` (already covered by other allowlist entries; the original entries were harmless but redundant).
+- `Legend`, `SplitGutter`, `AccordionHeader`, `Scrollbar` are callable and now included.
+
 ### Allowlist (names safe to convert)
 
 All concrete `Component` subclasses:
 
-`Panel, Body, Window, Dialog, Tooltip, Notification, Button, ToggleButton, RadioButton, SpinButton, TabCloseButton, MenuBarButton, TextField, TextArea, PasswordField, Checkbox, ComboBox, AutoCompleteField, DateField, TimeField, NumberSpinner, Slider, Text, Label, Header, Image, FontAwesomeIcon, FieldSet, Legend, ProgressBar, ProgressSpinner, PaginationBar, List, MultiSelectList, ListItem, BulletedList, NumberedList, Option, MenuBar, Menu, MenuItem, MenuSeparator, Table, TableHeader, TableBody, TableFooter, TableRow, TablePanel, Tree, Scrollbar, VirtualScroller, SplitGutter, AccordionHeader, Component, ButtonGroup`
+`Panel, Body, Window, Dialog, Button, ToggleButton, RadioButton, SpinButton, TabCloseButton, MenuBarButton, TextField, TextArea, PasswordField, Checkbox, ComboBox, AutoCompleteField, DateField, TimeField, NumberSpinner, Slider, Text, Label, Header, Image, Glyph, IconLabel, IconText, FieldSet, Legend, ProgressBar, ProgressSpinner, PaginationBar, List, MultiSelectList, ListItem, BulletedList, NumberedList, Option, MenuBar, Menu, MenuItem, MenuSeparator, Table, TablePanel, Tree, Scrollbar, SplitGutter, AccordionHeader, Component, ButtonGroup`
+
+(Excluded — not callable: `Tooltip`, `Notification` use static methods; `VirtualScroller` uses `new`.)
 
 All concrete `LayoutManager` subclasses:
 
@@ -52,6 +62,8 @@ All concrete `LayoutManager` subclasses:
 | `Insets`, `Size`, `Point`, `Border` (the geometry one), `BorderLine` | Value objects |
 | `Aria`, `LayoutConstraints`, `AccordionConstraints` | Plain support classes |
 | `RovingTabIndex` | Internal helper |
+| `Tooltip`, `Notification` | Static API only — no `new`-form to convert |
+| `VirtualScroller` | Not callable today; must be constructed with `new` |
 | `Map`, `Set`, `Date`, `Promise`, `Error`, `Intl.NumberFormat`, etc. | JS builtins — should never be touched by the regex if word boundaries are respected |
 
 The regex above only matches names on the explicit allowlist, so denylisted classes are safe as long as the script is run without modification.
@@ -83,7 +95,9 @@ After the automated sweep, walk each modified file and check for:
 
 Every file in [docs/components/](docs/components/) except [index.md](docs/components/index.md) (already updated):
 
-- AutoCompleteField, Body, BulletedList, Button, ButtonGroup, Checkbox, ComboBox, DateField, Dialog, FieldSet, FontAwesomeIcon, Header, Image, Label, Legend, List, ListItem, Menu, MenuBar, MenuBarButton, MenuItem, MenuSeparator, MultiSelectList, Notification, NumberSpinner, NumberedList, Option, PaginationBar, PasswordField, ProgressBar, ProgressSpinner, RadioButton, Scrollbar, Slider, SpinButton, TabCloseButton, Table, TableInternals, TablePanel, Text, TextArea, TextField, TimeField, ToggleButton, Tooltip, Tree, VirtualScroller, Window
+- AutoCompleteField, Body, BulletedList, Button, ButtonGroup, Checkbox, ComboBox, DateField, Dialog, FieldSet, Glyph, Header, IconLabel, IconText, Image, Label, Legend, List, ListItem, Menu, MenuBar, MenuBarButton, MenuItem, MenuSeparator, MultiSelectList, Notification, NumberSpinner, NumberedList, Option, PaginationBar, PasswordField, ProgressBar, ProgressSpinner, RadioButton, Scrollbar, Slider, SpinButton, TabCloseButton, Table, TableInternals, TablePanel, Text, TextArea, TextField, TimeField, ToggleButton, Tooltip, Tree, VirtualScroller, Window
+
+(`Notification.md`, `Tooltip.md`, `VirtualScroller.md` are still walked by the sweep — Pass 1's regex will simply find no matches because those classes are not on the allowlist. They are included so the per-file diff is auditable.)
 
 Expect 1–4 `new X(` occurrences per file based on the initial grep.
 

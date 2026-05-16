@@ -8,11 +8,11 @@
 import { Event } from '@jimka/typescript-ui/core';
 import { Option } from '@jimka/typescript-ui/component/input';
 import { MultiSelectList } from '@jimka/typescript-ui/component/list';
-const tags = new MultiSelectList();
-tags.addItem(new Option('urgent',     'Urgent'));
-tags.addItem(new Option('blocked',    'Blocked'));
-tags.addItem(new Option('reviewed',   'Reviewed'));
-tags.addItem(new Option('inProgress', 'In progress'));
+const tags = MultiSelectList();
+tags.addItem(Option('urgent',     'Urgent'));
+tags.addItem(Option('blocked',    'Blocked'));
+tags.addItem(Option('reviewed',   'Reviewed'));
+tags.addItem(Option('inProgress', 'In progress'));
 tags.setPreferredSize(180, 120);
 
 Event.addListener(tags, 'change', () => {

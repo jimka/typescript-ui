@@ -6,7 +6,7 @@
 
 ```typescript
 import { Image } from '@jimka/typescript-ui/component/display';
-const logo = new Image();
+const logo = Image();
 logo.setSrc('/assets/logo.png');
 logo.setPreferredSize(120, 40);
 

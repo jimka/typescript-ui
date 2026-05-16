@@ -21,7 +21,7 @@ const store = new MemoryStore(PersonModel, [
 ]);
 await store.load();
 
-const table = new Table(store);
+const table = Table(store);
 panel.addComponent(table);
 ```
 
@@ -31,7 +31,7 @@ Pass a [`ColumnSpec`](/api/component/table/interfaces/ColumnSpec) to control whi
 
 ```typescript
 import { Table } from '@jimka/typescript-ui/component/table';
-const table = new Table(store, {
+const table = Table(store, {
     columns: [
         { field: 'name', minWidth: 120 },
         { field: 'age',  maxWidth: 80, hidden: true },
