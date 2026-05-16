@@ -7,7 +7,7 @@
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
 import { Slider } from '@jimka/typescript-ui/component/input';
-const volume = new Slider();
+const volume = Slider();
 volume.setMin(0);
 volume.setMax(100);
 volume.setStep(1);

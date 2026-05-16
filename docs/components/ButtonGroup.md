@@ -9,11 +9,11 @@ When any button in the group becomes selected, the others are automatically dese
 ```typescript
 import { ButtonGroup } from '@jimka/typescript-ui/core';
 import { RadioButton } from '@jimka/typescript-ui/component/input';
-const small  = new RadioButton('Small');
-const medium = new RadioButton('Medium');
-const large  = new RadioButton('Large');
+const small  = RadioButton('Small');
+const medium = RadioButton('Medium');
+const large  = RadioButton('Large');
 
-const group = new ButtonGroup();
+const group = ButtonGroup();
 group.addButton(small);
 group.addButton(medium);
 group.addButton(large);
@@ -22,24 +22,23 @@ group.addButton(large);
 ## Usage — toggle group with keyboard nav
 
 ```typescript
-import { ButtonGroup } from '@jimka/typescript-ui/core';
+import { ButtonGroup, Component } from '@jimka/typescript-ui/core';
 import { HBox } from '@jimka/typescript-ui/layout';
 import { ToggleButton } from '@jimka/typescript-ui/component/button';
-const toolbar = new HBox();
+const left   = ToggleButton('Left');
+const center = ToggleButton('Center');
+const right  = ToggleButton('Right');
 
-const left   = new ToggleButton('Left');
-const center = new ToggleButton('Center');
-const right  = new ToggleButton('Right');
+const toolbar = Component({
+    layoutManager: HBox(),
+    components:    [left, center, right],
+});
 
-const group = new ButtonGroup();
+const group = ButtonGroup();
 group.addButton(left);
 group.addButton(center);
 group.addButton(right);
 group.setContainer(toolbar); // enables roving tabindex
-
-toolbar.addComponent(left);
-toolbar.addComponent(center);
-toolbar.addComponent(right);
 ```
 
 ## Listening for changes

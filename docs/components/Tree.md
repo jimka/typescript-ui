@@ -6,7 +6,7 @@
 
 ```typescript
 import { Tree } from '@jimka/typescript-ui/component/tree';
-const tree = new Tree();
+const tree = Tree();
 tree.setNodes([
     { label: 'Fruits', children: [
         { label: 'Apple' },
@@ -54,7 +54,7 @@ Built-in renderers:
 ```typescript
 import { IconLabelTreeNodeRenderer, Tree } from '@jimka/typescript-ui/component/tree';
 
-const tree = new Tree();
+const tree = Tree();
 tree.setRendererFactory(() => new IconLabelTreeNodeRenderer(
     (node) => (node.children && node.children.length > 0) ? 'chevron-down' : 'file',
 ));

@@ -25,12 +25,14 @@ if (result === 'confirm') {
 Replace `message` with `contentComponent` to render any component as the dialog body:
 
 ```typescript
-import { Dialog } from '@jimka/typescript-ui/core';
+import { Component, Dialog } from '@jimka/typescript-ui/core';
 import { VBox } from '@jimka/typescript-ui/layout';
 import { TextField } from '@jimka/typescript-ui/component/input';
-const form = new VBox();
-const nameField = new TextField();
-form.addComponent(nameField);
+const nameField = TextField();
+const form = Component({
+    layoutManager: VBox(),
+    components:    [nameField],
+});
 
 const result = await Dialog.show({
     title:            'Rename file',
@@ -51,7 +53,7 @@ Opening a dialog fades the panel in from `opacity: 0` + `scale(0.97)` to `opacit
 `Dialog.getTitleBar()` returns the title-bar component for callers that need to tint or decorate the header — for example, the notification detail dialog paints the title bar with the severity's colour tokens and mounts a matching glyph:
 
 ```typescript
-const dialog = new Dialog({ title: 'Information', /* … */ });
+const dialog = Dialog({ title: 'Information', /* … */ });
 const titleBar = dialog.getTitleBar();
 
 titleBar.setBackgroundColor('var(--ts-ui-notification-info-bg)');

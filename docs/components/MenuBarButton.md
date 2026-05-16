@@ -9,12 +9,12 @@ Has no [`Button`](/components/Button) inheritance to avoid the ridge border and 
 ```typescript
 import { Menu } from '@jimka/typescript-ui/core';
 import { MenuBarButton } from '@jimka/typescript-ui/component/menubar';
-const filePanel = new Menu(
+const filePanel = Menu(
     [{ text: 'Save', shortcut: 'Ctrl+S', action: () => save() }],
     () => button.close()
 );
 
-const button = new MenuBarButton(
+const button = MenuBarButton(
     'File',
     () => filePanel.open(button.getElement()!),
     () => filePanel.close()

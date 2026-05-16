@@ -62,7 +62,7 @@ Custom filter predicates passed to `filterBy` must be **pure functions** with no
 
 ```typescript
 class StatusBar extends Component {
-    private message: Text = new Text('');
+    private message: Text = Text('');
 
     constructor() {
         super('div');
@@ -99,7 +99,7 @@ Subsequent activations reuse the cached instance, so scroll position and form st
 The same yield-and-fade lifecycle is available for floating windows whose content is expensive to build via [`Window.setContentFactory`](/api/core/classes/Window): the window opens immediately with a spinner in its content area, the factory runs after a two-rAF yield, and the built tree fades in over the spinner.
 
 ```typescript
-const win = new Window('Heavy');
+const win = Window('Heavy');
 win.setSize({ width: 800, height: 600 });
 win.setContentFactory(() => new HeavyContent());
 win.show();
@@ -109,7 +109,7 @@ win.show();
 
 ```typescript
 win.setContentFactory(
-    () => new TablePanel(store),
+    () => TablePanel(store),
     () => void store.load()
 );
 win.show();

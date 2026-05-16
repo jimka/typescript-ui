@@ -19,19 +19,19 @@
 import { Component } from '@jimka/typescript-ui/core';
 import { VBox } from '@jimka/typescript-ui/layout';
 import { Label, TextField } from '@jimka/typescript-ui/component/input';
-const form = new Component();
-form.setLayoutManager(new VBox({ spacing: 8 }));
+const form = Component();
+form.setLayoutManager(VBox({ spacing: 8 }));
 
-const nameField  = new TextField();
-const emailField = new TextField();
+const nameField  = TextField();
+const emailField = TextField();
 
-form.addComponent(new Label('Name',  nameField.getId()));
+form.addComponent(Label('Name',  nameField.getId()));
 form.addComponent(nameField);
-form.addComponent(new Label('Email', emailField.getId()));
+form.addComponent(Label('Email', emailField.getId()));
 form.addComponent(emailField);
 ```
 
-[`VBoxOptions`](/api/layout/interfaces/VBoxOptions) accepts `spacing` and `stretching` declaratively. The legacy positional `new VBox(spacing)` form and the `setSpacing` / `setStretching` setters still work.
+[`VBoxOptions`](/api/layout/interfaces/VBoxOptions) accepts `spacing` and `stretching` declaratively. The legacy positional `VBox(spacing)` form and the `setSpacing` / `setStretching` setters still work.
 
 ## Per-child constraints
 

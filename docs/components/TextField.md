@@ -7,7 +7,7 @@
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
 import { TextField } from '@jimka/typescript-ui/component/input';
-const nameField = new TextField();
+const nameField = TextField();
 nameField.setValue('');
 nameField.setPreferredSize(240, 28);
 

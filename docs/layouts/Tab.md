@@ -17,8 +17,8 @@
 ```typescript
 import { Component } from '@jimka/typescript-ui/core';
 import { Tab } from '@jimka/typescript-ui/layout';
-const tabbed = new Component();
-tabbed.setLayoutManager(new Tab({
+const tabbed = Component();
+tabbed.setLayoutManager(Tab({
     onTabClose: removed => console.log('closed', removed.getId()),
 }));
 
@@ -48,8 +48,8 @@ For tabs whose content is expensive to build (large forms, virtualised tables, c
 import { Component } from '@jimka/typescript-ui/core';
 import { Tab } from '@jimka/typescript-ui/layout';
 
-const container = new Component();
-const layout = new Tab();
+const container = Component();
+const layout = Tab();
 container.setLayoutManager(layout);
 
 layout.addLazyTab(() => new GeneralPanel(),  'General' );

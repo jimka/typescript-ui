@@ -2,7 +2,7 @@
 
 [`Glyph`](/api/component/display/classes/Glyph) renders a small icon from the framework's curated registry. Each registry entry is either an SVG path or a single Unicode character; both forms follow `currentColor`, so a `Glyph` inherits the surrounding text colour for free.
 
-SVG path data is mounted **once** into a hidden `<svg>` sprite on `document.body`. Every Glyph instance referencing the same name emits `<svg><use href="#ts-glyph-…"/></svg>`, so two `new Glyph('times')` calls don't duplicate the path string in the DOM.
+SVG path data is mounted **once** into a hidden `<svg>` sprite on `document.body`. Every Glyph instance referencing the same name emits `<svg><use href="#ts-glyph-…"/></svg>`, so two `Glyph('times')` calls don't duplicate the path string in the DOM.
 
 The framework is self-contained — the glyphs it needs ship with the library, and there is no peer dependency for icons.
 
@@ -12,10 +12,10 @@ The framework is self-contained — the glyphs it needs ship with the library, a
 import { Glyph } from '@jimka/typescript-ui/component/display';
 
 // SVG entry — renders as <svg><use href="#ts-glyph-times"/></svg>
-const close = new Glyph('times');
+const close = Glyph('times');
 
 // Unicode entry — renders as <span>▶</span>
-const arrow = new Glyph('arrow-right');
+const arrow = Glyph('arrow-right');
 
 panel.addComponent(close);
 panel.addComponent(arrow);
@@ -46,7 +46,7 @@ The following components consume the registry by name:
 
 - The underlying root tag (`<svg>` or `<span>`) is decided once at construction from the registry entry's `kind`. To swap glyph, discard the instance and create a new one.
 - Default preferred size is 16×16.
-- Passing an unknown name throws at construction: `new Glyph('nope')` → `Error("Unknown glyph: nope")`.
+- Passing an unknown name throws at construction: `Glyph('nope')` → `Error("Unknown glyph: nope")`.
 - Colour follows the cascade — set `setForegroundColor(...)` on the Glyph or any ancestor.
 
 ## See also

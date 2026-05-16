@@ -19,10 +19,10 @@
 import { Component } from '@jimka/typescript-ui/core';
 import { Absolute } from '@jimka/typescript-ui/layout';
 import { Button } from '@jimka/typescript-ui/component/button';
-const canvas = new Component();
-canvas.setLayoutManager(new Absolute());
+const canvas = Component();
+canvas.setLayoutManager(Absolute());
 
-const button = new Button('Drag me');
+const button = Button('Drag me');
 button.setPosition(50, 30);
 button.setPreferredSize(120, 32);
 canvas.addComponent(button);

@@ -7,7 +7,7 @@
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
 import { Checkbox } from '@jimka/typescript-ui/component/input';
-const subscribe = new Checkbox();
+const subscribe = Checkbox();
 subscribe.setSelected(true);
 
 Event.addListener(subscribe, 'change', () => {
