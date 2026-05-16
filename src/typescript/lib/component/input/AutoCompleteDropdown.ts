@@ -21,12 +21,26 @@ export interface AutoCompleteDropdownOptions extends ComponentOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins.
+ */
+const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> = {
+    zIndex:          10050,
+    position:        Position.FIXED,
+    backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
+    border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
+    shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
+};
+
+/**
  * Floating dropdown panel for [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField).
  *
  * Maintains a reusable pool of `AutoCompleteItem` rows — items are updated
  * in place rather than destroyed and recreated on each keystroke.
  */
-class AutoCompleteDropdown extends Component {
+class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
 
     private pool: AutoCompleteItem[] = [];
     private highlightedIndex: number = -1;
@@ -34,7 +48,6 @@ class AutoCompleteDropdown extends Component {
     private readonly onHide: () => void;
     private readonly onViewportMouseDown: (e: MouseEvent) => void;
     private open: boolean = false;
-    private maxItems: number | null = null;
     // Set true while a fade-out is in flight; reset to false either when the
     // fade completes (so the deferred detach runs) or when a fresh `show()`
     // re-displays the dropdown mid-fade (the deferred detach skips because
@@ -47,23 +60,13 @@ class AutoCompleteDropdown extends Component {
      * @param options - Optional construction-time options.
      */
     constructor(onSelect: (value: string) => void, onHide: () => void, options?: AutoCompleteDropdownOptions) {
-        super();
+        super({ ..._defaultAutoCompleteDropdownOptions, ...(options ?? {}) });
 
         this.onSelect = onSelect;
         this.onHide   = onHide;
 
         this.setVisible(false);
         this.getAria().setRole("listbox");
-        this.setZIndex(10050);
-        this.setPosition(Position.FIXED);
-        this.setBackgroundColor("var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))");
-        this.setBorder({
-            style: BorderStyle.SOLID,
-            width: 1,
-            color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))",
-        });
-        this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
-        this.setShadow("var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))");
         // Dynamic dimensions from anchor + suggestion count — layout containment is safe.
         this.setContain("layout");
 
@@ -78,10 +81,6 @@ class AutoCompleteDropdown extends Component {
                 this.hide();
             }
         };
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
@@ -94,8 +93,21 @@ class AutoCompleteDropdown extends Component {
         super.applyOptions(options);
 
         if (options.maxItems !== undefined) {
-            this.maxItems = options.maxItems;
+            this.setMaxItems(options.maxItems);
         }
+
+        return this;
+    }
+
+    /**
+     * Sets the maximum number of items to display in the dropdown.
+     *
+     * @param maxItems - The cap on visible suggestions.
+     *
+     * @returns This component, for method chaining.
+     */
+    setMaxItems(maxItems: number): this {
+        this._options.maxItems = maxItems;
 
         return this;
     }
@@ -106,7 +118,7 @@ class AutoCompleteDropdown extends Component {
      * @returns The configured maxItems cap, or null.
      */
     getMaxItems(): number | null {
-        return this.maxItems;
+        return this._options.maxItems ?? null;
     }
 
     /**

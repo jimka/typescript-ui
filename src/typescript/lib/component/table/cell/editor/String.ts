@@ -57,7 +57,7 @@ class StringEditor extends CellEditor<String> {
      *
      * @param value - The string value to set in the text field.
      */
-    setValue(value: String) : this {
+    setValue(value: string) : this {
         this.textField.setText(value || "");
 
         return this;

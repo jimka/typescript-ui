@@ -27,6 +27,19 @@ export interface ComboBoxOptions extends ComponentOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins. Items / store /
+ * selection options touch `this.items` or the live `<select>` element so they
+ * stay out of the cascade — `applyOptions` writes them pure into `_options`
+ * and the constructor body dispatches them after `items` is initialized.
+ */
+const _defaultComboBoxOptions: Partial<ComboBoxOptions> = {
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+    foregroundColor: "var(--ts-ui-text-color, black)",
+};
+
+/**
  * A drop-down combo box component backed by a `<select>` element.
  *
  * Manages an internal list of {@link Option} items and keeps the DOM element in
@@ -45,57 +58,71 @@ export interface ComboBoxOptions extends ComponentOptions {
  *
  * @category Components
  */
-class ComboBox extends Component implements Bindable<string> {
+class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Component<TOptions> implements Bindable<string> {
 
     private items: Array<Option> = [];
-    private store: AbstractStore | null = null;
     private storeRefresh: (() => void) | null = null;
-    private displayField: string | null = null;
-    private valueField: string | null = null;
 
-    constructor(options?: ComboBoxOptions) {
-        super({ tag: "select" });
+    constructor(options?: ComboBoxOptions);
+    constructor(options?: TOptions) {
+        // Merge defaults → consumer options → non-overridable structural keys.
+        // Items / store / selection options touch `this.items` (a field
+        // initializer that runs after super) or the live `<select>` element,
+        // so `applyOptions` writes them pure into `_options` and the
+        // constructor body dispatches them once `items` is initialized.
+        super({
+            ..._defaultComboBoxOptions,
+            ...(options ?? {}),
+            tag: "select",
+        } as TOptions);
 
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
-        this.setForegroundColor("var(--ts-ui-text-color, black)");
         this.getAria().setRole("combobox");
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
 
-        if (this.constructor === ComboBox && options) {
-            this.applyOptions(options);
+        // Late-built state: store / items / selection were written pure to
+        // `_options` by the super-time cascade. Dispatch them now that
+        // `this.items` is initialised.
+        if (this._options.store !== undefined && this._options.displayField !== undefined) {
+            this.setStore(this._options.store, this._options.displayField, this._options.valueField);
+        }
+
+        if (this._options.items !== undefined) {
+            this.setItems(this._options.items);
+        }
+
+        if (this._options.selectedIndex !== undefined) {
+            this.setSelectedIndex(this._options.selectedIndex, false);
+        }
+
+        if (this._options.value !== undefined) {
+            this.setValue(this._options.value);
+        }
+
+        if (this._options.selectedItem !== undefined) {
+            this.setValue(this._options.selectedItem);
         }
     }
 
     /**
-     * Applies a {@link ComboBoxOptions} bag, dispatching item / store /
-     * selection options after inherited Component fields.
+     * Applies a {@link ComboBoxOptions} bag. Inherited Component fields cascade
+     * through `super.applyOptions`; item / store / selection fields are written
+     * pure into `_options` here and dispatched from the constructor body once
+     * `this.items` is initialised.
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: ComboBoxOptions): this {
+    protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.store !== undefined && options.displayField !== undefined) {
-            this.setStore(options.store, options.displayField, options.valueField);
-        }
-
-        if (options.items !== undefined) {
-            this.setItems(options.items);
-        }
-
-        if (options.selectedIndex !== undefined) {
-            this.setSelectedIndex(options.selectedIndex, false);
-        }
-
-        if (options.value !== undefined) {
-            this.setValue(options.value);
-        }
-
-        if (options.selectedItem !== undefined) {
-            this.setValue(options.selectedItem);
-        }
+        if (options.items         !== undefined) this._options.items         = options.items;
+        if (options.store         !== undefined) this._options.store         = options.store;
+        if (options.displayField  !== undefined) this._options.displayField  = options.displayField;
+        if (options.valueField    !== undefined) this._options.valueField    = options.valueField;
+        if (options.selectedIndex !== undefined) this._options.selectedIndex = options.selectedIndex;
+        if (options.value         !== undefined) this._options.value         = options.value;
+        if (options.selectedItem  !== undefined) this._options.selectedItem  = options.selectedItem;
 
         return this;
     }
@@ -310,16 +337,16 @@ class ComboBox extends Component implements Bindable<string> {
      * @param valueField - Optional. The record field used as the option value; defaults to the record's primary key.
      */
     setStore(store: AbstractStore, displayField: string, valueField?: string): this {
-        if (this.storeRefresh && this.store) {
-            const old = this.store;
+        const oldStore = this._options.store;
 
+        if (this.storeRefresh && oldStore) {
             (['load', 'add', 'remove', 'datachanged', 'sync'] as const)
-                .forEach(e => old.off(e, this.storeRefresh!));
+                .forEach(e => oldStore.off(e, this.storeRefresh!));
         }
 
-        this.store = store;
-        this.displayField = displayField;
-        this.valueField = valueField ?? null;
+        this._options.store        = store;
+        this._options.displayField = displayField;
+        this._options.valueField   = valueField;
 
         const refresh = () => this.refreshFromStore();
         this.storeRefresh = refresh;
@@ -339,7 +366,7 @@ class ComboBox extends Component implements Bindable<string> {
      * Returns the currently bound store, or null if none is set.
      */
     getStore(): AbstractStore | null {
-        return this.store;
+        return this._options.store ?? null;
     }
 
     /**
@@ -348,11 +375,13 @@ class ComboBox extends Component implements Bindable<string> {
      * @returns The selected ModelRecord, or undefined if no store is bound or no item is selected.
      */
     getSelectedRecord(): ModelRecord | undefined {
-        if (!this.store) {
+        const store = this._options.store;
+
+        if (!store) {
             return undefined;
         }
 
-        return this.store.getRecords()[this.getSelectedIndex()];
+        return store.getRecords()[this.getSelectedIndex()];
     }
 
     /**
@@ -362,18 +391,22 @@ class ComboBox extends Component implements Bindable<string> {
      * otherwise `render()` picks up the updated items when the element is created.
      */
     protected refreshFromStore(): void {
-        if (!this.store || !this.displayField) {
+        const store        = this._options.store;
+        const displayField = this._options.displayField;
+        const valueField   = this._options.valueField;
+
+        if (!store || !displayField) {
             return;
         }
 
         this.items = [];
-        const records = this.store.getRecords();
+        const records = store.getRecords();
 
         for (let i = 0; i < records.length; i++) {
             const record = records[i];
-            const label  = String(record.get(this.displayField));
-            const key    = this.valueField
-                               ? String(record.get(this.valueField))
+            const label  = String(record.get(displayField));
+            const key    = valueField
+                               ? String(record.get(valueField))
                                : String(record.getId());
 
             this.items.push(new Option(key, label));

@@ -15,7 +15,7 @@ class ComplexUIPanel extends Panel {
 
 In this code the `layoutManager` never gets applied. The ComplexUIPanel ends up with no layout manager and `addComponents(...)` adds children that have nowhere to be positioned. (A real instance of this bug was the broken Complex tab in the demo: only the empty "Preferences" `<fieldset>` rendered because `<fieldset>` has intrinsic content sizing; everything else collapsed.)
 
-The reason is the leaf-only gate in [Panel.ts:45-47](src/typescript/lib/Panel.ts#L45-L47):
+The reason is the leaf-only gate in [Panel.ts:45-47](src/typescript/lib/core/Panel.ts#L45-L47):
 
 ```ts
 if (this.constructor === Panel && options) {
@@ -23,9 +23,9 @@ if (this.constructor === Panel && options) {
 }
 ```
 
-The same gate exists in [Component.ts:236-238](src/typescript/lib/Component.ts#L236-L238). When `ComplexUIPanel` instantiates, `this.constructor === ComplexUIPanel` inside Panel's constructor, so the gate is false and `applyOptions` never runs.
+The same gate exists in [Component.ts:242-244](src/typescript/lib/core/Component.ts#L242-L244). When `ComplexUIPanel` instantiates, `this.constructor === ComplexUIPanel` inside Panel's constructor, so the gate is false and `applyOptions` never runs.
 
-The current design's rationale (documented at [Component.ts:233-235](src/typescript/lib/Component.ts#L233-L235)):
+The current design's rationale (documented at [Component.ts:239-241](src/typescript/lib/core/Component.ts#L239-L241)):
 
 > Dispatch the rest of the options at the leaf only. Subclass constructors call `applyOptions(options)` themselves with their full bag once their internal child components are built.
 
@@ -51,7 +51,7 @@ Drop the `this.constructor === X` gate in `Panel` and `Component`, and rely on `
 
 ### Changes
 
-**[Panel.ts:45-47](src/typescript/lib/Panel.ts#L45-L47):**
+**[Panel.ts:45-47](src/typescript/lib/core/Panel.ts#L45-L47):**
 
 ```ts
 // Before
@@ -65,7 +65,7 @@ if (options) {
 }
 ```
 
-**[Component.ts:236-238](src/typescript/lib/Component.ts#L236-L238):**
+**[Component.ts:242-244](src/typescript/lib/core/Component.ts#L242-L244):**
 
 ```ts
 // Before
@@ -83,13 +83,13 @@ That's the entire change *if* every option setter is safely idempotent. They mos
 
 ### The `components` option problem
 
-[Component.ts:288](src/typescript/lib/Component.ts#L288) handles it:
+[Component.ts:294](src/typescript/lib/core/Component.ts#L294) handles it:
 
 ```ts
 if (options.components !== undefined) this.addComponents(options.components);
 ```
 
-`addComponent` (the singular form) at [Component.ts:1952-1954](src/typescript/lib/Component.ts#L1952-L1954) throws when re-adding an already-attached child:
+`addComponent` (the singular form) at [Component.ts:2321-2324](src/typescript/lib/core/Component.ts#L2321-L2324) throws when re-adding an already-attached child:
 
 ```ts
 if (component._parent !== null) {
@@ -103,7 +103,9 @@ In practice, only the leaf typically carries `components: [...]`. Subclass autho
 
 **Two viable fixes for `components`:**
 
-**Fix A — make `addComponent` idempotent when the child is already this component's child.** Change [Component.ts:1952](src/typescript/lib/Component.ts#L1952):
+**Fix A — make `addComponent` idempotent when the child is already this component's child.** Change [Component.ts:2322](src/typescript/lib/core/Component.ts#L2322):
+
+Also apply the same idempotency to [`insertComponent` at Component.ts:2363](src/typescript/lib/core/Component.ts#L2363) so the two stay symmetric.
 
 ```ts
 if (component._parent === this) {
@@ -161,10 +163,10 @@ This matches what (a) the codebase already does for every demo panel, and (b) is
 
 ## Critical files
 
-- [src/typescript/lib/Panel.ts](src/typescript/lib/Panel.ts) — drop the `this.constructor === Panel` gate
-- [src/typescript/lib/Component.ts](src/typescript/lib/Component.ts) — drop the `this.constructor === Component` gate; make `addComponent` idempotent for the same-parent case (Fix A)
-- Update the comment at [Component.ts:233-235](src/typescript/lib/Component.ts#L233-L235) to reflect the new "apply at every level along the super chain" semantics, and add a one-line note about the ordering implication for subclasses that build internal children.
-- Revert [ComplexUIPanel.ts:7-11](src/typescript/ComplexUIPanel.ts#L7-L11) to the original `super({ layoutManager: ... })` form — it becomes the canonical demonstration that `super(options)` works.
+- [src/typescript/lib/core/Panel.ts](src/typescript/lib/core/Panel.ts) — drop the `this.constructor === Panel` gate
+- [src/typescript/lib/core/Component.ts](src/typescript/lib/core/Component.ts) — drop the `this.constructor === Component` gate; make `addComponent` and `insertComponent` idempotent for the same-parent case (Fix A)
+- Update the comment at [Component.ts:239-241](src/typescript/lib/core/Component.ts#L239-L241) to reflect the new "apply at every level along the super chain" semantics, and add a one-line note about the ordering implication for subclasses that build internal children.
+- Revert [ComplexUIPanel.ts:13-19](src/typescript/ComplexUIPanel.ts#L13-L19) to the original `super({ layoutManager: ... })` form — it becomes the canonical demonstration that `super(options)` works.
 
 ## Verification
 
@@ -181,3 +183,7 @@ This matches what (a) the codebase already does for every demo panel, and (b) is
 - A formal "leaf detection" mechanism (e.g. a sentinel value passed through the super chain). Not needed if `applyOptions` is idempotent.
 - Refactoring other gating classes (none currently exist outside `Panel` and `Component`).
 - Changing the demo panels that already use `super()` + setters — they continue to work as-is. Only ComplexUIPanel reverts to the new idiom because it's the proof case.
+
+## Follow-up: options-bag-state refactor
+
+The leaf-gate-and-idempotent-`addComponent` design shipped here introduced a double-apply cost regression for every direct subclass of `Component` (Component's now-ungated constructor runs `applyOptions` on the forwarded `{tag}` bag, then the leaf runs `applyOptions` on the full bag). The fix is tracked in [options-bag-state-refactor](../options-bag-state-refactor.md): move every option-backed private field to a shared `_options` bag initialized in Component's constructor body, remove every `this.constructor === X` leaf gate across the framework, and rely on virtual dispatch through `applyOptions` overrides to cascade option application. Phases 1+2 (Component + Panel) land first; later phases migrate the input, display, and stateful component hierarchies.

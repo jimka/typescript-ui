@@ -17,35 +17,39 @@ export interface TextAreaOptions extends TextInputOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins.
+ */
+const _defaultTextAreaOptions: Partial<TextAreaOptions> = {
+    cursor:          "text",
+    padding:         new Insets(3, 3, 3, 3),
+    preferredSize:   { width: 200, height: 200 },
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+    foregroundColor: "var(--ts-ui-text-color, black)",
+};
+
+/**
  * A multi-line text area component backed by a `<textarea>` element.
  *
  * Keeps internal text state in sync with the DOM on every input event.
  *
  * @category Components
  */
-class TextArea extends TextInput {
-
-    private rows: number | null = null;
-    private cols: number | null = null;
-    private wrap: string | null = null;
+class TextArea extends TextInput<TextAreaOptions> {
 
     constructor(text: string = "", options?: TextAreaOptions) {
-        super({ tag: "textarea" });
+        // Positional `text` falls through to `options.text` when the caller
+        // didn't pass it via the bag — `options.text` wins if both are given.
+        const mergedOptions: TextAreaOptions = {
+            ..._defaultTextAreaOptions,
+            ...(text ? { text } : {}),
+            ...(options ?? {}),
+        };
 
-        this.setCursor("text");
-        this.setPadding(new Insets(3, 3, 3, 3));
-        this.setPreferredSize(200, 200);
-        this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
-        this.setForegroundColor("var(--ts-ui-text-color, black)");
-        if (text) {
-            this.setText(text);
-        }
+        super({ ...mergedOptions, tag: "textarea" });
 
         Event.addListener(this, "input", this.onInput);
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
@@ -78,7 +82,7 @@ class TextArea extends TextInput {
      * @returns The row count, or null.
      */
     getRows(): number | null {
-        return this.rows;
+        return this._options.rows ?? null;
     }
 
     /**
@@ -89,7 +93,7 @@ class TextArea extends TextInput {
      * @returns This component, for method chaining.
      */
     setRows(value: number): this {
-        this.rows = value;
+        this._options.rows = value;
         this.setElementAttribute("rows", String(value));
 
         return this;
@@ -101,7 +105,7 @@ class TextArea extends TextInput {
      * @returns The column count, or null.
      */
     getCols(): number | null {
-        return this.cols;
+        return this._options.cols ?? null;
     }
 
     /**
@@ -112,7 +116,7 @@ class TextArea extends TextInput {
      * @returns This component, for method chaining.
      */
     setCols(value: number): this {
-        this.cols = value;
+        this._options.cols = value;
         this.setElementAttribute("cols", String(value));
 
         return this;
@@ -124,7 +128,7 @@ class TextArea extends TextInput {
      * @returns The wrap mode, or null.
      */
     getWrap(): string | null {
-        return this.wrap;
+        return this._options.wrap ?? null;
     }
 
     /**
@@ -135,7 +139,7 @@ class TextArea extends TextInput {
      * @returns This component, for method chaining.
      */
     setWrap(value: string): this {
-        this.wrap = value;
+        this._options.wrap = value;
         this.setElementAttribute("wrap", value);
 
         return this;

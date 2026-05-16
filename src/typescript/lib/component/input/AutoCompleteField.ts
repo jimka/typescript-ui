@@ -67,45 +67,24 @@ export type AutoCompleteFieldConfig = AutoCompleteFieldOptions;
  *
  * @category Components
  */
-class AutoCompleteField extends Component implements Bindable<string> {
+class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements Bindable<string> {
 
     private textField         : TextField;
     private dropdown          : AutoCompleteDropdown;
-    private staticSuggestions : string[] | null;
-    private store             : AbstractStore | null;
-    private displayField      : string | null;
-    private minChars          : number;
-    private debounceMs        : number;
-    private maxSuggestions    : number;
-    private debounceTimer     : ReturnType<typeof setTimeout> | null;
-    private currentValue      : string;
-    private matchMode         : AutoCompleteMatchMode;
-    private bindingListeners  : Array<() => void>;
-    private selectListeners   : Array<(value: string) => void>;
+    private debounceTimer     : ReturnType<typeof setTimeout> | null = null;
+    private currentValue      : string                               = "";
+    private bindingListeners  : Array<() => void>                    = [];
+    private selectListeners   : Array<(value: string) => void>       = [];
 
     /**
      * @param options - Optional construction-time options for suggestions, store, behaviour, and base Component styling.
      */
     constructor(options?: AutoCompleteFieldOptions) {
+        // Children are built below, so consumer options can't safely cascade
+        // through super(). Apply them manually at the end of the constructor.
         super();
 
-        this.staticSuggestions = options?.suggestions    ?? null;
-        this.store             = options?.store          ?? null;
-        this.displayField      = options?.displayField   ?? null;
-        this.minChars          = options?.minChars       ?? 1;
-        this.debounceMs        = options?.debounceMs     ?? 200;
-        this.maxSuggestions    = options?.maxSuggestions ?? 10;
-        this.debounceTimer     = null;
-        this.currentValue      = "";
-        this.matchMode         = options?.matchMode ?? 'contains';
-        this.bindingListeners  = [];
-        this.selectListeners   = [];
-
         this.textField = new TextField();
-
-        if (options?.placeholder) {
-            this.textField.setPlaceholder(options.placeholder);
-        }
 
         this.addComponent(this.textField);
 
@@ -129,8 +108,38 @@ class AutoCompleteField extends Component implements Bindable<string> {
         Event.addListener(this.textField, "blur",    () => this.onBlur());
 
         if (options) {
-            super.applyOptions(options);
+            this.applyOptions(options);
         }
+    }
+
+    /**
+     * Applies an {@link AutoCompleteFieldOptions} bag, dispatching each field
+     * through its setter so side effects fire identically whether the value
+     * came from the constructor or a later setter call.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: AutoCompleteFieldOptions): this {
+        super.applyOptions(options);
+
+        if (options.suggestions    !== undefined) this.setSuggestions(options.suggestions);
+        if (options.minChars       !== undefined) this.setMinChars(options.minChars);
+        if (options.debounceMs     !== undefined) this.setDebounceMs(options.debounceMs);
+        if (options.maxSuggestions !== undefined) this.setMaxSuggestions(options.maxSuggestions);
+        if (options.matchMode      !== undefined) this.setMatchMode(options.matchMode);
+        if (options.placeholder    !== undefined) this.setPlaceholder(options.placeholder);
+
+        // store + displayField are paired; apply via setStore when both present,
+        // otherwise route through the individual options bag fields so partial
+        // configuration is preserved without firing a half-configured setStore.
+        if (options.store !== undefined && options.displayField !== undefined) {
+            this.setStore(options.store, options.displayField);
+        } else {
+            if (options.store        !== undefined) this._options.store        = options.store;
+            if (options.displayField !== undefined) this._options.displayField = options.displayField;
+        }
+
+        return this;
     }
 
     /**
@@ -221,7 +230,7 @@ class AutoCompleteField extends Component implements Bindable<string> {
      * @param suggestions - The new list of suggestion strings.
      */
     setSuggestions(suggestions: string[]): this {
-        this.staticSuggestions = suggestions;
+        this._options.suggestions = suggestions;
 
         return this;
     }
@@ -233,8 +242,8 @@ class AutoCompleteField extends Component implements Bindable<string> {
      * @param displayField - The field name on each record to use as the suggestion text.
      */
     setStore(store: AbstractStore, displayField: string): this {
-        this.store        = store;
-        this.displayField = displayField;
+        this._options.store        = store;
+        this._options.displayField = displayField;
 
         return this;
     }
@@ -245,7 +254,7 @@ class AutoCompleteField extends Component implements Bindable<string> {
      * @param n - Minimum character count. Default is 1.
      */
     setMinChars(n: number): this {
-        this.minChars = n;
+        this._options.minChars = n;
 
         return this;
     }
@@ -256,7 +265,7 @@ class AutoCompleteField extends Component implements Bindable<string> {
      * @param ms - Delay in milliseconds. Default is 200.
      */
     setDebounceMs(ms: number): this {
-        this.debounceMs = ms;
+        this._options.debounceMs = ms;
 
         return this;
     }
@@ -267,7 +276,7 @@ class AutoCompleteField extends Component implements Bindable<string> {
      * @param n - Maximum item count. Default is 10.
      */
     setMaxSuggestions(n: number): this {
-        this.maxSuggestions = n;
+        this._options.maxSuggestions = n;
 
         return this;
     }
@@ -278,7 +287,19 @@ class AutoCompleteField extends Component implements Bindable<string> {
      * @param mode - `'contains'` to match anywhere; `'startsWith'` to match from the beginning only.
      */
     setMatchMode(mode: AutoCompleteMatchMode): this {
-        this.matchMode = mode;
+        this._options.matchMode = mode;
+
+        return this;
+    }
+
+    /**
+     * Sets the placeholder text shown in the inner text field when empty.
+     *
+     * @param placeholder - The placeholder string.
+     */
+    setPlaceholder(placeholder: string): this {
+        this._options.placeholder = placeholder;
+        this.textField.setPlaceholder(placeholder);
 
         return this;
     }
@@ -313,7 +334,9 @@ class AutoCompleteField extends Component implements Bindable<string> {
             clearTimeout(this.debounceTimer);
         }
 
-        if (this.currentValue.length < this.minChars) {
+        const minChars = this._options.minChars ?? 1;
+
+        if (this.currentValue.length < minChars) {
             this.dropdown.hide();
 
             return;
@@ -321,7 +344,7 @@ class AutoCompleteField extends Component implements Bindable<string> {
 
         this.debounceTimer = setTimeout(
             () => this.querySuggestions(this.currentValue),
-            this.debounceMs
+            this._options.debounceMs ?? 200
         );
     }
 
@@ -406,7 +429,7 @@ class AutoCompleteField extends Component implements Bindable<string> {
      * @param lower - The lowercased query string.
      */
     private matches(candidate: string, lower: string): boolean {
-        if (this.matchMode === 'startsWith') {
+        if ((this._options.matchMode ?? 'contains') === 'startsWith') {
             return candidate.startsWith(lower);
         }
 
@@ -422,11 +445,17 @@ class AutoCompleteField extends Component implements Bindable<string> {
      * @param query - The string to filter suggestions by.
      */
     private querySuggestions(query: string): void {
-        if (this.staticSuggestions !== null) {
+        const maxSuggestions = this._options.maxSuggestions ?? 10;
+        const matchMode      = this._options.matchMode ?? 'contains';
+        const suggestions    = this._options.suggestions;
+        const store          = this._options.store;
+        const displayField   = this._options.displayField;
+
+        if (suggestions !== undefined) {
             const lower    = query.toLowerCase();
-            const filtered = this.staticSuggestions
+            const filtered = suggestions
                 .filter(s => this.matches(s.toLowerCase(), lower))
-                .slice(0, this.maxSuggestions);
+                .slice(0, maxSuggestions);
 
             if (query === this.currentValue) {
                 this.showSuggestions(filtered);
@@ -435,20 +464,18 @@ class AutoCompleteField extends Component implements Bindable<string> {
             return;
         }
 
-        if (this.store !== null && this.displayField !== null) {
-            const field = this.displayField;
-
-            this.store.clearFilter();
-            this.store.filterBy({
-                type: this.matchMode === 'startsWith' ? 'startsWith' : 'contains',
-                field: field,
+        if (store !== undefined && displayField !== undefined) {
+            store.clearFilter();
+            store.filterBy({
+                type: matchMode === 'startsWith' ? 'startsWith' : 'contains',
+                field: displayField,
                 value: query,
                 caseSensitive: false,
             });
 
-            const results = this.store.getRecords()
-                .map(r => String(r.get(field)))
-                .slice(0, this.maxSuggestions);
+            const results = store.getRecords()
+                .map(r => String(r.get(displayField)))
+                .slice(0, maxSuggestions);
 
             if (query === this.currentValue) {
                 this.showSuggestions(results);

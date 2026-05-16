@@ -40,24 +40,12 @@ export interface TextOptions extends ComponentOptions {
  *
  * @category Components
  */
-class Text extends Component {
+class Text<TOptions extends TextOptions = TextOptions> extends Component<TOptions> {
 
-    private text: String | null | undefined = null;
     private hasExplicitPreferredSize: boolean = false;
-    private textAlign: string | null = "left";
-    private textShadow: string | null = null;
-    private fontFamily: string | null = "var(--ts-ui-font-family, system-ui, sans-serif)";
-    private fontKerning: string | null = "auto";
-    private fontSize: number | null = 14;
     private fontSizeCSSVar : string | null = "--ts-ui-font-size";
     private fontSizeCSSRule: string | null = "var(--ts-ui-font-size, 14px)";
     private readonly unsubscribeTheme: () => void;
-    private fontSizeAdjust: string | null = "none";
-    private fontStretch: string | null = "normal";
-    private fontStyle: string | null = "normal";
-    private fontVariant: string | null = "normal";
-    private fontWeight: string | null = "normal";
-    private lineHeight: number | null = null;
     private lineHeightCSSVar : string | null = "--ts-ui-line-height";
     private lineHeightCSSRule: string | null = "var(--ts-ui-line-height, 1.2)";
     private measuredBaseline: number | null = null;
@@ -66,11 +54,23 @@ class Text extends Component {
     private wordBreak: string | null = null;
     private lineClamp: number | null = null;
 
-    constructor(text?: String, options?: TextOptions) {
-        super({ tag: options?.tag ?? "span" });
+    constructor(text?: String, options?: TOptions) {
+        super({ ...(options ?? {}), tag: options?.tag ?? "span" } as TOptions);
 
-        this.text       = text;
-        this.lineHeight = this.readThemeLineHeightPx();
+        // Class-level fallback defaults consulted by getters / applyStyle when
+        // the caller didn't supply a value. Live in `_defaultOptions` so the
+        // `if (this._options.X === undefined)` guards used by Text subclasses
+        // still detect "caller didn't set X".
+        this._defaultOptions.textAlign      = "left";
+        this._defaultOptions.fontFamily     = "var(--ts-ui-font-family, system-ui, sans-serif)";
+        this._defaultOptions.fontKerning    = "auto";
+        this._defaultOptions.fontSize       = 14;
+        this._defaultOptions.fontSizeAdjust = "none";
+        this._defaultOptions.fontStretch    = "normal";
+        this._defaultOptions.fontStyle      = "normal";
+        this._defaultOptions.fontVariant    = "normal";
+        this._defaultOptions.fontWeight     = "normal";
+        this._defaultOptions.lineHeight     = this.readThemeLineHeightPx();
 
         this.clearInsets();
         this.setElementCSSRule("lineHeight", this.lineHeightCSSRule);
@@ -83,25 +83,28 @@ class Text extends Component {
                 const parsed = parseFloat(raw);
 
                 if (!isNaN(parsed)) {
-                    this.fontSize = parsed;
+                    this._defaultOptions.fontSize = parsed;
                 }
             }
 
             if (this.lineHeightCSSVar) {
-                this.lineHeight = this.readThemeLineHeightPx();
+                this._defaultOptions.lineHeight = this.readThemeLineHeightPx();
             }
 
             this.calculateSize();
         });
 
+        // Positional `text` constructor argument: write to the bag only when
+        // the caller didn't also pass `options.text` (which would have been
+        // dispatched via super's applyOptions cascade and should win).
+        if (text !== undefined && this._options.text === undefined) {
+            this.setText(text);
+        }
+
         // Off-screen text measurement is deferred until the first
         // getPreferredSize / getBaseline call so construction stays JS-only
         // (no forced layout from `Util.measureTextMetrics`).
         this.measurementDirty = true;
-
-        if (this.constructor === Text && options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
@@ -111,7 +114,7 @@ class Text extends Component {
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: TextOptions): this {
+    protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
@@ -181,7 +184,7 @@ class Text extends Component {
      * when the variable is missing or unparseable.
      */
     private readThemeLineHeightPx(): number {
-        const fs = this.fontSize ?? 14;
+        const fs = (this._options.fontSize as number | undefined) ?? (this._defaultOptions.fontSize as number | undefined) ?? 14;
 
         if (!this.lineHeightCSSVar) {
             return fs;
@@ -241,15 +244,19 @@ class Text extends Component {
             return;
         }
 
-        if (this.text) {
-            const { width, height, baseline } = Util.measureTextMetrics(this.text.toString(), {
-                fontFamily : this.fontFamily      ?? undefined,
-                fontSize   : this.fontSizeCSSRule ?? (this.fontSize !== null ? `${this.fontSize}px` : undefined),
-                fontWeight : this.fontWeight      ?? undefined,
-                fontStyle  : this.fontStyle       ?? undefined,
-                fontVariant: this.fontVariant     ?? undefined,
-                fontStretch: this.fontStretch     ?? undefined,
-                lineHeight : this.lineHeightCSSRule ?? (this.lineHeight !== null ? `${this.lineHeight}px` : undefined)
+        const text = this._options.text;
+        if (text) {
+            const fontSize   = this.getFontSize();
+            const lineHeight = this.getLineHeight();
+
+            const { width, height, baseline } = Util.measureTextMetrics(text.toString(), {
+                fontFamily : this.getFontFamily()  ?? undefined,
+                fontSize   : this.fontSizeCSSRule ?? (fontSize !== null ? `${fontSize}px` : undefined),
+                fontWeight : this.getFontWeight()  ?? undefined,
+                fontStyle  : this.getFontStyle()   ?? undefined,
+                fontVariant: this.getFontVariant() ?? undefined,
+                fontStretch: this.getFontStretch() ?? undefined,
+                lineHeight : this.lineHeightCSSRule ?? (lineHeight !== null ? `${lineHeight}px` : undefined)
             });
 
             this.measuredBaseline = baseline;
@@ -317,7 +324,7 @@ class Text extends Component {
      * @returns The current text string, or "" if no text is set.
      */
     getText() {
-        return this.text || "";
+        return this._options.text || "";
     }
 
     /**
@@ -328,7 +335,7 @@ class Text extends Component {
      * @returns This component, for method chaining.
      */
     setText(text: String): this {
-        this.text = text || "";
+        this._options.text = (text || "") as TOptions["text"];
 
         this.measurementDirty = true;
         this.scheduleLayout();
@@ -365,7 +372,7 @@ class Text extends Component {
      * @returns The CSS text-align string, or null if not set.
      */
     getTextAlign() {
-        return this.textAlign;
+        return this._options.textAlign ?? this._defaultOptions.textAlign ?? null;
     }
 
     /**
@@ -376,7 +383,7 @@ class Text extends Component {
      * @returns This component, for method chaining.
      */
     setTextAlign(align: string): this {
-        this.textAlign = align;
+        this._options.textAlign = align;
 
         this.setElementCSSRule("textAlign", align);
 
@@ -389,7 +396,7 @@ class Text extends Component {
      * @returns The CSS text-shadow string, or null if not set.
      */
     getTextShadow() {
-        return this.textShadow;
+        return this._options.textShadow ?? null;
     }
 
     /**
@@ -400,7 +407,7 @@ class Text extends Component {
      * @returns This component, for method chaining.
      */
     setTextShadow(shadow: string): this {
-        this.textShadow = shadow;
+        this._options.textShadow = shadow;
 
         this.setElementCSSRule("textShadow", shadow);
 
@@ -413,7 +420,7 @@ class Text extends Component {
      * @returns The CSS font-family string, or null if not set.
      */
     getFontFamily() {
-        return this.fontFamily;
+        return this._options.fontFamily ?? this._defaultOptions.fontFamily ?? null;
     }
 
     /**
@@ -424,7 +431,7 @@ class Text extends Component {
      * @returns This component, for method chaining.
      */
     setFontFamily(value: string): this {
-        this.fontFamily = value;
+        this._options.fontFamily = value;
 
         this.setElementCSSRule("fontFamily", value);
 
@@ -440,7 +447,7 @@ class Text extends Component {
      * @returns The CSS font-kerning string, or null if not set.
      */
     getFontKerning() {
-        return this.fontKerning;
+        return this._options.fontKerning ?? this._defaultOptions.fontKerning ?? null;
     }
 
     /**
@@ -451,7 +458,7 @@ class Text extends Component {
      * @returns This component, for method chaining.
      */
     setFontKerning(value: string): this {
-        this.fontKerning = value;
+        this._options.fontKerning = value;
 
         this.setElementCSSRule("fontKerning", value);
 
@@ -464,7 +471,7 @@ class Text extends Component {
      * @returns The font size as a number, or null if not set.
      */
     getFontSize() {
-        return this.fontSize;
+        return (this._options.fontSize as number | undefined) ?? (this._defaultOptions.fontSize as number | undefined) ?? null;
     }
 
     /**
@@ -477,20 +484,21 @@ class Text extends Component {
      */
     setFontSize(value: number | string): this {
         if (typeof value === 'number') {
-            this.fontSize        = value;
-            this.fontSizeCSSVar  = null;
-            this.fontSizeCSSRule = null;
+            this._options.fontSize = value as TOptions["fontSize"];
+            this.fontSizeCSSVar    = null;
+            this.fontSizeCSSRule   = null;
             this.setElementCSSRule("fontSize", value + "px");
         } else {
             const raw    = getComputedStyle(document.documentElement).getPropertyValue(value).trim();
             const parsed = parseFloat(raw);
 
             if (!isNaN(parsed)) {
-                this.fontSize = parsed;
+                this._options.fontSize = parsed as TOptions["fontSize"];
             }
 
+            const resolved       = this.getFontSize() ?? 14;
             this.fontSizeCSSVar  = value;
-            this.fontSizeCSSRule = `var(${value}, ${this.fontSize ?? 14}px)`;
+            this.fontSizeCSSRule = `var(${value}, ${resolved}px)`;
             this.setElementCSSRule("fontSize", this.fontSizeCSSRule);
         }
 
@@ -506,7 +514,7 @@ class Text extends Component {
      * @returns The CSS font-size-adjust string, or null if not set.
      */
     getFontSizeAdjust() {
-        return this.fontSizeAdjust;
+        return this._options.fontSizeAdjust ?? this._defaultOptions.fontSizeAdjust ?? null;
     }
 
     /**
@@ -517,7 +525,7 @@ class Text extends Component {
      * @returns This component, for method chaining.
      */
     setFontSizeAdjust(value: string): this {
-        this.fontSizeAdjust = value;
+        this._options.fontSizeAdjust = value;
 
         this.setElementCSSRule("fontSizeAdjust", value);
 
@@ -530,7 +538,7 @@ class Text extends Component {
      * @returns The CSS font-stretch string, or null if not set.
      */
     getFontStretch() {
-        return this.fontStretch;
+        return this._options.fontStretch ?? this._defaultOptions.fontStretch ?? null;
     }
 
     /**
@@ -541,7 +549,7 @@ class Text extends Component {
      * @returns This component, for method chaining.
      */
     setFontStretch(value: string): this {
-        this.fontStretch = value;
+        this._options.fontStretch = value;
 
         this.setElementCSSRule("fontStretch", value);
 
@@ -554,7 +562,7 @@ class Text extends Component {
      * @returns The CSS font-style string, or null if not set.
      */
     getFontStyle() {
-        return this.fontStyle;
+        return this._options.fontStyle ?? this._defaultOptions.fontStyle ?? null;
     }
 
     /**
@@ -565,7 +573,7 @@ class Text extends Component {
      * @returns This component, for method chaining.
      */
     setFontStyle(value: string): this {
-        this.fontStyle = value;
+        this._options.fontStyle = value;
 
         this.setElementCSSRule("fontStyle", value);
 
@@ -578,7 +586,7 @@ class Text extends Component {
      * @returns The CSS font-variant string, or null if not set.
      */
     getFontVariant() {
-        return this.fontVariant;
+        return this._options.fontVariant ?? this._defaultOptions.fontVariant ?? null;
     }
 
     /**
@@ -589,7 +597,7 @@ class Text extends Component {
      * @returns This component, for method chaining.
      */
     setFontVariant(value: string): this {
-        this.fontVariant = value;
+        this._options.fontVariant = value;
 
         this.setElementCSSRule("fontVariant", value);
 
@@ -602,7 +610,7 @@ class Text extends Component {
      * @returns The CSS font-weight string, or null if not set.
      */
     getFontWeight() {
-        return this.fontWeight;
+        return this._options.fontWeight ?? this._defaultOptions.fontWeight ?? null;
     }
 
     /**
@@ -613,7 +621,7 @@ class Text extends Component {
      * @returns This component, for method chaining.
      */
     setFontWeight(value: string): this {
-        this.fontWeight = value;
+        this._options.fontWeight = value;
 
         this.setElementCSSRule("fontWeight", value);
 
@@ -629,7 +637,7 @@ class Text extends Component {
      * @returns The line height as a number, or null if not set.
      */
     getLineHeight() {
-        return this.lineHeight;
+        return (this._options.lineHeight as number | undefined) ?? (this._defaultOptions.lineHeight as number | undefined) ?? null;
     }
 
     /**
@@ -645,14 +653,14 @@ class Text extends Component {
      */
     setLineHeight(value: number | string): this {
         if (typeof value === 'number') {
-            this.lineHeight        = value;
-            this.lineHeightCSSVar  = null;
-            this.lineHeightCSSRule = null;
+            this._options.lineHeight = value as TOptions["lineHeight"];
+            this.lineHeightCSSVar    = null;
+            this.lineHeightCSSRule   = null;
             this.setElementCSSRule("lineHeight", value + "px");
         } else {
-            this.lineHeightCSSVar  = value;
-            this.lineHeightCSSRule = `var(${value}, 1.2)`;
-            this.lineHeight        = this.readThemeLineHeightPx();
+            this.lineHeightCSSVar    = value;
+            this.lineHeightCSSRule   = `var(${value}, 1.2)`;
+            this._options.lineHeight = this.readThemeLineHeightPx() as TOptions["lineHeight"];
             this.setElementCSSRule("lineHeight", this.lineHeightCSSRule);
         }
 
@@ -752,7 +760,7 @@ class Text extends Component {
      *
      * Writes `display: -webkit-box`, `-webkit-box-orient: vertical`,
      * `-webkit-line-clamp`, `overflow: hidden`, and `text-overflow: ellipsis`
-     * in a single call. Use {@link Text.clearLineClamp} to remove the clamp.
+     * in a single call. Use {@link clearLineClamp} to remove the clamp.
      *
      * @param lines - The maximum number of lines to display before the ellipsis.
      *
@@ -776,7 +784,7 @@ class Text extends Component {
     }
 
     /**
-     * Removes the line-clamp styling previously applied by {@link Text.setLineClamp}.
+     * Removes the line-clamp styling previously applied by {@link setLineClamp}.
      *
      * @returns This component, for method chaining.
      */
@@ -805,18 +813,21 @@ class Text extends Component {
     applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
 
+        const fontSize   = this.getFontSize();
+        const lineHeight = this.getLineHeight();
+
         this.setElementCSSRules({
-            fontFamily:     this.fontFamily      ?? '',
-            textAlign:      this.textAlign        ? this.textAlign          : '',
-            textShadow:     this.textShadow       ? this.textShadow         : '',
-            fontKerning:    this.fontKerning      ? this.fontKerning        : '',
-            fontSize:       this.fontSizeCSSRule ?? (this.fontSize !== null ? `${this.fontSize}px` : ''),
-            fontSizeAdjust: this.fontSizeAdjust   ? this.fontSizeAdjust     : '',
-            fontStretch:    this.fontStretch      ? this.fontStretch        : '',
-            fontStyle:      this.fontStyle        ? this.fontStyle          : '',
-            fontVariant:    this.fontVariant      ? this.fontVariant        : '',
-            fontWeight:     this.fontWeight       ? this.fontWeight         : '',
-            lineHeight:     this.lineHeightCSSRule ?? (this.lineHeight !== null ? `${this.lineHeight}px` : '')
+            fontFamily:     this.getFontFamily()    ?? '',
+            textAlign:      this.getTextAlign()     ?? '',
+            textShadow:     this.getTextShadow()    ?? '',
+            fontKerning:    this.getFontKerning()   ?? '',
+            fontSize:       this.fontSizeCSSRule    ?? (fontSize !== null ? `${fontSize}px` : ''),
+            fontSizeAdjust: this.getFontSizeAdjust() ?? '',
+            fontStretch:    this.getFontStretch()   ?? '',
+            fontStyle:      this.getFontStyle()     ?? '',
+            fontVariant:    this.getFontVariant()   ?? '',
+            fontWeight:     this.getFontWeight()    ?? '',
+            lineHeight:     this.lineHeightCSSRule  ?? (lineHeight !== null ? `${lineHeight}px` : '')
         });
 
         return this;
@@ -844,7 +855,7 @@ class Text extends Component {
 }
 
 const TextCallable = callable(Text);
-type TextCallable = Text;
+type TextCallable<TOptions extends TextOptions = TextOptions> = Text<TOptions>;
 export {
     Text         as _Text,
     TextCallable as Text

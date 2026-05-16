@@ -22,7 +22,7 @@ export interface MultiSelectListOptions extends ListOptions {
  *
  * @category Components
  */
-class MultiSelectList extends List {
+class MultiSelectList extends List<MultiSelectListOptions> {
 
     constructor(options?: MultiSelectListOptions) {
         super();

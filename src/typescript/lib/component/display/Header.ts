@@ -20,6 +20,16 @@ export interface HeaderOptions extends TextOptions {
 }
 
 /**
+ * User-overridable defaults forwarded to `super` via the options bag. The
+ * cascade in `Panel`/`Component` dispatches each present setter once with the
+ * final value. Font fields are handled in the constructor body once the inner
+ * `text` child exists — they're written into `_options` by `applyOptions` and
+ * dispatched from there.
+ */
+const _defaultHeaderOptions: Partial<HeaderOptions> = {
+};
+
+/**
  * A header bar component containing a left-aligned text label.
  *
  * Renders a `<header>` element with a Border layout manager and a bold label
@@ -27,18 +37,33 @@ export interface HeaderOptions extends TextOptions {
  *
  * @category Components
  */
-class Header extends Panel {
+class Header<TOptions extends HeaderOptions = HeaderOptions> extends Panel<TOptions> {
 
-    private text: Text;
+    private text!: Text;
 
-    constructor(text: string, options?: HeaderOptions) {
-        super({ tag: "header" });
+    constructor(text: string, options?: TOptions) {
+        // Merge defaults → consumer options → non-overridable structural keys.
+        // Font/text fields are written pure to `_options` by `applyOptions` and
+        // dispatched from the constructor body once the inner Text child
+        // exists.
+        super({
+            ..._defaultHeaderOptions,
+            ...(options ?? {}),
+            tag: "header",
+        } as TOptions);
 
         this.setLayoutManager(new BorderLayout());
 
+        // Build the inner text label. Font defaults are applied here when the
+        // caller didn't supply an override — the cascade can't reach `this.text`
+        // because it doesn't exist yet during `super`.
         this.text = new Text(text);
-        this.text.setFontWeight("bold");
-        this.text.setFontSize("--ts-ui-header-font-size");
+        if (this._options.fontWeight === undefined) {
+            this.text.setFontWeight("bold");
+        }
+        if (this._options.fontSize === undefined) {
+            this.text.setFontSize("--ts-ui-header-font-size");
+        }
         this.text.setPointerEvents("none");
 
         this.addComponent(this.text, {
@@ -47,79 +72,85 @@ class Header extends Panel {
             fill: FillType.HORIZONTAL
         });
 
-        this.applyThemePadding();
+        if (this._options.insets === undefined) {
+            this.applyThemePadding();
+        }
         ThemeManager.onThemeChange(() => {
             this.updatePreferredSize();
             this.applyThemePadding();
         });
 
-        this.updatePreferredSize();
+        if (this._options.preferredSize === undefined) {
+            this.updatePreferredSize();
+        }
 
-        if (options) {
-            this.applyOptions(options);
+        // Late-built state: font/text fields written pure into `_options` by
+        // the super-time cascade. Dispatch them now that `this.text` exists.
+        if (this._options.text !== undefined) {
+            this.text.setText(this._options.text);
+        }
+        if (this._options.textAlign !== undefined) {
+            this.text.setTextAlign(this._options.textAlign);
+        }
+        if (this._options.textShadow !== undefined) {
+            this.text.setTextShadow(this._options.textShadow);
+        }
+        if (this._options.fontFamily !== undefined) {
+            this.text.setFontFamily(this._options.fontFamily);
+        }
+        if (this._options.fontSize !== undefined) {
+            this.text.setFontSize(this._options.fontSize);
+        }
+        if (this._options.fontWeight !== undefined) {
+            this.text.setFontWeight(this._options.fontWeight);
+        }
+        if (this._options.fontStyle !== undefined) {
+            this.text.setFontStyle(this._options.fontStyle);
+        }
+        if (this._options.fontVariant !== undefined) {
+            this.text.setFontVariant(this._options.fontVariant);
+        }
+        if (this._options.fontStretch !== undefined) {
+            this.text.setFontStretch(this._options.fontStretch);
+        }
+        if (this._options.fontKerning !== undefined) {
+            this.text.setFontKerning(this._options.fontKerning);
+        }
+        if (this._options.fontSizeAdjust !== undefined) {
+            this.text.setFontSizeAdjust(this._options.fontSizeAdjust);
+        }
+        if (this._options.lineHeight !== undefined) {
+            this.text.setLineHeight(this._options.lineHeight);
+        }
+        if (this._options.textOverflow !== undefined) {
+            this.text.setTextOverflow(this._options.textOverflow);
         }
     }
 
     /**
-     * Applies a {@link HeaderOptions} bag, dispatching text-specific fields to
-     * the inner label and Component-level fields to the header itself.
+     * Applies a {@link HeaderOptions} bag. Inherited Panel/Component fields
+     * cascade through `super.applyOptions`; text-targeting fields are written
+     * pure into `_options` here and dispatched from the constructor body once
+     * `this.text` exists.
      *
      * @param options - The options bag carrying the values to apply.
      */
-    protected applyOptions(options: HeaderOptions): this {
+    protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.text !== undefined) {
-            this.text.setText(options.text);
-        }
-
-        if (options.textAlign !== undefined) {
-            this.text.setTextAlign(options.textAlign);
-        }
-
-        if (options.textShadow !== undefined) {
-            this.text.setTextShadow(options.textShadow);
-        }
-
-        if (options.fontFamily !== undefined) {
-            this.text.setFontFamily(options.fontFamily);
-        }
-
-        if (options.fontSize !== undefined) {
-            this.text.setFontSize(options.fontSize);
-        }
-
-        if (options.fontWeight !== undefined) {
-            this.text.setFontWeight(options.fontWeight);
-        }
-
-        if (options.fontStyle !== undefined) {
-            this.text.setFontStyle(options.fontStyle);
-        }
-
-        if (options.fontVariant !== undefined) {
-            this.text.setFontVariant(options.fontVariant);
-        }
-
-        if (options.fontStretch !== undefined) {
-            this.text.setFontStretch(options.fontStretch);
-        }
-
-        if (options.fontKerning !== undefined) {
-            this.text.setFontKerning(options.fontKerning);
-        }
-
-        if (options.fontSizeAdjust !== undefined) {
-            this.text.setFontSizeAdjust(options.fontSizeAdjust);
-        }
-
-        if (options.lineHeight !== undefined) {
-            this.text.setLineHeight(options.lineHeight);
-        }
-
-        if (options.textOverflow !== undefined) {
-            this.text.setTextOverflow(options.textOverflow);
-        }
+        if (options.text           !== undefined) this._options.text           = options.text;
+        if (options.textAlign      !== undefined) this._options.textAlign      = options.textAlign;
+        if (options.textShadow     !== undefined) this._options.textShadow     = options.textShadow;
+        if (options.fontFamily     !== undefined) this._options.fontFamily     = options.fontFamily;
+        if (options.fontSize       !== undefined) this._options.fontSize       = options.fontSize;
+        if (options.fontWeight     !== undefined) this._options.fontWeight     = options.fontWeight;
+        if (options.fontStyle      !== undefined) this._options.fontStyle      = options.fontStyle;
+        if (options.fontVariant    !== undefined) this._options.fontVariant    = options.fontVariant;
+        if (options.fontStretch    !== undefined) this._options.fontStretch    = options.fontStretch;
+        if (options.fontKerning    !== undefined) this._options.fontKerning    = options.fontKerning;
+        if (options.fontSizeAdjust !== undefined) this._options.fontSizeAdjust = options.fontSizeAdjust;
+        if (options.lineHeight     !== undefined) this._options.lineHeight     = options.lineHeight;
+        if (options.textOverflow   !== undefined) this._options.textOverflow   = options.textOverflow;
 
         return this;
     }
@@ -166,7 +197,7 @@ class Header extends Panel {
 }
 
 const HeaderCallable = callable(Header);
-type HeaderCallable = Header;
+type HeaderCallable<TOptions extends HeaderOptions = HeaderOptions> = Header<TOptions>;
 export {
     Header         as _Header,
     HeaderCallable as Header

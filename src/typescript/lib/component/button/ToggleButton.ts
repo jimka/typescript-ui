@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { callable } from "~/core/Callable.js";
@@ -22,18 +23,24 @@ export interface ToggleButtonOptions extends ButtonOptions {
  *
  * @category Components
  */
-class ToggleButton extends Button {
+class ToggleButton extends Button<ToggleButtonOptions> {
 
-    private selected: boolean = false;
-    private selectedCSSRule: CSSStyleRule;
+    // Lazy `.selected` rule — materialised on first `selectedStyleRule.set`
+    // flush. Defers stylesheet insertion to the moment the toggle's
+    // selected-state styles are first written.
+    private selectedStyleRule: StyleRule = new StyleRule(() => CSS.createComponentRule(this.getId() + ".selected") as CSSStyleRule);
 
     constructor(text: string, options?: ToggleButtonOptions) {
+        // Button is a children-build class: it builds its inner text/HBox row
+        // in its constructor body. We forward the positional `text` to super
+        // (no options), queue the selected-state styles into the lazy rule,
+        // then dispatch the consumer options through `applyOptions` at the
+        // tail so Button's own option-backed setters run after children exist.
         super(text);
 
-        this.selectedCSSRule = CSS.createComponentRule(this.getId() + ".selected") as CSSStyleRule;
-        this.selectedCSSRule.style.setProperty('box-shadow', 'var(--ts-ui-toggle-selected-shadow, 2px 2px 1px inset grey)');
-        this.selectedCSSRule.style.setProperty('background-color', 'var(--ts-ui-toggle-selected-bg, rgb(200, 200, 200))');
-        this.selectedCSSRule.style.setProperty('background-image', 'var(--ts-ui-toggle-selected-bg, none)');
+        this.selectedStyleRule.set("boxShadow",       "var(--ts-ui-toggle-selected-shadow, 2px 2px 1px inset grey)");
+        this.selectedStyleRule.set("backgroundColor", "var(--ts-ui-toggle-selected-bg, rgb(200, 200, 200))");
+        this.selectedStyleRule.set("backgroundImage", "var(--ts-ui-toggle-selected-bg, none)");
 
         Event.addListener(this, "click", () => this.onAction());
 
@@ -74,8 +81,8 @@ class ToggleButton extends Button {
      *
      * @returns True if the button is currently selected.
      */
-    isSelected() {
-        return this.selected;
+    isSelected(): boolean {
+        return this._options.selected ?? false;
     }
 
     /**
@@ -84,7 +91,7 @@ class ToggleButton extends Button {
      * @param value - True to select the button, false to deselect it.
      */
     setSelected(value: boolean) : this {
-        this.selected = value;
+        this._options.selected = value;
 
         this.getAria().setPressed(value);
 
@@ -100,7 +107,7 @@ class ToggleButton extends Button {
      * Toggles the selected state and fires a 'change' event when the button is clicked.
      */
     private onAction() {
-        this.setSelected(!this.selected);
+        this.setSelected(!this.isSelected());
 
         Event.fireEvent(this, "change");
     }
@@ -112,7 +119,7 @@ class ToggleButton extends Button {
      */
     render() {
         let element = super.render();
-        element.classList.toggle("selected", this.selected);
+        element.classList.toggle("selected", this.isSelected());
         return element;
     }
 }
