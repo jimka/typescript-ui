@@ -19,6 +19,12 @@ export namespace Event {
     let subtreeListenerMap = new Map<String, Map<String, CompFunc>>();
     let installedListenerTypes = new Set<string>();
 
+    const PASSIVE_TYPES: Set<string> = new Set(["scroll", "wheel", "touchstart", "touchmove"]);
+
+    function captureOpts(type: string): AddEventListenerOptions {
+        return { capture: true, passive: PASSIVE_TYPES.has(type) };
+    }
+
     let baseListener = function (evnt: Event) {
         let listeners = listenerMap.get(evnt.type);
         if (listeners) {
@@ -142,7 +148,7 @@ export namespace Event {
 
         if (!installedListenerTypes.has(type)) {
             installedListenerTypes.add(type);
-            window.addEventListener(type, baseListener, true);
+            window.addEventListener(type, baseListener, captureOpts(type));
         }
 
         let compFunc = typeMap.get(component.getId());
@@ -198,7 +204,7 @@ export namespace Event {
         const bothEmpty = !listenerMap.has(type) && (!subtreeMap || subtreeMap.size === 0);
         if (bothEmpty && installedListenerTypes.has(type)) {
             installedListenerTypes.delete(type);
-            window.removeEventListener(type, baseListener, true);
+            window.removeEventListener(type, baseListener, captureOpts(type));
         }
     }
 
@@ -227,7 +233,7 @@ export namespace Event {
 
         if (!installedListenerTypes.has(type)) {
             installedListenerTypes.add(type);
-            window.addEventListener(type, baseListener, true);
+            window.addEventListener(type, baseListener, captureOpts(type));
         }
 
         let compFunc = typeMap.get(component.getId());
@@ -278,7 +284,7 @@ export namespace Event {
         const bothEmpty = (!exactMap || exactMap.size === 0) && !subtreeListenerMap.has(type);
         if (bothEmpty && installedListenerTypes.has(type)) {
             installedListenerTypes.delete(type);
-            window.removeEventListener(type, baseListener, true);
+            window.removeEventListener(type, baseListener, captureOpts(type));
         }
     }
 
@@ -304,7 +310,7 @@ export namespace Event {
             typeMap = new Map<String, CompFunc>();
             viewportListenerMap.set(type, typeMap);
 
-            window.addEventListener(type, baseViewportListener, true);
+            window.addEventListener(type, baseViewportListener, captureOpts(type));
         }
 
         let compFunc = typeMap.get(component.getId());
@@ -354,7 +360,7 @@ export namespace Event {
 
         if (typeMap.size == 0) {
             viewportListenerMap.delete(type);
-            window.removeEventListener(type, baseViewportListener, true);
+            window.removeEventListener(type, baseViewportListener, captureOpts(type));
         }
     }
 
