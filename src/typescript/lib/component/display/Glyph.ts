@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { CSS } from "~/core/CSS.js";
 import { callable } from "~/core/Callable.js";
 import {
     ensureGlyphSprite,
@@ -12,6 +14,99 @@ import {
     registerGlyph,
     unregisterGlyph,
 } from "~/component/display/Glyphs.js";
+
+/**
+ * Named animation kinds supported by {@link Glyph.setAnimated}.
+ *
+ * - `spin` — continuous 360 degree rotate. Loading and refresh affordances.
+ * - `pulse` — 8-step rotate. Mechanical, faux-loading tick.
+ * - `beat` — transform-scale pulse. Notification dots and attention nudges.
+ *
+ * Mirrors FontAwesome's `fa-spin` / `fa-pulse` / `fa-beat` vocabulary.
+ *
+ * @category Components
+ */
+export type GlyphAnimation = "spin" | "pulse" | "beat";
+
+/**
+ * CSS class prefix shared by all three animation rules. The full class name
+ * is `ts-ui-glyph-<kind>` (e.g. `ts-ui-glyph-spin`).
+ */
+const CLASS_PREFIX = "ts-ui-glyph-";
+
+/**
+ * Registry of `WeakRef<Glyph>` for currently-animated instances. A single
+ * module-level `matchMedia` listener walks this set on OS preference changes
+ * and re-applies the class to match. `WeakRef` lets the GC collect unrooted
+ * glyphs without an explicit deregister-on-disposal step.
+ */
+const _animatedRefs: Set<WeakRef<Glyph>> = new Set();
+
+let _keyframesInjected = false;
+
+/**
+ * Injects the three `@keyframes` blocks and matching class rules on first
+ * use. Idempotent — guarded by the module-level `_keyframesInjected` flag.
+ */
+function ensureGlyphKeyframes(): void {
+    if (_keyframesInjected) {
+        return;
+    }
+
+    _keyframesInjected = true;
+
+    CSS.ensureKeyframes("ts-ui-glyph-spin",
+        "from { transform: rotate(0deg); } to { transform: rotate(360deg); }");
+
+    CSS.ensureKeyframes("ts-ui-glyph-pulse",
+        "0%, 12.5%   { transform: rotate(0deg); }   " +
+        "12.5%, 25%  { transform: rotate(45deg); }  " +
+        "25%, 37.5%  { transform: rotate(90deg); }  " +
+        "37.5%, 50%  { transform: rotate(135deg); } " +
+        "50%, 62.5%  { transform: rotate(180deg); } " +
+        "62.5%, 75%  { transform: rotate(225deg); } " +
+        "75%, 87.5%  { transform: rotate(270deg); } " +
+        "87.5%, 100% { transform: rotate(315deg); }");
+
+    CSS.ensureKeyframes("ts-ui-glyph-beat",
+        "0%, 90% { transform: scale(1); } 45% { transform: scale(1.25); }");
+
+    const spinRule = CSS.createClassRule(CLASS_PREFIX + "spin");
+    if (spinRule) {
+        spinRule.style.cssText =
+            "animation: ts-ui-glyph-spin var(--ts-ui-glyph-spin-duration, 2000ms) linear infinite;";
+    }
+
+    const pulseRule = CSS.createClassRule(CLASS_PREFIX + "pulse");
+    if (pulseRule) {
+        pulseRule.style.cssText =
+            "animation: ts-ui-glyph-pulse var(--ts-ui-glyph-pulse-duration, 1000ms) steps(8) infinite;";
+    }
+
+    const beatRule = CSS.createClassRule(CLASS_PREFIX + "beat");
+    if (beatRule) {
+        beatRule.style.cssText =
+            "animation: ts-ui-glyph-beat var(--ts-ui-glyph-beat-duration, 1000ms) ease-in-out infinite;";
+    }
+}
+
+/**
+ * Module-level listener that re-evaluates every animated glyph when the OS
+ * `prefers-reduced-motion` preference flips. Dead `WeakRef`s are pruned.
+ */
+if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+    window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", (): void => {
+        for (const ref of Array.from(_animatedRefs)) {
+            const glyph = ref.deref();
+            if (!glyph) {
+                _animatedRefs.delete(ref);
+                continue;
+            }
+
+            glyph._syncReducedMotion();
+        }
+    });
+}
 
 /**
  * Construction-time options for {@link Glyph}.
@@ -33,6 +128,18 @@ export interface GlyphOptions extends ComponentOptions {
      * unset.
      */
     textAlign?: string;
+
+    /**
+     * Optional animation kind to play on this glyph from construction.
+     */
+    animation?: GlyphAnimation;
+
+    /**
+     * Optional override (ms) for the active animation's duration. Wins over
+     * the theme-token default while non-zero. Ignored when `animation` is
+     * unset.
+     */
+    animationDuration?: number;
 }
 
 /**
@@ -78,8 +185,11 @@ const _defaultGlyphOptions: Partial<GlyphOptions> = {
  */
 class Glyph extends Component<GlyphOptions> {
 
-    private _name: string;
-    private _def:  GlyphDef;
+    private _name:                   string;
+    private _def:                    GlyphDef;
+    declare private _glyphAnimation:         GlyphAnimation | null;
+    declare private _glyphAnimationDuration: number;
+    declare private _animatedRef:            WeakRef<Glyph> | null;
 
     /**
      * Registers one or more glyph definitions so they can be instantiated by
@@ -226,6 +336,160 @@ class Glyph extends Component<GlyphOptions> {
     }
 
     /**
+     * Returns the currently-playing animation kind, or `null` when none is
+     * active.
+     *
+     * @returns The active {@link GlyphAnimation}, or `null`.
+     */
+    getAnimated(): GlyphAnimation | null {
+        return this._glyphAnimation;
+    }
+
+    /**
+     * Starts the named animation, or stops the current one when `kind` is
+     * `null`. No-op when the requested kind already matches the current one.
+     *
+     * @param kind - A {@link GlyphAnimation} value or `null` to stop.
+     * @returns This Glyph, for method chaining.
+     *
+     * @remarks
+     * Adds the corresponding `ts-ui-glyph-<kind>` class to the root element.
+     * Honours [`Animation.isReducedMotion`](/api/core/namespaces/Animation/functions/isReducedMotion):
+     * when reduced-motion is on, the class is not mounted but the requested
+     * kind is cached and a module-level listener re-applies it should the OS
+     * preference flip back. While motion is active, `will-change: transform`
+     * is set via [`Component.setWillChange`](/api/core/classes/Component#setwillchange);
+     * cleared when motion stops.
+     *
+     * Differs from the inherited `Component.setAnimation(value: string)`:
+     * this is a typed-enum surface that toggles a pre-registered class rule;
+     * the inherited setter accepts a raw CSS shorthand and writes a
+     * per-component `#id { animation: … }` rule.
+     *
+     * @example
+     * ```typescript
+     * const g = new Glyph("xmark");
+     * g.setAnimated("spin");
+     * g.setAnimated(null); // stop
+     * ```
+     */
+    setAnimated(kind: GlyphAnimation | null): this {
+        if (this._glyphAnimation === kind) {
+            return this;
+        }
+
+        const prev = this._glyphAnimation;
+        this._glyphAnimation = kind;
+
+        const el = this.getElement();
+
+        if (el && prev) {
+            el.classList.remove(CLASS_PREFIX + prev);
+        }
+
+        if (kind === null) {
+            this.setElementStyle("animationDuration", null);
+            this.setWillChange(null);
+
+            if (this._animatedRef) {
+                _animatedRefs.delete(this._animatedRef);
+                this._animatedRef = null;
+            }
+
+            return this;
+        }
+
+        ensureGlyphKeyframes();
+
+        if (!this._animatedRef) {
+            this._animatedRef = new WeakRef(this);
+            _animatedRefs.add(this._animatedRef);
+        }
+
+        if (!Animation.isReducedMotion()) {
+            if (el) {
+                el.classList.add(CLASS_PREFIX + kind);
+            }
+
+            this.setWillChange("transform");
+        }
+
+        if (this._glyphAnimationDuration > 0) {
+            this.setElementStyle("animationDuration", this._glyphAnimationDuration + "ms");
+        }
+
+        return this;
+    }
+
+    /**
+     * Stops the current animation. Equivalent to `setAnimated(null)`.
+     *
+     * @returns This Glyph, for method chaining.
+     */
+    clearAnimated(): this {
+        return this.setAnimated(null);
+    }
+
+    /**
+     * Returns the override duration (ms) set via {@link setAnimationDuration},
+     * or `0` when no override is active. Read the active CSS custom property
+     * (`--ts-ui-glyph-<kind>-duration`) for the live value when no override
+     * is set.
+     *
+     * @returns The override duration in ms, or `0`.
+     */
+    getAnimationDuration(): number {
+        return this._glyphAnimationDuration;
+    }
+
+    /**
+     * Overrides the active animation's duration. Pass `0` to clear the
+     * override and fall back to the theme-token default. No visible effect
+     * when no animation is currently set, but the override is cached and
+     * will apply on the next {@link setAnimated} call.
+     *
+     * @param ms - Duration in milliseconds, or `0` to clear.
+     * @returns This Glyph, for method chaining.
+     */
+    setAnimationDuration(ms: number): this {
+        this._glyphAnimationDuration = ms;
+
+        if (this._glyphAnimation !== null && !Animation.isReducedMotion()) {
+            this.setElementStyle("animationDuration", ms > 0 ? ms + "ms" : null);
+        }
+
+        return this;
+    }
+
+    /**
+     * Re-applies (or removes) the animation class to match the current
+     * `prefers-reduced-motion` state. Called by the module-level listener
+     * when the OS preference flips. Internal; not part of the public API.
+     */
+    _syncReducedMotion(): void {
+        const kind = this._glyphAnimation;
+        if (!kind) {
+            return;
+        }
+
+        const element  = this.getElement(true);
+        const className = CLASS_PREFIX + kind;
+
+        if (Animation.isReducedMotion()) {
+            element.classList.remove(className);
+            this.setWillChange(null);
+            this.setElementStyle("animationDuration", null);
+        } else {
+            element.classList.add(className);
+            this.setWillChange("transform");
+
+            if (this._glyphAnimationDuration > 0) {
+                this.setElementStyle("animationDuration", this._glyphAnimationDuration + "ms");
+            }
+        }
+    }
+
+    /**
      * Applies a {@link GlyphOptions} bag by dispatching each present field to
      * its corresponding setter.
      *
@@ -241,6 +505,14 @@ class Glyph extends Component<GlyphOptions> {
 
         if (options.textAlign !== undefined) {
             this.setTextAlign(options.textAlign);
+        }
+
+        if (options.animationDuration !== undefined) {
+            this.setAnimationDuration(options.animationDuration);
+        }
+
+        if (options.animation !== undefined) {
+            this.setAnimated(options.animation);
         }
 
         return this;
@@ -286,6 +558,10 @@ class Glyph extends Component<GlyphOptions> {
 
         if (this._def.kind === "char") {
             element.textContent = this._def.char;
+        }
+
+        if (this._glyphAnimation && !Animation.isReducedMotion()) {
+            element.classList.add(CLASS_PREFIX + this._glyphAnimation);
         }
 
         return element;

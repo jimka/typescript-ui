@@ -42,6 +42,32 @@ The following components consume the registry by name:
 - [`IconText`](/api/component/display/classes/IconText) / [`IconLabel`](/api/component/display/classes/IconLabel) — small composites pairing a glyph with a [`Text`](/api/component/input/classes/Text) or `<label>`.
 - Table cells via the `glyph` field type — see [`GlyphCell`](/api/component/table/classes/GlyphCell) and [`GlyphRenderer`](/api/component/table/classes/GlyphRenderer).
 
+## Animation
+
+Glyphs can play one of three named, continuous animations — `spin`, `pulse`, `beat` — by toggling a CSS class on the root element. The names mirror FontAwesome's `fa-spin` / `fa-pulse` / `fa-beat` vocabulary.
+
+```typescript
+const g = Glyph('xmark');
+g.setAnimated('spin');   // 360 degree rotate
+g.setAnimated('pulse');  // 8-step rotate (faux-loading tick)
+g.setAnimated('beat');   // transform-scale pulse
+g.clearAnimated();       // stop
+```
+
+| Kind | Use | Default duration |
+| --- | --- | --- |
+| `spin` | Loading and refresh affordances | `--ts-ui-glyph-spin-duration` (2000ms) |
+| `pulse` | Mechanical faux-loading tick | `--ts-ui-glyph-pulse-duration` (1000ms) |
+| `beat` | Notification dots, attention nudges | `--ts-ui-glyph-beat-duration` (1000ms) |
+
+The duration is theme-token-driven — set the CSS custom property to retune the active speed without touching call sites. Per-instance overrides are available via `setAnimationDuration(ms)`; pass `0` to clear and fall back to the token.
+
+Animation is presentation state, not registry state — the same `xmark` glyph can spin in one panel and stay static in another without two registry entries.
+
+Reduced-motion is honoured: when the OS reports `prefers-reduced-motion: reduce`, `setAnimated(kind)` caches the request but does not mount the class. A module-level listener re-applies (or removes) the class live should the OS preference flip. While motion is active, `will-change: transform` is set; it is cleared when motion stops.
+
+`setAnimated` coexists with the inherited `Component.setAnimation(value: string)` raw shorthand setter; the two APIs are independent. Prefer `setAnimated` for the three named kinds.
+
 ## Notes
 
 - The underlying root tag (`<svg>` or `<span>`) is decided once at construction from the registry entry's `kind`. To swap glyph, discard the instance and create a new one.
