@@ -5,6 +5,9 @@ import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { CSS } from "~/core/CSS.js";
 import { Tooltip } from "~/core/Tooltip.js";
+import { ThemeManager } from "~/core/Theme.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -30,14 +33,17 @@ class HeaderCell extends DefaultCell {
     private _tooltipText: string = '';
     private _priorityBadge: HTMLSpanElement | null = null;
     private _sortState: { state: 'asc' | 'desc', priority: number | null } | null = null;
+    private _headerGlyph: string | null = null;
+    private _headerGlyphInstance: Glyph | null = null;
 
     /**
      * Creates a header cell with bold text and wires up the sort click listener.
      *
      * @param text - The column title to display.
      * @param fieldName - The model field name used when triggering sort callbacks.
+     * @param headerGlyph - Optional registry glyph name mounted to the left of the text.
      */
-    constructor(text: String, fieldName: string) {
+    constructor(text: String, fieldName: string, headerGlyph?: string | null) {
         super("th");
 
         this.getAria().setRole("columnheader");
@@ -45,6 +51,7 @@ class HeaderCell extends DefaultCell {
 
         this._text = text;
         this._fieldName = fieldName;
+        this._headerGlyph = headerGlyph ?? null;
 
         let renderer = this.getRenderer();
         renderer.getText().setFontSize("--ts-ui-table-header-font-size");
@@ -107,7 +114,82 @@ class HeaderCell extends DefaultCell {
             Tooltip.attachToElement(el, this._tooltipText);
         }
 
+        if (this._headerGlyph) {
+            this._mountHeaderGlyph(el);
+        }
+
         return this;
+    }
+
+    /**
+     * Returns the currently mounted header glyph registry name, or `null` if none.
+     *
+     * @returns The glyph registry name, or `null`.
+     */
+    getHeaderGlyph(): string | null {
+        return this._headerGlyph;
+    }
+
+    /**
+     * Mounts (or replaces) the leading header glyph. Pass `null` to remove it.
+     *
+     * The glyph is absolutely positioned at the cell's left edge using the
+     * `--ts-ui-table-header-glyph-gap` / `--ts-ui-table-header-glyph-color`
+     * tokens. The text renderer's left inset is shifted right to clear the
+     * glyph when one is mounted, and restored to the theme default when cleared.
+     *
+     * @param name - A registered glyph name, or `null` to remove the glyph.
+     * @returns This cell, for method chaining.
+     */
+    setHeaderGlyph(name: string | null): this {
+        this._headerGlyph = name;
+        this._mountHeaderGlyph(this.getElement());
+
+        return this;
+    }
+
+    /**
+     * Mounts or replaces the leading glyph against the given host element.
+     * Called from {@link setHeaderGlyph} (post-init via cached element) and
+     * from {@link init} (during render via the element parameter, before
+     * `Component._element` has been cached).
+     *
+     * @param el - The owning `<th>` element, or undefined when the cell is
+     *   still pre-render. When undefined the renderer insets are reset but
+     *   no glyph is mounted; the next render's {@link init} call will mount
+     *   the glyph using its element parameter.
+     */
+    private _mountHeaderGlyph(el: HTMLElement | undefined): void {
+        if (this._headerGlyphInstance) {
+            this._headerGlyphInstance.getElement()?.remove();
+            this._headerGlyphInstance = null;
+        }
+
+        const themePad = ThemeManager.getTheme().table.cell.padding;
+        const name     = this._headerGlyph;
+
+        if (!name || !el) {
+            this.getRenderer().setInsets(new Insets(0, themePad, 0, themePad));
+
+            return;
+        }
+
+        const glyph = new Glyph(name);
+        const gEl   = glyph.getElement(true);
+
+        gEl.style.cssText =
+            'position:absolute;left:var(--ts-ui-table-header-glyph-gap,4px);' +
+            'top:50%;transform:translateY(-50%);' +
+            'width:16px;height:16px;' +
+            'color:var(--ts-ui-table-header-glyph-color,currentColor);' +
+            'pointer-events:none;';
+
+        el.appendChild(gEl);
+        this._headerGlyphInstance = glyph;
+
+        // 16 = Glyph default width; 4 = default gap (matches token default).
+        const offset = 16 + 4 + themePad;
+        this.getRenderer().setInsets(new Insets(0, themePad, 0, offset));
     }
 
     /**

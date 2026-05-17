@@ -16,10 +16,11 @@ import { ColumnConfig, ColumnSpec } from "~/component/table/ColumnConfig.js";
  */
 export class Column {
 
-    private _field    : Field;
-    private _minWidth : number | undefined;
-    private _maxWidth : number | undefined;
-    private _hidden   : boolean;
+    private _field       : Field;
+    private _minWidth    : number | undefined;
+    private _maxWidth    : number | undefined;
+    private _hidden      : boolean;
+    private _headerGlyph : string | null;
 
     /**
      * Constructs a Column from a field and an optional presentation config.
@@ -28,10 +29,11 @@ export class Column {
      * @param config - Optional config; all constraint properties default to absent / false.
      */
     constructor(field: Field, config?: ColumnConfig) {
-        this._field    = field;
-        this._minWidth = config?.minWidth;
-        this._maxWidth = config?.maxWidth;
-        this._hidden   = config?.hidden ?? false;
+        this._field       = field;
+        this._minWidth    = config?.minWidth;
+        this._maxWidth    = config?.maxWidth;
+        this._hidden      = config?.hidden ?? false;
+        this._headerGlyph = config?.headerGlyph ?? null;
     }
 
     /**
@@ -68,6 +70,38 @@ export class Column {
      */
     isInitiallyHidden(): boolean {
         return this._hidden;
+    }
+
+    /**
+     * Returns the registry glyph name shown to the left of this column's header text.
+     *
+     * @returns The glyph registry name, or `null` if no header glyph is set.
+     */
+    getHeaderGlyph(): string | null {
+        return this._headerGlyph;
+    }
+
+    /**
+     * Sets the registry glyph name shown to the left of this column's header text.
+     *
+     * Pass `null` (or call {@link Column.clearHeaderGlyph}) to remove the glyph.
+     *
+     * @param name - A registered glyph name, or `null` to remove.
+     * @returns This column, for method chaining.
+     */
+    setHeaderGlyph(name: string | null): this {
+        this._headerGlyph = name;
+
+        return this;
+    }
+
+    /**
+     * Clears the header glyph for this column. Equivalent to `setHeaderGlyph(null)`.
+     *
+     * @returns This column, for method chaining.
+     */
+    clearHeaderGlyph(): this {
+        return this.setHeaderGlyph(null);
     }
 
     /**
