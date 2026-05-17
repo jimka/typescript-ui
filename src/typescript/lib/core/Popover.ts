@@ -4,7 +4,7 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
-import { _Panel, PanelOptions } from "~/core/Panel.js";
+import { Panel, PanelOptions } from "~/core/Panel.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Position } from "~/primitive/Position.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -117,7 +117,7 @@ export interface PopoverOptions extends PanelOptions {
  *
  * @category Core
  */
-class Popover extends _Panel<PopoverOptions> {
+class Popover extends Panel<PopoverOptions> {
 
     private _placement:         PopoverPlacement = "auto";
     private _resolvedPlacement: PopoverPlacement = "bottom";
