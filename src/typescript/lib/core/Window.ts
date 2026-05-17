@@ -75,13 +75,13 @@ class Window extends Panel<WindowOptions> {
         }
 
         if (Window.activeWindow) {
-            Window.activeWindow.header.setActive(false);
+            Window.activeWindow._header.setActive(false);
             Window.activeWindow = null;
         }
     };
 
-    private header: WindowHeader;
-    private borderComponents: {
+    private _header: WindowHeader;
+    private _borderComponents: {
         west: WindowBorder,
         northwest: WindowBorder,
         north: WindowBorder,
@@ -92,20 +92,20 @@ class Window extends Panel<WindowOptions> {
         southwest: WindowBorder,
     };
 
-    private animationFrameId: number | null = null;
-    private pendingMouseDX: number = 0;
-    private pendingMouseDY: number = 0;
-    private pendingBorder: WindowBorder | null = null;
-    private resizeFps: number = 60;
-    private lastFlushTime: number = 0;
+    private _animationFrameId: number | null = null;
+    private _pendingMouseDX: number = 0;
+    private _pendingMouseDY: number = 0;
+    private _pendingBorder: WindowBorder | null = null;
+    private _resizeFps: number = 60;
+    private _lastFlushTime: number = 0;
     private _dragStartLeft: number = 0;
     private _dragStartTop: number = 0;
     private _dragDX: number = 0;
     private _dragDY: number = 0;
-    private contentFactory: (() => Component) | null = null;
-    private contentReadyCallback: ((component: Component) => void) | null = null;
-    private readonly boundOnDrag: (e: MouseEvent) => void = (e: MouseEvent) => this.onDrag(e);
-    private readonly boundOnMouseUp: () => void = () => this.onMouseUp();
+    private _contentFactory: (() => Component) | null = null;
+    private _contentReadyCallback: ((component: Component) => void) | null = null;
+    private readonly _boundOnDrag: (e: MouseEvent) => void = (e: MouseEvent) => this.onDrag(e);
+    private readonly _boundOnMouseUp: () => void = () => this.onMouseUp();
 
     constructor(headerText: string, options?: WindowOptions) {
         // Merge defaults → consumer options. `headerText`, `glyph`,
@@ -117,7 +117,7 @@ class Window extends Panel<WindowOptions> {
 
         this.setLayoutManager(new Border());
 
-        this.borderComponents = {
+        this._borderComponents = {
             west: new WindowBorder(Direction.WEST),
             northwest: new WindowBorder(Direction.NORTHWEST),
             north: new WindowBorder(Direction.NORTH),
@@ -128,14 +128,14 @@ class Window extends Panel<WindowOptions> {
             southwest: new WindowBorder(Direction.SOUTHWEST),
         };
 
-        this.borderComponents.west.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this.borderComponents.northwest.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this.borderComponents.north.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this.borderComponents.northeast.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this.borderComponents.east.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this.borderComponents.southeast.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this.borderComponents.south.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this.borderComponents.southwest.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.west.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.northwest.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.north.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.northeast.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.east.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.southeast.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.south.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.southwest.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
 
         // Build the header with the effective text up front (consumer's
         // `options.headerText` from the cascade-written `_options`, falling
@@ -144,25 +144,25 @@ class Window extends Panel<WindowOptions> {
         // already carries the right text — re-setting it would write the
         // same value twice.
         const effectiveHeaderText = this._options.headerText ?? headerText ?? "Window";
-        this.header = new WindowHeader(effectiveHeaderText);
-        this.addComponent(this.header, {
+        this._header = new WindowHeader(effectiveHeaderText);
+        this.addComponent(this._header, {
             placement: Placement.NORTH,
             ignoreParentInsets: true
         });
-        this.header.addExitButtonListener(() => this.onExitAction());
+        this._header.addExitButtonListener(() => this.onExitAction());
 
         this.setVisible(false);
         // Resizable — size containment unsafe; layout containment scopes reflow to the window subtree.
         this.setContain("layout");
 
-        Event.addListener(this.header, "mousedown", () => this.onMouseDown());
+        Event.addListener(this._header, "mousedown", () => this.onMouseDown());
         Event.addSubtreeListener(this, "mousedown", () => this.bringToFront());
 
         // Late-built state: glyph / contentFactory fields were written pure
         // to `_options` by the super-time cascade. Dispatch them now that
         // `this.header` and the `contentFactory` field exist.
         if (this._options.glyph !== undefined) {
-            this.header.setGlyph(this._options.glyph);
+            this._header.setGlyph(this._options.glyph);
         }
         if (this._options.contentFactory !== undefined) {
             this.setContentFactory(this._options.contentFactory, this._options.onReady);
@@ -203,7 +203,7 @@ class Window extends Panel<WindowOptions> {
      *          button, title text, and optional title-icon slot.
      */
     getHeader(): WindowHeader {
-        return this.header;
+        return this._header;
     }
 
     /**
@@ -239,11 +239,11 @@ class Window extends Panel<WindowOptions> {
             properties: ["opacity", "transform"],
         });
 
-        if (this.contentFactory) {
-            const factory  = this.contentFactory;
-            const onReady  = this.contentReadyCallback;
-            this.contentFactory       = null;
-            this.contentReadyCallback = null;
+        if (this._contentFactory) {
+            const factory  = this._contentFactory;
+            const onReady  = this._contentReadyCallback;
+            this._contentFactory       = null;
+            this._contentReadyCallback = null;
 
             // The 24 px diameter matches `TablePanel`'s store-loading
             // spinner so a slow window-content build and a slow data load
@@ -304,8 +304,8 @@ class Window extends Panel<WindowOptions> {
         factory: () => Component,
         onReady?: (component: Component) => void
     ): this {
-        this.contentFactory       = factory;
-        this.contentReadyCallback = onReady ?? null;
+        this._contentFactory       = factory;
+        this._contentReadyCallback = onReady ?? null;
 
         return this;
     }
@@ -319,28 +319,28 @@ class Window extends Panel<WindowOptions> {
         const prev = Window.activeWindow;
 
         if (prev && prev !== this) {
-            prev.header.setActive(false);
+            prev._header.setActive(false);
         }
 
         Window.activeWindow = this;
         this.setZIndex(++Window.zIndexCounter);
-        this.header.setActive(true);
+        this._header.setActive(true);
     }
 
     /**
      * Hides the window and destroys its DOM element when the close button is clicked.
      */
     onExitAction(): void {
-        if (this.animationFrameId !== null) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
+        if (this._animationFrameId !== null) {
+            cancelAnimationFrame(this._animationFrameId);
+            this._animationFrameId = null;
         }
 
         // Drop any pending factory / onReady closure so its captured
         // references are free for GC if the window is closed before show()
         // ran the factory.
-        this.contentFactory       = null;
-        this.contentReadyCallback = null;
+        this._contentFactory       = null;
+        this._contentReadyCallback = null;
 
         if (Window.activeWindow === this) {
             Window.activeWindow = null;
@@ -377,11 +377,11 @@ class Window extends Panel<WindowOptions> {
      * @param text - The new header label text.
      */
     setHeaderText(text: string) : this {
-        if (!this.header) {
+        if (!this._header) {
             throw new Error("Window does not have a header.");
         }
 
-        this.header.getText().setText(text);
+        this._header.getText().setText(text);
 
         return this;
     }
@@ -405,8 +405,8 @@ class Window extends Panel<WindowOptions> {
         // Event.baseViewportListener stops mouseup propagation at window capture phase
         // whenever any viewport listener for the type exists (e.g. SpinButton registers
         // one at construction), which would prevent document-level handlers from firing.
-        Event.addViewportListener(this, 'mouseup', this.boundOnMouseUp);
-        Event.addViewportListener(this, 'mousemove', this.boundOnDrag);
+        Event.addViewportListener(this, 'mouseup', this._boundOnMouseUp);
+        Event.addViewportListener(this, 'mousemove', this._boundOnDrag);
     }
 
     /**
@@ -418,12 +418,12 @@ class Window extends Panel<WindowOptions> {
     onResize(border: WindowBorder, e: MouseEvent) {
         e.preventDefault();
 
-        this.pendingMouseDX += e.movementX;
-        this.pendingMouseDY += e.movementY;
-        this.pendingBorder = border;
+        this._pendingMouseDX += e.movementX;
+        this._pendingMouseDY += e.movementY;
+        this._pendingBorder = border;
 
-        if (this.animationFrameId === null) {
-            this.animationFrameId = requestAnimationFrame((ts) => this.flushResize(ts));
+        if (this._animationFrameId === null) {
+            this._animationFrameId = requestAnimationFrame((ts) => this.flushResize(ts));
         }
     }
 
@@ -433,27 +433,27 @@ class Window extends Panel<WindowOptions> {
      * @param fps - Frames per second cap (e.g. 30 or 20). Defaults to 60.
      */
     setResizeFps(fps: number) : this {
-        this.resizeFps = fps;
+        this._resizeFps = fps;
 
         return this;
     }
 
     private flushResize(timestamp: number) {
-        if (timestamp - this.lastFlushTime < 1000 / this.resizeFps) {
-            this.animationFrameId = requestAnimationFrame((ts) => this.flushResize(ts));
+        if (timestamp - this._lastFlushTime < 1000 / this._resizeFps) {
+            this._animationFrameId = requestAnimationFrame((ts) => this.flushResize(ts));
             return;
         }
 
-        this.lastFlushTime = timestamp;
-        this.animationFrameId = null;
+        this._lastFlushTime = timestamp;
+        this._animationFrameId = null;
 
-        const dx = this.pendingMouseDX;
-        const dy = this.pendingMouseDY;
-        const border = this.pendingBorder;
+        const dx = this._pendingMouseDX;
+        const dy = this._pendingMouseDY;
+        const border = this._pendingBorder;
 
-        this.pendingMouseDX = 0;
-        this.pendingMouseDY = 0;
-        this.pendingBorder = null;
+        this._pendingMouseDX = 0;
+        this._pendingMouseDY = 0;
+        this._pendingBorder = null;
 
         if (!border) {
             return;
@@ -536,8 +536,8 @@ class Window extends Panel<WindowOptions> {
         this.setTranslate(0, 0);
         this.setWillChange(null);
 
-        Event.removeViewportListener(this, 'mouseup', this.boundOnMouseUp);
-        Event.removeViewportListener(this, 'mousemove', this.boundOnDrag);
+        Event.removeViewportListener(this, 'mouseup', this._boundOnMouseUp);
+        Event.removeViewportListener(this, 'mousemove', this._boundOnDrag);
     }
 
     /**
@@ -562,63 +562,63 @@ class Window extends Panel<WindowOptions> {
             throw new Error("Component doesn't seem to be rendered.");
         }
 
-        this.borderComponents.west.setAutoCommitStyle(false);
-        this.borderComponents.northwest.setAutoCommitStyle(false);
-        this.borderComponents.north.setAutoCommitStyle(false);
-        this.borderComponents.northeast.setAutoCommitStyle(false);
-        this.borderComponents.east.setAutoCommitStyle(false);
-        this.borderComponents.southeast.setAutoCommitStyle(false);
-        this.borderComponents.south.setAutoCommitStyle(false);
-        this.borderComponents.southwest.setAutoCommitStyle(false);
+        this._borderComponents.west.setAutoCommitStyle(false);
+        this._borderComponents.northwest.setAutoCommitStyle(false);
+        this._borderComponents.north.setAutoCommitStyle(false);
+        this._borderComponents.northeast.setAutoCommitStyle(false);
+        this._borderComponents.east.setAutoCommitStyle(false);
+        this._borderComponents.southeast.setAutoCommitStyle(false);
+        this._borderComponents.south.setAutoCommitStyle(false);
+        this._borderComponents.southwest.setAutoCommitStyle(false);
 
-        this.borderComponents.west.setX(0);
-        this.borderComponents.west.setY(insets.getTop());
-        this.borderComponents.west.setWidth(insets.getLeft());
-        this.borderComponents.west.setHeight(innerSize.height);
+        this._borderComponents.west.setX(0);
+        this._borderComponents.west.setY(insets.getTop());
+        this._borderComponents.west.setWidth(insets.getLeft());
+        this._borderComponents.west.setHeight(innerSize.height);
 
-        this.borderComponents.northwest.setX(0);
-        this.borderComponents.northwest.setY(0);
-        this.borderComponents.northwest.setWidth(insets.getLeft());
-        this.borderComponents.northwest.setHeight(insets.getTop());
+        this._borderComponents.northwest.setX(0);
+        this._borderComponents.northwest.setY(0);
+        this._borderComponents.northwest.setWidth(insets.getLeft());
+        this._borderComponents.northwest.setHeight(insets.getTop());
 
-        this.borderComponents.north.setX(insets.getLeft());
-        this.borderComponents.north.setY(0);
-        this.borderComponents.north.setWidth(innerSize.width);
-        this.borderComponents.north.setHeight(insets.getTop());
+        this._borderComponents.north.setX(insets.getLeft());
+        this._borderComponents.north.setY(0);
+        this._borderComponents.north.setWidth(innerSize.width);
+        this._borderComponents.north.setHeight(insets.getTop());
 
-        this.borderComponents.northeast.setX(size.width - horisontallBorderWidth);
-        this.borderComponents.northeast.setY(0);
-        this.borderComponents.northeast.setWidth(insets.getRight());
-        this.borderComponents.northeast.setHeight(insets.getTop());
+        this._borderComponents.northeast.setX(size.width - horisontallBorderWidth);
+        this._borderComponents.northeast.setY(0);
+        this._borderComponents.northeast.setWidth(insets.getRight());
+        this._borderComponents.northeast.setHeight(insets.getTop());
 
-        this.borderComponents.east.setX(size.width - horisontallBorderWidth);
-        this.borderComponents.east.setY(insets.getTop());
-        this.borderComponents.east.setWidth(insets.getRight());
-        this.borderComponents.east.setHeight(innerSize.height);
+        this._borderComponents.east.setX(size.width - horisontallBorderWidth);
+        this._borderComponents.east.setY(insets.getTop());
+        this._borderComponents.east.setWidth(insets.getRight());
+        this._borderComponents.east.setHeight(innerSize.height);
 
-        this.borderComponents.southeast.setX(size.width - horisontallBorderWidth);
-        this.borderComponents.southeast.setY(size.height - verticalBorderWidth);
-        this.borderComponents.southeast.setWidth(insets.getRight());
-        this.borderComponents.southeast.setHeight(insets.getBottom());
+        this._borderComponents.southeast.setX(size.width - horisontallBorderWidth);
+        this._borderComponents.southeast.setY(size.height - verticalBorderWidth);
+        this._borderComponents.southeast.setWidth(insets.getRight());
+        this._borderComponents.southeast.setHeight(insets.getBottom());
 
-        this.borderComponents.south.setX(insets.getLeft());
-        this.borderComponents.south.setY(size.height - verticalBorderWidth);
-        this.borderComponents.south.setWidth(innerSize.width);
-        this.borderComponents.south.setHeight(insets.getRight());
+        this._borderComponents.south.setX(insets.getLeft());
+        this._borderComponents.south.setY(size.height - verticalBorderWidth);
+        this._borderComponents.south.setWidth(innerSize.width);
+        this._borderComponents.south.setHeight(insets.getRight());
 
-        this.borderComponents.southwest.setX(0);
-        this.borderComponents.southwest.setY(size.height - verticalBorderWidth);
-        this.borderComponents.southwest.setWidth(insets.getLeft());
-        this.borderComponents.southwest.setHeight(insets.getBottom());
+        this._borderComponents.southwest.setX(0);
+        this._borderComponents.southwest.setY(size.height - verticalBorderWidth);
+        this._borderComponents.southwest.setWidth(insets.getLeft());
+        this._borderComponents.southwest.setHeight(insets.getBottom());
 
-        this.borderComponents.west.setAutoCommitStyle(true);
-        this.borderComponents.northwest.setAutoCommitStyle(true);
-        this.borderComponents.north.setAutoCommitStyle(true);
-        this.borderComponents.northeast.setAutoCommitStyle(true);
-        this.borderComponents.east.setAutoCommitStyle(true);
-        this.borderComponents.southeast.setAutoCommitStyle(true);
-        this.borderComponents.south.setAutoCommitStyle(true);
-        this.borderComponents.southwest.setAutoCommitStyle(true);
+        this._borderComponents.west.setAutoCommitStyle(true);
+        this._borderComponents.northwest.setAutoCommitStyle(true);
+        this._borderComponents.north.setAutoCommitStyle(true);
+        this._borderComponents.northeast.setAutoCommitStyle(true);
+        this._borderComponents.east.setAutoCommitStyle(true);
+        this._borderComponents.southeast.setAutoCommitStyle(true);
+        this._borderComponents.south.setAutoCommitStyle(true);
+        this._borderComponents.southwest.setAutoCommitStyle(true);
 
         return this;
     }
@@ -631,14 +631,14 @@ class Window extends Panel<WindowOptions> {
     render() {
         let element = super.render();
 
-        element.appendChild(this.borderComponents.west.getElement(true));
-        element.appendChild(this.borderComponents.northwest.getElement(true));
-        element.appendChild(this.borderComponents.north.getElement(true));
-        element.appendChild(this.borderComponents.northeast.getElement(true));
-        element.appendChild(this.borderComponents.east.getElement(true));
-        element.appendChild(this.borderComponents.southeast.getElement(true));
-        element.appendChild(this.borderComponents.south.getElement(true));
-        element.appendChild(this.borderComponents.southwest.getElement(true));
+        element.appendChild(this._borderComponents.west.getElement(true));
+        element.appendChild(this._borderComponents.northwest.getElement(true));
+        element.appendChild(this._borderComponents.north.getElement(true));
+        element.appendChild(this._borderComponents.northeast.getElement(true));
+        element.appendChild(this._borderComponents.east.getElement(true));
+        element.appendChild(this._borderComponents.southeast.getElement(true));
+        element.appendChild(this._borderComponents.south.getElement(true));
+        element.appendChild(this._borderComponents.southwest.getElement(true));
 
         return element;
     }

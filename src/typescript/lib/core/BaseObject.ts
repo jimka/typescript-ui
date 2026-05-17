@@ -10,10 +10,10 @@ import { Util } from "~/core/Util.js"
  */
 export class BaseObject {
 
-    private id: string;
+    private _id: string;
 
     constructor() {
-        this.id = Util.generateUUID();
+        this._id = Util.generateUUID();
     }
 
     /**
@@ -22,7 +22,7 @@ export class BaseObject {
      * @returns The UUID string assigned at construction time.
      */
     getId() {
-        return this.id;
+        return this._id;
     }
 
     /**
@@ -31,7 +31,7 @@ export class BaseObject {
      * @param id - The new identifier string to assign.
      */
     setId(id: string) : this {
-        this.id = id;
+        this._id = id;
 
         return this;
     }
