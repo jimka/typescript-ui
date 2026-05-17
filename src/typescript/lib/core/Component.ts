@@ -194,6 +194,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // queues `element.style.X = ...` writes until `init()` attaches it.
     private styleRule            : StyleRule    = new StyleRule(() => CSS.createComponentRule(this.getId()) as CSSStyleRule);
     private inlineStyle          : InlineStyle  = new InlineStyle();
+    // Subclass-owned state rules (e.g. Button's `:active` / `:hover`,
+    // ToggleButton's `.selected`) keyed by selector suffix and materialised
+    // at first render. Assigned in the constructor body (not via a field
+    // initializer) so the map is in place before subclass field initializers
+    // run and before the `applyOptions` cascade fires — letting cascade-time
+    // setters dedupe through `createStyleRule` regardless of any later slot
+    // clobber on the caller side.
+    private deferredStyleRules!  : Map<string, StyleRule>;
 
     // Tracks the single parent this component belongs to. Exposed read-only via
     // getParentComponent() for structural queries (e.g. FieldDecorator insertion).
@@ -221,8 +229,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `styleRule` stays unmaterialised until the element actually needs to
         // render; the dirty-style path queues writes until then. See
         // `ensureCSSRule`.
-        this.components    = [];
-        this.attributes    = new Map<String, String>();
+        this.components         = [];
+        this.attributes         = new Map<String, String>();
+        this.deferredStyleRules = new Map<string, StyleRule>();
 
         // Constants without ComponentOptions counterpart.
         this.boxSizing     = "border-box";
@@ -368,6 +377,40 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     private ensureCSSRule(): CSSStyleRule {
         return this.styleRule.ensure();
+    }
+
+    /**
+     * Returns the state-specific {@link StyleRule} for the given selector
+     * suffix appended to this component's id (e.g. `":active"`,
+     * `":hover:not(:active)"`, `".selected"`). The first call for a suffix
+     * allocates a new wrapper and registers it for render-time materialisation
+     * via {@link applyStyle}; subsequent calls with the same suffix return the
+     * same wrapper, even across intervening backing-slot resets — so a lazy
+     * getter that loses its cached reference (e.g. to TypeScript class-field
+     * init clobber after super returns) still sees the original wrapper.
+     *
+     * @param selectorSuffix - CSS selector text appended to `#<id>` to form
+     *                         the rule's selector. Must be unique per
+     *                         component within this component's lifetime.
+     *
+     * @returns The `StyleRule` wrapper. Owners should cache it on a backing
+     *          slot for fast subsequent access; the slot is just a cache —
+     *          if it gets cleared, the next call to this method returns the
+     *          same wrapper from the deduping map.
+     *
+     * @remarks Safe to call from a lazy getter on the super-cascade path —
+     * `deferredStyleRules` is initialised in Component's constructor body
+     * before `applyOptions` fires, so cascade-time setters can allocate
+     * through this builder.
+     */
+    protected createStyleRule(selectorSuffix: string): StyleRule {
+        let rule = this.deferredStyleRules.get(selectorSuffix);
+        if (!rule) {
+            rule = new StyleRule(() => CSS.createComponentRule(this.getId() + selectorSuffix) as CSSStyleRule);
+            this.deferredStyleRules.set(selectorSuffix, rule);
+        }
+
+        return rule;
     }
 
     /**
@@ -2283,6 +2326,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         rule.style.margin = "0px 0px 0px 0px";
+
+        // Materialise state-specific rules registered by subclasses (Button's
+        // `:active` / `:hover`, ToggleButton's `.selected`). Each rule's
+        // pending writes flush onto the live `CSSStyleRule` inside `ensure()`,
+        // so the stylesheet picks up the entry on first render rather than on
+        // first setter write during construction.
+        for (const deferredRule of this.deferredStyleRules.values()) {
+            deferredRule.ensure();
+        }
 
         return this;
     }
