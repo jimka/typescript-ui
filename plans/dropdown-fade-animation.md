@@ -10,7 +10,7 @@ The work splits cleanly into two layers:
 1. **Extract** a single `AnimatedDropdown` helper in `core/` that owns the `opacity + translateY` transition, the dismissing flag, the reduced-motion short-circuit, and viewport click-outside hide. `AutoCompleteDropdown` and `Menu` collapse to thin wrappers around it.
 2. **Rewrite** `ComboBox`, `DateField`, and `TimeField` to compose an `AnimatedDropdown` instance instead of relying on the native picker. Each field exposes `setDropdownAnimated()` delegated to the helper.
 
-There is **no `DateTimeField`** in the codebase today (verified: no file matches `DateTimeField*` under `src/`, and the graph report's per-class communities — [`DateField` Community 54, `TimeField` Community 56](../graphify-out/GRAPH_REPORT.md) — do not mention it). The user's reference is aspirational. The plan documents the extension point so when `DateTimeField` lands it gets the animation for free.
+No `DateTimeField` *form field* exists today, but the same native-picker problem appears a second time in the **table cell editors**: [`DateEditor`](../src/typescript/lib/component/table/cell/editor/Date.ts) (`<input type="date">`), [`TimeEditor`](../src/typescript/lib/component/table/cell/editor/Time.ts) (`<input type="time">`), and [`DateTimeEditor`](../src/typescript/lib/component/table/cell/editor/DateTime.ts) (`<input type="datetime-local">`). These editors are **pooled** by [`CellEditorPool`](../src/typescript/lib/component/table/cell/editor/CellEditorPool.ts#L41) — one shared instance per variant key (`"date"`, `"time"`, `"time:seconds"`, `"datetime"`, `"datetime:seconds"`) across an entire table, with `blur`/`keydown` wired once at first acquire. To deliver the fade everywhere the user can pop a temporal picker, the form fields and the cell editors must compose the **same** `AnimatedDropdown` subclasses (`DatePickerDropdown`, `TimePickerDropdown`, `DateTimePickerDropdown`) — otherwise the picker UI is duplicated. A new `DateTimeField` form field is introduced as the canonical owner of `DateTimePickerDropdown` so the cell editor isn't an orphan.
 
 ---
 
@@ -122,7 +122,7 @@ export interface ComboBoxOptions extends ComponentOptions {
 }
 ```
 
-Identical additions on `DateField` / `TimeField` (and on `DateTimeField` if/when introduced).
+Identical additions on `DateField` / `TimeField` / the new `DateTimeField`. The three pooled cell editors (`DateEditor`, `TimeEditor`, `DateTimeEditor`) expose the same `setDropdownAnimated` / `isDropdownAnimated` pair so a table can opt the shared pooled instance in or out of the fade.
 
 ---
 
@@ -268,16 +268,26 @@ Each per-field subclass of `AnimatedDropdown` (`ComboBoxDropdown`, `DatePickerDr
 
 7. **Rewrite `TimeField`.** [TimeField.ts](../src/typescript/lib/component/input/TimeField.ts) similarly: replace `<input type="time">` with a text input plus clock glyph and a `TimePickerDropdown extends AnimatedDropdown` showing an hour/minute scroller (or a simple two-column list of hours and minutes). Same setter/preservation contract as DateField.
 
-8. **`DateTimeField` — out of scope; reserve API surface.** Verified absent today (no file matches `DateTimeField*` under `src/`; not present in the graphify report). When introduced, it extends the same pattern: own an `AnimatedDropdown` instance, expose `setDropdownAnimated`. Documented but not implemented here.
+8. **Introduce `DateTimeField` form field.** New file `src/typescript/lib/component/input/DateTimeField.ts`. Composes a `DateTimePickerDropdown extends AnimatedDropdown` that renders the month-grid above an hour/minute selector. Mirrors the `DateField` / `TimeField` setter contract (`setValue`/`getValue` over `Date | null`, `addActionListener`, `addBindingListener`) and the same `setDropdownAnimated` / `dropdownAnimated` option. Export from [src/typescript/lib/component/input/index.ts](../src/typescript/lib/component/input/index.ts). This step is what gives `DateTimePickerDropdown` a single owner in `component/input/` — the cell editor (step 8b) imports it from there.
+
+8b. **Rewrite the three pooled cell editors.** Each editor in [src/typescript/lib/component/table/cell/editor/](../src/typescript/lib/component/table/cell/editor/) currently extends `CellEditor` with `super("input")` and slaps `type="date"|"time"|"datetime-local"` on the element in `applyStyle`. Change each to:
+   - Render the same focusable text-input substrate the form fields use (`<input type="text" inputmode="none">`).
+   - Compose the matching dropdown subclass: `DateEditor` → `DatePickerDropdown`, `TimeEditor` → `TimePickerDropdown`, `DateTimeEditor` → `DateTimePickerDropdown` (the very classes introduced in steps 6, 7, 8 — imported, not duplicated).
+   - Preserve `getValue` / `setValue` / `isEmpty` semantics exactly, since [DateTimeCell.commitEdit](../src/typescript/lib/component/table/cell/DateTime.ts#L54) and its peers rely on `isEmpty() && getValue() === null` to detect bad input and revert.
+   - Add `setDropdownAnimated` / `isDropdownAnimated` on each editor; the pooled instance picks up table-wide configuration through whatever knob the host table exposes (out of scope here — default ON is fine).
+
+   **Pool-wiring hazard.** [CellEditorPool.wireListeners](../src/typescript/lib/component/table/cell/editor/CellEditorPool.ts#L117) commits the edit on the editor's `blur`. Today the native picker lives outside the editor element, so picker clicks already fire blur and commit. With a framework-built `AnimatedDropdown` mounted on `document.documentElement`, clicking a day or hour will *also* blur the input — but the dropdown's click handler runs after the blur. Fix: on `pointerdown` inside the dropdown, `event.preventDefault()` to suppress the blur, and have the dropdown's selection callback explicitly call the active cell's `commitEdit()` instead of relying on blur. Alternatively the pool's blur listener checks whether the new `activeElement` (or `relatedTarget`) is inside the dropdown's element and defers commit. Pick one; document the choice in the editor's JSDoc so future readers don't break it. **Verify:** click a day in a `DateCell` edit — value commits to that day; press Escape — edit cancels; click outside both editor and dropdown — edit commits the typed text via the existing `blur` path.
 
 9. **Demo verification.** Open `http://localhost:8015` (per the user's `project_dev_urls` memory), exercise:
    - ComboBox open/close — observe the 120 ms fade and 4 px translate.
    - DateField open/close — same.
    - TimeField open/close — same.
+   - DateTimeField open/close — same; verify both the date grid and time selector are inside the single faded surface.
+   - Edit a `DateCell` / `TimeCell` / `DateTimeCell` in `MiscPanel`'s table — the pooled editor's dropdown fades in on focus, day/hour click commits and fades the dropdown out, Escape cancels, click-outside commits the typed text.
    - `setDropdownAnimated(false)` on each — verifies the opt-out renders instantly.
    - Theme toggle — fade is unchanged (only colours flip; the new tokens are theme-neutral but must still resolve).
    - DevTools → Rendering → Emulate `prefers-reduced-motion: reduce` — fade collapses to an instant show/hide via `Animation.play`'s built-in short-circuit.
-   - `MiscPanel` slow-table page (per `project_perf_benchmark`) — confirms no layout-thrash regression from the new compositor layers.
+   - `MiscPanel` slow-table page (per `project_perf_benchmark`) — confirms no layout-thrash regression from the new compositor layers, *and* that the pooled-editor rewrite hasn't slowed cell-edit acquisition (the dropdown should mount lazily on first acquire, not at pool construction).
 
 10. **`graphify update .`** — keep the graph current (AST-only, no API cost) per the project's `graphify` directive.
 
@@ -297,6 +307,12 @@ Each per-field subclass of `AnimatedDropdown` (`ComboBoxDropdown`, `DatePickerDr
 | Modify | `src/typescript/lib/component/input/ComboBox.ts` — replace native `<select>` with framework dropdown        |
 | Modify | `src/typescript/lib/component/input/DateField.ts` — replace native picker with framework dropdown           |
 | Modify | `src/typescript/lib/component/input/TimeField.ts` — replace native picker with framework dropdown           |
+| Create | `src/typescript/lib/component/input/DateTimeField.ts` — new form field owning `DateTimePickerDropdown`      |
+| Modify | `src/typescript/lib/component/input/index.ts` — export `DateTimeField` and the three picker dropdown classes |
+| Modify | `src/typescript/lib/component/table/cell/editor/Date.ts` — compose `DatePickerDropdown`, drop `type="date"`  |
+| Modify | `src/typescript/lib/component/table/cell/editor/Time.ts` — compose `TimePickerDropdown`, drop `type="time"`  |
+| Modify | `src/typescript/lib/component/table/cell/editor/DateTime.ts` — compose `DateTimePickerDropdown`, drop `type="datetime-local"` |
+| Modify | `src/typescript/lib/component/table/cell/editor/CellEditorPool.ts` — see step 8b: either guard `blur`-commit against dropdown clicks, or leave unchanged if the dropdown suppresses blur via `pointerdown` preventDefault |
 | Modify | `docs/core/index.md` + `docs/.vitepress/config.mts` — add the `AnimatedDropdown` API page                   |
 
 No deletions.
@@ -308,7 +324,7 @@ No deletions.
 - `npx tsc --noEmit` — clean.
 - `grep -rn 'private.*_dismissing' src/typescript/lib/ —` expect a single hit (only inside `AnimatedDropdown.ts`); zero hits in `Menu.ts` and `AutoCompleteDropdown.ts` after step 3 and step 4.
 - `grep -rn '"select"' src/typescript/lib/component/input/ComboBox.ts` — expect zero hits after step 5.
-- `grep -rn 'type="date"\|type="time"' src/typescript/lib/component/input/` — expect zero hits after step 7.
+- `grep -rn 'type="date"\|type="time"\|type="datetime-local"' src/typescript/lib/component/input/ src/typescript/lib/component/table/cell/editor/` — expect zero hits after steps 7, 8, and 8b (covers both form fields and pooled cell editors).
 - `grep -n 'dropdown-fade-duration\|dropdown-fade-translate' src/typescript/lib/core/Theme.ts` — expect 4 hits (interface + 2 themes + mapper).
 - Manual demo per step 9.
 - `npm run docs:build` — 0 errors, 0 link warnings.
@@ -333,6 +349,8 @@ No deletions.
 - **Re-entrant show during fade-out** — already handled by the `_dismissing` flag, verified in `AutoCompleteDropdown` today.
 - **`Menu` is in `core/`; `AnimatedDropdown` will also be in `core/`** — no circular import: `Menu` imports `AnimatedDropdown`, not the reverse.
 - **Subclasses of `ComboBox` (`List`, `MultiSelectList`) override `render()`** — verify the rewritten `ComboBox.render()` still calls into the subclass override or that the subclasses are migrated to the new substrate; do not silently drop their customisations.
+- **CellEditorPool's `blur`-commit collides with framework-built dropdown clicks.** The pool wires a single `blur` listener that calls `activeCell.commitEdit()` ([CellEditorPool.ts:117](../src/typescript/lib/component/table/cell/editor/CellEditorPool.ts#L117)). With the native picker the picker chrome lives outside the editor element, so clicking it blurs the input and commits the typed (or picker-mirrored) value. With an `AnimatedDropdown` mounted on `document.documentElement`, clicking a day or hour will fire `blur` on the editor *before* the dropdown's selection callback runs — `commitEdit` commits the stale value, the dropdown's callback then writes the picked value into a no-longer-active editor. Mitigation: in the picker dropdown's pointer handling, call `event.preventDefault()` on `pointerdown` so the input keeps focus; the selection callback then explicitly invokes `activeCell.commitEdit()` after writing the value via `editor.setValue(...)`. Document the contract in `AnimatedDropdown` JSDoc so future cell-editor authors don't re-introduce the bug.
+- **Shared dropdown identity across form field and pooled cell editor.** A single `DatePickerDropdown` instance must not be mounted by both a `DateField` and a `DateEditor` at the same time (the dropdown is a singleton inside its host). Each host owns its own dropdown instance — the **class** is shared, the **instance** is per-host. Spelled out here because the natural reading of "share `DatePickerDropdown`" is "share the instance", which would break.
 
 ---
 
@@ -343,7 +361,9 @@ No deletions.
 - [src/typescript/lib/component/input/AutoCompleteDropdown.ts](../src/typescript/lib/component/input/AutoCompleteDropdown.ts) — second copy of the same pattern; folds into the helper.
 - [src/typescript/lib/core/Component.ts](../src/typescript/lib/core/Component.ts) — `setWillChange`, `setVisible`, `removeElement`, `getElement`.
 - [src/typescript/lib/core/Theme.ts](../src/typescript/lib/core/Theme.ts) — token wiring × 4 sites.
-- [src/typescript/lib/component/input/index.ts](../src/typescript/lib/component/input/index.ts) — barrel exports for the rewritten fields (no changes to its content, but verify the exported types still compile after each field rewrite).
+- [src/typescript/lib/component/input/index.ts](../src/typescript/lib/component/input/index.ts) — barrel exports for the rewritten fields plus the new `DateTimeField` and the three picker dropdown classes.
+- [src/typescript/lib/component/table/cell/editor/CellEditorPool.ts](../src/typescript/lib/component/table/cell/editor/CellEditorPool.ts) — pooled-editor lifecycle and the `blur`-commit listener that step 8b's hazard concerns.
+- [src/typescript/lib/component/table/cell/DateTime.ts](../src/typescript/lib/component/table/cell/DateTime.ts), [Date.ts](../src/typescript/lib/component/table/cell/Date.ts), [Time.ts](../src/typescript/lib/component/table/cell/Time.ts) — the `Cell` wrappers that call `getEditorKey()` to acquire the pooled editor; their `commitEdit` overrides assume the editor's `isEmpty() && getValue() === null` semantics, which must be preserved exactly.
 - [plans/implemented/autocomplete.md](implemented/autocomplete.md) — prior-art dropdown pattern.
 - [plans/implemented/will-change-hints.md](implemented/will-change-hints.md) — compositor-layer pre-promotion pattern this plan reuses.
 
@@ -353,7 +373,6 @@ No deletions.
 
 - **Calendar polish.** A minimal calendar grid (current month, no navigation) is acceptable for the DateField rewrite. Multi-month navigation, week-number rendering, locale-aware first-day-of-week, and range selection are deliberately out of scope — they belong in a separate `date-picker-ui` plan.
 - **Time-picker UX richness.** Same posture: a basic hour/minute selector is enough; 12-hour vs 24-hour formatting toggles, seconds, and time-zone display are out of scope.
-- **`DateTimeField` implementation.** The component does not exist today. Introducing it is a separate plan; this plan only guarantees the same `setDropdownAnimated` pattern will apply when it lands.
 - **Native-picker escape hatch (`setUseNativePicker(true)`).** Worth considering but adds API surface — punt to follow-up.
 - **Animation curves beyond the default `ease-out`.** `Animation.play` already accepts an `easing` config; the helper does not surface it as a setter to keep the API minimal. Consumers needing custom easing can subclass.
 - **Animating the dropdown's *open direction* flip** (flipping to above the anchor when the bottom overflows). Today's positioning math sets the final coordinates before the fade starts; the fade plays from those coordinates. Animating the flip itself is out of scope.

@@ -2,9 +2,9 @@
 
 ## Overview
 
-Pull the entire **Font Awesome Free** glyph corpus (~2,000 icons across the `solid`, `regular`, and `brands` styles) into the project as tree-shakable per-icon TypeScript modules so consumers can register only the icons they actually use. The current curated registry at [src/typescript/lib/component/display/Glyphs.ts](../src/typescript/lib/component/display/Glyphs.ts) holds 19 hand-extracted entries; this plan turns that single frozen object into a small **always-on** core plus a vast **opt-in** library mounted via a new `Glyph.register(...)` static.
+Pull the entire **Font Awesome Free** glyph corpus (~2,000 icons across the `solid`, `regular`, and `brands` styles) from the **latest published FA Free release** into the project as tree-shakable per-icon TypeScript modules so consumers can register only the icons they actually use. The current curated registry at [src/typescript/lib/component/display/Glyphs.ts](../src/typescript/lib/component/display/Glyphs.ts) holds 19 hand-extracted entries; this plan replaces that single frozen object with a **uniformly opt-in** library mounted via a new `Glyph.register(...)` static, and **replaces each curated entry with its latest-FA-Free counterpart** — no separate curated track, no auto-registration.
 
-Tree-shaking is the load-bearing constraint. The `Glyph(name)` constructor at [src/typescript/lib/component/display/Glyph.ts:76](../src/typescript/lib/component/display/Glyph.ts#L76) currently looks the name up in the static `Glyphs` table — so every glyph referenced from the lookup table is reachable from every `Glyph` instantiation, and a bulk-import barrel would defeat the bundler. The fix is **explicit registration**: per-icon modules under `src/typescript/lib/glyphs/<style>/<name>.ts`, exported via a new `./glyphs/*` subpath, registered by the consumer with one `Glyph.register(times, edit, plus)` call. The 19 hand-curated entries stay auto-registered for backward compatibility.
+Tree-shaking is the load-bearing constraint. The `Glyph(name)` constructor at [src/typescript/lib/component/display/Glyph.ts:76](../src/typescript/lib/component/display/Glyph.ts#L76) currently looks the name up in the static `Glyphs` table — so every glyph referenced from the lookup table is reachable from every `Glyph` instantiation, and a bulk-import barrel would defeat the bundler. The fix is **explicit registration**: per-icon modules under `src/typescript/lib/glyphs/<style>/<name>.ts`, exported via a new `./glyphs/*` subpath, registered by the consumer (or by the library component that needs them) with one `Glyph.register(times, edit, plus)` call. **Every** glyph must be registered before `new Glyph(name)` will resolve it; the runtime registry starts empty.
 
 A one-shot codegen script `scripts/import-fontawesome.ts` produces the per-icon files from the upstream FA Free SVG tree; the generated files are committed to source so the build does not depend on the FA distribution at runtime. Licensing is **CC BY 4.0** for the icon path data (attribution to Fonticons, Inc.), which composes cleanly with the project's PolyForm Noncommercial 1.0.0 license — see the dedicated section below.
 
@@ -101,26 +101,37 @@ The `{name, def}` tuple shape sketched in the brief is rejected — it adds a se
 
 `NamedGlyphDef` is `GlyphDef & { name: string }` — a new exported type in [Glyphs.ts](../src/typescript/lib/component/display/Glyphs.ts) alongside the existing `GlyphDef`.
 
-### Auto-registered core stays
+### Curated entries are replaced by their latest-FA counterparts — no auto-registration, no separate curated track
 
-The 19 hand-curated entries currently in [Glyphs.ts:53-151](../src/typescript/lib/component/display/Glyphs.ts#L53) remain auto-registered at module load. They support call sites already in the codebase ([component/window](../src/typescript/lib/component/window) close button, [TreeRow.ts](../src/typescript/lib/component/tree/TreeRow.ts) chevrons, etc.) that pre-date this plan. **No migration of existing call sites is required** — they continue to use the curated names, which are loaded eagerly.
+The 19 hand-curated entries currently in [Glyphs.ts:53-151](../src/typescript/lib/component/display/Glyphs.ts#L53) are **deleted outright**. Each one has a same-named (or near-named) counterpart in the latest FA Free release — `times`, `chevron-down`, `xmark`, `plus`, etc. The codegen script produces those as per-icon modules in `src/typescript/lib/glyphs/{solid,regular,brands}/<name>.ts`; library call sites import directly from there. There is **no** `curated/` folder and no parallel hand-authored track to maintain across FA upgrades.
 
-The codegen script writes generated files to `src/typescript/lib/glyphs/` (a **new** directory). The hand-curated registry stays in `src/typescript/lib/component/display/Glyphs.ts` (its current location) — the two coexist, the curated table seeds the runtime map during module init, and `Glyph.register(...)` adds further entries.
+A one-time mapping table (built during step 6 below) records, for each of the 19 previously-curated names, which FA style + name to import. Where FA renamed an icon between versions (e.g. FA5 `times` → FA6 `xmark`), the mapping picks the latest name and the affected call sites switch to that name. The decision is intentional: the project tracks upstream nomenclature rather than freezing legacy aliases.
 
-If a curated entry's name collides with an FA Free icon of the same name (e.g. `times` exists in both), the curated entry wins on initial load; an explicit `Glyph.register(timesFromFA)` later in startup overwrites it. This is intentional — the user controls precedence at the registration call site.
+Nothing is loaded into the runtime registry until an explicit `Glyph.register(...)` call runs. The runtime Map starts empty.
 
-### Single mutable registry, not multiple maps
+**Library components that use glyphs must register them at module load.** Concretely, every `.ts` file in `src/typescript/lib/component/**` that calls `new Glyph("xmark")` (or any other name) gets a top-of-file:
 
-The current `Glyphs` const is `Object.freeze`d. To support `Glyph.register(...)` it must become mutable. Replace the frozen literal with a mutable `Map<string, GlyphDef>` private to `Glyphs.ts`, seeded with the curated entries. `Glyph` reads through `lookupGlyph(name)` (new internal helper) instead of `Glyphs[name]`. The public surface of `Glyphs.ts` does **not** re-expose mutability — only the seeded curated names are accessible from outside the module without going through `Glyph.register`.
+```ts
+import { xmark } from "~/glyphs/solid/xmark.js";
+Glyph.register(xmark);
+```
+
+This keeps the lib internally tree-shakable: a consumer who imports only `Window` pulls in `xmark` (because `Window.ts` imports and registers it), but does not pull in `chevron-down` unless they also import `Tree`. Each component is self-contained for its glyph needs.
+
+Name collisions: `register` overwrites silently (last-write-wins). A consumer who wants a different style of a same-named icon (e.g. `regular/heart` over `solid/heart`) can register that one after — the order at the consumer's bootstrap is the source of truth.
+
+### Single mutable registry, starts empty
+
+The current `Glyphs` const is `Object.freeze`d. To support `Glyph.register(...)` it must become mutable. Replace the frozen literal with a mutable `Map<string, GlyphDef>` private to `Glyphs.ts`, **initialized empty** — no curated seeding. `Glyph` reads through `lookupGlyph(name)` (new internal helper) instead of `Glyphs[name]`. Every name the consumer or a library component constructs must have been registered first; otherwise the existing throw at [Glyph.ts:78-80](../src/typescript/lib/component/display/Glyph.ts#L78) fires.
 
 The sprite mount logic at [Glyphs.ts:178-211](../src/typescript/lib/component/display/Glyphs.ts#L178) must change too — it currently iterates the frozen object once on first SVG glyph use. After registration becomes dynamic, the sprite must mount-or-extend each time a previously-unseen SVG glyph is constructed. Simplest approach: `ensureGlyphSpriteFor(name)` appends a single `<symbol>` for that name to the sprite, idempotent per name. Discussed in **Internal Structure** below.
 
 ### Codegen script is a one-shot, output committed to source
 
-`scripts/import-fontawesome.ts` runs on demand (when the user re-imports a new FA Free release), not on every build. Output files are committed. This keeps the runtime build path free of network calls and the FA dependency, and lets the implementer review the generated diff before shipping. The script accepts a path argument:
+`scripts/import-fontawesome.ts` runs on demand (when the user imports / re-imports the latest FA Free release), not on every build. Output files are committed. This keeps the runtime build path free of network calls and the FA dependency, and lets the implementer review the generated diff before shipping. The script accepts a path argument pointing at the extracted FA Free `svgs/` tree of the **latest** release:
 
 ```
-node scripts/import-fontawesome.ts ./vendor/Font-Awesome-6.x.x/svgs/
+node scripts/import-fontawesome.ts ./vendor/Font-Awesome-<latest>/svgs/
 ```
 
 It writes:
@@ -133,7 +144,7 @@ It writes:
 - `LICENSE-FONTAWESOME.md` at repo root
 - Updates `NOTICE` with the FA Free corpus reference (idempotent — script detects an existing FA section by marker comment and rewrites between markers)
 
-The script aborts (non-zero exit) if it encounters any subdirectory under the input path other than `solid/`, `regular/`, `brands/`, or if any `.svg` file has more than one `<path>` element (FA Free icons are single-path; multi-path is a Pro Duotone signal and must not be redistributed).
+The script aborts (non-zero exit) if it encounters any subdirectory under the *input* path (i.e. the FA `svgs/` tree) other than `solid/`, `regular/`, `brands/`, or if any `.svg` file has more than one `<path>` element (FA Free icons are single-path; multi-path is a Pro Duotone signal and must not be redistributed).
 
 ### New `./glyphs/*` exports subpath
 
@@ -164,7 +175,7 @@ class Glyph extends Component {
 
 `unregister` is included for symmetry but is a low-value affordance — list it in JSDoc and don't document it on the README. Its primary use is unit tests that need to reset the registry between cases.
 
-`register` overwrites silently if the name is already present (curated or previously registered). No throw on collision — explicit overwrite is the intended path for swapping a curated icon for its FA counterpart.
+`register` overwrites silently if the name is already present. No throw on collision — explicit overwrite is the intended path for swapping a curated icon for its FA counterpart (or vice versa) at consumer bootstrap.
 
 ---
 
@@ -202,7 +213,7 @@ export function unregisterGlyph(name: string): void;
 export function lookupGlyph(name: string): GlyphDef | undefined;
 ```
 
-The existing `Glyphs` const-export is **replaced** by `lookupGlyph(name)`. The const becomes a private mutable Map. This is a breaking change to the internal-only `Glyphs` export, but inspection of [Glyph.ts:5](../src/typescript/lib/component/display/Glyph.ts#L5) shows it has exactly one consumer (`Glyph` itself), which the plan updates.
+The existing `Glyphs` const-export is **replaced** by `lookupGlyph(name)`. The const becomes a private mutable Map, initialized empty. This is a breaking change to the internal-only `Glyphs` export, but inspection of [Glyph.ts:5](../src/typescript/lib/component/display/Glyph.ts#L5) shows it has exactly one consumer (`Glyph` itself), which the plan updates.
 
 ### Per-icon module shape — `src/typescript/lib/glyphs/<style>/<name>.ts`
 
@@ -241,9 +252,7 @@ The registry **name** (the string passed to `new Glyph(name)`) stays the origina
 
 ```ts
 // Glyphs.ts (sketch)
-const _glyphs: Map<string, GlyphDef> = new Map();
-const _curated: ReadonlyArray<NamedGlyphDef> = [/* the 19 entries hoisted from the current frozen object */];
-for (const c of _curated) { _glyphs.set(c.name, c); }
+const _glyphs: Map<string, GlyphDef> = new Map();   // starts empty — no seeding
 
 export function lookupGlyph(name: string): GlyphDef | undefined {
     return _glyphs.get(name);
@@ -270,7 +279,7 @@ export function unregisterGlyph(name: string): void {
 
 The current `ensureGlyphSprite()` mounts the entire sprite once. After this change there are two cases:
 
-- **First SVG glyph constructed** — mount the sprite element, populate with all currently-registered SVG entries.
+- **First SVG glyph constructed** — mount the sprite element, populate with all currently-registered SVG entries (which by this point includes whatever the caller and its imported library components have registered).
 - **Subsequent register() of a new SVG name** — append one `<symbol>` to the already-mounted sprite (if the registration happens after first sprite mount).
 
 Add `addSymbolToSprite(name, def)` and `removeSymbolFromSprite(name)` helpers in `Glyphs.ts`. Both are idempotent.
@@ -297,13 +306,13 @@ Behaviour (pseudo-code):
 8. Print summary: "<N> icons generated across solid/regular/brands, FA version <version>".
 ```
 
-The script is invoked manually:
+The script is invoked manually against whatever the user has extracted:
 
 ```
-npx tsx scripts/import-fontawesome.ts ./vendor/Font-Awesome-6.7.0/svgs/
+npx tsx scripts/import-fontawesome.ts ./vendor/Font-Awesome-<latest>/svgs/
 ```
 
-It does **not** download the FA tarball — that is a manual step the user performs (e.g. `npm pack @fortawesome/fontawesome-free` then extract). This avoids tying the build to a network fetch and keeps version selection in the user's hands.
+It does **not** download the FA tarball — that is a manual step the user performs (e.g. `npm pack @fortawesome/fontawesome-free@latest` then extract). This avoids tying the build to a network fetch and keeps version selection in the user's hands; pinning to "latest at import time" is enforced by procedure (the user fetches `@latest`), not by the script.
 
 Add `tsx` to `devDependencies` if not already present (it isn't — see [package.json:31-40](../package.json#L31)).
 
@@ -311,20 +320,22 @@ Add `tsx` to `devDependencies` if not already present (it isn't — see [package
 
 ## Ordered Implementation Steps
 
-1. **License audit** — Confirm CC BY 4.0 attribution requirements are met by the **NOTICE** update and `LICENSE-FONTAWESOME.md`. Cross-check that no FA Pro icon styles are present in the input tree. → verify: `grep -i 'light\|duotone\|sharp' <fa-tree>/ -r` returns only the inert mention in FA's own README, not directory names.
-2. **Write `LICENSE-FONTAWESOME.md`** at the repository root with the full CC BY 4.0 legal text and the FA-specific attribution lines. → verify: file exists, contains both the CC BY 4.0 license URL and "© Fonticons, Inc."
-3. **Update [NOTICE](../NOTICE)** — add marker comments around the existing FA Free section so future codegen runs are idempotent, and broaden the section to state that **all** files under `dist/lib/glyphs/` derive from FA Free. → verify: diff is minimal, no curated-entry list churn.
-4. **Write `scripts/import-fontawesome.ts`** — per the **Codegen Script** section. Add `tsx` to devDependencies. → verify: `npx tsx scripts/import-fontawesome.ts --help` prints usage; running against a synthetic 2-file fixture produces the expected outputs.
-5. **Generate all icons** — run the script against an FA Free 6.x svgs/ tree. Commit the entire `src/typescript/lib/glyphs/` output. → verify: directory contains `solid/`, `regular/`, `brands/`, plus an `index.ts`; spot-check `solid/times.ts` matches the curated `times` entry's path and viewBox.
-6. **Refactor [Glyphs.ts](../src/typescript/lib/component/display/Glyphs.ts)** — replace the frozen `Glyphs` const with the mutable Map + `registerGlyph`/`unregisterGlyph`/`lookupGlyph` helpers, seed with the 19 curated entries (hoisted to a typed `NamedGlyphDef[]`), add incremental sprite helpers. Export the new `NamedGlyphDef` type. → verify: `npm run typecheck` clean; no other file imports `Glyphs` directly.
-7. **Refactor [Glyph.ts](../src/typescript/lib/component/display/Glyph.ts)** — swap `Glyphs[name]` for `lookupGlyph(name)`; add the `static register` and `static unregister` methods that delegate to the Glyphs helpers. → verify: existing `new Glyph("times")` etc. still construct correctly in the demo; `Glyph.register({name: "x", kind: "char", char: "x"})` followed by `new Glyph("x")` works.
-8. **Add subpath exports** to [package.json](../package.json) — `./glyphs` and `./glyphs/*`. → verify: `npm pack --dry-run` shows the new subpaths in the manifest.
-9. **Wire `vite.lib.config.ts`** — add glob-based entry points for `src/typescript/lib/glyphs/**/*.ts`. → verify: `npm run build:lib` emits one `.es.js` per icon under `dist/lib/glyphs/`.
-10. **Export the `Glyph.register`/`Glyph.unregister` surface** through [component/display/index.ts](../src/typescript/lib/component/display/index.ts). No new line — they live on the existing `Glyph` export. Also re-export `NamedGlyphDef` as a public type. → verify: `import type { NamedGlyphDef } from '@jimka/typescript-ui/component/display'` resolves.
-11. **No call-site changes** — confirm by `grep -rn 'new Glyph(' src/` returning the same set of call sites as before, all still using curated names. The auto-registered curated entries cover them.
-12. **README update** — add a "Glyphs" section showing the explicit-registration usage example: `import { times } from '@jimka/typescript-ui/glyphs'; Glyph.register(times);`. Document that curated arrows/close-icon are auto-registered.
-13. **Bundle-size demo** — temporary demo file that imports exactly three icons and registers them. Build, inspect `dist/`, confirm only those three icon modules are pulled into the demo bundle. Delete demo file after verification. → verify: bundle contains `times`, `edit`, `plus` path strings; does **not** contain `triangle-exclamation` or any other unimported FA icon path.
-14. **`graphify update .`** to refresh the knowledge graph after the source changes.
+1. **Fetch the latest FA Free release** — `npm pack @fortawesome/fontawesome-free@latest`, extract under `vendor/`. Record the resolved version string for the NOTICE update. → verify: `vendor/Font-Awesome-<v>/svgs/{solid,regular,brands}/` exists; no `light`, `thin`, `duotone`, or `sharp` directories present.
+2. **License audit** — Confirm CC BY 4.0 attribution requirements are met by the **NOTICE** update and `LICENSE-FONTAWESOME.md`. Cross-check that no FA Pro icon styles are present in the input tree. → verify: `grep -i 'light\|duotone\|sharp' <fa-tree>/ -r` returns only the inert mention in FA's own README, not directory names.
+3. **Write `LICENSE-FONTAWESOME.md`** at the repository root with the full CC BY 4.0 legal text and the FA-specific attribution lines. → verify: file exists, contains both the CC BY 4.0 license URL and "© Fonticons, Inc."
+4. **Update [NOTICE](../NOTICE)** — add marker comments around the existing FA Free section so future codegen runs are idempotent, and broaden the section to state that **all** files under `dist/lib/glyphs/` derive from FA Free `<resolved version>`. → verify: diff is minimal.
+5. **Write `scripts/import-fontawesome.ts`** — per the **Codegen Script** section. Add `tsx` to devDependencies. → verify: `npx tsx scripts/import-fontawesome.ts --help` prints usage; running against a synthetic 2-file fixture produces the expected outputs.
+6. **Generate all FA icons** — run the script against the fetched latest svgs/ tree. Commit the entire `src/typescript/lib/glyphs/{solid,regular,brands}/` output. → verify: those three directories exist, plus an `index.ts`; spot-check that each of the 19 currently-curated names resolves to an FA file (or its renamed successor — `times` → `xmark`, etc.) and matches the upstream path data.
+7. **Build the curated→latest mapping** — for each of the 19 names in the current [Glyphs.ts](../src/typescript/lib/component/display/Glyphs.ts), record `{ oldName, newStyle, newName }`. Most will be `{ "close", "solid", "xmark" }`-shaped (a style + possible rename); same-name entries are `{ "plus", "solid", "plus" }`. Keep this mapping inline in the PR description (not committed as a permanent file — it's a one-shot migration record). → verify: every old name has exactly one mapping row; the chosen style/name pair exists under `src/typescript/lib/glyphs/`.
+8. **Refactor [Glyphs.ts](../src/typescript/lib/component/display/Glyphs.ts)** — replace the frozen `Glyphs` const with an empty mutable Map plus `registerGlyph`/`unregisterGlyph`/`lookupGlyph` helpers and the incremental sprite helpers. Export the new `NamedGlyphDef` type. **Delete the inline 19-entry literal entirely** — the latest FA modules replace it. → verify: `npm run typecheck` clean; no remaining `Object.freeze` of the registry; the 19 hardcoded path strings are gone from the file.
+9. **Refactor [Glyph.ts](../src/typescript/lib/component/display/Glyph.ts)** — swap `Glyphs[name]` for `lookupGlyph(name)`; add the `static register` and `static unregister` methods that delegate to the Glyphs helpers. → verify: `Glyph.register({name: "x", kind: "char", char: "x"})` followed by `new Glyph("x")` works; `new Glyph("notyetregistered")` throws.
+10. **Migrate library call sites using the mapping** — every `.ts` file under `src/typescript/lib/component/**` that constructs a `Glyph` by name (e.g. [component/window](../src/typescript/lib/component/window) close button, [TreeRow.ts](../src/typescript/lib/component/tree/TreeRow.ts) chevrons) is updated in two steps: (a) the `new Glyph("oldName")` string switches to the mapped `newName` (e.g. `"close"` → `"xmark"`); (b) the file gains a top-of-file `import { <newName> } from "~/glyphs/<newStyle>/<newName>.js"; Glyph.register(<newName>);`. Each component becomes self-contained for its glyph dependencies. → verify: `grep -rn 'new Glyph(' src/typescript/lib/component/` enumerates every call site; for each, the same file contains a matching `Glyph.register(...)` at top level and the name passed to `new Glyph(...)` matches the registered name exactly; manual smoke at `http://localhost:8015` shows no missing-glyph throws on the existing demos (Window close, Tree chevron, etc.).
+11. **Add subpath exports** to [package.json](../package.json) — `./glyphs` and `./glyphs/*`. → verify: `npm pack --dry-run` shows the new subpaths in the manifest, including a per-icon path like `./glyphs/solid/xmark`.
+12. **Wire `vite.lib.config.ts`** — add glob-based entry points for `src/typescript/lib/glyphs/**/*.ts`. → verify: `npm run build:lib` emits one `.es.js` per icon under `dist/lib/glyphs/`.
+13. **Export the `Glyph.register`/`Glyph.unregister` surface** through [component/display/index.ts](../src/typescript/lib/component/display/index.ts). No new line — they live on the existing `Glyph` export. Also re-export `NamedGlyphDef` as a public type. → verify: `import type { NamedGlyphDef } from '@jimka/typescript-ui/component/display'` resolves.
+14. **README update** — add a "Glyphs" section showing the explicit-registration usage example: `import { times } from '@jimka/typescript-ui/glyphs/solid/times'; Glyph.register(times);`. Document that **no glyphs are auto-registered** — every name must be explicitly registered. Note that library components register their own internal glyphs at module load, so a consumer who imports `Window` does not need to register the close icon themselves. Call out the renames in a small migration table for users upgrading from the previous curated names.
+15. **Bundle-size demo** — temporary demo file that imports exactly three icons and registers them. Build, inspect `dist/`, confirm only those three icon modules are pulled into the demo bundle. Delete demo file after verification. → verify: bundle contains `xmark`, `pen`, `plus` (or whichever three were imported) path strings; does **not** contain `triangle-exclamation` or any other unimported FA icon path.
+16. **`graphify update .`** to refresh the knowledge graph after the source changes.
 
 ---
 
@@ -342,13 +353,14 @@ Add `tsx` to `devDependencies` if not already present (it isn't — see [package
 | Create | `src/typescript/lib/glyphs/regular/<icon>.ts` × ~165 (codegen output) |
 | Create | `src/typescript/lib/glyphs/brands/<icon>.ts` × ~490 (codegen output) |
 | Create | `src/typescript/lib/glyphs/README.md` (codegen output, identifier-mapping reference) |
-| Modify | `src/typescript/lib/component/display/Glyphs.ts` — mutable registry, add `registerGlyph`/`unregisterGlyph`/`lookupGlyph`, `NamedGlyphDef` |
+| Modify | `src/typescript/lib/component/display/Glyphs.ts` — empty mutable registry, add `registerGlyph`/`unregisterGlyph`/`lookupGlyph`, `NamedGlyphDef`; delete the 19-entry frozen literal entirely |
 | Modify | `src/typescript/lib/component/display/Glyph.ts` — use `lookupGlyph`, add `static register`/`unregister` |
 | Modify | `src/typescript/lib/component/display/index.ts` — re-export `NamedGlyphDef` type |
+| Modify | Every file under `src/typescript/lib/component/**` that constructs a `Glyph` by name — rename to its latest-FA counterpart per the migration mapping, add top-of-file `import` + `Glyph.register(...)` |
 | Modify | [package.json](../package.json) — add `./glyphs` and `./glyphs/*` exports; add `tsx` to `devDependencies`; ensure `LICENSE-FONTAWESOME.md` and `NOTICE` are in `files`/copied to `dist/lib/` |
-| Modify | [vite.lib.config.ts](../vite.lib.config.ts) — glob-based entry points for per-icon files |
-| Modify | [NOTICE](../NOTICE) — broaden FA Free section, add marker comments |
-| Modify | [README.md](../README.md) — add Glyphs usage section |
+| Modify | [vite.lib.config.ts](../vite.lib.config.ts) — glob-based entry points for per-icon files (covers `solid`, `regular`, `brands`) |
+| Modify | [NOTICE](../NOTICE) — broaden FA Free section, add marker comments, record imported FA version |
+| Modify | [README.md](../README.md) — add Glyphs usage section, including a small migration table of legacy→latest names |
 | Delete | (none) |
 
 Approximate counts taken from Font Awesome Free 6.x; exact numbers depend on the imported version.
@@ -362,8 +374,8 @@ Approximate counts taken from Font Awesome Free 6.x; exact numbers depend on the
 3. **Library build** — `npm run build:lib` clean; `dist/lib/glyphs/solid/times.es.js` exists.
 4. **Docs build** — `npm run docs:build` reports **0 errors and 0 link warnings** (typedoc's "unsupported TypeScript version" notice is the lone acceptable warning per [CLAUDE.md](../CLAUDE.md)).
 5. **Bundle-size proof** — temporary demo at [src/typescript/demo](../src/typescript/demo) imports 3 icons and registers them; build output shows ~3 path strings in the demo bundle, not 2,000. Inspect via `grep -c 'kind:' dist/demo/*.js` or similar.
-6. **Runtime smoke** at `http://localhost:8015` — render `new Glyph("times")` (auto-registered) and `new Glyph("user")` (only after `Glyph.register(user)`). Confirm both render; confirm `new Glyph("user")` *before* registration throws `Error("Unknown glyph: user")` (the existing throw at [Glyph.ts:78-80](../src/typescript/lib/component/display/Glyph.ts#L78)).
-7. **Existing call sites unaffected** — every pre-existing `new Glyph("...")` call site still renders. Walk the **MiscPanel** stress test and the Tree demo to confirm no chevron / close-icon regression.
+6. **Runtime smoke** at `http://localhost:8015` — `new Glyph("xmark")` works only after `Glyph.register(xmark)`; same for every other name. Confirm `new Glyph("xmark")` *before* any registration throws `Error("Unknown glyph: xmark")` (the existing throw at [Glyph.ts:78-80](../src/typescript/lib/component/display/Glyph.ts#L78)) — i.e. confirm there is no leftover auto-registration path.
+7. **Existing call sites still render after migration** — every pre-existing `new Glyph("...")` call site uses its mapped latest-FA name and has a matching `Glyph.register(...)` registration in the same file (step 10). Walk the **MiscPanel** stress test, the Window close button, and the Tree demo to confirm no missing-icon regression.
 8. **Re-import workflow** — re-run `scripts/import-fontawesome.ts` against the same FA version; git diff is empty (script is deterministic).
 9. **Graph refresh** — `graphify update .` succeeds.
 
@@ -372,7 +384,7 @@ Approximate counts taken from Font Awesome Free 6.x; exact numbers depend on the
 ## Documentation Impact
 
 - The new `Glyph.register` / `Glyph.unregister` static methods and the `NamedGlyphDef` type are public; document them on the **Glyph** page under `docs/component/display/`. Update its `index.md` catalog and the sidebar in [docs/.vitepress/config.mts](../docs/.vitepress/config.mts).
-- The per-icon modules under `@jimka/typescript-ui/glyphs` are not individually documented — add a single curated page `docs/component/display/glyphs.md` (or similar) explaining the registration pattern, listing the auto-registered curated names, and pointing to FA's icon browser for the catalog. Auto-generating ~2,000 typedoc pages is rejected — they would drown the sidebar.
+- The per-icon modules under `@jimka/typescript-ui/glyphs` are not individually documented — add a single curated page `docs/component/display/glyphs.md` (or similar) explaining the registration pattern, the legacy→latest migration table for callers upgrading from the previously-curated names, and a link to FA's icon browser for the catalog. Auto-generating ~2,000 typedoc pages is rejected — they would drown the sidebar.
 - Same-bucket `{@link Glyph}` references inside `component/display` JSDoc continue to work. Any cross-bucket reference uses the markdown-link form per [CLAUDE.md](../CLAUDE.md).
 - README "Glyphs" section per step 12.
 
@@ -382,11 +394,13 @@ Approximate counts taken from Font Awesome Free 6.x; exact numbers depend on the
 
 - **Vite/Rollup with 2,000+ entry points.** A glob input fan-out at this scale may explode build time or hit per-file overhead. Mitigation: measure on a 100-icon subset first; if `npm run build:lib` regresses meaningfully, switch the bulk barrel to a single Rollup entry that re-exports everything (the per-icon files stay as separate source files for tree-shaking on the consumer's bundler, but the library build itself emits one chunk per style instead of one per icon). The deep-import path `@jimka/typescript-ui/glyphs/solid/times` would then resolve via tsc-emitted `.d.ts` plus a stub re-export rather than its own Vite chunk.
 - **Tree-shaking fragility.** Modern bundlers (esbuild, Rollup, Vite) tree-shake `export const` reliably **only when** there are no side effects in the importing chain. `"sideEffects": false` is already set in [package.json:24](../package.json#L24); confirm the codegen-generated icon files contain no top-level statements other than the `export const`. The SPDX comment is fine.
-- **`Glyph.register` ordering matters for first paint.** A call site that does `new Glyph("user")` at module top level **before** `Glyph.register(user)` runs will throw. Document the required ordering in the README. Mitigation in tests: prefer placing all `Glyph.register` calls in the app's bootstrap module, imported before any component that uses non-curated glyphs.
-- **Curated/FA name collision.** `times` exists in both. Resolution at registration time (last write wins) is explicit and predictable, but a careless `Glyph.register(timesFromFA)` could silently change visual appearance if the FA `times` differs from the curated one. Mitigation: codegen header in each per-icon file states it overrides any same-named curated entry; document in JSDoc on `register`.
+- **`Glyph.register` ordering matters for first paint.** A call site that does `new Glyph("xmark")` at module top level **before** `Glyph.register(xmark)` runs will throw. With no auto-registration safety net, this is true for *every* glyph. Mitigation: every library component that uses a glyph imports + registers it at the top of its own file (step 10), so import order = registration order. Consumers follow the same pattern in their bootstrap module.
+- **FA renames between versions.** The latest FA Free release renames some FA5/early-FA6 icons (e.g. `times` → `xmark`, `edit` → `pen-to-square`). The mapping built in step 7 must surface every legacy curated name to its latest counterpart. Mitigation: the README migration table lists the renames so external consumers upgrading from the previously-shipped curated names know which names to switch to.
+- **Style ambiguity.** Some legacy curated names exist in more than one FA style (e.g. `heart` is in both `solid/` and `regular/`). The mapping must commit to one style per legacy name — the choice should match the *visual* of the previously-curated entry (compare path data). Mitigation: when in doubt during step 7, render both side-by-side and pick the closer match; document the choice in the migration table.
+- **Future FA-version upgrades.** When a later FA release renames an icon that lib internals currently register, those internal call sites must be updated in lock-step with the codegen re-run. Mitigation: add a step to the codegen-rerun workflow that greps `src/typescript/lib/component/**` for any `new Glyph("<name>")` whose name no longer exists in the freshly-generated tree, and fails loudly. Out of scope for this plan to automate fully — call it out in the README's "Upgrading FA" section.
 - **NOTICE/LICENSE file copying into dist.** Vite library mode does not copy files outside the entry-input set by default. Use a small Vite plugin or `vite-plugin-static-copy` (or a post-build `cp` in the `build:lib` script) to drop `NOTICE` and `LICENSE-FONTAWESOME.md` into `dist/lib/`. Verify the npm `files` field includes both.
 - **Sanitised export identifiers.** Some FA icons start with digits (`500px`, `42-group`, etc.). The generated export identifier must be valid JS; document the mapping rule both in the generated README and in JSDoc on the per-style barrel.
-- **Sprite mount race during async registration.** If a consumer awaits an async import before calling `Glyph.register`, the first `new Glyph(...)` may construct the sprite for the curated entries only; later `register` calls need to extend the live sprite. The incremental sprite helpers cover this, but it's worth a unit test: construct an SVG glyph, then register a new SVG glyph, then construct it — confirm the second `<symbol>` is in the DOM.
+- **Sprite mount race during async registration.** If a consumer awaits an async import before calling `Glyph.register`, the first `new Glyph(...)` may construct the sprite with only the synchronously-registered entries; later `register` calls need to extend the live sprite. The incremental sprite helpers cover this, but it's worth a unit test: register an SVG glyph, construct it, register a second SVG glyph, construct it — confirm both `<symbol>` elements are in the DOM.
 
 ---
 
@@ -408,9 +422,10 @@ Approximate counts taken from Font Awesome Free 6.x; exact numbers depend on the
 - **No FA Pro icons.** Light, Thin, Duotone, Sharp variants are not redistributable under CC BY 4.0 and stay out of scope. The codegen script hard-fails if it encounters them.
 - **No FA web fonts.** This plan ships SVG path data only; no `.woff2`, no `@font-face` CSS, no SIL OFL licensing engagement.
 - **No FA runtime CSS or JS.** The MIT-licensed code portion of FA Free is not bundled.
-- **No auto-registration of the full catalog.** Auto-registering all 2,000 icons would defeat the tree-shaking goal. The 19 curated entries are the maximum auto-registered set.
+- **No auto-registration at all.** Neither the 2,000 FA icons nor the 19 curated entries are auto-registered. Every glyph must be explicitly registered before it can be constructed by name. This is a uniform rule with no exceptions.
 - **No per-icon typedoc pages.** Auto-generating 2,000 doc pages would drown the sidebar; a single curated `glyphs.md` page covers the registration pattern, with a link to FA's browser for the icon list.
 - **No CC BY-SA, GPL, or other copyleft icon sets bundled alongside.** Cross-license aggregation is harder than CC BY 4.0; out of scope for this plan.
 - **No async glyph loading.** Option B from the brief (lazy on-demand JSON fetch) is rejected; `Glyph` stays synchronous.
-- **No call-site migration.** Existing `new Glyph("...")` users keep working unchanged; this plan adds capability, it does not change current behaviour for any existing glyph name.
+- **No new `new Glyph(...)` call-site behaviour.** The constructor signature, throw-on-unknown semantics, and rendering pipeline are unchanged; the only call-site delta is renaming each lib-internal `new Glyph("oldName")` to its latest-FA counterpart and adding a `Glyph.register(...)` next to it. Consumer call sites are not migrated by this plan — consumers update their bootstrap (and any legacy name strings) as part of upgrading; the README migration table tells them which names changed.
+- **No FA version pinning.** This plan imports whatever is `@fortawesome/fontawesome-free@latest` at the time the codegen script is run; it does not encode the version in a config file. The resolved version is captured in NOTICE for attribution but is not enforced on subsequent runs.
 - **No CI step for the codegen script.** It runs manually when re-importing a new FA Free release.

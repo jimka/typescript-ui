@@ -166,6 +166,17 @@ Add `.worktrees/` to `.gitignore` once at the project root. The path is conventi
 
 `plans/in-progress/` acts as a soft lock — other invocations should skip plans listed there.
 
+## Resume detection
+
+When entering single-plan mode, locate the plan:
+
+- `plans/<slug>.md` → **fresh start**.
+- `plans/in-progress/<slug>.md` → **resume**. Skip the fresh-start steps in _Work Instructions_. Confirm the matching worktree (`cd .worktrees/<slug>`); if missing but the branch exists, recreate it with `git worktree add .worktrees/<slug> feature/<slug>`. If neither worktree nor branch exists, abort and ask the user.
+- `plans/implemented/<slug>.md` → **already done**. Stop and confirm with the user before treating it as a new run.
+- None of the above → reject the invocation.
+
+On resume, before implementing further, reconstruct progress: `git log feature/<slug> --not master` for committed work, `git status` for uncommitted edits, and map both back to the plan's `## Ordered Implementation Steps`. State which step you'll pick up at; confirm with the user if the mapping is ambiguous.
+
 ## Shared-file etiquette
 
 When `touches-shared` is non-empty: edit each shared file last; one atomic commit per shared file; keep diffs minimal.
@@ -179,14 +190,15 @@ In worktree mode, before declaring done: `git fetch origin && git rebase origin/
 1. Resolve every plan name to `plans/<name>.md`. Reject if any file is missing.
 2. **If >1 plan:** run _Order derivation_, confirm the schedule with the user, then per phase fan out per _Multi-plan dispatch_. Stop here as orchestrator.
 3. **Single-plan mode:**
-   1. Read the plan.
-   2. Check the codebase for incompatibilities (renamed/removed APIs, signature changes, file moves, broken assumptions). Update the plan in place if drift is found.
-   3. If incompatibilities were found, stop and ask the user to review.
-   4. If on `master`, create and check out `feature/<short-feature-slug>`. Otherwise stay on the current branch.
-   5. Move the plan from `plans/` to `plans/in-progress/`. Commit.
-   6. Implement.
-   7. Extend demo panel(s) where applicable.
-   8. Edit any `touches-shared` files last, one commit per file (_Shared-file etiquette_).
-   9. Move plan from `plans/in-progress/` to `plans/implemented/`.
-   10. Update `docs/` per _Documentation updates_.
-   11. Run _Rebase-clean checkpoint_.
+   1. Locate the plan per _Resume detection_. Skip the steps marked **(fresh only)** when resuming.
+   2. Read the plan.
+   3. Check the codebase for incompatibilities (renamed/removed APIs, signature changes, file moves, broken assumptions). Update the plan in place if drift is found.
+   4. If incompatibilities were found, stop and ask the user to review.
+   5. **(fresh only)** If on `master`, create and check out `feature/<short-feature-slug>`. Otherwise stay on the current branch.
+   6. **(fresh only)** Move the plan from `plans/` to `plans/in-progress/`. Commit.
+   7. Implement. On resume, pick up at the step identified by _Resume detection_.
+   8. Extend demo panel(s) where applicable.
+   9. Edit any `touches-shared` files last, one commit per file (_Shared-file etiquette_).
+   10. Move plan from `plans/in-progress/` to `plans/implemented/`.
+   11. Update `docs/` per _Documentation updates_.
+   12. Run _Rebase-clean checkpoint_.
