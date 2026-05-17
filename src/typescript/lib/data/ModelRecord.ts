@@ -25,10 +25,10 @@ import { AbstractModel } from '~/data/AbstractModel.js';
  */
 export class ModelRecord {
 
-    private model: AbstractModel;
-    private data: Record<string, any>;
-    private original: Record<string, any>;
-    private dirty: boolean = false;
+    private _model: AbstractModel;
+    private _data: Record<string, any>;
+    private _original: Record<string, any>;
+    private _dirty: boolean = false;
     private _isNew: boolean = false;
 
     /**
@@ -38,9 +38,9 @@ export class ModelRecord {
      * @param data - The initial field values keyed by field name.
      */
     constructor(model: AbstractModel, data: Record<string, any>) {
-        this.model = model;
-        this.data = { ...data };
-        this.original = { ...data };
+        this._model = model;
+        this._data = { ...data };
+        this._original = { ...data };
     }
 
     /**
@@ -51,7 +51,7 @@ export class ModelRecord {
      * @returns The current value of the field, or undefined if the field is not present.
      */
     get(field: string): any {
-        return this.data[field];
+        return this._data[field];
     }
 
     /**
@@ -61,13 +61,13 @@ export class ModelRecord {
      * @param value - The new value to assign to the field.
      */
     set(field: string, value: any): this {
-        if (ModelRecord.isEqual(this.data[field], value)) {
+        if (ModelRecord.isEqual(this._data[field], value)) {
             return this;
         }
 
-        this.data[field] = value;
-        this.dirty = this._isNew || Object.keys(this.original)
-                                          .some(k => !ModelRecord.isEqual(this.data[k], this.original[k]));
+        this._data[field] = value;
+        this._dirty = this._isNew || Object.keys(this._original)
+                                          .some(k => !ModelRecord.isEqual(this._data[k], this._original[k]));
 
         return this;
     }
@@ -86,7 +86,7 @@ export class ModelRecord {
      * @returns A plain object containing all current field values keyed by field name.
      */
     getData(): Record<string, any> {
-        return { ...this.data };
+        return { ...this._data };
     }
 
     /**
@@ -95,7 +95,7 @@ export class ModelRecord {
      * @returns True if the record has uncommitted changes, false otherwise.
      */
     isDirty(): boolean {
-        return this.dirty;
+        return this._dirty;
     }
 
     /**
@@ -122,8 +122,8 @@ export class ModelRecord {
      * so that the record no longer appears in subsequent sync cycles.
      */
     commit(): this {
-        this.original = { ...this.data };
-        this.dirty = false;
+        this._original = { ...this._data };
+        this._dirty = false;
         this._isNew = false;
 
         return this;
@@ -137,8 +137,8 @@ export class ModelRecord {
      * been rejected remains new until it is committed or removed from the store.
      */
     reject(): void {
-        this.data = { ...this.original };
-        this.dirty = false;
+        this._data = { ...this._original };
+        this._dirty = false;
     }
 
     /**
@@ -147,9 +147,9 @@ export class ModelRecord {
      * @returns The primary key value, or undefined if the model has no primary key configured.
      */
     getId(): any {
-        const pkField = this.model.getPrimaryKeyField();
+        const pkField = this._model.getPrimaryKeyField();
 
-        return pkField ? this.data[pkField.getName()] : undefined;
+        return pkField ? this._data[pkField.getName()] : undefined;
     }
 
     /**
@@ -158,6 +158,6 @@ export class ModelRecord {
      * @returns The model instance associated with this record.
      */
     getModel(): AbstractModel {
-        return this.model;
+        return this._model;
     }
 }
