@@ -1,22 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "~/core/Component.js";
+import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Event } from "~/core/Event.js";
-import { Animation } from "~/core/Animation.js";
 import { Position } from "~/primitive/Position.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { VBox } from "~/layout/VBox.js";
 import { AutoCompleteItem } from "~/component/input/AutoCompleteItem.js";
 import { callable } from "~/core/Callable.js";
 
-const AUTOCOMPLETE_ANIM_DURATION_MS: number = 100;
-
 /**
  * Construction-time options for {@link AutoCompleteDropdown}.
  *
  * @category Components
  */
-export interface AutoCompleteDropdownOptions extends ComponentOptions {
+export interface AutoCompleteDropdownOptions extends AnimatedDropdownOptions {
     maxItems?: number;
 }
 
@@ -28,6 +25,7 @@ export interface AutoCompleteDropdownOptions extends ComponentOptions {
 const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> = {
     zIndex:          10050,
     position:        Position.FIXED,
+    durationMs:      100,
     backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
     border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
     borderRadius:    "var(--ts-ui-border-radius, 4px)",
@@ -38,21 +36,16 @@ const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> 
  * Floating dropdown panel for [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField).
  *
  * Maintains a reusable pool of `AutoCompleteItem` rows — items are updated
- * in place rather than destroyed and recreated on each keystroke.
+ * in place rather than destroyed and recreated on each keystroke. Inherits the
+ * fade-in / fade-out lifecycle from [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown).
  */
-class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
+class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions> {
 
     private _pool: AutoCompleteItem[] = [];
     private _highlightedIndex: number = -1;
     private readonly _onSelect: (value: string) => void;
     private readonly _onHide: () => void;
     private readonly _onViewportMouseDown: (e: MouseEvent) => void;
-    private _open: boolean = false;
-    // Set true while a fade-out is in flight; reset to false either when the
-    // fade completes (so the deferred detach runs) or when a fresh `show()`
-    // re-displays the dropdown mid-fade (the deferred detach skips because
-    // the dropdown is back on screen).
-    private _dismissing: boolean = false;
 
     /**
      * @param onSelect - Called with the selected suggestion string when the user picks an item.
@@ -65,7 +58,6 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
         this._onSelect = onSelect;
         this._onHide   = onHide;
 
-        this.setVisible(false);
         this.getAria().setRole("listbox");
         // Dynamic dimensions from anchor + suggestion count — layout containment is safe.
         this.setContain("layout");
@@ -144,8 +136,6 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
         this.setWidth(rect.width);
         this.setHeight(itemCount * HEIGHT + insets);
 
-        const el = this.getElement(true);
-
         this.doLayout();
 
         const panelHeight = itemCount * HEIGHT + insets;
@@ -159,23 +149,7 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
         this.setX(rect.left);
         this.setY(y);
 
-        if (!document.documentElement.contains(el)) {
-            document.documentElement.appendChild(el);
-        }
-
-        this.setVisible(true);
-        this._open = true;
-
-        // Cancel a pending fade-out's deferred detach so a fresh show during
-        // the outgoing transition keeps the element in the DOM.
-        this._dismissing = false;
-
-        Animation.play(el, {
-            from:       { opacity: "0" },
-            to:         { opacity: "1" },
-            durationMs: AUTOCOMPLETE_ANIM_DURATION_MS,
-            properties: ["opacity"],
-        });
+        this.showAnimated();
 
         Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
 
@@ -186,46 +160,19 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
      * Hides the dropdown, detaches it from the DOM, and fires the `onHide` callback.
      */
     hide(): this {
-        this._open = false;
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
 
-        const el = this.getElement();
-        const finalize = (): void => {
-            this.setVisible(false);
-            this.removeElement();
-            this._onHide();
-        };
-
-        if (!el) {
-            finalize();
-            return this;
-        }
-
-        this._dismissing = true;
-
-        Animation.play(el, {
-            to:         { opacity: "0" },
-            durationMs: AUTOCOMPLETE_ANIM_DURATION_MS,
-            properties: ["opacity"],
-            onComplete: () => {
-                if (!this._dismissing) {
-                    return;
-                }
-                this._dismissing = false;
-                finalize();
-            },
-        });
+        this.hideAnimated();
 
         return this;
     }
 
     /**
-     * Returns whether the dropdown is currently visible.
-     *
-     * @returns True if the dropdown is open.
+     * Fires the `onHide` callback once the exit fade has completed and the
+     * panel is detached from the DOM.
      */
-    isOpen(): boolean {
-        return this._open;
+    protected onHideComplete(): void {
+        this._onHide();
     }
 
     /**
