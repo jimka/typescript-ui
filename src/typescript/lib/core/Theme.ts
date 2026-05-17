@@ -249,6 +249,12 @@ export interface Theme {
         backdrop: string;
         size    : string;
     };
+
+    glyph: {
+        spinDuration : string;
+        pulseDuration: string;
+        beatDuration : string;
+    };
 }
 
 /**
@@ -402,6 +408,11 @@ export const DefaultTheme: Theme = {
         color   : 'rgb(30, 100, 200)',
         backdrop: 'rgba(255, 255, 255, 0.6)',
         size    : '32px',
+    },
+    glyph: {
+        spinDuration : '2000ms',
+        pulseDuration: '1000ms',
+        beatDuration : '1000ms',
     },
 };
 
@@ -557,6 +568,11 @@ export const DarkTheme: Theme = {
         backdrop: 'rgba(20, 20, 20, 0.6)',
         size    : '32px',
     },
+    glyph: {
+        spinDuration : '2000ms',
+        pulseDuration: '1000ms',
+        beatDuration : '1000ms',
+    },
 };
 
 /**
@@ -663,6 +679,9 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-progress-spinner-color'           : theme.progressSpinner.color,
         '--ts-ui-progress-spinner-backdrop'        : theme.progressSpinner.backdrop,
         '--ts-ui-progress-spinner-size'            : theme.progressSpinner.size,
+        '--ts-ui-glyph-spin-duration'              : theme.glyph.spinDuration,
+        '--ts-ui-glyph-pulse-duration'             : theme.glyph.pulseDuration,
+        '--ts-ui-glyph-beat-duration'              : theme.glyph.beatDuration,
     };
 }
 
