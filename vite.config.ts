@@ -20,6 +20,8 @@ export default defineConfig({
       { find: '@jimka/typescript-ui/layout',              replacement: sub('layout/index.ts') },
       { find: '@jimka/typescript-ui/data',                replacement: sub('data/index.ts') },
       { find: '@jimka/typescript-ui/validation',          replacement: sub('validation/index.ts') },
+      { find: /^@jimka\/typescript-ui\/glyphs\/(.+)$/,    replacement: sub('glyphs/$1.ts') },
+      { find: '@jimka/typescript-ui/glyphs',              replacement: sub('glyphs/index.ts') },
       { find: '~',                                        replacement: fileURLToPath(new URL('./src/typescript/lib', import.meta.url)) },
     ],
   },
