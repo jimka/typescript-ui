@@ -165,6 +165,16 @@ export interface Theme {
         shadow    : string;
     };
 
+    popover: {
+        background: string;
+        color     : string;
+        border    : string;
+        shadow    : string;
+        radius    : string;
+        padding   : string;
+        arrowSize : string;
+    };
+
     notification: {
         shadow : string;
         info: {
@@ -377,6 +387,15 @@ export const DefaultTheme: Theme = {
         border    : 'rgb(180, 180, 100)',
         shadow    : '1px 2px 4px rgba(0, 0, 0, 0.2)',
     },
+    popover: {
+        background: 'rgb(255, 255, 255)',
+        color     : 'rgb(0, 0, 0)',
+        border    : 'rgb(200, 200, 200)',
+        shadow    : '2px 4px 12px rgba(0, 0, 0, 0.18)',
+        radius    : '6px',
+        padding   : '12px',
+        arrowSize : '8px',
+    },
     notification: {
         shadow : '2px 4px 8px rgba(0, 0, 0, 0.15)',
         info   : { background: 'rgba(30, 100, 200, 0.1)',  border: 'rgb(30, 100, 200)'  },
@@ -543,6 +562,15 @@ export const DarkTheme: Theme = {
         border    : 'rgb(120, 110, 70)',
         shadow    : '1px 2px 4px rgba(0, 0, 0, 0.5)',
     },
+    popover: {
+        background: 'rgb(50, 50, 55)',
+        color     : 'rgb(230, 230, 235)',
+        border    : 'rgb(90, 90, 100)',
+        shadow    : '2px 4px 12px rgba(0, 0, 0, 0.55)',
+        radius    : '6px',
+        padding   : '12px',
+        arrowSize : '8px',
+    },
     notification: {
         shadow : '2px 4px 8px rgba(0, 0, 0, 0.4)',
         info   : { background: 'rgba(30, 100, 200, 0.2)',  border: 'rgb(30, 100, 200)'  },
@@ -661,6 +689,13 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-tooltip-color'                    : theme.tooltip.color,
         '--ts-ui-tooltip-border'                   : theme.tooltip.border,
         '--ts-ui-tooltip-shadow'                   : theme.tooltip.shadow,
+        '--ts-ui-popover-bg'                       : theme.popover.background,
+        '--ts-ui-popover-color'                    : theme.popover.color,
+        '--ts-ui-popover-border'                   : theme.popover.border,
+        '--ts-ui-popover-shadow'                   : theme.popover.shadow,
+        '--ts-ui-popover-radius'                   : theme.popover.radius,
+        '--ts-ui-popover-padding'                  : theme.popover.padding,
+        '--ts-ui-popover-arrow-size'               : theme.popover.arrowSize,
         '--ts-ui-notification-shadow'              : theme.notification.shadow,
         '--ts-ui-notification-info-bg'             : theme.notification.info.background,
         '--ts-ui-notification-info-border'         : theme.notification.info.border,
