@@ -29,6 +29,31 @@ export interface TextOptions extends ComponentOptions {
 }
 
 /**
+ * Module-level class defaults forwarded to `super` via the options bag so the
+ * `applyOptions` cascade dispatches each setter once with the final value.
+ *
+ * `fontFamily` and `lineHeight` are intentionally **omitted**:
+ *
+ * - `fontFamily` must remain a getter-fallback only. Routing it through
+ *   `setFontFamily(...)` would write the literal `var(--ts-ui-font-family, …)`
+ *   onto every Text's CSS rule, blocking a parent's `font-family` override
+ *   from cascading through.
+ * - `lineHeight` is theme-derived (`readThemeLineHeightPx()`), so the value
+ *   isn't known at module load. The per-instance fallback write in the
+ *   constructor body resolves it from the live theme tokens.
+ */
+const _defaultTextOptions: Partial<TextOptions> = {
+    textAlign:      "left",
+    fontKerning:    "auto",
+    fontSize:       14,
+    fontSizeAdjust: "none",
+    fontStretch:    "normal",
+    fontStyle:      "normal",
+    fontVariant:    "normal",
+    fontWeight:     "normal",
+};
+
+/**
  * A text-displaying component with comprehensive font and layout controls.
  *
  * Uses an off-screen probe element to measure text dimensions and automatically
@@ -55,22 +80,19 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private lineClamp: number | null = null;
 
     constructor(text?: String, options?: TOptions) {
-        super({ ...(options ?? {}), tag: options?.tag ?? "span" } as TOptions);
+        super({ ..._defaultTextOptions, ...(options ?? {}), tag: options?.tag ?? "span" } as TOptions);
 
-        // Class-level fallback defaults consulted by getters / applyStyle when
-        // the caller didn't supply a value. Live in `_defaultOptions` so the
-        // `if (this._options.X === undefined)` guards used by Text subclasses
-        // still detect "caller didn't set X".
-        this._defaultOptions.textAlign      = "left";
-        this._defaultOptions.fontFamily     = "var(--ts-ui-font-family, system-ui, sans-serif)";
-        this._defaultOptions.fontKerning    = "auto";
-        this._defaultOptions.fontSize       = 14;
-        this._defaultOptions.fontSizeAdjust = "none";
-        this._defaultOptions.fontStretch    = "normal";
-        this._defaultOptions.fontStyle      = "normal";
-        this._defaultOptions.fontVariant    = "normal";
-        this._defaultOptions.fontWeight     = "normal";
-        this._defaultOptions.lineHeight     = this.readThemeLineHeightPx();
+        // Carve-out fallbacks — see `_defaultTextOptions` for why these two
+        // don't ride the merge-defaults cascade. Both are consulted by their
+        // getters as a fallback when `_options.X` is undefined.
+        //
+        // Note: the cascade-driven `setFontSize(14)` clobbers `fontSizeCSSVar`
+        // and `fontSizeCSSRule` to null, but Text's field initializers (which
+        // run after super returns) restore both to their var-binding values —
+        // so theme reactivity is preserved by the DOM `var(...)` binding even
+        // though the cascade temporarily writes a literal.
+        this._defaultOptions.fontFamily = "var(--ts-ui-font-family, system-ui, sans-serif)";
+        this._defaultOptions.lineHeight = this.readThemeLineHeightPx();
 
         this.clearInsets();
         this.setElementCSSRule("lineHeight", this.lineHeightCSSRule);
@@ -83,7 +105,12 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
                 const parsed = parseFloat(raw);
 
                 if (!isNaN(parsed)) {
-                    this._defaultOptions.fontSize = parsed;
+                    // Route to `_options` so the post-cascade explicit value
+                    // (set by `setFontSize(14)` during applyOptions) is
+                    // overwritten on theme change. Writing to `_defaultOptions`
+                    // here would be shadowed by `_options.fontSize = 14` in
+                    // the `getFontSize` fallback, breaking re-flow.
+                    this._options.fontSize = parsed as TOptions["fontSize"];
                 }
             }
 
