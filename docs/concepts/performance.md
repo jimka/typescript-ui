@@ -39,6 +39,26 @@ This gives constant memory and constant frame time regardless of dataset size. A
 
 See the [Virtualized lists recipe](/recipes/virtualized-list) for an end-to-end example.
 
+## Compositor-layer hints
+
+Elements that animate via `translate3d` (table rows during scroll, the header during horizontal scroll, windows during drag) are promoted to their own compositor layer the first time the browser sees the transform actually change. That first frame pays a layer-creation cost the next frames don't — visible as a brief "settle" tick at the start of motion.
+
+[`Component.setWillChange`](/api/core/classes/Component#setwillchange) pre-creates the layer by writing `will-change: transform` (or any other CSS `will-change` value). The framework calls it automatically:
+
+- **Window drag** — set on `mousedown`, cleared on `mouseup`. The first dragged frame is layer-ready.
+- **Virtual table / tree rows** — set when a row joins the pool, cleared when it leaves. Pool size is bounded by the visible window plus buffer, so the hint count stays well under the browser threshold.
+- **Table header** — set once for the Table's lifetime, since the header is always the scroll-mirror target.
+
+Custom code that drives its own continuous motion can use the same setter:
+
+```typescript
+panel.setWillChange("transform");   // before motion starts
+// ... setTranslate calls ...
+panel.setWillChange(null);          // when motion ends, to release the layer
+```
+
+The hint costs GPU memory and is ignored by browsers past a per-page threshold (~50–100 elements), so set it only over the active-motion lifetime and clear it promptly. For permanent scroll targets (one or two per page) it can be left set for the component's lifetime.
+
 ## Web Worker for sort and filter
 
 [`AbstractStore`](/api/data/classes/AbstractStore) automatically offloads sort and filter operations to a Web Worker once the dataset crosses **1,000 rows**:

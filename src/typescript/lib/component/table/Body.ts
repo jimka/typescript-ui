@@ -162,13 +162,16 @@ class Body extends Component {
     private clearRowPool(): void {
         const container = this.scroller ? this.scroller.getRowsContainer() : null;
 
-        if (container) {
-            for (const row of this.rowPool) {
-                const rowEl = row.getElement();
+        for (const row of this.rowPool) {
+            // Release the compositor layer hint while the element is still attached
+            // so the DOM write commits — once detached, the queued style flush is
+            // moot because the row is about to be discarded.
+            row.setWillChange(null);
 
-                if (rowEl?.parentNode === container) {
-                    container.removeChild(rowEl);
-                }
+            const rowEl = row.getElement();
+
+            if (container && rowEl?.parentNode === container) {
+                container.removeChild(rowEl);
             }
         }
 
@@ -427,6 +430,11 @@ class Body extends Component {
             // Pin row's static top to 0 once. Per-frame Y offset comes from translateY,
             // which is composite-only (avoids layout/paint per scroll tick).
             row.setY(0);
+
+            // Pre-promote pooled rows to their own compositor layer so the first
+            // scroll-driven translate doesn't pay a layer-creation cost. Cleared
+            // in clearRowPool when the row leaves the pool.
+            row.setWillChange("transform");
 
             this.rowPool.push(row);
             this.boundIndices.push(-1);
