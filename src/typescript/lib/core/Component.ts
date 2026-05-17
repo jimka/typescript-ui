@@ -181,6 +181,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _overflowY            : string | null           = null;
     private _contain              : string | null           = null;
     private _animation            : string | null           = null;
+    private _outline              : string | null           = null;
+    private _appearance           : string | null           = null;
+    private _borderImage          : string | null           = null;
+    private _transform            : string | null           = null;
+    private _opacity              : number | null           = null;
     private _disabledAttribute    : boolean                 = false;
     private _border               : Border | null           = null;
     private _borderCSS            : string | null           = null;
@@ -1045,6 +1050,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Removes the color-scheme CSS property from the element.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearColorScheme(): this {
+        if (this._options.colorScheme === undefined) {
+            return this;
+        }
+
+        this._options.colorScheme = undefined;
+        this.setElementCSSRule("colorScheme", null);
+
+        return this;
+    }
+
+    /**
      * Returns the Border instance, or null if no border is set.
      *
      * @returns The current Border object, or null.
@@ -1121,6 +1142,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
         this._options.cursor = cursor;
         this.setElementStyle("cursor", cursor);
+
+        return this;
+    }
+
+    /**
+     * Removes the inline cursor style from the element.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearCursor(): this {
+        if (this._options.cursor === undefined) {
+            return this;
+        }
+
+        this._options.cursor = undefined;
+        this.setElementStyle("cursor", null);
 
         return this;
     }
@@ -1203,6 +1240,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the CSS outline value last passed to {@link setOutline}, or `null`
+     * if no outline is set.
+     *
+     * @returns The outline string, or null.
+     */
+    getOutline(): string | null {
+        return this._outline;
+    }
+
+    /**
      * Sets the CSS outline on the element. Use {@link clearOutline} to remove.
      *
      * @param outline - A CSS outline value (e.g. "none", "2px solid blue").
@@ -1210,6 +1257,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setOutline(outline: string): this {
+        this._outline = outline;
+
         this.setElementCSSRule("outline", outline);
 
         return this;
@@ -1221,9 +1270,20 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearOutline(): this {
+        this._outline = null;
         this.setElementCSSRule("outline", null);
 
         return this;
+    }
+
+    /**
+     * Returns the CSS appearance value last passed to {@link setAppearance}, or
+     * `null` if no appearance override is set.
+     *
+     * @returns The appearance string, or null.
+     */
+    getAppearance(): string | null {
+        return this._appearance;
     }
 
     /**
@@ -1234,6 +1294,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setAppearance(value: string): this {
+        this._appearance = value;
+
         this.setElementCSSRules({
             webkitAppearance: value,
             appearance:       value
@@ -1248,12 +1310,23 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearAppearance(): this {
+        this._appearance = null;
         this.setElementCSSRules({
             webkitAppearance: null,
             appearance:       null
         });
 
         return this;
+    }
+
+    /**
+     * Returns the CSS border-image value last passed to {@link setBorderImage},
+     * or `null` if no border-image is set.
+     *
+     * @returns The border-image string, or null.
+     */
+    getBorderImage(): string | null {
+        return this._borderImage;
     }
 
     /**
@@ -1264,6 +1337,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setBorderImage(value: string): this {
+        this._borderImage = value;
+
         this.setElementCSSRule("borderImage", value);
 
         return this;
@@ -1275,9 +1350,26 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearBorderImage(): this {
+        this._borderImage = null;
         this.setElementCSSRule("borderImage", null);
 
         return this;
+    }
+
+    /**
+     * Returns the CSS transform value last passed to {@link setTransform}, or
+     * `null` if no transform is set.
+     *
+     * @returns The transform string, or null.
+     *
+     * @remarks Reflects the value written to the component's CSS rule by
+     * {@link setTransform}. {@link setTranslate} writes `transform` as an inline
+     * style on a separate surface — its value is **not** reflected here. The
+     * two transform surfaces (rule vs. inline) are independent; the cached
+     * value here is the rule-side value only.
+     */
+    getTransform(): string | null {
+        return this._transform;
     }
 
     /**
@@ -1288,6 +1380,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setTransform(value: string): this {
+        this._transform = value;
+
         this.setElementCSSRule("transform", value);
 
         return this;
@@ -1299,6 +1393,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearTransform(): this {
+        this._transform = null;
         this.setElementCSSRule("transform", null);
 
         return this;
@@ -1633,6 +1728,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         return this;
     }
 
+    /**
+     * Removes the vertical-align CSS property from the element.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearVerticalAlign(): this {
+        if (this._verticalAlign === null) {
+            return this;
+        }
+
+        this._verticalAlign = null;
+        this.setElementCSSRule("verticalAlign", null);
+
+        return this;
+    }
+
     // Currently commented out, probing if a scrollbar is visible or not seems to be unreliable with the below method.
 
     // hasHorizontalScrollBar() {
@@ -1902,6 +2013,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Removes the explicit position override from the component's CSS rule.
+     * The framework default (`Position.ABSOLUTE`) reported by {@link getPosition}
+     * remains in effect.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearPosition(): this {
+        if (this._options.position === undefined) {
+            return this;
+        }
+
+        this._options.position = undefined;
+        this.setElementCSSRule("position", null);
+
+        return this;
+    }
+
+    /**
      * Returns the CSS overflow value.
      *
      * @returns The CSS overflow string, or null if not set.
@@ -1921,6 +2050,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._options.overflow = overflow;
 
         this.setElementCSSRule("overflow", overflow);
+
+        return this;
+    }
+
+    /**
+     * Removes the overflow CSS property from the component's CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearOverflow(): this {
+        if (this._options.overflow === undefined) {
+            return this;
+        }
+
+        this._options.overflow = undefined;
+        this.setElementCSSRule("overflow", null);
 
         return this;
     }
@@ -1953,6 +2098,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Removes the overflow-x CSS property from the component's CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearOverflowX(): this {
+        if (this._overflowX === null) {
+            return this;
+        }
+
+        this._overflowX = null;
+        this.setElementCSSRule("overflowX", null);
+
+        return this;
+    }
+
+    /**
      * Returns the CSS overflow-y value, or null if not set.
      *
      * @returns The CSS overflow-y string, or null.
@@ -1975,6 +2136,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this._overflowY = value;
         this.setElementCSSRule("overflowY", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the overflow-y CSS property from the component's CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearOverflowY(): this {
+        if (this._overflowY === null) {
+            return this;
+        }
+
+        this._overflowY = null;
+        this.setElementCSSRule("overflowY", null);
 
         return this;
     }
@@ -2003,6 +2180,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this._contain = value;
         this.setElementCSSRule("contain", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the `contain` CSS property from the component's CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearContain(): this {
+        if (this._contain === null) {
+            return this;
+        }
+
+        this._contain = null;
+        this.setElementCSSRule("contain", null);
 
         return this;
     }
@@ -2107,6 +2300,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the inline `pointer-events` value last passed to
+     * {@link setPointerEvents}, or `null` if not set.
+     *
+     * @returns The pointer-events string, or null.
+     */
+    getPointerEvents(): string | null {
+        return this._options.pointerEvents ?? null;
+    }
+
+    /**
      * Sets the CSS pointer-events property on the element.
      *
      * @param value - A CSS pointer-events value (e.g. "none", "auto").
@@ -2122,6 +2325,32 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Removes the inline `pointer-events` property from the element.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearPointerEvents(): this {
+        if (this._options.pointerEvents === undefined) {
+            return this;
+        }
+
+        this._options.pointerEvents = undefined;
+        this.setElementStyle("pointerEvents", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the opacity value last passed to {@link setOpacity}, or `null` if
+     * no opacity has been set.
+     *
+     * @returns The opacity number, or null.
+     */
+    getOpacity(): number | null {
+        return this._opacity;
+    }
+
+    /**
      * Sets the CSS opacity property on the element.
      *
      * @param value - A number between `0` (fully transparent) and `1` (fully opaque). Use {@link clearOpacity} to remove the property.
@@ -2129,6 +2358,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setOpacity(value: number): this {
+        this._opacity = value;
+
         this.setElementStyle("opacity", String(value));
 
         return this;
@@ -2141,6 +2372,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearOpacity(): this {
+        this._opacity = null;
         this.setElementStyle("opacity", null);
 
         return this;
@@ -2182,6 +2414,63 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the CSS `white-space` value last written by {@link setWhiteSpace},
+     * or `null` if cleared.
+     *
+     * @returns The white-space string, or null.
+     */
+    getWhiteSpace(): string | null {
+        return this._whiteSpace;
+    }
+
+    /**
+     * Sets the CSS white-space property on the component's CSS rule.
+     *
+     * @param value - A CSS white-space value (e.g. "nowrap", "normal", "pre").
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks Previously declared on [`Text`](/api/component/input/classes/Text);
+     * promoted to `Component` because the property has no Text-specific
+     * semantics. The `_whiteSpace` backing field that {@link applyStyle}
+     * already consults on re-render lives here, so caching during the setter
+     * call keeps the post-render state in lockstep with the cached value.
+     */
+    setWhiteSpace(value: string): this {
+        this._whiteSpace = value;
+
+        this.setElementCSSRule("whiteSpace", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the white-space CSS property from the component's CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearWhiteSpace(): this {
+        if (this._whiteSpace === null) {
+            return this;
+        }
+
+        this._whiteSpace = null;
+        this.setElementCSSRule("whiteSpace", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the `user-select` value last passed to {@link setUserSelect}, or
+     * `null` if no value has been set.
+     *
+     * @returns The user-select string, or null.
+     */
+    getUserSelect(): string | null {
+        return this._userSelect;
+    }
+
+    /**
      * Sets the CSS user-select property on the element.
      *
      * @param value - A CSS user-select value (e.g. "none", "auto", "text").
@@ -2192,6 +2481,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._userSelect = value;
 
         this.setElementCSSRule("userSelect", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the user-select CSS property from the component's CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearUserSelect(): this {
+        if (this._userSelect === null) {
+            return this;
+        }
+
+        this._userSelect = null;
+        this.setElementCSSRule("userSelect", null);
 
         return this;
     }

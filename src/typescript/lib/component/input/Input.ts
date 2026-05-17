@@ -96,6 +96,22 @@ class Input<TOptions extends InputOptions = InputOptions> extends Component<TOpt
     }
 
     /**
+     * Removes the HTML `name` attribute from the underlying input.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearName(): this {
+        if (this._options.name === undefined) {
+            return this;
+        }
+
+        this._options.name = undefined;
+        this.removeElementAttribute("name");
+
+        return this;
+    }
+
+    /**
      * Returns the DOM element cast to HTMLInputElement & HTMLTextAreaElement.
      *
      * @param createIfMissing - Optional. When true, renders the element if it does not yet exist.
