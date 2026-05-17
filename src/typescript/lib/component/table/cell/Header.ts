@@ -180,6 +180,7 @@ class HeaderCell extends DefaultCell {
         gEl.style.cssText =
             'position:absolute;left:var(--ts-ui-table-header-glyph-gap,4px);' +
             'top:50%;transform:translateY(-50%);' +
+            'width:16px;height:16px;' +
             'color:var(--ts-ui-table-header-glyph-color,currentColor);' +
             'pointer-events:none;';
 
