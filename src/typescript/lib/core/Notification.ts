@@ -15,8 +15,9 @@ import { circle_info } from "~/glyphs/solid/circle_info.js";
 import { circle_check } from "~/glyphs/solid/circle_check.js";
 import { triangle_exclamation } from "~/glyphs/solid/triangle_exclamation.js";
 import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
+import { xmark } from "~/glyphs/solid/xmark.js";
 
-Glyph.register(circle_info, circle_check, triangle_exclamation, circle_exclamation);
+Glyph.register(circle_info, circle_check, triangle_exclamation, circle_exclamation, xmark);
 
 /**
  * The visual severity of a notification.
@@ -140,7 +141,7 @@ export class Notification extends Component {
         this._messageText.setWordBreak("break-word");
         this.addComponent(this._messageText);
 
-        this._closeButton = new Button({ glyph: "times" });
+        this._closeButton = new Button({ glyph: "xmark" });
         this._closeButton.setInsets(new Insets(0, 0, 0, 0));
         this._closeButton.setBorder({ style: BorderStyle.NONE });
         this._closeButton.clearBackgroundImage();
@@ -405,7 +406,7 @@ export class Notification extends Component {
         const dialog = new _Dialog({
             title:            DETAIL_TITLE[this._type],
             contentComponent: content,
-            buttons:          [{ text: 'Close', result: 'close', primary: true, glyph: "times" }],
+            buttons:          [{ text: 'Close', result: 'close', primary: true, glyph: "xmark" }],
             width:            420,
             height:           220,
         });

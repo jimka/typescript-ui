@@ -10,6 +10,9 @@ import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { Placement } from "~/primitive/Placement.js";
 import { callable } from "~/core/Callable.js";
+import { xmark } from "~/glyphs/solid/xmark.js";
+
+Glyph.register(xmark);
 
 /**
  * Construction-time options for {@link WindowHeader}.
@@ -62,7 +65,7 @@ class WindowHeader extends Header {
             fill:      FillType.HORIZONTAL
         });
 
-        this._exitButton = new Button({ glyph: "times" });
+        this._exitButton = new Button({ glyph: "xmark" });
         this._exitButton.setBackgroundImage(this._activeBackgroundImage);
         this._exitButton.clearBorder();
 

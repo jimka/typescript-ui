@@ -6,6 +6,13 @@ import { HBox } from "~/layout/HBox.js";
 import { Button } from "~/component/button/Button.js";
 import { Text } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { angles_left }  from "~/glyphs/solid/angles_left.js";
+import { angle_left }   from "~/glyphs/solid/angle_left.js";
+import { angle_right }  from "~/glyphs/solid/angle_right.js";
+import { angles_right } from "~/glyphs/solid/angles_right.js";
+
+Glyph.register(angles_left, angle_left, angle_right, angles_right);
 
 /**
  * Construction-time options for {@link PaginationBar}.
