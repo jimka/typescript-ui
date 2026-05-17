@@ -602,14 +602,14 @@ class MiscPanel extends Panel {
         const iconTextRow = new Component();
         iconTextRow.setLayoutManager(new HBox());
         iconTextRow.addComponent(new Text("IconText:"));
-        iconTextRow.addComponent(new IconText("times", "Close"));
+        iconTextRow.addComponent(new IconText("xmark", "Close"));
         iconTextRow.addComponent(new IconText("arrow-right", "Next"));
         this.addComponent(iconTextRow);
 
         const iconLabelField = new TextField();
         const iconLabelRow = new Component();
         iconLabelRow.setLayoutManager(new HBox());
-        iconLabelRow.addComponent(new IconLabel("times", "Email:", iconLabelField.getId()));
+        iconLabelRow.addComponent(new IconLabel("xmark", "Email:", iconLabelField.getId()));
         iconLabelRow.addComponent(iconLabelField);
         this.addComponent(iconLabelRow);
 
