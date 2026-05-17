@@ -5,19 +5,21 @@ import { VBox } from '@jimka/typescript-ui/layout';
 import { Text } from '@jimka/typescript-ui/component/input';
 import { MenuBar } from '@jimka/typescript-ui/component/menubar';
 import { Glyph } from '@jimka/typescript-ui/component/display';
-import { file }            from '@jimka/typescript-ui/glyphs/solid/file';
-import { pen_to_square }   from '@jimka/typescript-ui/glyphs/solid/pen_to_square';
-import { circle_check }    from '@jimka/typescript-ui/glyphs/solid/circle_check';
-import { angles_right }    from '@jimka/typescript-ui/glyphs/solid/angles_right';
-import { angle_left }      from '@jimka/typescript-ui/glyphs/solid/angle_left';
-import { angle_right }     from '@jimka/typescript-ui/glyphs/solid/angle_right';
-import { ban }             from '@jimka/typescript-ui/glyphs/solid/ban';
-import { plus }            from '@jimka/typescript-ui/glyphs/solid/plus';
-import { minus }           from '@jimka/typescript-ui/glyphs/solid/minus';
-import { eye }             from '@jimka/typescript-ui/glyphs/solid/eye';
-import { arrows_rotate }   from '@jimka/typescript-ui/glyphs/solid/arrows_rotate';
-import { maximize }        from '@jimka/typescript-ui/glyphs/solid/maximize';
-import { circle_info }     from '@jimka/typescript-ui/glyphs/solid/circle_info';
+import {
+    file,
+    pen_to_square,
+    circle_check,
+    angles_right,
+    angle_left,
+    angle_right,
+    ban,
+    plus,
+    minus,
+    eye,
+    arrows_rotate,
+    maximize,
+    circle_info,
+} from '@jimka/typescript-ui/glyphs/solid';
 
 Glyph.register(
     file, pen_to_square, circle_check, angles_right, angle_left, angle_right,
