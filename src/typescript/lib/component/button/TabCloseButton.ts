@@ -3,6 +3,10 @@
 import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { xmark } from "~/glyphs/solid/xmark.js";
+
+Glyph.register(xmark);
 
 /**
  * Construction-time options for {@link TabCloseButton}.
@@ -42,7 +46,7 @@ class TabCloseButton extends Button<TabCloseButtonOptions> {
         super({
             ..._defaultTabCloseButtonOptions,
             ...(options ?? {}),
-            glyph: "times",
+            glyph: "xmark",
         });
     }
 }

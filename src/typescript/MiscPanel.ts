@@ -11,6 +11,14 @@ import { FieldSet } from '@jimka/typescript-ui/component/container';
 import { ColumnSpec, Table, TablePanel } from '@jimka/typescript-ui/component/table';
 import { IconLabelTreeNodeRenderer, Tree } from '@jimka/typescript-ui/component/tree';
 import type { TreeNode } from '@jimka/typescript-ui/component/tree';
+import { xmark } from '@jimka/typescript-ui/glyphs/solid/xmark';
+import { arrow_right } from '@jimka/typescript-ui/glyphs/solid/arrow_right';
+import { arrow_down } from '@jimka/typescript-ui/glyphs/solid/arrow_down';
+import { folder } from '@jimka/typescript-ui/glyphs/solid/folder';
+import { file } from '@jimka/typescript-ui/glyphs/solid/file';
+import { file_code } from '@jimka/typescript-ui/glyphs/solid/file_code';
+import { file_lines } from '@jimka/typescript-ui/glyphs/solid/file_lines';
+Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines);
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and
  * pretends to be a slow network request so the spinner overlay is visible.
@@ -371,7 +379,22 @@ class MiscPanel extends Panel {
 
                 const tree = new Tree();
                 tree.setRendererFactory(() => new IconLabelTreeNodeRenderer(
-                    (node) => (node.children && node.children.length > 0) ? "chevron-down" : "file",
+                    (node) => {
+                        if (node.children && node.children.length > 0) {
+                            return "folder";
+                        }
+
+                        const label = node.label ?? "";
+
+                        if (label.endsWith(".ts") || label.endsWith(".json")) {
+                            return "file-code";
+                        }
+                        if (label.endsWith(".md")) {
+                            return "file-lines";
+                        }
+
+                        return "file";
+                    },
                 ));
                 tree.setNodes(treeData);
 
@@ -587,25 +610,25 @@ class MiscPanel extends Panel {
         const glyphRow = new Component();
         glyphRow.setLayoutManager(new HBox());
         glyphRow.addComponent(new Text("Glyphs:"));
-        glyphRow.addComponent(new Glyph("times"));
+        glyphRow.addComponent(new Glyph("xmark"));
         glyphRow.addComponent(new Glyph("arrow-right"));
         glyphRow.addComponent(new Glyph("arrow-down"));
         this.addComponent(glyphRow);
 
-        const buttonWithGlyph = new Button("Save", { glyph: "times" });
+        const buttonWithGlyph = new Button("Save", { glyph: "xmark" });
         this.addComponent(buttonWithGlyph);
 
         const iconTextRow = new Component();
         iconTextRow.setLayoutManager(new HBox());
         iconTextRow.addComponent(new Text("IconText:"));
-        iconTextRow.addComponent(new IconText("times", "Close"));
+        iconTextRow.addComponent(new IconText("xmark", "Close"));
         iconTextRow.addComponent(new IconText("arrow-right", "Next"));
         this.addComponent(iconTextRow);
 
         const iconLabelField = new TextField();
         const iconLabelRow = new Component();
         iconLabelRow.setLayoutManager(new HBox());
-        iconLabelRow.addComponent(new IconLabel("times", "Email:", iconLabelField.getId()));
+        iconLabelRow.addComponent(new IconLabel("xmark", "Email:", iconLabelField.getId()));
         iconLabelRow.addComponent(iconLabelField);
         this.addComponent(iconLabelRow);
 

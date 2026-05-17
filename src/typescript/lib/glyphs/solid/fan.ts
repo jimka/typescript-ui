@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: CC-BY-4.0
+// Source: Font Awesome Free 7.2.0, https://fontawesome.com/license/free
+// © Fonticons, Inc.
+import type { NamedGlyphDef } from "~/component/display/Glyphs.js";
+
+export const fan: NamedGlyphDef = {
+    name:    "fan",
+    kind:    "svg",
+    viewBox: "0 0 512 512",
+    path:    "M160 144c0-79.5 64.5-144 144-144 8.8 0 16 7.2 16 16l0 152.2c15-5.3 31.2-8.2 48-8.2 79.5 0 144 64.5 144 144 0 8.8-7.2 16-16 16l-152.2 0c5.3 15 8.2 31.2 8.2 48 0 79.5-64.5 144-144 144-8.8 0-16-7.2-16-16l0-152.2c-15 5.3-31.2 8.2-48 8.2-79.5 0-144-64.5-144-144 0-8.8 7.2-16 16-16l152.2 0c-5.3-15-8.2-31.2-8.2-48zm96 144a32 32 0 1 0 0-64 32 32 0 1 0 0 64z"
+};

@@ -23,6 +23,11 @@
             "@jimka/typescript-ui/component/menubar":   ["./src/typescript/lib/component/menubar/index.ts"],
             "@jimka/typescript-ui/component/table":     ["./src/typescript/lib/component/table/index.ts"],
             "@jimka/typescript-ui/component/tree":      ["./src/typescript/lib/component/tree/index.ts"],
+            "@jimka/typescript-ui/glyphs":              ["./src/typescript/lib/glyphs/index.ts"],
+            "@jimka/typescript-ui/glyphs/solid":        ["./src/typescript/lib/glyphs/solid/index.ts"],
+            "@jimka/typescript-ui/glyphs/regular":      ["./src/typescript/lib/glyphs/regular/index.ts"],
+            "@jimka/typescript-ui/glyphs/brands":       ["./src/typescript/lib/glyphs/brands/index.ts"],
+            "@jimka/typescript-ui/glyphs/*":            ["./src/typescript/lib/glyphs/*.ts"],
             "~/*":                                       ["./src/typescript/lib/*"]
         }
     }

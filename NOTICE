@@ -1,46 +1,17 @@
 This project includes third-party material under licenses different from
 the project's own (see LICENSE for the project license).
 
-================================================================================
-Font Awesome Free
-================================================================================
+<!-- BEGIN: font-awesome-free -->
 
-Source:    https://fontawesome.com
-Author:    Fonticons, Inc.
-Icons:     Creative Commons Attribution 4.0 International (CC BY 4.0)
-           https://creativecommons.org/licenses/by/4.0/
-Fonts:     SIL OFL 1.1 (https://scripts.sil.org/OFL)
-Code:      MIT (https://opensource.org/licenses/MIT)
-Full text: src/resources/Base/script/fontawesome/LICENSE.txt
-           https://fontawesome.com/license/free
+## Font Awesome Free 7.2.0
 
-This project redistributes Font Awesome Free in two forms:
+All icon path data under `src/typescript/lib/glyphs/{solid,regular,brands}/` (and the corresponding `dist/lib/glyphs/...` build output) is derived from Font Awesome Free 7.2.0.
 
-1. The unmodified Font Awesome Free distribution is vendored under
-   `src/resources/Base/script/fontawesome/` (CSS, JS, fonts, SVG sources,
-   metadata). All files retain their original licenses as described above.
+- License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+- Creator: © Fonticons, Inc.
+- Source: https://fontawesome.com/license/free
+- Modifications: reformatted from upstream SVG sources into TypeScript constants; path data unchanged.
 
-2. SVG path data extracted from individual Font Awesome icons is embedded
-   in `src/typescript/lib/component/display/Glyphs.ts` as entries of the
-   `Glyphs` registry. The following registry entries are sourced from
-   Font Awesome Free (CC BY 4.0):
+Full attribution text: see LICENSE-FONTAWESOME.md.
 
-     - `angle-left`           — fontawesome/svgs/solid/angle-left.svg
-     - `angle-right`          — fontawesome/svgs/solid/angle-right.svg
-     - `angles-left`          — fontawesome/svgs/solid/angle-double-left.svg
-     - `angles-right`         — fontawesome/svgs/solid/angle-double-right.svg
-     - `ban`                  — fontawesome/svgs/solid/ban.svg
-     - `check-circle`         — fontawesome/svgs/solid/check-circle.svg
-     - `chevron-down`         — fontawesome/svgs/solid/chevron-down.svg
-     - `chevron-up`           — fontawesome/svgs/solid/chevron-up.svg
-     - `circle-exclamation`   — fontawesome/svgs/solid/exclamation-circle.svg
-     - `eye`                  — fontawesome/svgs/solid/eye.svg
-     - `file`                 — fontawesome/svgs/solid/file.svg
-     - `info-circle`          — fontawesome/svgs/solid/info-circle.svg
-     - `minus`                — fontawesome/svgs/solid/minus.svg
-     - `pen-to-square`        — fontawesome/svgs/solid/edit.svg
-     - `plus`                 — fontawesome/svgs/solid/plus.svg
-     - `sync`                 — fontawesome/svgs/solid/sync.svg
-     - `times`                — fontawesome/svgs/solid/times.svg
-     - `triangle-exclamation` — fontawesome/svgs/solid/exclamation-triangle.svg
-     - `window`               — fontawesome/svgs/solid/window-maximize.svg
+<!-- END: font-awesome-free -->
