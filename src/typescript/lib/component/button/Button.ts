@@ -30,15 +30,21 @@ export interface ButtonOptions extends ComponentOptions {
     pressedBorder?:          BorderOptions;
     pressedBorderRadius?:    string;
     pressedShadow?:          string;
+    hoverBackgroundColor?:   string;
+    hoverBackgroundImage?:   string;
+    hoverForegroundColor?:   string;
+    hoverBorder?:            BorderOptions;
+    hoverBorderRadius?:      string;
+    hoverShadow?:            string;
 }
 
 /**
  * User-overridable visual defaults forwarded to `super` via the options bag.
  * The cascade in `Component`'s constructor dispatches each setter once with
  * the final value, so any field the caller supplied wins. Includes the
- * `pressedX` defaults because `pressedStyleRule` is a lazy getter — pressed*
- * setters are safe to fire during the super cascade and queue their writes
- * until the rule materialises.
+ * `pressedX` and `hoverX` defaults because both `pressedStyleRule` and
+ * `hoverStyleRule` are lazy getters — those setters are safe to fire during
+ * the super cascade and queue their writes until the rule materialises.
  */
 const _defaultButtonOptions: Partial<ButtonOptions> = {
     cursor:                 "pointer",
@@ -52,6 +58,9 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
     pressedBackgroundColor: "var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))",
     pressedBackgroundImage: "var(--ts-ui-button-pressed-bg, none)",
     pressedShadow:          "var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset)",
+    hoverBackgroundColor:   "var(--ts-ui-button-hover-bg, rgb(252, 252, 252))",
+    hoverBackgroundImage:   "var(--ts-ui-button-hover-bg, none)",
+    hoverShadow:            "var(--ts-ui-button-hover-shadow, 1px 3px 6px 0 rgba(0, 0, 0, 0.25))",
 };
 
 /**
@@ -88,6 +97,17 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         return this._pressedStyleRule ??= new StyleRule(() => CSS.createComponentRule(this.getId() + ":active") as CSSStyleRule);
     }
     private pressedBorder: Border | null = null;
+
+    // Lazy `:hover:not(:active)` rule. The `:not(:active)` guard makes the
+    // cascade unambiguous regardless of source order — the moment the
+    // pointer goes down, `:active` matches and `:hover:not(:active)` stops
+    // matching, so the pressed treatment always wins. Same lazy contract as
+    // the pressed rule above.
+    private _hoverStyleRule?: StyleRule;
+    private get hoverStyleRule(): StyleRule {
+        return this._hoverStyleRule ??= new StyleRule(() => CSS.createComponentRule(this.getId() + ":hover:not(:active)") as CSSStyleRule);
+    }
+    private hoverBorder: Border | null = null;
 
     private _enabledCursor: string = "pointer";
 
@@ -170,11 +190,12 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
     /**
      * Applies a {@link ButtonOptions} bag. Inherited Component fields cascade
-     * through `super.applyOptions`; pressed-state and `enabled` fields cascade
-     * through their own setters (the lazy `pressedStyleRule` getter makes them
-     * safe to fire during the super-time cascade). `text` and `glyph` are
-     * written pure into `_options` here and dispatched from the constructor
-     * body once children exist.
+     * through `super.applyOptions`; pressed-state, hover-state, and `enabled`
+     * fields cascade through their own setters (the lazy `pressedStyleRule`
+     * and `hoverStyleRule` getters make them safe to fire during the
+     * super-time cascade). `text` and `glyph` are written pure into
+     * `_options` here and dispatched from the constructor body once children
+     * exist.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -191,6 +212,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (options.pressedShadow          !== undefined) this.setPressedShadow(options.pressedShadow);
         if (options.pressedBorder          !== undefined) this.setPressedBorder(options.pressedBorder);
         if (options.pressedBorderRadius    !== undefined) this.setPressedBorderRadius(options.pressedBorderRadius);
+
+        if (options.hoverForegroundColor   !== undefined) this.setHoverForegroundColor(options.hoverForegroundColor);
+        if (options.hoverBackgroundColor   !== undefined) this.setHoverBackgroundColor(options.hoverBackgroundColor);
+        if (options.hoverBackgroundImage   !== undefined) this.setHoverBackgroundImage(options.hoverBackgroundImage);
+        if (options.hoverShadow            !== undefined) this.setHoverShadow(options.hoverShadow);
+        if (options.hoverBorder            !== undefined) this.setHoverBorder(options.hoverBorder);
+        if (options.hoverBorderRadius      !== undefined) this.setHoverBorderRadius(options.hoverBorderRadius);
 
         return this;
     }
@@ -473,6 +501,204 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     clearPressedShadow(): this {
         this._options.pressedShadow = undefined;
         this.pressedStyleRule.set("boxShadow", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the background color applied when the pointer is over the button (but not pressed).
+     *
+     * @returns The CSS color string, or null if not set.
+     */
+    getHoverBackgroundColor(): string | null {
+        return this._options.hoverBackgroundColor ?? null;
+    }
+
+    /**
+     * Sets the background color for the `:hover:not(:active)` CSS rule.
+     *
+     * @param backgroundColor - A CSS color string, or null to clear the property.
+     *
+     * @returns This component, for method chaining.
+     */
+    setHoverBackgroundColor(backgroundColor: string): this {
+        this._options.hoverBackgroundColor = backgroundColor;
+        this.hoverStyleRule.set("backgroundColor", backgroundColor);
+
+        return this;
+    }
+
+    /**
+     * Removes the background-color from the `:hover:not(:active)` CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearHoverBackgroundColor(): this {
+        this._options.hoverBackgroundColor = undefined;
+        this.hoverStyleRule.set("backgroundColor", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the background image applied when the pointer is over the button (but not pressed).
+     *
+     * @returns The CSS background-image string, or null if not set.
+     */
+    getHoverBackgroundImage(): string | null {
+        return this._options.hoverBackgroundImage ?? null;
+    }
+
+    /**
+     * Sets the background image for the `:hover:not(:active)` CSS rule.
+     *
+     * @param backgroundImage - A CSS background-image string, or null to clear the property.
+     *
+     * @returns This component, for method chaining.
+     */
+    setHoverBackgroundImage(backgroundImage: string): this {
+        this._options.hoverBackgroundImage = backgroundImage;
+        this.hoverStyleRule.set("backgroundImage", backgroundImage);
+
+        return this;
+    }
+
+    /**
+     * Removes the background-image from the `:hover:not(:active)` CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearHoverBackgroundImage(): this {
+        this._options.hoverBackgroundImage = undefined;
+        this.hoverStyleRule.set("backgroundImage", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the text color applied when the pointer is over the button (but not pressed).
+     *
+     * @returns The CSS color string, or null if not set.
+     */
+    getHoverForegroundColor(): string | null {
+        return this._options.hoverForegroundColor ?? null;
+    }
+
+    /**
+     * Sets the text color for the `:hover:not(:active)` CSS rule.
+     *
+     * @param foregroundColor - A CSS color string, or null to clear the property.
+     *
+     * @returns This component, for method chaining.
+     */
+    setHoverForegroundColor(foregroundColor: string): this {
+        this._options.hoverForegroundColor = foregroundColor;
+        this.hoverStyleRule.set("color", foregroundColor);
+
+        return this;
+    }
+
+    /**
+     * Removes the color (foreground) from the `:hover:not(:active)` CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearHoverForegroundColor(): this {
+        this._options.hoverForegroundColor = undefined;
+        this.hoverStyleRule.set("color", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the border applied when the pointer is over the button (but not pressed).
+     *
+     * @returns The [`Border`](/api/primitive/classes/Border) instance for the hover state, or null if not set.
+     */
+    getHoverBorder(): Border | null {
+        return this.hoverBorder;
+    }
+
+    /**
+     * Sets the border for the `:hover:not(:active)` CSS rule.
+     *
+     * @param options - Optional. Border configuration (style, width, color). Omit to apply a default border.
+     *
+     * @returns This component, for method chaining.
+     */
+    setHoverBorder(options?: BorderOptions): this {
+        this.hoverBorder = new Border(options);
+        this.hoverBorder.applyOnCSSRule(this.hoverStyleRule.ensure());
+
+        return this;
+    }
+
+    /**
+     * Returns the border radius applied when the pointer is over the button (but not pressed).
+     *
+     * @returns The CSS border-radius string, or null if not set.
+     */
+    getHoverBorderRadius(): string | null {
+        return this._options.hoverBorderRadius ?? null;
+    }
+
+    /**
+     * Sets the border radius for the `:hover:not(:active)` CSS rule.
+     *
+     * @param borderRadius - A CSS border-radius string, or null to clear the property.
+     *
+     * @returns This component, for method chaining.
+     */
+    setHoverBorderRadius(borderRadius: string): this {
+        this._options.hoverBorderRadius = borderRadius;
+        this.hoverStyleRule.set("borderRadius", borderRadius);
+
+        return this;
+    }
+
+    /**
+     * Removes the border-radius from the `:hover:not(:active)` CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearHoverBorderRadius(): this {
+        this._options.hoverBorderRadius = undefined;
+        this.hoverStyleRule.set("borderRadius", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the box shadow applied when the pointer is over the button (but not pressed).
+     *
+     * @returns The CSS box-shadow string, or null if not set.
+     */
+    getHoverShadow(): string | null {
+        return this._options.hoverShadow ?? null;
+    }
+
+    /**
+     * Sets the box shadow for the `:hover:not(:active)` CSS rule.
+     *
+     * @param shadow - A CSS box-shadow string, or null to set the shadow to "none".
+     *
+     * @returns This component, for method chaining.
+     */
+    setHoverShadow(shadow: string): this {
+        this._options.hoverShadow = shadow;
+        this.hoverStyleRule.set("boxShadow", shadow);
+
+        return this;
+    }
+
+    /**
+     * Removes the box-shadow from the `:hover:not(:active)` CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearHoverShadow(): this {
+        this._options.hoverShadow = undefined;
+        this.hoverStyleRule.set("boxShadow", null);
 
         return this;
     }
