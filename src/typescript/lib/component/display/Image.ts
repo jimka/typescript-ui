@@ -24,12 +24,12 @@ export interface ImageOptions extends ComponentOptions {
  */
 class Image extends Component {
 
-    private src: String;
+    private _src: String;
 
     constructor(src: String, options?: ImageOptions) {
         super({ tag: "img" });
 
-        this.src = src;
+        this._src = src;
         this.clearInsets();
         this.setMinSize(20, 20);
 
@@ -71,7 +71,7 @@ class Image extends Component {
     render() {
         let element = <HTMLImageElement>super.render();
 
-        element.src = this.src.valueOf();
+        element.src = this._src.valueOf();
 
         return element;
     }

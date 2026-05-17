@@ -13,17 +13,17 @@ import { callable } from "~/core/Callable.js";
  */
 class NumberRenderer extends CellRenderer<Number> {
 
-    private text: Text = new Text();
+    private _text: Text = new Text();
 
     constructor() {
         super();
 
-        this.text.setPointerEvents("none");
-        this.text.setTextAlign("right");
-        this.text.setText("");
-        this.text.setAutoMeasure(false);
+        this._text.setPointerEvents("none");
+        this._text.setTextAlign("right");
+        this._text.setText("");
+        this._text.setAutoMeasure(false);
 
-        this.addComponent(this.text);
+        this.addComponent(this._text);
     }
 
     /**
@@ -32,7 +32,7 @@ class NumberRenderer extends CellRenderer<Number> {
      * @returns The current numeric value.
      */
     getValue() {
-        return Number(this.text.getText());
+        return Number(this._text.getText());
     }
 
     /**
@@ -41,7 +41,7 @@ class NumberRenderer extends CellRenderer<Number> {
      * @param value - The numeric value to display.
      */
     setValue(value: Number) : this {
-        this.text.setText(String(value) || "");
+        this._text.setText(String(value) || "");
 
         return this;
     }

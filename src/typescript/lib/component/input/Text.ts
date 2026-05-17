@@ -67,17 +67,17 @@ const _defaultTextOptions: Partial<TextOptions> = {
  */
 class Text<TOptions extends TextOptions = TextOptions> extends Component<TOptions> {
 
-    private hasExplicitPreferredSize: boolean = false;
-    private fontSizeCSSVar : string | null = "--ts-ui-font-size";
-    private fontSizeCSSRule: string | null = "var(--ts-ui-font-size, 14px)";
-    private readonly unsubscribeTheme: () => void;
-    private lineHeightCSSVar : string | null = "--ts-ui-line-height";
-    private lineHeightCSSRule: string | null = "var(--ts-ui-line-height, 1.2)";
-    private measuredBaseline: number | null = null;
-    private autoMeasure: boolean = true;
-    private measurementDirty: boolean = true;
-    private wordBreak: string | null = null;
-    private lineClamp: number | null = null;
+    private _hasExplicitPreferredSize: boolean = false;
+    private _fontSizeCSSVar : string | null = "--ts-ui-font-size";
+    private _fontSizeCSSRule: string | null = "var(--ts-ui-font-size, 14px)";
+    private readonly _unsubscribeTheme: () => void;
+    private _lineHeightCSSVar : string | null = "--ts-ui-line-height";
+    private _lineHeightCSSRule: string | null = "var(--ts-ui-line-height, 1.2)";
+    private _measuredBaseline: number | null = null;
+    private _autoMeasure: boolean = true;
+    private _measurementDirty: boolean = true;
+    private _wordBreak: string | null = null;
+    private _lineClamp: number | null = null;
 
     constructor(text?: String, options?: TOptions) {
         super({ ..._defaultTextOptions, ...(options ?? {}), tag: options?.tag ?? "span" } as TOptions);
@@ -95,12 +95,12 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         this._defaultOptions.lineHeight = this.readThemeLineHeightPx();
 
         this.clearInsets();
-        this.setElementCSSRule("lineHeight", this.lineHeightCSSRule);
+        this.setElementCSSRule("lineHeight", this._lineHeightCSSRule);
 
-        this.unsubscribeTheme = ThemeManager.onThemeChange(() => {
-            if (this.fontSizeCSSVar) {
+        this._unsubscribeTheme = ThemeManager.onThemeChange(() => {
+            if (this._fontSizeCSSVar) {
                 const raw    = getComputedStyle(document.documentElement)
-                                   .getPropertyValue(this.fontSizeCSSVar)
+                                   .getPropertyValue(this._fontSizeCSSVar)
                                    .trim();
                 const parsed = parseFloat(raw);
 
@@ -114,7 +114,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
                 }
             }
 
-            if (this.lineHeightCSSVar) {
+            if (this._lineHeightCSSVar) {
                 this._defaultOptions.lineHeight = this.readThemeLineHeightPx();
             }
 
@@ -131,7 +131,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         // Off-screen text measurement is deferred until the first
         // getPreferredSize / getBaseline call so construction stays JS-only
         // (no forced layout from `Util.measureTextMetrics`).
-        this.measurementDirty = true;
+        this._measurementDirty = true;
     }
 
     /**
@@ -213,12 +213,12 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private readThemeLineHeightPx(): number {
         const fs = (this._options.fontSize as number | undefined) ?? (this._defaultOptions.fontSize as number | undefined) ?? 14;
 
-        if (!this.lineHeightCSSVar) {
+        if (!this._lineHeightCSSVar) {
             return fs;
         }
 
         const raw    = getComputedStyle(document.documentElement)
-                           .getPropertyValue(this.lineHeightCSSVar)
+                           .getPropertyValue(this._lineHeightCSSVar)
                            .trim();
         const parsed = parseFloat(raw);
 
@@ -242,7 +242,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setPreferredSize(width: number, height: number): this {
-        this.hasExplicitPreferredSize = true;
+        this._hasExplicitPreferredSize = true;
         super.setPreferredSize(width, height);
 
         return this;
@@ -252,7 +252,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * Updates the preferred size from a measurement only when no explicit size has been set.
      */
     private setCalculatedSize(width: number, height: number): void {
-        if (!this.hasExplicitPreferredSize) {
+        if (!this._hasExplicitPreferredSize) {
             super.setPreferredSize(width, height);
         }
     }
@@ -265,9 +265,9 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * No-op when {@link setAutoMeasure} is `false` — the parent layout is expected to size this Text.
      */
     private calculateSize(): void {
-        this.measurementDirty = false;
+        this._measurementDirty = false;
 
-        if (!this.autoMeasure) {
+        if (!this._autoMeasure) {
             return;
         }
 
@@ -278,20 +278,20 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
             const { width, height, baseline } = Util.measureTextMetrics(text.toString(), {
                 fontFamily : this.getFontFamily()  ?? undefined,
-                fontSize   : this.fontSizeCSSRule ?? (fontSize !== null ? `${fontSize}px` : undefined),
+                fontSize   : this._fontSizeCSSRule ?? (fontSize !== null ? `${fontSize}px` : undefined),
                 fontWeight : this.getFontWeight()  ?? undefined,
                 fontStyle  : this.getFontStyle()   ?? undefined,
                 fontVariant: this.getFontVariant() ?? undefined,
                 fontStretch: this.getFontStretch() ?? undefined,
-                lineHeight : this.lineHeightCSSRule ?? (lineHeight !== null ? `${lineHeight}px` : undefined)
+                lineHeight : this._lineHeightCSSRule ?? (lineHeight !== null ? `${lineHeight}px` : undefined)
             });
 
-            this.measuredBaseline = baseline;
+            this._measuredBaseline = baseline;
             this.setCalculatedSize(width, height);
         } else {
             // No glyphs means no baseline — report null so HBox doesn't try
             // to baseline-align surrounding components against an empty box.
-            this.measuredBaseline = null;
+            this._measuredBaseline = null;
             this.setCalculatedSize(0, 0);
         }
     }
@@ -302,10 +302,10 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * preferred size after a programmatic text change.
      */
     measure(): void {
-        const wasAuto = this.autoMeasure;
-        this.autoMeasure = true;
+        const wasAuto = this._autoMeasure;
+        this._autoMeasure = true;
         this.calculateSize();
-        this.autoMeasure = wasAuto;
+        this._autoMeasure = wasAuto;
     }
 
     /**
@@ -320,11 +320,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * shifts to whoever asks for a size first (usually `doLayout`).
      */
     getBaseline(): number | null {
-        if (this.measurementDirty) {
+        if (this._measurementDirty) {
             this.calculateSize();
         }
 
-        return this.wrapInnerBaseline(this.measuredBaseline);
+        return this.wrapInnerBaseline(this._measuredBaseline);
     }
 
     /**
@@ -338,7 +338,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * time rather than construction time.
      */
     getPreferredSize() {
-        if (this.measurementDirty) {
+        if (this._measurementDirty) {
             this.calculateSize();
         }
 
@@ -364,7 +364,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     setText(text: String): this {
         this._options.text = (text || "") as TOptions["text"];
 
-        this.measurementDirty = true;
+        this._measurementDirty = true;
         this.scheduleLayout();
 
         let element = this.getElement();
@@ -388,7 +388,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setAutoMeasure(enabled: boolean): this {
-        this.autoMeasure = enabled;
+        this._autoMeasure = enabled;
 
         return this;
     }
@@ -462,7 +462,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
         this.setElementCSSRule("fontFamily", value);
 
-        this.measurementDirty = true;
+        this._measurementDirty = true;
         this.scheduleLayout();
 
         return this;
@@ -512,8 +512,8 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     setFontSize(value: number | string): this {
         if (typeof value === 'number') {
             this._options.fontSize = value as TOptions["fontSize"];
-            this.fontSizeCSSVar    = null;
-            this.fontSizeCSSRule   = null;
+            this._fontSizeCSSVar    = null;
+            this._fontSizeCSSRule   = null;
             this.setElementCSSRule("fontSize", value + "px");
         } else {
             const raw    = getComputedStyle(document.documentElement).getPropertyValue(value).trim();
@@ -524,12 +524,12 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             }
 
             const resolved       = this.getFontSize() ?? 14;
-            this.fontSizeCSSVar  = value;
-            this.fontSizeCSSRule = `var(${value}, ${resolved}px)`;
-            this.setElementCSSRule("fontSize", this.fontSizeCSSRule);
+            this._fontSizeCSSVar  = value;
+            this._fontSizeCSSRule = `var(${value}, ${resolved}px)`;
+            this.setElementCSSRule("fontSize", this._fontSizeCSSRule);
         }
 
-        this.measurementDirty = true;
+        this._measurementDirty = true;
         this.scheduleLayout();
 
         return this;
@@ -652,7 +652,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
         this.setElementCSSRule("fontWeight", value);
 
-        this.measurementDirty = true;
+        this._measurementDirty = true;
         this.scheduleLayout();
 
         return this;
@@ -681,17 +681,17 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     setLineHeight(value: number | string): this {
         if (typeof value === 'number') {
             this._options.lineHeight = value as TOptions["lineHeight"];
-            this.lineHeightCSSVar    = null;
-            this.lineHeightCSSRule   = null;
+            this._lineHeightCSSVar    = null;
+            this._lineHeightCSSRule   = null;
             this.setElementCSSRule("lineHeight", value + "px");
         } else {
-            this.lineHeightCSSVar    = value;
-            this.lineHeightCSSRule   = `var(${value}, 1.2)`;
+            this._lineHeightCSSVar    = value;
+            this._lineHeightCSSRule   = `var(${value}, 1.2)`;
             this._options.lineHeight = this.readThemeLineHeightPx() as TOptions["lineHeight"];
-            this.setElementCSSRule("lineHeight", this.lineHeightCSSRule);
+            this.setElementCSSRule("lineHeight", this._lineHeightCSSRule);
         }
 
-        this.measurementDirty = true;
+        this._measurementDirty = true;
         this.scheduleLayout();
 
         return this;
@@ -752,7 +752,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns The word-break string, or null.
      */
     getWordBreak(): string | null {
-        return this.wordBreak;
+        return this._wordBreak;
     }
 
     /**
@@ -763,11 +763,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setWordBreak(value: string): this {
-        if (this.wordBreak === value) {
+        if (this._wordBreak === value) {
             return this;
         }
 
-        this.wordBreak = value;
+        this._wordBreak = value;
         this.setElementCSSRule("wordBreak", value);
 
         return this;
@@ -779,7 +779,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns The maximum line count, or null.
      */
     getLineClamp(): number | null {
-        return this.lineClamp;
+        return this._lineClamp;
     }
 
     /**
@@ -794,11 +794,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setLineClamp(lines: number): this {
-        if (this.lineClamp === lines) {
+        if (this._lineClamp === lines) {
             return this;
         }
 
-        this.lineClamp = lines;
+        this._lineClamp = lines;
         this.setElementCSSRules({
             display: "-webkit-box",
             webkitBoxOrient: "vertical",
@@ -816,11 +816,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     clearLineClamp(): this {
-        if (this.lineClamp === null) {
+        if (this._lineClamp === null) {
             return this;
         }
 
-        this.lineClamp = null;
+        this._lineClamp = null;
         this.setElementCSSRules({
             display: null,
             webkitBoxOrient: null,
@@ -848,13 +848,13 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             textAlign:      this.getTextAlign()     ?? '',
             textShadow:     this.getTextShadow()    ?? '',
             fontKerning:    this.getFontKerning()   ?? '',
-            fontSize:       this.fontSizeCSSRule    ?? (fontSize !== null ? `${fontSize}px` : ''),
+            fontSize:       this._fontSizeCSSRule    ?? (fontSize !== null ? `${fontSize}px` : ''),
             fontSizeAdjust: this.getFontSizeAdjust() ?? '',
             fontStretch:    this.getFontStretch()   ?? '',
             fontStyle:      this.getFontStyle()     ?? '',
             fontVariant:    this.getFontVariant()   ?? '',
             fontWeight:     this.getFontWeight()    ?? '',
-            lineHeight:     this.lineHeightCSSRule  ?? (lineHeight !== null ? `${lineHeight}px` : '')
+            lineHeight:     this._lineHeightCSSRule  ?? (lineHeight !== null ? `${lineHeight}px` : '')
         });
 
         return this;
@@ -864,7 +864,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * Removes the theme-change listener. Call when the component is permanently removed.
      */
     dispose() {
-        this.unsubscribeTheme();
+        this._unsubscribeTheme();
     }
 
     /**

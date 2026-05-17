@@ -82,7 +82,7 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
  */
 class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<TOptions> {
 
-    private text!:    Text;
+    private _text!:    Text;
     private _content!: Component;
     private _glyph: Glyph | null = null;
 
@@ -97,7 +97,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     private get pressedStyleRule(): StyleRule {
         return this._pressedStyleRule ??= this.createStyleRule(":active");
     }
-    private pressedBorder: Border | null = null;
+    private _pressedBorder: Border | null = null;
 
     // Lazy `:hover:not(:active)` rule. The `:not(:active)` guard makes the
     // cascade unambiguous regardless of source order — the moment the
@@ -107,7 +107,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     private get hoverStyleRule(): StyleRule {
         return this._hoverStyleRule ??= this.createStyleRule(":hover:not(:active)");
     }
-    private hoverBorder: Border | null = null;
+    private _hoverBorder: Border | null = null;
 
     private _enabledCursor: string = "pointer";
 
@@ -159,17 +159,17 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this.setLayoutManager(new Fit());
 
         // Build the text/glyph content row.
-        this.text     = new Text();
+        this._text     = new Text();
         this._content = new Component();
         this._content.setLayoutManager(new HBox({ spacing: 2 }));
         this._content.setInsets(new Insets(0, 0, 0, 0));
         this._content.setPointerEvents("none");
-        this._content.addComponent(this.text);
+        this._content.addComponent(this._text);
 
-        this.text.setPointerEvents("none");
-        this.text.setTextAlign("center");
-        this.text.setFontWeight("bold");
-        this.text.setFontSize("--ts-ui-button-font-size");
+        this._text.setPointerEvents("none");
+        this._text.setTextAlign("center");
+        this._text.setFontWeight("bold");
+        this._text.setFontSize("--ts-ui-button-font-size");
 
         this.addComponent(this._content, {
             fill: FillType.NONE,
@@ -181,7 +181,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // yet. Dispatch them now that children are wired up.
         const effectiveText = this._options.text ?? text;
         if (effectiveText !== undefined) {
-            this.text.setText(effectiveText);
+            this._text.setText(effectiveText);
         }
         if (this._options.glyph !== undefined) {
             this.setGlyph(this._options.glyph);
@@ -229,7 +229,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The internal Text instance.
      */
     getText() {
-        return this.text;
+        return this._text;
     }
 
     /**
@@ -291,7 +291,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The baseline offset in pixels, or `null` when the label has no baseline.
      */
     getBaseline(): number | null {
-        return this.wrapInnerBaseline(this.text.getBaseline());
+        return this.wrapInnerBaseline(this._text.getBaseline());
     }
 
     /**
@@ -418,7 +418,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The Border instance for the :active state, or null if not set.
      */
     getPressedBorder(): Border | null {
-        return this.pressedBorder;
+        return this._pressedBorder;
     }
 
     /**
@@ -429,8 +429,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setPressedBorder(options?: BorderOptions): this {
-        this.pressedBorder = new Border(options);
-        this.pressedBorder.applyOnCSSRule(this.pressedStyleRule.ensure());
+        this._pressedBorder = new Border(options);
+        this._pressedBorder.applyOnCSSRule(this.pressedStyleRule.ensure());
 
         return this;
     }
@@ -616,7 +616,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The [`Border`](/api/primitive/classes/Border) instance for the hover state, or null if not set.
      */
     getHoverBorder(): Border | null {
-        return this.hoverBorder;
+        return this._hoverBorder;
     }
 
     /**
@@ -627,8 +627,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setHoverBorder(options?: BorderOptions): this {
-        this.hoverBorder = new Border(options);
-        this.hoverBorder.applyOnCSSRule(this.hoverStyleRule.ensure());
+        this._hoverBorder = new Border(options);
+        this._hoverBorder.applyOnCSSRule(this.hoverStyleRule.ensure());
 
         return this;
     }

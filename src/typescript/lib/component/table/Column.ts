@@ -16,10 +16,10 @@ import { ColumnConfig, ColumnSpec } from "~/component/table/ColumnConfig.js";
  */
 export class Column {
 
-    private field    : Field;
-    private minWidth : number | undefined;
-    private maxWidth : number | undefined;
-    private hidden   : boolean;
+    private _field    : Field;
+    private _minWidth : number | undefined;
+    private _maxWidth : number | undefined;
+    private _hidden   : boolean;
 
     /**
      * Constructs a Column from a field and an optional presentation config.
@@ -28,10 +28,10 @@ export class Column {
      * @param config - Optional config; all constraint properties default to absent / false.
      */
     constructor(field: Field, config?: ColumnConfig) {
-        this.field    = field;
-        this.minWidth = config?.minWidth;
-        this.maxWidth = config?.maxWidth;
-        this.hidden   = config?.hidden ?? false;
+        this._field    = field;
+        this._minWidth = config?.minWidth;
+        this._maxWidth = config?.maxWidth;
+        this._hidden   = config?.hidden ?? false;
     }
 
     /**
@@ -40,7 +40,7 @@ export class Column {
      * @returns The underlying {@link Field}.
      */
     getField(): Field {
-        return this.field;
+        return this._field;
     }
 
     /**
@@ -49,7 +49,7 @@ export class Column {
      * @returns The minimum width, or `undefined` if unconstrained.
      */
     getMinWidth(): number | undefined {
-        return this.minWidth;
+        return this._minWidth;
     }
 
     /**
@@ -58,7 +58,7 @@ export class Column {
      * @returns The maximum width, or `undefined` if unconstrained.
      */
     getMaxWidth(): number | undefined {
-        return this.maxWidth;
+        return this._maxWidth;
     }
 
     /**
@@ -67,7 +67,7 @@ export class Column {
      * @returns `true` if the spec declared `hidden: true` for this column.
      */
     isInitiallyHidden(): boolean {
-        return this.hidden;
+        return this._hidden;
     }
 
     /**

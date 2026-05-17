@@ -42,17 +42,17 @@ const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> 
  */
 class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
 
-    private pool: AutoCompleteItem[] = [];
-    private highlightedIndex: number = -1;
-    private readonly onSelect: (value: string) => void;
-    private readonly onHide: () => void;
-    private readonly onViewportMouseDown: (e: MouseEvent) => void;
-    private open: boolean = false;
+    private _pool: AutoCompleteItem[] = [];
+    private _highlightedIndex: number = -1;
+    private readonly _onSelect: (value: string) => void;
+    private readonly _onHide: () => void;
+    private readonly _onViewportMouseDown: (e: MouseEvent) => void;
+    private _open: boolean = false;
     // Set true while a fade-out is in flight; reset to false either when the
     // fade completes (so the deferred detach runs) or when a fresh `show()`
     // re-displays the dropdown mid-fade (the deferred detach skips because
     // the dropdown is back on screen).
-    private dismissing: boolean = false;
+    private _dismissing: boolean = false;
 
     /**
      * @param onSelect - Called with the selected suggestion string when the user picks an item.
@@ -62,8 +62,8 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
     constructor(onSelect: (value: string) => void, onHide: () => void, options?: AutoCompleteDropdownOptions) {
         super({ ..._defaultAutoCompleteDropdownOptions, ...(options ?? {}) });
 
-        this.onSelect = onSelect;
-        this.onHide   = onHide;
+        this._onSelect = onSelect;
+        this._onHide   = onHide;
 
         this.setVisible(false);
         this.getAria().setRole("listbox");
@@ -76,7 +76,7 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
         vbox.setStretching(true);
         this.setLayoutManager(vbox);
 
-        this.onViewportMouseDown = (e: MouseEvent) => {
+        this._onViewportMouseDown = (e: MouseEvent) => {
             if (!this.getElement()?.contains(e.target as Node)) {
                 this.hide();
             }
@@ -134,7 +134,7 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
         this.updatePool(suggestions);
         this.resumeLayout();
 
-        this.highlightedIndex = -1;
+        this._highlightedIndex = -1;
 
         const HEIGHT = AutoCompleteItem.HEIGHT;
         const insets = 8;
@@ -164,11 +164,11 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
         }
 
         this.setVisible(true);
-        this.open = true;
+        this._open = true;
 
         // Cancel a pending fade-out's deferred detach so a fresh show during
         // the outgoing transition keeps the element in the DOM.
-        this.dismissing = false;
+        this._dismissing = false;
 
         Animation.play(el, {
             from:       { opacity: "0" },
@@ -177,7 +177,7 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
             properties: ["opacity"],
         });
 
-        Event.addViewportListener(this, "mousedown", this.onViewportMouseDown);
+        Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
 
         return this;
     }
@@ -186,14 +186,14 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
      * Hides the dropdown, detaches it from the DOM, and fires the `onHide` callback.
      */
     hide(): this {
-        this.open = false;
-        Event.removeViewportListener(this, "mousedown", this.onViewportMouseDown);
+        this._open = false;
+        Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
 
         const el = this.getElement();
         const finalize = (): void => {
             this.setVisible(false);
             this.removeElement();
-            this.onHide();
+            this._onHide();
         };
 
         if (!el) {
@@ -201,17 +201,17 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
             return this;
         }
 
-        this.dismissing = true;
+        this._dismissing = true;
 
         Animation.play(el, {
             to:         { opacity: "0" },
             durationMs: AUTOCOMPLETE_ANIM_DURATION_MS,
             properties: ["opacity"],
             onComplete: () => {
-                if (!this.dismissing) {
+                if (!this._dismissing) {
                     return;
                 }
-                this.dismissing = false;
+                this._dismissing = false;
                 finalize();
             },
         });
@@ -225,25 +225,25 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
      * @returns True if the dropdown is open.
      */
     isOpen(): boolean {
-        return this.open;
+        return this._open;
     }
 
     /**
      * Moves keyboard highlight to the next item, wrapping to the first if at the end.
      */
     highlightNext(): void {
-        const next = this.highlightedIndex + 1;
+        const next = this._highlightedIndex + 1;
 
-        this.moveTo(next < this.pool.length ? next : 0);
+        this.moveTo(next < this._pool.length ? next : 0);
     }
 
     /**
      * Moves keyboard highlight to the previous item, wrapping to the last if at the start.
      */
     highlightPrev(): void {
-        const prev = this.highlightedIndex - 1;
+        const prev = this._highlightedIndex - 1;
 
-        this.moveTo(prev >= 0 ? prev : this.pool.length - 1);
+        this.moveTo(prev >= 0 ? prev : this._pool.length - 1);
     }
 
     /**
@@ -252,11 +252,11 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
      * @returns The highlighted suggestion string, or null.
      */
     getHighlightedValue(): string | null {
-        if (this.highlightedIndex < 0 || this.highlightedIndex >= this.pool.length) {
+        if (this._highlightedIndex < 0 || this._highlightedIndex >= this._pool.length) {
             return null;
         }
 
-        return this.pool[this.highlightedIndex].getText();
+        return this._pool[this._highlightedIndex].getText();
     }
 
     /**
@@ -267,11 +267,11 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
      * @returns The highlighted item's HTML element ID, or null.
      */
     getHighlightedId(): string | null {
-        if (this.highlightedIndex < 0 || this.highlightedIndex >= this.pool.length) {
+        if (this._highlightedIndex < 0 || this._highlightedIndex >= this._pool.length) {
             return null;
         }
 
-        return this.pool[this.highlightedIndex].getId();
+        return this._pool[this._highlightedIndex].getId();
     }
 
     /**
@@ -281,7 +281,7 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
         const value = this.getHighlightedValue();
 
         if (value !== null) {
-            this.onSelect(value);
+            this._onSelect(value);
         }
     }
 
@@ -291,14 +291,14 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
      * @param index - The pool index to highlight.
      */
     private moveTo(index: number): void {
-        if (this.highlightedIndex >= 0 && this.highlightedIndex < this.pool.length) {
-            this.pool[this.highlightedIndex].setHighlighted(false);
+        if (this._highlightedIndex >= 0 && this._highlightedIndex < this._pool.length) {
+            this._pool[this._highlightedIndex].setHighlighted(false);
         }
 
-        this.highlightedIndex = index;
+        this._highlightedIndex = index;
 
-        if (index >= 0 && index < this.pool.length) {
-            this.pool[index].setHighlighted(true);
+        if (index >= 0 && index < this._pool.length) {
+            this._pool[index].setHighlighted(true);
         }
     }
 
@@ -312,27 +312,27 @@ class AutoCompleteDropdown extends Component<AutoCompleteDropdownOptions> {
      */
     private updatePool(suggestions: string[]): void {
         const newLen = suggestions.length;
-        const oldLen = this.pool.length;
+        const oldLen = this._pool.length;
         const overlap = Math.min(newLen, oldLen);
 
         for (let i = 0; i < overlap; i++) {
-            this.pool[i].update(suggestions[i]);
-            this.pool[i].setHighlighted(false);
+            this._pool[i].update(suggestions[i]);
+            this._pool[i].setHighlighted(false);
         }
 
         if (newLen > oldLen) {
             for (let i = oldLen; i < newLen; i++) {
-                const item = new AutoCompleteItem(suggestions[i], this.onSelect);
+                const item = new AutoCompleteItem(suggestions[i], this._onSelect);
 
                 this.addComponent(item);
-                this.pool.push(item);
+                this._pool.push(item);
             }
         } else if (newLen < oldLen) {
             for (let i = newLen; i < oldLen; i++) {
-                this.removeComponent(this.pool[i]);
+                this.removeComponent(this._pool[i]);
             }
 
-            this.pool.splice(newLen);
+            this._pool.splice(newLen);
         }
     }
 }

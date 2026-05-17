@@ -23,49 +23,49 @@ import { callable } from "~/core/Callable.js";
  */
 class TablePanel extends Panel {
 
-    private table: Table;
-    private toolbar: Component;
-    private syncBtn: Button;
-    private rejectBtn: Button;
+    private _table: Table;
+    private _toolbar: Component;
+    private _syncBtn: Button;
+    private _rejectBtn: Button;
     private _spinner: ProgressSpinner | null = null;
-    private paginationBar: PaginationBar | undefined = undefined;
+    private _paginationBar: PaginationBar | undefined = undefined;
 
     constructor(store: AbstractStore) {
         super();
 
         this.setLayoutManager(new Border());
 
-        this.toolbar = new Component();
-        this.toolbar.setLayoutManager(new HBox());
+        this._toolbar = new Component();
+        this._toolbar.setLayoutManager(new HBox());
 
         const addBtn = new Button({ glyph: "plus" });
         addBtn.setPreferredSize(28, 28);
-        addBtn.addActionListener(() => this.table.addRow());
+        addBtn.addActionListener(() => this._table.addRow());
         Tooltip.attach(addBtn, "Add row");
-        this.toolbar.addComponent(addBtn);
+        this._toolbar.addComponent(addBtn);
 
         const removeBtn = new Button({ glyph: "minus" });
         removeBtn.setPreferredSize(28, 28);
-        removeBtn.addActionListener(() => this.table.removeSelectedRow());
+        removeBtn.addActionListener(() => this._table.removeSelectedRow());
         Tooltip.attach(removeBtn, "Remove selected row");
-        this.toolbar.addComponent(removeBtn);
+        this._toolbar.addComponent(removeBtn);
 
-        this.syncBtn = new Button({ glyph: "sync" });
-        this.syncBtn.setPreferredSize(28, 28);
-        this.syncBtn.addActionListener(() => this.table.sync());
-        Tooltip.attach(this.syncBtn, "Sync pending changes");
-        this.toolbar.addComponent(this.syncBtn);
+        this._syncBtn = new Button({ glyph: "sync" });
+        this._syncBtn.setPreferredSize(28, 28);
+        this._syncBtn.addActionListener(() => this._table.sync());
+        Tooltip.attach(this._syncBtn, "Sync pending changes");
+        this._toolbar.addComponent(this._syncBtn);
 
-        this.rejectBtn = new Button({ glyph: "ban" });
-        this.rejectBtn.setPreferredSize(28, 28);
-        this.rejectBtn.addActionListener(() => this.table.reject());
-        Tooltip.attach(this.rejectBtn, "Reject pending changes");
-        this.toolbar.addComponent(this.rejectBtn);
+        this._rejectBtn = new Button({ glyph: "ban" });
+        this._rejectBtn.setPreferredSize(28, 28);
+        this._rejectBtn.addActionListener(() => this._table.reject());
+        Tooltip.attach(this._rejectBtn, "Reject pending changes");
+        this._toolbar.addComponent(this._rejectBtn);
 
-        this.table = new Table(store);
+        this._table = new Table(store);
 
-        super.addComponent(this.toolbar, { placement: Placement.NORTH });
-        super.addComponent(this.table,   { placement: Placement.CENTER });
+        super.addComponent(this._toolbar, { placement: Placement.NORTH });
+        super.addComponent(this._table,   { placement: Placement.CENTER });
 
         store.on('loadingchanged', (payload: { loading: boolean }) => {
             if (!this._spinner) {
@@ -73,7 +73,7 @@ class TablePanel extends Panel {
             }
 
             if (payload.loading) {
-                this._spinner.showOverlay(this.table);
+                this._spinner.showOverlay(this._table);
             } else {
                 this._spinner.hideOverlay();
             }
@@ -95,10 +95,10 @@ class TablePanel extends Panel {
      * nothing to sync or reject.
      */
     private refreshSyncButtons(): void {
-        const hasChanges = this.table.getStore().hasPendingChanges();
+        const hasChanges = this._table.getStore().hasPendingChanges();
 
-        this.syncBtn.setEnabled(hasChanges);
-        this.rejectBtn.setEnabled(hasChanges);
+        this._syncBtn.setEnabled(hasChanges);
+        this._rejectBtn.setEnabled(hasChanges);
     }
 
     /**
@@ -107,7 +107,7 @@ class TablePanel extends Panel {
      * @returns The managed {@link Table} instance.
      */
     getTable(): Table {
-        return this.table;
+        return this._table;
     }
 
     /**
@@ -116,7 +116,7 @@ class TablePanel extends Panel {
      * @returns The toolbar {@link Component}.
      */
     getToolbar(): Component {
-        return this.toolbar;
+        return this._toolbar;
     }
 
     /**
@@ -126,7 +126,7 @@ class TablePanel extends Panel {
      * @param enabled - When true the export items are appended to the menu.
      */
     setExportMenuEnabled(enabled: boolean): this {
-        this.table.setExportMenuEnabled(enabled);
+        this._table.setExportMenuEnabled(enabled);
 
         return this;
     }
@@ -137,7 +137,7 @@ class TablePanel extends Panel {
      * @param options - Optional export options (e.g. include hidden columns, custom filename).
      */
     exportCSV(options?: ExportOptions): void {
-        this.table.exportCSV(options);
+        this._table.exportCSV(options);
     }
 
     /**
@@ -146,7 +146,7 @@ class TablePanel extends Panel {
      * @param options - Optional export options (e.g. include hidden columns, custom filename).
      */
     exportJSON(options?: ExportOptions): void {
-        this.table.exportJSON(options);
+        this._table.exportJSON(options);
     }
 
     /**
@@ -159,12 +159,12 @@ class TablePanel extends Panel {
      * is installed, so its store listeners do not leak.
      */
     setPaginationBar(bar: PaginationBar): this {
-        if (this.paginationBar) {
-            this.removeComponent(this.paginationBar);
-            this.paginationBar.dispose();
+        if (this._paginationBar) {
+            this.removeComponent(this._paginationBar);
+            this._paginationBar.dispose();
         }
 
-        this.paginationBar = bar;
+        this._paginationBar = bar;
         super.addComponent(bar, { placement: Placement.SOUTH });
 
         return this;
@@ -176,7 +176,7 @@ class TablePanel extends Panel {
      * @returns The pagination bar previously installed via {@link setPaginationBar}.
      */
     getPaginationBar(): PaginationBar | undefined {
-        return this.paginationBar;
+        return this._paginationBar;
     }
 }
 

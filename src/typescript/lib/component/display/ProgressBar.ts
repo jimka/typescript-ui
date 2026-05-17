@@ -33,10 +33,10 @@ export interface ProgressBarOptions extends ComponentOptions {
  */
 class ProgressBar extends Component {
 
-    private track: Component;
-    private fill : Component;
-    private value: number;
-    private indeterminate: boolean;
+    private _track: Component;
+    private _fill : Component;
+    private _value: number;
+    private _indeterminate: boolean;
 
     /**
      * Constructs a ProgressBar.
@@ -47,30 +47,30 @@ class ProgressBar extends Component {
     constructor(value: number = 0, indeterminate: boolean = false, options?: ProgressBarOptions) {
         super();
 
-        this.value         = Math.max(0, Math.min(100, value));
-        this.indeterminate = indeterminate;
+        this._value         = Math.max(0, Math.min(100, value));
+        this._indeterminate = indeterminate;
 
         this.setBackgroundColor("var(--ts-ui-progress-track-bg, rgb(220, 220, 220))");
         this.setBorderRadius("var(--ts-ui-progress-track-radius, 4px)");
 
-        this.track = new Component();
-        this.track.setPosition(Position.ABSOLUTE);
-        this.track.setOverflow("hidden");
-        this.track.setBorderRadius("var(--ts-ui-progress-track-radius, 4px)");
+        this._track = new Component();
+        this._track.setPosition(Position.ABSOLUTE);
+        this._track.setOverflow("hidden");
+        this._track.setBorderRadius("var(--ts-ui-progress-track-radius, 4px)");
 
-        this.fill = new Component();
-        this.fill.setPosition(Position.ABSOLUTE);
-        this.fill.setBackgroundColor("var(--ts-ui-progress-fill-bg, rgb(30, 100, 200))");
+        this._fill = new Component();
+        this._fill.setPosition(Position.ABSOLUTE);
+        this._fill.setBackgroundColor("var(--ts-ui-progress-fill-bg, rgb(30, 100, 200))");
 
-        this.track.addComponent(this.fill);
-        super.addComponent(this.track);
+        this._track.addComponent(this._fill);
+        super.addComponent(this._track);
 
         this.getAria().setRole("progressbar");
         this.getAria().setValueMin(0);
         this.getAria().setValueMax(100);
-        this.getAria().setValueNow(this.value);
+        this.getAria().setValueNow(this._value);
 
-        if (this.indeterminate) {
+        if (this._indeterminate) {
             this.applyIndeterminate(true);
         }
 
@@ -119,7 +119,7 @@ class ProgressBar extends Component {
      * @returns The current percentage, or 0 when indeterminate.
      */
     getValue(): number {
-        return this.indeterminate ? 0 : this.value;
+        return this._indeterminate ? 0 : this._value;
     }
 
     /**
@@ -130,14 +130,14 @@ class ProgressBar extends Component {
      */
     setValue(value: number): this {
         const clamped = Math.max(0, Math.min(100, value));
-        if (clamped === this.value) {
+        if (clamped === this._value) {
             return this;
         }
 
-        this.value = clamped;
+        this._value = clamped;
         this.getAria().setValueNow(clamped);
 
-        if (!this.indeterminate) {
+        if (!this._indeterminate) {
             this.scheduleLayout();
         }
 
@@ -150,7 +150,7 @@ class ProgressBar extends Component {
      * @returns True if indeterminate mode is active.
      */
     isIndeterminate(): boolean {
-        return this.indeterminate;
+        return this._indeterminate;
     }
 
     /**
@@ -159,11 +159,11 @@ class ProgressBar extends Component {
      * @param value - True to activate indeterminate mode.
      */
     setIndeterminate(value: boolean): this {
-        if (this.indeterminate === value) {
+        if (this._indeterminate === value) {
             return this;
         }
 
-        this.indeterminate = value;
+        this._indeterminate = value;
         this.applyIndeterminate(value);
         this.scheduleLayout();
 
@@ -182,20 +182,20 @@ class ProgressBar extends Component {
             return this;
         }
 
-        this.track.setX(0);
-        this.track.setY(0);
-        this.track.setSize({ width: inner.width, height: inner.height });
+        this._track.setX(0);
+        this._track.setY(0);
+        this._track.setSize({ width: inner.width, height: inner.height });
 
-        if (this.indeterminate) {
+        if (this._indeterminate) {
             const segment = Math.max(20, Math.round(inner.width * 0.25));
-            this.fill.setX(0);
-            this.fill.setY(0);
-            this.fill.setSize({ width: segment, height: inner.height });
+            this._fill.setX(0);
+            this._fill.setY(0);
+            this._fill.setSize({ width: segment, height: inner.height });
         } else {
-            const fillWidth = Math.round(inner.width * this.value / 100);
-            this.fill.setX(0);
-            this.fill.setY(0);
-            this.fill.setSize({ width: fillWidth, height: inner.height });
+            const fillWidth = Math.round(inner.width * this._value / 100);
+            this._fill.setX(0);
+            this._fill.setY(0);
+            this._fill.setSize({ width: fillWidth, height: inner.height });
         }
 
         super.doLayout();
@@ -211,11 +211,11 @@ class ProgressBar extends Component {
      */
     private applyIndeterminate(value: boolean): void {
         if (value) {
-            this.fill.setBackgroundColor("var(--ts-ui-progress-indeterminate-bg, rgb(30, 100, 200))");
-            this.fill.setAnimation("ts-ui-progress-indeterminate 1.4s ease-in-out infinite");
+            this._fill.setBackgroundColor("var(--ts-ui-progress-indeterminate-bg, rgb(30, 100, 200))");
+            this._fill.setAnimation("ts-ui-progress-indeterminate 1.4s ease-in-out infinite");
         } else {
-            this.fill.setBackgroundColor("var(--ts-ui-progress-fill-bg, rgb(30, 100, 200))");
-            this.fill.clearAnimation();
+            this._fill.setBackgroundColor("var(--ts-ui-progress-fill-bg, rgb(30, 100, 200))");
+            this._fill.clearAnimation();
         }
     }
 }

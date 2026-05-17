@@ -46,24 +46,24 @@ function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
  */
 class Body extends Component {
 
-    private store           : AbstractStore;
-    private hiddenColumns   : Set<string>               = new Set();
-    private columnConfigs   : Map<string, ColumnConfig> = new Map();
-    private rowPool         : Row[]                     = [];
-    private boundIndices    : number[]                  = [];
-    private rowGeom         : Array<{ ty: number, w: number, h: number } | null> = [];
-    private cellGeom        : Array<Array<{ x: number, w: number, h: number } | null>> = [];
-    private rowDisplayed    : boolean[]                 = [];
-    private scroller        : VirtualScroller | null    = null;
-    private lastBodyWidth   : number                    = 0;
-    private lastColumnWidths: number[]                  = [];
-    private lastAriaRowCount: number                    = -1;
-    private rowHeight       : number;
-    private storeRefresh    : (() => void) | null       = null;
-    private selectedRecords : Set<ModelRecord>          = new Set();
-    private anchorRecord    : ModelRecord | null        = null;
+    private _store           : AbstractStore;
+    private _hiddenColumns   : Set<string>               = new Set();
+    private _columnConfigs   : Map<string, ColumnConfig> = new Map();
+    private _rowPool         : Row[]                     = [];
+    private _boundIndices    : number[]                  = [];
+    private _rowGeom         : Array<{ ty: number, w: number, h: number } | null> = [];
+    private _cellGeom        : Array<Array<{ x: number, w: number, h: number } | null>> = [];
+    private _rowDisplayed    : boolean[]                 = [];
+    private _scroller        : VirtualScroller | null    = null;
+    private _lastBodyWidth   : number                    = 0;
+    private _lastColumnWidths: number[]                  = [];
+    private _lastAriaRowCount: number                    = -1;
+    private _rowHeight       : number;
+    private _storeRefresh    : (() => void) | null       = null;
+    private _selectedRecords : Set<ModelRecord>          = new Set();
+    private _anchorRecord    : ModelRecord | null        = null;
     private _focusedColIndex: number                    = 0;
-    private editorPool      : CellEditorPool            = new CellEditorPool();
+    private _editorPool      : CellEditorPool            = new CellEditorPool();
 
     constructor(store: AbstractStore) {
         super({ tag: "tbody" });
@@ -73,14 +73,14 @@ class Body extends Component {
         this.getAria().setTabIndex(0);
         this.getAria().setRole("rowgroup");
 
-        this.store = store;
+        this._store = store;
         this.bindStore(store);
 
-        this.rowHeight = this.computeRowHeight();
+        this._rowHeight = this.computeRowHeight();
 
         ThemeManager.onThemeChange(() => {
-            this.rowHeight = this.computeRowHeight();
-            this.boundIndices.fill(-1);
+            this._rowHeight = this.computeRowHeight();
+            this._boundIndices.fill(-1);
             this.invalidateGeom();
             this.renderWindow();
         });
@@ -110,9 +110,9 @@ class Body extends Component {
      * @param store - The store whose events to subscribe to.
      */
     private bindStore(store: AbstractStore): void {
-        const refresh = () => { this.boundIndices.fill(-1); this.renderWindow(); };
+        const refresh = () => { this._boundIndices.fill(-1); this.renderWindow(); };
 
-        this.storeRefresh = refresh;
+        this._storeRefresh = refresh;
 
         store.on('load', refresh);
         store.on('add', refresh);
@@ -127,11 +127,11 @@ class Body extends Component {
      * positions and sizes for every visible row.
      */
     private invalidateGeom(): void {
-        for (let i = 0; i < this.rowGeom.length; i++) {
-            this.rowGeom[i] = null;
+        for (let i = 0; i < this._rowGeom.length; i++) {
+            this._rowGeom[i] = null;
         }
-        for (let i = 0; i < this.cellGeom.length; i++) {
-            this.cellGeom[i] = [];
+        for (let i = 0; i < this._cellGeom.length; i++) {
+            this._cellGeom[i] = [];
         }
     }
 
@@ -141,7 +141,7 @@ class Body extends Component {
      * @param hidden - The new set of field names to hide.
      */
     setHiddenColumns(hidden: Set<string>): this {
-        this.hiddenColumns = new Set(hidden);
+        this._hiddenColumns = new Set(hidden);
         this.clearRowPool();
         this.renderWindow();
 
@@ -149,7 +149,7 @@ class Body extends Component {
     }
 
     setColumnConfigs(configs: Map<string, ColumnConfig>): this {
-        this.columnConfigs = configs;
+        this._columnConfigs = configs;
         this.clearRowPool();
         this.renderWindow();
 
@@ -160,9 +160,9 @@ class Body extends Component {
      * Removes all pooled row elements from the DOM and resets the pool arrays.
      */
     private clearRowPool(): void {
-        const container = this.scroller ? this.scroller.getRowsContainer() : null;
+        const container = this._scroller ? this._scroller.getRowsContainer() : null;
 
-        for (const row of this.rowPool) {
+        for (const row of this._rowPool) {
             // Release the compositor layer hint while the element is still attached
             // so the DOM write commits — once detached, the queued style flush is
             // moot because the row is about to be discarded.
@@ -175,12 +175,12 @@ class Body extends Component {
             }
         }
 
-        this.rowPool = [];
-        this.boundIndices = [];
-        this.rowGeom = [];
-        this.cellGeom = [];
-        this.rowDisplayed = [];
-        this.lastAriaRowCount = -1;
+        this._rowPool = [];
+        this._boundIndices = [];
+        this._rowGeom = [];
+        this._cellGeom = [];
+        this._rowDisplayed = [];
+        this._lastAriaRowCount = -1;
     }
 
     /**
@@ -189,17 +189,17 @@ class Body extends Component {
      * @param store - The new store to bind to the body.
      */
     setStore(store: AbstractStore): this {
-        if (this.storeRefresh) {
-            const old = this.store;
+        if (this._storeRefresh) {
+            const old = this._store;
 
             (['load', 'add', 'remove', 'datachanged', 'beforesync', 'sync'] as const).forEach(e =>
-                old.off(e, this.storeRefresh!)
+                old.off(e, this._storeRefresh!)
             );
         }
 
-        this.store = store;
+        this._store = store;
         this.bindStore(store);
-        this.boundIndices.fill(-1);
+        this._boundIndices.fill(-1);
         this.invalidateGeom();
 
         if (this.getElement()) {
@@ -223,7 +223,7 @@ class Body extends Component {
             return this;
         }
 
-        this.scroller = new VirtualScroller(this, el, () => this.renderWindow());
+        this._scroller = new VirtualScroller(this, el, () => this.renderWindow());
 
         Event.addListener(this, "focus", () => {
             this._updateActiveDescendant();
@@ -246,7 +246,7 @@ class Body extends Component {
      * factories for the seven standard typed cells are seeded automatically.
      */
     getEditorPool(): CellEditorPool {
-        return this.editorPool;
+        return this._editorPool;
     }
 
     /**
@@ -256,7 +256,7 @@ class Body extends Component {
      * @param y - The new scroll position in pixels.
      */
     setScrollY(y: number): this {
-        this.scroller?.setScrollY(y);
+        this._scroller?.setScrollY(y);
 
         return this;
     }
@@ -268,7 +268,7 @@ class Body extends Component {
      * @param x - The new scroll position in pixels.
      */
     setScrollX(x: number): this {
-        this.scroller?.setScrollX(x);
+        this._scroller?.setScrollX(x);
 
         return this;
     }
@@ -281,21 +281,21 @@ class Body extends Component {
      */
     renderWindow(bodyWidth?: number, columnWidths?: number[]) {
         const element = this.getElement();
-        if (!element || !this.scroller) {
+        if (!element || !this._scroller) {
             return;
         }
 
-        const scroller = this.scroller;
-        const records   = this.store.getRecords();
+        const scroller = this._scroller;
+        const records   = this._store.getRecords();
         const totalRows = records.length;
 
         this.updateColumnWidthCache(bodyWidth, columnWidths);
 
         // Loose-clamp scroll positions against the new content sizes before
         // reading them for the window calc.
-        const totalHeight       = totalRows * this.rowHeight;
-        const totalColumnWidth  = this.lastColumnWidths.reduce((s, w) => s + w, 0);
-        const totalContentWidth = Math.max(this.lastBodyWidth, totalColumnWidth);
+        const totalHeight       = totalRows * this._rowHeight;
+        const totalColumnWidth  = this._lastColumnWidths.reduce((s, w) => s + w, 0);
+        const totalContentWidth = Math.max(this._lastBodyWidth, totalColumnWidth);
 
         scroller.clampToContent(totalContentWidth, totalHeight);
 
@@ -305,18 +305,18 @@ class Body extends Component {
         const poolTarget = this.computePoolTarget(win.windowSize, visibleHeight, totalRows);
         this.growRowPool(poolTarget);
 
-        const rowWidth   = Math.max(this.lastBodyWidth, totalColumnWidth);
-        const fieldCount = this.store.model.getFields()
-                               .filter(f => !this.hiddenColumns.has(f.getName()))
+        const rowWidth   = Math.max(this._lastBodyWidth, totalColumnWidth);
+        const fieldCount = this._store.model.getFields()
+                               .filter(f => !this._hiddenColumns.has(f.getName()))
                                .length;
         const fallback   = fieldCount > 0 ? rowWidth / fieldCount : rowWidth;
 
         this.bindAndPositionRows(win.firstRow, win.windowSize, rowWidth, fallback, records);
         this.hideExcessPoolRows(win.windowSize);
 
-        if (totalRows !== this.lastAriaRowCount) {
+        if (totalRows !== this._lastAriaRowCount) {
             this.getAria().setRowCount(totalRows);
-            this.lastAriaRowCount = totalRows;
+            this._lastAriaRowCount = totalRows;
         }
 
         scroller.layoutScrollbars(totalContentWidth, totalHeight);
@@ -336,11 +336,11 @@ class Body extends Component {
             return;
         }
 
-        const widthsChanged = this.lastBodyWidth !== bodyWidth
-            || !columnWidthsEqual(this.lastColumnWidths, columnWidths);
+        const widthsChanged = this._lastBodyWidth !== bodyWidth
+            || !columnWidthsEqual(this._lastColumnWidths, columnWidths);
 
-        this.lastBodyWidth = bodyWidth;
-        this.lastColumnWidths = columnWidths ?? [];
+        this._lastBodyWidth = bodyWidth;
+        this._lastColumnWidths = columnWidths ?? [];
 
         if (widthsChanged) {
             this.invalidateGeom();
@@ -358,7 +358,7 @@ class Body extends Component {
      * @returns The `firstRow` / `lastRow` data indices and the number of rows in the window.
      */
     private computeVisibleWindow(scrollY: number, visibleHeight: number, totalRows: number): { firstRow: number, lastRow: number, windowSize: number } {
-        const rowHeight = this.rowHeight;
+        const rowHeight = this._rowHeight;
         const firstRow  = Math.max(0, Math.floor(scrollY / rowHeight) - SCROLL_BUFFER);
         const lastRow   = Math.min(
             totalRows - 1,
@@ -388,7 +388,7 @@ class Body extends Component {
             totalRows,
             Math.max(
                 windowSize,
-                Math.ceil(visibleHeight / this.rowHeight) + 2 * SCROLL_BUFFER + 2
+                Math.ceil(visibleHeight / this._rowHeight) + 2 * SCROLL_BUFFER + 2
             )
         );
     }
@@ -401,24 +401,24 @@ class Body extends Component {
      * @param poolTarget - The target pool size.
      */
     private growRowPool(poolTarget: number): void {
-        if (!this.scroller || this.rowPool.length >= poolTarget) {
+        if (!this._scroller || this._rowPool.length >= poolTarget) {
             return;
         }
 
-        const rowsContainer = this.scroller.getRowsContainer();
+        const rowsContainer = this._scroller.getRowsContainer();
         const growFragment  = document.createDocumentFragment();
 
-        while (this.rowPool.length < poolTarget) {
+        while (this._rowPool.length < poolTarget) {
             const row = new Row(
-                this.store.model,
+                this._store.model,
                 undefined,
-                this.hiddenColumns,
-                this.columnConfigs,
-                (record) => this.store.notifyRecordChanged(record),
+                this._hiddenColumns,
+                this._columnConfigs,
+                (record) => this._store.notifyRecordChanged(record),
             );
 
             for (const cell of row.getComponents() as Cell<any>[]) {
-                cell.setEditorPool(this.editorPool);
+                cell.setEditorPool(this._editorPool);
             }
 
             const rowEl = row.getElement(true);
@@ -436,11 +436,11 @@ class Body extends Component {
             // in clearRowPool when the row leaves the pool.
             row.setWillChange("transform");
 
-            this.rowPool.push(row);
-            this.boundIndices.push(-1);
-            this.rowGeom.push(null);
-            this.cellGeom.push([]);
-            this.rowDisplayed.push(false);
+            this._rowPool.push(row);
+            this._boundIndices.push(-1);
+            this._rowGeom.push(null);
+            this._cellGeom.push([]);
+            this._rowDisplayed.push(false);
         }
 
         rowsContainer.appendChild(growFragment);
@@ -459,23 +459,23 @@ class Body extends Component {
      * @param records - The current store records (passed in so this helper doesn't re-query).
      */
     private bindAndPositionRows(firstRow: number, windowSize: number, rowWidth: number, fallback: number, records: ModelRecord[]): void {
-        const rowHeight = this.rowHeight;
+        const rowHeight = this._rowHeight;
 
         for (let i = 0; i < windowSize; i++) {
-            const row = this.rowPool[i];
+            const row = this._rowPool[i];
             const dataIndex = firstRow + i;
-            const wasRebound = this.boundIndices[i] !== dataIndex;
+            const wasRebound = this._boundIndices[i] !== dataIndex;
 
             if (wasRebound) {
                 row.setData(records[dataIndex]);
 
-                this.boundIndices[i] = dataIndex;
+                this._boundIndices[i] = dataIndex;
                 this.updateRowVisualState(i);
                 row.getAria().setRowIndex(dataIndex + 2);
             }
 
             const targetY = dataIndex * rowHeight;
-            const prev = this.rowGeom[i];
+            const prev = this._rowGeom[i];
             if (!prev || prev.ty !== targetY || prev.w !== rowWidth || prev.h !== rowHeight) {
                 row.setAutoCommitStyle(false);
                 row.setX(0);
@@ -483,20 +483,20 @@ class Body extends Component {
                 row.setWidth(rowWidth);
                 row.setHeight(rowHeight);
                 row.setAutoCommitStyle(true);
-                this.rowGeom[i] = { ty: targetY, w: rowWidth, h: rowHeight };
+                this._rowGeom[i] = { ty: targetY, w: rowWidth, h: rowHeight };
             }
-            if (!this.rowDisplayed[i]) {
+            if (!this._rowDisplayed[i]) {
                 row.setDisplayed(true);
-                this.rowDisplayed[i] = true;
+                this._rowDisplayed[i] = true;
             }
 
             const cells = row.getComponents();
-            const cellRow = this.cellGeom[i];
+            const cellRow = this._cellGeom[i];
             let x = 0;
 
             for (let ci = 0; ci < cells.length; ci++) {
                 const cell = cells[ci];
-                const colW = this.lastColumnWidths[ci] ?? fallback;
+                const colW = this._lastColumnWidths[ci] ?? fallback;
                 const prevCell = cellRow[ci];
                 const cellChanged = !prevCell || prevCell.x !== x || prevCell.w !== colW || prevCell.h !== rowHeight;
 
@@ -530,13 +530,13 @@ class Body extends Component {
      * @param windowSize - The number of pool slots currently in use.
      */
     private hideExcessPoolRows(windowSize: number): void {
-        for (let i = windowSize; i < this.rowPool.length; i++) {
-            if (this.rowDisplayed[i]) {
-                this.rowPool[i].setDisplayed(false);
-                this.rowDisplayed[i] = false;
+        for (let i = windowSize; i < this._rowPool.length; i++) {
+            if (this._rowDisplayed[i]) {
+                this._rowPool[i].setDisplayed(false);
+                this._rowDisplayed[i] = false;
             }
-            this.boundIndices[i] = -1;
-            this.rowGeom[i] = null;
+            this._boundIndices[i] = -1;
+            this._rowGeom[i] = null;
         }
     }
 
@@ -550,38 +550,38 @@ class Body extends Component {
         const record = row.getData() ?? null;
         if (!record) return;
 
-        const records = this.store.getRecords();
+        const records = this._store.getRecords();
 
-        if (e.shiftKey && this.anchorRecord) {
+        if (e.shiftKey && this._anchorRecord) {
             // Range select from anchor to clicked record
-            const anchorIdx = records.indexOf(this.anchorRecord);
+            const anchorIdx = records.indexOf(this._anchorRecord);
             const clickIdx  = records.indexOf(record);
             const lo = Math.min(anchorIdx, clickIdx);
             const hi = Math.max(anchorIdx, clickIdx);
 
             if (!e.ctrlKey && !e.metaKey) {
-                this.selectedRecords.clear();
+                this._selectedRecords.clear();
             }
 
             for (let i = lo; i <= hi; i++) {
-                this.selectedRecords.add(records[i]);
+                this._selectedRecords.add(records[i]);
             }
         } else if (e.ctrlKey || e.metaKey) {
             // Toggle individual record
-            if (this.selectedRecords.has(record)) {
-                this.selectedRecords.delete(record);
+            if (this._selectedRecords.has(record)) {
+                this._selectedRecords.delete(record);
             } else {
-                this.selectedRecords.add(record);
+                this._selectedRecords.add(record);
             }
-            this.anchorRecord = record;
+            this._anchorRecord = record;
         } else {
             // Plain click — replace selection
-            this.selectedRecords.clear();
-            this.selectedRecords.add(record);
-            this.anchorRecord = record;
+            this._selectedRecords.clear();
+            this._selectedRecords.add(record);
+            this._anchorRecord = record;
         }
 
-        this.boundIndices.forEach((dataIdx, i) => {
+        this._boundIndices.forEach((dataIdx, i) => {
             if (dataIdx !== -1) this.updateRowVisualState(i);
         });
 
@@ -613,14 +613,14 @@ class Body extends Component {
      * @param record - The record to select, or null to clear the selection.
      */
     selectRecord(record: ModelRecord | null): void {
-        this.selectedRecords.clear();
-        this.anchorRecord = record;
+        this._selectedRecords.clear();
+        this._anchorRecord = record;
 
         if (record) {
-            this.selectedRecords.add(record);
+            this._selectedRecords.add(record);
         }
 
-        this.boundIndices.forEach((dataIdx, i) => {
+        this._boundIndices.forEach((dataIdx, i) => {
             if (dataIdx !== -1) this.updateRowVisualState(i);
         });
     }
@@ -631,9 +631,9 @@ class Body extends Component {
      * @returns The anchor {@link ModelRecord}, or null.
      */
     getSelectedRecord(): ModelRecord | null {
-        return this.anchorRecord && this.selectedRecords.has(this.anchorRecord)
-            ? this.anchorRecord
-            : (this.selectedRecords.size > 0 ? [...this.selectedRecords][0] : null);
+        return this._anchorRecord && this._selectedRecords.has(this._anchorRecord)
+            ? this._anchorRecord
+            : (this._selectedRecords.size > 0 ? [...this._selectedRecords][0] : null);
     }
 
     /**
@@ -642,7 +642,7 @@ class Body extends Component {
      * @returns An array of selected {@link ModelRecord} instances.
      */
     getSelectedRecords(): ModelRecord[] {
-        return [...this.selectedRecords];
+        return [...this._selectedRecords];
     }
 
     /**
@@ -651,12 +651,12 @@ class Body extends Component {
      * @param record - The record to scroll into view.
      */
     scrollToRecord(record: ModelRecord): void {
-        const idx = this.store.getRecords().indexOf(record);
+        const idx = this._store.getRecords().indexOf(record);
         if (idx === -1) {
             return;
         }
 
-        this.setScrollY(idx * this.rowHeight);
+        this.setScrollY(idx * this._rowHeight);
     }
 
     /**
@@ -665,19 +665,19 @@ class Body extends Component {
      * @param i - The zero-based index into the row pool.
      */
     private updateRowVisualState(i: number): void {
-        const dataIdx = this.boundIndices[i];
+        const dataIdx = this._boundIndices[i];
         if (dataIdx === -1) {
             return;
         }
 
-        const record = this.store.getRecords()[dataIdx];
+        const record = this._store.getRecords()[dataIdx];
         if (!record) {
             return;
         }
 
-        const row = this.rowPool[i];
+        const row = this._rowPool[i];
         const rowEl = row.getElement() as HTMLElement;
-        const isSelected = this.selectedRecords.has(record);
+        const isSelected = this._selectedRecords.has(record);
 
         if (isSelected) {
             rowEl.style.setProperty('background-color', 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))');
@@ -710,7 +710,7 @@ class Body extends Component {
      * @remarks Called after every navigation and after `renderWindow` re-binds pool slots.
      */
     private _updateFocusStyle(): void {
-        for (const row of this.rowPool) {
+        for (const row of this._rowPool) {
             for (const cell of row.getComponents()) {
                 const el = cell.getElement() as HTMLElement | null;
 
@@ -721,18 +721,18 @@ class Body extends Component {
             }
         }
 
-        if (!this.anchorRecord) {
+        if (!this._anchorRecord) {
             return;
         }
 
-        const anchorIdx = this.store.getRecords().indexOf(this.anchorRecord);
-        const poolSlotIdx = this.boundIndices.indexOf(anchorIdx);
+        const anchorIdx = this._store.getRecords().indexOf(this._anchorRecord);
+        const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
 
         if (poolSlotIdx < 0) {
             return;
         }
 
-        const cells = this.rowPool[poolSlotIdx].getComponents();
+        const cells = this._rowPool[poolSlotIdx].getComponents();
         const cell = cells[this._focusedColIndex];
 
         if (cell) {
@@ -751,14 +751,14 @@ class Body extends Component {
      * @remarks Must be called after `renderWindow()` so the pool slot for the anchor record is guaranteed in the DOM.
      */
     private _updateActiveDescendant(): void {
-        if (!this.anchorRecord) {
+        if (!this._anchorRecord) {
             this.getAria().setActiveDescendant("");
 
             return;
         }
 
-        const anchorIdx = this.store.getRecords().indexOf(this.anchorRecord);
-        const poolSlotIdx = this.boundIndices.indexOf(anchorIdx);
+        const anchorIdx = this._store.getRecords().indexOf(this._anchorRecord);
+        const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
 
         if (poolSlotIdx < 0) {
             this.getAria().setActiveDescendant("");
@@ -766,13 +766,13 @@ class Body extends Component {
             return;
         }
 
-        const cells = this.rowPool[poolSlotIdx].getComponents();
+        const cells = this._rowPool[poolSlotIdx].getComponents();
         const cell = cells[this._focusedColIndex];
 
         if (cell) {
             this.getAria().setActiveDescendant(cell.getId());
         } else {
-            this.getAria().setActiveDescendant(this.rowPool[poolSlotIdx].getId());
+            this.getAria().setActiveDescendant(this._rowPool[poolSlotIdx].getId());
         }
     }
 
@@ -783,7 +783,7 @@ class Body extends Component {
      * @param e - The keyboard event fired on the body element.
      */
     private onKeyDown(e: KeyboardEvent): void {
-        const records = this.store.getRecords();
+        const records = this._store.getRecords();
 
         if (records.length === 0) {
             return;
@@ -802,8 +802,8 @@ class Body extends Component {
 
         // Column navigation — no row change needed
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-            const visibleColCount = this.store.model.getFields()
-                .filter(f => !this.hiddenColumns.has(f.getName())).length;
+            const visibleColCount = this._store.model.getFields()
+                .filter(f => !this._hiddenColumns.has(f.getName())).length;
 
             if (e.key === 'ArrowLeft') {
                 this._focusedColIndex = Math.max(0, this._focusedColIndex - 1);
@@ -819,18 +819,18 @@ class Body extends Component {
 
         // Enter/Space — start editing the focused cell
         if (e.key === 'Enter' || e.key === ' ') {
-            if (!this.anchorRecord) {
+            if (!this._anchorRecord) {
                 return;
             }
 
-            const anchorIdx = records.indexOf(this.anchorRecord);
-            const poolSlotIdx = this.boundIndices.indexOf(anchorIdx);
+            const anchorIdx = records.indexOf(this._anchorRecord);
+            const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
 
             if (poolSlotIdx < 0) {
                 return;
             }
 
-            const cells = this.rowPool[poolSlotIdx].getComponents();
+            const cells = this._rowPool[poolSlotIdx].getComponents();
             const cell = cells[this._focusedColIndex];
 
             if (cell instanceof Cell) {
@@ -848,8 +848,8 @@ class Body extends Component {
         }
 
         // Row navigation
-        const currentIdx = this.anchorRecord ? records.indexOf(this.anchorRecord) : -1;
-        const pageSize = Math.max(1, Math.floor((this.getHeight() || this.rowHeight) / this.rowHeight));
+        const currentIdx = this._anchorRecord ? records.indexOf(this._anchorRecord) : -1;
+        const pageSize = Math.max(1, Math.floor((this.getHeight() || this._rowHeight) / this._rowHeight));
         let newIdx: number;
 
         if (e.key === 'ArrowDown') {
@@ -880,15 +880,15 @@ class Body extends Component {
      * @param record - The record to scroll into view.
      */
     private scrollRecordIntoView(record: ModelRecord): void {
-        const idx = this.store.getRecords().indexOf(record);
+        const idx = this._store.getRecords().indexOf(record);
 
-        if (idx === -1 || !this.scroller) {
+        if (idx === -1 || !this._scroller) {
             return;
         }
 
-        const top            = idx * this.rowHeight;
-        const bottom         = top + this.rowHeight;
-        const scrollTop      = this.scroller.getScrollY();
+        const top            = idx * this._rowHeight;
+        const bottom         = top + this._rowHeight;
+        const scrollTop      = this._scroller.getScrollY();
         const viewportHeight = this.getHeight();
         const visibleBottom  = scrollTop + viewportHeight;
 

@@ -24,12 +24,12 @@ import { ThemeManager } from "~/core/Theme.js";
  */
 export class Cell<T> extends Component {
 
-    private readOnly: Boolean;
-    private renderer: CellRenderer<T>;
-    private editor: CellEditor<T> | undefined;
-    private editorPool: CellEditorPool | null = null;
-    protected activeEditor: CellEditor<T> | null = null;
-    private onCommit: ((value: T) => void) | undefined;
+    private _readOnly: Boolean;
+    private _renderer: CellRenderer<T>;
+    private _editor: CellEditor<T> | undefined;
+    private _editorPool: CellEditorPool | null = null;
+    protected _activeEditor: CellEditor<T> | null = null;
+    private _onCommit: ((value: T) => void) | undefined;
     private _onEditEnd: (() => void) | undefined;
 
     constructor(tag: string, renderer: CellRenderer<T>, editor?: CellEditor<T>, rendererConstraints?: LayoutConstraints, editorContraints?: LayoutConstraints) {
@@ -39,9 +39,9 @@ export class Cell<T> extends Component {
 
         this.getAria().setRole("gridcell");
 
-        this.readOnly = false;
-        this.renderer = renderer;
-        this.editor = editor;
+        this._readOnly = false;
+        this._renderer = renderer;
+        this._editor = editor;
         this.setInsets(new Insets(0, 0, 0, 0));
 
         this.setBackgroundColor('var(--ts-ui-table-cell-bg, transparent)');
@@ -84,7 +84,7 @@ export class Cell<T> extends Component {
      * @returns This cell, for method chaining.
      */
     setEditorPool(pool: CellEditorPool | null): this {
-        this.editorPool = pool;
+        this._editorPool = pool;
 
         return this;
     }
@@ -95,7 +95,7 @@ export class Cell<T> extends Component {
      * @param fn - The callback to fire on commit, receiving the committed value.
      */
     setOnCommit(fn: (value: T) => void): void {
-        this.onCommit = fn;
+        this._onCommit = fn;
     }
 
     /**
@@ -115,7 +115,7 @@ export class Cell<T> extends Component {
      * @returns True if the cell is read-only.
      */
     isReadOnly() {
-        return !!this.readOnly;
+        return !!this._readOnly;
     }
 
     /**
@@ -139,7 +139,7 @@ export class Cell<T> extends Component {
      * @returns True if the cell is in edit mode.
      */
     isEditing(): boolean {
-        return this.activeEditor !== null;
+        return this._activeEditor !== null;
     }
 
     /**
@@ -163,25 +163,25 @@ export class Cell<T> extends Component {
             return;
         }
 
-        if (this.editor) {
-            this.activeEditor = this.editor;
+        if (this._editor) {
+            this._activeEditor = this._editor;
         } else {
             const key = this.getEditorKey();
-            if (!key || !this.editorPool) {
+            if (!key || !this._editorPool) {
                 return;
             }
 
-            const shared = this.editorPool.acquire(key, this);
+            const shared = this._editorPool.acquire(key, this);
             if (!shared) {
                 return;
             }
 
-            this.activeEditor = shared as CellEditor<T>;
-            this.addComponent(this.activeEditor);
+            this._activeEditor = shared as CellEditor<T>;
+            this.addComponent(this._activeEditor);
         }
 
-        const editor = this.activeEditor;
-        const renderer = this.renderer;
+        const editor = this._activeEditor;
+        const renderer = this._renderer;
 
         editor.setValue(renderer.getValue());
 
@@ -200,11 +200,11 @@ export class Cell<T> extends Component {
             return this;
         }
 
-        const editor = this.activeEditor!;
+        const editor = this._activeEditor!;
         const value = editor.getValue();
 
-        this.renderer.setValue(value);
-        this.onCommit?.(value as T);
+        this._renderer.setValue(value);
+        this._onCommit?.(value as T);
 
         this.detachEditor();
 
@@ -232,19 +232,19 @@ export class Cell<T> extends Component {
      * element — clearing the pointer first makes the re-entrant `isEditing()` check short-circuit.
      */
     private detachEditor(): void {
-        const editor = this.activeEditor;
+        const editor = this._activeEditor;
         if (!editor) {
             return;
         }
 
-        this.activeEditor = null;
+        this._activeEditor = null;
 
-        this.getLayoutManager().setVisibleComponentId(this.renderer.getId());
+        this.getLayoutManager().setVisibleComponentId(this._renderer.getId());
         this.doLayout();
 
-        if (this.editor !== editor) {
+        if (this._editor !== editor) {
             this.removeComponent(editor);
-            this.editorPool?.release();
+            this._editorPool?.release();
         }
     }
 
@@ -254,7 +254,7 @@ export class Cell<T> extends Component {
      * @param value - The value to pass to the renderer.
      */
     setValue(value: T) : this {
-        this.renderer.setValue(value);
+        this._renderer.setValue(value);
 
         return this;
     }
@@ -265,7 +265,7 @@ export class Cell<T> extends Component {
      * @returns The {@link CellRenderer} for this cell.
      */
     getRenderer() {
-        return this.renderer;
+        return this._renderer;
     }
 
     /**
@@ -274,6 +274,6 @@ export class Cell<T> extends Component {
      * @returns The {@link CellEditor} for this cell, or undefined.
      */
     getEditor() {
-        return this.editor;
+        return this._editor;
     }
 }
