@@ -397,6 +397,10 @@ class Window extends Panel<WindowOptions> {
         this._dragDX = 0;
         this._dragDY = 0;
 
+        // Pre-promote to a compositor layer so the first mousemove translate doesn't
+        // pay a layer-creation cost mid-drag. Released in onMouseUp.
+        this.setWillChange("transform");
+
         // Viewport listeners are required (rather than direct document listeners) because
         // Event.baseViewportListener stops mouseup propagation at window capture phase
         // whenever any viewport listener for the type exists (e.g. SpinButton registers
@@ -530,6 +534,7 @@ class Window extends Panel<WindowOptions> {
         this.setX(this._dragStartLeft + this._dragDX);
         this.setY(this._dragStartTop  + this._dragDY);
         this.setTranslate(0, 0);
+        this.setWillChange(null);
 
         Event.removeViewportListener(this, 'mouseup', this.boundOnMouseUp);
         Event.removeViewportListener(this, 'mousemove', this.boundOnDrag);

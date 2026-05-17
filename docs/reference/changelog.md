@@ -6,6 +6,13 @@ Release history. For breaking-change details by version, see [Migration](/refere
 
 The package is at version `0.0.0` — pre-release, not yet published. Until a `0.x` or `1.0.0` is tagged, anything here may change without a migration note. Highlights below describe work-in-progress capabilities of the development snapshot, not stable contracts.
 
+**Compositor-layer hints via `will-change`** (additive):
+
+- **New [`Component.setWillChange(value)`](/api/core/classes/Component#setwillchange)** and matching `willChange?` field on `ComponentOptions`. Routes through the existing batched style channel and caches the value so subsequent identical writes short-circuit.
+- **Automatic in the framework.** Window drag sets the hint on `mousedown` and clears on `mouseup`; virtual `Table` and `Tree` row pools set the hint when a row joins the pool and clear it when it leaves; the `Table` header carries the hint for the table's lifetime since it is the permanent scroll-mirror target.
+- **Effect.** The first frame of a drag or scroll no longer pays a layer-creation cost — visible as the disappearance of the brief "settle" tick that used to precede continuous motion.
+- See [Performance » Compositor-layer hints](/concepts/performance#compositor-layer-hints) for the guidance on when to apply the hint to custom components.
+
 **Tree custom row renderers** (additive):
 
 - **`TreeNodeRenderer` plug-in point.** Each [`Tree`](/api/component/tree/classes/Tree) row's content area (everything to the right of the expand/collapse toggle) is now owned by a [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) instance. The tree holds a zero-argument renderer factory installed via `setRendererFactory(factory)`; one renderer per pool slot is created when the pool grows and rebound via `update(context)` when the slot is remapped. Switching factories on an existing tree replaces each pool row's renderer in place — no DOM teardown.
