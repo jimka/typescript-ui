@@ -40,6 +40,44 @@ win.setHeaderText('Hello');
 win.show();
 ```
 
+## Glyphs
+
+This library ships ~2,860 SVG icons from [Font Awesome Free 7.2.0](https://fontawesome.com/license/free) (CC BY 4.0). Icons are **opt-in by explicit registration** — the runtime registry starts empty so the bundler can tree-shake away unused icons.
+
+```ts
+import { Glyph } from '@jimka/typescript-ui/component/display';
+import { xmark } from '@jimka/typescript-ui/glyphs/solid/xmark';
+import { pen_to_square } from '@jimka/typescript-ui/glyphs/solid/pen_to_square';
+import { plus } from '@jimka/typescript-ui/glyphs/solid/plus';
+
+Glyph.register(xmark, pen_to_square, plus);
+
+new Glyph("xmark");           // renders the X icon
+new Glyph("pen-to-square");   // renders the edit pencil
+new Glyph("plus");            // renders the plus icon
+```
+
+The string passed to `new Glyph(name)` is the upstream Font Awesome name (with hyphens). The JS identifier is sanitized: `-` becomes `_` and identifiers starting with a digit get a leading `_` (so `arrow-right` exports as `arrow_right`, `500px` as `_500px`, `try` as `_try`).
+
+### Migration from the previous curated registry
+
+If you were using the previous 19-icon curated registry, switch to these latest-FA names:
+
+| Old | New |
+|-----|-----|
+| `times`, `close` | `xmark` |
+| `edit` | `pen-to-square` |
+| `info-circle` | `circle-info` |
+| `check-circle` | `circle-check` |
+| `exclamation-triangle`, `warning` | `triangle-exclamation` |
+| `exclamation-circle`, `error` | `circle-exclamation` |
+| `question-circle` | `circle-question` |
+| `search` | `magnifying-glass` |
+| `cog` | `gear` |
+| `home` | `house` |
+
+Library components that internally use glyphs (Tree row chevrons, Notification badges) register their own dependencies automatically — consumers only need to register the glyphs they reference directly.
+
 ## Repository scripts
 
 | Command | Description |

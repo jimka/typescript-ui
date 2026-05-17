@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: CC-BY-4.0
+// Source: Font Awesome Free 7.2.0, https://fontawesome.com/license/free
+// © Fonticons, Inc.
+import type { NamedGlyphDef } from "~/component/display/Glyphs.js";
+
+export const sagittarius: NamedGlyphDef = {
+    name:    "sagittarius",
+    kind:    "svg",
+    viewBox: "0 0 448 512",
+    path:    "M416 32c17.7 0 32 14.3 32 32l0 160c0 17.7-14.3 32-32 32s-32-14.3-32-32l0-82.8-146.8 146.8 41.4 41.4c12.5 12.5 12.5 32.8 0 45.2s-32.8 12.5-45.3 0L192 333.3 54.6 470.6c-12.5 12.5-32.8 12.5-45.2 0s-12.5-32.8 0-45.2L146.8 288 105.4 246.6c-12.5-12.5-12.5-32.8 0-45.2s32.8-12.5 45.2 0L192 242.8 338.8 96 256 96c-17.7 0-32-14.3-32-32s14.3-32 32-32l160 0z"
+};

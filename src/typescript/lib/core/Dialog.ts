@@ -14,6 +14,10 @@ import { Fit } from "~/layout/Fit.js";
 import { Placement } from "~/primitive/Placement.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+import { xmark } from "~/glyphs/solid/xmark.js";
+import { circle_check } from "~/glyphs/solid/circle_check.js";
+
+Glyph.register(xmark, circle_check);
 
 /**
  * The result produced when a dialog is dismissed.
@@ -158,7 +162,7 @@ class DialogTitleBar extends Component {
         this._titleText.centerInHeight(TITLE_HEIGHT - TITLE_V_PAD * 2);
         this.addComponent(this._titleText);
 
-        this._closeButton = new Button({ glyph: "times" });
+        this._closeButton = new Button({ glyph: "xmark" });
         this._closeButton.setInsets(new Insets(0, 0, 0, 0));
         this._closeButton.setBorder({ style: BorderStyle.NONE });
         this._closeButton.clearBackgroundImage();
@@ -366,7 +370,7 @@ const DIALOG_BASE_Z: number = 10101;
 
 /** Default button set when no buttons are supplied in config. */
 const DEFAULT_BUTTONS: DialogButtonConfig[] = [
-    { text: 'OK', result: 'confirm', primary: true, glyph: "check-circle" },
+    { text: 'OK', result: 'confirm', primary: true, glyph: "circle-check" },
 ];
 
 /**
@@ -764,8 +768,8 @@ class Dialog extends Component {
             title,
             message,
             buttons: [
-                { text: 'Cancel',  result: 'cancel',  primary: true, glyph: "times"        },
-                { text: 'Confirm', result: 'confirm',                glyph: "check-circle" },
+                { text: 'Cancel',  result: 'cancel',  primary: true, glyph: "xmark"        },
+                { text: 'Confirm', result: 'confirm',                glyph: "circle-check" },
             ],
         });
 

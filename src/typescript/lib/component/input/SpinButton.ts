@@ -7,6 +7,11 @@ import { ThemeManager } from "~/core/Theme.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { chevron_up } from "~/glyphs/solid/chevron_up.js";
+import { chevron_down } from "~/glyphs/solid/chevron_down.js";
+
+Glyph.register(chevron_up, chevron_down);
 
 /**
  * Construction-time options for {@link SpinButton}.

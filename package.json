@@ -37,6 +37,26 @@
       "import": "./dist/lib/component/display.es.js",
       "types": "./dist/lib/types/component/display/index.d.ts"
     },
+    "./glyphs": {
+      "import": "./dist/lib/glyphs/index.es.js",
+      "types": "./dist/lib/types/glyphs/index.d.ts"
+    },
+    "./glyphs/solid": {
+      "import": "./dist/lib/glyphs/solid/index.es.js",
+      "types": "./dist/lib/types/glyphs/solid/index.d.ts"
+    },
+    "./glyphs/regular": {
+      "import": "./dist/lib/glyphs/regular/index.es.js",
+      "types": "./dist/lib/types/glyphs/regular/index.d.ts"
+    },
+    "./glyphs/brands": {
+      "import": "./dist/lib/glyphs/brands/index.es.js",
+      "types": "./dist/lib/types/glyphs/brands/index.d.ts"
+    },
+    "./glyphs/*": {
+      "import": "./dist/lib/glyphs/*.es.js",
+      "types": "./dist/lib/types/glyphs/*.d.ts"
+    },
     "./component/list": {
       "import": "./dist/lib/component/list.es.js",
       "types": "./dist/lib/types/component/list/index.d.ts"
@@ -59,7 +79,8 @@
     }
   },
   "files": [
-    "dist/lib"
+    "dist/lib",
+    "LICENSE-FONTAWESOME.md"
   ],
   "sideEffects": false,
   "scripts": {
@@ -84,6 +105,7 @@
     "google-closure-compiler": "^20200406.0.0",
     "rimraf": "^3.0.2",
     "ts-morph": "^28.0.0",
+    "tsx": "^4.22.1",
     "typedoc": "^0.27.0",
     "typedoc-plugin-markdown": "~4.4.0",
     "typedoc-vitepress-theme": "^1.1.2",

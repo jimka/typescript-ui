@@ -13,6 +13,13 @@ import { Table } from "~/component/table/Table.js";
 import { ExportOptions } from "~/component/table/TableExporter.js";
 import { Tooltip } from "~/core/Tooltip.js";
 import { callable } from "~/core/Callable.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { plus }          from "~/glyphs/solid/plus.js";
+import { minus }         from "~/glyphs/solid/minus.js";
+import { arrows_rotate } from "~/glyphs/solid/arrows_rotate.js";
+import { ban }           from "~/glyphs/solid/ban.js";
+
+Glyph.register(plus, minus, arrows_rotate, ban);
 
 /**
  * A composite panel that combines a {@link Table} with an add/remove/sync toolbar.
@@ -50,7 +57,7 @@ class TablePanel extends Panel {
         Tooltip.attach(removeBtn, "Remove selected row");
         this._toolbar.addComponent(removeBtn);
 
-        this._syncBtn = new Button({ glyph: "sync" });
+        this._syncBtn = new Button({ glyph: "arrows-rotate" });
         this._syncBtn.setPreferredSize(28, 28);
         this._syncBtn.addActionListener(() => this._table.sync());
         Tooltip.attach(this._syncBtn, "Sync pending changes");

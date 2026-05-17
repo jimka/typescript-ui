@@ -6,6 +6,10 @@ import { TreeNode } from "~/component/tree/TreeNode.js";
 import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
 import { LabelTreeNodeRenderer } from "~/component/tree/renderer/Label.js";
 import { callable } from "~/core/Callable.js";
+import { caret_down } from "~/glyphs/solid/caret_down.js";
+import { caret_right } from "~/glyphs/solid/caret_right.js";
+
+Glyph.register(caret_down, caret_right);
 
 /** Width in pixels reserved for the expand/collapse toggle icon. */
 export const TOGGLE_WIDTH = 20;
@@ -23,7 +27,7 @@ export const TOGGLE_WIDTH = 20;
  * renderer are appended directly to the row's DOM element in `init()` rather
  * than via `addComponent`, so their preferred-size change notifications do not
  * propagate up to the Tree and trigger unnecessary layout passes. Leaf rows
- * have no toggle; non-leaf rows swap in a fresh `arrow-down` / `arrow-right`
+ * have no toggle; non-leaf rows swap in a fresh `caret-down` / `caret-right`
  * glyph on each state change rather than mutating a single character. The row
  * content area (everything to the right of the toggle) is owned by a
  * [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer) supplied
@@ -135,7 +139,7 @@ class TreeRow extends Component {
         }
 
         if (hasChildren) {
-            const toggle = new Glyph(expanded ? "arrow-down" : "arrow-right");
+            const toggle = new Glyph(expanded ? "caret-down" : "caret-right");
             toggle.setCursor("pointer");
             toggle.clearInsets();
             toggle.getAria().setHidden(true);
