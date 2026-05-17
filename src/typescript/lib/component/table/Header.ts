@@ -5,6 +5,7 @@ import { Row } from "~/component/table/Row.js";
 import { AbstractModel } from "~/data/AbstractModel.js";
 import { AbstractStore, SortDescriptor } from "~/data/AbstractStore.js";
 import { Field } from "~/data/Field.js";
+import { Column } from "~/component/table/Column.js";
 import { HeaderCell } from "~/component/table/cell/Header.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { callable } from "~/core/Callable.js";
@@ -26,6 +27,7 @@ class Header extends Component {
     private _model: AbstractModel;
     private _store: AbstractStore;
     private _hiddenColumns: Set<string> = new Set();
+    private _columns: Column[] = [];
     private _onResizeCallback: ((colIndex: number, delta: number) => void) | null = null;
     private _onColumnContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
 
@@ -93,6 +95,21 @@ class Header extends Component {
      */
     setHiddenColumns(hidden: Set<string>): this {
         this._hiddenColumns = new Set(hidden);
+
+        this.rebuildCells();
+
+        return this;
+    }
+
+    /**
+     * Supplies the resolved {@link Column} list so that per-column header metadata
+     * (e.g. `headerGlyph`) is available when cells are rebuilt.
+     *
+     * @param columns - The resolved columns in display order.
+     * @returns This header, for method chaining.
+     */
+    setColumns(columns: Column[]): this {
+        this._columns = columns;
 
         this.rebuildCells();
 
@@ -216,9 +233,12 @@ class Header extends Component {
                                  .filter(f => !this._hiddenColumns.has(f.getName()))
                                  .sort((a, b) => a.getOrder() - b.getOrder());
 
+        const columnMap = new Map(this._columns.map(c => [c.getField().getName(), c]));
+
         for (let i = 0; i < fields.length; i++) {
             const field = fields[i];
-            const cell = new HeaderCell(field.getName(), field.getName());
+            const glyph = columnMap.get(field.getName())?.getHeaderGlyph() ?? null;
+            const cell  = new HeaderCell(field.getName(), field.getName(), glyph);
 
             cell.setTooltip(field.getDescription());
             row.addComponent(cell, { data: field });

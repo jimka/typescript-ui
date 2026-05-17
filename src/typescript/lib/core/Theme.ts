@@ -104,6 +104,10 @@ export interface Theme {
             font: {
                 size: string;
             };
+            glyph: {
+                gap  : string;
+                color: string;
+            };
         };
         row: {
             selected      : string;
@@ -309,7 +313,11 @@ export const DefaultTheme: Theme = {
     window: { shadow: '3px 3px 2px rgba(0, 0, 0, 0.4)' },
     header: { font: { size: '12px' }, padding: 5 },
     table : {
-        header: { border: 'black', font: { size: '13px' } },
+        header: {
+            border: 'black',
+            font  : { size: '13px' },
+            glyph : { gap: '4px', color: 'currentColor' },
+        },
         row   : {
             selected      : 'rgba(30, 100, 200, 0.15)',
             selectedBorder: 'inset 0 0 0 1px rgba(30, 100, 200, 0.6)',
@@ -468,7 +476,11 @@ export const DarkTheme: Theme = {
     window    : { shadow: '3px 3px 2px rgba(0, 0, 0, 0.6)' },
     header    : { font: { size: '12px' }, padding: 4 },
     table     : {
-        header: { border: '#555', font: { size: '13px' } },
+        header: {
+            border: '#555',
+            font  : { size: '13px' },
+            glyph : { gap: '4px', color: 'currentColor' },
+        },
         row   : {
             selected      : 'rgba(30, 100, 200, 0.25)',
             selectedBorder: 'inset 0 0 0 1px rgba(30, 100, 200, 0.8)',
@@ -614,6 +626,8 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-header-font-size'                 : theme.header.font.size,
         '--ts-ui-table-header-border'              : theme.table.header.border,
         '--ts-ui-table-header-font-size'           : theme.table.header.font.size,
+        '--ts-ui-table-header-glyph-gap'           : theme.table.header.glyph.gap,
+        '--ts-ui-table-header-glyph-color'         : theme.table.header.glyph.color,
         '--ts-ui-table-row-selected'               : theme.table.row.selected,
         '--ts-ui-table-row-selected-border'        : theme.table.row.selectedBorder,
         '--ts-ui-table-row-new'                    : theme.table.row.new,

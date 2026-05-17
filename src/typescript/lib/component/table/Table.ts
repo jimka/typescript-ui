@@ -119,6 +119,7 @@ class Table extends Component<TableOptions> {
         // Table's lifetime. One hint per Table is well under the per-page threshold.
         this._header.setWillChange("transform");
         this.addComponent(this._header);
+        this._header.setColumns(this._resolvedColumns);
 
         this._body = new Body(store);
         this.addComponent(this._body);
@@ -200,6 +201,7 @@ class Table extends Component<TableOptions> {
 
         this._body.setStore(store);
         this._header.setModel(store.model);
+        this._header.setColumns(this._resolvedColumns);
         this._header.setHiddenColumns(this.getEffectiveHiddenSet());
         this.getAria().setColCount(this.getColumns().length);
 
