@@ -4,7 +4,7 @@
 
 Two loose ends left after `feature/component-options-refactor` landed:
 
-1. State-specific CSS rules — Button's `:active`, ToggleButton's `.selected` — materialise on **first write** rather than **first render**. The lazy `StyleRule.set()` auto-ensures the rule the moment any setter writes to it; that "first write" lands during the constructor body (or even during the super cascade, for setters fired off the merged-defaults bag). The stylesheet picks up a rule for every Button instance even if the user never presses one.
+1. State-specific CSS rules — Button's `:active` and `:hover:not(:active)`, ToggleButton's `.selected` — materialise on **first write** rather than **first render**. The lazy `StyleRule.set()` auto-ensures the rule the moment any setter writes to it; that "first write" lands during the constructor body (or even during the super cascade, for setters fired off the merged-defaults bag). The stylesheet picks up a rule for every Button instance even if the user never presses or hovers one.
 2. [src/typescript/lib/component/input/Text.ts](src/typescript/lib/component/input/Text.ts) is the one class that still uses the *old* per-instance `_defaultOptions` writes for class-level defaults ([Text.ts:64-73](src/typescript/lib/component/input/Text.ts#L64-L73)) instead of the module-level `_defaultXOptions` const + merge-defaults shape that every other class adopted. The exception was intentional — Text's font/text defaults are getter-fallback semantics that don't write to the DOM, where the merge-defaults pattern would push explicit `text-align`/`font-family`/`font-weight`/etc. into every Text instance's CSS rule. The migration is fine for most properties (their values match CSS defaults) but changes `font-family` from "inherit from parent" to "explicitly set to `var(--ts-ui-font-family, …)`", which would block parent-supplied fonts from cascading.
 
 Both are quality-of-life follow-ups, not regressions. The first reduces stylesheet pollution; the second restores tree-wide pattern consistency.
@@ -19,7 +19,7 @@ Add a list of "deferred rules" on Component and an `applyStyle` pass that flushe
 
 Rejected alternative — having each subclass override `applyStyle` and call `this.someStyleRule.ensure()` per rule. Works, but every state-rule class repeats the same boilerplate, and the override is easy to forget.
 
-Rejected alternative — passing `this` into `StyleRule`'s constructor so the rule self-registers (`new StyleRule(this, factory)`). Hits the field-initializer-clobber problem we've been dodging — Button's `_pressedStyleRule?: StyleRule` field initializer runs *after* super returns, so any registration that happened during super's cascade gets overwritten when the field is reset to `undefined`. The lazy-getter shape already in place ([Button.ts:86-89](src/typescript/lib/component/button/Button.ts#L86-L89)) is fine; we just need the *first time the getter constructs the wrapper* to also register it.
+Rejected alternative — passing `this` into `StyleRule`'s constructor so the rule self-registers (`new StyleRule(this, factory)`). Hits the field-initializer-clobber problem we've been dodging — Button's `_pressedStyleRule?: StyleRule` field initializer runs *after* super returns, so any registration that happened during super's cascade gets overwritten when the field is reset to `undefined`. The lazy-getter shape already in place ([Button.ts:95-98](src/typescript/lib/component/button/Button.ts#L95-L98)) is fine; we just need the *first time the getter constructs the wrapper* to also register it. The same applies to Button's `_hoverStyleRule` lazy getter at [Button.ts:106-109](src/typescript/lib/component/button/Button.ts#L106-L109), added after this plan was written.
 
 ### Part 1 — `StyleRule.set` reverts to queue-only
 
@@ -147,9 +147,18 @@ private get pressedStyleRule(): StyleRule {
     }
     return this._pressedStyleRule;
 }
+
+private _hoverStyleRule?: StyleRule;
+private get hoverStyleRule(): StyleRule {
+    if (!this._hoverStyleRule) {
+        this._hoverStyleRule = new StyleRule(() => CSS.createComponentRule(this.getId() + ":hover:not(:active)") as CSSStyleRule);
+        this.registerStyleRule(this._hoverStyleRule);
+    }
+    return this._hoverStyleRule;
+}
 ```
 
-The `if`/`return` shape replaces the existing `??=` so the registration call happens exactly once. `registerStyleRule` lives on Component; the `deferredStyleRules` list is initialised in Component's constructor body **before** the `applyOptions` cascade fires ([Component.ts:222-258](src/typescript/lib/core/Component.ts#L222-L258) — the `this.components`, `this.attributes` block at L222 is the right neighbourhood). That ordering is what makes it safe for the cascade-time setPressedX call to register through the getter.
+The `if`/`return` shape replaces the existing `??=` so the registration call happens exactly once. `registerStyleRule` lives on Component; the `deferredStyleRules` list is initialised in Component's constructor body **before** the `applyOptions` cascade fires ([Component.ts:217-271](src/typescript/lib/core/Component.ts#L217-L271) — alongside the `this.components`, `this.attributes` block). That ordering is what makes it safe for the cascade-time setPressedX / setHoverX call to register through the getter.
 
 For ToggleButton, the same shape replaces the field-initializer at [ToggleButton.ts:31](src/typescript/lib/component/button/ToggleButton.ts#L31).
 
@@ -161,9 +170,11 @@ For ToggleButton, the same shape replaces the field-initializer at [ToggleButton
 
 1. `src/typescript/lib/core/Component.ts` — declare `private deferredStyleRules!: StyleRule[]` near the existing bag declarations ([Component.ts:185-197](src/typescript/lib/core/Component.ts#L185-L197)); assign `this.deferredStyleRules = []` in the constructor body **before** `this.applyOptions(options ?? ({} as TOptions))` runs.
 2. Add `protected registerStyleRule(rule: StyleRule): void { this.deferredStyleRules.push(rule); }`.
-3. In `applyStyle` ([Component.ts:2161](src/typescript/lib/core/Component.ts#L2161)), after the existing rule writes complete and `inlineStyle.flush()` runs ([Component.ts:552](src/typescript/lib/core/Component.ts#L552)), iterate `this.deferredStyleRules` and call `rule.ensure()` on each.
+3. In `applyStyle` ([Component.ts:2161](src/typescript/lib/core/Component.ts#L2161)), after the existing rule writes complete, iterate `this.deferredStyleRules` and call `rule.ensure()` on each. (No `inlineStyle.flush()` neighbour at the tail of `applyStyle` — the inline-style queue is flushed elsewhere in the render path; the deferred-rule ensure pass sits at the very end of `applyStyle`.)
 4. `src/typescript/lib/core/StyleTarget.ts` — remove `StyleRule.set` and `StyleRule.setMany` overrides; the class is left with the constructor and `ensure()` only. Confirm by reading the file: the only methods on `StyleRule` should now be `constructor` and `ensure()`.
-5. `src/typescript/lib/component/button/Button.ts` — rewrite the `pressedStyleRule` getter at [L87-89](src/typescript/lib/component/button/Button.ts#L87-L89) from `??=` to the explicit `if`/`registerStyleRule`/`return` shape shown above.
+5. `src/typescript/lib/component/button/Button.ts` — rewrite **both** lazy state-rule getters from `??=` to the explicit `if`/`registerStyleRule`/`return` shape:
+   - `pressedStyleRule` at [L95-98](src/typescript/lib/component/button/Button.ts#L95-L98)
+   - `hoverStyleRule` at [L106-109](src/typescript/lib/component/button/Button.ts#L106-L109)
 6. `src/typescript/lib/component/button/ToggleButton.ts` — replace the field initializer at [L31](src/typescript/lib/component/button/ToggleButton.ts#L31) with the same lazy-getter-with-registration shape (Button's pattern, applied to `_selectedStyleRule` backing slot + `selectedStyleRule` getter). Same logic applies — `selectedStyleRule.set(...)` calls at [L41-43](src/typescript/lib/component/button/ToggleButton.ts#L41-L43) now go through the getter, which registers on first access.
 7. Regression checkpoint — `grep -rn 'StyleRule.set' src/typescript/lib | grep -v StyleTarget.ts` should show only call sites (no method overrides remain inside StyleRule).
 
@@ -199,8 +210,8 @@ For ToggleButton, the same shape replaces the field-initializer at [ToggleButton
 
 ## Verification
 
-- Browser DevTools Elements panel — confirm the `:active` and `.selected` CSS rules are *absent* from the document stylesheet for buttons that haven't yet rendered. After scrolling into view (or otherwise rendering), the rules appear.
-- `grep -nE 'pressedStyleRule|selectedStyleRule' src/typescript/lib/component/button/*.ts` — every read should be through the getter, every wrapper-allocation should `registerStyleRule` exactly once.
+- Browser DevTools Elements panel — confirm the `:active`, `:hover:not(:active)`, and `.selected` CSS rules are *absent* from the document stylesheet for buttons that haven't yet rendered. After scrolling into view (or otherwise rendering), the rules appear.
+- `grep -nE 'pressedStyleRule|hoverStyleRule|selectedStyleRule' src/typescript/lib/component/button/*.ts` — every read should be through the getter, every wrapper-allocation should `registerStyleRule` exactly once.
 - Demo smoke test — Misc tab (buttons), Binding tab (text-bound components), Accordion tab (headers with Text children) all render with no visual regression. `font-family` on a `Text` inside a panel with a custom `fontFamily` should still inherit (the fontFamily carve-out preserves this).
 - Theme toggle — `font-size` and `line-height` updates re-flow through Text instances after the theme change. Without the `fontSize` listener write being routed to `_options`, this regresses; verify both behaviours.
 

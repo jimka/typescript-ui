@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { CSS } from "~/core/CSS.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Button, ButtonOptions } from "~/component/button/Button.js";
@@ -25,10 +24,14 @@ export interface ToggleButtonOptions extends ButtonOptions {
  */
 class ToggleButton extends Button<ToggleButtonOptions> {
 
-    // Lazy `.selected` rule — materialised on first `selectedStyleRule.set`
-    // flush. Defers stylesheet insertion to the moment the toggle's
-    // selected-state styles are first written.
-    private selectedStyleRule: StyleRule = new StyleRule(() => CSS.createComponentRule(this.getId() + ".selected") as CSSStyleRule);
+    // Lazy `.selected` rule. The slot is a fast-path cache for the wrapper
+    // returned by Component's `createStyleRule` builder, which dedupes by
+    // selector suffix — see Button's `_pressedStyleRule` for the full
+    // explanation.
+    private declare _selectedStyleRule?: StyleRule;
+    private get selectedStyleRule(): StyleRule {
+        return this._selectedStyleRule ??= this.createStyleRule(".selected");
+    }
 
     constructor(text: string, options?: ToggleButtonOptions) {
         // Button is a children-build class: it builds its inner text/HBox row
