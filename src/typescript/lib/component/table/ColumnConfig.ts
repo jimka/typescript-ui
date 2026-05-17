@@ -23,6 +23,11 @@ export interface ColumnConfig {
      * Defaults to `false` (hours and minutes only).
      */
     showSeconds ?: boolean;
+    /**
+     * Registry glyph name shown to the left of the header text.
+     * Omit for no glyph; no left-side gap is reserved when absent.
+     */
+    headerGlyph ?: string;
 }
 
 /**
