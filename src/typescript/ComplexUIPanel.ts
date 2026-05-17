@@ -53,8 +53,8 @@ class ComplexUIPanel extends Panel {
                 Panel({
                     layoutManager: VBox(),
                     components: [
-                        Button("New Customer"),
-                        Button("Save Customer")
+                        Button({ text: "New Customer" }),
+                        Button({ text: "Save Customer" })
                     ]
                 })
             ]
