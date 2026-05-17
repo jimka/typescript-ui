@@ -38,10 +38,10 @@ export interface BorderOptions {
  */
 export class Border extends Object {
 
-    private top: BorderLine;
-    private right: BorderLine;
-    private bottom: BorderLine;
-    private left: BorderLine;
+    private _top: BorderLine;
+    private _right: BorderLine;
+    private _bottom: BorderLine;
+    private _left: BorderLine;
 
     /**
      * @param options - Optional. Border configuration. Per-side options take precedence over
@@ -57,10 +57,10 @@ export class Border extends Object {
         const bottom = options?.bottom ?? fallback;
         const left   = options?.left   ?? fallback;
 
-        this.top    = new BorderLine("border-top"   , top.style, top.width, top.color);
-        this.right  = new BorderLine("border-right" , right.style as BorderStyle, right.width as number, right.color as string);
-        this.bottom = new BorderLine("border-bottom", bottom.style as BorderStyle, bottom.width as number, bottom.color as string);
-        this.left   = new BorderLine("border-left"  , left.style as BorderStyle, left.width as number, left.color as string);
+        this._top    = new BorderLine("border-top"   , top.style, top.width, top.color);
+        this._right  = new BorderLine("border-right" , right.style as BorderStyle, right.width as number, right.color as string);
+        this._bottom = new BorderLine("border-bottom", bottom.style as BorderStyle, bottom.width as number, bottom.color as string);
+        this._left   = new BorderLine("border-left"  , left.style as BorderStyle, left.width as number, left.color as string);
     }
 
     /**
@@ -69,7 +69,7 @@ export class Border extends Object {
      * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the top side.
      */
     getTop() {
-        return this.top;
+        return this._top;
     }
 
     /**
@@ -78,7 +78,7 @@ export class Border extends Object {
      * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the right side.
      */
     getRight() {
-        return this.right;
+        return this._right;
     }
 
     /**
@@ -87,7 +87,7 @@ export class Border extends Object {
      * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the bottom side.
      */
     getBottom() {
-        return this.bottom;
+        return this._bottom;
     }
 
     /**
@@ -96,7 +96,7 @@ export class Border extends Object {
      * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the left side.
      */
     getLeft() {
-        return this.left;
+        return this._left;
     }
 
     /**
@@ -107,10 +107,10 @@ export class Border extends Object {
      * @param color - The border color string to apply to all sides.
      */
     set(borderStyle: BorderStyle, width: number, color: string) : this {
-        this.top.set(borderStyle, width, color);
-        this.right.set(borderStyle, width, color);
-        this.bottom.set(borderStyle, width, color);
-        this.left.set(borderStyle, width, color);
+        this._top.set(borderStyle, width, color);
+        this._right.set(borderStyle, width, color);
+        this._bottom.set(borderStyle, width, color);
+        this._left.set(borderStyle, width, color);
 
         return this;
     }
@@ -126,10 +126,10 @@ export class Border extends Object {
      * flow through the batched dirty-style path.
      */
     applyOnCSSRule(rule: CSSStyleRule): void {
-        this.top.applyOnCSSRule(rule);
-        this.right.applyOnCSSRule(rule);
-        this.bottom.applyOnCSSRule(rule);
-        this.left.applyOnCSSRule(rule);
+        this._top.applyOnCSSRule(rule);
+        this._right.applyOnCSSRule(rule);
+        this._bottom.applyOnCSSRule(rule);
+        this._left.applyOnCSSRule(rule);
     }
 
     /**
@@ -142,10 +142,10 @@ export class Border extends Object {
      */
     toStyle(): { [key: string]: string | null } {
         return {
-            ...this.top.toStyle(),
-            ...this.right.toStyle(),
-            ...this.bottom.toStyle(),
-            ...this.left.toStyle()
+            ...this._top.toStyle(),
+            ...this._right.toStyle(),
+            ...this._bottom.toStyle(),
+            ...this._left.toStyle()
         };
     }
 
