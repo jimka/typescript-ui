@@ -11,6 +11,12 @@ import { Button } from "~/component/button/Button.js";
 import { Position } from "~/primitive/Position.js";
 import { Insets } from "~/primitive/Insets.js";
 import { _Dialog } from "~/core/Dialog.js";
+import { circle_info } from "~/glyphs/solid/circle_info.js";
+import { circle_check } from "~/glyphs/solid/circle_check.js";
+import { triangle_exclamation } from "~/glyphs/solid/triangle_exclamation.js";
+import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
+
+Glyph.register(circle_info, circle_check, triangle_exclamation, circle_exclamation);
 
 /**
  * The visual severity of a notification.
@@ -20,8 +26,8 @@ import { _Dialog } from "~/core/Dialog.js";
 export type NotificationType = 'info' | 'success' | 'warning' | 'error';
 
 const BADGE_GLYPH: Record<NotificationType, string> = {
-    info:    "info-circle",
-    success: "check-circle",
+    info:    "circle-info",
+    success: "circle-check",
     warning: "triangle-exclamation",
     error:   "circle-exclamation",
 };

@@ -6,6 +6,10 @@ import { TreeNode } from "~/component/tree/TreeNode.js";
 import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
 import { LabelTreeNodeRenderer } from "~/component/tree/renderer/Label.js";
 import { callable } from "~/core/Callable.js";
+import { arrow_down } from "~/glyphs/solid/arrow_down.js";
+import { arrow_right } from "~/glyphs/solid/arrow_right.js";
+
+Glyph.register(arrow_down, arrow_right);
 
 /** Width in pixels reserved for the expand/collapse toggle icon. */
 export const TOGGLE_WIDTH = 20;
