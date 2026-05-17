@@ -11,6 +11,10 @@ import { FieldSet } from '@jimka/typescript-ui/component/container';
 import { ColumnSpec, Table, TablePanel } from '@jimka/typescript-ui/component/table';
 import { IconLabelTreeNodeRenderer, Tree } from '@jimka/typescript-ui/component/tree';
 import type { TreeNode } from '@jimka/typescript-ui/component/tree';
+import { xmark } from '@jimka/typescript-ui/glyphs/solid/xmark';
+import { arrow_right } from '@jimka/typescript-ui/glyphs/solid/arrow_right';
+import { arrow_down } from '@jimka/typescript-ui/glyphs/solid/arrow_down';
+Glyph.register(xmark, arrow_right, arrow_down);
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and
  * pretends to be a slow network request so the spinner overlay is visible.
@@ -587,12 +591,12 @@ class MiscPanel extends Panel {
         const glyphRow = new Component();
         glyphRow.setLayoutManager(new HBox());
         glyphRow.addComponent(new Text("Glyphs:"));
-        glyphRow.addComponent(new Glyph("times"));
+        glyphRow.addComponent(new Glyph("xmark"));
         glyphRow.addComponent(new Glyph("arrow-right"));
         glyphRow.addComponent(new Glyph("arrow-down"));
         this.addComponent(glyphRow);
 
-        const buttonWithGlyph = new Button("Save", { glyph: "times" });
+        const buttonWithGlyph = new Button("Save", { glyph: "xmark" });
         this.addComponent(buttonWithGlyph);
 
         const iconTextRow = new Component();
