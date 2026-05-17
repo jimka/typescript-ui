@@ -615,6 +615,14 @@ class MiscPanel extends Panel {
         glyphRow.addComponent(new Glyph("arrow-down"));
         this.addComponent(glyphRow);
 
+        const animatedGlyphRow = new Component();
+        animatedGlyphRow.setLayoutManager(new HBox());
+        animatedGlyphRow.addComponent(new Text("Animated glyphs:"));
+        animatedGlyphRow.addComponent(new Glyph("xmark",       { animation: "spin"  }));
+        animatedGlyphRow.addComponent(new Glyph("arrow-right", { animation: "pulse" }));
+        animatedGlyphRow.addComponent(new Glyph("arrow-down",  { animation: "beat"  }));
+        this.addComponent(animatedGlyphRow);
+
         const buttonWithGlyph = new Button("Save", { glyph: "xmark" });
         this.addComponent(buttonWithGlyph);
 
