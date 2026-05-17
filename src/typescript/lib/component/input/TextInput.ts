@@ -157,6 +157,22 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
     }
 
     /**
+     * Removes the HTML `placeholder` attribute from the underlying input.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearPlaceholder(): this {
+        if (this._options.placeholder === undefined) {
+            return this;
+        }
+
+        this._options.placeholder = undefined;
+        this.removeElementAttribute("placeholder");
+
+        return this;
+    }
+
+    /**
      * Returns whether the input is in read-only mode.
      *
      * @returns True if the `readonly` attribute is set.
@@ -203,6 +219,22 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
     setMaxLength(value: number): this {
         this._options.maxLength = value;
         this.setElementAttribute("maxlength", String(value));
+
+        return this;
+    }
+
+    /**
+     * Removes the HTML `maxlength` attribute from the underlying input.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearMaxLength(): this {
+        if (this._options.maxLength === undefined) {
+            return this;
+        }
+
+        this._options.maxLength = undefined;
+        this.removeElementAttribute("maxlength");
 
         return this;
     }

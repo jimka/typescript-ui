@@ -203,6 +203,15 @@ class Menu extends Component {
     }
 
     /**
+     * Returns the pixel width of the rebuild-mode menu panel.
+     *
+     * @returns The current panel width in pixels.
+     */
+    getMenuWidth(): number {
+        return this._menuWidth;
+    }
+
+    /**
      * Sets the pixel width of the rebuild-mode menu panel. **Rebuild-mode only.**
      *
      * @param width - Width in pixels. Defaults to 180.
@@ -476,6 +485,16 @@ class Menu extends Component {
         this._excludedEl = el;
 
         return this;
+    }
+
+    /**
+     * Returns the element whose subtree is currently excluded from the
+     * outside-click-to-close check, or `null` if none is set.
+     *
+     * @returns The excluded element, or null.
+     */
+    getExcludedElement(): HTMLElement | null {
+        return this._excludedEl;
     }
 
     /**
