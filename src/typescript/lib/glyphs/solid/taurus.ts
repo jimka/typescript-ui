@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: CC-BY-4.0
+// Source: Font Awesome Free 7.2.0, https://fontawesome.com/license/free
+// © Fonticons, Inc.
+import type { NamedGlyphDef } from "~/component/display/Glyphs.js";
+
+export const taurus: NamedGlyphDef = {
+    name:    "taurus",
+    kind:    "svg",
+    viewBox: "0 0 384 512",
+    path:    "M336-16c17.7 0 32 14.3 32 32 0 58.5-28.6 110.3-72.5 142.3 53.2 34.1 88.5 93.8 88.5 161.7 0 106-86 192-192 192S0 426 0 320C0 252.1 35.3 192.4 88.5 158.3 44.6 126.3 16 74.5 16 16 16-1.7 30.3-16 48-16S80-1.7 80 16c0 61.9 50.1 112 112 112S304 77.9 304 16c0-17.7 14.3-32 32-32zM192 192a128 128 0 1 0 0 256 128 128 0 1 0 0-256z"
+};
