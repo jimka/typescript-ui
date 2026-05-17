@@ -63,6 +63,21 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
     private items: Array<Option> = [];
     private storeRefresh: (() => void) | null = null;
 
+    /**
+     * Construction contract for subclasses (`List`, `MultiSelectList`, …):
+     *
+     *  1. Forward `options` to `super(options)` so the inherited cascade can
+     *     run. Calling `super()` without arguments silently drops every
+     *     `ComboBoxOptions` field — items / store / selection setters below
+     *     won't fire, and the component will render empty.
+     *  2. In your `applyOptions`, write any new option fields pure into
+     *     `this._options` only. Do **not** touch `this.items` or the live
+     *     element from `applyOptions` — it runs during super, before
+     *     `this.items` is initialised and before any element exists.
+     *  3. Dispatch your own late-built setters from your constructor body,
+     *     after `super(...)` returns, mirroring the `items` / `store` /
+     *     `selectedIndex` / `value` dispatch below.
+     */
     constructor(options?: ComboBoxOptions);
     constructor(options?: TOptions) {
         // Merge defaults → consumer options → non-overridable structural keys.

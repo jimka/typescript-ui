@@ -25,16 +25,26 @@ export interface MultiSelectListOptions extends ListOptions {
 class MultiSelectList extends List<MultiSelectListOptions> {
 
     constructor(options?: MultiSelectListOptions) {
-        super();
+        super(options);
 
-        if (options) {
-            this.applyOptions(options);
+        // Late-built state: `selectedIndices` was written pure to `_options` by
+        // the super-time cascade. Dispatch it now that `ComboBox`'s constructor
+        // body has populated `this.items` from `items` / `store`.
+        if (this._options.selectedIndices !== undefined) {
+            const element = this.getElement();
+            if (element) {
+                const indexSet = new Set(this._options.selectedIndices);
+
+                for (let i = 0; i < element.options.length; i++) {
+                    element.options[i].selected = indexSet.has(i);
+                }
+            }
         }
     }
 
     /**
-     * Applies a {@link MultiSelectListOptions} bag, dispatching the multi-select
-     * `selectedIndices` after the inherited List options have been applied.
+     * Writes the multi-select `selectedIndices` field pure into `_options`; the
+     * constructor body dispatches it after items are populated.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -42,14 +52,7 @@ class MultiSelectList extends List<MultiSelectListOptions> {
         super.applyOptions(options);
 
         if (options.selectedIndices !== undefined) {
-            const element = this.getElement();
-            if (element) {
-                const indexSet = new Set(options.selectedIndices);
-
-                for (let i = 0; i < element.options.length; i++) {
-                    element.options[i].selected = indexSet.has(i);
-                }
-            }
+            this._options.selectedIndices = options.selectedIndices;
         }
 
         return this;
