@@ -11,8 +11,9 @@ import { AnchorType } from "~/layout/AnchorType.js";
 import { Placement } from "~/primitive/Placement.js";
 import { callable } from "~/core/Callable.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
+import { window_maximize } from "~/glyphs/solid/window_maximize.js";
 
-Glyph.register(xmark);
+Glyph.register(xmark, window_maximize);
 
 /**
  * Construction-time options for {@link WindowHeader}.
@@ -74,7 +75,7 @@ class WindowHeader extends Header {
         // Default title icon: applied unless an explicit glyph name was passed.
         // Call clearGlyph() on the resulting WindowHeader to opt out entirely.
         if (options?.glyph === undefined) {
-            this.setGlyph("window");
+            this.setGlyph("window-maximize");
         }
 
         if (options) {
