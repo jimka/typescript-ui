@@ -24,16 +24,16 @@ export interface SplitOptions extends LayoutManagerOptions {
  */
 class Split extends LayoutManager {
 
-    private direction: String = "horizontal";
-    private sizes: Map<Component, number> = new Map<Component, number>();
-    private gutters: Array<SplitGutter> = [];
+    private _direction: String = "horizontal";
+    private _sizes: Map<Component, number> = new Map<Component, number>();
+    private _gutters: Array<SplitGutter> = [];
 
     constructor(direction?: String | SplitOptions, options?: SplitOptions) {
         super();
 
         if (direction === undefined || typeof direction === 'string' || direction instanceof String) {
             if (direction) {
-                this.direction = direction;
+                this._direction = direction;
             }
 
             if (options) {
@@ -64,7 +64,7 @@ class Split extends LayoutManager {
      * @returns `'horizontal'` or `'vertical'`.
      */
     getDirection() {
-        return this.direction;
+        return this._direction;
     }
 
     /**
@@ -73,7 +73,7 @@ class Split extends LayoutManager {
      * @param direction - `'horizontal'` for side-by-side panels, `'vertical'` for stacked panels.
      */
     setDirection(direction: String) : this {
-        this.direction = direction;
+        this._direction = direction;
 
         return this;
     }
@@ -89,26 +89,26 @@ class Split extends LayoutManager {
      * call preserves the user-defined split ratio.
      */
     onDrag(container: Component, gutter: SplitGutter, dragAmount: number) {
-        let gutterIdx = this.gutters.indexOf(gutter);
+        let gutterIdx = this._gutters.indexOf(gutter);
         let lhs = container.getComponents()[gutterIdx];
         let rhs = container.getComponents()[gutterIdx + 1];
 
-        if (this.direction === "horizontal") {
+        if (this._direction === "horizontal") {
             lhs.setWidth(lhs.getWidth() + dragAmount);
             gutter.setX(gutter.getX() + dragAmount);
             rhs.setX(rhs.getX() + dragAmount);
             rhs.setWidth(rhs.getWidth() - dragAmount);
 
-            this.sizes.set(lhs, lhs.getWidth());
-            this.sizes.set(rhs, rhs.getWidth());
+            this._sizes.set(lhs, lhs.getWidth());
+            this._sizes.set(rhs, rhs.getWidth());
         } else {
             lhs.setHeight(lhs.getHeight() + dragAmount);
             gutter.setY(gutter.getY() + dragAmount);
             rhs.setY(rhs.getY() + dragAmount);
             rhs.setHeight(rhs.getHeight() - dragAmount);
 
-            this.sizes.set(lhs, lhs.getHeight());
-            this.sizes.set(rhs, rhs.getHeight());
+            this._sizes.set(lhs, lhs.getHeight());
+            this._sizes.set(rhs, rhs.getHeight());
         }
 
         lhs.doLayout();
@@ -121,15 +121,15 @@ class Split extends LayoutManager {
     detach() : this {
         super.detach();
 
-        for (let idx in this.gutters) {
-            let gutter = this.gutters[idx];
+        for (let idx in this._gutters) {
+            let gutter = this._gutters[idx];
 
             let gutterElement = gutter.getElement();
             (gutterElement.parentNode as Node).removeChild(gutterElement);
             gutter.destroy();
         }
 
-        this.gutters = [];
+        this._gutters = [];
 
         return this;
     }
@@ -160,13 +160,13 @@ class Split extends LayoutManager {
         let gutterSize = 4;
         let gutterCount = componentCount - 1;
 
-        for (let i = this.gutters.length; i < gutterCount; i += 1) {
-            let gutter = new SplitGutter(this.direction);
+        for (let i = this._gutters.length; i < gutterCount; i += 1) {
+            let gutter = new SplitGutter(this._direction);
             gutter.addDragListener(function (dragAmount: number) {
                 me.onDrag(<Component>container, gutter, dragAmount);
             });
 
-            this.gutters.push(gutter);
+            this._gutters.push(gutter);
 
             element.appendChild(gutter.getElement(true));
         }
@@ -182,12 +182,12 @@ class Split extends LayoutManager {
             let componentWidth;
             let componentHeight;
 
-            if (this.direction === "horizontal") {
-                componentWidth = this.sizes.get(component) as number;
+            if (this._direction === "horizontal") {
+                componentWidth = this._sizes.get(component) as number;
                 componentHeight = containerSize.height;
             } else {
                 componentWidth = containerSize.width;
-                componentHeight = this.sizes.get(component) as number;
+                componentHeight = this._sizes.get(component) as number;
             }
 
             this.placeComponent(
@@ -199,19 +199,19 @@ class Split extends LayoutManager {
                 FillType.BOTH
             );
 
-            if (this.direction === "horizontal") {
+            if (this._direction === "horizontal") {
                 x += componentWidth;
             } else {
                 y += componentHeight;
             }
 
             if (idx < gutterCount) {
-                let gutter = this.gutters[idx];
+                let gutter = this._gutters[idx];
 
                 gutter.setX(x);
                 gutter.setY(y);
 
-                if (this.direction === "horizontal") {
+                if (this._direction === "horizontal") {
                     gutter.setWidth(gutterSize);
                     gutter.setHeight(componentHeight);
 
@@ -252,22 +252,22 @@ class Split extends LayoutManager {
         for (let idx = 0; idx < components.length; idx += 1) {
             let component = components[idx];
 
-            if (this.sizes.has(component)) {
+            if (this._sizes.has(component)) {
                 componentsWithSize += 1;
             }
         }
 
         for (let idx = 0; idx < components.length; idx += 1) {
             let component = components[idx];
-            let componentSize = this.sizes.get(component);
+            let componentSize = this._sizes.get(component);
 
             if (componentSize == undefined) {
-                if (this.sizes.size != 0) {
+                if (this._sizes.size != 0) {
                     componentSize = 0;
 
                     for (let jdx = 0; jdx < components.length; jdx += 1) {
                         let c = components[jdx];
-                        let cSize = this.sizes.get(c);
+                        let cSize = this._sizes.get(c);
 
                         if(cSize == undefined) {
                             continue;
@@ -277,17 +277,17 @@ class Split extends LayoutManager {
                         componentSize += sizeFraction;
                         cSize -= sizeFraction;
 
-                        this.sizes.set(c, cSize);
+                        this._sizes.set(c, cSize);
                     }
                 } else {
-                    if (this.direction === "horizontal") {
+                    if (this._direction === "horizontal") {
                         componentSize = containerSize.width - containerInsets.getLeft() - containerInsets.getRight();
                     } else {
                         componentSize = containerSize.height - containerInsets.getTop() - containerInsets.getBottom();
                     }
                 }
 
-                this.sizes.set(component, componentSize);
+                this._sizes.set(component, componentSize);
                 componentsWithSize += 1;
             }
         }

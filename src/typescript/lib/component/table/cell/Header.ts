@@ -21,14 +21,14 @@ import { callable } from "~/core/Callable.js";
  */
 class HeaderCell extends DefaultCell {
 
-    private text: String;
-    private fieldName: string;
-    private onSortClickCallback: ((fieldName: string, shiftKey: boolean) => void) | null = null;
-    private onContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
-    private resizeDragCallback: ((delta: number) => void) | null = null;
-    private isDragging: boolean = false;
-    private tooltipText: string = '';
-    private priorityBadge: HTMLSpanElement | null = null;
+    private _text: String;
+    private _fieldName: string;
+    private _onSortClickCallback: ((fieldName: string, shiftKey: boolean) => void) | null = null;
+    private _onContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
+    private _resizeDragCallback: ((delta: number) => void) | null = null;
+    private _isDragging: boolean = false;
+    private _tooltipText: string = '';
+    private _priorityBadge: HTMLSpanElement | null = null;
 
     /**
      * Creates a header cell with bold text and wires up the sort click listener.
@@ -42,8 +42,8 @@ class HeaderCell extends DefaultCell {
         this.getAria().setRole("columnheader");
         this.getAria().setSort("none");
 
-        this.text = text;
-        this.fieldName = fieldName;
+        this._text = text;
+        this._fieldName = fieldName;
 
         let renderer = this.getRenderer();
         renderer.getText().setFontSize("--ts-ui-table-header-font-size");
@@ -77,7 +77,7 @@ class HeaderCell extends DefaultCell {
         el.addEventListener('contextmenu', (e: MouseEvent) => {
             e.preventDefault();
 
-            this.onContextMenuCallback?.(this.fieldName, e.clientX, e.clientY);
+            this._onContextMenuCallback?.(this._fieldName, e.clientX, e.clientY);
         });
 
         const handle = document.createElement('div');
@@ -100,10 +100,10 @@ class HeaderCell extends DefaultCell {
             'border-radius:3px;padding:1px 3px;display:none;pointer-events:none;';
 
         el.appendChild(badge);
-        this.priorityBadge = badge;
+        this._priorityBadge = badge;
 
-        if (this.tooltipText) {
-            Tooltip.attachToElement(el, this.tooltipText);
+        if (this._tooltipText) {
+            Tooltip.attachToElement(el, this._tooltipText);
         }
 
         return this;
@@ -120,14 +120,14 @@ class HeaderCell extends DefaultCell {
     setSortState(state: 'asc' | 'desc', priority?: number | null): this {
         const arrow = state === 'asc' ? ' ▲' : ' ▼';
 
-        this.getRenderer().getText().setText(this.text + arrow);
+        this.getRenderer().getText().setText(this._text + arrow);
         this.getAria().setSort(state === 'asc' ? 'ascending' : 'descending');
 
-        if (this.priorityBadge) {
+        if (this._priorityBadge) {
             const showBadge = priority != null && priority >= 2;
 
-            this.priorityBadge.textContent   = showBadge ? String(priority) : '';
-            this.priorityBadge.style.display = showBadge ? '' : 'none';
+            this._priorityBadge.textContent   = showBadge ? String(priority) : '';
+            this._priorityBadge.style.display = showBadge ? '' : 'none';
         }
 
         return this;
@@ -139,12 +139,12 @@ class HeaderCell extends DefaultCell {
      * @returns This cell, for method chaining.
      */
     clearSortState(): this {
-        this.getRenderer().getText().setText(this.text);
+        this.getRenderer().getText().setText(this._text);
         this.getAria().setSort('none');
 
-        if (this.priorityBadge) {
-            this.priorityBadge.textContent   = '';
-            this.priorityBadge.style.display = 'none';
+        if (this._priorityBadge) {
+            this._priorityBadge.textContent   = '';
+            this._priorityBadge.style.display = 'none';
         }
 
         return this;
@@ -157,7 +157,7 @@ class HeaderCell extends DefaultCell {
      *   shift key was held during the click (used to compose multi-column sort).
      */
     setOnSortClick(fn: (fieldName: string, shiftKey: boolean) => void): void {
-        this.onSortClickCallback = fn;
+        this._onSortClickCallback = fn;
     }
 
     /**
@@ -166,7 +166,7 @@ class HeaderCell extends DefaultCell {
      * @param fn - Receives the field name, and the viewport x/y coordinates of the event.
      */
     setOnContextMenu(fn: (fieldName: string, x: number, y: number) => void): void {
-        this.onContextMenuCallback = fn;
+        this._onContextMenuCallback = fn;
     }
 
     /**
@@ -180,7 +180,7 @@ class HeaderCell extends DefaultCell {
      * @param text - The text to display in the tooltip.
      */
     setTooltip(text: string): this {
-        this.tooltipText = text;
+        this._tooltipText = text;
 
         return this;
     }
@@ -191,7 +191,7 @@ class HeaderCell extends DefaultCell {
      * @param fn - Receives movementX on each mousemove during a resize drag.
      */
     setOnResizeDrag(fn: (delta: number) => void): void {
-        this.resizeDragCallback = fn;
+        this._resizeDragCallback = fn;
     }
 
     /**
@@ -201,18 +201,18 @@ class HeaderCell extends DefaultCell {
      * @param shiftKey - Whether the shift key was held when the click fired.
      */
     private onSortClick(shiftKey: boolean): void {
-        if (this.isDragging) {
-            this.isDragging = false;
+        if (this._isDragging) {
+            this._isDragging = false;
             return;
         }
 
-        this.onSortClickCallback?.(this.fieldName, shiftKey);
+        this._onSortClickCallback?.(this._fieldName, shiftKey);
     }
 
     private onResizeDragStart(e: MouseEvent): void {
         e.stopPropagation();
 
-        this.isDragging = true;
+        this._isDragging = true;
 
         Event.addViewportListener(this, 'mousemove', this.onResizeDrag);
         Event.addViewportListener(this, 'mouseup', this.onResizeDragStop);
@@ -221,7 +221,7 @@ class HeaderCell extends DefaultCell {
     }
 
     private onResizeDrag(e: MouseEvent): void {
-        this.resizeDragCallback?.(e.movementX);
+        this._resizeDragCallback?.(e.movementX);
     }
 
     private onResizeDragStop(): void {
@@ -231,7 +231,7 @@ class HeaderCell extends DefaultCell {
         Util.select('body').style.pointerEvents = '';
 
         // clear flag after synthesized click fires
-        setTimeout(() => { this.isDragging = false; }, 0);
+        setTimeout(() => { this._isDragging = false; }, 0);
     }
 }
 

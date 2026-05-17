@@ -35,13 +35,13 @@ export type AjaxProxyConfig = AjaxProxyOptions;
  */
 export class AjaxProxy extends Proxy {
 
-    private url: string;
-    private root: string | undefined;
-    private method: 'GET' | 'POST';
-    private createMethod: 'POST' | 'PUT';
-    private updateMethod: 'PUT' | 'PATCH';
-    private headers: Record<string, string>;
-    private lastTotalCount: number | undefined = undefined;
+    private _url: string;
+    private _root: string | undefined;
+    private _method: 'GET' | 'POST';
+    private _createMethod: 'POST' | 'PUT';
+    private _updateMethod: 'PUT' | 'PATCH';
+    private _headers: Record<string, string>;
+    private _lastTotalCount: number | undefined = undefined;
 
     /**
      * Constructs an AjaxProxy from the given options.
@@ -50,12 +50,12 @@ export class AjaxProxy extends Proxy {
      */
     constructor(options: AjaxProxyOptions) {
         super();
-        this.url = options.url;
-        this.root = options.root;
-        this.method = options.method ?? 'GET';
-        this.createMethod = options.createMethod ?? 'POST';
-        this.updateMethod = options.updateMethod ?? 'PUT';
-        this.headers = options.headers ?? {};
+        this._url = options.url;
+        this._root = options.root;
+        this._method = options.method ?? 'GET';
+        this._createMethod = options.createMethod ?? 'POST';
+        this._updateMethod = options.updateMethod ?? 'PUT';
+        this._headers = options.headers ?? {};
     }
 
     /**
@@ -80,7 +80,7 @@ export class AjaxProxy extends Proxy {
     async read(params?: ReadParams): Promise<any[]> {
         const paginated = params != null && (params.page != null || params.pageSize != null);
 
-        let url = this.url;
+        let url = this._url;
 
         if (paginated) {
             const search = new URLSearchParams();
@@ -93,13 +93,13 @@ export class AjaxProxy extends Proxy {
                 search.set('pageSize', String(params!.pageSize));
             }
 
-            const sep = this.url.includes('?') ? '&' : '?';
-            url = this.url + sep + search.toString();
+            const sep = this._url.includes('?') ? '&' : '?';
+            url = this._url + sep + search.toString();
         }
 
         const response = await fetch(url, {
-            method: this.method,
-            headers: this.headers
+            method: this._method,
+            headers: this._headers
         });
 
         if (!response.ok) {
@@ -109,7 +109,7 @@ export class AjaxProxy extends Proxy {
         const json = await response.json();
 
         if (paginated) {
-            const envelope = this.root ? json[this.root] : json;
+            const envelope = this._root ? json[this._root] : json;
 
             if (envelope == null || typeof envelope !== 'object') {
                 throw new Error(`AjaxProxy: paginated response is not an envelope object`);
@@ -122,15 +122,15 @@ export class AjaxProxy extends Proxy {
                 throw new Error(`AjaxProxy: paginated response 'data' is not an array`);
             }
 
-            this.lastTotalCount = typeof total === 'number' ? total : undefined;
+            this._lastTotalCount = typeof total === 'number' ? total : undefined;
 
             return data;
         }
 
-        if (this.root) {
-            const extracted = json[this.root];
+        if (this._root) {
+            const extracted = json[this._root];
             if (!Array.isArray(extracted)) {
-                throw new Error(`AjaxProxy: root '${this.root}' did not resolve to an array`);
+                throw new Error(`AjaxProxy: root '${this._root}' did not resolve to an array`);
             }
             return extracted;
         }
@@ -149,7 +149,7 @@ export class AjaxProxy extends Proxy {
      *   undefined if no paginated read has occurred or the server omitted it.
      */
     getLastTotalCount(): number | undefined {
-        return this.lastTotalCount;
+        return this._lastTotalCount;
     }
 
     /**
@@ -161,9 +161,9 @@ export class AjaxProxy extends Proxy {
      *   `root` if configured.
      */
     async create(record: ModelRecord): Promise<Record<string, any>> {
-        const response = await fetch(this.url, {
-            method: this.createMethod,
-            headers: { 'Content-Type': 'application/json', ...this.headers },
+        const response = await fetch(this._url, {
+            method: this._createMethod,
+            headers: { 'Content-Type': 'application/json', ...this._headers },
             body: JSON.stringify(record.getData())
         });
 
@@ -173,7 +173,7 @@ export class AjaxProxy extends Proxy {
 
         const json = await response.json();
 
-        return this.root ? json[this.root] : json;
+        return this._root ? json[this._root] : json;
     }
 
     /**
@@ -185,9 +185,9 @@ export class AjaxProxy extends Proxy {
      *   `root` if configured.
      */
     async update(record: ModelRecord): Promise<Record<string, any>> {
-        const response = await fetch(`${this.url}/${record.getId()}`, {
-            method: this.updateMethod,
-            headers: { 'Content-Type': 'application/json', ...this.headers },
+        const response = await fetch(`${this._url}/${record.getId()}`, {
+            method: this._updateMethod,
+            headers: { 'Content-Type': 'application/json', ...this._headers },
             body: JSON.stringify(record.getData())
         });
 
@@ -197,7 +197,7 @@ export class AjaxProxy extends Proxy {
 
         const json = await response.json();
 
-        return this.root ? json[this.root] : json;
+        return this._root ? json[this._root] : json;
     }
 
     /**
@@ -208,9 +208,9 @@ export class AjaxProxy extends Proxy {
      * @returns A promise that resolves when the server confirms the deletion.
      */
     async destroy(record: ModelRecord): Promise<void> {
-        const response = await fetch(`${this.url}/${record.getId()}`, {
+        const response = await fetch(`${this._url}/${record.getId()}`, {
             method: 'DELETE',
-            headers: this.headers
+            headers: this._headers
         });
 
         if (!response.ok) {

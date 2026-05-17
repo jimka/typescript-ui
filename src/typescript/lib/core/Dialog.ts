@@ -128,8 +128,8 @@ const TITLE_GLYPH_TEXT_GAP: number = 8;
  */
 class DialogTitleBar extends Component {
 
-    private readonly titleText  : Text;
-    private readonly closeButton: Button;
+    private readonly _titleText  : Text;
+    private readonly _closeButton: Button;
     private _titleGlyph: Glyph | null = null;
 
     /**
@@ -148,27 +148,27 @@ class DialogTitleBar extends Component {
         });
         this.setPreferredSize(0, TITLE_HEIGHT);
 
-        this.titleText = new Text(title);
-        this.titleText.setFontWeight("bold");
-        this.titleText.setOverflow("hidden");
-        this.titleText.setTextOverflow("ellipsis");
-        this.titleText.setWhiteSpace("nowrap");
+        this._titleText = new Text(title);
+        this._titleText.setFontWeight("bold");
+        this._titleText.setOverflow("hidden");
+        this._titleText.setTextOverflow("ellipsis");
+        this._titleText.setWhiteSpace("nowrap");
         // Centre the label within the inner area of the row (TITLE_HEIGHT
         // minus the top + bottom TITLE_V_PAD breathing room).
-        this.titleText.centerInHeight(TITLE_HEIGHT - TITLE_V_PAD * 2);
-        this.addComponent(this.titleText);
+        this._titleText.centerInHeight(TITLE_HEIGHT - TITLE_V_PAD * 2);
+        this.addComponent(this._titleText);
 
-        this.closeButton = new Button({ glyph: "times" });
-        this.closeButton.setInsets(new Insets(0, 0, 0, 0));
-        this.closeButton.setBorder({ style: BorderStyle.NONE });
-        this.closeButton.clearBackgroundImage();
-        this.closeButton.setBackgroundColor("transparent");
-        this.closeButton.clearShadow();
-        this.closeButton.clearPressedShadow();
-        this.closeButton.setPreferredSize(CLOSE_SIZE, CLOSE_SIZE);
-        this.addComponent(this.closeButton);
+        this._closeButton = new Button({ glyph: "times" });
+        this._closeButton.setInsets(new Insets(0, 0, 0, 0));
+        this._closeButton.setBorder({ style: BorderStyle.NONE });
+        this._closeButton.clearBackgroundImage();
+        this._closeButton.setBackgroundColor("transparent");
+        this._closeButton.clearShadow();
+        this._closeButton.clearPressedShadow();
+        this._closeButton.setPreferredSize(CLOSE_SIZE, CLOSE_SIZE);
+        this.addComponent(this._closeButton);
 
-        this.closeButton.addActionListener(onClose);
+        this._closeButton.addActionListener(onClose);
     }
 
     /**
@@ -178,7 +178,7 @@ class DialogTitleBar extends Component {
      * @returns The internal title [`Text`](/api/component/input/classes/Text) instance.
      */
     getTitleText(): Text {
-        return this.titleText;
+        return this._titleText;
     }
 
     /**
@@ -266,18 +266,18 @@ class DialogTitleBar extends Component {
         const labelWidth = Math.max(0, closeX - labelX - TITLE_RIGHT_GAP);
         const labelH     = h - TITLE_V_PAD * 2;
 
-        this.titleText.setX(labelX);
-        this.titleText.setY(TITLE_V_PAD);
-        this.titleText.setWidth(labelWidth);
-        this.titleText.setHeight(labelH);
+        this._titleText.setX(labelX);
+        this._titleText.setY(TITLE_V_PAD);
+        this._titleText.setWidth(labelWidth);
+        this._titleText.setHeight(labelH);
 
-        this.closeButton.setX(closeX);
-        this.closeButton.setY(centerY);
-        this.closeButton.setWidth(CLOSE_SIZE);
-        this.closeButton.setHeight(CLOSE_SIZE);
+        this._closeButton.setX(closeX);
+        this._closeButton.setY(centerY);
+        this._closeButton.setWidth(CLOSE_SIZE);
+        this._closeButton.setHeight(CLOSE_SIZE);
         // setX/setY/setWidth/setHeight don't cascade — explicitly relayout the
         // close button so its internal Fit layout sizes the times glyph.
-        this.closeButton.doLayout();
+        this._closeButton.doLayout();
 
         return this;
     }
@@ -293,7 +293,7 @@ class DialogTitleBar extends Component {
  */
 class DialogButtonRow extends Component {
 
-    private readonly buttons: Button[] = [];
+    private readonly _buttons: Button[] = [];
 
     /**
      * @param configs - Button definitions to render.
@@ -320,7 +320,7 @@ class DialogButtonRow extends Component {
             }
 
             btn.addActionListener(() => onButton(result));
-            this.buttons.push(btn);
+            this._buttons.push(btn);
             this.addComponent(btn);
         }
     }
@@ -336,10 +336,10 @@ class DialogButtonRow extends Component {
         const w         = this.getWidth();
         const h         = this.getHeight();
         const btnH      = h - BUTTON_V_PAD * 2;
-        const totalW    = this.buttons.length * BUTTON_WIDTH + (this.buttons.length - 1) * BUTTON_GAP;
+        const totalW    = this._buttons.length * BUTTON_WIDTH + (this._buttons.length - 1) * BUTTON_GAP;
         let   x         = Math.round((w - totalW) / 2);
 
-        for (const btn of this.buttons) {
+        for (const btn of this._buttons) {
             btn.setX(x);
             btn.setY(BUTTON_V_PAD);
             btn.setWidth(BUTTON_WIDTH);
@@ -392,17 +392,17 @@ const DEFAULT_BUTTONS: DialogButtonConfig[] = [
  */
 class Dialog extends Component {
 
-    private readonly titleBar        : DialogTitleBar;
-    private readonly contentContainer: Component;
-    private readonly buttonRow       : DialogButtonRow;
-    private readonly backdrop        : DialogBackdrop;
-    private readonly config          : DialogConfig;
+    private readonly _titleBar        : DialogTitleBar;
+    private readonly _contentContainer: Component;
+    private readonly _buttonRow       : DialogButtonRow;
+    private readonly _backdrop        : DialogBackdrop;
+    private readonly _config          : DialogConfig;
 
-    private resolvePromise  : ((result: DialogResult) => void) | null = null;
-    private previousFocus   : Element | null = null;
-    private boundKeyHandler : (e: KeyboardEvent) => void;
-    private boundResizeHandler: () => void;
-    private readonly instanceZ: number;
+    private _resolvePromise  : ((result: DialogResult) => void) | null = null;
+    private _previousFocus   : Element | null = null;
+    private _boundKeyHandler : (e: KeyboardEvent) => void;
+    private _boundResizeHandler: () => void;
+    private readonly _instanceZ: number;
 
     /**
      * Constructs a Dialog but does not display it. Call `show()` to open.
@@ -412,8 +412,8 @@ class Dialog extends Component {
     constructor(config: DialogConfig) {
         super();
 
-        this.config    = config;
-        this.instanceZ = instanceCounter;
+        this._config    = config;
+        this._instanceZ = instanceCounter;
         instanceCounter += 1;
 
         const dialogWidth  = Math.max(MIN_DIALOG_WIDTH, config.width ?? 480);
@@ -427,7 +427,7 @@ class Dialog extends Component {
         this.setPosition(Position.FIXED);
         this.setWidth(dialogWidth);
         this.setHeight(dialogHeight);
-        this.setZIndex(DIALOG_BASE_Z + this.instanceZ * 2);
+        this.setZIndex(DIALOG_BASE_Z + this._instanceZ * 2);
         this.setBackgroundColor("var(--ts-ui-body-bg)");
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-dialog-shadow)");
@@ -439,35 +439,35 @@ class Dialog extends Component {
         layout.setComponentGap(0);
         this.setLayoutManager(layout);
 
-        this.titleBar = new DialogTitleBar(config.title, () => this.hide('close'));
-        this.addComponent(this.titleBar, { placement: Placement.NORTH });
+        this._titleBar = new DialogTitleBar(config.title, () => this.hide('close'));
+        this.addComponent(this._titleBar, { placement: Placement.NORTH });
 
-        this.contentContainer = new Component();
-        this.contentContainer.setLayoutManager(new Fit());
+        this._contentContainer = new Component();
+        this._contentContainer.setLayoutManager(new Fit());
         // Vertical scrolling only — a horizontal scrollbar would cover the
         // bottom rows of body text and is rarely useful for dialog content.
-        this.contentContainer.setOverflowY("auto");
-        this.contentContainer.setOverflowX("hidden");
+        this._contentContainer.setOverflowY("auto");
+        this._contentContainer.setOverflowX("hidden");
 
         if (config.contentComponent) {
-            this.contentContainer.addComponent(config.contentComponent);
+            this._contentContainer.addComponent(config.contentComponent);
         } else {
             const messageText = new Text(config.message ?? '');
             messageText.setWhiteSpace("normal");
             messageText.setWordBreak("break-word");
             messageText.setPadding(new Insets(16, 16, 16, 16));
-            this.contentContainer.addComponent(messageText);
+            this._contentContainer.addComponent(messageText);
         }
 
-        this.addComponent(this.contentContainer, { placement: Placement.CENTER });
+        this.addComponent(this._contentContainer, { placement: Placement.CENTER });
 
-        this.buttonRow = new DialogButtonRow(buttons, (result) => this.hide(result));
-        this.addComponent(this.buttonRow, { placement: Placement.SOUTH });
+        this._buttonRow = new DialogButtonRow(buttons, (result) => this.hide(result));
+        this.addComponent(this._buttonRow, { placement: Placement.SOUTH });
 
-        this.backdrop = new DialogBackdrop();
+        this._backdrop = new DialogBackdrop();
 
-        this.boundKeyHandler    = (e: KeyboardEvent) => this.onKeyDown(e);
-        this.boundResizeHandler = () => this.onViewportResize();
+        this._boundKeyHandler    = (e: KeyboardEvent) => this.onKeyDown(e);
+        this._boundResizeHandler = () => this.onViewportResize();
     }
 
     /**
@@ -496,7 +496,7 @@ class Dialog extends Component {
      */
     show(): Promise<DialogResult> {
         return new Promise((resolve) => {
-            this.resolvePromise = resolve;
+            this._resolvePromise = resolve;
             this.open();
         });
     }
@@ -505,13 +505,13 @@ class Dialog extends Component {
      * Appends backdrop and dialog to the DOM, centers the panel, and captures focus.
      */
     private open(): void {
-        this.previousFocus = document.activeElement;
+        this._previousFocus = document.activeElement;
 
-        if (this.config.closeOnBackdrop) {
-            this.backdrop.addClickListener(() => this.hide('close'));
+        if (this._config.closeOnBackdrop) {
+            this._backdrop.addClickListener(() => this.hide('close'));
         }
 
-        const backdropEl = this.backdrop.getElement(true);
+        const backdropEl = this._backdrop.getElement(true);
         document.documentElement.appendChild(backdropEl);
 
         const dialogEl = this.getElement(true);
@@ -521,8 +521,8 @@ class Dialog extends Component {
         this.center();
         this.animateIn();
 
-        document.addEventListener('keydown', this.boundKeyHandler, true);
-        window.addEventListener('resize', this.boundResizeHandler);
+        document.addEventListener('keydown', this._boundKeyHandler, true);
+        window.addEventListener('resize', this._boundResizeHandler);
 
         this.focusFirst();
     }
@@ -534,7 +534,7 @@ class Dialog extends Component {
      */
     private animateIn(): void {
         const el   = this.getElement();
-        const bdEl = this.backdrop.getElement();
+        const bdEl = this._backdrop.getElement();
 
         if (!el) {
             return;
@@ -640,7 +640,7 @@ class Dialog extends Component {
      * Re-centers the dialog and resizes the backdrop when the viewport changes.
      */
     private onViewportResize(): void {
-        this.backdrop.resize();
+        this._backdrop.resize();
         this.center();
     }
 
@@ -654,28 +654,28 @@ class Dialog extends Component {
      * skipped when motion is reduced.
      */
     hide(result: DialogResult): this {
-        document.removeEventListener('keydown', this.boundKeyHandler, true);
-        window.removeEventListener('resize', this.boundResizeHandler);
+        document.removeEventListener('keydown', this._boundKeyHandler, true);
+        window.removeEventListener('resize', this._boundResizeHandler);
 
         const finalize = (): void => {
-            this.backdrop.destroy();
+            this._backdrop.destroy();
             this.removeElement();
             this.destructor();
 
             instanceCounter = Math.max(0, instanceCounter - 1);
 
-            if (this.previousFocus && 'focus' in this.previousFocus) {
-                (this.previousFocus as HTMLElement).focus();
+            if (this._previousFocus && 'focus' in this._previousFocus) {
+                (this._previousFocus as HTMLElement).focus();
             }
 
-            if (this.resolvePromise) {
-                this.resolvePromise(result);
-                this.resolvePromise = null;
+            if (this._resolvePromise) {
+                this._resolvePromise(result);
+                this._resolvePromise = null;
             }
         };
 
         const el   = this.getElement();
-        const bdEl = this.backdrop.getElement();
+        const bdEl = this._backdrop.getElement();
 
         if (!el) {
             finalize();
@@ -706,7 +706,7 @@ class Dialog extends Component {
      * @returns The content container [`Component`](/api/core/classes/Component).
      */
     getContentComponent(): Component {
-        return this.contentContainer;
+        return this._contentContainer;
     }
 
     /**
@@ -722,7 +722,7 @@ class Dialog extends Component {
      * (`getText`, `setGlyph`, `getGlyph`).
      */
     getTitleBar(): DialogTitleBar {
-        return this.titleBar;
+        return this._titleBar;
     }
 
     /**

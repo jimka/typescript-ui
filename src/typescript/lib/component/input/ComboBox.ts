@@ -60,8 +60,8 @@ const _defaultComboBoxOptions: Partial<ComboBoxOptions> = {
  */
 class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Component<TOptions> implements Bindable<string> {
 
-    private items: Array<Option> = [];
-    private storeRefresh: (() => void) | null = null;
+    private _items: Array<Option> = [];
+    private _storeRefresh: (() => void) | null = null;
 
     /**
      * Construction contract for subclasses (`List`, `MultiSelectList`, …):
@@ -287,7 +287,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
      * @returns A shallow copy of the internal Option array.
      */
     getItems() {
-        return this.items.slice();
+        return this._items.slice();
     }
 
     /**
@@ -306,7 +306,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
             let value = items[idx];
 
             let item = new Option(idx, value as string);
-            this.items.push(item);
+            this._items.push(item);
         }
 
         let element = this.getElement();
@@ -316,8 +316,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
 
         element.innerHTML = "";
 
-        for (let idx in this.items) {
-            let value = this.items[idx];
+        for (let idx in this._items) {
+            let value = this._items[idx];
 
             element.appendChild(value.getElement());
         }
@@ -331,8 +331,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
      * @param item - The string label for the new option.
      */
     addItem(item: String) : this {
-        let listItem = new Option((this.items.length + 1).toString(), item as string);
-        this.items.push(listItem);
+        let listItem = new Option((this._items.length + 1).toString(), item as string);
+        this._items.push(listItem);
 
         let element = this.getElement();
         if (!element) {
@@ -354,9 +354,9 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
     setStore(store: AbstractStore, displayField: string, valueField?: string): this {
         const oldStore = this._options.store;
 
-        if (this.storeRefresh && oldStore) {
+        if (this._storeRefresh && oldStore) {
             (['load', 'add', 'remove', 'datachanged', 'sync'] as const)
-                .forEach(e => oldStore.off(e, this.storeRefresh!));
+                .forEach(e => oldStore.off(e, this._storeRefresh!));
         }
 
         this._options.store        = store;
@@ -364,7 +364,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
         this._options.valueField   = valueField;
 
         const refresh = () => this.refreshFromStore();
-        this.storeRefresh = refresh;
+        this._storeRefresh = refresh;
 
         store.on('load',        refresh);
         store.on('add',         refresh);
@@ -414,7 +414,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
             return;
         }
 
-        this.items = [];
+        this._items = [];
         const records = store.getRecords();
 
         for (let i = 0; i < records.length; i++) {
@@ -424,7 +424,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
                                ? String(record.get(valueField))
                                : String(record.getId());
 
-            this.items.push(new Option(key, label));
+            this._items.push(new Option(key, label));
         }
 
         const element = this.getElement();
@@ -435,8 +435,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
         element.innerHTML = "";
 
         const fragment = document.createDocumentFragment();
-        for (let i = 0; i < this.items.length; i++) {
-            fragment.appendChild(this.items[i].getElement(true));
+        for (let i = 0; i < this._items.length; i++) {
+            fragment.appendChild(this._items[i].getElement(true));
         }
         element.appendChild(fragment);
     }
@@ -449,8 +449,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
     render() {
         let element = super.render();
 
-        for (let idx in this.items) {
-            let item = this.items[idx];
+        for (let idx in this._items) {
+            let item = this._items[idx];
 
             element.appendChild(item.getElement(true));
         }

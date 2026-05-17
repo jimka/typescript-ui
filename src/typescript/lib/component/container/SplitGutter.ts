@@ -25,8 +25,8 @@ export interface SplitGutterOptions extends ComponentOptions {
  */
 class SplitGutter extends Component {
 
-    private direction: String = "horizontal";
-    private dragListeners: Array<Function> = [];
+    private _direction: String = "horizontal";
+    private _dragListeners: Array<Function> = [];
 
     constructor(direction: String, options?: SplitGutterOptions) {
         super();
@@ -34,7 +34,7 @@ class SplitGutter extends Component {
         this.setBackgroundColor("var(--ts-ui-gutter-bg, #AAAAAA)");
 
         if (direction) {
-            this.direction = direction;
+            this._direction = direction;
         }
 
         Event.addListener(this, 'mousedown', this.onDragStart);
@@ -66,7 +66,7 @@ class SplitGutter extends Component {
      * @returns The current direction string.
      */
     getDirection() {
-        return this.direction;
+        return this._direction;
     }
 
     /**
@@ -79,7 +79,7 @@ class SplitGutter extends Component {
             direction = "horizontal";
         }
 
-        this.direction = direction;
+        this._direction = direction;
 
         return this;
     }
@@ -90,7 +90,7 @@ class SplitGutter extends Component {
      * @param listener - The callback invoked with the pixel delta on each mousemove/touchmove.
      */
     addDragListener(listener: Function) : this {
-        this.dragListeners.push(listener);
+        this._dragListeners.push(listener);
 
         return this;
     }
@@ -101,12 +101,12 @@ class SplitGutter extends Component {
      * @param listener - The callback to remove.
      */
     removeDragListener(listener: Function) : this {
-        let idx = this.dragListeners.indexOf(listener);
+        let idx = this._dragListeners.indexOf(listener);
         if (idx < 0) {
             return this;
         }
 
-        this.dragListeners.splice(idx, 1);
+        this._dragListeners.splice(idx, 1);
 
         return this;
     }
@@ -116,7 +116,7 @@ class SplitGutter extends Component {
      */
     destroy() {
         Event.removeListener(this, 'mousedown', this.onDragStart);
-        this.dragListeners = [];
+        this._dragListeners = [];
     }
 
     /**
@@ -125,8 +125,8 @@ class SplitGutter extends Component {
      * @param movement - The pixel delta in the relevant axis for this drag event.
      */
     fireDragListeners(movement: number) {
-        for (let idx in this.dragListeners) {
-            let dragListener = this.dragListeners[idx];
+        for (let idx in this._dragListeners) {
+            let dragListener = this._dragListeners[idx];
 
             dragListener(movement);
         }
@@ -165,7 +165,7 @@ class SplitGutter extends Component {
      */
     onDrag(evnt: MouseEvent) {
         let movement;
-        if (this.direction === "horizontal") {
+        if (this._direction === "horizontal") {
             movement = evnt.movementX;
         } else {
             movement = evnt.movementY;
@@ -182,7 +182,7 @@ class SplitGutter extends Component {
     render() {
         let element = super.render();
 
-        element.style.cursor = this.direction == "horizontal" ? "ew-resize" : "ns-resize";
+        element.style.cursor = this._direction == "horizontal" ? "ew-resize" : "ns-resize";
 
         return element;
     }

@@ -29,8 +29,8 @@ export interface RadioButtonOptions extends ComponentOptions {
  */
 class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions> extends Component<TOptions> {
 
-    private label!: Label;
-    private radio!: Input;
+    private _label!: Label;
+    private _radio!: Input;
 
     constructor(text? : string, options?: RadioButtonOptions) {
         // Forward options through the super cascade. `text`/`radioName`/
@@ -42,31 +42,31 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions> exte
 
         this.setLayoutManager(new HBox());
 
-        this.radio = new Input();
+        this._radio = new Input();
 
         // Build the label with empty text — the late-built dispatch below
         // calls `setText` with the effective value (either the consumer's
         // `options.text` written into `_options` by the cascade, or the
         // positional `text` argument). Constructing with the value up-front
         // and then setting it again would be a double-write.
-        this.label = new Label("", this.radio.getId());
+        this._label = new Label("", this._radio.getId());
 
-        this.addComponent(this.radio);
-        this.addComponent(this.label);
+        this.addComponent(this._radio);
+        this.addComponent(this._label);
 
-        this.radio.setPreferredSize(16, 16);
-        this.radio.setMaxSize(16, 16);
-        this.radio.setCursor("pointer");
+        this._radio.setPreferredSize(16, 16);
+        this._radio.setMaxSize(16, 16);
+        this._radio.setCursor("pointer");
 
         this.addActionListener(() => {
-            this._options.selected = this.radio.getElement().checked;
+            this._options.selected = this._radio.getElement().checked;
         });
 
         // Late-built state: `applyOptions` wrote these pure into `_options`
         // because `this.label`/`this.radio` didn't exist yet. Dispatch now.
         const effectiveText = this._options.text ?? text;
         if (effectiveText !== undefined) {
-            this.label.setText(effectiveText);
+            this._label.setText(effectiveText);
         }
         if (this._options.radioName !== undefined) {
             this.setRadioName(this._options.radioName);
@@ -75,7 +75,7 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions> exte
             this.setSelected(this._options.selected);
         }
         if (this._options.enabled !== undefined) {
-            this.radio.setDisabledAttribute(!this._options.enabled);
+            this._radio.setDisabledAttribute(!this._options.enabled);
         }
     }
 
@@ -116,7 +116,7 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions> exte
      * @returns The baseline offset in pixels, or `null` when the label has no baseline.
      */
     getBaseline(): number | null {
-        return this.wrapInnerBaseline(this.label.getBaseline());
+        return this.wrapInnerBaseline(this._label.getBaseline());
     }
 
     /**
@@ -125,7 +125,7 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions> exte
      * @param listener - The callback to invoke when the radio selection changes.
      */
     addActionListener(listener: Function) : this {
-        Event.addListener(this.radio, "change", listener);
+        Event.addListener(this._radio, "change", listener);
 
         return this;
     }
@@ -137,7 +137,7 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions> exte
      */
     setRadioName(name: string): this {
         this._options.radioName = name;
-        this.radio.setName(name);
+        this._radio.setName(name);
 
         return this;
     }
@@ -159,7 +159,7 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions> exte
     setSelected(value: boolean) : this {
         this._options.selected = !!value;
 
-        let element = this.radio.getElement();
+        let element = this._radio.getElement();
         if (!element) {
             return this;
         }
@@ -186,11 +186,11 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions> exte
     render() {
         let element = <HTMLInputElement>super.render();
 
-        this.radio.setType("radio");
-        this.radio.getElement().checked = this.isSelected();
+        this._radio.setType("radio");
+        this._radio.getElement().checked = this.isSelected();
 
         if (this._options.radioName !== undefined) {
-            this.radio.setName(this._options.radioName);
+            this._radio.setName(this._options.radioName);
         }
 
         return element;

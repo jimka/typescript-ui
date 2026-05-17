@@ -10,10 +10,10 @@ import { BorderStyle } from "~/primitive/BorderStyle.js";
  */
 export class BorderLine extends Object {
 
-    private placement: string;
-    private borderStyle: BorderStyle;
-    private width: number;
-    private color: string;
+    private _placement: string;
+    private _borderStyle: BorderStyle;
+    private _width: number;
+    private _color: string;
 
     /**
      * @param placement - The CSS property prefix for this side (e.g. `"border-top"`).
@@ -24,10 +24,10 @@ export class BorderLine extends Object {
     constructor(placement: string, borderStyle?: BorderStyle, width?: number, color?: string) {
         super();
 
-        this.placement = placement;
-        this.borderStyle = borderStyle ? borderStyle : BorderStyle.NONE;
-        this.width = width ? width : 0;
-        this.color = color ? color : "black";
+        this._placement = placement;
+        this._borderStyle = borderStyle ? borderStyle : BorderStyle.NONE;
+        this._width = width ? width : 0;
+        this._color = color ? color : "black";
     }
 
     /**
@@ -36,7 +36,7 @@ export class BorderLine extends Object {
      * @returns The placement string passed at construction time.
      */
     getPlacement() {
-        return this.placement;
+        return this._placement;
     }
 
     /**
@@ -45,7 +45,7 @@ export class BorderLine extends Object {
      * @returns The [`BorderStyle`](/api/primitive/enumerations/BorderStyle) enum member for this border side.
      */
     getStyle() {
-        return this.borderStyle;
+        return this._borderStyle;
     }
 
     /**
@@ -63,7 +63,7 @@ export class BorderLine extends Object {
      * @returns The width value in pixels.
      */
     getWidth() {
-        return this.width;
+        return this._width;
     }
 
     /**
@@ -72,7 +72,7 @@ export class BorderLine extends Object {
      * @returns The color value as a CSS color string.
      */
     getColor() {
-        return this.color;
+        return this._color;
     }
 
     /**
@@ -83,9 +83,9 @@ export class BorderLine extends Object {
      * @param color - The new border color string.
      */
     set(borderStyle: BorderStyle, width: number, color: string) : this {
-        this.borderStyle = borderStyle;
-        this.width = width;
-        this.color = color;
+        this._borderStyle = borderStyle;
+        this._width = width;
+        this._color = color;
 
         return this;
     }
@@ -131,7 +131,7 @@ export class BorderLine extends Object {
      * @returns A map of CSS property names to string values.
      */
     toStyle(): { [key: string]: string | null } {
-        const prefix = this.placement.valueOf();
+        const prefix = this._placement.valueOf();
 
         return {
             [prefix + "-width"]: this.getWidth() + "px",

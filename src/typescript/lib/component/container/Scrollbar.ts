@@ -46,16 +46,16 @@ export type ScrollbarListener = (position: number) => void;
  */
 class Scrollbar extends Component {
 
-    private orientation     : ScrollbarOrientation     = "vertical";
-    private thumb           : Component;
-    private viewportSize    : number                   = 0;
-    private contentSize     : number                   = 0;
-    private scrollPosition  : number                   = 0;
-    private thumbSize       : number                   = 0;
-    private thumbPos        : number                   = 0;
-    private dragStartClient : number                   = 0;
-    private dragStartScroll : number                   = 0;
-    private scrollListeners : ScrollbarListener[]      = [];
+    private _orientation     : ScrollbarOrientation     = "vertical";
+    private _thumb           : Component;
+    private _viewportSize    : number                   = 0;
+    private _contentSize     : number                   = 0;
+    private _scrollPosition  : number                   = 0;
+    private _thumbSize       : number                   = 0;
+    private _thumbPos        : number                   = 0;
+    private _dragStartClient : number                   = 0;
+    private _dragStartScroll : number                   = 0;
+    private _scrollListeners : ScrollbarListener[]      = [];
 
     /**
      * Constructs a Scrollbar.
@@ -65,7 +65,7 @@ class Scrollbar extends Component {
     constructor(orientation: ScrollbarOrientation = "vertical") {
         super();
 
-        this.orientation = orientation;
+        this._orientation = orientation;
 
         this.setPosition(Position.ABSOLUTE);
         this.setBackgroundColor("var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))");
@@ -77,43 +77,43 @@ class Scrollbar extends Component {
             this.setHeight(TRACK_WIDTH);
         }
 
-        this.thumb = new Component();
-        this.thumb.setPosition(Position.ABSOLUTE);
-        this.thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
-        this.thumb.setCursor("default");
+        this._thumb = new Component();
+        this._thumb.setPosition(Position.ABSOLUTE);
+        this._thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
+        this._thumb.setCursor("default");
 
         if (this.isVertical()) {
-            this.thumb.setX(THUMB_INSET);
-            this.thumb.setY(0);
-            this.thumb.setWidth(TRACK_WIDTH - 2 * THUMB_INSET);
+            this._thumb.setX(THUMB_INSET);
+            this._thumb.setY(0);
+            this._thumb.setWidth(TRACK_WIDTH - 2 * THUMB_INSET);
         } else {
-            this.thumb.setX(0);
-            this.thumb.setY(THUMB_INSET);
-            this.thumb.setHeight(TRACK_WIDTH - 2 * THUMB_INSET);
+            this._thumb.setX(0);
+            this._thumb.setY(THUMB_INSET);
+            this._thumb.setHeight(TRACK_WIDTH - 2 * THUMB_INSET);
         }
 
-        super.addComponent(this.thumb);
+        super.addComponent(this._thumb);
 
-        Event.addListener(this.thumb, "mousedown",  this.onDragStart);
-        Event.addListener(this.thumb, "touchstart", this.onDragStart);
-        Event.addListener(this.thumb, "mouseover",  this.onThumbMouseOver);
-        Event.addListener(this.thumb, "mouseout",   this.onThumbMouseOut);
-        Event.addListener(this, "mousedown",  this.onTrackClick);
-        Event.addListener(this, "touchstart", this.onTrackClick);
+        Event.addListener(this._thumb, "mousedown",  this._onDragStart);
+        Event.addListener(this._thumb, "touchstart", this._onDragStart);
+        Event.addListener(this._thumb, "mouseover",  this._onThumbMouseOver);
+        Event.addListener(this._thumb, "mouseout",   this._onThumbMouseOut);
+        Event.addListener(this, "mousedown",  this._onTrackClick);
+        Event.addListener(this, "touchstart", this._onTrackClick);
     }
 
     /**
      * Darkens the thumb fill when the cursor moves over it.
      */
-    private onThumbMouseOver = (): void => {
-        this.thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb-hover, rgba(0, 0, 0, 0.55))");
+    private _onThumbMouseOver = (): void => {
+        this._thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb-hover, rgba(0, 0, 0, 0.55))");
     };
 
     /**
      * Restores the thumb's resting fill when the cursor leaves it.
      */
-    private onThumbMouseOut = (): void => {
-        this.thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
+    private _onThumbMouseOut = (): void => {
+        this._thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
     };
 
     /**
@@ -140,7 +140,7 @@ class Scrollbar extends Component {
      * @param listener - The callback to invoke with the new scroll position.
      */
     addScrollListener(listener: ScrollbarListener): this {
-        this.scrollListeners.push(listener);
+        this._scrollListeners.push(listener);
 
         return this;
     }
@@ -151,9 +151,9 @@ class Scrollbar extends Component {
      * @param listener - The exact callback reference to remove.
      */
     removeScrollListener(listener: ScrollbarListener): this {
-        const idx = this.scrollListeners.indexOf(listener);
+        const idx = this._scrollListeners.indexOf(listener);
         if (idx >= 0) {
-            this.scrollListeners.splice(idx, 1);
+            this._scrollListeners.splice(idx, 1);
         }
 
         return this;
@@ -169,9 +169,9 @@ class Scrollbar extends Component {
      * @param scrollPosition - The current scroll offset in pixels.
      */
     setMetrics(viewportSize: number, contentSize: number, scrollPosition: number): this {
-        this.viewportSize   = viewportSize;
-        this.contentSize    = contentSize;
-        this.scrollPosition = scrollPosition;
+        this._viewportSize   = viewportSize;
+        this._contentSize    = contentSize;
+        this._scrollPosition = scrollPosition;
 
         const overflow = contentSize > viewportSize;
         this.setDisplayed(overflow);
@@ -187,16 +187,16 @@ class Scrollbar extends Component {
 
         const ratio        = viewportSize / contentSize;
         const newThumbSize = Math.max(THUMB_MIN_SIZE, Math.floor(trackLength * ratio));
-        if (this.thumbSize !== newThumbSize) {
-            this.thumbSize = newThumbSize;
+        if (this._thumbSize !== newThumbSize) {
+            this._thumbSize = newThumbSize;
             this.setThumbSize(newThumbSize);
         }
 
         const maxScroll = Math.max(0, contentSize - viewportSize);
         const maxThumb  = Math.max(0, trackLength - newThumbSize);
         const newThumbPos = maxScroll > 0 ? Math.round((scrollPosition / maxScroll) * maxThumb) : 0;
-        if (this.thumbPos !== newThumbPos) {
-            this.thumbPos = newThumbPos;
+        if (this._thumbPos !== newThumbPos) {
+            this._thumbPos = newThumbPos;
             this.setThumbPos(newThumbPos);
         }
 
@@ -218,7 +218,7 @@ class Scrollbar extends Component {
      * @returns `"vertical"` or `"horizontal"`.
      */
     getOrientation(): ScrollbarOrientation {
-        return this.orientation;
+        return this._orientation;
     }
 
     /**
@@ -227,7 +227,7 @@ class Scrollbar extends Component {
      * @returns True for vertical, false for horizontal.
      */
     private isVertical(): boolean {
-        return this.orientation === "vertical";
+        return this._orientation === "vertical";
     }
 
     /**
@@ -245,9 +245,9 @@ class Scrollbar extends Component {
      */
     private setThumbSize(size: number): void {
         if (this.isVertical()) {
-            this.thumb.setHeight(size);
+            this._thumb.setHeight(size);
         } else {
-            this.thumb.setWidth(size);
+            this._thumb.setWidth(size);
         }
     }
 
@@ -258,9 +258,9 @@ class Scrollbar extends Component {
      */
     private setThumbPos(pos: number): void {
         if (this.isVertical()) {
-            this.thumb.setY(pos);
+            this._thumb.setY(pos);
         } else {
-            this.thumb.setX(pos);
+            this._thumb.setX(pos);
         }
     }
 
@@ -270,7 +270,7 @@ class Scrollbar extends Component {
      * @param position - The new scroll position in pixels.
      */
     private fireScrollListeners(position: number): void {
-        for (const listener of this.scrollListeners) {
+        for (const listener of this._scrollListeners) {
             listener(position);
         }
     }
@@ -308,17 +308,17 @@ class Scrollbar extends Component {
      *
      * @param e - The mousedown or touchstart event on the thumb.
      */
-    private onDragStart = (e: MouseEvent | TouchEvent): void => {
+    private _onDragStart = (e: MouseEvent | TouchEvent): void => {
         e.preventDefault();
 
-        this.dragStartClient = this.extractClientPrimary(e);
-        this.dragStartScroll = this.scrollPosition;
+        this._dragStartClient = this.extractClientPrimary(e);
+        this._dragStartScroll = this._scrollPosition;
 
-        Event.addViewportListener(this, "mousemove",   this.onDragMove);
-        Event.addViewportListener(this, "mouseup",     this.onDragEnd);
-        Event.addViewportListener(this, "touchmove",   this.onDragMove);
-        Event.addViewportListener(this, "touchend",    this.onDragEnd);
-        Event.addViewportListener(this, "touchcancel", this.onDragEnd);
+        Event.addViewportListener(this, "mousemove",   this._onDragMove);
+        Event.addViewportListener(this, "mouseup",     this._onDragEnd);
+        Event.addViewportListener(this, "touchmove",   this._onDragMove);
+        Event.addViewportListener(this, "touchend",    this._onDragEnd);
+        Event.addViewportListener(this, "touchcancel", this._onDragEnd);
 
         Util.select("body").style.pointerEvents = "none";
     };
@@ -329,18 +329,18 @@ class Scrollbar extends Component {
      *
      * @param e - The viewport mousemove or touchmove event during a drag.
      */
-    private onDragMove = (e: MouseEvent | TouchEvent): void => {
+    private _onDragMove = (e: MouseEvent | TouchEvent): void => {
         const trackLength = this.getTrackLength();
-        const maxScroll   = Math.max(0, this.contentSize - this.viewportSize);
-        const maxThumb    = Math.max(0, trackLength - this.thumbSize);
+        const maxScroll   = Math.max(0, this._contentSize - this._viewportSize);
+        const maxThumb    = Math.max(0, trackLength - this._thumbSize);
 
         if (maxThumb <= 0) {
             return;
         }
 
-        const delta       = this.extractClientPrimary(e) - this.dragStartClient;
+        const delta       = this.extractClientPrimary(e) - this._dragStartClient;
         const scrollDelta = (delta / maxThumb) * maxScroll;
-        const newPosition = Math.max(0, Math.min(maxScroll, this.dragStartScroll + scrollDelta));
+        const newPosition = Math.max(0, Math.min(maxScroll, this._dragStartScroll + scrollDelta));
 
         this.fireScrollListeners(newPosition);
     };
@@ -348,12 +348,12 @@ class Scrollbar extends Component {
     /**
      * Removes viewport listeners and restores body pointer events.
      */
-    private onDragEnd = (): void => {
-        Event.removeViewportListener(this, "mousemove",   this.onDragMove);
-        Event.removeViewportListener(this, "mouseup",     this.onDragEnd);
-        Event.removeViewportListener(this, "touchmove",   this.onDragMove);
-        Event.removeViewportListener(this, "touchend",    this.onDragEnd);
-        Event.removeViewportListener(this, "touchcancel", this.onDragEnd);
+    private _onDragEnd = (): void => {
+        Event.removeViewportListener(this, "mousemove",   this._onDragMove);
+        Event.removeViewportListener(this, "mouseup",     this._onDragEnd);
+        Event.removeViewportListener(this, "touchmove",   this._onDragMove);
+        Event.removeViewportListener(this, "touchend",    this._onDragEnd);
+        Event.removeViewportListener(this, "touchcancel", this._onDragEnd);
 
         Util.select("body").style.pointerEvents = "";
     };
@@ -365,7 +365,7 @@ class Scrollbar extends Component {
      *
      * @param e - The mousedown or touchstart event on the track.
      */
-    private onTrackClick = (e: MouseEvent | TouchEvent): void => {
+    private _onTrackClick = (e: MouseEvent | TouchEvent): void => {
         e.preventDefault();
 
         const vertical = this.isVertical();
@@ -387,10 +387,10 @@ class Scrollbar extends Component {
             click = vertical ? mouse.offsetY : mouse.offsetX;
         }
 
-        const thumbCenter = this.thumbPos + this.thumbSize / 2;
+        const thumbCenter = this._thumbPos + this._thumbSize / 2;
         const direction   = click < thumbCenter ? -1 : 1;
-        const maxScroll   = Math.max(0, this.contentSize - this.viewportSize);
-        const newPosition = Math.max(0, Math.min(maxScroll, this.scrollPosition + direction * this.viewportSize));
+        const maxScroll   = Math.max(0, this._contentSize - this._viewportSize);
+        const newPosition = Math.max(0, Math.min(maxScroll, this._scrollPosition + direction * this._viewportSize));
 
         this.fireScrollListeners(newPosition);
     };

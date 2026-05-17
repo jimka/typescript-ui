@@ -33,12 +33,12 @@ export interface BorderOptions extends LayoutManagerOptions {
  */
 class Border extends LayoutManager {
 
-    private northComponent: Component | null = null;
-    private southComponent: Component | null = null;
-    private westComponent: Component | null = null;
-    private eastComponent: Component | null = null;
-    private centerComponent: Component | null = null;
-    private gap: number = 5;
+    private _northComponent: Component | null = null;
+    private _southComponent: Component | null = null;
+    private _westComponent: Component | null = null;
+    private _eastComponent: Component | null = null;
+    private _centerComponent: Component | null = null;
+    private _gap: number = 5;
 
     constructor(options?: BorderOptions) {
         super();
@@ -86,19 +86,19 @@ class Border extends LayoutManager {
 
         switch (constraints.placement) {
             case Placement.NORTH:
-                this.northComponent = component;
+                this._northComponent = component;
                 break;
             case Placement.SOUTH:
-                this.southComponent = component;
+                this._southComponent = component;
                 break;
             case Placement.WEST:
-                this.westComponent = component;
+                this._westComponent = component;
                 break;
             case Placement.EAST:
-                this.eastComponent = component;
+                this._eastComponent = component;
                 break;
             case Placement.CENTER:
-                this.centerComponent = component;
+                this._centerComponent = component;
                 break;
         }
 
@@ -111,7 +111,7 @@ class Border extends LayoutManager {
      * @returns The current gap in pixels.
      */
     getComponentGap() {
-        return this.gap;
+        return this._gap;
     }
 
     /**
@@ -120,7 +120,7 @@ class Border extends LayoutManager {
      * @param gap - Gap size in pixels.
      */
     setComponentGap(gap: number) : this {
-        this.gap = gap;
+        this._gap = gap;
 
         return this;
     }
@@ -147,40 +147,40 @@ class Border extends LayoutManager {
         let middleWidth = 0;
         let middleHeight = 0;
 
-        if (this.northComponent) {
-            let size = this.northComponent.getPreferredSize();
+        if (this._northComponent) {
+            let size = this._northComponent.getPreferredSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += size.height;
             }
         }
 
-        if (this.southComponent) {
-            let size = this.southComponent.getPreferredSize();
+        if (this._southComponent) {
+            let size = this._southComponent.getPreferredSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += size.height;
             }
         }
 
-        if (this.westComponent) {
-            let size = this.westComponent.getPreferredSize();
+        if (this._westComponent) {
+            let size = this._westComponent.getPreferredSize();
             if (size) {
                 middleWidth += size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
 
-        if (this.centerComponent) {
-            let size = this.centerComponent.getPreferredSize();
+        if (this._centerComponent) {
+            let size = this._centerComponent.getPreferredSize();
             if (size) {
                 middleWidth += size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
 
-        if (this.eastComponent) {
-            let size = this.eastComponent.getPreferredSize();
+        if (this._eastComponent) {
+            let size = this._eastComponent.getPreferredSize();
             if (size) {
                 middleWidth += size.width;
                 middleHeight += Math.max(middleHeight, size.height);
@@ -218,40 +218,40 @@ class Border extends LayoutManager {
         let middleWidth = 0;
         let middleHeight = 0;
 
-        if (this.northComponent) {
-            let size = this.northComponent.getMinSize();
+        if (this._northComponent) {
+            let size = this._northComponent.getMinSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += size.height;
             }
         }
 
-        if (this.southComponent) {
-            let size = this.southComponent.getMinSize();
+        if (this._southComponent) {
+            let size = this._southComponent.getMinSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += size.height;
             }
         }
 
-        if (this.westComponent) {
-            let size = this.westComponent.getMinSize();
+        if (this._westComponent) {
+            let size = this._westComponent.getMinSize();
             if (size) {
                 middleWidth += size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
 
-        if (this.centerComponent) {
-            let size = this.centerComponent.getMinSize();
+        if (this._centerComponent) {
+            let size = this._centerComponent.getMinSize();
             if (size) {
                 middleWidth += size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
 
-        if (this.eastComponent) {
-            let size = this.eastComponent.getMinSize();
+        if (this._eastComponent) {
+            let size = this._eastComponent.getMinSize();
             if (size) {
                 middleWidth += size.width;
                 middleHeight += Math.max(middleHeight, size.height);
@@ -289,40 +289,40 @@ class Border extends LayoutManager {
         let middleWidth = 0;
         let middleHeight = 0;
 
-        if (this.northComponent) {
-            let size = this.northComponent.getMaxSize();
+        if (this._northComponent) {
+            let size = this._northComponent.getMaxSize();
             if (size) {
                 innerWidth = Math.min(innerWidth, size.width);
                 innerHeight += size.height;
             }
         }
 
-        if (this.southComponent) {
-            let size = this.southComponent.getMaxSize();
+        if (this._southComponent) {
+            let size = this._southComponent.getMaxSize();
             if (size) {
                 innerWidth = Math.min(innerWidth, size.width);
                 innerHeight += size.height;
             }
         }
 
-        if (this.westComponent) {
-            let size = this.westComponent.getMaxSize();
+        if (this._westComponent) {
+            let size = this._westComponent.getMaxSize();
             if (size) {
                 middleWidth += size.width;
                 middleHeight += Math.min(middleHeight, size.height);
             }
         }
 
-        if (this.centerComponent) {
-            let size = this.centerComponent.getMaxSize();
+        if (this._centerComponent) {
+            let size = this._centerComponent.getMaxSize();
             if (size) {
                 middleWidth += size.width;
                 middleHeight += Math.min(middleHeight, size.height);
             }
         }
 
-        if (this.eastComponent) {
-            let size = this.eastComponent.getMaxSize();
+        if (this._eastComponent) {
+            let size = this._eastComponent.getMaxSize();
             if (size) {
                 middleWidth += size.width;
                 middleHeight += Math.min(middleHeight, size.height);
@@ -367,13 +367,13 @@ class Border extends LayoutManager {
         let centerWidth;
         let middleHeight;
 
-        if (this.northComponent) {
-            let constraints = this.getLayoutConstraints(this.northComponent);
+        if (this._northComponent) {
+            let constraints = this.getLayoutConstraints(this._northComponent);
             if (!constraints) {
                 throw new Error("Unable to determine layout constraints for north component.");
             }
 
-            let preferredSize = this.northComponent.getPreferredSize();
+            let preferredSize = this._northComponent.getPreferredSize();
             if (!preferredSize) {
                 throw new Error("Unable to determine preferred size for north component.");
             }
@@ -381,7 +381,7 @@ class Border extends LayoutManager {
             middleY = preferredSize.height + (constraints.ignoreParentInsets ? containerInsets.getTop() : 0);
 
             this.placeComponent(
-                this.northComponent,
+                this._northComponent,
                 constraints.ignoreParentInsets ? 0 : containerInsets.getLeft(),
                 constraints.ignoreParentInsets ? 0 : containerInsets.getTop(),
                 width + (constraints.ignoreParentInsets ? containerInsets.getLeft() + containerInsets.getRight() : 0),
@@ -389,25 +389,25 @@ class Border extends LayoutManager {
                 FillType.BOTH
             );
 
-            if (this.westComponent || this.centerComponent || this.eastComponent || this.southComponent) {
-                middleY += this.gap;
+            if (this._westComponent || this._centerComponent || this._eastComponent || this._southComponent) {
+                middleY += this._gap;
             }
         } else {
             middleY = 0;
         }
 
         middleHeight = height - middleY;
-        if (this.southComponent) {
-            let preferredSize = this.southComponent.getPreferredSize();
+        if (this._southComponent) {
+            let preferredSize = this._southComponent.getPreferredSize();
             if (!preferredSize) {
                 throw new Error("Unable to determine preferred size for south component.");
             }
 
-            middleHeight -= this.gap;
+            middleHeight -= this._gap;
             middleHeight -= preferredSize.height;
 
             this.placeComponent(
-                this.southComponent,
+                this._southComponent,
                 containerInsets.getLeft(),
                 containerInsets.getTop() + height - preferredSize.height,
                 width,
@@ -416,8 +416,8 @@ class Border extends LayoutManager {
             );
         }
 
-        if (this.westComponent) {
-            let preferredSize = this.westComponent.getPreferredSize();
+        if (this._westComponent) {
+            let preferredSize = this._westComponent.getPreferredSize();
             if (!preferredSize) {
                 throw new Error("Unable to determine preferred size for west component.");
             }
@@ -425,7 +425,7 @@ class Border extends LayoutManager {
             centerX = preferredSize.width;
 
             this.placeComponent(
-                this.westComponent,
+                this._westComponent,
                 containerInsets.getLeft(),
                 containerInsets.getTop() + middleY,
                 preferredSize.width,
@@ -433,8 +433,8 @@ class Border extends LayoutManager {
                 FillType.BOTH
             );
 
-            if (this.centerComponent) {
-                centerX += this.gap;
+            if (this._centerComponent) {
+                centerX += this._gap;
             }
         } else {
             centerX = 0;
@@ -442,17 +442,17 @@ class Border extends LayoutManager {
 
         centerWidth = width - centerX;
 
-        if (this.eastComponent) {
-            let preferredSize = this.eastComponent.getPreferredSize();
+        if (this._eastComponent) {
+            let preferredSize = this._eastComponent.getPreferredSize();
             if (!preferredSize) {
                 throw new Error("Unable to determine preferred size for east component.");
             }
 
-            centerWidth -= this.gap;
+            centerWidth -= this._gap;
             centerWidth -= preferredSize.width;
 
             this.placeComponent(
-                this.eastComponent,
+                this._eastComponent,
                 containerInsets.getLeft() + width - preferredSize.width,
                 containerInsets.getTop() + middleY,
                 preferredSize.width,
@@ -461,8 +461,8 @@ class Border extends LayoutManager {
             );
         }
 
-        if (this.centerComponent) {
-            this.placeComponent(this.centerComponent,
+        if (this._centerComponent) {
+            this.placeComponent(this._centerComponent,
                 containerInsets.getLeft() + centerX,
                 containerInsets.getTop() + middleY,
                 centerWidth,

@@ -64,13 +64,13 @@ export interface AccordionOptions extends LayoutManagerOptions {
  */
 class Accordion extends LayoutManager {
 
-    private headers: AccordionHeader[] = [];
-    private panelWrappers: Component[] = [];
-    private openState: boolean[] = [];
+    private _headers: AccordionHeader[] = [];
+    private _panelWrappers: Component[] = [];
+    private _openState: boolean[] = [];
     private _singleOpen: boolean = false;
     private _headerHeight: number = 28;
     private _animationDuration: number = 200;
-    private onSectionToggleCallback: SectionToggleCallback | null = null;
+    private _onSectionToggleCallback: SectionToggleCallback | null = null;
 
     constructor(options?: AccordionOptions) {
         super();
@@ -131,16 +131,16 @@ class Accordion extends LayoutManager {
 
         let foundOpen = false;
 
-        for (let i = 0; i < this.openState.length; i++) {
-            if (!this.openState[i]) {
+        for (let i = 0; i < this._openState.length; i++) {
+            if (!this._openState[i]) {
                 continue;
             }
 
             if (foundOpen) {
-                this.openState[i] = false;
-                this.headers[i].setExpanded(false);
-                this.headers[i].getAria().setExpanded(false);
-                this.onSectionToggleCallback?.(i, false);
+                this._openState[i] = false;
+                this._headers[i].setExpanded(false);
+                this._headers[i].getAria().setExpanded(false);
+                this._onSectionToggleCallback?.(i, false);
             } else {
                 foundOpen = true;
             }
@@ -197,25 +197,25 @@ class Accordion extends LayoutManager {
      * @param index - Zero-based section index.
      */
     openSection(index: number): this {
-        if (index < 0 || index >= this.openState.length) {
+        if (index < 0 || index >= this._openState.length) {
             return this;
         }
 
         if (this._singleOpen) {
-            for (let i = 0; i < this.openState.length; i++) {
-                if (i !== index && this.openState[i]) {
-                    this.openState[i] = false;
-                    this.headers[i].setExpanded(false);
-                    this.headers[i].getAria().setExpanded(false);
-                    this.onSectionToggleCallback?.(i, false);
+            for (let i = 0; i < this._openState.length; i++) {
+                if (i !== index && this._openState[i]) {
+                    this._openState[i] = false;
+                    this._headers[i].setExpanded(false);
+                    this._headers[i].getAria().setExpanded(false);
+                    this._onSectionToggleCallback?.(i, false);
                 }
             }
         }
 
-        this.openState[index] = true;
-        this.headers[index].setExpanded(true);
-        this.headers[index].getAria().setExpanded(true);
-        this.onSectionToggleCallback?.(index, true);
+        this._openState[index] = true;
+        this._headers[index].setExpanded(true);
+        this._headers[index].getAria().setExpanded(true);
+        this._onSectionToggleCallback?.(index, true);
         this.getContainer()?.scheduleLayout();
 
         return this;
@@ -227,14 +227,14 @@ class Accordion extends LayoutManager {
      * @param index - Zero-based section index.
      */
     closeSection(index: number): this {
-        if (index < 0 || index >= this.openState.length) {
+        if (index < 0 || index >= this._openState.length) {
             return this;
         }
 
-        this.openState[index] = false;
-        this.headers[index].setExpanded(false);
-        this.headers[index].getAria().setExpanded(false);
-        this.onSectionToggleCallback?.(index, false);
+        this._openState[index] = false;
+        this._headers[index].setExpanded(false);
+        this._headers[index].getAria().setExpanded(false);
+        this._onSectionToggleCallback?.(index, false);
         this.getContainer()?.scheduleLayout();
 
         return this;
@@ -247,7 +247,7 @@ class Accordion extends LayoutManager {
      * @returns True if the section is open.
      */
     isSectionOpen(index: number): boolean {
-        return this.openState[index] ?? false;
+        return this._openState[index] ?? false;
     }
 
     /**
@@ -256,7 +256,7 @@ class Accordion extends LayoutManager {
      * @param callback - The callback, or null to remove it.
      */
     setOnSectionToggle(callback: SectionToggleCallback | null): this {
-        this.onSectionToggleCallback = callback;
+        this._onSectionToggleCallback = callback;
 
         return this;
     }
@@ -280,7 +280,7 @@ class Accordion extends LayoutManager {
     detach(): this {
         const container = this.getContainer();
 
-        for (let i = 0; i < this.headers.length; i++) {
+        for (let i = 0; i < this._headers.length; i++) {
             const components = container ? container.getComponents() : [];
             const component = components[i];
 
@@ -288,13 +288,13 @@ class Accordion extends LayoutManager {
                 container.getElement().appendChild(component.getElement());
             }
 
-            this.headers[i].getElement().remove();
-            this.panelWrappers[i].getElement().remove();
+            this._headers[i].getElement().remove();
+            this._panelWrappers[i].getElement().remove();
         }
 
-        this.headers = [];
-        this.panelWrappers = [];
-        this.openState = [];
+        this._headers = [];
+        this._panelWrappers = [];
+        this._openState = [];
 
         super.detach();
 
@@ -325,8 +325,8 @@ class Accordion extends LayoutManager {
             // openState is populated lazily in doLayout; fall back to the
             // constraint's initiallyOpen flag so getPreferredSize() is correct
             // even before the first doLayout pass.
-            const isOpen = i < this.openState.length
-                ? this.openState[i]
+            const isOpen = i < this._openState.length
+                ? this._openState[i]
                 : ((this.getLayoutConstraints(components[i]) as AccordionConstraints | undefined)?.initiallyOpen ?? false);
 
             if (isOpen) {
@@ -406,9 +406,9 @@ class Accordion extends LayoutManager {
         // Reparent content element into wrapper so overflow:hidden clips it during animation.
         wrapper.getElement().appendChild(component.getElement());
 
-        this.openState.push(initiallyOpen);
-        this.headers.push(header);
-        this.panelWrappers.push(wrapper);
+        this._openState.push(initiallyOpen);
+        this._headers.push(header);
+        this._panelWrappers.push(wrapper);
 
         header.setExpanded(initiallyOpen);
         header.getAria().setExpanded(initiallyOpen);
@@ -431,7 +431,7 @@ class Accordion extends LayoutManager {
 
         const components = container.getComponents();
 
-        for (let i = this.headers.length; i < components.length; i++) {
+        for (let i = this._headers.length; i < components.length; i++) {
             this.createSection(components[i], i);
         }
 
@@ -442,9 +442,9 @@ class Accordion extends LayoutManager {
 
         for (let i = 0; i < components.length; i++) {
             const component = components[i];
-            const header = this.headers[i];
-            const wrapper = this.panelWrappers[i];
-            const isOpen = this.openState[i];
+            const header = this._headers[i];
+            const wrapper = this._panelWrappers[i];
+            const isOpen = this._openState[i];
 
             header.setX(insets.getLeft());
             header.setY(y);
@@ -483,7 +483,7 @@ class Accordion extends LayoutManager {
      * @param index - Zero-based index of the header that received the event.
      */
     private onHeaderKeyDown(e: KeyboardEvent, index: number): void {
-        const count = this.headers.length;
+        const count = this._headers.length;
 
         if (count === 0) {
             return;
@@ -500,7 +500,7 @@ class Accordion extends LayoutManager {
         }
 
         e.preventDefault();
-        this.headers[target].focus();
+        this._headers[target].focus();
     }
 
     /**
@@ -510,25 +510,25 @@ class Accordion extends LayoutManager {
      * @param index - Zero-based index of the clicked header.
      */
     private onHeaderClicked(index: number): void {
-        const wasOpen = this.openState[index];
+        const wasOpen = this._openState[index];
 
         if (this._singleOpen && !wasOpen) {
-            for (let i = 0; i < this.openState.length; i++) {
-                if (i !== index && this.openState[i]) {
-                    this.openState[i] = false;
-                    this.headers[i].setExpanded(false);
-                    this.headers[i].getAria().setExpanded(false);
-                    this.onSectionToggleCallback?.(i, false);
+            for (let i = 0; i < this._openState.length; i++) {
+                if (i !== index && this._openState[i]) {
+                    this._openState[i] = false;
+                    this._headers[i].setExpanded(false);
+                    this._headers[i].getAria().setExpanded(false);
+                    this._onSectionToggleCallback?.(i, false);
                 }
             }
         }
 
         const nowOpen = !wasOpen;
 
-        this.openState[index] = nowOpen;
-        this.headers[index].setExpanded(nowOpen);
-        this.headers[index].getAria().setExpanded(nowOpen);
-        this.onSectionToggleCallback?.(index, nowOpen);
+        this._openState[index] = nowOpen;
+        this._headers[index].setExpanded(nowOpen);
+        this._headers[index].getAria().setExpanded(nowOpen);
+        this._onSectionToggleCallback?.(index, nowOpen);
         this.getContainer()?.scheduleLayout();
     }
 }

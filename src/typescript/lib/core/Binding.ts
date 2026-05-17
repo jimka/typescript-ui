@@ -56,14 +56,14 @@ export type BeforeRecordListener = (next: ModelRecord | null) => boolean;
  */
 export class Binding extends BaseObject {
 
-    private record: ModelRecord | null = null;
-    private entries: Map<string, BoundEntry> = new Map();
-    private changeListeners:  Array<(fieldName: string, value: unknown) => void> = [];
-    private commitListeners:  Array<() => void> = [];
-    private rejectListeners:  Array<() => void> = [];
-    private beforeRecordListeners: Array<BeforeRecordListener> = [];
-    private validationConfigs: Map<string, FieldValidationConfig> = new Map();
-    private globalValidateOnChange: boolean = false;
+    private _record: ModelRecord | null = null;
+    private _entries: Map<string, BoundEntry> = new Map();
+    private _changeListeners:  Array<(fieldName: string, value: unknown) => void> = [];
+    private _commitListeners:  Array<() => void> = [];
+    private _rejectListeners:  Array<() => void> = [];
+    private _beforeRecordListeners: Array<BeforeRecordListener> = [];
+    private _validationConfigs: Map<string, FieldValidationConfig> = new Map();
+    private _globalValidateOnChange: boolean = false;
 
     // ── Registration ────────────────────────────────────────────────────────
 
@@ -96,25 +96,25 @@ export class Binding extends BaseObject {
         };
 
         const entry: BoundEntry = { accessors: acc, active: true };
-        this.entries.set(fieldName, entry);
+        this._entries.set(fieldName, entry);
 
         acc.listen(() => {
-            if (!entry.active || !this.record) {
+            if (!entry.active || !this._record) {
                 return;
             }
 
             const value = acc.get();
-            this.record.set(fieldName, value);
+            this._record.set(fieldName, value);
 
-            for (const fn of this.changeListeners) {
+            for (const fn of this._changeListeners) {
                 fn(fieldName, value);
             }
 
             this._validateFieldIfLive(fieldName);
         });
 
-        if (this.record) {
-            acc.set(this.record.get(fieldName));
+        if (this._record) {
+            acc.set(this._record.get(fieldName));
         }
 
         return this;
@@ -127,11 +127,11 @@ export class Binding extends BaseObject {
      * @param fieldName - The field whose binding should be removed.
      */
     unbind(fieldName: string): this {
-        const entry = this.entries.get(fieldName);
+        const entry = this._entries.get(fieldName);
         if (entry) {
             entry.active = false;
 
-            this.entries.delete(fieldName);
+            this._entries.delete(fieldName);
         }
 
         return this;
@@ -151,13 +151,13 @@ export class Binding extends BaseObject {
      * @param record - The record to bind, or `null` to detach.
      */
     setRecord(record: ModelRecord | null): this {
-        for (const fn of this.beforeRecordListeners) {
+        for (const fn of this._beforeRecordListeners) {
             if (fn(record) === false) {
                 return this;
             }
         }
 
-        this.record = record;
+        this._record = record;
 
         this.clearValidation();
 
@@ -165,11 +165,11 @@ export class Binding extends BaseObject {
             return this;
         }
 
-        for (const [fieldName, entry] of this.entries) {
+        for (const [fieldName, entry] of this._entries) {
             entry.accessors.set(record.get(fieldName));
         }
 
-        for (const [fieldName] of this.validationConfigs) {
+        for (const [fieldName] of this._validationConfigs) {
             this._validateFieldIfLive(fieldName);
         }
 
@@ -180,7 +180,7 @@ export class Binding extends BaseObject {
      * Returns the currently bound record, or `null` if none is loaded.
      */
     getRecord(): ModelRecord | null {
-        return this.record;
+        return this._record;
     }
 
     // ── Commit / reject ──────────────────────────────────────────────────────
@@ -190,9 +190,9 @@ export class Binding extends BaseObject {
      * Fires all registered commit listeners.
      */
     commit(): this {
-        this.record?.commit();
+        this._record?.commit();
 
-        for (const fn of this.commitListeners) {
+        for (const fn of this._commitListeners) {
             fn();
         }
 
@@ -205,17 +205,17 @@ export class Binding extends BaseObject {
      * Also clears any active validation error decorations.
      */
     reject(): void {
-        this.record?.reject();
+        this._record?.reject();
 
-        if (this.record) {
-            for (const [fieldName, entry] of this.entries) {
-                entry.accessors.set(this.record.get(fieldName));
+        if (this._record) {
+            for (const [fieldName, entry] of this._entries) {
+                entry.accessors.set(this._record.get(fieldName));
             }
         }
 
         this.clearValidation();
 
-        for (const fn of this.rejectListeners) {
+        for (const fn of this._rejectListeners) {
             fn();
         }
     }
@@ -228,21 +228,21 @@ export class Binding extends BaseObject {
      * @param fn - Called with the field name and new value on every change.
      */
     addChangeListener(fn: (fieldName: string, value: unknown) => void): void {
-        this.changeListeners.push(fn);
+        this._changeListeners.push(fn);
     }
 
     /**
      * Registers a listener that fires after {@link commit} is called.
      */
     addCommitListener(fn: () => void): void {
-        this.commitListeners.push(fn);
+        this._commitListeners.push(fn);
     }
 
     /**
      * Registers a listener that fires after {@link reject} is called.
      */
     addRejectListener(fn: () => void): void {
-        this.rejectListeners.push(fn);
+        this._rejectListeners.push(fn);
     }
 
     /**
@@ -266,7 +266,7 @@ export class Binding extends BaseObject {
      * @param fn - Called with the next record (or `null`). Return `false` to veto.
      */
     addBeforeRecordListener(fn: BeforeRecordListener): void {
-        this.beforeRecordListeners.push(fn);
+        this._beforeRecordListeners.push(fn);
     }
 
     // ── Validation ───────────────────────────────────────────────────────────
@@ -283,7 +283,7 @@ export class Binding extends BaseObject {
     addValidation(fieldName: string, component: Component, rules: ValidationRule | ValidationRule[]): this {
         const ruleArray = Array.isArray(rules) ? rules : [rules];
 
-        this.validationConfigs.set(fieldName, {
+        this._validationConfigs.set(fieldName, {
             rules           : ruleArray,
             component,
             validateOnChange: false,
@@ -301,13 +301,13 @@ export class Binding extends BaseObject {
      * @returns this, for chaining.
      */
     removeValidation(fieldName: string): this {
-        const config = this.validationConfigs.get(fieldName);
+        const config = this._validationConfigs.get(fieldName);
 
         if (config?.decorator) {
             config.decorator.clearError();
         }
 
-        this.validationConfigs.delete(fieldName);
+        this._validationConfigs.delete(fieldName);
 
         return this;
     }
@@ -321,7 +321,7 @@ export class Binding extends BaseObject {
     validate(): boolean {
         let allValid = true;
 
-        for (const [fieldName] of this.validationConfigs) {
+        for (const [fieldName] of this._validationConfigs) {
             const valid = this._validateField(fieldName);
 
             if (!valid) {
@@ -338,7 +338,7 @@ export class Binding extends BaseObject {
      * @param enabled - true to validate on every change event; false for explicit-only.
      */
     setValidateOnChange(enabled: boolean): this {
-        this.globalValidateOnChange = enabled;
+        this._globalValidateOnChange = enabled;
 
         return this;
     }
@@ -349,7 +349,7 @@ export class Binding extends BaseObject {
      * @returns true if live validation is active.
      */
     getValidateOnChange(): boolean {
-        return this.globalValidateOnChange;
+        return this._globalValidateOnChange;
     }
 
     /**
@@ -357,7 +357,7 @@ export class Binding extends BaseObject {
      * Called automatically by {@link reject}.
      */
     clearValidation(): this {
-        for (const [, config] of this.validationConfigs) {
+        for (const [, config] of this._validationConfigs) {
             if (config.decorator) {
                 config.decorator.clearError();
             }
@@ -374,13 +374,13 @@ export class Binding extends BaseObject {
      * @returns true if the field passes all rules.
      */
     private _validateField(fieldName: string): boolean {
-        const config = this.validationConfigs.get(fieldName);
+        const config = this._validationConfigs.get(fieldName);
 
         if (!config) {
             return true;
         }
 
-        const entry = this.entries.get(fieldName);
+        const entry = this._entries.get(fieldName);
         const value = entry ? entry.accessors.get() : undefined;
 
         for (const rule of config.rules) {
@@ -414,13 +414,13 @@ export class Binding extends BaseObject {
      * @param fieldName - The field to conditionally validate.
      */
     private _validateFieldIfLive(fieldName: string): void {
-        const config = this.validationConfigs.get(fieldName);
+        const config = this._validationConfigs.get(fieldName);
 
         if (!config) {
             return;
         }
 
-        const live = config.validateOnChange || this.globalValidateOnChange;
+        const live = config.validateOnChange || this._globalValidateOnChange;
 
         if (live) {
             this._validateField(fieldName);

@@ -27,7 +27,7 @@ export interface FitOptions extends LayoutManagerOptions {
  */
 class Fit extends LayoutManager {
 
-    private fill: FillType = FillType.BOTH;
+    private _fill: FillType = FillType.BOTH;
 
     constructor(options?: FitOptions) {
         super();
@@ -57,7 +57,7 @@ class Fit extends LayoutManager {
      * @returns The current [`FillType`](/api/layout/enumerations/FillType).
      */
     getFill(): FillType {
-        return this.fill;
+        return this._fill;
     }
 
     /**
@@ -70,7 +70,7 @@ class Fit extends LayoutManager {
      * @returns This layout manager, for method chaining.
      */
     setFill(fill: FillType): this {
-        this.fill = fill;
+        this._fill = fill;
 
         return this;
     }
@@ -239,7 +239,7 @@ class Fit extends LayoutManager {
             containerInsets ? containerInsets.getTop() : 0,
             containerSize ? containerSize.width : 0,
             containerSize ? containerSize.height : 0,
-            this.fill
+            this._fill
         );
     }
 }

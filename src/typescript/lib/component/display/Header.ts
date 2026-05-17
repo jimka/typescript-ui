@@ -39,7 +39,7 @@ const _defaultHeaderOptions: Partial<HeaderOptions> = {
  */
 class Header<TOptions extends HeaderOptions = HeaderOptions> extends Panel<TOptions> {
 
-    private text!: Text;
+    private _text!: Text;
 
     constructor(text: string, options?: TOptions) {
         // Merge defaults → consumer options → non-overridable structural keys.
@@ -57,16 +57,16 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Panel<TOpti
         // Build the inner text label. Font defaults are applied here when the
         // caller didn't supply an override — the cascade can't reach `this.text`
         // because it doesn't exist yet during `super`.
-        this.text = new Text(text);
+        this._text = new Text(text);
         if (this._options.fontWeight === undefined) {
-            this.text.setFontWeight("bold");
+            this._text.setFontWeight("bold");
         }
         if (this._options.fontSize === undefined) {
-            this.text.setFontSize("--ts-ui-header-font-size");
+            this._text.setFontSize("--ts-ui-header-font-size");
         }
-        this.text.setPointerEvents("none");
+        this._text.setPointerEvents("none");
 
-        this.addComponent(this.text, {
+        this.addComponent(this._text, {
             placement: Placement.WEST,
             anchor: AnchorType.WEST,
             fill: FillType.HORIZONTAL
@@ -87,43 +87,43 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Panel<TOpti
         // Late-built state: font/text fields written pure into `_options` by
         // the super-time cascade. Dispatch them now that `this.text` exists.
         if (this._options.text !== undefined) {
-            this.text.setText(this._options.text);
+            this._text.setText(this._options.text);
         }
         if (this._options.textAlign !== undefined) {
-            this.text.setTextAlign(this._options.textAlign);
+            this._text.setTextAlign(this._options.textAlign);
         }
         if (this._options.textShadow !== undefined) {
-            this.text.setTextShadow(this._options.textShadow);
+            this._text.setTextShadow(this._options.textShadow);
         }
         if (this._options.fontFamily !== undefined) {
-            this.text.setFontFamily(this._options.fontFamily);
+            this._text.setFontFamily(this._options.fontFamily);
         }
         if (this._options.fontSize !== undefined) {
-            this.text.setFontSize(this._options.fontSize);
+            this._text.setFontSize(this._options.fontSize);
         }
         if (this._options.fontWeight !== undefined) {
-            this.text.setFontWeight(this._options.fontWeight);
+            this._text.setFontWeight(this._options.fontWeight);
         }
         if (this._options.fontStyle !== undefined) {
-            this.text.setFontStyle(this._options.fontStyle);
+            this._text.setFontStyle(this._options.fontStyle);
         }
         if (this._options.fontVariant !== undefined) {
-            this.text.setFontVariant(this._options.fontVariant);
+            this._text.setFontVariant(this._options.fontVariant);
         }
         if (this._options.fontStretch !== undefined) {
-            this.text.setFontStretch(this._options.fontStretch);
+            this._text.setFontStretch(this._options.fontStretch);
         }
         if (this._options.fontKerning !== undefined) {
-            this.text.setFontKerning(this._options.fontKerning);
+            this._text.setFontKerning(this._options.fontKerning);
         }
         if (this._options.fontSizeAdjust !== undefined) {
-            this.text.setFontSizeAdjust(this._options.fontSizeAdjust);
+            this._text.setFontSizeAdjust(this._options.fontSizeAdjust);
         }
         if (this._options.lineHeight !== undefined) {
-            this.text.setLineHeight(this._options.lineHeight);
+            this._text.setLineHeight(this._options.lineHeight);
         }
         if (this._options.textOverflow !== undefined) {
-            this.text.setTextOverflow(this._options.textOverflow);
+            this._text.setTextOverflow(this._options.textOverflow);
         }
     }
 
@@ -162,7 +162,7 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Panel<TOpti
      * adjustments propagate to the header's layout hint automatically.
      */
     private updatePreferredSize(): void {
-        const textSize = this.text.getPreferredSize();
+        const textSize = this._text.getPreferredSize();
         const insets = this.getInsets();
         const textHeight = textSize ? textSize.height : 20;
         const preferredHeight = textHeight
@@ -183,7 +183,7 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Panel<TOpti
      * @returns The internal Text instance.
      */
     getText() {
-        return this.text;
+        return this._text;
     }
 
     /**
@@ -192,7 +192,7 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Panel<TOpti
      * @returns The baseline offset in pixels, or `null` when the label has no baseline.
      */
     getBaseline(): number | null {
-        return this.wrapInnerBaseline(this.text.getBaseline());
+        return this.wrapInnerBaseline(this._text.getBaseline());
     }
 }
 

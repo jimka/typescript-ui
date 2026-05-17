@@ -80,15 +80,15 @@ export class Notification extends Component {
     private static hoverCount: number = 0;
     private static modalCount: number = 0;
 
-    private readonly type: NotificationType;
-    private readonly fullMessage: string;
-    private readonly badge: Glyph;
-    private readonly messageText: Text;
-    private readonly closeButton: Button;
-    private dismissTimer: ReturnType<typeof setTimeout> | null = null;
-    private remainingDuration: number = 0;
-    private timerStartedAt: number    = 0;
-    private dismissing: boolean       = false;
+    private readonly _type: NotificationType;
+    private readonly _fullMessage: string;
+    private readonly _badge: Glyph;
+    private readonly _messageText: Text;
+    private readonly _closeButton: Button;
+    private _dismissTimer: ReturnType<typeof setTimeout> | null = null;
+    private _remainingDuration: number = 0;
+    private _timerStartedAt: number    = 0;
+    private _dismissing: boolean       = false;
 
     /**
      * Private — use `Notification.show()` to create and display instances.
@@ -99,8 +99,8 @@ export class Notification extends Component {
     private constructor(message: string, type: NotificationType) {
         super();
 
-        this.type        = type;
-        this.fullMessage = message;
+        this._type        = type;
+        this._fullMessage = message;
 
         this.setPosition(Position.FIXED);
         this.setZIndex(Notification.Z_INDEX);
@@ -119,33 +119,33 @@ export class Notification extends Component {
         this.setShadow(shadowVar);
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
 
-        this.badge = new Glyph(BADGE_GLYPH[type]);
-        this.badge.setForegroundColor(borderVar);
-        this.badge.setPreferredSize(Notification.BADGE_SIZE, Notification.BADGE_SIZE);
-        this.badge.setPointerEvents("none");
-        this.addComponent(this.badge);
+        this._badge = new Glyph(BADGE_GLYPH[type]);
+        this._badge.setForegroundColor(borderVar);
+        this._badge.setPreferredSize(Notification.BADGE_SIZE, Notification.BADGE_SIZE);
+        this._badge.setPointerEvents("none");
+        this.addComponent(this._badge);
 
-        this.messageText = new Text(message);
+        this._messageText = new Text(message);
         // Webkit-prefixed line clamp is now cross-browser (Chrome, Edge, Safari,
         // Firefox 68+). Clamped to two lines so a long message gets a trailing
         // ellipsis — the full text is reachable via double-click → detail dialog.
-        this.messageText.setLineClamp(2);
-        this.messageText.setWhiteSpace("normal");
-        this.messageText.setWordBreak("break-word");
-        this.addComponent(this.messageText);
+        this._messageText.setLineClamp(2);
+        this._messageText.setWhiteSpace("normal");
+        this._messageText.setWordBreak("break-word");
+        this.addComponent(this._messageText);
 
-        this.closeButton = new Button({ glyph: "times" });
-        this.closeButton.setInsets(new Insets(0, 0, 0, 0));
-        this.closeButton.setBorder({ style: BorderStyle.NONE });
-        this.closeButton.clearBackgroundImage();
-        this.closeButton.setBackgroundColor("transparent");
-        this.closeButton.clearShadow();
-        this.closeButton.clearPressedShadow();
-        this.closeButton.setForegroundColor("var(--ts-ui-text-color, rgb(0, 0, 0))");
-        this.closeButton.setPreferredSize(Notification.CLOSE_SIZE, Notification.CLOSE_SIZE);
-        this.addComponent(this.closeButton);
+        this._closeButton = new Button({ glyph: "times" });
+        this._closeButton.setInsets(new Insets(0, 0, 0, 0));
+        this._closeButton.setBorder({ style: BorderStyle.NONE });
+        this._closeButton.clearBackgroundImage();
+        this._closeButton.setBackgroundColor("transparent");
+        this._closeButton.clearShadow();
+        this._closeButton.clearPressedShadow();
+        this._closeButton.setForegroundColor("var(--ts-ui-text-color, rgb(0, 0, 0))");
+        this._closeButton.setPreferredSize(Notification.CLOSE_SIZE, Notification.CLOSE_SIZE);
+        this.addComponent(this._closeButton);
 
-        Event.addListener(this.closeButton, "click", (e: MouseEvent) => {
+        Event.addListener(this._closeButton, "click", (e: MouseEvent) => {
             // Prevent the click from contributing to a double-click on the body.
             e.stopPropagation();
             this.dismiss();
@@ -338,9 +338,9 @@ export class Notification extends Component {
      * @param ms - Milliseconds until the notification is dismissed.
      */
     private startTimer(ms: number): void {
-        this.remainingDuration = ms;
-        this.timerStartedAt    = Date.now();
-        this.dismissTimer      = setTimeout(() => this.dismiss(), ms);
+        this._remainingDuration = ms;
+        this._timerStartedAt    = Date.now();
+        this._dismissTimer      = setTimeout(() => this.dismiss(), ms);
     }
 
     /**
@@ -348,13 +348,13 @@ export class Notification extends Component {
      * Stores how many milliseconds were left so `resumeTimer` can pick up where it left off.
      */
     private pauseTimer(): void {
-        if (this.dismissTimer === null) {
+        if (this._dismissTimer === null) {
             return;
         }
 
-        clearTimeout(this.dismissTimer);
-        this.dismissTimer      = null;
-        this.remainingDuration = Math.max(0, this.remainingDuration - (Date.now() - this.timerStartedAt));
+        clearTimeout(this._dismissTimer);
+        this._dismissTimer      = null;
+        this._remainingDuration = Math.max(0, this._remainingDuration - (Date.now() - this._timerStartedAt));
     }
 
     /**
@@ -366,20 +366,20 @@ export class Notification extends Component {
      * @param clampMin - Apply the modal-resume minimum clamp.
      */
     private restartTimer(clampMin: boolean): void {
-        if (this.dismissing) {
+        if (this._dismissing) {
             return;
         }
 
-        if (this.remainingDuration <= 0 || this.dismissTimer !== null) {
+        if (this._remainingDuration <= 0 || this._dismissTimer !== null) {
             return;
         }
 
         if (clampMin) {
-            this.remainingDuration = Math.max(this.remainingDuration, MIN_RESUMED_MS);
+            this._remainingDuration = Math.max(this._remainingDuration, MIN_RESUMED_MS);
         }
 
-        this.timerStartedAt = Date.now();
-        this.dismissTimer   = setTimeout(() => this.dismiss(), this.remainingDuration);
+        this._timerStartedAt = Date.now();
+        this._dismissTimer   = setTimeout(() => this.dismiss(), this._remainingDuration);
     }
 
     /**
@@ -390,14 +390,14 @@ export class Notification extends Component {
     private openDetail(): void {
         Notification.pauseAll();
 
-        const content = new Text(this.fullMessage);
+        const content = new Text(this._fullMessage);
         content.setAutoMeasure(false);
         content.setWhiteSpace("pre-wrap");
         content.setWordBreak("break-word");
         content.setPadding(new Insets(16, 16, 16, 16));
 
         const dialog = new _Dialog({
-            title:            DETAIL_TITLE[this.type],
+            title:            DETAIL_TITLE[this._type],
             contentComponent: content,
             buttons:          [{ text: 'Close', result: 'close', primary: true, glyph: "times" }],
             width:            420,
@@ -406,9 +406,9 @@ export class Notification extends Component {
 
         // Tint the title bar to match the notification's severity colours.
         const titleBar = dialog.getTitleBar();
-        titleBar.setBackgroundColor(`var(--ts-ui-notification-${this.type}-bg)`);
-        titleBar.getTitleText().setForegroundColor(`var(--ts-ui-notification-${this.type}-border)`);
-        titleBar.setGlyph(BADGE_GLYPH[this.type]);
+        titleBar.setBackgroundColor(`var(--ts-ui-notification-${this._type}-bg)`);
+        titleBar.getTitleText().setForegroundColor(`var(--ts-ui-notification-${this._type}-border)`);
+        titleBar.setGlyph(BADGE_GLYPH[this._type]);
 
         dialog.show().then(() => Notification.resumeAll());
     }
@@ -418,15 +418,15 @@ export class Notification extends Component {
      * element from the DOM and restacks the remaining notifications.
      */
     private dismiss(): void {
-        if (this.dismissing) {
+        if (this._dismissing) {
             return;
         }
 
-        this.dismissing = true;
+        this._dismissing = true;
 
-        if (this.dismissTimer !== null) {
-            clearTimeout(this.dismissTimer);
-            this.dismissTimer = null;
+        if (this._dismissTimer !== null) {
+            clearTimeout(this._dismissTimer);
+            this._dismissTimer = null;
         }
 
         const el = this.getElement();
@@ -491,23 +491,23 @@ export class Notification extends Component {
         const msgWidth  = closeX - msgX - 4;
         const msgHeight = Notification.HEIGHT - Notification.V_PADDING * 2;
 
-        this.badge.setX(badgeX);
-        this.badge.setY(badgeY);
-        this.badge.setWidth(Notification.BADGE_SIZE);
-        this.badge.setHeight(Notification.BADGE_SIZE);
+        this._badge.setX(badgeX);
+        this._badge.setY(badgeY);
+        this._badge.setWidth(Notification.BADGE_SIZE);
+        this._badge.setHeight(Notification.BADGE_SIZE);
 
-        this.messageText.setX(msgX);
-        this.messageText.setY(Notification.V_PADDING);
-        this.messageText.setWidth(msgWidth);
-        this.messageText.setHeight(msgHeight);
+        this._messageText.setX(msgX);
+        this._messageText.setY(Notification.V_PADDING);
+        this._messageText.setWidth(msgWidth);
+        this._messageText.setHeight(msgHeight);
 
-        this.closeButton.setX(closeX);
-        this.closeButton.setY(4);
-        this.closeButton.setWidth(Notification.CLOSE_SIZE);
-        this.closeButton.setHeight(Notification.CLOSE_SIZE);
+        this._closeButton.setX(closeX);
+        this._closeButton.setY(4);
+        this._closeButton.setWidth(Notification.CLOSE_SIZE);
+        this._closeButton.setHeight(Notification.CLOSE_SIZE);
         // Cascade the size change down to the times-glyph through the
         // close button's internal Fit/HBox layout.
-        this.closeButton.doLayout();
+        this._closeButton.doLayout();
 
         return this;
     }

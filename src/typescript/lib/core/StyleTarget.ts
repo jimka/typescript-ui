@@ -17,8 +17,8 @@
  * @category Core
  */
 abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
-    protected target: T | null = null;
-    protected dirty:  Record<string, string | null> = {};
+    protected _target: T | null = null;
+    protected _dirty:  Record<string, string | null> = {};
 
     /**
      * Writes a single style property. Flushes immediately when the target is
@@ -28,10 +28,10 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
      * @param value - The value to set, or null to remove the property.
      */
     set(key: string, value: string | null): void {
-        if (this.target) {
-            this.write(this.target.style, key, value);
+        if (this._target) {
+            this.write(this._target.style, key, value);
         } else {
-            this.dirty[key] = value;
+            this._dirty[key] = value;
         }
     }
 
@@ -54,7 +54,7 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
      * @param value - The value to set, or null to remove the property.
      */
     queue(key: string, value: string | null): void {
-        this.dirty[key] = value;
+        this._dirty[key] = value;
     }
 
     /**
@@ -63,7 +63,7 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
      * @param values - Camel-cased property keys mapped to string values (or null to clear).
      */
     queueMany(values: Record<string, string | null>): void {
-        Object.assign(this.dirty, values);
+        Object.assign(this._dirty, values);
     }
 
     /**
@@ -72,26 +72,26 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
      * after `materialize`.
      */
     flush(): void {
-        if (!this.target) return;
-        for (const key of Object.keys(this.dirty)) {
-            this.write(this.target.style, key, this.dirty[key]);
+        if (!this._target) return;
+        for (const key of Object.keys(this._dirty)) {
+            this.write(this._target.style, key, this._dirty[key]);
         }
-        this.dirty = {};
+        this._dirty = {};
     }
 
     /**
      * Returns whether the underlying target has been materialised.
      */
     isMaterialized(): boolean {
-        return this.target !== null;
+        return this._target !== null;
     }
 
     protected materialize(target: T): void {
-        this.target = target;
-        for (const key of Object.keys(this.dirty)) {
-            this.write(target.style, key, this.dirty[key]);
+        this._target = target;
+        for (const key of Object.keys(this._dirty)) {
+            this.write(target.style, key, this._dirty[key]);
         }
-        this.dirty = {};
+        this._dirty = {};
     }
 
     private write(style: CSSStyleDeclaration, key: string, value: string | null): void {
@@ -126,11 +126,11 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
  * @category Core
  */
 class StyleRule extends StyleTarget<CSSStyleRule> {
-    private factory: () => CSSStyleRule;
+    private _factory: () => CSSStyleRule;
 
     constructor(factory: () => CSSStyleRule) {
         super();
-        this.factory = factory;
+        this._factory = factory;
     }
 
     /**
@@ -138,10 +138,10 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
      * it. Pending dirty entries are flushed in the same call.
      */
     ensure(): CSSStyleRule {
-        if (!this.target) {
-            this.materialize(this.factory());
+        if (!this._target) {
+            this.materialize(this._factory());
         }
-        return this.target!;
+        return this._target!;
     }
 }
 

@@ -30,7 +30,7 @@ export type MemoryProxyConfig = MemoryProxyOptions;
  */
 export class MemoryProxy extends Proxy {
 
-    private data: any[];
+    private _data: any[];
 
     /**
      * Constructs a MemoryProxy, optionally pre-populated with an initial data array.
@@ -40,7 +40,7 @@ export class MemoryProxy extends Proxy {
     constructor(options: MemoryProxyOptions = { data: [] }) {
         super();
 
-        this.data = options.data.slice();
+        this._data = options.data.slice();
     }
 
     /**
@@ -49,7 +49,7 @@ export class MemoryProxy extends Proxy {
      * @param data - The new data array; a shallow copy is stored internally.
      */
     setData(data: any[]): void {
-        this.data = data.slice();
+        this._data = data.slice();
     }
 
     /**
@@ -60,7 +60,7 @@ export class MemoryProxy extends Proxy {
      * @returns A promise that resolves to a shallow copy of the current data array.
      */
     read(_params?: ReadParams): Promise<any[]> {
-        return Promise.resolve(this.data.slice());
+        return Promise.resolve(this._data.slice());
     }
 
     /**
@@ -73,7 +73,7 @@ export class MemoryProxy extends Proxy {
     create(record: ModelRecord): Promise<Record<string, any>> {
         const copy = { ...record.getData() };
 
-        this.data.push(copy);
+        this._data.push(copy);
 
         return Promise.resolve(copy);
     }
@@ -95,10 +95,10 @@ export class MemoryProxy extends Proxy {
 
         if (pkName !== undefined) {
             const id = record.getId();
-            const idx = this.data.findIndex(d => d[pkName] === id);
+            const idx = this._data.findIndex(d => d[pkName] === id);
 
             if (idx !== -1) {
-                this.data[idx] = copy;
+                this._data[idx] = copy;
             }
         }
 
@@ -121,10 +121,10 @@ export class MemoryProxy extends Proxy {
 
         if (pkName !== undefined) {
             const id = record.getId();
-            const idx = this.data.findIndex(d => d[pkName] === id);
+            const idx = this._data.findIndex(d => d[pkName] === id);
 
             if (idx !== -1) {
-                this.data.splice(idx, 1);
+                this._data.splice(idx, 1);
             }
         }
 

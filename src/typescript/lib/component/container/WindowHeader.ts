@@ -33,16 +33,16 @@ export interface WindowHeaderOptions extends HeaderOptions {
  */
 class WindowHeader extends Header {
 
-    private exitButton: Button;
-    private activeBackgroundImage: string;
+    private _exitButton: Button;
+    private _activeBackgroundImage: string;
     private _titleGlyph: Glyph | null = null;
     private _titleRow: Component;
 
     constructor(text: string, options?: WindowHeaderOptions) {
         super(text);
 
-        this.activeBackgroundImage = "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))";
-        this.setBackgroundImage(this.activeBackgroundImage);
+        this._activeBackgroundImage = "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))";
+        this.setBackgroundImage(this._activeBackgroundImage);
 
         // Reparent the inherited title text into a permanent HBox row that
         // owns the Border WEST slot. setGlyph then only has to swap the
@@ -62,11 +62,11 @@ class WindowHeader extends Header {
             fill:      FillType.HORIZONTAL
         });
 
-        this.exitButton = new Button({ glyph: "times" });
-        this.exitButton.setBackgroundImage(this.activeBackgroundImage);
-        this.exitButton.clearBorder();
+        this._exitButton = new Button({ glyph: "times" });
+        this._exitButton.setBackgroundImage(this._activeBackgroundImage);
+        this._exitButton.clearBorder();
 
-        this.addComponent(this.exitButton, { placement: Placement.EAST });
+        this.addComponent(this._exitButton, { placement: Placement.EAST });
 
         // Default title icon: applied unless an explicit glyph name was passed.
         // Call clearGlyph() on the resulting WindowHeader to opt out entirely.
@@ -89,7 +89,7 @@ class WindowHeader extends Header {
         super.applyOptions(options);
 
         if (options.closeable !== undefined) {
-            this.exitButton.setVisible(options.closeable);
+            this._exitButton.setVisible(options.closeable);
         }
 
         if (options.glyph !== undefined) {
@@ -157,7 +157,7 @@ class WindowHeader extends Header {
      */
     setActive(active: boolean): this {
         if (active) {
-            this.setBackgroundImage(this.activeBackgroundImage);
+            this.setBackgroundImage(this._activeBackgroundImage);
             this.clearBackgroundColor();
         } else {
             this.clearBackgroundImage();
@@ -173,7 +173,7 @@ class WindowHeader extends Header {
      * @param listener - The callback to invoke when the close button is clicked.
      */
     addExitButtonListener(listener: Function) : this {
-        this.exitButton.addActionListener(listener);
+        this._exitButton.addActionListener(listener);
 
         return this;
     }

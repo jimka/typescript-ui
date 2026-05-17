@@ -157,45 +157,45 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // Structural state that is NOT option-backed — runtime references, render
     // caches, lifecycle flags, and constants. Option-backed values (border,
     // layoutManager, insets, padding, ...) live in `this._options` instead.
-    private components: Array<Component>;
+    private _components: Array<Component>;
 
-    private element              : HTMLElement | undefined;
-    private tag                  : string                  = "div";
-    private attributes           : Map<String, String>;
-    private boxSizing            : string | null;
+    private _element              : HTMLElement | undefined;
+    private _tag                  : string                  = "div";
+    private _attributes           : Map<String, String>;
+    private _boxSizing            : string | null;
 
     // Geometry: NaN sentinels mean "never assigned", so equality guards on
     // setX/setY/setWidth/setHeight short-circuit only AFTER a real write —
     // the first call always reaches the DOM even when its target value is 0.
-    private left                 : number                  = NaN;
-    private top                  : number                  = NaN;
-    private width                : number                  = NaN;
-    private height               : number                  = NaN;
-    private translateX           : number                  = 0;
-    private translateY           : number                  = 0;
+    private _left                 : number                  = NaN;
+    private _top                  : number                  = NaN;
+    private _width                : number                  = NaN;
+    private _height               : number                  = NaN;
+    private _translateX           : number                  = 0;
+    private _translateY           : number                  = 0;
     private _willChange          : string | null           = null;
 
     // Derived / runtime-only fields that have no direct ComponentOptions counterpart.
-    private onPreferredSizeChange: (() => void) | null     = null;
-    private overflowX            : string | null           = null;
-    private overflowY            : string | null           = null;
-    private contain              : string | null           = null;
-    private animation            : string | null           = null;
-    private disabledAttribute    : boolean                 = false;
-    private border               : Border | null           = null;
-    private borderCSS            : string | null           = null;
-    private autoCommitStyle      : boolean                 = true;
-    private layoutPaused         : boolean                 = false;
+    private _onPreferredSizeChange: (() => void) | null     = null;
+    private _overflowX            : string | null           = null;
+    private _overflowY            : string | null           = null;
+    private _contain              : string | null           = null;
+    private _animation            : string | null           = null;
+    private _disabledAttribute    : boolean                 = false;
+    private _border               : Border | null           = null;
+    private _borderCSS            : string | null           = null;
+    private _autoCommitStyle      : boolean                 = true;
+    private _layoutPaused         : boolean                 = false;
     private _aria                : Aria | null             = null;
-    private whiteSpace           : string | null;
-    private display              : string;
-    private userSelect           : string | null;
-    private verticalAlign        : string | null;
+    private _whiteSpace           : string | null;
+    private _display              : string;
+    private _userSelect           : string | null;
+    private _verticalAlign        : string | null;
     // Deferred-write style buffers. `styleRule` lazily materialises the
     // component's per-id `CSSStyleRule` on first `ensure()` call; `inlineStyle`
     // queues `element.style.X = ...` writes until `init()` attaches it.
-    private styleRule            : StyleRule    = new StyleRule(() => CSS.createComponentRule(this.getId()) as CSSStyleRule);
-    private inlineStyle          : InlineStyle  = new InlineStyle();
+    private _styleRule            : StyleRule    = new StyleRule(() => CSS.createComponentRule(this.getId()) as CSSStyleRule);
+    private _inlineStyle          : InlineStyle  = new InlineStyle();
     // Subclass-owned state rules (e.g. Button's `:active` / `:hover`,
     // ToggleButton's `.selected`) keyed by selector suffix and materialised
     // at first render. Assigned in the constructor body (not via a field
@@ -203,7 +203,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // run and before the `applyOptions` cascade fires — letting cascade-time
     // setters dedupe through `createStyleRule` regardless of any later slot
     // clobber on the caller side.
-    private deferredStyleRules!  : Map<string, StyleRule>;
+    private _deferredStyleRules!  : Map<string, StyleRule>;
 
     // Tracks the single parent this component belongs to. Exposed read-only via
     // getParentComponent() for structural queries (e.g. FieldDecorator insertion).
@@ -231,16 +231,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `styleRule` stays unmaterialised until the element actually needs to
         // render; the dirty-style path queues writes until then. See
         // `ensureCSSRule`.
-        this.components         = [];
-        this.attributes         = new Map<String, String>();
-        this.deferredStyleRules = new Map<string, StyleRule>();
+        this._components         = [];
+        this._attributes         = new Map<String, String>();
+        this._deferredStyleRules = new Map<string, StyleRule>();
 
         // Constants without ComponentOptions counterpart.
-        this.boxSizing     = "border-box";
-        this.display       = "block";
-        this.whiteSpace    = "nowrap";
-        this.userSelect    = "none";
-        this.verticalAlign = "baseline";
+        this._boxSizing     = "border-box";
+        this._display       = "block";
+        this._whiteSpace    = "nowrap";
+        this._userSelect    = "none";
+        this._verticalAlign = "baseline";
 
         // Class-level defaults — fallback values consulted by getters when the
         // caller (or a setter) hasn't written to `_options`. Subclasses may
@@ -268,7 +268,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `tag` has no setter — apply the option directly here. Subclasses
         // commonly forward this from `super({ tag: "..." })`.
         if (options?.tag !== undefined) {
-            this.tag = options.tag;
+            this._tag = options.tag;
         }
 
         // Dispatch the caller-supplied options through virtual `applyOptions`.
@@ -350,7 +350,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The HTML tag string (e.g. "div", "button").
      */
     getTag(): string {
-        return this.tag;
+        return this._tag;
     }
 
     /**
@@ -379,7 +379,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * detached construction stays JS-only.
      */
     private ensureCSSRule(): CSSStyleRule {
-        return this.styleRule.ensure();
+        return this._styleRule.ensure();
     }
 
     /**
@@ -407,10 +407,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * through this builder.
      */
     protected createStyleRule(selectorSuffix: string): StyleRule {
-        let rule = this.deferredStyleRules.get(selectorSuffix);
+        let rule = this._deferredStyleRules.get(selectorSuffix);
         if (!rule) {
             rule = new StyleRule(() => CSS.createComponentRule(this.getId() + selectorSuffix) as CSSStyleRule);
-            this.deferredStyleRules.set(selectorSuffix, rule);
+            this._deferredStyleRules.set(selectorSuffix, rule);
         }
 
         return rule;
@@ -424,16 +424,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The component's HTMLElement, or undefined if it does not exist and createIfMissing is false.
      */
     getElement(createIfMissing: boolean = false) {
-        if (!this.element) {
+        if (!this._element) {
             let element = Util.select("#" + this.getId());
             if (!element && createIfMissing) {
                 element = this.render();
             }
 
-            this.element = element;
+            this._element = element;
         }
 
-        return this.element;
+        return this._element;
     }
 
     /**
@@ -538,10 +538,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     protected setElementStyle(key: string, value: Object | null): this {
         const v = value ? String(value) : null;
 
-        if (this.autoCommitStyle) {
-            this.inlineStyle.set(key, v);
+        if (this._autoCommitStyle) {
+            this._inlineStyle.set(key, v);
         } else {
-            this.inlineStyle.queue(key, v);
+            this._inlineStyle.queue(key, v);
         }
 
         return this;
@@ -555,10 +555,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @remarks Immediately flushes to the DOM unless autoCommitStyle is false.
      */
     protected setElementStyles(values: Style): this {
-        if (this.autoCommitStyle) {
-            this.inlineStyle.setMany(values);
+        if (this._autoCommitStyle) {
+            this._inlineStyle.setMany(values);
         } else {
-            this.inlineStyle.queueMany(values);
+            this._inlineStyle.queueMany(values);
         }
 
         return this;
@@ -570,7 +570,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns True if auto-commit is enabled, false if changes are batched.
      */
     getAutoCommitStyle() {
-        return this.autoCommitStyle;
+        return this._autoCommitStyle;
     }
 
     /**
@@ -579,7 +579,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param value - True to enable immediate commits; false to batch changes until manually flushed.
      */
     setAutoCommitStyle(value: boolean): this {
-        this.autoCommitStyle = value;
+        this._autoCommitStyle = value;
 
         if (value) {
             this.commitElementStyle();
@@ -595,7 +595,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     protected commitElementStyle(): this {
         // `inlineStyle.flush()` is a no-op when the element isn't yet attached
         // — dirty entries stay queued for the next flush after `init()`.
-        this.inlineStyle.flush();
+        this._inlineStyle.flush();
 
         return this;
     }
@@ -611,9 +611,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // The rule is created lazily, so writes go through `queue` until the
         // element exists; `commitCSSRule` only flushes once an element is
         // attached, matching the prior `dirtyCSSRule` gating.
-        this.styleRule.queueMany(values);
+        this._styleRule.queueMany(values);
 
-        if (this.autoCommitStyle) {
+        if (this._autoCommitStyle) {
             this.commitCSSRule();
         }
 
@@ -629,9 +629,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @remarks Immediately flushes to the CSS rule unless autoCommitStyle is false.
      */
     protected setElementCSSRule(key: string, value: Object | null): this {
-        this.styleRule.queue(key, value ? String(value) : null);
+        this._styleRule.queue(key, value ? String(value) : null);
 
-        if (this.autoCommitStyle) {
+        if (this._autoCommitStyle) {
             this.commitCSSRule();
         }
 
@@ -657,8 +657,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         // Materialise the rule (no-op if already created) and drain the
         // queued writes.
-        this.styleRule.ensure();
-        this.styleRule.flush();
+        this._styleRule.ensure();
+        this._styleRule.flush();
 
         return this;
     }
@@ -689,7 +689,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The stored attribute value, or undefined if not set.
      */
     getAttribute(key: string) {
-        return this.attributes.get(key);
+        return this._attributes.get(key);
     }
 
     /**
@@ -705,7 +705,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this.attributes.set(key, value);
+        this._attributes.set(key, value);
         this.setElementAttribute(key, value);
 
         return this;
@@ -717,7 +717,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param key - The attribute name to remove.
      */
     delAttribute(key: string): this {
-        this.attributes.delete(key);
+        this._attributes.delete(key);
         this.removeElementAttribute(key);
 
         return this;
@@ -815,7 +815,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        element.style.display = v ? this.display : "none";
+        element.style.display = v ? this._display : "none";
 
         return this;
     }
@@ -1050,7 +1050,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The current Border object, or null.
      */
     getBorder(): Border | null {
-        return this.border;
+        return this._border;
     }
 
     /**
@@ -1061,9 +1061,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearBorder(): this {
-        this.borderCSS = null;
-        this.border    = new Border();
-        this.setElementCSSRules(this.border.toStyle());
+        this._borderCSS = null;
+        this._border    = new Border();
+        this.setElementCSSRules(this._border.toStyle());
 
         return this;
     }
@@ -1077,7 +1077,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     setBorder(options: BorderOptions | string): this {
         if (typeof options === 'string' && options.trimStart().startsWith('var(')) {
-            this.borderCSS = options;
+            this._borderCSS = options;
             this.setElementCSSRule("border", options);
 
             const varName  = options.match(/var\((--[^,)]+)/)?.[1];
@@ -1085,15 +1085,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 ? getComputedStyle(document.documentElement).getPropertyValue(varName).trim()
                 : null;
 
-            this.border = resolved ? Border.fromString(resolved) : null;
+            this._border = resolved ? Border.fromString(resolved) : null;
         } else if (typeof options === 'string') {
-            this.borderCSS = null;
-            this.border    = Border.fromString(options);
-            this.setElementCSSRules(this.border.toStyle());
+            this._borderCSS = null;
+            this._border    = Border.fromString(options);
+            this.setElementCSSRules(this._border.toStyle());
         } else {
-            this.borderCSS = null;
-            this.border    = new Border(options);
-            this.setElementCSSRules(this.border.toStyle());
+            this._borderCSS = null;
+            this._border    = new Border(options);
+            this.setElementCSSRules(this._border.toStyle());
         }
 
         return this;
@@ -1311,8 +1311,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     getSize(): Size | null {
         return {
-            width: this.width,
-            height: this.height
+            width: this._width,
+            height: this._height
         }
     }
 
@@ -1353,7 +1353,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const next: Size = { width, height };
         this._options.preferredSize = next;
         this.setAttribute("preferredSize", next.width + " " + next.height);
-        this.onPreferredSizeChange?.();
+        this._onPreferredSizeChange?.();
 
         return this;
     }
@@ -1507,8 +1507,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         let perimiterSize = this.getPerimiterSize();
 
-        let width = this.width - perimiterSize.left - perimiterSize.right;
-        let height = this.height - perimiterSize.top - perimiterSize.bottom;
+        let width = this._width - perimiterSize.left - perimiterSize.right;
+        let height = this._height - perimiterSize.top - perimiterSize.bottom;
 
         return {
             width: width,
@@ -1529,11 +1529,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             left: 0
         };
 
-        if (this.border) {
-            borderSize.top    = this.border.getTop().getWidth();
-            borderSize.right  = this.border.getRight().getWidth();
-            borderSize.bottom = this.border.getBottom().getWidth();
-            borderSize.left   = this.border.getLeft().getWidth();
+        if (this._border) {
+            borderSize.top    = this._border.getTop().getWidth();
+            borderSize.right  = this._border.getRight().getWidth();
+            borderSize.bottom = this._border.getBottom().getWidth();
+            borderSize.left   = this._border.getLeft().getWidth();
         }
 
         return borderSize;
@@ -1619,14 +1619,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     getVerticalAlign() {
-        return this.verticalAlign
+        return this._verticalAlign
     }
 
     /**
      * @returns This component, for method chaining.
      */
     setVerticalAlign(align: string): this {
-        this.verticalAlign = align;
+        this._verticalAlign = align;
 
         this.setElementCSSRule("verticalAlign", align);
 
@@ -1667,8 +1667,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setSize(size: Size): this {
-        this.width = size.width;
-        this.height = size.height;
+        this._width = size.width;
+        this._height = size.height;
 
         let element = this.getElement();
         if (!element) {
@@ -1707,18 +1707,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setWidth(width: number): this {
-        if (this.width === width) {
+        if (this._width === width) {
             return this;
         }
 
-        this.width = width;
+        this._width = width;
 
         let element = this.getElement();
         if (!element) {
             return this;
         }
 
-        this.setElementStyle("width", this.width + "px");
+        this.setElementStyle("width", this._width + "px");
 
         return this;
     }
@@ -1745,18 +1745,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setHeight(height: number): this {
-        if (this.height === height) {
+        if (this._height === height) {
             return this;
         }
 
-        this.height = height;
+        this._height = height;
 
         let element = this.getElement();
         if (!element) {
             return this;
         }
 
-        this.setElementStyle("height", this.height + "px");
+        this.setElementStyle("height", this._height + "px");
 
         return this;
     }
@@ -1767,7 +1767,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The left offset in pixels.
      */
     getX() {
-        return this.left;
+        return this._left;
     }
 
     /**
@@ -1778,18 +1778,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setX(x: number): this {
-        if (this.left === x) {
+        if (this._left === x) {
             return this;
         }
 
-        this.left = x;
+        this._left = x;
 
         let element = this.getElement();
         if (!element) {
             return this;
         }
 
-        this.setElementStyle("left", this.left + "px");
+        this.setElementStyle("left", this._left + "px");
 
         return this;
     }
@@ -1800,7 +1800,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The top offset in pixels.
      */
     getY() {
-        return this.top;
+        return this._top;
     }
 
     /**
@@ -1811,18 +1811,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setY(y: number): this {
-        if (this.top === y) {
+        if (this._top === y) {
             return this;
         }
 
-        this.top = y;
+        this._top = y;
 
         let element = this.getElement();
         if (!element) {
             return this;
         }
 
-        this.setElementStyle("top", this.top + "px");
+        this.setElementStyle("top", this._top + "px");
 
         return this;
     }
@@ -1833,7 +1833,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The translate-X value last passed to setTranslate, or 0.
      */
     getTranslateX() {
-        return this.translateX;
+        return this._translateX;
     }
 
     /**
@@ -1842,7 +1842,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The translate-Y value last passed to setTranslate, or 0.
      */
     getTranslateY() {
-        return this.translateY;
+        return this._translateY;
     }
 
     /**
@@ -1856,12 +1856,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setTranslate(x: number, y: number): this {
-        if (this.translateX === x && this.translateY === y && this.getElement()) {
+        if (this._translateX === x && this._translateY === y && this.getElement()) {
             return this;
         }
 
-        this.translateX = x;
-        this.translateY = y;
+        this._translateX = x;
+        this._translateY = y;
 
         if (x === 0 && y === 0) {
             this.setElementStyle("transform", null);
@@ -1931,7 +1931,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS overflow-x string, or null.
      */
     getOverflowX(): string | null {
-        return this.overflowX;
+        return this._overflowX;
     }
 
     /**
@@ -1942,11 +1942,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setOverflowX(value: string): this {
-        if (this.overflowX === value) {
+        if (this._overflowX === value) {
             return this;
         }
 
-        this.overflowX = value;
+        this._overflowX = value;
         this.setElementCSSRule("overflowX", value);
 
         return this;
@@ -1958,7 +1958,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS overflow-y string, or null.
      */
     getOverflowY(): string | null {
-        return this.overflowY;
+        return this._overflowY;
     }
 
     /**
@@ -1969,11 +1969,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setOverflowY(value: string): this {
-        if (this.overflowY === value) {
+        if (this._overflowY === value) {
             return this;
         }
 
-        this.overflowY = value;
+        this._overflowY = value;
         this.setElementCSSRule("overflowY", value);
 
         return this;
@@ -1985,7 +1985,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS contain string, or null.
      */
     getContain(): string | null {
-        return this.contain;
+        return this._contain;
     }
 
     /**
@@ -1997,11 +1997,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setContain(value: string): this {
-        if (this.contain === value) {
+        if (this._contain === value) {
             return this;
         }
 
-        this.contain = value;
+        this._contain = value;
         this.setElementCSSRule("contain", value);
 
         return this;
@@ -2013,7 +2013,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS animation string, or null.
      */
     getAnimation(): string | null {
-        return this.animation;
+        return this._animation;
     }
 
     /**
@@ -2024,11 +2024,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setAnimation(value: string): this {
-        if (this.animation === value) {
+        if (this._animation === value) {
             return this;
         }
 
-        this.animation = value;
+        this._animation = value;
         this.setElementCSSRule("animation", value);
 
         return this;
@@ -2040,11 +2040,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearAnimation(): this {
-        if (this.animation === null) {
+        if (this._animation === null) {
             return this;
         }
 
-        this.animation = null;
+        this._animation = null;
         this.setElementCSSRule("animation", null);
 
         return this;
@@ -2056,7 +2056,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns True when the `disabled` attribute is set, false otherwise.
      */
     getDisabledAttribute(): boolean {
-        return this.disabledAttribute;
+        return this._disabledAttribute;
     }
 
     /**
@@ -2070,11 +2070,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setDisabledAttribute(value: boolean): this {
-        if (this.disabledAttribute === value) {
+        if (this._disabledAttribute === value) {
             return this;
         }
 
-        this.disabledAttribute = value;
+        this._disabledAttribute = value;
 
         if (value) {
             this.setElementAttribute("disabled", "");
@@ -2189,7 +2189,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setUserSelect(value: string): this {
-        this.userSelect = value;
+        this._userSelect = value;
 
         this.setElementCSSRule("userSelect", value);
 
@@ -2254,8 +2254,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `_options` is empty for any field the caller didn't supply.
         const opts = { ...this._defaultOptions, ...this._options };
 
-        if (this.boxSizing) {
-            rule.style.boxSizing = this.boxSizing;
+        if (this._boxSizing) {
+            rule.style.boxSizing = this._boxSizing;
         }
 
         if (opts.position) {
@@ -2269,7 +2269,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (opts.displayed != null) {
-            rule.style.display = opts.displayed ? this.display : "none";
+            rule.style.display = opts.displayed ? this._display : "none";
         }
 
         if (opts.cursor) {
@@ -2290,20 +2290,20 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         // NaN means "never assigned by a setter" — skip the DOM write for those.
         // Any finite value (including 0) MUST be written so the DOM matches the cached field.
-        if (!Number.isNaN(this.width)) {
-            element.style.width = this.width + "px";
+        if (!Number.isNaN(this._width)) {
+            element.style.width = this._width + "px";
         }
 
-        if (!Number.isNaN(this.top)) {
-            element.style.top = this.top + "px";
+        if (!Number.isNaN(this._top)) {
+            element.style.top = this._top + "px";
         }
 
-        if (!Number.isNaN(this.left)) {
-            element.style.left = this.left + "px";
+        if (!Number.isNaN(this._left)) {
+            element.style.left = this._left + "px";
         }
 
-        if (!Number.isNaN(this.height)) {
-            element.style.height = this.height + "px";
+        if (!Number.isNaN(this._height)) {
+            element.style.height = this._height + "px";
         }
 
         const minSize = opts.minSize;
@@ -2323,14 +2323,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             rule.style.overflow = opts.overflow;
         }
 
-        if (this.whiteSpace) {
-            rule.style.whiteSpace = this.whiteSpace;
+        if (this._whiteSpace) {
+            rule.style.whiteSpace = this._whiteSpace;
         }
 
-        if (this.borderCSS) {
-            rule.style.setProperty('border', this.borderCSS);
-        } else if (this.border) {
-            this.border.applyOnCSSRule(rule);
+        if (this._borderCSS) {
+            rule.style.setProperty('border', this._borderCSS);
+        } else if (this._border) {
+            this._border.applyOnCSSRule(rule);
         } else {
             rule.style.removeProperty("border");
         }
@@ -2351,8 +2351,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             element.style.zIndex = String(opts.zIndex);
         }
 
-        if (this.userSelect) {
-            rule.style.userSelect = this.userSelect;
+        if (this._userSelect) {
+            rule.style.userSelect = this._userSelect;
         }
 
         if (opts.padding) {
@@ -2370,7 +2370,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // pending writes flush onto the live `CSSStyleRule` inside `ensure()`,
         // so the stylesheet picks up the entry on first render rather than on
         // first setter write during construction.
-        for (const deferredRule of this.deferredStyleRules.values()) {
+        for (const deferredRule of this._deferredStyleRules.values()) {
             deferredRule.ensure();
         }
 
@@ -2442,15 +2442,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             throw new Error(`Component ${component.getId()} already has a parent. Remove it first.`);
         }
 
-        this.components.push(component);
+        this._components.push(component);
 
         this.setLayoutConstraints(component, constraints);
 
         component._parent = this;
-        component.onPreferredSizeChange = () => {
+        component._onPreferredSizeChange = () => {
             this.scheduleLayout();
 
-            this.onPreferredSizeChange?.();
+            this._onPreferredSizeChange?.();
         };
 
         let element = this.getElement();
@@ -2487,16 +2487,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             throw new Error(`Component ${component.getId()} already has a parent. Remove it first.`);
         }
 
-        const clampedIndex = Math.max(0, Math.min(index, this.components.length));
-        this.components.splice(clampedIndex, 0, component);
+        const clampedIndex = Math.max(0, Math.min(index, this._components.length));
+        this._components.splice(clampedIndex, 0, component);
 
         this.setLayoutConstraints(component, constraints);
 
         component._parent = this;
-        component.onPreferredSizeChange = () => {
+        component._onPreferredSizeChange = () => {
             this.scheduleLayout();
 
-            this.onPreferredSizeChange?.();
+            this._onPreferredSizeChange?.();
         };
 
         let element = this.getElement();
@@ -2505,8 +2505,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         let compElement = component.getElement(true);
-        const nextSibling = clampedIndex + 1 < this.components.length
-            ? this.components[clampedIndex + 1].getElement()
+        const nextSibling = clampedIndex + 1 < this._components.length
+            ? this._components[clampedIndex + 1].getElement()
             : null;
         element.insertBefore(compElement, nextSibling ?? null);
         this.scheduleLayout();
@@ -2524,22 +2524,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     removeComponent(component: Component | Number) {
         var index: number;
         if (component instanceof Component) {
-            index = this.components.indexOf(component)
+            index = this._components.indexOf(component)
         } else if (component instanceof Number) {
             index = (component as Number).valueOf();
-            component = this.components[index];
+            component = this._components[index];
         } else {
             return;
         }
 
         if (index > -1) {
-            this.components.splice(index, 1);
+            this._components.splice(index, 1);
         }
 
         let constraints = this.delLayoutConstraints(component);
 
         component._parent = null;
-        component.onPreferredSizeChange = null;
+        component._onPreferredSizeChange = null;
         component.removeElement();
         this.scheduleLayout();
 
@@ -2552,14 +2552,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     removeAllComponents(): this {
-        for (let idx in this.components) {
-            let component = this.components[idx];
+        for (let idx in this._components) {
+            let component = this._components[idx];
             component._parent = null;
-            component.onPreferredSizeChange = null;
+            component._onPreferredSizeChange = null;
             component.removeElement();
         }
 
-        this.components = [];
+        this._components = [];
 
         return this;
     }
@@ -2572,7 +2572,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     sortComponents(comparator: Comparator<Component, Component> | undefined): this {
-        this.components.sort(comparator);
+        this._components.sort(comparator);
 
         return this;
     }
@@ -2583,7 +2583,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The live array of child Component instances.
      */
     getComponents() {
-        return this.components;
+        return this._components;
     }
 
     /**
@@ -2672,14 +2672,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns True if layout passes are currently suppressed.
      */
     isLayoutPaused() {
-        return this.layoutPaused;
+        return this._layoutPaused;
     }
 
     /**
      * Suspends automatic layout passes until resumeLayout is called.
      */
     pauseLayout(): this {
-        this.layoutPaused = true;
+        this._layoutPaused = true;
 
         return this;
     }
@@ -2690,7 +2690,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     resumeLayout(): this {
-        this.layoutPaused = false;
+        this._layoutPaused = false;
         this.doLayout();
 
         return this;
@@ -2794,10 +2794,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // Bind the inline-style buffer so any writes queued during detached
         // construction flush into the live element, and subsequent setters
         // write through directly.
-        this.inlineStyle.attach(element);
+        this._inlineStyle.attach(element);
 
-        for (let key in this.attributes) {
-            let value = this.attributes.get(key);
+        for (let key in this._attributes) {
+            let value = this._attributes.get(key);
             if (value != null) {
                 element.setAttribute(key, value.valueOf());
             }
@@ -2830,7 +2830,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The newly created root element.
      */
     protected createRootElement(): HTMLElement {
-        return document.createElement(this.tag);
+        return document.createElement(this._tag);
     }
 
     /**

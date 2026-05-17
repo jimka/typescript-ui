@@ -17,15 +17,15 @@ import { callable } from "~/core/Callable.js";
  */
 class NumberEditor extends CellEditor<Number> {
 
-    private textField: TextField = new TextField();
+    private _textField: TextField = new TextField();
 
     constructor() {
         super();
 
-        Event.addListener(this.textField, "blur", (evnt: UIEvent) => {
+        Event.addListener(this._textField, "blur", (evnt: UIEvent) => {
             Event.fireEvent(this, "blur", evnt);
         });
-        Event.addListener(this.textField, "keydown", (evnt: KeyboardEvent) => {
+        Event.addListener(this._textField, "keydown", (evnt: KeyboardEvent) => {
             Event.fireEvent(this, new KeyboardEvent('keydown', {
                 key     : evnt.key     , code      : evnt.code   , keyCode: evnt.keyCode,
                 shiftKey: evnt.shiftKey, ctrlKey   : evnt.ctrlKey,
@@ -35,15 +35,15 @@ class NumberEditor extends CellEditor<Number> {
         });
 
         this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
-        this.textField.clearPadding();
+        this._textField.clearPadding();
         this.setBorderRadius("0");
-        this.textField.setBorder({ style: BorderStyle.SOLID, width: 0, color: 'transparent' });
-        this.textField.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-editor-border, rgba(30, 100, 200, 0.6))');
-        this.textField.setOutline('none');
-        this.textField.setTextAlign("right");
-        this.textField.setText("");
+        this._textField.setBorder({ style: BorderStyle.SOLID, width: 0, color: 'transparent' });
+        this._textField.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-editor-border, rgba(30, 100, 200, 0.6))');
+        this._textField.setOutline('none');
+        this._textField.setTextAlign("right");
+        this._textField.setText("");
 
-        this.addComponent(this.textField, {
+        this.addComponent(this._textField, {
             anchor: AnchorType.NORTHEAST
         });
     }
@@ -54,7 +54,7 @@ class NumberEditor extends CellEditor<Number> {
      * @returns The current numeric value from the text field.
      */
     getValue() {
-        return Number(this.textField.getText());
+        return Number(this._textField.getText());
     }
 
     /**
@@ -63,7 +63,7 @@ class NumberEditor extends CellEditor<Number> {
      * @param value - The numeric value to set in the text field.
      */
     setValue(value: Number) : this {
-        this.textField.setText(String(value) || "");
+        this._textField.setText(String(value) || "");
 
         return this;
     }
@@ -74,8 +74,8 @@ class NumberEditor extends CellEditor<Number> {
      * @returns This component, for method chaining.
      */
     focus(): this {
-        this.textField.focus();
-        this.textField.select();
+        this._textField.focus();
+        this._textField.select();
 
         return this;
     }

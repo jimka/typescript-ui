@@ -23,8 +23,8 @@ export interface ColumnOptions extends LayoutManagerOptions {
  */
 class Column extends LayoutManager {
 
-    private gap: number = 5;
-    private stretching: boolean = true;
+    private _gap: number = 5;
+    private _stretching: boolean = true;
 
     constructor(options?: ColumnOptions) {
         super();
@@ -58,7 +58,7 @@ class Column extends LayoutManager {
      * @returns The current gap in pixels.
      */
     getGap() {
-        return this.gap;
+        return this._gap;
     }
 
     /**
@@ -67,7 +67,7 @@ class Column extends LayoutManager {
      * @param gap - Gap size in pixels.
      */
     setGap(gap : number) : this {
-        this.gap = gap;
+        this._gap = gap;
         this.doLayout();
 
         return this;
@@ -79,7 +79,7 @@ class Column extends LayoutManager {
      * @returns `true` if stretching is enabled (default).
      */
     isStretching(): boolean {
-        return this.stretching;
+        return this._stretching;
     }
 
     /**
@@ -89,7 +89,7 @@ class Column extends LayoutManager {
      * @param stretching - Pass `false` to enable baseline alignment instead of stretching.
      */
     setStretching(stretching: boolean): this {
-        this.stretching = stretching;
+        this._stretching = stretching;
 
         return this;
     }
@@ -132,11 +132,11 @@ class Column extends LayoutManager {
             }
         }
 
-        if (!this.stretching) {
+        if (!this._stretching) {
             innerHeight = this.computeRowHeight(heights, baselines);
         }
 
-        innerWidth = components.length * (innerWidth + this.gap) - this.gap;
+        innerWidth = components.length * (innerWidth + this._gap) - this._gap;
 
         return {
             width: innerWidth + outerWidth,
@@ -182,11 +182,11 @@ class Column extends LayoutManager {
             }
         }
 
-        if (!this.stretching) {
+        if (!this._stretching) {
             innerHeight = this.computeRowHeight(heights, baselines);
         }
 
-        innerWidth = components.length * (innerWidth + this.gap) - this.gap;
+        innerWidth = components.length * (innerWidth + this._gap) - this._gap;
 
         return {
             width: innerWidth + outerWidth,
@@ -226,7 +226,7 @@ class Column extends LayoutManager {
             }
         }
 
-        innerWidth = components.length * (innerWidth + this.gap) - this.gap;
+        innerWidth = components.length * (innerWidth + this._gap) - this._gap;
 
         return {
             width: innerWidth + outerWidth,
@@ -257,9 +257,9 @@ class Column extends LayoutManager {
 
         let containerInsets = container.getInsets();
 
-        let columnWidth = (containerSize.width - (this.gap * components.length) + this.gap) / components.length;
+        let columnWidth = (containerSize.width - (this._gap * components.length) + this._gap) / components.length;
 
-        if (this.stretching) {
+        if (this._stretching) {
             let columnHeight = containerSize.height;
             let x = containerInsets.getLeft();
             let y = containerInsets.getTop();
@@ -276,7 +276,7 @@ class Column extends LayoutManager {
                     FillType.BOTH
                 );
 
-                x += columnWidth + this.gap;
+                x += columnWidth + this._gap;
             }
 
             return;
@@ -325,7 +325,7 @@ class Column extends LayoutManager {
                 FillType.BOTH
             );
 
-            x += columnWidth + this.gap;
+            x += columnWidth + this._gap;
         }
     }
 }

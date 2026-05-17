@@ -48,7 +48,7 @@ class DateCell extends Cell<Date | null> {
      * @returns This cell, for method chaining.
      */
     commitEdit(): this {
-        const editor = this.activeEditor as DateEditor | null;
+        const editor = this._activeEditor as DateEditor | null;
 
         if (editor && !editor.isEmpty() && editor.getValue() === null) {
             this.cancelEdit();

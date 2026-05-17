@@ -67,7 +67,7 @@ export class Tooltip extends Component {
     private static readonly ITEM_HEIGHT: number = 20;
     private static readonly CURSOR_OFFSET: number = 14;
 
-    private text: Text;
+    private _text: Text;
 
     /** Private — use the static methods; only one instance is ever created. */
     private constructor() {
@@ -89,10 +89,10 @@ export class Tooltip extends Component {
         // committing to a fixed size.
         this.setContain("layout paint");
 
-        this.text = new Text();
-        this.text.setPointerEvents("none");
-        this.text.setWhiteSpace("nowrap");
-        this.addComponent(this.text);
+        this._text = new Text();
+        this._text.setPointerEvents("none");
+        this._text.setWhiteSpace("nowrap");
+        this.addComponent(this._text);
     }
 
     /**
@@ -123,7 +123,7 @@ export class Tooltip extends Component {
 
         const inst = Tooltip.getInstance();
 
-        inst.text.setText(text);
+        inst._text.setText(text);
 
         const tooltipWidth = Math.min(
             Tooltip.MAX_WIDTH,
@@ -349,10 +349,10 @@ export class Tooltip extends Component {
     doLayout(): this {
         super.doLayout();
 
-        this.text.setX(Tooltip.H_PADDING / 2);
-        this.text.setY(Tooltip.V_PADDING / 2);
-        this.text.setWidth(Math.max(0, this.getWidth() - Tooltip.H_PADDING));
-        this.text.setHeight(Tooltip.ITEM_HEIGHT);
+        this._text.setX(Tooltip.H_PADDING / 2);
+        this._text.setY(Tooltip.V_PADDING / 2);
+        this._text.setWidth(Math.max(0, this.getWidth() - Tooltip.H_PADDING));
+        this._text.setHeight(Tooltip.ITEM_HEIGHT);
 
         return this;
     }

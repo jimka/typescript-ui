@@ -12,11 +12,11 @@ import { callable } from "~/core/Callable.js";
  */
 class DateTimeEditor extends CellEditor<Date | null> {
 
-    private showSeconds: boolean;
+    private _showSeconds: boolean;
 
     constructor(showSeconds: boolean = false) {
         super("input");
-        this.showSeconds = showSeconds;
+        this._showSeconds = showSeconds;
 
         this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
         this.setBorderRadius('0');
@@ -28,7 +28,7 @@ class DateTimeEditor extends CellEditor<Date | null> {
     applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
         element.setAttribute('type', 'datetime-local');
-        if (this.showSeconds) element.setAttribute('step', '1');
+        if (this._showSeconds) element.setAttribute('step', '1');
 
         return this;
     }
@@ -59,7 +59,7 @@ class DateTimeEditor extends CellEditor<Date | null> {
         const d  = String(date.getDate()).padStart(2, '0');
         const h  = String(date.getHours()).padStart(2, '0');
         const mi = String(date.getMinutes()).padStart(2, '0');
-        if (this.showSeconds) {
+        if (this._showSeconds) {
             const s = String(date.getSeconds()).padStart(2, '0');
             return `${y}-${mo}-${d}T${h}:${mi}:${s}`;
         }
