@@ -4,7 +4,7 @@ import { ButtonGroup, callable, Component, DarkTheme, DefaultTheme, Dialog, Even
 import { Insets } from '@jimka/typescript-ui/primitive';
 import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model, ModelRecord, Proxy, ReadParams, Store } from '@jimka/typescript-ui/data';
-import { AutoCompleteField, NumberSpinner, RadioButton, Text, TextField } from '@jimka/typescript-ui/component/input';
+import { AutoCompleteField, ComboBox, DateField, DateTimeField, NumberSpinner, RadioButton, Text, TextField, TimeField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { Glyph, IconLabel, IconText, Image, PaginationBar, ProgressBar, ProgressSpinner } from '@jimka/typescript-ui/component/display';
 import { FieldSet } from '@jimka/typescript-ui/component/container';
@@ -18,6 +18,7 @@ import { folder } from '@jimka/typescript-ui/glyphs/solid/folder';
 import { file } from '@jimka/typescript-ui/glyphs/solid/file';
 import { file_code } from '@jimka/typescript-ui/glyphs/solid/file_code';
 import { file_lines } from '@jimka/typescript-ui/glyphs/solid/file_lines';
+
 Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines);
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and
@@ -660,6 +661,29 @@ class MiscPanel extends Panel {
             setTimeout(() => overlay.hideOverlay(), 2000);
         });
         this.addComponent(buttonOverlaySpinner);
+
+        // ── AnimatedDropdown demo: ComboBox / DateField / TimeField / DateTimeField ──
+        const animatedDropdownsLabel = new Text("Animated dropdowns:");
+        this.addComponent(animatedDropdownsLabel);
+
+        const fieldsRow = new Component();
+        fieldsRow.setLayoutManager(new HBox());
+
+        const animatedCombo = new ComboBox({
+            items: ['Apple', 'Banana', 'Cherry', 'Date', 'Elderberry'],
+        });
+        fieldsRow.addComponent(animatedCombo);
+
+        const animatedDate = new DateField();
+        fieldsRow.addComponent(animatedDate);
+
+        const animatedTime = new TimeField({ showSeconds: true });
+        fieldsRow.addComponent(animatedTime);
+
+        const animatedDateTime = new DateTimeField({ showSeconds: true });
+        fieldsRow.addComponent(animatedDateTime);
+
+        this.addComponent(fieldsRow);
     }
 }
 
