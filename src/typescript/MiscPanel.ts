@@ -14,7 +14,11 @@ import type { TreeNode } from '@jimka/typescript-ui/component/tree';
 import { xmark } from '@jimka/typescript-ui/glyphs/solid/xmark';
 import { arrow_right } from '@jimka/typescript-ui/glyphs/solid/arrow_right';
 import { arrow_down } from '@jimka/typescript-ui/glyphs/solid/arrow_down';
-Glyph.register(xmark, arrow_right, arrow_down);
+import { folder } from '@jimka/typescript-ui/glyphs/solid/folder';
+import { file } from '@jimka/typescript-ui/glyphs/solid/file';
+import { file_code } from '@jimka/typescript-ui/glyphs/solid/file_code';
+import { file_lines } from '@jimka/typescript-ui/glyphs/solid/file_lines';
+Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines);
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and
  * pretends to be a slow network request so the spinner overlay is visible.
@@ -375,7 +379,22 @@ class MiscPanel extends Panel {
 
                 const tree = new Tree();
                 tree.setRendererFactory(() => new IconLabelTreeNodeRenderer(
-                    (node) => (node.children && node.children.length > 0) ? "chevron-down" : "file",
+                    (node) => {
+                        if (node.children && node.children.length > 0) {
+                            return "folder";
+                        }
+
+                        const label = node.label ?? "";
+
+                        if (label.endsWith(".ts") || label.endsWith(".json")) {
+                            return "file-code";
+                        }
+                        if (label.endsWith(".md")) {
+                            return "file-lines";
+                        }
+
+                        return "file";
+                    },
                 ));
                 tree.setNodes(treeData);
 
