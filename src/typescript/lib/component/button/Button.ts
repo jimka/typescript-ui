@@ -9,7 +9,6 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { AnchorType } from "~/layout/AnchorType.js";
-import { CSS } from "~/core/CSS.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Border, BorderOptions } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -87,25 +86,26 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     private _content!: Component;
     private _glyph: Glyph | null = null;
 
-    // Lazy `:active` rule. The backing field is undefined until first access
-    // so the getter is safe to call from the `super` cascade — which runs
-    // before subclass field initializers — when pressed* setters fire from
-    // the merged options bag. The underlying `CSSStyleRule` itself stays
-    // unmaterialised until `pressedStyleRule.ensure()` runs.
-    private _pressedStyleRule?: StyleRule;
+    // Lazy `:active` rule. The slot is just a fast-path cache — the
+    // `createStyleRule` builder on Component dedupes by selector suffix, so
+    // even if the slot is reset between calls (e.g. by TypeScript class-field
+    // init after super returns), the next access still returns the same
+    // wrapper that the super-cascade allocated. `declare` keeps the slot off
+    // the runtime class so the fast-path doesn't pay an unnecessary Map
+    // lookup after construction.
+    private declare _pressedStyleRule?: StyleRule;
     private get pressedStyleRule(): StyleRule {
-        return this._pressedStyleRule ??= new StyleRule(() => CSS.createComponentRule(this.getId() + ":active") as CSSStyleRule);
+        return this._pressedStyleRule ??= this.createStyleRule(":active");
     }
     private pressedBorder: Border | null = null;
 
     // Lazy `:hover:not(:active)` rule. The `:not(:active)` guard makes the
     // cascade unambiguous regardless of source order — the moment the
     // pointer goes down, `:active` matches and `:hover:not(:active)` stops
-    // matching, so the pressed treatment always wins. Same lazy contract as
-    // the pressed rule above.
-    private _hoverStyleRule?: StyleRule;
+    // matching, so the pressed treatment always wins.
+    private declare _hoverStyleRule?: StyleRule;
     private get hoverStyleRule(): StyleRule {
-        return this._hoverStyleRule ??= new StyleRule(() => CSS.createComponentRule(this.getId() + ":hover:not(:active)") as CSSStyleRule);
+        return this._hoverStyleRule ??= this.createStyleRule(":hover:not(:active)");
     }
     private hoverBorder: Border | null = null;
 

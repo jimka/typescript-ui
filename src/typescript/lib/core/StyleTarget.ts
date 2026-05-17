@@ -116,6 +116,13 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
  * incurs no stylesheet insertion. Once materialised, the rule object is
  * stable for the lifetime of this `StyleRule`.
  *
+ * Inherited {@link StyleTarget.set} queues writes into a dirty bag while the
+ * target is null and writes through once `ensure()` has materialised the rule.
+ * Owners that need the rule on the stylesheet at first render (rather than at
+ * first write) register the rule via Component's `registerStyleRule`, which
+ * calls `ensure()` from `applyStyle` and flushes the dirty bag onto the live
+ * `CSSStyleRule`.
+ *
  * @category Core
  */
 class StyleRule extends StyleTarget<CSSStyleRule> {
@@ -135,29 +142,6 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
             this.materialize(this.factory());
         }
         return this.target!;
-    }
-
-    /**
-     * Writes through the underlying rule, materialising it on first write.
-     * Inherited `StyleTarget.set` queues into a dirty bag while the target is
-     * null; for a CSS rule that bag has no natural flush point (there's no
-     * element-attach lifecycle like `InlineStyle.attach`), so the rule would
-     * never reach the stylesheet. Materialise eagerly here — the lazy intent
-     * is preserved by the per-instance factory, which still defers stylesheet
-     * insertion until the first call site.
-     */
-    set(key: string, value: string | null): void {
-        this.ensure();
-        super.set(key, value);
-    }
-
-    /**
-     * Bulk variant of {@link StyleRule.set}. Materialises the rule before
-     * delegating to {@link StyleTarget.setMany} for the same reason.
-     */
-    setMany(values: Record<string, string | null>): void {
-        this.ensure();
-        super.setMany(values);
     }
 }
 
