@@ -684,6 +684,13 @@ class Tree extends Component<TreeOptions> {
             // Pin row's static top to 0 once; per-frame Y offset comes from translateY.
             row.setY(0);
 
+            // Pre-promote pooled rows to their own compositor layer so the first
+            // scroll-driven translate doesn't pay a layer-creation cost. The pool
+            // is grow-only here, so the hint persists for the Tree's lifetime —
+            // bounded by windowSize + buffer (~20–40 rows), well under the per-page
+            // will-change threshold.
+            row.setWillChange("transform");
+
             this._rowPool.push(row);
             this._boundIndices.push(-1);
             this._rowGeom.push(null);
