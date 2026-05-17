@@ -379,15 +379,17 @@ class Glyph extends Component<GlyphOptions> {
         }
 
         const prev = this._glyphAnimation;
-        if (prev) {
-            this.getElement(true).classList.remove(CLASS_PREFIX + prev);
-            this.setWillChange(null);
-        }
-
         this._glyphAnimation = kind;
+
+        const el = this.getElement();
+
+        if (el && prev) {
+            el.classList.remove(CLASS_PREFIX + prev);
+        }
 
         if (kind === null) {
             this.setElementStyle("animationDuration", null);
+            this.setWillChange(null);
 
             if (this._animatedRef) {
                 _animatedRefs.delete(this._animatedRef);
@@ -405,7 +407,10 @@ class Glyph extends Component<GlyphOptions> {
         }
 
         if (!Animation.isReducedMotion()) {
-            this.getElement(true).classList.add(CLASS_PREFIX + kind);
+            if (el) {
+                el.classList.add(CLASS_PREFIX + kind);
+            }
+
             this.setWillChange("transform");
         }
 
@@ -553,6 +558,10 @@ class Glyph extends Component<GlyphOptions> {
 
         if (this._def.kind === "char") {
             element.textContent = this._def.char;
+        }
+
+        if (this._glyphAnimation && !Animation.isReducedMotion()) {
+            element.classList.add(CLASS_PREFIX + this._glyphAnimation);
         }
 
         return element;
