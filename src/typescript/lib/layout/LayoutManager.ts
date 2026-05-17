@@ -28,11 +28,11 @@ export interface LayoutManagerOptions {
  */
 export abstract class LayoutManager extends BaseObject {
 
-    private container: Component | null = null;
-    private layoutConstraints: Map<string, LayoutConstraints> = new Map<string, LayoutConstraints>();
-    private defaultPreferredSize: Size | null = null;
-    private defaultMinSize: Size = { width: 0, height: 0 };
-    private defaultMaxSize: Size = { width: Number.MAX_VALUE, height: Number.MAX_VALUE };
+    private _container: Component | null = null;
+    private _layoutConstraints: Map<string, LayoutConstraints> = new Map<string, LayoutConstraints>();
+    private _defaultPreferredSize: Size | null = null;
+    private _defaultMinSize: Size = { width: 0, height: 0 };
+    private _defaultMaxSize: Size = { width: Number.MAX_VALUE, height: Number.MAX_VALUE };
 
     constructor() {
         super();
@@ -56,7 +56,7 @@ export abstract class LayoutManager extends BaseObject {
      * @param container - The container component to attach to.
      */
     attach(container: Component) : this {
-        this.container = container;
+        this._container = container;
 
         return this;
     }
@@ -65,7 +65,7 @@ export abstract class LayoutManager extends BaseObject {
      * Dissociates this layout manager from its container.
      */
     detach() : this {
-        this.container = null;
+        this._container = null;
 
         return this;
     }
@@ -76,7 +76,7 @@ export abstract class LayoutManager extends BaseObject {
      * @returns The attached container, or `null` if not attached.
      */
     getContainer(): Component | null {
-        return this.container;
+        return this._container;
     }
 
     /**
@@ -86,7 +86,7 @@ export abstract class LayoutManager extends BaseObject {
      * @returns The preferred size, or `null` if not set.
      */
     getPreferredSize(): Size | null {
-        return this.defaultPreferredSize;
+        return this._defaultPreferredSize;
     }
 
     /**
@@ -95,7 +95,7 @@ export abstract class LayoutManager extends BaseObject {
      * @returns The minimum size.
      */
     getMinSize(): Size | null {
-        return this.defaultMinSize;
+        return this._defaultMinSize;
     }
 
     /**
@@ -104,7 +104,7 @@ export abstract class LayoutManager extends BaseObject {
      * @returns The maximum size.
      */
     getMaxSize(): Size | null {
-        return this.defaultMaxSize;
+        return this._defaultMaxSize;
     }
 
     /**
@@ -261,7 +261,7 @@ export abstract class LayoutManager extends BaseObject {
         if (!constraints) {
             return this.delLayoutConstraints(component);
         } else {
-            this.layoutConstraints.set(component.getId(), constraints);
+            this._layoutConstraints.set(component.getId(), constraints);
             return constraints;
         }
     }
@@ -274,9 +274,9 @@ export abstract class LayoutManager extends BaseObject {
      * @returns The removed constraints, or `undefined` if none were stored.
      */
     delLayoutConstraints(component: Component) {
-        let constraints = this.layoutConstraints.get(component.getId());
+        let constraints = this._layoutConstraints.get(component.getId());
 
-        this.layoutConstraints.delete(component.getId());
+        this._layoutConstraints.delete(component.getId());
 
         return constraints;
     }
@@ -289,7 +289,7 @@ export abstract class LayoutManager extends BaseObject {
      * @returns The stored constraints, or `undefined` if none are set.
      */
     getLayoutConstraints(component: Component) {
-        return this.layoutConstraints.get(component.getId());
+        return this._layoutConstraints.get(component.getId());
     }
 
     /**

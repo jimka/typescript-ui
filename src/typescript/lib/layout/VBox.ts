@@ -23,15 +23,15 @@ export interface VBoxOptions extends LayoutManagerOptions {
  */
 class VBox extends LayoutManager {
 
-    private spacing: number = 5;
-    private stretching: boolean = false;
-    private defaultComponentHeight: number = 100;
+    private _spacing: number = 5;
+    private _stretching: boolean = false;
+    private _defaultComponentHeight: number = 100;
 
     constructor(spacing: number | VBoxOptions = 5, options?: VBoxOptions) {
         super();
 
         if (typeof spacing === 'number') {
-            this.spacing = spacing;
+            this._spacing = spacing;
 
             if (options) {
                 this.applyOptions(options);
@@ -65,7 +65,7 @@ class VBox extends LayoutManager {
      * @returns The current spacing in pixels.
      */
     getComponentSpacing() {
-        return this.spacing || 0;
+        return this._spacing || 0;
     }
 
     /**
@@ -74,7 +74,7 @@ class VBox extends LayoutManager {
      * @param spacing - Spacing in pixels.
      */
     setComponentSpacing(spacing: number) : this {
-        this.spacing = spacing;
+        this._spacing = spacing;
 
         return this;
     }
@@ -85,7 +85,7 @@ class VBox extends LayoutManager {
      * @returns `true` if stretching is enabled.
      */
     isStretching() {
-        return this.stretching || false;
+        return this._stretching || false;
     }
 
     /**
@@ -94,7 +94,7 @@ class VBox extends LayoutManager {
      * @param stretching - Pass `true` to enable width stretching.
      */
     setStretching(stretching: boolean) : this {
-        this.stretching = !!stretching;
+        this._stretching = !!stretching;
 
         return this;
     }
@@ -245,7 +245,7 @@ class VBox extends LayoutManager {
                 let minSize = component.getMinSize();
                 fixedHeight += (size ? size.height : undefined)
                     || (minSize ? minSize.height : undefined)
-                    || this.defaultComponentHeight;
+                    || this._defaultComponentHeight;
             }
         }
 
@@ -271,7 +271,7 @@ class VBox extends LayoutManager {
             } else {
                 height = (size ? size.height : undefined)
                     || (minSize ? minSize.height : undefined)
-                    || this.defaultComponentHeight;
+                    || this._defaultComponentHeight;
             }
 
             if (!size || this.isStretching()) {

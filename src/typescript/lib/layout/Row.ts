@@ -22,7 +22,7 @@ export interface RowOptions extends LayoutManagerOptions {
  */
 class Row extends LayoutManager {
 
-    private gap: number = 5;
+    private _gap: number = 5;
 
     constructor(options?: RowOptions) {
         super();
@@ -52,7 +52,7 @@ class Row extends LayoutManager {
      * @returns The current gap in pixels.
      */
     getGap() {
-        return this.gap;
+        return this._gap;
     }
 
     /**
@@ -61,7 +61,7 @@ class Row extends LayoutManager {
      * @param gap - Gap size in pixels.
      */
     setGap(gap : number) : this {
-        this.gap = gap;
+        this._gap = gap;
         this.doLayout();
 
         return this;
@@ -99,7 +99,7 @@ class Row extends LayoutManager {
             }
         }
 
-        innerHeight = components.length * (innerHeight + this.gap) - this.gap;
+        innerHeight = components.length * (innerHeight + this._gap) - this._gap;
 
         return {
             width: innerWidth + outerWidth,
@@ -139,7 +139,7 @@ class Row extends LayoutManager {
             }
         }
 
-        innerHeight = components.length * (innerHeight + this.gap) - this.gap;
+        innerHeight = components.length * (innerHeight + this._gap) - this._gap;
 
         return {
             width: innerWidth + outerWidth,
@@ -179,7 +179,7 @@ class Row extends LayoutManager {
             }
         }
 
-        innerHeight = components.length * (innerHeight + this.gap) - this.gap;
+        innerHeight = components.length * (innerHeight + this._gap) - this._gap;
 
         return {
             width: innerWidth + outerWidth,
@@ -206,7 +206,7 @@ class Row extends LayoutManager {
         let containerInsets = container.getInsets();
 
         let columnWidth = containerSize.width;
-        let columnHeight = (containerSize.height - (this.gap * components.length) + this.gap) / components.length;
+        let columnHeight = (containerSize.height - (this._gap * components.length) + this._gap) / components.length;
 
         let x = containerInsets.getLeft();
         let y = containerInsets.getTop();
@@ -223,7 +223,7 @@ class Row extends LayoutManager {
                 FillType.BOTH
             );
 
-            y += columnHeight + this.gap;
+            y += columnHeight + this._gap;
         }
     }
 }
