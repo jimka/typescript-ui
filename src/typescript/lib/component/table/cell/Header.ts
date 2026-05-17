@@ -115,7 +115,7 @@ class HeaderCell extends DefaultCell {
         }
 
         if (this._headerGlyph) {
-            this.setHeaderGlyph(this._headerGlyph);
+            this._mountHeaderGlyph(el);
         }
 
         return this;
@@ -143,19 +143,35 @@ class HeaderCell extends DefaultCell {
      */
     setHeaderGlyph(name: string | null): this {
         this._headerGlyph = name;
+        this._mountHeaderGlyph(this.getElement());
 
+        return this;
+    }
+
+    /**
+     * Mounts or replaces the leading glyph against the given host element.
+     * Called from {@link setHeaderGlyph} (post-init via cached element) and
+     * from {@link init} (during render via the element parameter, before
+     * `Component._element` has been cached).
+     *
+     * @param el - The owning `<th>` element, or undefined when the cell is
+     *   still pre-render. When undefined the renderer insets are reset but
+     *   no glyph is mounted; the next render's {@link init} call will mount
+     *   the glyph using its element parameter.
+     */
+    private _mountHeaderGlyph(el: HTMLElement | undefined): void {
         if (this._headerGlyphInstance) {
             this._headerGlyphInstance.getElement()?.remove();
             this._headerGlyphInstance = null;
         }
 
         const themePad = ThemeManager.getTheme().table.cell.padding;
-        const el       = this.getElement();
+        const name     = this._headerGlyph;
 
         if (!name || !el) {
             this.getRenderer().setInsets(new Insets(0, themePad, 0, themePad));
 
-            return this;
+            return;
         }
 
         const glyph = new Glyph(name);
@@ -173,8 +189,6 @@ class HeaderCell extends DefaultCell {
         // 16 = Glyph default width; 4 = default gap (matches token default).
         const offset = 16 + 4 + themePad;
         this.getRenderer().setInsets(new Insets(0, themePad, 0, offset));
-
-        return this;
     }
 
     /**
