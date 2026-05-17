@@ -14,6 +14,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Window`](/api/core/classes/Window) | Floating, draggable, resizable window |
 | [`Dialog`](/api/core/classes/Dialog) | Modal dialog with async result |
 | [`Tooltip`](/api/core/classes/Tooltip) | Singleton hover hint, attach via `Tooltip.attach(component, text)` |
+| [`Popover`](/components/Popover) | Anchored, non-modal floating bubble with arrow tail and dismiss modes |
 | [`Notification`](/api/core/classes/Notification) | Static toast — `Notification.show(message, type, duration?)` |
 | [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown) | Floating-panel base with shared fade lifecycle |
 
