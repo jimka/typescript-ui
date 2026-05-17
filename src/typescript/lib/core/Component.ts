@@ -91,6 +91,7 @@ export interface ComponentOptions {
     minSize?:         Size;
     maxSize?:         Size;
     transform?:       string;
+    willChange?:      string | null;
     opacity?:         number;
     position?:        Position;
     overflow?:        string;
@@ -172,6 +173,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private height               : number                  = NaN;
     private translateX           : number                  = 0;
     private translateY           : number                  = 0;
+    private _willChange          : string | null           = null;
 
     // Derived / runtime-only fields that have no direct ComponentOptions counterpart.
     private onPreferredSizeChange: (() => void) | null     = null;
@@ -315,6 +317,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (options.minSize         !== undefined) this.setMinSize(options.minSize.width, options.minSize.height);
         if (options.maxSize         !== undefined) this.setMaxSize(options.maxSize.width, options.maxSize.height);
         if (options.transform       !== undefined) this.setTransform(options.transform);
+        if (options.willChange      !== undefined) this.setWillChange(options.willChange);
         if (options.opacity         !== undefined) this.setOpacity(options.opacity);
         if (options.position        !== undefined) this.setPosition(options.position);
         if (options.overflow        !== undefined) this.setOverflow(options.overflow);
@@ -2139,6 +2142,41 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     clearOpacity(): this {
         this.setElementStyle("opacity", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the cached `will-change` value last passed to {@link setWillChange}.
+     *
+     * @returns The active hint string, or `null` if no hint is set.
+     */
+    getWillChange(): string | null {
+        return this._willChange;
+    }
+
+    /**
+     * Sets the CSS `will-change` hint on the element, pre-promoting it to its
+     * own compositor layer so the first transform/scroll frame doesn't pay a
+     * layer-creation cost. Pass `null` to clear the hint and release the layer.
+     *
+     * @param value - A CSS `will-change` value (e.g. `"transform"`) or `null` to clear.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks The hint costs GPU memory and is ignored by browsers past a
+     * per-page threshold (~50–100 elements). Set it only over the active-motion
+     * lifetime (drag, pool membership, scroll-target lifetime) and clear it
+     * promptly when motion ends.
+     */
+    setWillChange(value: string | null): this {
+        if (this._willChange === value) {
+            return this;
+        }
+
+        this._willChange = value;
+
+        this.setElementStyle("willChange", value);
 
         return this;
     }
