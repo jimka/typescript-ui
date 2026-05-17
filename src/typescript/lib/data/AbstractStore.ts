@@ -73,19 +73,19 @@ export abstract class AbstractStore {
     abstract readonly model: AbstractModel;
     abstract readonly proxy: Proxy | undefined;
 
-    private allRecords: ModelRecord[] = [];
-    private records: ModelRecord[] = [];
-    private pendingRemoved: ModelRecord[] = [];
-    private activeFilters: FilterDescriptor[] = [];
-    private activeSorters: SortDescriptor[] = [];
-    private listenerMap: Map<string, StoreListener[]> = new Map();
+    private _allRecords: ModelRecord[] = [];
+    private _records: ModelRecord[] = [];
+    private _pendingRemoved: ModelRecord[] = [];
+    private _activeFilters: FilterDescriptor[] = [];
+    private _activeSorters: SortDescriptor[] = [];
+    private _listenerMap: Map<string, StoreListener[]> = new Map();
 
     // Worker-offload state. Each store gets a unique id so the shared worker can
     // keep snapshots from different stores apart. `snapshotDirty` flags whether
     // the worker's copy of allRecords is stale (re-shipped on the next applyView
     // when the dataset is over the threshold).
-    private storeId: string = 'store-' + (nextStoreId++);
-    private snapshotDirty: boolean = true;
+    private _storeId: string = 'store-' + (nextStoreId++);
+    private _snapshotDirty: boolean = true;
     private _loading: boolean = false;
 
     // ── Server-side pagination state ─────────────────────────────────────────
@@ -128,11 +128,11 @@ export abstract class AbstractStore {
         }
 
         if (options.sorters !== undefined && options.sorters.length > 0) {
-            this.activeSorters = options.sorters.slice();
+            this._activeSorters = options.sorters.slice();
         }
 
         if (options.filters !== undefined && options.filters.length > 0) {
-            this.activeFilters = options.filters.slice();
+            this._activeFilters = options.filters.slice();
         }
 
         if (options.autoLoad === true) {
@@ -168,7 +168,7 @@ export abstract class AbstractStore {
 
             this._totalCount = this.proxy.getLastTotalCount();
 
-            this.emit('load', { records: this.records });
+            this.emit('load', { records: this._records });
         } finally {
             this.setLoading(false);
         }
@@ -204,7 +204,7 @@ export abstract class AbstractStore {
      */
     loadData(data: any[]): void {
         this.ingestRaw(data);
-        this.emit('load', { records: this.records });
+        this.emit('load', { records: this._records });
     }
 
     // ── Pagination ───────────────────────────────────────────────────────────
@@ -362,8 +362,8 @@ export abstract class AbstractStore {
      * @param data - An array of plain objects to convert via the model's `createRecord`.
      */
     private ingestRaw(data: any[]): void {
-        this.allRecords = data.map(item => this.model.createRecord(item));
-        this.snapshotDirty = true;
+        this._allRecords = data.map(item => this.model.createRecord(item));
+        this._snapshotDirty = true;
         this.applyView();
     }
 
@@ -375,7 +375,7 @@ export abstract class AbstractStore {
      * @returns A shallow-copy array of the records in the active view.
      */
     getRecords(): ModelRecord[] {
-        return this.records.slice();
+        return this._records.slice();
     }
 
     /**
@@ -384,7 +384,7 @@ export abstract class AbstractStore {
      * @returns A shallow-copy array of every record in the store.
      */
     getAll(): ModelRecord[] {
-        return this.allRecords.slice();
+        return this._allRecords.slice();
     }
 
     /**
@@ -393,7 +393,7 @@ export abstract class AbstractStore {
      * @returns The count of visible records after filters are applied.
      */
     getCount(): number {
-        return this.records.length;
+        return this._records.length;
     }
 
     /**
@@ -404,7 +404,7 @@ export abstract class AbstractStore {
      * @returns The ModelRecord at that position, or undefined if the index is out of range.
      */
     getAt(index: number): ModelRecord | undefined {
-        return this.records[index];
+        return this._records[index];
     }
 
     /**
@@ -419,7 +419,7 @@ export abstract class AbstractStore {
             return undefined;
         }
 
-        return this.allRecords.find(r => r.getId() === id);
+        return this._allRecords.find(r => r.getId() === id);
     }
 
     /**
@@ -431,7 +431,7 @@ export abstract class AbstractStore {
      * @returns The first matching ModelRecord, or undefined if none is found.
      */
     find(property: string, value: any): ModelRecord | undefined {
-        return this.records.find(r => r.get(property) === value);
+        return this._records.find(r => r.get(property) === value);
     }
 
     /**
@@ -443,7 +443,7 @@ export abstract class AbstractStore {
      * @returns An array of all matching ModelRecords; empty if none match.
      */
     findAll(property: string, value: any): ModelRecord[] {
-        return this.records.filter(r => r.get(property) === value);
+        return this._records.filter(r => r.get(property) === value);
     }
 
     // ── Mutation ─────────────────────────────────────────────────────────────
@@ -465,8 +465,8 @@ export abstract class AbstractStore {
             return record;
         });
 
-        this.allRecords.push(...added);
-        this.snapshotDirty = true;
+        this._allRecords.push(...added);
+        this._snapshotDirty = true;
         this.applyView();
 
         this.emit('add', { records: added });
@@ -486,16 +486,16 @@ export abstract class AbstractStore {
      * the proxy during the next call to `sync()`.
      */
     remove(record: ModelRecord): this {
-        const allIdx = this.allRecords.indexOf(record);
+        const allIdx = this._allRecords.indexOf(record);
         if (allIdx === -1) {
             return this;
         }
 
-        this.allRecords.splice(allIdx, 1);
-        this.snapshotDirty = true;
+        this._allRecords.splice(allIdx, 1);
+        this._snapshotDirty = true;
 
         if (!record.isNew()) {
-            this.pendingRemoved.push(record);
+            this._pendingRemoved.push(record);
         }
 
         this.applyView();
@@ -514,11 +514,11 @@ export abstract class AbstractStore {
      * as new are simply discarded.
      */
     removeAll(): this {
-        this.pendingRemoved.push(...this.allRecords.filter(r => !r.isNew()));
+        this._pendingRemoved.push(...this._allRecords.filter(r => !r.isNew()));
 
-        this.allRecords = [];
-        this.records = [];
-        this.snapshotDirty = true;
+        this._allRecords = [];
+        this._records = [];
+        this._snapshotDirty = true;
 
         this.emit('datachanged', {});
 
@@ -552,11 +552,11 @@ export abstract class AbstractStore {
      * discard in-memory edits. Also useful for "unsaved changes" prompts.
      */
     hasPendingChanges(): boolean {
-        if (this.pendingRemoved.length > 0) {
+        if (this._pendingRemoved.length > 0) {
             return true;
         }
 
-        for (const record of this.allRecords) {
+        for (const record of this._allRecords) {
             if (record.isNew() || record.isDirty()) {
                 return true;
             }
@@ -579,7 +579,7 @@ export abstract class AbstractStore {
     reject(): void {
         const survivors: ModelRecord[] = [];
 
-        for (const record of this.allRecords) {
+        for (const record of this._allRecords) {
             if (record.isNew()) {
                 continue;
             }
@@ -591,13 +591,13 @@ export abstract class AbstractStore {
             survivors.push(record);
         }
 
-        if (this.pendingRemoved.length > 0) {
-            survivors.push(...this.pendingRemoved);
-            this.pendingRemoved = [];
+        if (this._pendingRemoved.length > 0) {
+            survivors.push(...this._pendingRemoved);
+            this._pendingRemoved = [];
         }
 
-        this.allRecords = survivors;
-        this.snapshotDirty = true;
+        this._allRecords = survivors;
+        this._snapshotDirty = true;
         this.applyView();
 
         this.emit('datachanged', {});
@@ -620,7 +620,7 @@ export abstract class AbstractStore {
 
         this.emit('beforesync', {});
 
-        for (const record of this.allRecords.filter(r => r.isNew())) {
+        for (const record of this._allRecords.filter(r => r.isNew())) {
             const serverData = await this.proxy.create(record);
 
             for (const [k, v] of Object.entries(serverData)) {
@@ -630,7 +630,7 @@ export abstract class AbstractStore {
             record.commit();
         }
 
-        for (const record of this.allRecords.filter(r => r.isDirty() && !r.isNew())) {
+        for (const record of this._allRecords.filter(r => r.isDirty() && !r.isNew())) {
             const serverData = await this.proxy.update(record);
 
             for (const [k, v] of Object.entries(serverData)) {
@@ -640,11 +640,11 @@ export abstract class AbstractStore {
             record.commit();
         }
 
-        for (const record of this.pendingRemoved) {
+        for (const record of this._pendingRemoved) {
             await this.proxy.destroy(record);
         }
 
-        this.pendingRemoved = [];
+        this._pendingRemoved = [];
 
         this.emit('sync', {});
         this.emit('datachanged', {});
@@ -681,9 +681,9 @@ export abstract class AbstractStore {
     sort(descriptors: SortDescriptor[]): Promise<void>;
     sort(fieldOrDescriptors: string | SortDescriptor[], dir: 'asc' | 'desc' = 'asc'): Promise<void> {
         if (typeof fieldOrDescriptors === 'string') {
-            this.activeSorters = [{ field: fieldOrDescriptors, dir }];
+            this._activeSorters = [{ field: fieldOrDescriptors, dir }];
         } else {
-            this.activeSorters = fieldOrDescriptors.slice();
+            this._activeSorters = fieldOrDescriptors.slice();
         }
 
         if (this._pageSize != null) {
@@ -707,7 +707,7 @@ export abstract class AbstractStore {
      * @returns A shallow-copy array of the active sort descriptors; empty when no sort is active.
      */
     getActiveSorters(): SortDescriptor[] {
-        return this.activeSorters.map(s => ({ ...s }));
+        return this._activeSorters.map(s => ({ ...s }));
     }
 
     /**
@@ -718,7 +718,7 @@ export abstract class AbstractStore {
      * @deprecated Use {@link getActiveSorters} instead.
      */
     getActiveSorter(): { property: string; direction: 'asc' | 'desc' } | null {
-        const first = this.activeSorters[0];
+        const first = this._activeSorters[0];
 
         return first ? { property: first.field, direction: first.dir } : null;
     }
@@ -729,7 +729,7 @@ export abstract class AbstractStore {
      * @returns A promise that resolves once the local view has been rebuilt.
      */
     clearSort(): Promise<void> {
-        this.activeSorters = [];
+        this._activeSorters = [];
 
         return this.applyView().then(() => {
             this.emit('sortchanged', { sorters: [] });
@@ -746,7 +746,7 @@ export abstract class AbstractStore {
      * @param value - The value a record's field must equal to pass the filter.
      */
     filter(property: string, value: any): Promise<void> {
-        this.activeFilters.push({ type: 'eq', field: property, value: value });
+        this._activeFilters.push({ type: 'eq', field: property, value: value });
 
         return this.applyView().then(() => {
             this.emit('datachanged', {});
@@ -761,7 +761,7 @@ export abstract class AbstractStore {
      * @param descriptor - The filter descriptor to apply.
      */
     filterBy(descriptor: FilterDescriptor): Promise<void> {
-        this.activeFilters.push(descriptor);
+        this._activeFilters.push(descriptor);
 
         return this.applyView().then(() => {
             this.emit('datachanged', {});
@@ -777,7 +777,7 @@ export abstract class AbstractStore {
      * without filter context.
      */
     clearFilter(): Promise<void> {
-        this.activeFilters = [];
+        this._activeFilters = [];
 
         if (this._pageSize != null) {
             this._page = 1;
@@ -802,11 +802,11 @@ export abstract class AbstractStore {
      * @param listener - The callback function to invoke when the event fires.
      */
     on(event: StoreEvent, listener: StoreListener): void {
-        let bucket = this.listenerMap.get(event);
+        let bucket = this._listenerMap.get(event);
         if (!bucket) {
             bucket = [];
 
-            this.listenerMap.set(event, bucket);
+            this._listenerMap.set(event, bucket);
         }
 
         bucket.push(listener);
@@ -819,7 +819,7 @@ export abstract class AbstractStore {
      * @param listener - The callback function to remove.
      */
     off(event: StoreEvent, listener: StoreListener): void {
-        const bucket = this.listenerMap.get(event);
+        const bucket = this._listenerMap.get(event);
         if (!bucket) {
             return;
         }
@@ -837,7 +837,7 @@ export abstract class AbstractStore {
      * @param payload - The data object passed to each listener.
      */
     private emit(event: string, payload: any): void {
-        const bucket = this.listenerMap.get(event);
+        const bucket = this._listenerMap.get(event);
         if (!bucket) {
             return;
         }
@@ -862,19 +862,19 @@ export abstract class AbstractStore {
      * the current implementation runs synchronously and resolves immediately.
      */
     protected applyView(): Promise<void> {
-        if (this.allRecords.length >= WORKER_THRESHOLD && StoreWorkerClient.isAvailable()) {
+        if (this._allRecords.length >= WORKER_THRESHOLD && StoreWorkerClient.isAvailable()) {
             return this.applyViewOnWorker();
         }
 
-        let view = this.allRecords.slice();
+        let view = this._allRecords.slice();
 
-        for (const descriptor of this.activeFilters) {
+        for (const descriptor of this._activeFilters) {
             view = view.filter(r => matchesFilter(r, descriptor));
         }
 
-        if (this.activeSorters.length > 0) {
+        if (this._activeSorters.length > 0) {
             view.sort((a, b) => {
-                for (const { field, dir } of this.activeSorters) {
+                for (const { field, dir } of this._activeSorters) {
                     const av = a.get(field);
                     const bv = b.get(field);
 
@@ -901,7 +901,7 @@ export abstract class AbstractStore {
             });
         }
 
-        this.records = view;
+        this._records = view;
 
         return Promise.resolve();
     }
@@ -920,37 +920,37 @@ export abstract class AbstractStore {
      * multi-key comparator.
      */
     private applyViewOnWorker(): Promise<void> {
-        const snapshot = this.snapshotDirty
-            ? StoreWorkerClient.snapshot(this.storeId, this.allRecords.map(r => r.getData()))
+        const snapshot = this._snapshotDirty
+            ? StoreWorkerClient.snapshot(this._storeId, this._allRecords.map(r => r.getData()))
             : Promise.resolve();
 
-        if (this.snapshotDirty) {
-            this.snapshotDirty = false;
+        if (this._snapshotDirty) {
+            this._snapshotDirty = false;
         }
 
-        const allRecordsRef = this.allRecords;
-        const primary       = this.activeSorters[0];
+        const allRecordsRef = this._allRecords;
+        const primary       = this._activeSorters[0];
 
         return snapshot
             .then(() => StoreWorkerClient.sortFilter(
-                this.storeId,
+                this._storeId,
                 primary
                     ? { field: primary.field, direction: primary.dir }
                     : undefined,
-                this.activeFilters.length > 0
-                    ? (this.activeFilters.length === 1
-                        ? this.activeFilters[0]
-                        : { type: 'and', filters: this.activeFilters })
+                this._activeFilters.length > 0
+                    ? (this._activeFilters.length === 1
+                        ? this._activeFilters[0]
+                        : { type: 'and', filters: this._activeFilters })
                     : undefined,
             ))
             .then(indices => {
                 // Guard against allRecords having been replaced while the worker ran.
                 // If so, the indices reference stale data; trigger a fresh applyView.
-                if (allRecordsRef !== this.allRecords) {
+                if (allRecordsRef !== this._allRecords) {
                     return this.applyView();
                 }
 
-                this.records = indices.map(i => this.allRecords[i]);
+                this._records = indices.map(i => this._allRecords[i]);
                 return undefined;
             });
     }

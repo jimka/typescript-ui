@@ -19,4 +19,45 @@ export default tseslint.config(
             "local/forward-super-options": "error",
         },
     },
+    {
+        // Naming-convention guard scoped to the library only — demo apps
+        // under src/typescript/* are out of the rename's scope (plan Non-Goals).
+        files: ["src/typescript/lib/**/*.ts"],
+        languageOptions: {
+            parser: tseslint.parser,
+        },
+        plugins: {
+            "@typescript-eslint": tseslint.plugin,
+        },
+        rules: {
+            "@typescript-eslint/naming-convention": [
+                "error",
+                // Static private/protected properties are out of scope —
+                // the more-specific selector with `format: null` exempts
+                // them from the instance-field rules below.
+                {
+                    selector: "classProperty",
+                    modifiers: ["private", "static"],
+                    format: null,
+                },
+                {
+                    selector: "classProperty",
+                    modifiers: ["protected", "static"],
+                    format: null,
+                },
+                {
+                    selector: "classProperty",
+                    modifiers: ["private"],
+                    format: ["camelCase"],
+                    leadingUnderscore: "require",
+                },
+                {
+                    selector: "classProperty",
+                    modifiers: ["protected"],
+                    format: ["camelCase"],
+                    leadingUnderscore: "require",
+                },
+            ],
+        },
+    },
 );

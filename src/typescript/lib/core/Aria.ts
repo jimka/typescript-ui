@@ -58,16 +58,16 @@ export type AriaSort = 'none' | 'ascending' | 'descending';
  */
 export class Aria {
 
-    private component: Component;
-    private role: AriaRole | null = null;
-    private tabIndex: number | null = null;
-    private attributes: Map<string, string> = new Map();
+    private _component: Component;
+    private _role: AriaRole | null = null;
+    private _tabIndex: number | null = null;
+    private _attributes: Map<string, string> = new Map();
 
     /**
      * @param component - The component this helper manages ARIA state for.
      */
     constructor(component: Component) {
-        this.component = component;
+        this._component = component;
     }
 
     /**
@@ -76,8 +76,8 @@ export class Aria {
      * @param role - The ARIA role to assign.
      */
     setRole(role: AriaRole): this {
-        this.role = role;
-        this.component.applyAriaAttribute("role", role);
+        this._role = role;
+        this._component.applyAriaAttribute("role", role);
 
         return this;
     }
@@ -88,7 +88,7 @@ export class Aria {
      * @returns The role, or null.
      */
     getRole(): AriaRole | null {
-        return this.role;
+        return this._role;
     }
 
     /**
@@ -97,8 +97,8 @@ export class Aria {
      * @param value - 0 = focusable in document order, -1 = focusable by script only, null removes the attribute.
      */
     setTabIndex(value: number | null): this {
-        this.tabIndex = value;
-        this.component.applyAriaAttribute("tabindex", value !== null ? String(value) : null);
+        this._tabIndex = value;
+        this._component.applyAriaAttribute("tabindex", value !== null ? String(value) : null);
 
         return this;
     }
@@ -109,7 +109,7 @@ export class Aria {
      * @returns The tabindex value, or null.
      */
     getTabIndex(): number | null {
-        return this.tabIndex;
+        return this._tabIndex;
     }
 
     /**
@@ -129,7 +129,7 @@ export class Aria {
      * @returns The sort direction, or null.
      */
     getSort(): AriaSort | null {
-        return (this.attributes.get("sort") as AriaSort) ?? null;
+        return (this._attributes.get("sort") as AriaSort) ?? null;
     }
 
     /**
@@ -149,7 +149,7 @@ export class Aria {
      * @returns The selected state, or null.
      */
     getSelected(): boolean | null {
-        const v = this.attributes.get("selected");
+        const v = this._attributes.get("selected");
 
         return v !== undefined ? v === "true" : null;
     }
@@ -171,7 +171,7 @@ export class Aria {
      * @returns The hidden state, or null.
      */
     getHidden(): boolean | null {
-        const v = this.attributes.get("hidden");
+        const v = this._attributes.get("hidden");
 
         return v !== undefined ? v === "true" : null;
     }
@@ -193,7 +193,7 @@ export class Aria {
      * @returns The row index, or null.
      */
     getRowIndex(): number | null {
-        const v = this.attributes.get("rowindex");
+        const v = this._attributes.get("rowindex");
 
         return v !== undefined ? Number(v) : null;
     }
@@ -215,7 +215,7 @@ export class Aria {
      * @returns The row count, or null.
      */
     getRowCount(): number | null {
-        const v = this.attributes.get("rowcount");
+        const v = this._attributes.get("rowcount");
 
         return v !== undefined ? Number(v) : null;
     }
@@ -229,8 +229,8 @@ export class Aria {
         if (value !== null) {
             this.setAttribute("expanded", String(value));
         } else {
-            this.attributes.delete("expanded");
-            this.component.applyAriaAttribute("aria-expanded", null);
+            this._attributes.delete("expanded");
+            this._component.applyAriaAttribute("aria-expanded", null);
         }
 
         return this;
@@ -242,7 +242,7 @@ export class Aria {
      * @returns The expanded state, or null.
      */
     getExpanded(): boolean | null {
-        const v = this.attributes.get("expanded");
+        const v = this._attributes.get("expanded");
 
         return v !== undefined ? v === "true" : null;
     }
@@ -264,7 +264,7 @@ export class Aria {
      * @returns The level number, or null.
      */
     getLevel(): number | null {
-        const v = this.attributes.get("level");
+        const v = this._attributes.get("level");
 
         return v !== undefined ? Number(v) : null;
     }
@@ -286,7 +286,7 @@ export class Aria {
      * @returns The labelling element ID, or null.
      */
     getLabelledBy(): string | null {
-        return this.attributes.get("labelledby") ?? null;
+        return this._attributes.get("labelledby") ?? null;
     }
 
     /**
@@ -306,7 +306,7 @@ export class Aria {
      * @returns The controlled element ID, or null.
      */
     getControls(): string | null {
-        return this.attributes.get("controls") ?? null;
+        return this._attributes.get("controls") ?? null;
     }
 
     /**
@@ -326,7 +326,7 @@ export class Aria {
      * @returns The autocomplete hint, or null.
      */
     getAutoComplete(): string | null {
-        return this.attributes.get("autocomplete") ?? null;
+        return this._attributes.get("autocomplete") ?? null;
     }
 
     /**
@@ -338,8 +338,8 @@ export class Aria {
      */
     setActiveDescendant(id: string): this {
         if (id === "") {
-            this.attributes.delete("activedescendant");
-            this.component.applyAriaAttribute("aria-activedescendant", null);
+            this._attributes.delete("activedescendant");
+            this._component.applyAriaAttribute("aria-activedescendant", null);
         } else {
             this.setAttribute("activedescendant", id);
         }
@@ -353,7 +353,7 @@ export class Aria {
      * @returns The active descendant ID, or null.
      */
     getActiveDescendant(): string | null {
-        return this.attributes.get("activedescendant") ?? null;
+        return this._attributes.get("activedescendant") ?? null;
     }
 
     /**
@@ -373,7 +373,7 @@ export class Aria {
      * @returns The column index, or null.
      */
     getColIndex(): number | null {
-        const v = this.attributes.get("colindex");
+        const v = this._attributes.get("colindex");
 
         return v !== undefined ? Number(v) : null;
     }
@@ -395,7 +395,7 @@ export class Aria {
      * @returns The column count, or null.
      */
     getColCount(): number | null {
-        const v = this.attributes.get("colcount");
+        const v = this._attributes.get("colcount");
 
         return v !== undefined ? Number(v) : null;
     }
@@ -417,7 +417,7 @@ export class Aria {
      * @returns The set size, or null.
      */
     getSetSize(): number | null {
-        const v = this.attributes.get("setsize");
+        const v = this._attributes.get("setsize");
 
         return v !== undefined ? Number(v) : null;
     }
@@ -439,7 +439,7 @@ export class Aria {
      * @returns The position in set, or null.
      */
     getPosInSet(): number | null {
-        const v = this.attributes.get("posinset");
+        const v = this._attributes.get("posinset");
 
         return v !== undefined ? Number(v) : null;
     }
@@ -461,7 +461,7 @@ export class Aria {
      * @returns The pressed state, or null.
      */
     getPressed(): boolean | null {
-        const v = this.attributes.get("pressed");
+        const v = this._attributes.get("pressed");
 
         return v !== undefined ? v === "true" : null;
     }
@@ -483,7 +483,7 @@ export class Aria {
      * @returns The popup type string, or null.
      */
     getHasPopup(): string | null {
-        return this.attributes.get("haspopup") ?? null;
+        return this._attributes.get("haspopup") ?? null;
     }
 
     /**
@@ -503,7 +503,7 @@ export class Aria {
      * @returns The disabled state, or null.
      */
     getDisabled(): boolean | null {
-        const v = this.attributes.get("disabled");
+        const v = this._attributes.get("disabled");
 
         return v !== undefined ? v === "true" : null;
     }
@@ -525,7 +525,7 @@ export class Aria {
      * @returns The current value, or null.
      */
     getValueNow(): number | null {
-        const v = this.attributes.get("valuenow");
+        const v = this._attributes.get("valuenow");
 
         return v !== undefined ? Number(v) : null;
     }
@@ -537,8 +537,8 @@ export class Aria {
      */
     setValueMin(value: number | null): this {
         if (value === null) {
-            this.attributes.delete("valuemin");
-            this.component.applyAriaAttribute("aria-valuemin", null);
+            this._attributes.delete("valuemin");
+            this._component.applyAriaAttribute("aria-valuemin", null);
         } else {
             this.setAttribute("valuemin", String(value));
         }
@@ -552,7 +552,7 @@ export class Aria {
      * @returns The minimum value, or null.
      */
     getValueMin(): number | null {
-        const v = this.attributes.get("valuemin");
+        const v = this._attributes.get("valuemin");
 
         return v !== undefined ? Number(v) : null;
     }
@@ -564,8 +564,8 @@ export class Aria {
      */
     setValueMax(value: number | null): this {
         if (value === null) {
-            this.attributes.delete("valuemax");
-            this.component.applyAriaAttribute("aria-valuemax", null);
+            this._attributes.delete("valuemax");
+            this._component.applyAriaAttribute("aria-valuemax", null);
         } else {
             this.setAttribute("valuemax", String(value));
         }
@@ -579,7 +579,7 @@ export class Aria {
      * @returns The maximum value, or null.
      */
     getValueMax(): number | null {
-        const v = this.attributes.get("valuemax");
+        const v = this._attributes.get("valuemax");
 
         return v !== undefined ? Number(v) : null;
     }
@@ -601,7 +601,7 @@ export class Aria {
      * @returns The label text, or null.
      */
     getLabel(): string | null {
-        return this.attributes.get("label") ?? null;
+        return this._attributes.get("label") ?? null;
     }
 
     /**
@@ -612,15 +612,15 @@ export class Aria {
      * @param element - The component's root DOM element.
      */
     applyToElement(element: HTMLElement): void {
-        if (this.role !== null) {
-            element.setAttribute("role", this.role);
+        if (this._role !== null) {
+            element.setAttribute("role", this._role);
         }
 
-        if (this.tabIndex !== null) {
-            element.setAttribute("tabindex", String(this.tabIndex));
+        if (this._tabIndex !== null) {
+            element.setAttribute("tabindex", String(this._tabIndex));
         }
 
-        for (const [name, value] of this.attributes) {
+        for (const [name, value] of this._attributes) {
             element.setAttribute("aria-" + name, value);
         }
     }
@@ -632,7 +632,7 @@ export class Aria {
      * @param value - The string value to set.
      */
     private setAttribute(name: string, value: string): void {
-        this.attributes.set(name, value);
-        this.component.applyAriaAttribute("aria-" + name, value);
+        this._attributes.set(name, value);
+        this._component.applyAriaAttribute("aria-" + name, value);
     }
 }

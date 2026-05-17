@@ -28,12 +28,12 @@ class AutoCompleteItem extends Component {
     /** Fixed pixel height of every autocomplete item row. */
     static readonly HEIGHT: number = 24;
 
-    private textComponent: Text;
-    private hoverCSSRule: CSSStyleRule;
-    private highlighted: boolean = false;
-    private clickListener: (value: string) => void;
-    private readonly onSelect: (value: string) => void;
-    private text: string;
+    private _textComponent: Text;
+    private _hoverCSSRule: CSSStyleRule;
+    private _highlighted: boolean = false;
+    private _clickListener: (value: string) => void;
+    private readonly _onSelect: (value: string) => void;
+    private _text: string;
 
     /**
      * @param text - The suggestion text to display.
@@ -42,11 +42,11 @@ class AutoCompleteItem extends Component {
     constructor(text: string, onSelect: (value: string) => void, options?: AutoCompleteItemOptions) {
         super();
 
-        this.text     = text;
-        this.onSelect = onSelect;
+        this._text     = text;
+        this._onSelect = onSelect;
 
-        this.hoverCSSRule = CSS.createComponentRule(this.getId() + ":hover") as CSSStyleRule;
-        this.hoverCSSRule.style.setProperty(
+        this._hoverCSSRule = CSS.createComponentRule(this.getId() + ":hover") as CSSStyleRule;
+        this._hoverCSSRule.style.setProperty(
             "background-color",
             "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))"
         );
@@ -58,19 +58,19 @@ class AutoCompleteItem extends Component {
         this.getAria().setRole("option");
         this.getAria().setSelected(false);
 
-        this.textComponent = new Text(text);
-        this.textComponent.setPointerEvents("none");
-        this.textComponent.centerInHeight(AutoCompleteItem.HEIGHT);
-        this.textComponent.setWhiteSpace("nowrap");
-        this.textComponent.setOverflow("hidden");
-        this.textComponent.setTextOverflow("ellipsis");
-        this.addComponent(this.textComponent);
+        this._textComponent = new Text(text);
+        this._textComponent.setPointerEvents("none");
+        this._textComponent.centerInHeight(AutoCompleteItem.HEIGHT);
+        this._textComponent.setWhiteSpace("nowrap");
+        this._textComponent.setOverflow("hidden");
+        this._textComponent.setTextOverflow("ellipsis");
+        this.addComponent(this._textComponent);
 
-        this.clickListener = () => {
-            this.onSelect(this.text);
+        this._clickListener = () => {
+            this._onSelect(this._text);
         };
 
-        Event.addListener(this, "click", this.clickListener);
+        Event.addListener(this, "click", this._clickListener);
 
         if (options) {
             this.applyOptions(options);
@@ -103,7 +103,7 @@ class AutoCompleteItem extends Component {
      * @returns The current text string.
      */
     getText(): string {
-        return this.text;
+        return this._text;
     }
 
     /**
@@ -112,8 +112,8 @@ class AutoCompleteItem extends Component {
      * @param text - The new suggestion string to show.
      */
     update(text: string): void {
-        this.text = text;
-        this.textComponent.setText(text);
+        this._text = text;
+        this._textComponent.setText(text);
     }
 
     /**
@@ -122,7 +122,7 @@ class AutoCompleteItem extends Component {
      * @param highlighted - True to apply highlight styling; false to clear it.
      */
     setHighlighted(highlighted: boolean): this {
-        this.highlighted = highlighted;
+        this._highlighted = highlighted;
 
         if (highlighted) {
             this.setBackgroundColor(
@@ -147,7 +147,7 @@ class AutoCompleteItem extends Component {
      * @returns True if the item is highlighted.
      */
     isHighlighted(): boolean {
-        return this.highlighted;
+        return this._highlighted;
     }
 
     /**
@@ -156,7 +156,7 @@ class AutoCompleteItem extends Component {
      * @returns The baseline offset in pixels, or `null` when the label has no baseline.
      */
     getBaseline(): number | null {
-        return this.wrapInnerBaseline(this.textComponent.getBaseline());
+        return this.wrapInnerBaseline(this._textComponent.getBaseline());
     }
 
     /**
@@ -167,10 +167,10 @@ class AutoCompleteItem extends Component {
     doLayout(): this {
         super.doLayout();
 
-        this.textComponent.setX(8);
-        this.textComponent.setY(0);
-        this.textComponent.setWidth(Math.max(0, this.getWidth() - 16));
-        this.textComponent.setHeight(AutoCompleteItem.HEIGHT);
+        this._textComponent.setX(8);
+        this._textComponent.setY(0);
+        this._textComponent.setWidth(Math.max(0, this.getWidth() - 16));
+        this._textComponent.setHeight(AutoCompleteItem.HEIGHT);
 
         return this;
     }

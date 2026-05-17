@@ -33,15 +33,15 @@ export type VirtualScrollerOnScroll = () => void;
  */
 export class VirtualScroller {
 
-    private owner          : Component;
-    private onScroll       : VirtualScrollerOnScroll;
-    private rowsContainer  : HTMLElement;
-    private scrollbarV     : Scrollbar;
-    private scrollbarH     : Scrollbar;
-    private scrollX        : number = 0;
-    private scrollY        : number = 0;
-    private contentWidth   : number = 0;
-    private contentHeight  : number = 0;
+    private _owner          : Component;
+    private _onScroll       : VirtualScrollerOnScroll;
+    private _rowsContainer  : HTMLElement;
+    private _scrollbarV     : Scrollbar;
+    private _scrollbarH     : Scrollbar;
+    private _scrollX        : number = 0;
+    private _scrollY        : number = 0;
+    private _contentWidth   : number = 0;
+    private _contentHeight  : number = 0;
 
     /**
      * Constructs a VirtualScroller and attaches it to the owner element.
@@ -53,8 +53,8 @@ export class VirtualScroller {
      * user input.
      */
     constructor(owner: Component, element: HTMLElement, onScroll: VirtualScrollerOnScroll) {
-        this.owner    = owner;
-        this.onScroll = onScroll;
+        this._owner    = owner;
+        this._onScroll = onScroll;
 
         const container = document.createElement("div");
         container.style.position   = "absolute";
@@ -64,15 +64,15 @@ export class VirtualScroller {
         container.style.transform  = "translate3d(0, 0, 0)";
         container.style.willChange = "transform";
         element.appendChild(container);
-        this.rowsContainer = container;
+        this._rowsContainer = container;
 
-        this.scrollbarV = new Scrollbar("vertical");
-        element.appendChild(this.scrollbarV.getElement(true));
-        this.scrollbarV.addScrollListener((p: number) => this.setScrollY(p));
+        this._scrollbarV = new Scrollbar("vertical");
+        element.appendChild(this._scrollbarV.getElement(true));
+        this._scrollbarV.addScrollListener((p: number) => this.setScrollY(p));
 
-        this.scrollbarH = new Scrollbar("horizontal");
-        element.appendChild(this.scrollbarH.getElement(true));
-        this.scrollbarH.addScrollListener((p: number) => this.setScrollX(p));
+        this._scrollbarH = new Scrollbar("horizontal");
+        element.appendChild(this._scrollbarH.getElement(true));
+        this._scrollbarH.addScrollListener((p: number) => this.setScrollX(p));
 
         element.style.touchAction = "none";
 
@@ -88,7 +88,7 @@ export class VirtualScroller {
      * @returns The rows-container DOM element.
      */
     getRowsContainer(): HTMLElement {
-        return this.rowsContainer;
+        return this._rowsContainer;
     }
 
     /**
@@ -97,7 +97,7 @@ export class VirtualScroller {
      * @returns The current `scrollY`.
      */
     getScrollY(): number {
-        return this.scrollY;
+        return this._scrollY;
     }
 
     /**
@@ -106,7 +106,7 @@ export class VirtualScroller {
      * @returns The current `scrollX`.
      */
     getScrollX(): number {
-        return this.scrollX;
+        return this._scrollX;
     }
 
     /**
@@ -117,17 +117,17 @@ export class VirtualScroller {
      * @param y - The new scroll position in pixels.
      */
     setScrollY(y: number): this {
-        const viewportH = this.owner.getHeight() || 0;
-        const maxScroll = Math.max(0, this.contentHeight - viewportH);
+        const viewportH = this._owner.getHeight() || 0;
+        const maxScroll = Math.max(0, this._contentHeight - viewportH);
         const next      = Math.max(0, Math.min(maxScroll, y));
 
-        if (next === this.scrollY) {
+        if (next === this._scrollY) {
             return this;
         }
 
-        this.scrollY = next;
+        this._scrollY = next;
         this.updateTransform();
-        this.onScroll();
+        this._onScroll();
 
         return this;
     }
@@ -140,17 +140,17 @@ export class VirtualScroller {
      * @param x - The new scroll position in pixels.
      */
     setScrollX(x: number): this {
-        const viewportW = this.owner.getWidth() || 0;
-        const maxScroll = Math.max(0, this.contentWidth - viewportW);
+        const viewportW = this._owner.getWidth() || 0;
+        const maxScroll = Math.max(0, this._contentWidth - viewportW);
         const next      = Math.max(0, Math.min(maxScroll, x));
 
-        if (next === this.scrollX) {
+        if (next === this._scrollX) {
             return this;
         }
 
-        this.scrollX = next;
+        this._scrollX = next;
         this.updateTransform();
-        this.onScroll();
+        this._onScroll();
 
         return this;
     }
@@ -165,21 +165,21 @@ export class VirtualScroller {
      * @param contentHeight - The total scrollable content height in pixels.
      */
     clampToContent(contentWidth: number, contentHeight: number): void {
-        this.contentWidth  = contentWidth;
-        this.contentHeight = contentHeight;
+        this._contentWidth  = contentWidth;
+        this._contentHeight = contentHeight;
 
-        const outerW = this.owner.getWidth();
-        const outerH = this.owner.getHeight();
+        const outerW = this._owner.getWidth();
+        const outerH = this._owner.getHeight();
         const maxY   = Math.max(0, contentHeight - outerH);
         const maxX   = Math.max(0, contentWidth  - outerW);
 
         let changed = false;
-        if (this.scrollY > maxY) {
-            this.scrollY = maxY;
+        if (this._scrollY > maxY) {
+            this._scrollY = maxY;
             changed = true;
         }
-        if (this.scrollX > maxX) {
-            this.scrollX = maxX;
+        if (this._scrollX > maxX) {
+            this._scrollX = maxX;
             changed = true;
         }
         if (changed) {
@@ -196,12 +196,12 @@ export class VirtualScroller {
      * @param contentHeight - The total scrollable content height in pixels.
      */
     layoutScrollbars(contentWidth: number, contentHeight: number): void {
-        this.contentWidth  = contentWidth;
-        this.contentHeight = contentHeight;
+        this._contentWidth  = contentWidth;
+        this._contentHeight = contentHeight;
 
-        const trackW = this.scrollbarV.getTrackWidth();
-        const outerW = this.owner.getWidth();
-        const outerH = this.owner.getHeight();
+        const trackW = this._scrollbarV.getTrackWidth();
+        const outerW = this._owner.getWidth();
+        const outerH = this._owner.getHeight();
 
         const vNeeded = contentHeight > outerH;
         const hNeeded = contentWidth  > outerW;
@@ -211,19 +211,19 @@ export class VirtualScroller {
 
         const maxY = Math.max(0, contentHeight - effH);
         const maxX = Math.max(0, contentWidth  - effW);
-        if (this.scrollY > maxY || this.scrollX > maxX) {
-            if (this.scrollY > maxY) this.scrollY = maxY;
-            if (this.scrollX > maxX) this.scrollX = maxX;
+        if (this._scrollY > maxY || this._scrollX > maxX) {
+            if (this._scrollY > maxY) this._scrollY = maxY;
+            if (this._scrollX > maxX) this._scrollX = maxX;
             this.updateTransform();
         }
 
-        this.scrollbarV.setX(Math.max(0, outerW - trackW));
-        this.scrollbarV.setHeight(effH);
-        this.scrollbarV.setMetrics(effH, contentHeight, this.scrollY);
+        this._scrollbarV.setX(Math.max(0, outerW - trackW));
+        this._scrollbarV.setHeight(effH);
+        this._scrollbarV.setMetrics(effH, contentHeight, this._scrollY);
 
-        this.scrollbarH.setY(Math.max(0, outerH - trackW));
-        this.scrollbarH.setWidth(effW);
-        this.scrollbarH.setMetrics(effW, contentWidth, this.scrollX);
+        this._scrollbarH.setY(Math.max(0, outerH - trackW));
+        this._scrollbarH.setWidth(effW);
+        this._scrollbarH.setMetrics(effW, contentWidth, this._scrollX);
     }
 
     /**
@@ -231,7 +231,7 @@ export class VirtualScroller {
      * transform.
      */
     private updateTransform(): void {
-        this.rowsContainer.style.transform = `translate3d(${-this.scrollX}px, ${-this.scrollY}px, 0)`;
+        this._rowsContainer.style.transform = `translate3d(${-this._scrollX}px, ${-this._scrollY}px, 0)`;
     }
 
     /**
@@ -244,14 +244,14 @@ export class VirtualScroller {
         e.preventDefault();
 
         if (e.shiftKey && e.deltaY !== 0 && e.deltaX === 0) {
-            this.setScrollX(this.scrollX + e.deltaY);
+            this.setScrollX(this._scrollX + e.deltaY);
             return;
         }
         if (e.deltaX !== 0) {
-            this.setScrollX(this.scrollX + e.deltaX);
+            this.setScrollX(this._scrollX + e.deltaX);
         }
         if (e.deltaY !== 0) {
-            this.setScrollY(this.scrollY + e.deltaY);
+            this.setScrollY(this._scrollY + e.deltaY);
         }
     }
 
@@ -286,8 +286,8 @@ export class VirtualScroller {
             touchActive       = true;
             touchStartY       = e.touches[0].clientY;
             touchStartX       = e.touches[0].clientX;
-            touchStartScrollY = this.scrollY;
-            touchStartScrollX = this.scrollX;
+            touchStartScrollY = this._scrollY;
+            touchStartScrollX = this._scrollX;
             touchSamples      = [{ time: performance.now(), x: touchStartX, y: touchStartY }];
         }, { passive: true });
 
@@ -360,14 +360,14 @@ export class VirtualScroller {
                     return;
                 }
 
-                const beforeY = this.scrollY;
-                const beforeX = this.scrollX;
-                this.setScrollY(this.scrollY + velocityY * frame);
-                this.setScrollX(this.scrollX + velocityX * frame);
-                if (this.scrollY === beforeY) {
+                const beforeY = this._scrollY;
+                const beforeX = this._scrollX;
+                this.setScrollY(this._scrollY + velocityY * frame);
+                this.setScrollX(this._scrollX + velocityX * frame);
+                if (this._scrollY === beforeY) {
                     velocityY = 0;
                 }
-                if (this.scrollX === beforeX) {
+                if (this._scrollX === beforeX) {
                     velocityX = 0;
                 }
                 if (velocityY === 0 && velocityX === 0) {

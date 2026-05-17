@@ -58,13 +58,13 @@ const _defaultNumberSpinnerOptions: Partial<NumberSpinnerOptions> = {
  */
 class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<number> {
 
-    private input!  : TextField;
-    private upBtn!  : SpinButton;
-    private downBtn!: SpinButton;
-    private btnBox! : Component;
+    private _input!  : TextField;
+    private _upBtn!  : SpinButton;
+    private _downBtn!: SpinButton;
+    private _btnBox! : Component;
 
-    private bindingListeners: Array<() => void>              = [];
-    private changeListeners : Array<(value: number) => void> = [];
+    private _bindingListeners: Array<() => void>              = [];
+    private _changeListeners : Array<(value: number) => void> = [];
 
     /**
      * Constructs a new NumberSpinner with default value `0`, step `1`, and unbounded min/max.
@@ -79,40 +79,40 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
         // built below.
         super({ ..._defaultNumberSpinnerOptions, ...(options ?? {}) });
 
-        this.input = new TextField();
-        this.input.setTextAlign("right");
-        this.input.setBorder({ style: BorderStyle.NONE });
-        this.input.setBorderRadius("0");
-        this.input.setText(this.formatValue(0));
+        this._input = new TextField();
+        this._input.setTextAlign("right");
+        this._input.setBorder({ style: BorderStyle.NONE });
+        this._input.setBorderRadius("0");
+        this._input.setText(this.formatValue(0));
 
-        this.upBtn   = new SpinButton("▲");
-        this.downBtn = new SpinButton("▼");
-        this.upBtn.setBorder({ top: { style: BorderStyle.SOLID, width: 1, color: "transparent" } });
-        this.upBtn.setBorderRadius("0");
-        this.downBtn.setBorder({ top: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-spinner-divider, rgb(180, 180, 180))" } });
-        this.downBtn.setBorderRadius("0");
+        this._upBtn   = new SpinButton("▲");
+        this._downBtn = new SpinButton("▼");
+        this._upBtn.setBorder({ top: { style: BorderStyle.SOLID, width: 1, color: "transparent" } });
+        this._upBtn.setBorderRadius("0");
+        this._downBtn.setBorder({ top: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-spinner-divider, rgb(180, 180, 180))" } });
+        this._downBtn.setBorderRadius("0");
 
-        this.btnBox = new Component();
+        this._btnBox = new Component();
 
         const vbox = new VBox();
         vbox.setComponentSpacing(0);
-        this.btnBox.setLayoutManager(vbox);
-        this.btnBox.setInsets(new Insets(0, 0, 0, 0));
-        this.btnBox.addComponent(this.upBtn);
-        this.btnBox.addComponent(this.downBtn);
+        this._btnBox.setLayoutManager(vbox);
+        this._btnBox.setInsets(new Insets(0, 0, 0, 0));
+        this._btnBox.addComponent(this._upBtn);
+        this._btnBox.addComponent(this._downBtn);
 
         const hbox = new HBox();
         hbox.setComponentSpacing(0);
         hbox.setStretching(true);
         this.setLayoutManager(hbox);
-        this.addComponent(this.input, { weight: 1 });
-        this.addComponent(this.btnBox);
+        this.addComponent(this._input, { weight: 1 });
+        this.addComponent(this._btnBox);
 
-        this.upBtn.addTickListener(() => this.applyValue(this.getValue() + this.getStep()));
-        this.downBtn.addTickListener(() => this.applyValue(this.getValue() - this.getStep()));
+        this._upBtn.addTickListener(() => this.applyValue(this.getValue() + this.getStep()));
+        this._downBtn.addTickListener(() => this.applyValue(this.getValue() - this.getStep()));
 
-        Event.addListener(this.input, "blur", () => this.onBlur());
-        Event.addListener(this.input, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
+        Event.addListener(this._input, "blur", () => this.onBlur());
+        Event.addListener(this._input, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
@@ -159,7 +159,7 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
      * @returns The baseline offset in pixels, or `null` when the input has no baseline.
      */
     getBaseline(): number | null {
-        return this.wrapInnerBaseline(this.input.getBaseline());
+        return this.wrapInnerBaseline(this._input.getBaseline());
     }
 
     /**
@@ -276,7 +276,7 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
     setPrecision(decimals: number | null): this {
         this._options.precision = decimals;
 
-        this.input.setText(this.formatValue(this.getValue()));
+        this._input.setText(this.formatValue(this.getValue()));
 
         return this;
     }
@@ -300,14 +300,14 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
         this._options.enabled = enabled;
 
         if (enabled) {
-            this.input.setDisabledAttribute(false);
-            this.upBtn.setPointerEvents("auto");
-            this.downBtn.setPointerEvents("auto");
+            this._input.setDisabledAttribute(false);
+            this._upBtn.setPointerEvents("auto");
+            this._downBtn.setPointerEvents("auto");
             this.clearOpacity();
         } else {
-            this.input.setDisabledAttribute(true);
-            this.upBtn.setPointerEvents("none");
-            this.downBtn.setPointerEvents("none");
+            this._input.setDisabledAttribute(true);
+            this._upBtn.setPointerEvents("none");
+            this._downBtn.setPointerEvents("none");
             this.setOpacity(0.5);
         }
 
@@ -320,7 +320,7 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
      * @param listener - Callback invoked with the new numeric value.
      */
     addChangeListener(listener: (value: number) => void): void {
-        this.changeListeners.push(listener);
+        this._changeListeners.push(listener);
     }
 
     /**
@@ -329,7 +329,7 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
      * @param fn - The callback to invoke on each user-driven change.
      */
     addBindingListener(fn: () => void): void {
-        this.bindingListeners.push(fn);
+        this._bindingListeners.push(fn);
     }
 
     /**
@@ -344,20 +344,20 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
 
         const next = this.normalize(n);
         if (next === this.getValue()) {
-            this.input.setText(this.formatValue(next));
+            this._input.setText(this.formatValue(next));
 
             return;
         }
 
         this._options.value = next;
-        this.input.setText(this.formatValue(next));
+        this._input.setText(this.formatValue(next));
         this.getAria().setValueNow(next);
 
-        for (const fn of this.changeListeners) {
+        for (const fn of this._changeListeners) {
             fn(next);
         }
 
-        for (const fn of this.bindingListeners) {
+        for (const fn of this._bindingListeners) {
             fn();
         }
     }
@@ -371,7 +371,7 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
         const next = this.normalize(n);
 
         this._options.value = next;
-        this.input.setText(this.formatValue(next));
+        this._input.setText(this.formatValue(next));
         this.getAria().setValueNow(next);
     }
 
@@ -394,9 +394,9 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
      * Reads the input field, parses the text, and either commits via `applyValue` or reverts on parse failure.
      */
     private onBlur(): void {
-        const parsed = parseFloat(this.input.getText().valueOf());
+        const parsed = parseFloat(this._input.getText().valueOf());
         if (isNaN(parsed)) {
-            this.input.setText(this.formatValue(this.getValue()));
+            this._input.setText(this.formatValue(this.getValue()));
 
             return;
         }

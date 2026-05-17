@@ -69,12 +69,12 @@ export type AutoCompleteFieldConfig = AutoCompleteFieldOptions;
  */
 class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements Bindable<string> {
 
-    private textField         : TextField;
-    private dropdown          : AutoCompleteDropdown;
-    private debounceTimer     : ReturnType<typeof setTimeout> | null = null;
-    private currentValue      : string                               = "";
-    private bindingListeners  : Array<() => void>                    = [];
-    private selectListeners   : Array<(value: string) => void>       = [];
+    private _textField         : TextField;
+    private _dropdown          : AutoCompleteDropdown;
+    private _debounceTimer     : ReturnType<typeof setTimeout> | null = null;
+    private _currentValue      : string                               = "";
+    private _bindingListeners  : Array<() => void>                    = [];
+    private _selectListeners   : Array<(value: string) => void>       = [];
 
     /**
      * @param options - Optional construction-time options for suggestions, store, behaviour, and base Component styling.
@@ -84,28 +84,28 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
         // through super(). Apply them manually at the end of the constructor.
         super();
 
-        this.textField = new TextField();
+        this._textField = new TextField();
 
-        this.addComponent(this.textField);
+        this.addComponent(this._textField);
 
         this.syncSizeFromTextField();
         ThemeManager.onThemeChange(() => this.syncSizeFromTextField());
 
-        this.dropdown = new AutoCompleteDropdown(
+        this._dropdown = new AutoCompleteDropdown(
             value => this.onSuggestionSelected(value),
             ()    => this.onDropdownHidden(),
         );
 
-        this.textField.getAria().setRole("combobox");
-        this.textField.getAria().setAutoComplete("list");
-        this.textField.getAria().setExpanded(false);
-        this.textField.getAria().setControls(this.dropdown.getId());
-        this.textField.getAria().setActiveDescendant("");
+        this._textField.getAria().setRole("combobox");
+        this._textField.getAria().setAutoComplete("list");
+        this._textField.getAria().setExpanded(false);
+        this._textField.getAria().setControls(this._dropdown.getId());
+        this._textField.getAria().setActiveDescendant("");
 
-        Event.addListener(this.textField, "input",   () => this.onInput());
-        Event.addListener(this.textField, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
-        Event.addListener(this.textField, "focus",   () => this.onFocus());
-        Event.addListener(this.textField, "blur",    () => this.onBlur());
+        Event.addListener(this._textField, "input",   () => this.onInput());
+        Event.addListener(this._textField, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
+        Event.addListener(this._textField, "focus",   () => this.onFocus());
+        Event.addListener(this._textField, "blur",    () => this.onBlur());
 
         if (options) {
             this.applyOptions(options);
@@ -149,8 +149,8 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
      * Called at construction time and after each theme change.
      */
     private syncSizeFromTextField(): void {
-        const pref = this.textField.getPreferredSize();
-        const max  = this.textField.getMaxSize();
+        const pref = this._textField.getPreferredSize();
+        const max  = this._textField.getMaxSize();
 
         if (pref) {
             this.setPreferredSize(pref.width, pref.height);
@@ -171,7 +171,7 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
      * position the child) and only adds the component's own border.
      */
     getBaseline(): number | null {
-        return this.wrapInnerBaseline(this.textField.getBaseline());
+        return this.wrapInnerBaseline(this._textField.getBaseline());
     }
 
     /**
@@ -182,10 +182,10 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
     doLayout(): this {
         super.doLayout();
 
-        this.textField.setX(0);
-        this.textField.setY(0);
-        this.textField.setWidth(this.getWidth());
-        this.textField.setHeight(this.getHeight());
+        this._textField.setX(0);
+        this._textField.setY(0);
+        this._textField.setWidth(this.getWidth());
+        this._textField.setHeight(this.getHeight());
 
         return this;
     }
@@ -198,8 +198,8 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
      * @param value - The string value to display.
      */
     setValue(value: string): this {
-        this.currentValue = value;
-        this.textField.setValue(value);
+        this._currentValue = value;
+        this._textField.setValue(value);
 
         return this;
     }
@@ -210,7 +210,7 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
      * @returns The current string value.
      */
     getValue(): string {
-        return this.currentValue;
+        return this._currentValue;
     }
 
     /**
@@ -219,7 +219,7 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
      * @param fn - Callback invoked after each value change.
      */
     addBindingListener(fn: () => void): void {
-        this.bindingListeners.push(fn);
+        this._bindingListeners.push(fn);
     }
 
     // ── Configuration ────────────────────────────────────────────────────────
@@ -299,7 +299,7 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
      */
     setPlaceholder(placeholder: string): this {
         this._options.placeholder = placeholder;
-        this.textField.setPlaceholder(placeholder);
+        this._textField.setPlaceholder(placeholder);
 
         return this;
     }
@@ -312,7 +312,7 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
      * @param fn - Callback that receives the selected string value.
      */
     addSelectListener(fn: (value: string) => void): void {
-        this.selectListeners.push(fn);
+        this._selectListeners.push(fn);
     }
 
     // ── Internal event handlers ──────────────────────────────────────────────
@@ -324,26 +324,26 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
      * typed value meets the `minChars` threshold.
      */
     private onInput(): void {
-        this.currentValue = this.textField.getValue();
+        this._currentValue = this._textField.getValue();
 
-        for (const fn of this.bindingListeners) {
+        for (const fn of this._bindingListeners) {
             fn();
         }
 
-        if (this.debounceTimer !== null) {
-            clearTimeout(this.debounceTimer);
+        if (this._debounceTimer !== null) {
+            clearTimeout(this._debounceTimer);
         }
 
         const minChars = this._options.minChars ?? 1;
 
-        if (this.currentValue.length < minChars) {
-            this.dropdown.hide();
+        if (this._currentValue.length < minChars) {
+            this._dropdown.hide();
 
             return;
         }
 
-        this.debounceTimer = setTimeout(
-            () => this.querySuggestions(this.currentValue),
+        this._debounceTimer = setTimeout(
+            () => this.querySuggestions(this._currentValue),
             this._options.debounceMs ?? 200
         );
     }
@@ -358,10 +358,10 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
             case "ArrowDown":
                 e.preventDefault();
 
-                if (!this.dropdown.isOpen()) {
-                    this.querySuggestions(this.currentValue);
+                if (!this._dropdown.isOpen()) {
+                    this.querySuggestions(this._currentValue);
                 } else {
-                    this.dropdown.highlightNext();
+                    this._dropdown.highlightNext();
                     this.updateActiveDescendant();
                 }
 
@@ -369,25 +369,25 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
 
             case "ArrowUp":
                 e.preventDefault();
-                this.dropdown.highlightPrev();
+                this._dropdown.highlightPrev();
                 this.updateActiveDescendant();
                 break;
 
             case "Enter":
-                if (this.dropdown.isOpen() && this.dropdown.getHighlightedValue() !== null) {
+                if (this._dropdown.isOpen() && this._dropdown.getHighlightedValue() !== null) {
                     e.preventDefault();
-                    this.dropdown.selectHighlighted();
+                    this._dropdown.selectHighlighted();
                 }
 
                 break;
 
             case "Escape":
-                this.dropdown.hide();
-                this.textField.focus();
+                this._dropdown.hide();
+                this._textField.focus();
                 break;
 
             case "Tab":
-                this.dropdown.hide();
+                this._dropdown.hide();
                 break;
 
             default:
@@ -410,13 +410,13 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
     private onBlur(): void {
         setTimeout(() => {
             const active = document.activeElement;
-            const dropEl = this.dropdown.getElement();
+            const dropEl = this._dropdown.getElement();
 
             if (dropEl && dropEl.contains(active)) {
                 return;
             }
 
-            this.dropdown.hide();
+            this._dropdown.hide();
         }, 150);
     }
 
@@ -457,7 +457,7 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
                 .filter(s => this.matches(s.toLowerCase(), lower))
                 .slice(0, maxSuggestions);
 
-            if (query === this.currentValue) {
+            if (query === this._currentValue) {
                 this.showSuggestions(filtered);
             }
 
@@ -477,7 +477,7 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
                 .map(r => String(r.get(displayField)))
                 .slice(0, maxSuggestions);
 
-            if (query === this.currentValue) {
+            if (query === this._currentValue) {
                 this.showSuggestions(results);
             }
         }
@@ -490,13 +490,13 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
      */
     private showSuggestions(list: string[]): void {
         if (list.length === 0) {
-            this.dropdown.hide();
+            this._dropdown.hide();
 
             return;
         }
 
-        this.dropdown.show(this.textField.getElement(true), list);
-        this.textField.getAria().setExpanded(true);
+        this._dropdown.show(this._textField.getElement(true), list);
+        this._textField.getAria().setExpanded(true);
     }
 
     /**
@@ -506,15 +506,15 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
      * Resets the combobox ARIA state on the input.
      */
     private onDropdownHidden(): void {
-        this.textField.getAria().setExpanded(false);
-        this.textField.getAria().setActiveDescendant("");
+        this._textField.getAria().setExpanded(false);
+        this._textField.getAria().setActiveDescendant("");
     }
 
     /**
      * Syncs `aria-activedescendant` on the input with the currently highlighted item.
      */
     private updateActiveDescendant(): void {
-        this.textField.getAria().setActiveDescendant(this.dropdown.getHighlightedId() ?? "");
+        this._textField.getAria().setActiveDescendant(this._dropdown.getHighlightedId() ?? "");
     }
 
     /**
@@ -526,19 +526,19 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
      * @param value - The selected suggestion string.
      */
     private onSuggestionSelected(value: string): void {
-        this.textField.setValue(value);
-        this.currentValue = value;
+        this._textField.setValue(value);
+        this._currentValue = value;
 
-        for (const fn of this.selectListeners) {
+        for (const fn of this._selectListeners) {
             fn(value);
         }
 
-        for (const fn of this.bindingListeners) {
+        for (const fn of this._bindingListeners) {
             fn();
         }
 
-        this.dropdown.hide();
-        this.textField.focus();
+        this._dropdown.hide();
+        this._textField.focus();
     }
 }
 

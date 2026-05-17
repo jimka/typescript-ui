@@ -29,10 +29,10 @@ import { callable } from "~/core/Callable.js";
  */
 class Row extends Component {
 
-    private model?: AbstractModel;
-    private data?: ModelRecord;
-    private onCellCommit?: (record: ModelRecord) => void;
-    private fieldNames: string[] = [];
+    private _model?: AbstractModel;
+    private _data?: ModelRecord;
+    private _onCellCommit?: (record: ModelRecord) => void;
+    private _fieldNames: string[] = [];
 
     constructor(
         model?: AbstractModel,
@@ -45,20 +45,20 @@ class Row extends Component {
 
         this.getAria().setRole("row");
 
-        this.model = model;
-        this.data = data;
-        this.onCellCommit = onCellCommit;
+        this._model = model;
+        this._data = data;
+        this._onCellCommit = onCellCommit;
 
-        if (this.model) {
-            let fields = this.model.getFields()
+        if (this._model) {
+            let fields = this._model.getFields()
                                    .filter(f => !hiddenColumns.has(f.getName()))
                                    .sort((f1, f2) => f1.getOrder() - f2.getOrder());
 
-            this.fieldNames = fields.map(f => f.getName());
+            this._fieldNames = fields.map(f => f.getName());
 
             for (let idx in fields) {
                 let field = fields[idx];
-                let value = this.data ? this.data.get(field.getName()) : undefined;
+                let value = this._data ? this._data.get(field.getName()) : undefined;
                 let cell;
 
                 switch (field.getType()) {
@@ -90,9 +90,9 @@ class Row extends Component {
 
                 cell.setValue(value);
                 cell.setOnCommit((newValue) => {
-                    if (this.data) {
-                        this.data.set(field.getName(), newValue);
-                        this.onCellCommit?.(this.data);
+                    if (this._data) {
+                        this._data.set(field.getName(), newValue);
+                        this._onCellCommit?.(this._data);
                     }
                     this.updateVisualState();
                 });
@@ -110,7 +110,7 @@ class Row extends Component {
      * @returns The bound {@link ModelRecord}, or undefined if none has been set.
      */
     getData() {
-        return this.data;
+        return this._data;
     }
 
     /**
@@ -119,10 +119,10 @@ class Row extends Component {
      * @param record - The new record to bind to this row.
      */
     setData(record: ModelRecord) : this {
-        this.data = record;
+        this._data = record;
 
         const cells = this.getComponents() as Cell<any>[];
-        const names = this.fieldNames;
+        const names = this._fieldNames;
 
         for (let i = 0; i < names.length; i++) {
             cells[i].setValue(record.get(names[i]));
@@ -144,9 +144,9 @@ class Row extends Component {
             return;
         }
 
-        if (this.data?.isNew()) {
+        if (this._data?.isNew()) {
             el.style.setProperty('background-color', 'var(--ts-ui-table-row-new, rgba(70, 200, 70, 0.15))');
-        } else if (this.data?.isDirty()) {
+        } else if (this._data?.isDirty()) {
             el.style.setProperty('background-color', 'var(--ts-ui-table-row-dirty, rgba(255, 165, 0, 0.15))');
         } else {
             el.style.removeProperty('background-color');

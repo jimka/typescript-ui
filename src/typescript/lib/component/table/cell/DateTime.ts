@@ -15,14 +15,14 @@ import { callable } from "~/core/Callable.js";
  */
 class DateTimeCell extends Cell<Date | null> {
 
-    private showSeconds: boolean;
+    private _showSeconds: boolean;
 
     constructor(showSeconds: boolean = false) {
         let renderer = new DateTimeRenderer(showSeconds);
 
         super("td", renderer);
 
-        this.showSeconds = showSeconds;
+        this._showSeconds = showSeconds;
     }
 
     /**
@@ -31,7 +31,7 @@ class DateTimeCell extends Cell<Date | null> {
      * @returns `"datetime:seconds"` when the cell renders seconds, otherwise `"datetime"`.
      */
     getEditorKey(): string {
-        return this.showSeconds ? "datetime:seconds" : "datetime";
+        return this._showSeconds ? "datetime:seconds" : "datetime";
     }
 
     /**
@@ -52,7 +52,7 @@ class DateTimeCell extends Cell<Date | null> {
      * @returns This cell, for method chaining.
      */
     commitEdit(): this {
-        const editor = this.activeEditor as DateTimeEditor | null;
+        const editor = this._activeEditor as DateTimeEditor | null;
 
         if (editor && !editor.isEmpty() && editor.getValue() === null) {
             this.cancelEdit();

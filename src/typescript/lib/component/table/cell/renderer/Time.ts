@@ -12,30 +12,30 @@ import { callable } from "~/core/Callable.js";
  */
 class TimeRenderer extends CellRenderer<Date | null> {
 
-    private text: Text = new Text();
-    private value: Date | null = null;
-    private showSeconds: boolean;
+    private _text: Text = new Text();
+    private _value: Date | null = null;
+    private _showSeconds: boolean;
 
     constructor(showSeconds: boolean = false) {
         super();
-        this.showSeconds = showSeconds;
+        this._showSeconds = showSeconds;
 
-        this.text.setText("");
-        this.text.setPointerEvents("none");
-        this.text.setAutoMeasure(false);
-        this.addComponent(this.text);
+        this._text.setText("");
+        this._text.setPointerEvents("none");
+        this._text.setAutoMeasure(false);
+        this.addComponent(this._text);
     }
 
     getValue(): Date | null {
-        return this.value;
+        return this._value;
     }
 
     setValue(value: Date | null): this {
-        this.value = value ?? null;
-        const opts: Intl.DateTimeFormatOptions = this.showSeconds
+        this._value = value ?? null;
+        const opts: Intl.DateTimeFormatOptions = this._showSeconds
             ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
             : { hour: '2-digit', minute: '2-digit' };
-        this.text.setText(value ? value.toLocaleTimeString(undefined, opts) : "");
+        this._text.setText(value ? value.toLocaleTimeString(undefined, opts) : "");
 
         return this;
     }

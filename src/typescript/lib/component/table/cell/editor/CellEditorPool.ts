@@ -40,21 +40,21 @@ export type CellEditorFactory = () => CellEditor<unknown>;
  */
 export class CellEditorPool {
 
-    private editors   : Map<string, CellEditor<unknown>> = new Map();
-    private factories : Map<string, CellEditorFactory>   = new Map();
-    private activeCell: Cell<any> | null             = null;
+    private _editors   : Map<string, CellEditor<unknown>> = new Map();
+    private _factories : Map<string, CellEditorFactory>   = new Map();
+    private _activeCell: Cell<any> | null             = null;
 
     /**
      * Constructs a pool pre-seeded with factories for every built-in typed cell.
      */
     constructor() {
-        this.factories.set("string",           () => new StringEditor());
-        this.factories.set("number",           () => new NumberEditor());
-        this.factories.set("date",             () => new DateEditor());
-        this.factories.set("time",             () => new TimeEditor(false));
-        this.factories.set("time:seconds",     () => new TimeEditor(true));
-        this.factories.set("datetime",         () => new DateTimeEditor(false));
-        this.factories.set("datetime:seconds", () => new DateTimeEditor(true));
+        this._factories.set("string",           () => new StringEditor());
+        this._factories.set("number",           () => new NumberEditor());
+        this._factories.set("date",             () => new DateEditor());
+        this._factories.set("time",             () => new TimeEditor(false));
+        this._factories.set("time:seconds",     () => new TimeEditor(true));
+        this._factories.set("datetime",         () => new DateTimeEditor(false));
+        this._factories.set("datetime:seconds", () => new DateTimeEditor(true));
     }
 
     /**
@@ -68,8 +68,8 @@ export class CellEditorPool {
      * on the next call to {@link CellEditorPool.acquire}.
      */
     register(key: string, factory: CellEditorFactory): this {
-        this.factories.set(key, factory);
-        this.editors.delete(key);
+        this._factories.set(key, factory);
+        this._editors.delete(key);
 
         return this;
     }
@@ -83,19 +83,19 @@ export class CellEditorPool {
      * @returns The shared editor instance, or `null` if no factory is registered for `key`.
      */
     acquire(key: string, cell: Cell<any>): CellEditor<unknown> | null {
-        const factory = this.factories.get(key);
+        const factory = this._factories.get(key);
         if (!factory) {
             return null;
         }
 
-        let editor = this.editors.get(key);
+        let editor = this._editors.get(key);
         if (!editor) {
             editor = factory();
             this.wireListeners(editor);
-            this.editors.set(key, editor);
+            this._editors.set(key, editor);
         }
 
-        this.activeCell = cell;
+        this._activeCell = cell;
 
         return editor;
     }
@@ -104,7 +104,7 @@ export class CellEditorPool {
      * Clears the active-cell pointer. Called by {@link Cell} when an edit commits or cancels.
      */
     release(): void {
-        this.activeCell = null;
+        this._activeCell = null;
     }
 
     /**
@@ -116,10 +116,10 @@ export class CellEditorPool {
      */
     private wireListeners(editor: CellEditor<unknown>): void {
         Event.addListener(editor, "blur", () => {
-            this.activeCell?.commitEdit();
+            this._activeCell?.commitEdit();
         });
         Event.addListener(editor, "keydown", (e: KeyboardEvent) => {
-            this.activeCell?.onKeyDown(e);
+            this._activeCell?.onKeyDown(e);
         });
     }
 }

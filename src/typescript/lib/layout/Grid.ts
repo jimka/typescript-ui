@@ -26,10 +26,10 @@ export interface GridOptions extends LayoutManagerOptions {
  */
 class Grid extends LayoutManager {
 
-    private rows: number = 0;
-    private columns: number = 0;
-    private spacing: number = 5;
-    private stretching: boolean = true;
+    private _rows: number = 0;
+    private _columns: number = 0;
+    private _spacing: number = 5;
+    private _stretching: boolean = true;
 
     constructor(options?: GridOptions) {
         super();
@@ -71,7 +71,7 @@ class Grid extends LayoutManager {
      * @returns `true` if stretching is enabled (default).
      */
     isStretching(): boolean {
-        return this.stretching;
+        return this._stretching;
     }
 
     /**
@@ -82,7 +82,7 @@ class Grid extends LayoutManager {
      * @param stretching - Pass `false` to enable per-row baseline alignment instead of stretching.
      */
     setStretching(stretching: boolean): this {
-        this.stretching = stretching;
+        this._stretching = stretching;
 
         return this;
     }
@@ -93,7 +93,7 @@ class Grid extends LayoutManager {
      * @returns The row count.
      */
     getRows() {
-        return this.rows;
+        return this._rows;
     }
 
     /**
@@ -102,7 +102,7 @@ class Grid extends LayoutManager {
      * @param rows - The desired row count, or `0` for automatic.
      */
     setRows(rows: number) : this {
-        this.rows = rows;
+        this._rows = rows;
 
         return this;
     }
@@ -113,7 +113,7 @@ class Grid extends LayoutManager {
      * @returns The current spacing in pixels.
      */
     getComponentSpacing() {
-        return this.spacing || 0;
+        return this._spacing || 0;
     }
 
     /**
@@ -123,7 +123,7 @@ class Grid extends LayoutManager {
      * @param spacing - Spacing in pixels. Falsy values are treated as `0`.
      */
     setComponentSpacing(spacing: number) : this {
-        this.spacing = spacing || 0;
+        this._spacing = spacing || 0;
 
         return this;
     }
@@ -134,7 +134,7 @@ class Grid extends LayoutManager {
      * @returns The column count.
      */
     getColumns() {
-        return this.columns;
+        return this._columns;
     }
 
     /**
@@ -143,7 +143,7 @@ class Grid extends LayoutManager {
      * @param columns - The desired column count, or `0` for automatic.
      */
     setColumns(columns: number) : this {
-        this.columns = columns;
+        this._columns = columns;
 
         return this;
     }
@@ -168,14 +168,14 @@ class Grid extends LayoutManager {
         let rows = 0;
         let columns = 0;
 
-        if (!this.rows && !this.columns) {
+        if (!this._rows && !this._columns) {
             columns = Math.floor(Math.sqrt(componentCount));
             rows = Math.ceil(componentCount / columns);
-        } else if (this.rows && this.columns) {
-            rows = this.rows;
+        } else if (this._rows && this._columns) {
+            rows = this._rows;
             columns = Math.floor(Math.sqrt(componentCount / rows));
-        } else if (this.columns) {
-            columns = this.columns;
+        } else if (this._columns) {
+            columns = this._columns;
             rows = Math.ceil(componentCount / columns);
         }
 
@@ -351,7 +351,7 @@ class Grid extends LayoutManager {
         let columnWidth   = (containerSize.width  - totalHSpacing) / cols;
         let columnHeight  = (containerSize.height - totalVSpacing) / rows;
 
-        if (this.stretching) {
+        if (this._stretching) {
             let colIdx = 0;
             let x = containerInsets.getLeft();
             let y = containerInsets.getTop();

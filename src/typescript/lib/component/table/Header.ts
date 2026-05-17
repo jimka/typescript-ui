@@ -23,11 +23,11 @@ import { callable } from "~/core/Callable.js";
  */
 class Header extends Component {
 
-    private model: AbstractModel;
-    private store: AbstractStore;
-    private hiddenColumns: Set<string> = new Set();
-    private onResizeCallback: ((colIndex: number, delta: number) => void) | null = null;
-    private onColumnContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
+    private _model: AbstractModel;
+    private _store: AbstractStore;
+    private _hiddenColumns: Set<string> = new Set();
+    private _onResizeCallback: ((colIndex: number, delta: number) => void) | null = null;
+    private _onColumnContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
 
     constructor(model: AbstractModel, store: AbstractStore) {
         super({ tag: "thead" });
@@ -36,8 +36,8 @@ class Header extends Component {
         this.setBorder({ bottom: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-table-header-border, black)" } });
         this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
 
-        this.model = model;
-        this.store = store;
+        this._model = model;
+        this._store = store;
 
         const row = new Row();
         this.addRow(row);
@@ -51,7 +51,7 @@ class Header extends Component {
      * @returns The {@link AbstractModel} currently bound to this header.
      */
     getModel() {
-        return this.model;
+        return this._model;
     }
 
     /**
@@ -66,18 +66,18 @@ class Header extends Component {
         const toNames = (model: AbstractModel) =>
             model.getFields()
                  .slice()
-                 .filter(f => !this.hiddenColumns.has(f.getName()))
+                 .filter(f => !this._hiddenColumns.has(f.getName()))
                  .sort((a, b) => a.getOrder() - b.getOrder())
                  .map(f => f.getName());
 
-        const oldNames = toNames(this.model);
+        const oldNames = toNames(this._model);
         const newNames = toNames(model);
 
         const same = oldNames.length === newNames.length
                      && oldNames.every((n, i) => n === newNames[i]);
 
         if (!same) {
-            this.model = model;
+            this._model = model;
             this.rebuildCells();
         }
 
@@ -92,7 +92,7 @@ class Header extends Component {
      * @param hidden - The new set of field names to hide.
      */
     setHiddenColumns(hidden: Set<string>): this {
-        this.hiddenColumns = new Set(hidden);
+        this._hiddenColumns = new Set(hidden);
 
         this.rebuildCells();
 
@@ -105,7 +105,7 @@ class Header extends Component {
      * @param fn - Receives the zero-based column index and the pixel delta.
      */
     setOnColumnResize(fn: (colIndex: number, delta: number) => void): void {
-        this.onResizeCallback = fn;
+        this._onResizeCallback = fn;
     }
 
     /**
@@ -114,7 +114,7 @@ class Header extends Component {
      * @param fn - Receives the field name, and viewport x/y coordinates.
      */
     setOnColumnContextMenu(fn: (fieldName: string, x: number, y: number) => void): void {
-        this.onColumnContextMenuCallback = fn;
+        this._onColumnContextMenuCallback = fn;
     }
 
     /**
@@ -211,9 +211,9 @@ class Header extends Component {
 
         row.removeAllComponents();
 
-        const fields = this.model.getFields()
+        const fields = this._model.getFields()
                                  .slice()
-                                 .filter(f => !this.hiddenColumns.has(f.getName()))
+                                 .filter(f => !this._hiddenColumns.has(f.getName()))
                                  .sort((a, b) => a.getOrder() - b.getOrder());
 
         for (let i = 0; i < fields.length; i++) {
@@ -236,8 +236,8 @@ class Header extends Component {
      */
     private wireCell(cell: HeaderCell, idx: number): void {
         cell.setOnSortClick((fieldName, shiftKey) => this.handleSortClick(fieldName, shiftKey));
-        cell.setOnResizeDrag((delta) => this.onResizeCallback?.(idx, delta));
-        cell.setOnContextMenu((fieldName, x, y) => this.onColumnContextMenuCallback?.(fieldName, x, y));
+        cell.setOnResizeDrag((delta) => this._onResizeCallback?.(idx, delta));
+        cell.setOnContextMenu((fieldName, x, y) => this._onColumnContextMenuCallback?.(fieldName, x, y));
     }
 
     /**
@@ -253,7 +253,7 @@ class Header extends Component {
      */
     private handleSortClick(fieldName: string, shiftKey: boolean): void {
         if (shiftKey) {
-            const sorters = this.store.getActiveSorters();
+            const sorters = this._store.getActiveSorters();
             const idx     = sorters.findIndex(s => s.field === fieldName);
             let next: SortDescriptor[];
 
@@ -268,21 +268,21 @@ class Header extends Component {
             }
 
             if (next.length === 0) {
-                this.store.clearSort();
+                this._store.clearSort();
             } else {
-                this.store.sort(next);
+                this._store.sort(next);
             }
         } else {
-            const sorters = this.store.getActiveSorters();
+            const sorters = this._store.getActiveSorters();
             const current = sorters.length === 1 && sorters[0].field === fieldName
                 ? sorters[0] : null;
 
             if (!current) {
-                this.store.sort(fieldName, 'asc');
+                this._store.sort(fieldName, 'asc');
             } else if (current.dir === 'asc') {
-                this.store.sort(fieldName, 'desc');
+                this._store.sort(fieldName, 'desc');
             } else {
-                this.store.clearSort();
+                this._store.clearSort();
             }
         }
 
@@ -295,12 +295,12 @@ class Header extends Component {
      */
     private syncSortIndicators(): void {
         const cells         = this.getColumns() as HeaderCell[];
-        const visibleFields = this.model.getFields()
+        const visibleFields = this._model.getFields()
                                         .slice()
-                                        .filter(f => !this.hiddenColumns.has(f.getName()))
+                                        .filter(f => !this._hiddenColumns.has(f.getName()))
                                         .sort((a, b) => a.getOrder() - b.getOrder());
 
-        const sorters       = this.store.getActiveSorters();
+        const sorters       = this._store.getActiveSorters();
         const fieldToSorter = new Map(sorters.map((s, i) => [s.field, { dir: s.dir, priority: i + 1 }]));
         const showPriority  = sorters.length > 1;
 
