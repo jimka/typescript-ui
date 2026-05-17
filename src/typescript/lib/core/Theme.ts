@@ -55,6 +55,11 @@ export interface Theme {
             background: string;
             shadow    : string;
         };
+        hover: {
+            foreground: string;
+            background: string;
+            shadow    : string;
+        };
     };
 
     toggle: {
@@ -268,6 +273,11 @@ export const DefaultTheme: Theme = {
             background: 'rgb(200, 200, 200)',
             shadow    : '1px 2px 5px 0 rgba(0, 0, 0, 0.2) inset',
         },
+        hover     : {
+            foreground: 'inherit',
+            background: 'linear-gradient(rgb(252, 252, 252), rgb(220, 220, 220))',
+            shadow    : '1px 3px 6px 0 rgba(0, 0, 0, 0.25)',
+        },
     },
     toggle      : {
         selected: {
@@ -417,6 +427,11 @@ export const DarkTheme: Theme = {
             background: 'rgb(35, 35, 35)',
             shadow    : '1px 2px 5px 0 rgba(0, 0, 0, 0.5) inset',
         },
+        hover     : {
+            foreground: 'inherit',
+            background: 'linear-gradient(rgb(90, 90, 90), rgb(65, 65, 65))',
+            shadow    : '1px 3px 6px 0 rgba(0, 0, 0, 0.55)',
+        },
     },
     toggle      : {
         selected: {
@@ -564,6 +579,9 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-button-pressed-fg'                : theme.button.pressed.foreground,
         '--ts-ui-button-pressed-bg'                : theme.button.pressed.background,
         '--ts-ui-button-pressed-shadow'            : theme.button.pressed.shadow,
+        '--ts-ui-button-hover-fg'                  : theme.button.hover.foreground,
+        '--ts-ui-button-hover-bg'                  : theme.button.hover.background,
+        '--ts-ui-button-hover-shadow'              : theme.button.hover.shadow,
         '--ts-ui-toggle-selected-bg'               : theme.toggle.selected.background,
         '--ts-ui-toggle-selected-shadow'           : theme.toggle.selected.shadow,
         '--ts-ui-input-bg'                         : theme.input.background,

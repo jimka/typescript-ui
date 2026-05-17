@@ -42,6 +42,9 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `button.pressed.background` | `--ts-ui-button-pressed-bg` | Background while a button is held down |
 | `button.pressed.foreground` | `--ts-ui-button-pressed-fg` | Text color while a button is held down |
 | `button.pressed.shadow` | `--ts-ui-button-pressed-shadow` | Inset shadow on a pressed button |
+| `button.hover.background` | `--ts-ui-button-hover-bg` | Background while the pointer is over a button (but not pressed) |
+| `button.hover.foreground` | `--ts-ui-button-hover-fg` | Text color while the pointer is over a button (default `inherit`) |
+| `button.hover.shadow` | `--ts-ui-button-hover-shadow` | Drop shadow while the pointer is over a button |
 | `toggle.selected.background` | `--ts-ui-toggle-selected-bg` | Background of a selected [`ToggleButton`](/api/component/button/classes/ToggleButton) or [`RadioButton`](/api/component/input/classes/RadioButton) |
 | `toggle.selected.shadow` | `--ts-ui-toggle-selected-shadow` | Inset shadow on a selected toggle / radio |
 | `input.background` | `--ts-ui-input-bg` | Background of text inputs, password fields, text areas, checkboxes, and the table body |
@@ -77,7 +80,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `notification.error.border` | `--ts-ui-notification-error-border` | Border color of `'error'` notifications |
 
 ::: tip Background tokens accept gradients
-`button.background`, `button.pressed.background`, and `toggle.selected.background` accept either a plain colour (`rgb(200, 200, 200)`) or any CSS `background-image` value (`linear-gradient(...)`, `radial-gradient(...)`, etc.). The framework applies the token to both `background-color` and `background-image`; CSS's "invalid at computed-value time" rule routes the value to whichever property it is valid for.
+`button.background`, `button.pressed.background`, `button.hover.background`, and `toggle.selected.background` accept either a plain colour (`rgb(200, 200, 200)`) or any CSS `background-image` value (`linear-gradient(...)`, `radial-gradient(...)`, etc.). The framework applies the token to both `background-color` and `background-image`; CSS's "invalid at computed-value time" rule routes the value to whichever property it is valid for.
 :::
 
 ## Custom themes
