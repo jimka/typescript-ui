@@ -29,6 +29,7 @@ class HeaderCell extends DefaultCell {
     private _isDragging: boolean = false;
     private _tooltipText: string = '';
     private _priorityBadge: HTMLSpanElement | null = null;
+    private _sortState: { state: 'asc' | 'desc', priority: number | null } | null = null;
 
     /**
      * Creates a header cell with bold text and wires up the sort click listener.
@@ -118,6 +119,8 @@ class HeaderCell extends DefaultCell {
      *   The badge is only shown when priority is at least 2.
      */
     setSortState(state: 'asc' | 'desc', priority?: number | null): this {
+        this._sortState = { state, priority: priority ?? null };
+
         const arrow = state === 'asc' ? ' ▲' : ' ▼';
 
         this.getRenderer().getText().setText(this._text + arrow);
@@ -134,11 +137,24 @@ class HeaderCell extends DefaultCell {
     }
 
     /**
+     * Returns the cached sort indicator state last passed to {@link setSortState},
+     * or `null` if no sort indicator is active.
+     *
+     * @returns An object describing the sort direction and multi-sort priority,
+     * or null.
+     */
+    getSortState(): { state: 'asc' | 'desc', priority: number | null } | null {
+        return this._sortState;
+    }
+
+    /**
      * Clears the sort indicator arrow and hides the multi-sort priority badge.
      *
      * @returns This cell, for method chaining.
      */
     clearSortState(): this {
+        this._sortState = null;
+
         this.getRenderer().getText().setText(this._text);
         this.getAria().setSort('none');
 
@@ -183,6 +199,15 @@ class HeaderCell extends DefaultCell {
         this._tooltipText = text;
 
         return this;
+    }
+
+    /**
+     * Returns the tooltip text shown when hovering this header cell.
+     *
+     * @returns The current tooltip string (empty when no tooltip has been set).
+     */
+    getTooltip(): string {
+        return this._tooltipText;
     }
 
     /**
