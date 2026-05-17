@@ -1,15 +1,40 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { Option } from "~/component/input/Option.js";
+import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
+import { CSS } from "~/core/CSS.js";
 import { Event } from "~/core/Event.js";
-import { Type } from "~/core/Type.js";
 import { Util } from "~/core/Util.js";
+import { Type } from "~/core/Type.js";
+/**
+ * One entry in a {@link ComboBox}'s internal item list. Plain data — the
+ * dropdown's `ComboBoxRow` instances are the view layer. The `Option`
+ * Component (backed by a native `<option>` element) was used here before
+ * the move off the native `<select>` dropdown, which created unused DOM
+ * nodes and dragged in form-submission semantics that don't apply to a
+ * `<div>`-based combobox.
+ *
+ * @category Components
+ */
+export interface ComboBoxItem {
+    /** Binding identifier — what `getValue` / `setValue` round-trip. */
+    key:   string;
+    /** Display text shown in the input surface and each dropdown row. */
+    label: string;
+}
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Bindable } from "~/core/Bindable.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { Position } from "~/primitive/Position.js";
+import { BorderStyle } from "~/primitive/BorderStyle.js";
+import { Insets } from "~/primitive/Insets.js";
+import { VBox } from "~/layout/VBox.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { chevron_down } from "~/glyphs/solid/chevron_down.js";
 import { callable } from "~/core/Callable.js";
+
+Glyph.register(chevron_down);
 
 /**
  * Construction-time options for {@link ComboBox}.
@@ -17,42 +42,359 @@ import { callable } from "~/core/Callable.js";
  * @category Components
  */
 export interface ComboBoxOptions extends ComponentOptions {
-    items?:         String | Array<String>;
-    store?:         AbstractStore;
-    displayField?:  string;
-    valueField?:    string;
-    selectedIndex?: number;
-    value?:         string;
-    selectedItem?:  string;
+    items?:             String | Array<String>;
+    store?:             AbstractStore;
+    displayField?:      string;
+    valueField?:        string;
+    selectedIndex?:     number;
+    value?:             string;
+    selectedItem?:      string;
+    /** When false, the dropdown opens/closes instantly. Default: true. */
+    dropdownAnimated?:  boolean;
 }
 
 /**
  * User-overridable visual defaults forwarded to `super` via the options bag.
  * The cascade in `Component`'s constructor dispatches each setter once with
- * the final value, so any field the caller supplied wins. Items / store /
- * selection options touch `this.items` or the live `<select>` element so they
- * stay out of the cascade — `applyOptions` writes them pure into `_options`
- * and the constructor body dispatches them after `items` is initialized.
+ * the final value, so any field the caller supplied wins.
  */
 const _defaultComboBoxOptions: Partial<ComboBoxOptions> = {
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
+    border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
+    cursor:          "pointer",
+    padding:         new Insets(3, 6, 3, 6),
 };
 
 /**
- * A drop-down combo box component backed by a `<select>` element.
+ * Floating dropdown that lists the parent {@link ComboBox}'s options. Inherits
+ * fade lifecycle from [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown).
  *
- * Manages an internal list of {@link Option} items and keeps the DOM element in
- * sync when items are added or replaced. Also accepts an {@link AbstractStore} via
- * {@link setStore} to populate options from the data layer.
+ * @category Components
+ */
+class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
+
+    private readonly _rows: ComboBoxRow[] = [];
+    private readonly _onSelect: (index: number) => void;
+
+    /**
+     * @param onSelect - Called with the index of the selected row.
+     */
+    constructor(onSelect: (index: number) => void) {
+        super({
+            zIndex:          10050,
+            position:        Position.FIXED,
+            backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
+            border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
+            borderRadius:    "var(--ts-ui-border-radius, 4px)",
+            shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
+        });
+
+        this._onSelect = onSelect;
+
+        this.getAria().setRole("listbox");
+        this.setContain("layout");
+
+        const vbox = new VBox();
+        vbox.setComponentSpacing(0);
+        vbox.setStretching(true);
+        this.setLayoutManager(vbox);
+    }
+
+    /**
+     * Replaces the rendered row list with one entry per label and lays out
+     * the panel anchored below `anchorEl`.
+     *
+     * @param anchorEl - Element the dropdown is anchored to.
+     * @param labels - Display labels, in order.
+     */
+    showAt(anchorEl: HTMLElement, labels: string[]): this {
+        this.pauseLayout();
+        this.syncRows(labels);
+        this.resumeLayout();
+
+        const rowHeight = 22;
+        const insets    = 8;
+        const panelH    = labels.length * rowHeight + insets;
+        const rect      = anchorEl.getBoundingClientRect();
+
+        this.setWidth(rect.width);
+        this.setHeight(panelH);
+
+        const vpHeight = window.innerHeight;
+        let y = rect.bottom;
+
+        if (y + panelH > vpHeight && rect.top - panelH > 0) {
+            y = rect.top - panelH;
+        }
+
+        this.setX(rect.left);
+        this.setY(y);
+
+        this.showAnimated();
+
+        // VBox positions rows via framework setters that no-op while the
+        // panel's element is detached. Run the layout pass after showAnimated
+        // mounts the panel so rows land at the correct y offsets on first
+        // open.
+        this.doLayout();
+
+        return this;
+    }
+
+    /**
+     * Reconciles the rendered row pool with `labels`. New rows are added,
+     * surplus rows removed, overlapping rows have their text updated.
+     *
+     * @param labels - The display labels to render.
+     */
+    private syncRows(labels: string[]): void {
+        const newLen = labels.length;
+        const oldLen = this._rows.length;
+        const overlap = Math.min(newLen, oldLen);
+
+        for (let i = 0; i < overlap; i++) {
+            this._rows[i].setLabel(labels[i]);
+        }
+
+        if (newLen > oldLen) {
+            for (let i = oldLen; i < newLen; i++) {
+                const row = this.buildRow(labels[i], i);
+                this.addComponent(row);
+                this._rows.push(row);
+            }
+        } else if (newLen < oldLen) {
+            for (let i = newLen; i < oldLen; i++) {
+                this.removeComponent(this._rows[i]);
+            }
+            this._rows.splice(newLen);
+        }
+    }
+
+    /**
+     * Builds a single dropdown row. The row owns its own listeners (see
+     * {@link ComboBoxRow}) — they suppress focus loss on `pointerdown` and
+     * forward `click` to the dropdown's select callback with this row's
+     * index.
+     *
+     * @param label - Display text.
+     * @param index - Zero-based row index passed to the select callback.
+     * @returns The constructed row component.
+     */
+    private buildRow(label: string, index: number): ComboBoxRow {
+        const row = new ComboBoxRow(this._onSelect, index);
+        row.setLabel(label);
+
+        return row;
+    }
+}
+
+// Static layout / typography for the ComboBox surface and its row pool.
+// Class rules below match by `this.constructor.name`, which Component
+// auto-tags on every element. Properties that have typed setters
+// (`display`, `padding`, `cursor`) live on the Components themselves;
+// the rules carry only the properties Component has no setter for.
+(() => {
+    const surface = CSS.createClassRule("ComboBox");
+    if (surface) {
+        surface.style.setProperty("align-items", "center");
+        surface.style.setProperty("user-select", "none");
+        surface.style.setProperty("white-space", "nowrap");
+        // `gap` separates the label and caret. The per-component CSS rule
+        // writes `margin: 0`, which would clobber a `margin-left` on the
+        // caret by ID-selector specificity; `gap` lives on the parent and
+        // sidesteps that.
+        surface.style.setProperty("gap",         "6px");
+    }
+
+    const label = CSS.createClassRule("ComboBoxLabel");
+    if (label) {
+        label.style.setProperty("flex",          "1 1 auto");
+        label.style.setProperty("overflow",      "hidden");
+        label.style.setProperty("text-overflow", "ellipsis");
+    }
+
+    const caret = CSS.createClassRule("ComboBoxCaret");
+    if (caret) {
+        caret.style.setProperty("flex", "0 0 16px");
+    }
+
+    const row = CSS.createClassRule("ComboBoxRow");
+    if (row) {
+        row.style.setProperty("align-items", "center");
+    }
+
+    const rowHover = CSS.createRule(".ComboBoxRow:hover");
+    if (rowHover) {
+        rowHover.style.setProperty(
+            "background-color",
+            "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))",
+        );
+    }
+})();
+
+/**
+ * The visible label `<span>` inside a {@link ComboBox}. Holds a typed
+ * `setLabel` setter so call sites never write `element.textContent` directly.
+ * Lives at static position so the ComboBox's `display: flex` lays it out
+ * alongside the caret.
+ */
+class ComboBoxLabel extends Component {
+    // Cached so `setLabel` calls made before the element renders (e.g. from
+    // the ComboBox constructor) survive to be applied at render time.
+    private _text: string = "";
+
+    constructor() {
+        super({ tag: "span", position: Position.STATIC });
+        this.setPointerEvents("none");
+    }
+
+    /**
+     * Updates the rendered label text.
+     *
+     * @param text - The text to display.
+     */
+    setLabel(text: string): this {
+        this._text = text;
+
+        const el = this.getElement();
+        if (el) {
+            el.textContent = text;
+        }
+
+        return this;
+    }
+
+    protected render(): HTMLElement {
+        const element = super.render();
+        element.textContent = this._text;
+
+        return element;
+    }
+}
+
+/**
+ * The fixed-size caret container inside a {@link ComboBox}. Uses relative
+ * positioning so the framework-absolute chevron glyph it owns stays inside
+ * the 16×16 box instead of escaping the right edge.
+ */
+class ComboBoxCaret extends Component {
+    constructor() {
+        super({ tag: "span", position: Position.RELATIVE });
+        // Lock the size at 16×16 via the typed min/max setters so the box
+        // stays square regardless of content (the glyph child is
+        // framework-absolute and contributes no intrinsic height).
+        this.setMinSize(16, 16);
+        this.setMaxSize(16, 16);
+        this.setPointerEvents("none");
+
+        const glyph = new Glyph("chevron-down");
+        glyph.setPointerEvents("none");
+        this.addComponent(glyph);
+    }
+}
+
+/**
+ * A single row inside the dropdown panel. Holds the static row styling via
+ * the `.ComboBoxRow` / `.ComboBoxRow:hover` class rules and exposes
+ * {@link setLabel} so callers never touch `element.textContent` directly.
+ */
+class ComboBoxRow extends Component {
+    // Cached so `setLabel` calls made before the element renders survive to
+    // be applied at render time.
+    private _text: string = "";
+    /** Owner-supplied click handler invoked with this row's `_index`. */
+    private readonly _onSelect: (index: number) => void;
+    /** Zero-based index in the row pool; passed to `_onSelect` on click. */
+    private _index: number;
+
+    constructor(onSelect: (index: number) => void, index: number) {
+        super({ tag: "div" });
+
+        this._onSelect = onSelect;
+        this._index    = index;
+
+        this.setPreferredSize(0, 22);
+        this.setMaxSize(Number.MAX_SAFE_INTEGER, 22);
+        this.setPadding(new Insets(0, 8, 0, 8));
+        this.setCursor("pointer");
+        this.setDisplay("flex");
+
+        Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
+        Event.addListener(this, "click",       ()                => this.onClick());
+    }
+
+    /**
+     * Updates the rendered row label.
+     *
+     * @param text - The text to display.
+     */
+    setLabel(text: string): this {
+        this._text = text;
+
+        const el = this.getElement();
+        if (el) {
+            el.textContent = text;
+        }
+
+        return this;
+    }
+
+    /**
+     * Updates the index that this row reports through its select callback.
+     * Used when reconciling the pool against a new label list of different
+     * length, so an existing row can be reused at a new position.
+     *
+     * @param index - The new zero-based row index.
+     */
+    setIndex(index: number): this {
+        this._index = index;
+
+        return this;
+    }
+
+    protected render(): HTMLElement {
+        const element = super.render();
+        element.textContent = this._text;
+
+        return element;
+    }
+
+    /**
+     * Suppresses focus loss when the row is pointed at so any host whose blur
+     * commits state (e.g. a pooled cell editor) does not commit before the
+     * row's `click` callback runs.
+     *
+     * @param e - The pointerdown event.
+     */
+    private onPointerDown(e: PointerEvent): void {
+        e.preventDefault();
+    }
+
+    /**
+     * Forwards the row's index to the owner-supplied select callback.
+     */
+    private onClick(): void {
+        this._onSelect(this._index);
+    }
+}
+
+/**
+ * A drop-down combo box backed by a styled `<div>` surface and an
+ * `AnimatedDropdown` panel.
+ *
+ * Manages an internal list of {@link ComboBoxItem} entries and an active selection.
+ * Also accepts an {@link AbstractStore} via {@link setStore} to populate
+ * options from the data layer. The dropdown fades in / out using the shared
+ * `AnimatedDropdown` lifecycle; pass `dropdownAnimated: false` (or call
+ * {@link setDropdownAnimated}) to bypass the fade.
  *
  * @example
  * ```typescript
- * import { ComboBox, Option } from '@jimka/typescript-ui/component/input';
-*
- * const combo = new ComboBox();
- * combo.addItem(new Option('admin', 'Admin'));
- * combo.addItem(new Option('user',  'User'));
+ * import { ComboBox } from '@jimka/typescript-ui/component/input';
+ *
+ * const combo = new ComboBox({ items: ['Admin', 'User'] });
  * panel.addComponent(combo);
  * ```
  *
@@ -60,45 +402,51 @@ const _defaultComboBoxOptions: Partial<ComboBoxOptions> = {
  */
 class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Component<TOptions> implements Bindable<string> {
 
-    private _items: Array<Option> = [];
-    private _storeRefresh: (() => void) | null = null;
+    private _items:         Array<ComboBoxItem> = [];
+    private _selectedIndex: number = -1;
+    private _value:         string = "";
+    private _dropdown:      ComboBoxDropdown | null = null;
+    private _label:         ComboBoxLabel;
+    private _caret:         ComboBoxCaret;
+    private _storeRefresh:  (() => void) | null = null;
+    private readonly _onViewportPointerDown: (e: PointerEvent) => void;
 
     /**
-     * Construction contract for subclasses (`List`, `MultiSelectList`, …):
-     *
-     *  1. Forward `options` to `super(options)` so the inherited cascade can
-     *     run. Calling `super()` without arguments silently drops every
-     *     `ComboBoxOptions` field — items / store / selection setters below
-     *     won't fire, and the component will render empty.
-     *  2. In your `applyOptions`, write any new option fields pure into
-     *     `this._options` only. Do **not** touch `this.items` or the live
-     *     element from `applyOptions` — it runs during super, before
-     *     `this.items` is initialised and before any element exists.
-     *  3. Dispatch your own late-built setters from your constructor body,
-     *     after `super(...)` returns, mirroring the `items` / `store` /
-     *     `selectedIndex` / `value` dispatch below.
+     * @param options - Optional construction-time options.
      */
     constructor(options?: ComboBoxOptions);
     constructor(options?: TOptions) {
-        // Merge defaults → consumer options → non-overridable structural keys.
-        // Items / store / selection options touch `this.items` (a field
-        // initializer that runs after super) or the live `<select>` element,
-        // so `applyOptions` writes them pure into `_options` and the
-        // constructor body dispatches them once `items` is initialized.
         super({
             ..._defaultComboBoxOptions,
             ...(options ?? {}),
-            tag: "select",
+            tag: options?.tag ?? "div",
         } as TOptions);
 
         this.getAria().setRole("combobox");
+        this.getAria().setExpanded(false);
+        this.getAria().setTabIndex(0);
+
+        // `display: flex` plus the static layout/typography on the
+        // `.ComboBox` class rule lay the label and caret out side by side.
+        this.setDisplay("flex");
+
+        this._label = new ComboBoxLabel();
+        this._caret = new ComboBoxCaret();
+        this.addComponent(this._label);
+        this.addComponent(this._caret);
+        this._label.setLabel(this.computeLabel());
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
 
+        Event.addListener(this, "click",   ()                 => this.toggleDropdown());
+        Event.addListener(this, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
+
+        this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
+
         // Late-built state: store / items / selection were written pure to
-        // `_options` by the super-time cascade. Dispatch them now that
-        // `this.items` is initialised.
+        // `_options` by the super-time cascade. Dispatch them now that the
+        // internal state is initialised.
         if (this._options.store !== undefined && this._options.displayField !== undefined) {
             this.setStore(this._options.store, this._options.displayField, this._options.valueField);
         }
@@ -124,140 +472,262 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
      * Applies a {@link ComboBoxOptions} bag. Inherited Component fields cascade
      * through `super.applyOptions`; item / store / selection fields are written
      * pure into `_options` here and dispatched from the constructor body once
-     * `this.items` is initialised.
+     * internal state is initialised.
      *
      * @param options - The options bag carrying the values to apply.
      */
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.items         !== undefined) this._options.items         = options.items;
-        if (options.store         !== undefined) this._options.store         = options.store;
-        if (options.displayField  !== undefined) this._options.displayField  = options.displayField;
-        if (options.valueField    !== undefined) this._options.valueField    = options.valueField;
-        if (options.selectedIndex !== undefined) this._options.selectedIndex = options.selectedIndex;
-        if (options.value         !== undefined) this._options.value         = options.value;
-        if (options.selectedItem  !== undefined) this._options.selectedItem  = options.selectedItem;
+        if (options.items            !== undefined) this._options.items            = options.items;
+        if (options.store            !== undefined) this._options.store            = options.store;
+        if (options.displayField     !== undefined) this._options.displayField     = options.displayField;
+        if (options.valueField       !== undefined) this._options.valueField       = options.valueField;
+        if (options.selectedIndex    !== undefined) this._options.selectedIndex    = options.selectedIndex;
+        if (options.value            !== undefined) this._options.value            = options.value;
+        if (options.selectedItem     !== undefined) this._options.selectedItem     = options.selectedItem;
+        if (options.dropdownAnimated !== undefined) this._options.dropdownAnimated = options.dropdownAnimated;
 
         return this;
     }
 
     /**
-     * Applies base styles and binds font-family/font-size to the active theme.
+     * Recalculates preferred and maximum height from a probe input's measured size.
      *
-     * @param element - The `<select>` element to apply styles to.
-     *
-     * @remarks Native `<select>` elements do not inherit `font-family` or `font-size`
-     * from ancestors in Chromium/WebKit — they use the UA stylesheet defaults. We
-     * therefore write the theme variables onto the per-component CSS rule explicitly,
-     * the same way [`Input`](/api/component/input/classes/Input) does for `<input>` / `<textarea>`.
-     */
-    applyStyle(element: HTMLElement): this {
-        super.applyStyle(element);
-
-        const rule = this.getCSSRule();
-        rule.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
-        rule.style.fontSize   = "var(--ts-ui-font-size, 14px)";
-
-        return this;
-    }
-
-    /**
-     * Returns the offset from the top of the combo box to the inner-text baseline.
-     *
-     * @returns The baseline offset in pixels.
-     *
-     * @remarks Native `<select>` elements have a slightly different baseline
-     * from `<input>` elements at the same font size. The 1-pixel offset on top
-     * of the cached input baseline approximates the empirical placement of the
-     * select's first-row text so a [`Text`](/api/component/input/classes/Text) label next to a `ComboBox` lines up
-     * visually.
-     */
-    getBaseline(): number | null {
-        return this.wrapInnerBaseline(Util.measureInputBaseline() + 1);
-    }
-
-    /**
-     * Recalculates preferred and maximum height from a native `<select>` element's measured size.
-     *
-     * Uses an off-screen probe so the result tracks the theme font size automatically.
-     * Called at construction time and after each theme change.
+     * Uses the same measurement helper as `Input`-based fields so a `ComboBox`
+     * placed next to a `TextField` matches its row height.
      */
     protected updateHeight(): void {
-        const probe = document.createElement("select");
-
-        probe.style.position   = "fixed";
-        probe.style.visibility = "hidden";
-        probe.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
-        probe.style.fontSize   = "var(--ts-ui-font-size, 14px)";
-
-        document.body.appendChild(probe);
-
-        const h = Math.ceil(probe.getBoundingClientRect().height) || 20;
-
-        document.body.removeChild(probe);
+        const h = Util.measureInputHeight();
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
     }
 
     /**
-     * Registers a listener for the select element's 'change' event.
+     * Returns the offset from the top of the combo box to the inner-text baseline.
+     *
+     * @returns The baseline offset in pixels.
+     */
+    getBaseline(): number | null {
+        return this.wrapInnerBaseline(Util.measureInputBaseline());
+    }
+
+    /**
+     * Toggles the dropdown's open state.
+     */
+    private toggleDropdown(): void {
+        const dropdown = this.ensureDropdown();
+
+        if (dropdown.isOpen()) {
+            this.closeDropdown();
+            return;
+        }
+
+        const labels = this._items.map(item => item.label);
+        dropdown.showAt(this.getElement(true), labels);
+        this.getAria().setExpanded(true);
+        Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
+    }
+
+    /**
+     * Closes the dropdown if open.
+     */
+    private closeDropdown(): void {
+        if (this._dropdown && this._dropdown.isOpen()) {
+            Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
+            this._dropdown.hideAnimated();
+            this.getAria().setExpanded(false);
+        }
+    }
+
+    /**
+     * Lazily builds the dropdown instance on first open.
+     *
+     * @returns The owned dropdown instance.
+     */
+    private ensureDropdown(): ComboBoxDropdown {
+        if (!this._dropdown) {
+            this._dropdown = new ComboBoxDropdown(idx => this.onRowSelected(idx));
+            const animated = this._options.dropdownAnimated;
+            if (animated !== undefined) {
+                this._dropdown.setAnimated(animated);
+            }
+        }
+
+        return this._dropdown;
+    }
+
+    /**
+     * Viewport-level pointerdown handler: closes the dropdown when the click
+     * lands outside both the ComboBox and the dropdown panel.
+     *
+     * @param e - The pointerdown event from the viewport.
+     */
+    private onViewportPointerDown(e: PointerEvent): void {
+        const target = e.target as Node;
+        const dropEl = this._dropdown?.getElement();
+        if (dropEl?.contains(target)) {
+            return;
+        }
+        if (this.getElement()?.contains(target)) {
+            return;
+        }
+        this.closeDropdown();
+    }
+
+    /**
+     * Handles keydown for keyboard-driven open / navigation.
+     *
+     * @param e - The keyboard event.
+     */
+    private onKeyDown(e: KeyboardEvent): void {
+        switch (e.key) {
+            case "ArrowDown":
+            case "Enter":
+            case " ":
+                e.preventDefault();
+                if (!this.ensureDropdown().isOpen()) {
+                    this.toggleDropdown();
+                } else {
+                    this.cycleSelection(1);
+                }
+                break;
+            case "ArrowUp":
+                e.preventDefault();
+                if (!this.ensureDropdown().isOpen()) {
+                    this.toggleDropdown();
+                } else {
+                    this.cycleSelection(-1);
+                }
+                break;
+            case "Escape":
+                this.closeDropdown();
+                break;
+            default:
+                break;
+        }
+    }
+
+    /**
+     * Moves the active selection by `delta` rows, wrapping at both ends.
+     *
+     * @param delta - +1 to advance, -1 to go back.
+     */
+    private cycleSelection(delta: number): void {
+        if (this._items.length === 0) {
+            return;
+        }
+
+        const len = this._items.length;
+        const cur = this._selectedIndex < 0 ? 0 : this._selectedIndex;
+        const next = ((cur + delta) % len + len) % len;
+
+        this.setSelectedIndex(next, true);
+    }
+
+    /**
+     * Internal callback fired when a row inside the dropdown is clicked.
+     *
+     * @param index - The selected row index.
+     */
+    private onRowSelected(index: number): void {
+        this.setSelectedIndex(index, true);
+        this.closeDropdown();
+    }
+
+    /**
+     * Returns the display label for the active selection.
+     *
+     * @returns The label to render, or an empty string when nothing is selected.
+     */
+    private computeLabel(): string {
+        if (this._selectedIndex >= 0 && this._selectedIndex < this._items.length) {
+            return this._items[this._selectedIndex].label;
+        }
+
+        return "";
+    }
+
+    /**
+     * Refreshes the rendered label after a value or selection change.
+     */
+    private refreshLabel(): void {
+        this._label.setLabel(this.computeLabel());
+    }
+
+    /**
+     * Registers a listener for the 'change' event, fired on each selection change.
      *
      * @param listener - The callback to invoke when the selection changes.
      */
-    addActionListener(listener: Function) : this {
+    addActionListener(listener: Function): this {
         Event.addListener(this, "change", listener);
 
         return this;
     }
 
+    /**
+     * Sets the field value by matching the option's key.
+     *
+     * @param value - The option key to select. Falls back to no-op when unmatched.
+     */
     setValue(value: string): this {
-        const element = this.getElement();
-        if (!element) return this;
-        element.value = value;
+        this._value = value;
+
+        const idx = this._items.findIndex(item => item.key === value);
+
+        if (idx >= 0) {
+            this._selectedIndex = idx;
+        }
+
+        this.refreshLabel();
 
         return this;
     }
 
+    /**
+     * Returns the current value (the key of the selected option).
+     *
+     * @returns The selected option's key, or the last value passed to {@link setValue}.
+     */
     getValue(): string {
-        const element = this.getElement();
-        return element ? element.value : '';
+        if (this._selectedIndex >= 0 && this._selectedIndex < this._items.length) {
+            return this._items[this._selectedIndex].key;
+        }
+
+        return this._value;
     }
 
+    /**
+     * Registers a listener that fires on each user-driven change.
+     *
+     * @param fn - The callback to invoke on change.
+     */
     addBindingListener(fn: () => void): void {
         this.addActionListener(fn);
     }
 
     /**
-     * Returns the text content of the currently selected option.
+     * Returns the display text of the currently selected option.
      *
-     * @returns The text content of the selected option element.
+     * @returns The selected option's display text, or an empty string when nothing is selected.
      */
-    getSelectedItem() {
-        let element = this.getElement();
-        return element[element.selectedIndex].textContent;
-    }
+    getSelectedItem(): string {
+        if (this._selectedIndex >= 0 && this._selectedIndex < this._items.length) {
+            return this._items[this._selectedIndex].label;
+        }
 
-    /**
-     * Returns the DOM element cast to HTMLSelectElement.
-     *
-     * @param createIfMissing - Optional. When true, renders the element if it does not yet exist.
-     *
-     * @returns The component's HTMLSelectElement.
-     */
-    getElement(createIfMissing: boolean = false) {
-        return <HTMLSelectElement>super.getElement(createIfMissing);
+        return "";
     }
 
     /**
      * Returns the zero-based index of the currently selected option.
      *
-     * @returns The selected index.
+     * @returns The selected index, or -1 when nothing is selected.
      */
-    getSelectedIndex() {
-        let element = this.getElement();
-        return element.selectedIndex;
+    getSelectedIndex(): number {
+        return this._selectedIndex;
     }
 
     /**
@@ -266,15 +736,16 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
      * @param idx - The zero-based index to select.
      * @param fireEvent - Optional. When true (default), fires the 'change' event after updating.
      */
-    setSelectedIndex(idx: number, fireEvent = true) : this {
-        let element = this.getElement();
-        if (!element) {
-            return this;
+    setSelectedIndex(idx: number, fireEvent: boolean = true): this {
+        this._selectedIndex = idx;
+
+        if (idx >= 0 && idx < this._items.length) {
+            this._value = this._items[idx].key;
         }
 
-        element.selectedIndex = idx;
+        this.refreshLabel();
 
-        if (!!fireEvent) {
+        if (fireEvent) {
             Event.fireEvent(this, "change");
         }
 
@@ -282,64 +753,54 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
     }
 
     /**
-     * Returns a copy of the current Option items array.
+     * Returns a copy of the current {@link ComboBoxItem} array.
      *
-     * @returns A shallow copy of the internal Option array.
+     * @returns A shallow copy of the internal item array.
      */
-    getItems() {
+    getItems(): Array<ComboBoxItem> {
         return this._items.slice();
     }
 
     /**
-     * Replaces all options with the given string values and re-renders the select element's content.
+     * Replaces all options with the given string values.
      *
      * @param items - A single string or an array of strings to use as option labels.
-     *
-     * @remarks Clears the existing DOM options before appending the new ones.
      */
-    setItems(items: String | Array<String>) : this {
+    setItems(items: String | Array<String>): this {
         if (!Type.isArray(items)) {
-            items = [<String>items];
+            items = [items as String];
         }
 
-        for (let idx in items) {
-            let value = items[idx];
+        this._items = [];
 
-            let item = new Option(idx, value as string);
-            this._items.push(item);
+        const list = items as Array<String>;
+        for (let i = 0; i < list.length; i++) {
+            this._items.push({ key: String(i), label: list[i] as string });
         }
 
-        let element = this.getElement();
-        if (!element) {
-            return this;
+        if (this._selectedIndex < 0 && this._items.length > 0) {
+            this._selectedIndex = 0;
+        } else if (this._selectedIndex >= this._items.length) {
+            this._selectedIndex = this._items.length - 1;
         }
 
-        element.innerHTML = "";
-
-        for (let idx in this._items) {
-            let value = this._items[idx];
-
-            element.appendChild(value.getElement());
-        }
+        this.refreshLabel();
 
         return this;
     }
 
     /**
-     * Appends a new option to the end of the list and to the select element.
+     * Appends a new option to the end of the list.
      *
      * @param item - The string label for the new option.
      */
-    addItem(item: String) : this {
-        let listItem = new Option((this._items.length + 1).toString(), item as string);
-        this._items.push(listItem);
+    addItem(item: String): this {
+        this._items.push({ key: String(this._items.length), label: item as string });
 
-        let element = this.getElement();
-        if (!element) {
-            return this;
+        if (this._selectedIndex < 0) {
+            this._selectedIndex = 0;
+            this.refreshLabel();
         }
-
-        element.appendChild(listItem.getElement(true));
 
         return this;
     }
@@ -363,7 +824,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
         this._options.displayField = displayField;
         this._options.valueField   = valueField;
 
-        const refresh = () => this.refreshFromStore();
+        const refresh = (): void => this.refreshFromStore();
         this._storeRefresh = refresh;
 
         store.on('load',        refresh);
@@ -379,6 +840,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
 
     /**
      * Returns the currently bound store, or null if none is set.
+     *
+     * @returns The bound store, or null.
      */
     getStore(): AbstractStore | null {
         return this._options.store ?? null;
@@ -396,14 +859,11 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
             return undefined;
         }
 
-        return store.getRecords()[this.getSelectedIndex()];
+        return store.getRecords()[this._selectedIndex];
     }
 
     /**
      * Rebuilds the option list from the bound store's current records.
-     *
-     * Updates `this.items` unconditionally. Syncs the DOM only if the element already exists;
-     * otherwise `render()` picks up the updated items when the element is created.
      */
     protected refreshFromStore(): void {
         const store        = this._options.store;
@@ -424,44 +884,50 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
                                ? String(record.get(valueField))
                                : String(record.getId());
 
-            this._items.push(new Option(key, label));
+            this._items.push({ key, label });
         }
 
-        const element = this.getElement();
-        if (!element) {
-            return;
+        if (this._value) {
+            const idx = this._items.findIndex(item => item.key === this._value);
+            if (idx >= 0) {
+                this._selectedIndex = idx;
+            }
+        } else if (this._selectedIndex < 0 && this._items.length > 0) {
+            this._selectedIndex = 0;
         }
 
-        element.innerHTML = "";
-
-        const fragment = document.createDocumentFragment();
-        for (let i = 0; i < this._items.length; i++) {
-            fragment.appendChild(this._items[i].getElement(true));
-        }
-        element.appendChild(fragment);
+        this.refreshLabel();
     }
 
     /**
-     * Renders the select element and appends all option child elements.
+     * Enables or disables the fade animation on the dropdown.
      *
-     * @returns The created HTMLSelectElement with all options appended.
+     * @param value - true to fade, false for instant open/close.
      */
-    render() {
-        let element = super.render();
+    setDropdownAnimated(value: boolean): this {
+        this._options.dropdownAnimated = value;
 
-        for (let idx in this._items) {
-            let item = this._items[idx];
-
-            element.appendChild(item.getElement(true));
+        if (this._dropdown) {
+            this._dropdown.setAnimated(value);
         }
 
-        return element;
+        return this;
+    }
+
+    /**
+     * Returns whether the dropdown fade is enabled.
+     *
+     * @returns true when the dropdown fades; false when it opens/closes instantly.
+     */
+    isDropdownAnimated(): boolean {
+        return this._options.dropdownAnimated ?? true;
     }
 }
 
 const ComboBoxCallable = callable(ComboBox);
 type ComboBoxCallable = ComboBox;
 export {
-    ComboBox         as _ComboBox,
-    ComboBoxCallable as ComboBox
+    ComboBox            as _ComboBox,
+    ComboBoxDropdown    as _ComboBoxDropdown,
+    ComboBoxCallable    as ComboBox
 };
