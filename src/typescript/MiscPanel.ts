@@ -245,14 +245,15 @@ class MiscPanel extends Panel {
                 // Partial spec: Name gets a minWidth; Score gets a maxWidth.
                 // Notes is hidden initially. col2 (Active) is not listed but is
                 // auto-appended because appendUnlisted defaults to true.
+                // Name carries a headerGlyph to demo the leading-glyph slot.
                 const spec: ColumnSpec = {
                     columns: [
-                        { field: 'Name'    , minWidth: 150                    },
-                        { field: 'Active'  , maxWidth: 100                    },
-                        { field: 'Joined'  , minWidth: 120                    },
-                        { field: 'Meeting' , minWidth: 100, showSeconds: true },
-                        { field: 'LastSeen', minWidth: 160                    },
-                        { field: 'Notes'   , hidden  : true                   },
+                        { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark' },
+                        { field: 'Active'  , maxWidth: 100                       },
+                        { field: 'Joined'  , minWidth: 120                       },
+                        { field: 'Meeting' , minWidth: 100, showSeconds: true    },
+                        { field: 'LastSeen', minWidth: 160                       },
+                        { field: 'Notes'   , hidden  : true                      },
                     ],
                 };
 
