@@ -35,12 +35,12 @@ export type FieldConfig = FieldOptions;
  */
 export class Field {
 
-    private name: string;
-    private type: FieldType;
-    private defaultValue: any;
-    private mapping: string;
-    private description: string | undefined;
-    private order: number | undefined;
+    private _name: string;
+    private _type: FieldType;
+    private _defaultValue: any;
+    private _mapping: string;
+    private _description: string | undefined;
+    private _order: number | undefined;
 
     /**
      * Constructs a Field from a FieldOptions object.
@@ -48,12 +48,12 @@ export class Field {
      * @param options - The options object describing the field's properties.
      */
     constructor(options: FieldOptions) {
-        this.name = options.name;
-        this.type = options.type ?? 'auto';
-        this.defaultValue = options.defaultValue;
-        this.mapping = options.mapping ?? options.name;
-        this.description = options.description;
-        this.order = options.order;
+        this._name = options.name;
+        this._type = options.type ?? 'auto';
+        this._defaultValue = options.defaultValue;
+        this._mapping = options.mapping ?? options.name;
+        this._description = options.description;
+        this._order = options.order;
     }
 
     /**
@@ -62,7 +62,7 @@ export class Field {
      * @returns The logical name string for this field.
      */
     getName(): string {
-        return this.name;
+        return this._name;
     }
 
     /**
@@ -71,7 +71,7 @@ export class Field {
      * @returns The FieldType value for this field.
      */
     getType(): FieldType {
-        return this.type;
+        return this._type;
     }
 
     /**
@@ -80,7 +80,7 @@ export class Field {
      * @returns The configured default value, or undefined if none was specified.
      */
     getDefaultValue(): any {
-        return this.defaultValue;
+        return this._defaultValue;
     }
 
     /**
@@ -89,7 +89,7 @@ export class Field {
      * @returns The mapping key string; defaults to the field name when not explicitly configured.
      */
     getMapping(): string {
-        return this.mapping;
+        return this._mapping;
     }
 
     /**
@@ -98,7 +98,7 @@ export class Field {
      * @returns The description string if configured, otherwise the field name.
      */
     getDescription(): string {
-        return this.description ?? this.name;
+        return this._description ?? this._name;
     }
 
     /**
@@ -107,6 +107,6 @@ export class Field {
      * @returns The configured order value, or -1 if no order was specified.
      */
     getOrder(): number {
-        return this.order ?? -1;
+        return this._order ?? -1;
     }
 }
