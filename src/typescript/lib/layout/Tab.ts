@@ -82,16 +82,16 @@ interface TabEntry {
  */
 class Tab extends LayoutManager {
 
-    private toolbar: Component = new Component();
-    private tabs: Array<TabEntry> = [];
-    private buttonGroup: ButtonGroup = new ButtonGroup();
-    private rovingTabIndex: RovingTabIndex = new RovingTabIndex();
-    private selectedTabIndex: number = 0;
+    private _toolbar: Component = new Component();
+    private _tabs: Array<TabEntry> = [];
+    private _buttonGroup: ButtonGroup = new ButtonGroup();
+    private _rovingTabIndex: RovingTabIndex = new RovingTabIndex();
+    private _selectedTabIndex: number = 0;
     // Last tab index that was faded in during a doLayout pass. Compared
     // against `selectedTabIndex` so the cross-tab fade fires only on actual
     // selection changes (not on every relayout, e.g. window resize).
-    private lastFadedTabIndex: number = -1;
-    private onTabClose: ((component: Component) => void) | null = null;
+    private _lastFadedTabIndex: number = -1;
+    private _onTabClose: ((component: Component) => void) | null = null;
 
     /**
      * Creates a Tab layout manager with an empty toolbar.
@@ -103,11 +103,11 @@ class Tab extends LayoutManager {
 
         let columnLayout = new Column();
         columnLayout.setGap(0);
-        this.toolbar.setLayoutManager(columnLayout);
-        this.toolbar.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
-        this.toolbar.clearInsets();
-        this.toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
-        this.toolbar.setPreferredSize(0, 30);
+        this._toolbar.setLayoutManager(columnLayout);
+        this._toolbar.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
+        this._toolbar.clearInsets();
+        this._toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
+        this._toolbar.setPreferredSize(0, 30);
 
         if (options) {
             this.applyOptions(options);
@@ -134,13 +134,13 @@ class Tab extends LayoutManager {
      * @param tab - The tab button component that was pressed.
      */
     onTabPressed(tab: Component): void {
-        const idx = this.tabs.findIndex(entry => entry.button === tab);
+        const idx = this._tabs.findIndex(entry => entry.button === tab);
 
         if (idx >= 0) {
-            this.selectedTabIndex = idx;
-            this.rovingTabIndex.moveTo(idx);
+            this._selectedTabIndex = idx;
+            this._rovingTabIndex.moveTo(idx);
 
-            const entry = this.tabs[idx];
+            const entry = this._tabs[idx];
             if (entry.state === "lazy") {
                 this.materializeAsync(idx);
             }
@@ -157,12 +157,12 @@ class Tab extends LayoutManager {
     attach(container: Component): this {
         super.attach(container);
 
-        let element = this.toolbar.getElement(true);
+        let element = this._toolbar.getElement(true);
         container.getElement(true).appendChild(element);
 
-        this.toolbar.getAria().setRole("tablist");
+        this._toolbar.getAria().setRole("tablist");
 
-        Event.addSubtreeListener(this.toolbar, "keydown", (e: KeyboardEvent) => this.onToolbarKeyDown(e));
+        Event.addSubtreeListener(this._toolbar, "keydown", (e: KeyboardEvent) => this.onToolbarKeyDown(e));
 
         return this;
     }
@@ -173,7 +173,7 @@ class Tab extends LayoutManager {
     detach(): this {
         super.detach();
 
-        this.toolbar.getElement().remove();
+        this._toolbar.getElement().remove();
 
         return this;
     }
@@ -190,7 +190,7 @@ class Tab extends LayoutManager {
             return null;
         }
 
-        const entry = this.tabs[this.selectedTabIndex];
+        const entry = this._tabs[this._selectedTabIndex];
         if (entry) {
             if (entry.component) {
                 return entry.component;
@@ -203,7 +203,7 @@ class Tab extends LayoutManager {
             return null;
         }
 
-        return container.getComponents()[this.selectedTabIndex] ?? null;
+        return container.getComponents()[this._selectedTabIndex] ?? null;
     }
 
     /**
@@ -232,7 +232,7 @@ class Tab extends LayoutManager {
             return null;
         }
 
-        let toolbarSize = this.toolbar.getPreferredSize();
+        let toolbarSize = this._toolbar.getPreferredSize();
         if (!toolbarSize) {
             return null;
         }
@@ -269,7 +269,7 @@ class Tab extends LayoutManager {
             return null;
         }
 
-        let toolbarSize = this.toolbar.getMinSize();
+        let toolbarSize = this._toolbar.getMinSize();
         if (!toolbarSize) {
             return null;
         }
@@ -306,7 +306,7 @@ class Tab extends LayoutManager {
             return null;
         }
 
-        let toolbarSize = this.toolbar.getMaxSize();
+        let toolbarSize = this._toolbar.getMaxSize();
         if (!toolbarSize) {
             return null;
         }
@@ -377,17 +377,17 @@ class Tab extends LayoutManager {
             closeButton.addActionListener(() => this.closeTab(entry));
         }
 
-        this.tabs.push(entry);
+        this._tabs.push(entry);
 
-        const isSelected = this.tabs.length - 1 === this.selectedTabIndex;
+        const isSelected = this._tabs.length - 1 === this._selectedTabIndex;
 
         if (isSelected) {
             tabButton.setSelected(true);
         }
 
-        this.buttonGroup.addButton(tabButton);
-        this.rovingTabIndex.add(tabButton);
-        this.toolbar.addComponent(wrapper);
+        this._buttonGroup.addButton(tabButton);
+        this._rovingTabIndex.add(tabButton);
+        this._toolbar.addComponent(wrapper);
 
         tabButton.getAria().setRole("tab");
         tabButton.getAria().setSelected(isSelected);
@@ -512,7 +512,7 @@ class Tab extends LayoutManager {
      * until the build completes.
      */
     private materializeAsync(idx: number): void {
-        const entry = this.tabs[idx];
+        const entry = this._tabs[idx];
         if (!entry || entry.state !== "lazy") {
             return;
         }
@@ -567,7 +567,7 @@ class Tab extends LayoutManager {
 
         let componentCount = components.length;
 
-        for (let i = this.tabs.length; i < componentCount; i += 1) {
+        for (let i = this._tabs.length; i < componentCount; i += 1) {
             let component = components[i];
             this.createTab(component);
         }
@@ -575,9 +575,9 @@ class Tab extends LayoutManager {
         // The initial tab is never explicitly clicked, so its factory has to
         // be kicked off the first time we lay the container out. Subsequent
         // selections route through onTabPressed.
-        const initialEntry = this.tabs[this.selectedTabIndex];
+        const initialEntry = this._tabs[this._selectedTabIndex];
         if (initialEntry && initialEntry.state === "lazy") {
-            this.materializeAsync(this.selectedTabIndex);
+            this.materializeAsync(this._selectedTabIndex);
         }
 
         for (let idx in components) {
@@ -586,8 +586,8 @@ class Tab extends LayoutManager {
             component.getAria().setHidden(true);
         }
 
-        for (let i = 0; i < this.tabs.length; i++) {
-            this.tabs[i].button.getAria().setSelected(i === this.selectedTabIndex);
+        for (let i = 0; i < this._tabs.length; i++) {
+            this._tabs[i].button.getAria().setSelected(i === this._selectedTabIndex);
         }
 
         let component = this.getVisibleComponent();
@@ -596,15 +596,15 @@ class Tab extends LayoutManager {
             component = components[0];
         }
 
-        let toolbarSize = this.toolbar.getPreferredSize();
+        let toolbarSize = this._toolbar.getPreferredSize();
         let toolbarHeight = toolbarSize ? toolbarSize.height : 0;
 
-        this.toolbar.setX(containerInsets.getLeft());
-        this.toolbar.setY(containerInsets.getTop());
-        this.toolbar.setWidth(containerSize ? containerSize.width : 0);
-        this.toolbar.setHeight(toolbarHeight);
+        this._toolbar.setX(containerInsets.getLeft());
+        this._toolbar.setY(containerInsets.getTop());
+        this._toolbar.setWidth(containerSize ? containerSize.width : 0);
+        this._toolbar.setHeight(toolbarHeight);
 
-        this.toolbar.doLayout();
+        this._toolbar.doLayout();
 
         if (!component) {
             return;
@@ -626,11 +626,11 @@ class Tab extends LayoutManager {
         // changed since the last layout AND the entry is fully built — for a
         // lazy tab still mid-build, the spinner placeholder is what's on
         // screen and `Animation.materialize` runs the content fade itself.
-        const selectedEntry = this.tabs[this.selectedTabIndex];
+        const selectedEntry = this._tabs[this._selectedTabIndex];
         const isReady       = selectedEntry?.state === "ready";
 
-        if (isReady && this.lastFadedTabIndex !== this.selectedTabIndex) {
-            this.lastFadedTabIndex = this.selectedTabIndex;
+        if (isReady && this._lastFadedTabIndex !== this._selectedTabIndex) {
+            this._lastFadedTabIndex = this._selectedTabIndex;
 
             const el = component.getElement();
             if (el) {
@@ -650,7 +650,7 @@ class Tab extends LayoutManager {
      * @param callback - Receives the content component that was removed.
      */
     setOnTabClose(callback: (component: Component) => void): void {
-        this.onTabClose = callback;
+        this._onTabClose = callback;
     }
 
     /**
@@ -664,24 +664,24 @@ class Tab extends LayoutManager {
             return;
         }
 
-        const entryIndex = this.tabs.indexOf(entry);
+        const entryIndex = this._tabs.indexOf(entry);
         if (entryIndex < 0) {
             return;
         }
 
         const contentComponent = entry.component;
 
-        this.buttonGroup.removeButton(entry.button);
-        this.rovingTabIndex.remove(entry.button);
-        this.tabs.splice(entryIndex, 1);
-        this.toolbar.removeComponent(entry.wrapper);
+        this._buttonGroup.removeButton(entry.button);
+        this._rovingTabIndex.remove(entry.button);
+        this._tabs.splice(entryIndex, 1);
+        this._toolbar.removeComponent(entry.wrapper);
 
         if (contentComponent) {
             container.removeComponent(contentComponent);
         }
 
-        if (this.onTabClose && contentComponent) {
-            this.onTabClose(contentComponent);
+        if (this._onTabClose && contentComponent) {
+            this._onTabClose(contentComponent);
         }
 
         this.selectNextTab(entryIndex);
@@ -694,19 +694,19 @@ class Tab extends LayoutManager {
      * @param closedIndex - The index that was just spliced out.
      */
     private selectNextTab(closedIndex: number): void {
-        const count = this.tabs.length;
+        const count = this._tabs.length;
 
         if (count === 0) {
-            this.selectedTabIndex = 0;
+            this._selectedTabIndex = 0;
 
             return;
         }
 
         const newIndex = closedIndex > 0 ? closedIndex - 1 : 0;
-        this.selectedTabIndex = newIndex;
+        this._selectedTabIndex = newIndex;
 
-        this.tabs.forEach(e => e.button.setSelected(false));
-        this.tabs[newIndex].button.setSelected(true);
+        this._tabs.forEach(e => e.button.setSelected(false));
+        this._tabs[newIndex].button.setSelected(true);
     }
 
     /**
@@ -719,7 +719,7 @@ class Tab extends LayoutManager {
             return;
         }
 
-        const tabCount = this.tabs.length;
+        const tabCount = this._tabs.length;
 
         if (tabCount === 0) {
             return;
@@ -728,12 +728,12 @@ class Tab extends LayoutManager {
         e.preventDefault();
 
         const newIdx = e.key === 'ArrowRight'
-            ? (this.selectedTabIndex + 1) % tabCount
-            : (this.selectedTabIndex - 1 + tabCount) % tabCount;
+            ? (this._selectedTabIndex + 1) % tabCount
+            : (this._selectedTabIndex - 1 + tabCount) % tabCount;
 
-        const newTab = this.tabs[newIdx].button;
+        const newTab = this._tabs[newIdx].button;
 
-        this.tabs.forEach(entry => entry.button.setSelected(false));
+        this._tabs.forEach(entry => entry.button.setSelected(false));
         newTab.setSelected(true);
 
         this.onTabPressed(newTab);

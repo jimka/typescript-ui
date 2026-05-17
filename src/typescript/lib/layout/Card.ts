@@ -24,8 +24,8 @@ export interface CardOptions extends LayoutManagerOptions {
  */
 class Card extends LayoutManager {
 
-    private visibleComponentId: String | null = null;
-    private currentVisible: Component | null = null;
+    private _visibleComponentId: String | null = null;
+    private _currentVisible: Component | null = null;
 
     constructor(options?: CardOptions) {
         super();
@@ -55,7 +55,7 @@ class Card extends LayoutManager {
      * @returns The visible component ID, or `null`.
      */
     getVisibleComponentId(): String | null {
-        return this.visibleComponentId;
+        return this._visibleComponentId;
     }
 
     /**
@@ -172,11 +172,11 @@ class Card extends LayoutManager {
      * @param id - The ID of the child component to make visible.
      */
     setVisibleComponentId(id: String): this {
-        if (this.visibleComponentId === id) {
+        if (this._visibleComponentId === id) {
             return this;
         }
 
-        this.visibleComponentId = id;
+        this._visibleComponentId = id;
         this.syncVisible();
 
         return this;
@@ -191,11 +191,11 @@ class Card extends LayoutManager {
      * @returns The resolved visible component, or `null` if the container is empty.
      */
     getVisibleComponent(): Component | null {
-        if (!this.currentVisible) {
+        if (!this._currentVisible) {
             this.syncVisible();
         }
 
-        return this.currentVisible;
+        return this._currentVisible;
     }
 
     /**
@@ -213,9 +213,9 @@ class Card extends LayoutManager {
         const components = container.getComponents();
         let resolved: Component | null = null;
 
-        if (this.visibleComponentId) {
+        if (this._visibleComponentId) {
             for (const c of components) {
-                if (c.getId() == this.visibleComponentId) {
+                if (c.getId() == this._visibleComponentId) {
                     resolved = c;
                     break;
                 }
@@ -230,11 +230,11 @@ class Card extends LayoutManager {
             resolved = components[0];
         }
 
-        if (resolved === this.currentVisible) {
+        if (resolved === this._currentVisible) {
             return;
         }
 
-        if (this.currentVisible === null) {
+        if (this._currentVisible === null) {
             // First sync: components default to visible, so any sibling that
             // isn't the resolved child needs to be hidden explicitly. Without
             // this, e.g. a Cell's editor (sibling of its renderer) renders on
@@ -245,14 +245,14 @@ class Card extends LayoutManager {
                 }
             }
         } else {
-            this.currentVisible.setVisible(false);
+            this._currentVisible.setVisible(false);
         }
 
         if (resolved) {
             resolved.setVisible(true);
         }
 
-        this.currentVisible = resolved;
+        this._currentVisible = resolved;
     }
 
     /**
@@ -265,11 +265,11 @@ class Card extends LayoutManager {
             return;
         }
 
-        if (!this.currentVisible) {
+        if (!this._currentVisible) {
             this.syncVisible();
         }
 
-        if (!this.currentVisible) {
+        if (!this._currentVisible) {
             return;
         }
 
@@ -277,7 +277,7 @@ class Card extends LayoutManager {
         const containerInsets = container.getInsets();
 
         this.placeComponent(
-            this.currentVisible,
+            this._currentVisible,
             containerInsets.getLeft(),
             containerInsets.getTop(),
             containerSize ? containerSize.width : 0,

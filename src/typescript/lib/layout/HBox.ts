@@ -23,9 +23,9 @@ export interface HBoxOptions extends LayoutManagerOptions {
  */
 class HBox extends LayoutManager {
 
-    private spacing: number = 5;
-    private stretching: boolean = false;
-    private defaultComponentWidth: number = 100;
+    private _spacing: number = 5;
+    private _stretching: boolean = false;
+    private _defaultComponentWidth: number = 100;
 
     constructor(options?: HBoxOptions) {
         super();
@@ -59,7 +59,7 @@ class HBox extends LayoutManager {
      * @returns The current spacing in pixels.
      */
     getComponentSpacing() {
-        return this.spacing || 0;
+        return this._spacing || 0;
     }
 
     /**
@@ -68,7 +68,7 @@ class HBox extends LayoutManager {
      * @param spacing - Spacing in pixels.
      */
     setComponentSpacing(spacing: number) : this {
-        this.spacing = spacing || 0;
+        this._spacing = spacing || 0;
 
         return this;
     }
@@ -79,7 +79,7 @@ class HBox extends LayoutManager {
      * @returns `true` if stretching is enabled.
      */
     isStretching() {
-        return this.stretching || false;
+        return this._stretching || false;
     }
 
     /**
@@ -88,7 +88,7 @@ class HBox extends LayoutManager {
      * @param stretching - Pass `true` to enable height stretching.
      */
     setStretching(stretching: boolean) : this {
-        this.stretching = stretching;
+        this._stretching = stretching;
 
         return this;
     }
@@ -251,7 +251,7 @@ class HBox extends LayoutManager {
                 let minSize = component.getMinSize();
                 fixedWidth += (size ? size.width : undefined)
                     || (minSize ? minSize.width : undefined)
-                    || this.defaultComponentWidth;
+                    || this._defaultComponentWidth;
             }
         }
 
@@ -277,7 +277,7 @@ class HBox extends LayoutManager {
             } else {
                 width = (size ? size.width : undefined)
                     || (minSize ? minSize.width : undefined)
-                    || this.defaultComponentWidth;
+                    || this._defaultComponentWidth;
             }
 
             let height: number;
