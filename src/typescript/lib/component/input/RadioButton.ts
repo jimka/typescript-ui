@@ -143,6 +143,23 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions> exte
     }
 
     /**
+     * Removes the shared `name` attribute from the underlying radio input,
+     * detaching it from any radio group it was part of.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearRadioName(): this {
+        if (this._options.radioName === undefined) {
+            return this;
+        }
+
+        this._options.radioName = undefined;
+        this._radio.clearName();
+
+        return this;
+    }
+
+    /**
      * Returns the radio group name, or null if none has been set.
      *
      * @returns The name string, or null.

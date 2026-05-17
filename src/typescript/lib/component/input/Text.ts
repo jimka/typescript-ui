@@ -78,6 +78,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private _measurementDirty: boolean = true;
     private _wordBreak: string | null = null;
     private _lineClamp: number | null = null;
+    private _textOverflow: string | null = null;
 
     constructor(text?: String, options?: TOptions) {
         super({ ..._defaultTextOptions, ...(options ?? {}), tag: options?.tag ?? "span" } as TOptions);
@@ -442,6 +443,22 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
+     * Removes the text-shadow CSS property from the component's CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearTextShadow(): this {
+        if (this._options.textShadow === undefined) {
+            return this;
+        }
+
+        this._options.textShadow = undefined;
+        this.setElementCSSRule("textShadow", null);
+
+        return this;
+    }
+
+    /**
      * Returns the CSS font-family value.
      *
      * @returns The CSS font-family string, or null if not set.
@@ -721,6 +738,16 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
+     * Returns the CSS text-overflow value last passed to {@link setTextOverflow},
+     * or `null` if not set.
+     *
+     * @returns The text-overflow string, or null.
+     */
+    getTextOverflow(): string | null {
+        return this._textOverflow;
+    }
+
+    /**
      * Sets the CSS text-overflow property and updates the component's CSS rule.
      *
      * @param value - A CSS text-overflow value (e.g. "clip", "ellipsis").
@@ -728,20 +755,25 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * @returns This component, for method chaining.
      */
     setTextOverflow(value: string): this {
+        this._textOverflow = value;
+
         this.setElementCSSRule("textOverflow", value);
 
         return this;
     }
 
     /**
-     * Sets the CSS white-space property and updates the component's CSS rule.
-     *
-     * @param value - A CSS white-space value (e.g. "nowrap", "normal", "pre").
+     * Removes the text-overflow CSS property from the component's CSS rule.
      *
      * @returns This component, for method chaining.
      */
-    setWhiteSpace(value: string): this {
-        this.setElementCSSRule("whiteSpace", value);
+    clearTextOverflow(): this {
+        if (this._textOverflow === null) {
+            return this;
+        }
+
+        this._textOverflow = null;
+        this.setElementCSSRule("textOverflow", null);
 
         return this;
     }
