@@ -1,13 +1,22 @@
 import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
 import { resolve } from 'node:path'
+import { globSync } from 'node:fs'
 
-const r = (p: string): string => resolve(fileURLToPath(new URL('./src/typescript/lib', import.meta.url)), p)
+const libRoot = fileURLToPath(new URL('./src/typescript/lib', import.meta.url))
+const r = (p: string): string => resolve(libRoot, p)
+
+const glyphEntries: Record<string, string> = Object.fromEntries(
+  globSync('glyphs/**/*.ts', { cwd: libRoot }).map((rel) => {
+    const key = rel.replace(/\\/g, '/').replace(/\.ts$/, '')
+    return [key, resolve(libRoot, rel)]
+  })
+)
 
 export default defineConfig({
   resolve: {
     alias: {
-      '~': fileURLToPath(new URL('./src/typescript/lib', import.meta.url)),
+      '~': libRoot,
     },
   },
   build: {
@@ -26,6 +35,7 @@ export default defineConfig({
         'component/menubar':   r('component/menubar/index.ts'),
         'component/table':     r('component/table/index.ts'),
         'component/tree':      r('component/tree/index.ts'),
+        ...glyphEntries,
       },
       formats: ['es'],
       fileName: (_format, name) => `${name}.es.js`,

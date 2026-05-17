@@ -3,7 +3,7 @@
 // © Fonticons, Inc.
 import type { NamedGlyphDef } from "~/component/display/Glyphs.js";
 
-export const try: NamedGlyphDef = {
+export const _try: NamedGlyphDef = {
     name:    "try",
     kind:    "svg",
     viewBox: "0 0 448 512",
