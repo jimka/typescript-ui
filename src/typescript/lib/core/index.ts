@@ -24,6 +24,8 @@ export { AnimatedDropdown, fadeShow, fadeHideAndDetach } from '~/core/AnimatedDr
 export type { AnimatedDropdownOptions, FadeOptions } from '~/core/AnimatedDropdown.js';
 export { Tooltip } from '~/core/Tooltip.js';
 export type { TooltipColors } from '~/core/Tooltip.js';
+export { Popover } from '~/core/Popover.js';
+export type { PopoverOptions, PopoverPlacement, PopoverDismissMode } from '~/core/Popover.js';
 export { Notification } from '~/core/Notification.js';
 export type { NotificationType } from '~/core/Notification.js';
 export { Dialog, DialogTitleBar } from '~/core/Dialog.js';
