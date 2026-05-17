@@ -17,10 +17,10 @@ import { BaseObject } from "~/core/BaseObject.js";
  */
 export class Insets extends BaseObject {
 
-    private top: number;
-    private right: number;
-    private bottom: number;
-    private left: number;
+    private _top: number;
+    private _right: number;
+    private _bottom: number;
+    private _left: number;
 
     /**
      * @param top - Top inset in pixels.
@@ -31,10 +31,10 @@ export class Insets extends BaseObject {
     constructor(top: number, right: number, bottom: number, left: number) {
         super();
 
-        this.top = top || 0;
-        this.right = right || 0;
-        this.bottom = bottom || 0;
-        this.left = left || 0;
+        this._top = top || 0;
+        this._right = right || 0;
+        this._bottom = bottom || 0;
+        this._left = left || 0;
     }
 
     /**
@@ -43,7 +43,7 @@ export class Insets extends BaseObject {
      * @returns The top inset value, defaulting to `0` if unset.
      */
     getTop() {
-        return this.top || 0;
+        return this._top || 0;
     }
 
     /**
@@ -52,7 +52,7 @@ export class Insets extends BaseObject {
      * @param value - The new top inset value in pixels.
      */
     setTop(value: number) : this {
-        this.top = value;
+        this._top = value;
 
         return this;
     }
@@ -63,7 +63,7 @@ export class Insets extends BaseObject {
      * @returns The right inset value, defaulting to `0` if unset.
      */
     getRight() {
-        return this.right || 0;
+        return this._right || 0;
     }
 
     /**
@@ -72,7 +72,7 @@ export class Insets extends BaseObject {
      * @param value - The new right inset value in pixels.
      */
     setRight(value: number) : this {
-        this.right = value;
+        this._right = value;
 
         return this;
     }
@@ -83,7 +83,7 @@ export class Insets extends BaseObject {
      * @returns The bottom inset value, defaulting to `0` if unset.
      */
     getBottom() {
-        return this.bottom || 0;
+        return this._bottom || 0;
     }
 
     /**
@@ -92,7 +92,7 @@ export class Insets extends BaseObject {
      * @param value - The new bottom inset value in pixels.
      */
     setBottom(value: number) : this {
-        this.bottom = value;
+        this._bottom = value;
 
         return this;
     }
@@ -103,7 +103,7 @@ export class Insets extends BaseObject {
      * @returns The left inset value, defaulting to `0` if unset.
      */
     getLeft() {
-        return this.left || 0;
+        return this._left || 0;
     }
 
     /**
@@ -112,7 +112,7 @@ export class Insets extends BaseObject {
      * @param value - The new left inset value in pixels.
      */
     setLeft(value: number) : this {
-        this.left = value;
+        this._left = value;
 
         return this;
     }
@@ -126,10 +126,10 @@ export class Insets extends BaseObject {
      * @param left - Left inset in pixels.
      */
     set(top: number, right: number, bottom: number, left: number) : this {
-        this.top = top;
-        this.right = right;
-        this.bottom = bottom;
-        this.left = left;
+        this._top = top;
+        this._right = right;
+        this._bottom = bottom;
+        this._left = left;
 
         return this;
     }
