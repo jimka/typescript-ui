@@ -37,6 +37,14 @@
       "import": "./dist/lib/component/display.es.js",
       "types": "./dist/lib/types/component/display/index.d.ts"
     },
+    "./glyphs": {
+      "import": "./dist/lib/glyphs/index.es.js",
+      "types": "./dist/lib/types/glyphs/index.d.ts"
+    },
+    "./glyphs/*": {
+      "import": "./dist/lib/glyphs/*.es.js",
+      "types": "./dist/lib/types/glyphs/*.d.ts"
+    },
     "./component/list": {
       "import": "./dist/lib/component/list.es.js",
       "types": "./dist/lib/types/component/list/index.d.ts"
@@ -59,7 +67,8 @@
     }
   },
   "files": [
-    "dist/lib"
+    "dist/lib",
+    "LICENSE-FONTAWESOME.md"
   ],
   "sideEffects": false,
   "scripts": {

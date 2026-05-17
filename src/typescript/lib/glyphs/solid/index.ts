@@ -1835,7 +1835,7 @@ export * from "./truck_pickup.js";
 export * from "./truck_plane.js";
 export * from "./truck_ramp_box.js";
 export * from "./truck.js";
-export * from "./try.js";
+export * from "./_try.js";
 export * from "./tshirt.js";
 export * from "./tty.js";
 export * from "./turkish_lira_sign.js";
