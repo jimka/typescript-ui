@@ -32,8 +32,8 @@
     "hash": "eca627bd16d8190f337fda8fac04cb83"
   },
   "/home/jika/typescript/typescript/src/typescript/MiscPanel.ts": {
-    "mtime": 1779032719.440144,
-    "hash": "9b6c0269a661674600509c97f1d6425a"
+    "mtime": 1779032831.6748667,
+    "hash": "3d898753188ae14f63d09c59c3280291"
   },
   "/home/jika/typescript/typescript/src/typescript/HBoxPanel.ts": {
     "mtime": 1778743227.3899438,
@@ -264,8 +264,8 @@
     "hash": "ddd1a317947fd6468d3c8e83a4d3a1f4"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/display/Glyph.ts": {
-    "mtime": 1779032719.440144,
-    "hash": "504d2197474eb2d3372c00164e6e95fb"
+    "mtime": 1779032831.6748667,
+    "hash": "2a643c8d9204c2616eec9bbedc2f4fa8"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/display/ProgressSpinner.ts": {
     "mtime": 1779029812.3346272,
@@ -292,8 +292,8 @@
     "hash": "5d20c1e758fb17149e082200ecd2fb48"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/display/index.ts": {
-    "mtime": 1779032719.440144,
-    "hash": "38434112b76cea1c7c5e1b1ed4d8e4ee"
+    "mtime": 1779032831.6748667,
+    "hash": "d71523b888265f1a6206ad193483baec"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/Slider.ts": {
     "mtime": 1778962815.1107988,
@@ -12208,8 +12208,8 @@
     "hash": "8e75572109cb857b79001b23c8616eb0"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Theme.ts": {
-    "mtime": 1779032719.440144,
-    "hash": "2490f1dfb38e6648f61cd3a255a92544"
+    "mtime": 1779032831.6748667,
+    "hash": "dea5b3596b451ae218bc915cbaf12b2f"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Body.ts": {
     "mtime": 1778842519.2171571,
@@ -12306,10 +12306,6 @@
   "/home/jika/typescript/typescript/plans/npm-package.md": {
     "mtime": 1778271289.444006,
     "hash": "792a764d3e60cbadb57c0965956cee76"
-  },
-  "/home/jika/typescript/typescript/plans/animated-glyphs.md": {
-    "mtime": 1779032719.440144,
-    "hash": "cab54846fa85d6719210e5f5a6b51264"
   },
   "/home/jika/typescript/typescript/plans/spacer-component.md": {
     "mtime": 1779016124.8908455,
@@ -12434,6 +12430,10 @@
   "/home/jika/typescript/typescript/plans/implemented/component-options-follow-ups.md": {
     "mtime": 1779010286.7111595,
     "hash": "b607bbfd40bdd1cb050663110faa7962"
+  },
+  "/home/jika/typescript/typescript/plans/implemented/animated-glyphs.md": {
+    "mtime": 1779032831.6748667,
+    "hash": "cab54846fa85d6719210e5f5a6b51264"
   },
   "/home/jika/typescript/typescript/plans/implemented/tree-renderers.md": {
     "mtime": 1778871556.3158948,
@@ -12856,8 +12856,8 @@
     "hash": "021ed9613928649dbabfc7587c690da6"
   },
   "/home/jika/typescript/typescript/docs/components/Glyph.md": {
-    "mtime": 1779032719.418626,
-    "hash": "e6d96b40fc6f2d8d3e0e230eec7d3282"
+    "mtime": 1779032831.6856422,
+    "hash": "0c88e02b70a77bf6b94f01c5cf6d2895"
   },
   "/home/jika/typescript/typescript/docs/components/VirtualScroller.md": {
     "mtime": 1778963238.68709,
