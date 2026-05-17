@@ -100,6 +100,22 @@ class TextArea extends TextInput<TextAreaOptions> {
     }
 
     /**
+     * Removes the HTML `rows` attribute from the underlying textarea.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearRows(): this {
+        if (this._options.rows === undefined) {
+            return this;
+        }
+
+        this._options.rows = undefined;
+        this.removeElementAttribute("rows");
+
+        return this;
+    }
+
+    /**
      * Returns the configured `cols` attribute value, or null if not set.
      *
      * @returns The column count, or null.
@@ -123,6 +139,22 @@ class TextArea extends TextInput<TextAreaOptions> {
     }
 
     /**
+     * Removes the HTML `cols` attribute from the underlying textarea.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearCols(): this {
+        if (this._options.cols === undefined) {
+            return this;
+        }
+
+        this._options.cols = undefined;
+        this.removeElementAttribute("cols");
+
+        return this;
+    }
+
+    /**
      * Returns the configured `wrap` attribute value, or null if not set.
      *
      * @returns The wrap mode, or null.
@@ -141,6 +173,22 @@ class TextArea extends TextInput<TextAreaOptions> {
     setWrap(value: string): this {
         this._options.wrap = value;
         this.setElementAttribute("wrap", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the HTML `wrap` attribute from the underlying textarea.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearWrap(): this {
+        if (this._options.wrap === undefined) {
+            return this;
+        }
+
+        this._options.wrap = undefined;
+        this.removeElementAttribute("wrap");
 
         return this;
     }
