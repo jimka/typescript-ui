@@ -428,6 +428,15 @@ class Window extends Panel<WindowOptions> {
     }
 
     /**
+     * Returns the maximum number of layout passes per second during a resize drag.
+     *
+     * @returns The current frames-per-second cap.
+     */
+    getResizeFps(): number {
+        return this._resizeFps;
+    }
+
+    /**
      * Sets the maximum number of layout passes per second during a resize drag.
      *
      * @param fps - Frames per second cap (e.g. 30 or 20). Defaults to 60.
