@@ -17,9 +17,30 @@ Produce a written Markdown plan matching `{workspace}/plans/` conventions. Plans
 6. **Save** to `{workspace}/plans/<name>.md`. Never `plans/implemented/` — that folder is for shipped plans.
 7. **Report** the path and a one-sentence summary. Do not auto-implement.
 
+## Parallel Plans
+
+When the user asks for **multiple independent plans in one request**, fan out via the `Agent` tool — one call per plan, all in a single message so they run in parallel. Skip this for a single plan, or for related plans that should cross-reference each other's decisions (those stay sequential).
+
+Rules for each spawned agent:
+
+- **subagent_type:** `general-purpose` (it can `Write` the file directly; the built-in `Plan` agent is read-only).
+- **Self-contained prompt.** Sub-agents don't inherit this skill. Either paste the **Plan Format**, **Style**, and **What Not To Do** sections verbatim into each prompt, or include the line: `Read /home/jika/typescript/typescript/.claude/skills/plan/SKILL.md first and follow it exactly.`
+- **Name the output filename up front** in the prompt (kebab-case, derived from the feature) so parallel agents can't collide on the same file. Confirm before dispatch that the filenames differ.
+- **Scope each agent narrowly:** one feature, the files it should investigate, and the absolute path `{workspace}/plans/<name>.md` to write to. Tell it to report back only the final path and a one-sentence summary.
+- After all agents return, **report all paths together** in one message. Do not auto-implement any of them.
+
+If the features turn out to share architecture or touch the same files, abort the fan-out and plan them sequentially instead — coherence beats throughput.
+
+When you can confidently identify cross-plan dependencies (hard deps in the prose, shared files in the `## Files to Create / Modify / Delete` tables), set the `depends-on` and `touches-shared` frontmatter keys on each plan. The format is documented in `.claude/skills/implement/SKILL.md` under _Plan frontmatter_. When in doubt, omit them — `/implement` derives missing values per its _Order derivation_ rules.
+
+After all parallel agents return, emit a short phase plan in the closing summary (the same shape `/implement` will derive) so the user can see the suggested execution order alongside the file paths.
+
 ## Plan Format
 
 Descriptive, not rigid. Include a section only when it adds information. Canonical order:
+
+### Frontmatter (optional)
+YAML block at line 1, listing `depends-on` and/or `touches-shared`. Spec: `.claude/skills/implement/SKILL.md` § _Plan frontmatter_. Omit when uncertain; `/implement` derives missing values.
 
 ### Title (required)
 `# {Feature Name} — Implementation Plan` (em-dash `—`, not `--`).

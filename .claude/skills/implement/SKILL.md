@@ -124,13 +124,69 @@ Classes exported as `export { XCallable as X }` (where `const X = callable(_X)`)
 - **Do not merge or rebase onto a base branch.** Leave for the user.
 - **Do not push.** User publishes.
 
+## Plan frontmatter
+
+Optional YAML at the top of a plan:
+
+```yaml
+---
+depends-on: [plan-name, ...]      # must be in plans/implemented/ before this starts
+touches-shared: [path, ...]       # files whose concurrent edit would conflict
+---
+```
+
+Missing values are filled by _Order derivation_. Frontmatter is authoritative when present.
+
+## Order derivation
+
+When the batch has >1 plan and frontmatter is incomplete:
+
+- **Hard deps:** grep each plan body for the kebab-case basenames of other plans in the batch; prose mentions become candidate `depends-on`. Show ambiguous matches; let the user accept/reject.
+- **Soft conflicts:** parse each plan's `## Files to Create / Modify / Delete` table; any path in ≥2 plans is `touches-shared`.
+
+Build a DAG from hard deps. Reject cycles. Topo-sort; within each level, greedy-group plans with disjoint `touches-shared` into parallel sets. Print the phase plan and confirm before fanning out. Do not write derived values back to plan files.
+
+## Multi-plan dispatch
+
+Worktrees are parent-orchestrated, not harness-isolated, so every concurrent run lives under a predictable, browsable root. Per phase:
+
+1. Pre-create a worktree per plan: `git worktree add .worktrees/<plan-slug> -b feature/<plan-slug>`.
+2. Launch one `Agent` per plan, `subagent_type: "general-purpose"`, **without** `isolation: "worktree"` (worktrees already exist). Prompt each agent to `cd .worktrees/<plan-slug>` and re-enter this skill in single-plan mode for its assigned plan. The branch is already checked out — _Work Instructions_ step 3.4 stays on it.
+3. Wait for the phase to complete before starting the next.
+4. **Cleanup no-op worktrees.** For each returned branch, if `git -C .worktrees/<plan-slug> log feature/<plan-slug> --not master` is empty, run `git worktree remove .worktrees/<plan-slug>` and `git branch -D feature/<plan-slug>`.
+5. Surface each surviving worktree path and branch so the user can merge in order.
+
+Add `.worktrees/` to `.gitignore` once at the project root. The path is conventional and lets the user `ls .worktrees/` between phases to inspect in-flight work.
+
+## In-progress lifecycle
+
+- Start of work: move plan from `plans/` to `plans/in-progress/`. Commit.
+- Completion: move from `plans/in-progress/` to `plans/implemented/` in the code commit.
+- Abort: move back to `plans/`.
+
+`plans/in-progress/` acts as a soft lock — other invocations should skip plans listed there.
+
+## Shared-file etiquette
+
+When `touches-shared` is non-empty: edit each shared file last; one atomic commit per shared file; keep diffs minimal.
+
+## Rebase-clean checkpoint
+
+In worktree mode, before declaring done: `git fetch origin && git rebase origin/master`. Resolve any conflicts in the worktree and re-run typecheck + `docs:build` + smoke. Don't return a branch that won't merge.
+
 ## Work Instructions
 
-1. Read the referenced plan in `{workspace}/plans/`.
-2. Check the codebase for incompatibilities with the plan (renamed/removed APIs, signature changes, file moves, broken assumptions). Update the plan in place to reflect current reality and save it.
-3. If incompatibilities were found, stop and ask the user to review before continuing.
-4. If on `master`, create and check out `feature/<short-feature-slug>`. Otherwise stay on the current branch.
-5. Implement.
-6. Extend demo panel(s) where applicable.
-7. Move the plan to `{workspace}/plans/implemented/`.
-8. Update `docs/` per _Documentation updates_.
+1. Resolve every plan name to `plans/<name>.md`. Reject if any file is missing.
+2. **If >1 plan:** run _Order derivation_, confirm the schedule with the user, then per phase fan out per _Multi-plan dispatch_. Stop here as orchestrator.
+3. **Single-plan mode:**
+   1. Read the plan.
+   2. Check the codebase for incompatibilities (renamed/removed APIs, signature changes, file moves, broken assumptions). Update the plan in place if drift is found.
+   3. If incompatibilities were found, stop and ask the user to review.
+   4. If on `master`, create and check out `feature/<short-feature-slug>`. Otherwise stay on the current branch.
+   5. Move the plan from `plans/` to `plans/in-progress/`. Commit.
+   6. Implement.
+   7. Extend demo panel(s) where applicable.
+   8. Edit any `touches-shared` files last, one commit per file (_Shared-file etiquette_).
+   9. Move plan from `plans/in-progress/` to `plans/implemented/`.
+   10. Update `docs/` per _Documentation updates_.
+   11. Run _Rebase-clean checkpoint_.
