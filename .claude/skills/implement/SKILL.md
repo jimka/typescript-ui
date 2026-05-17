@@ -77,6 +77,16 @@ protected applyOptions(options: FooOptions): this {
 }
 ```
 
+### Defer DOM work to render time
+
+Construction must stay JS-only. Every framework primitive buffers DOM writes until first render — keep them queued:
+
+- **Component CSS rule**: `setElementCSSRule(s)` queues into `styleRule`; `applyStyle` flushes at render. Never call `ensureCSSRule()` from a setter.
+- **State rules** (`:active`, `:hover`, `.selected`, …): allocate via `this.createStyleRule(suffix)`. The builder dedupes by suffix and registers for render-time materialisation. Never `new StyleRule(...)` directly.
+- **Inline styles**: `setElementStyle(s)` queues into `inlineStyle`; `init()` attaches and flushes.
+- **Measurement**: never read layout (`getBoundingClientRect`, `getComputedStyle`) during construction. Defer to a layout pass or theme-change callback.
+- **Children**: build child Components in the constructor; their DOM is realised when the parent renders. Don't `getElement(true)` during construction.
+
 ## Documentation updates
 
 When implementation changes consumer-visible behaviour, update `docs/`:
