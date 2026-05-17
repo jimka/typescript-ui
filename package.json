@@ -84,6 +84,7 @@
     "google-closure-compiler": "^20200406.0.0",
     "rimraf": "^3.0.2",
     "ts-morph": "^28.0.0",
+    "tsx": "^4.22.1",
     "typedoc": "^0.27.0",
     "typedoc-plugin-markdown": "~4.4.0",
     "typedoc-vitepress-theme": "^1.1.2",
