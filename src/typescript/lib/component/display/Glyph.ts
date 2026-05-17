@@ -2,7 +2,16 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { callable } from "~/core/Callable.js";
-import { ensureGlyphSprite, GLYPH_SYMBOL_ID_PREFIX, Glyphs, GlyphDef } from "~/component/display/Glyphs.js";
+import {
+    ensureGlyphSprite,
+    ensureGlyphSymbolMounted,
+    GLYPH_SYMBOL_ID_PREFIX,
+    GlyphDef,
+    lookupGlyph,
+    NamedGlyphDef,
+    registerGlyph,
+    unregisterGlyph,
+} from "~/component/display/Glyphs.js";
 
 /**
  * Construction-time options for {@link Glyph}.
@@ -56,7 +65,12 @@ const _defaultGlyphOptions: Partial<GlyphOptions> = {
  *
  * @example
  * ```typescript
- * panel.addComponent(new Glyph("times"));
+ * import { xmark } from "~/glyphs/solid/xmark.js";
+ * import { arrow_right } from "~/glyphs/solid/arrow_right.js";
+ *
+ * Glyph.register(xmark, arrow_right);
+ *
+ * panel.addComponent(new Glyph("xmark"));
  * panel.addComponent(new Glyph("arrow-right"));
  * ```
  *
@@ -68,13 +82,34 @@ class Glyph extends Component<GlyphOptions> {
     private _def:  GlyphDef;
 
     /**
+     * Registers one or more glyph definitions so they can be instantiated by
+     * name. Pass the named exports from `~/glyphs/<style>/<name>.js` modules.
+     *
+     * @param defs - One or more {@link NamedGlyphDef} values to register.
+     */
+    static register(...defs: NamedGlyphDef[]): void {
+        for (const def of defs) {
+            registerGlyph(def);
+        }
+    }
+
+    /**
+     * Removes a previously registered glyph by name.
+     *
+     * @param name - Registry key to unregister.
+     */
+    static unregister(name: string): void {
+        unregisterGlyph(name);
+    }
+
+    /**
      * Constructs a Glyph for the registry entry with the given name.
      *
-     * @param name - Registry key. Must be present in `Glyphs`.
+     * @param name - Registry key. Must have been registered via {@link Glyph.register}.
      * @param options - Optional component options bag.
      */
     constructor(name: string, options?: GlyphOptions) {
-        const def = Glyphs[name];
+        const def = lookupGlyph(name);
         if (!def) {
             throw new Error("Unknown glyph: " + name);
         }
@@ -221,6 +256,7 @@ class Glyph extends Component<GlyphOptions> {
     protected createRootElement(): HTMLElement {
         if (this._def.kind === "svg") {
             ensureGlyphSprite();
+            ensureGlyphSymbolMounted(this._name);
 
             const svgNs = "http://www.w3.org/2000/svg";
             const svg = document.createElementNS(svgNs, "svg");
