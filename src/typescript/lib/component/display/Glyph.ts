@@ -187,9 +187,9 @@ class Glyph extends Component<GlyphOptions> {
 
     private _name:                   string;
     private _def:                    GlyphDef;
-    private _glyphAnimation:         GlyphAnimation | null = null;
-    private _glyphAnimationDuration: number                = 0;
-    private _animatedRef:            WeakRef<Glyph> | null = null;
+    private _glyphAnimation!:         GlyphAnimation | null;
+    private _glyphAnimationDuration!: number;
+    private _animatedRef!:            WeakRef<Glyph> | null;
 
     /**
      * Registers one or more glyph definitions so they can be instantiated by
