@@ -4,6 +4,25 @@ import { callable, Panel } from '@jimka/typescript-ui/core';
 import { VBox } from '@jimka/typescript-ui/layout';
 import { Text } from '@jimka/typescript-ui/component/input';
 import { MenuBar } from '@jimka/typescript-ui/component/menubar';
+import { Glyph } from '@jimka/typescript-ui/component/display';
+import { file }            from '@jimka/typescript-ui/glyphs/solid/file';
+import { pen_to_square }   from '@jimka/typescript-ui/glyphs/solid/pen_to_square';
+import { circle_check }    from '@jimka/typescript-ui/glyphs/solid/circle_check';
+import { angles_right }    from '@jimka/typescript-ui/glyphs/solid/angles_right';
+import { angle_left }      from '@jimka/typescript-ui/glyphs/solid/angle_left';
+import { angle_right }     from '@jimka/typescript-ui/glyphs/solid/angle_right';
+import { ban }             from '@jimka/typescript-ui/glyphs/solid/ban';
+import { plus }            from '@jimka/typescript-ui/glyphs/solid/plus';
+import { minus }           from '@jimka/typescript-ui/glyphs/solid/minus';
+import { eye }             from '@jimka/typescript-ui/glyphs/solid/eye';
+import { arrows_rotate }   from '@jimka/typescript-ui/glyphs/solid/arrows_rotate';
+import { maximize }        from '@jimka/typescript-ui/glyphs/solid/maximize';
+import { circle_info }     from '@jimka/typescript-ui/glyphs/solid/circle_info';
+
+Glyph.register(
+    file, pen_to_square, circle_check, angles_right, angle_left, angle_right,
+    ban, plus, minus, eye, arrows_rotate, maximize, circle_info,
+);
 /**
  * Demo panel showcasing the `MenuBar` component.
  *
@@ -35,8 +54,8 @@ class MenuBarPanel extends Panel {
                     { text: "New",      glyph: "file",          shortcut: "Ctrl+N",       action: () => status("File → New")     },
                     { text: "Open…",    glyph: "pen-to-square", shortcut: "Ctrl+O",       action: () => status("File → Open")    },
                     { separator: true },
-                    { text: "Save",     glyph: "check-circle",  shortcut: "Ctrl+S",       action: () => status("File → Save")    },
-                    { text: "Save As…", glyph: "check-circle",  shortcut: "Ctrl+Shift+S", action: () => status("File → Save As") },
+                    { text: "Save",     glyph: "circle-check",  shortcut: "Ctrl+S",       action: () => status("File → Save")    },
+                    { text: "Save As…", glyph: "circle-check",  shortcut: "Ctrl+Shift+S", action: () => status("File → Save As") },
                     { separator: true },
                     {
                         text:  "Export",
@@ -65,7 +84,7 @@ class MenuBarPanel extends Panel {
                     { text: "Copy",  glyph: "plus",        shortcut: "Ctrl+C", action: () => status("Edit → Copy")  },
                     { text: "Paste", glyph: "plus",        shortcut: "Ctrl+V", action: () => status("Edit → Paste") },
                     { separator: true },
-                    { text: "Select All", glyph: "check-circle", shortcut: "Ctrl+A", action: () => status("Edit → Select All") },
+                    { text: "Select All", glyph: "circle-check", shortcut: "Ctrl+A", action: () => status("Edit → Select All") },
                 ],
             },
             {
@@ -74,19 +93,19 @@ class MenuBarPanel extends Panel {
                 items: [
                     { text: "Zoom In",    glyph: "plus",   shortcut: "Ctrl++", action: () => status("View → Zoom In")    },
                     { text: "Zoom Out",   glyph: "minus",  shortcut: "Ctrl+-", action: () => status("View → Zoom Out")   },
-                    { text: "Reset Zoom", glyph: "sync",   shortcut: "Ctrl+0", action: () => status("View → Reset Zoom") },
+                    { text: "Reset Zoom", glyph: "arrows-rotate",   shortcut: "Ctrl+0", action: () => status("View → Reset Zoom") },
                     { separator: true },
-                    { text: "Full Screen", glyph: "window", shortcut: "F11",   action: () => status("View → Full Screen") },
+                    { text: "Full Screen", glyph: "maximize", shortcut: "F11",   action: () => status("View → Full Screen") },
                 ],
             },
             {
                 label: "Help",
-                glyph: "info-circle",
+                glyph: "circle-info",
                 items: [
                     { text: "Documentation",      glyph: "file",          action: () => status("Help → Documentation") },
                     { text: "Keyboard Shortcuts", glyph: "pen-to-square", action: () => status("Help → Keyboard Shortcuts") },
                     { separator: true },
-                    { text: "About",              glyph: "info-circle",   action: () => status("Help → About") },
+                    { text: "About",              glyph: "circle-info",   action: () => status("Help → About") },
                 ],
             },
         ]);
