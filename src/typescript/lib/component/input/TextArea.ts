@@ -94,7 +94,7 @@ class TextArea extends TextInput<TextAreaOptions> {
      */
     setRows(value: number): this {
         this._options.rows = value;
-        this.setElementAttribute("rows", String(value));
+        this.setAttribute("rows", String(value));
 
         return this;
     }
@@ -110,7 +110,7 @@ class TextArea extends TextInput<TextAreaOptions> {
         }
 
         this._options.rows = undefined;
-        this.removeElementAttribute("rows");
+        this.delAttribute("rows");
 
         return this;
     }
@@ -133,7 +133,7 @@ class TextArea extends TextInput<TextAreaOptions> {
      */
     setCols(value: number): this {
         this._options.cols = value;
-        this.setElementAttribute("cols", String(value));
+        this.setAttribute("cols", String(value));
 
         return this;
     }
@@ -149,7 +149,7 @@ class TextArea extends TextInput<TextAreaOptions> {
         }
 
         this._options.cols = undefined;
-        this.removeElementAttribute("cols");
+        this.delAttribute("cols");
 
         return this;
     }
@@ -172,7 +172,7 @@ class TextArea extends TextInput<TextAreaOptions> {
      */
     setWrap(value: string): this {
         this._options.wrap = value;
-        this.setElementAttribute("wrap", value);
+        this.setAttribute("wrap", value);
 
         return this;
     }
@@ -188,7 +188,7 @@ class TextArea extends TextInput<TextAreaOptions> {
         }
 
         this._options.wrap = undefined;
-        this.removeElementAttribute("wrap");
+        this.delAttribute("wrap");
 
         return this;
     }

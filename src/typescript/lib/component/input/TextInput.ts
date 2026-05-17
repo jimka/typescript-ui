@@ -10,11 +10,13 @@ import { callable } from "~/core/Callable.js";
  * @category Components
  */
 export interface TextInputOptions extends InputOptions {
-    text?:        string;
-    textAlign?:   string;
-    placeholder?: string;
-    readOnly?:    boolean;
-    maxLength?:   number;
+    text?:         string;
+    textAlign?:    string;
+    placeholder?:  string;
+    readOnly?:     boolean;
+    maxLength?:    number;
+    inputMode?:    string;
+    autoComplete?: string;
 }
 
 /**
@@ -23,6 +25,9 @@ export interface TextInputOptions extends InputOptions {
  * Tracks the current text value and text-align internally and exposes text selection support.
  */
 class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends Input<TOptions> {
+
+    private _inputMode:    string | null = null;
+    private _autoComplete: string | null = null;
 
     constructor(options?: TOptions) {
         super({ ...(options ?? {}), tag: options?.tag ?? "input" } as TOptions);
@@ -57,6 +62,114 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         if (options.maxLength !== undefined) {
             this.setMaxLength(options.maxLength);
         }
+
+        if (options.inputMode !== undefined) {
+            this.setInputMode(options.inputMode);
+        }
+
+        if (options.autoComplete !== undefined) {
+            this.setAutoComplete(options.autoComplete);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the cached HTML `inputmode` attribute value, or null when unset.
+     *
+     * @returns The inputmode string, or null.
+     */
+    getInputMode(): string | null {
+        return this._inputMode;
+    }
+
+    /**
+     * Sets the HTML `inputmode` attribute on the underlying input. Typical
+     * values are `"none"` (suppress on-screen keyboards), `"text"`,
+     * `"numeric"`, `"decimal"`, `"tel"`, `"email"`, `"url"`, `"search"`.
+     *
+     * @param value - A valid `inputmode` value.
+     *
+     * @returns This component, for method chaining.
+     */
+    setInputMode(value: string): this {
+        if (this._inputMode === value) {
+            return this;
+        }
+
+        this._inputMode = value;
+        this._options.inputMode = value;
+
+        // `setAttribute` (vs. `setElementAttribute`) caches into the
+        // `_attributes` map so the write survives detached construction and
+        // gets replayed at render time.
+        this.setAttribute("inputmode", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the HTML `inputmode` attribute from the underlying input.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearInputMode(): this {
+        if (this._inputMode === null) {
+            return this;
+        }
+
+        this._inputMode = null;
+        this._options.inputMode = undefined;
+
+        this.delAttribute("inputmode");
+
+        return this;
+    }
+
+    /**
+     * Returns the cached HTML `autocomplete` attribute value, or null when unset.
+     *
+     * @returns The autocomplete string, or null.
+     */
+    getAutoComplete(): string | null {
+        return this._autoComplete;
+    }
+
+    /**
+     * Sets the HTML `autocomplete` attribute on the underlying input. Common
+     * values are `"on"`, `"off"`, `"email"`, `"current-password"`, etc.
+     *
+     * @param value - A valid `autocomplete` token.
+     *
+     * @returns This component, for method chaining.
+     */
+    setAutoComplete(value: string): this {
+        if (this._autoComplete === value) {
+            return this;
+        }
+
+        this._autoComplete = value;
+        this._options.autoComplete = value;
+
+        this.setAttribute("autocomplete", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the HTML `autocomplete` attribute from the underlying input.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearAutoComplete(): this {
+        if (this._autoComplete === null) {
+            return this;
+        }
+
+        this._autoComplete = null;
+        this._options.autoComplete = undefined;
+
+        this.delAttribute("autocomplete");
 
         return this;
     }
@@ -151,7 +264,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      */
     setPlaceholder(value: string): this {
         this._options.placeholder = value;
-        this.setElementAttribute("placeholder", value);
+        this.setAttribute("placeholder", value);
 
         return this;
     }
@@ -167,7 +280,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         }
 
         this._options.placeholder = undefined;
-        this.removeElementAttribute("placeholder");
+        this.delAttribute("placeholder");
 
         return this;
     }
@@ -192,9 +305,9 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         this._options.readOnly = value;
 
         if (value) {
-            this.setElementAttribute("readonly", "");
+            this.setAttribute("readonly", "");
         } else {
-            this.removeElementAttribute("readonly");
+            this.delAttribute("readonly");
         }
 
         return this;
@@ -218,7 +331,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      */
     setMaxLength(value: number): this {
         this._options.maxLength = value;
-        this.setElementAttribute("maxlength", String(value));
+        this.setAttribute("maxlength", String(value));
 
         return this;
     }
@@ -234,7 +347,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         }
 
         this._options.maxLength = undefined;
-        this.removeElementAttribute("maxlength");
+        this.delAttribute("maxlength");
 
         return this;
     }

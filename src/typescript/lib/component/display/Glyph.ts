@@ -551,6 +551,10 @@ class Glyph extends Component<GlyphOptions> {
      * written into the span's text content; SVG-mode element children are
      * created by `createRootElement`.
      *
+     * Applies `preferredSize` as inline width/height so SVG glyphs appended
+     * raw via `glyph.getElement(true)` outside a framework layout don't fall
+     * back to the user-agent's 300×150 default replaced-element size.
+     *
      * @returns The rendered root element.
      */
     protected render(): HTMLElement {
@@ -562,6 +566,12 @@ class Glyph extends Component<GlyphOptions> {
 
         if (this._glyphAnimation && !Animation.isReducedMotion()) {
             element.classList.add(CLASS_PREFIX + this._glyphAnimation);
+        }
+
+        const preferredSize = this._options.preferredSize;
+        if (preferredSize) {
+            this.setElementStyle("width",  preferredSize.width  + "px");
+            this.setElementStyle("height", preferredSize.height + "px");
         }
 
         return element;

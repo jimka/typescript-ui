@@ -20,6 +20,8 @@ export type { ButtonGroupOptions } from '~/core/ButtonGroup.js';
 export { Window } from '~/core/Window.js';
 export type { WindowOptions } from '~/core/Window.js';
 export { Menu } from '~/core/Menu.js';
+export { AnimatedDropdown, fadeShow, fadeHideAndDetach } from '~/core/AnimatedDropdown.js';
+export type { AnimatedDropdownOptions, FadeOptions } from '~/core/AnimatedDropdown.js';
 export { Tooltip } from '~/core/Tooltip.js';
 export type { TooltipColors } from '~/core/Tooltip.js';
 export { Notification } from '~/core/Notification.js';

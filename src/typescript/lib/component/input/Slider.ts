@@ -109,7 +109,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions> extends Input<TOpti
     setMinValue(value: number): this {
         this._options.minValue = value;
 
-        this.setElementAttribute("min", value);
+        this.setAttribute("min", String(value));
 
         return this;
     }
@@ -133,7 +133,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions> extends Input<TOpti
     setMaxValue(value: number): this {
         this._options.maxValue = value;
 
-        this.setElementAttribute("max", value);
+        this.setAttribute("max", String(value));
 
         return this;
     }
@@ -157,7 +157,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions> extends Input<TOpti
     setStep(value: number): this {
         this._options.step = value;
 
-        this.setElementAttribute("step", value);
+        this.setAttribute("step", String(value));
 
         return this;
     }
@@ -181,7 +181,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions> extends Input<TOpti
     setValue(value: number): this {
         this._options.value = value;
 
-        this.setElementAttribute("value", value);
+        this.setAttribute("value", String(value));
 
         return this;
     }
