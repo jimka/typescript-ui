@@ -24,15 +24,15 @@ export interface OptionOptions extends ComponentOptions {
  */
 class Option extends Component {
 
-    private key: string;
-    private value: string;
-    private selected: boolean = false;
+    private _key: string;
+    private _value: string;
+    private _selected: boolean = false;
 
     constructor(key: string, value: string, options?: OptionOptions) {
         super({ tag: "option" });
 
-        this.key = key;
-        this.value = value;
+        this._key = key;
+        this._value = value;
 
         if (options) {
             this.applyOptions(options);
@@ -49,7 +49,7 @@ class Option extends Component {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
-            this.value = options.text;
+            this._value = options.text;
             const element = this.getElement() as HTMLOptionElement | undefined;
             if (element) {
                 element.textContent = options.text;
@@ -57,7 +57,7 @@ class Option extends Component {
         }
 
         if (options.value !== undefined) {
-            this.key = options.value;
+            this._key = options.value;
             const element = this.getElement() as HTMLOptionElement | undefined;
             if (element) {
                 element.value = options.value;
@@ -81,7 +81,7 @@ class Option extends Component {
      * @returns True when the `selected` attribute is set.
      */
     isSelected(): boolean {
-        return this.selected;
+        return this._selected;
     }
 
     /**
@@ -92,7 +92,7 @@ class Option extends Component {
      * @returns This component, for method chaining.
      */
     setSelected(value: boolean): this {
-        this.selected = value;
+        this._selected = value;
 
         if (value) {
             this.setElementAttribute("selected", "");
@@ -121,8 +121,8 @@ class Option extends Component {
     render() {
         let element = super.render() as HTMLOptionElement;
 
-        element.value = this.key;
-        element.textContent = this.value;
+        element.value = this._key;
+        element.textContent = this._value;
 
         return element;
     }

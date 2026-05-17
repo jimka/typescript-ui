@@ -13,15 +13,15 @@ import { callable } from "~/core/Callable.js";
  */
 class StringRenderer extends CellRenderer<String> {
 
-    private text: Text = new Text();
+    private _text: Text = new Text();
 
     constructor() {
         super();
 
-        this.text.setText("");
-        this.text.setPointerEvents("none");
-        this.text.setAutoMeasure(false);
-        this.addComponent(this.text);
+        this._text.setText("");
+        this._text.setPointerEvents("none");
+        this._text.setAutoMeasure(false);
+        this.addComponent(this._text);
     }
 
     /**
@@ -30,7 +30,7 @@ class StringRenderer extends CellRenderer<String> {
      * @returns The underlying {@link Text}.
      */
     getText() {
-        return this.text;
+        return this._text;
     }
 
     /**
@@ -39,7 +39,7 @@ class StringRenderer extends CellRenderer<String> {
      * @returns The displayed string value.
      */
     getValue() {
-        return this.text.getText();
+        return this._text.getText();
     }
 
     /**
@@ -48,7 +48,7 @@ class StringRenderer extends CellRenderer<String> {
      * @param value - The string value to display.
      */
     setValue(value: String) : this {
-        this.text.setText(value || "");
+        this._text.setText(value || "");
 
         return this;
     }

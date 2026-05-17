@@ -22,14 +22,14 @@ export interface ListItemOptions extends ComponentOptions {
  */
 class ListItem extends Component {
 
-    private key: string;
-    private value: string;
+    private _key: string;
+    private _value: string;
 
     constructor(key: string, value: string, options?: ListItemOptions) {
         super({ tag: "li" });
 
-        this.key = key;
-        this.value = value;
+        this._key = key;
+        this._value = value;
 
         if (options) {
             this.applyOptions(options);
@@ -46,7 +46,7 @@ class ListItem extends Component {
         super.applyOptions(options);
 
         if (options.text !== undefined) {
-            this.value = options.text;
+            this._value = options.text;
             const element = this.getElement();
             if (element) {
                 element.textContent = options.text;
@@ -72,7 +72,7 @@ class ListItem extends Component {
      * @returns The key string.
      */
     getKey() {
-        return this.key;
+        return this._key;
     }
 
     /**
@@ -83,8 +83,8 @@ class ListItem extends Component {
     render() {
         let element = super.render();
 
-        element.dataset.key = this.key;
-        element.textContent = this.value;
+        element.dataset.key = this._key;
+        element.textContent = this._value;
 
         return element;
     }

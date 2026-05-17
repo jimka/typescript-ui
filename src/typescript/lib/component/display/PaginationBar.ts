@@ -48,15 +48,15 @@ export interface PaginationBarOptions extends ComponentOptions {
  */
 class PaginationBar extends Component<PaginationBarOptions> {
 
-    private store: AbstractStore;
+    private _store: AbstractStore;
 
-    private firstBtn: Button;
-    private prevBtn: Button;
-    private nextBtn: Button;
-    private lastBtn: Button;
-    private pageText: Text;
+    private _firstBtn: Button;
+    private _prevBtn: Button;
+    private _nextBtn: Button;
+    private _lastBtn: Button;
+    private _pageText: Text;
 
-    private readonly onStoreUpdate: () => void = () => this.refresh();
+    private readonly _onStoreUpdate: () => void = () => this.refresh();
 
     /**
      * Constructs a pagination bar bound to the given store.
@@ -66,46 +66,46 @@ class PaginationBar extends Component<PaginationBarOptions> {
     constructor(store: AbstractStore, options?: PaginationBarOptions) {
         super();
 
-        this.store = store;
+        this._store = store;
 
         const layout = new HBox();
         layout.setComponentSpacing(4);
         this.setLayoutManager(layout);
 
-        this.firstBtn = new Button({ glyph: "angles-left"  });
-        this.prevBtn  = new Button({ glyph: "angle-left"   });
-        this.pageText = new Text("Page x of y");
-        this.nextBtn  = new Button({ glyph: "angle-right"  });
-        this.lastBtn  = new Button({ glyph: "angles-right" });
+        this._firstBtn = new Button({ glyph: "angles-left"  });
+        this._prevBtn  = new Button({ glyph: "angle-left"   });
+        this._pageText = new Text("Page x of y");
+        this._nextBtn  = new Button({ glyph: "angle-right"  });
+        this._lastBtn  = new Button({ glyph: "angles-right" });
 
-        this.firstBtn.setPreferredSize(28, 28);
-        this.prevBtn.setPreferredSize(28, 28);
-        this.nextBtn.setPreferredSize(28, 28);
-        this.lastBtn.setPreferredSize(28, 28);
+        this._firstBtn.setPreferredSize(28, 28);
+        this._prevBtn.setPreferredSize(28, 28);
+        this._nextBtn.setPreferredSize(28, 28);
+        this._lastBtn.setPreferredSize(28, 28);
 
         // Match the buttons' 28px row height so the page label baseline lines up.
-        this.pageText.centerInHeight(28);
+        this._pageText.centerInHeight(28);
 
-        this.firstBtn.addActionListener(() => this.store.goToPage(1));
-        this.prevBtn.addActionListener(() => this.store.prevPage());
-        this.nextBtn.addActionListener(() => this.store.nextPage());
-        this.lastBtn.addActionListener(() => {
-            const total = this.store.getTotalPages();
-            this.store.goToPage(total ?? this.store.getPage());
+        this._firstBtn.addActionListener(() => this._store.goToPage(1));
+        this._prevBtn.addActionListener(() => this._store.prevPage());
+        this._nextBtn.addActionListener(() => this._store.nextPage());
+        this._lastBtn.addActionListener(() => {
+            const total = this._store.getTotalPages();
+            this._store.goToPage(total ?? this._store.getPage());
         });
 
-        this.addComponent(this.firstBtn);
-        this.addComponent(this.prevBtn);
-        this.addComponent(this.pageText);
-        this.addComponent(this.nextBtn);
-        this.addComponent(this.lastBtn);
+        this.addComponent(this._firstBtn);
+        this.addComponent(this._prevBtn);
+        this.addComponent(this._pageText);
+        this.addComponent(this._nextBtn);
+        this.addComponent(this._lastBtn);
 
-        this.store.on('pagechanged', this.onStoreUpdate);
-        this.store.on('load', this.onStoreUpdate);
-        this.store.on('datachanged', this.onStoreUpdate);
-        this.store.on('add', this.onStoreUpdate);
-        this.store.on('remove', this.onStoreUpdate);
-        this.store.on('sync', this.onStoreUpdate);
+        this._store.on('pagechanged', this._onStoreUpdate);
+        this._store.on('load', this._onStoreUpdate);
+        this._store.on('datachanged', this._onStoreUpdate);
+        this._store.on('add', this._onStoreUpdate);
+        this._store.on('remove', this._onStoreUpdate);
+        this._store.on('sync', this._onStoreUpdate);
 
         this.refresh();
 
@@ -124,11 +124,11 @@ class PaginationBar extends Component<PaginationBarOptions> {
         super.applyOptions(options);
 
         if (options.pageSize !== undefined) {
-            this.store.setPageSize(options.pageSize);
+            this._store.setPageSize(options.pageSize);
         }
 
         if (options.pageIndex !== undefined) {
-            this.store.goToPage(options.pageIndex);
+            this._store.goToPage(options.pageIndex);
         }
 
         return this;
@@ -143,12 +143,12 @@ class PaginationBar extends Component<PaginationBarOptions> {
      * disposal the bar will no longer track the store.
      */
     dispose(): void {
-        this.store.off('pagechanged', this.onStoreUpdate);
-        this.store.off('load', this.onStoreUpdate);
-        this.store.off('datachanged', this.onStoreUpdate);
-        this.store.off('add', this.onStoreUpdate);
-        this.store.off('remove', this.onStoreUpdate);
-        this.store.off('sync', this.onStoreUpdate);
+        this._store.off('pagechanged', this._onStoreUpdate);
+        this._store.off('load', this._onStoreUpdate);
+        this._store.off('datachanged', this._onStoreUpdate);
+        this._store.off('add', this._onStoreUpdate);
+        this._store.off('remove', this._onStoreUpdate);
+        this._store.off('sync', this._onStoreUpdate);
     }
 
     /**
@@ -160,18 +160,18 @@ class PaginationBar extends Component<PaginationBarOptions> {
      * Buttons re-enable once the store is synced or rejected.
      */
     private refresh(): void {
-        const page       = this.store.getPage();
-        const totalPages = this.store.getTotalPages();
-        const dirty      = this.store.hasPendingChanges();
+        const page       = this._store.getPage();
+        const totalPages = this._store.getTotalPages();
+        const dirty      = this._store.hasPendingChanges();
         const text       = totalPages != null
             ? `Page ${page} of ${totalPages}`
             : `Page ${page}`;
 
-        this.pageText.setText(text);
-        this.firstBtn.setEnabled(!dirty && page > 1);
-        this.prevBtn.setEnabled(!dirty && page > 1);
-        this.nextBtn.setEnabled(!dirty && (totalPages == null || page < totalPages));
-        this.lastBtn.setEnabled(!dirty && totalPages != null && page < totalPages);
+        this._pageText.setText(text);
+        this._firstBtn.setEnabled(!dirty && page > 1);
+        this._prevBtn.setEnabled(!dirty && page > 1);
+        this._nextBtn.setEnabled(!dirty && (totalPages == null || page < totalPages));
+        this._lastBtn.setEnabled(!dirty && totalPages != null && page < totalPages);
     }
 }
 

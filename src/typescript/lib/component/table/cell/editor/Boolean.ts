@@ -14,17 +14,17 @@ import { callable } from "~/core/Callable.js";
  */
 class BooleanEditor extends CellEditor<Boolean> {
 
-    private checkBox: Checkbox = new Checkbox();
-    private onChange: ((value: Boolean) => void) | undefined;
+    private _checkBox: Checkbox = new Checkbox();
+    private _onChange: ((value: Boolean) => void) | undefined;
 
     constructor() {
         super();
 
-        this.checkBox.setSelected(false);
-        this.addComponent(this.checkBox);
+        this._checkBox.setSelected(false);
+        this.addComponent(this._checkBox);
 
-        this.checkBox.addActionListener(() => {
-            this.onChange?.(this.getValue());
+        this._checkBox.addActionListener(() => {
+            this._onChange?.(this.getValue());
         });
     }
 
@@ -34,7 +34,7 @@ class BooleanEditor extends CellEditor<Boolean> {
      * @param fn - The callback to invoke with the new boolean value on each change.
      */
     setOnChange(fn: (value: Boolean) => void): void {
-        this.onChange = fn;
+        this._onChange = fn;
     }
 
     /**
@@ -43,7 +43,7 @@ class BooleanEditor extends CellEditor<Boolean> {
      * @returns True if the checkbox is checked.
      */
     getValue() {
-        return this.checkBox.isSelected();
+        return this._checkBox.isSelected();
     }
 
     /**
@@ -52,7 +52,7 @@ class BooleanEditor extends CellEditor<Boolean> {
      * @param value - The boolean value to set on the checkbox.
      */
     setValue(value: boolean) : this {
-        this.checkBox.setSelected(value);
+        this._checkBox.setSelected(value);
 
         return this;
     }
@@ -61,8 +61,8 @@ class BooleanEditor extends CellEditor<Boolean> {
      * Toggles the checkbox and fires the onChange callback.
      */
     toggle() : this {
-        this.checkBox.setSelected(!this.checkBox.isSelected());
-        this.onChange?.(this.getValue());
+        this._checkBox.setSelected(!this._checkBox.isSelected());
+        this._onChange?.(this.getValue());
 
         return this;
     }

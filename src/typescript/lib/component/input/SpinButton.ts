@@ -41,9 +41,9 @@ const _defaultSpinButtonOptions: Partial<SpinButtonOptions> = {
  */
 class SpinButton extends Button<SpinButtonOptions> {
 
-    private tickListeners: Array<() => void> = [];
-    private repeatHandle : ReturnType<typeof setTimeout> | null = null;
-    private repeatDelay  : number = 400;
+    private _tickListeners: Array<() => void> = [];
+    private _repeatHandle : ReturnType<typeof setTimeout> | null = null;
+    private _repeatDelay  : number = 400;
 
     /**
      * @param symbol - The arrow rendered inside the button (`"▲"` or `"▼"`).
@@ -112,19 +112,19 @@ class SpinButton extends Button<SpinButtonOptions> {
      * @param listener - The callback invoked on every tick.
      */
     addTickListener(listener: () => void): void {
-        this.tickListeners.push(listener);
+        this._tickListeners.push(listener);
     }
 
     /**
      * Cancels any in-progress hold-repeat schedule and resets the tick delay to its initial value.
      */
     cancelRepeat(): void {
-        if (this.repeatHandle !== null) {
-            clearTimeout(this.repeatHandle);
-            this.repeatHandle = null;
+        if (this._repeatHandle !== null) {
+            clearTimeout(this._repeatHandle);
+            this._repeatHandle = null;
         }
 
-        this.repeatDelay = 400;
+        this._repeatDelay = 400;
     }
 
     /**
@@ -139,7 +139,7 @@ class SpinButton extends Button<SpinButtonOptions> {
      * Cancels the hold-repeat schedule when the pointer is released or leaves the viewport.
      */
     private onMouseUp(): void {
-        if (this.repeatHandle === null) {
+        if (this._repeatHandle === null) {
             return;
         }
 
@@ -151,18 +151,18 @@ class SpinButton extends Button<SpinButtonOptions> {
      * the delay (×0.75, floored at 40 ms) for the following tick.
      */
     private scheduleNext(): void {
-        this.repeatHandle = setTimeout(() => {
+        this._repeatHandle = setTimeout(() => {
             this.fireTicks();
-            this.repeatDelay = Math.max(40, this.repeatDelay * 0.75);
+            this._repeatDelay = Math.max(40, this._repeatDelay * 0.75);
             this.scheduleNext();
-        }, this.repeatDelay);
+        }, this._repeatDelay);
     }
 
     /**
      * Invokes all registered tick listeners in registration order.
      */
     private fireTicks(): void {
-        for (const fn of this.tickListeners) {
+        for (const fn of this._tickListeners) {
             fn();
         }
     }

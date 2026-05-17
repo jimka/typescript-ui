@@ -24,12 +24,12 @@ export interface FieldSetOptions extends ComponentOptions {
  */
 class FieldSet extends Component {
 
-    private legend: Legend = new Legend();
+    private _legend: Legend = new Legend();
 
     constructor(title: string = "", options?: FieldSetOptions) {
         super({ tag: "fieldset" });
 
-        this.legend.setText(title);
+        this._legend.setText(title);
         this.setBorder({ style: BorderStyle.GROOVE, width: 1, color: "var(--ts-ui-border-color, black)" });
         this.setPadding(new Insets(15, 3, 3, 3));
         this.setInsets(new Insets(5, 5, 15, 5));
@@ -62,7 +62,7 @@ class FieldSet extends Component {
      * @returns The current legend text string.
      */
     getTitle() {
-        return this.legend.getText();
+        return this._legend.getText();
     }
 
     /**
@@ -71,7 +71,7 @@ class FieldSet extends Component {
      * @param title - The text to display in the legend.
      */
     setTitle(title: string) : this {
-        this.legend.setText(title);
+        this._legend.setText(title);
 
         return this;
     }
@@ -84,7 +84,7 @@ class FieldSet extends Component {
     render() {
         let element = super.render();
 
-        element.appendChild(this.legend.getElement(true));
+        element.appendChild(this._legend.getElement(true));
 
         return element;
     }

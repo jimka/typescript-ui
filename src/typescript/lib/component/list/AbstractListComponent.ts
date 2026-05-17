@@ -26,7 +26,7 @@ export interface AbstractListOptions<U extends BulletedListItemStyle | NumberedL
  */
 export abstract class AbstractListComponent<U extends BulletedListItemStyle | NumberedListItemStyle> extends Component {
 
-    private style: U | undefined;
+    private _style: U | undefined;
 
     constructor(tag: string, style: U) {
         super({ tag });
@@ -62,7 +62,7 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      * @returns The current style enum value, or undefined if not yet set.
      */
     getStyle() {
-        return this.style;
+        return this._style;
     }
 
     /**
@@ -71,7 +71,7 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      * @param style - The list item style enum value to apply.
      */
     setStyle(style: U) : this {
-        this.style = style;
+        this._style = style;
         this.setElementCSSRule("list-style-type", style);
 
         return this;

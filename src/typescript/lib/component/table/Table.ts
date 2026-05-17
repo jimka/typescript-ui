@@ -70,21 +70,21 @@ export interface TableOptions extends ComponentOptions {
  */
 class Table extends Component<TableOptions> {
 
-    private store            : AbstractStore;
-    private spec             : ColumnSpec | undefined;
-    private resolvedColumns  : Column[] = [];
-    private hiddenColumns    : Set<string> = new Set();
-    private columnContextMenu: Menu = new Menu();
-    private headerVisible    : boolean;
-    private header           : Header;
-    private body             : Body;
-    private bodyVisible      : boolean;
-    private footer           : FooterRow;
-    private footerVisible    : boolean;
-    private columnWidths     : number[] = [];
-    private savedColumnWidths: Map<string, number> = new Map();
-    private columnConfigs    : Map<string, ColumnConfig> = new Map();
-    private exportMenuEnabled: boolean = false;
+    private _store            : AbstractStore;
+    private _spec             : ColumnSpec | undefined;
+    private _resolvedColumns  : Column[] = [];
+    private _hiddenColumns    : Set<string> = new Set();
+    private _columnContextMenu: Menu = new Menu();
+    private _headerVisible    : boolean;
+    private _header           : Header;
+    private _body             : Body;
+    private _bodyVisible      : boolean;
+    private _footer           : FooterRow;
+    private _footerVisible    : boolean;
+    private _columnWidths     : number[] = [];
+    private _savedColumnWidths: Map<string, number> = new Map();
+    private _columnConfigs    : Map<string, ColumnConfig> = new Map();
+    private _exportMenuEnabled: boolean = false;
 
     /**
      * Constructs a Table bound to the given store, optionally constrained by a
@@ -102,40 +102,40 @@ class Table extends Component<TableOptions> {
         this.setInsets(new Insets(0, 0, 0, 0));
         this.setOverflow("hidden");
 
-        this.store = store;
-        this.spec = spec;
-        this.headerVisible = true;
-        this.bodyVisible = true;
-        this.footerVisible = false;
+        this._store = store;
+        this._spec = spec;
+        this._headerVisible = true;
+        this._bodyVisible = true;
+        this._footerVisible = false;
 
-        this.resolvedColumns = Column.resolve(store.model.getFields(), spec);
+        this._resolvedColumns = Column.resolve(store.model.getFields(), spec);
         this.initHiddenFromSpec();
 
-        this.header = new Header(store.model, store);
-        this.header.setOnColumnResize((i, d) => this.onColumnResize(i, d));
-        this.header.setOnColumnContextMenu((_, x, y) => this.showColumnMenu(x, y));
+        this._header = new Header(store.model, store);
+        this._header.setOnColumnResize((i, d) => this.onColumnResize(i, d));
+        this._header.setOnColumnContextMenu((_, x, y) => this.showColumnMenu(x, y));
         // The header is the permanent target of horizontal scroll mirroring (see the
         // scroll listener below), so promote it to its own compositor layer for the
         // Table's lifetime. One hint per Table is well under the per-page threshold.
-        this.header.setWillChange("transform");
-        this.addComponent(this.header);
+        this._header.setWillChange("transform");
+        this.addComponent(this._header);
 
-        this.body = new Body(store);
-        this.addComponent(this.body);
+        this._body = new Body(store);
+        this.addComponent(this._body);
 
-        this.footer = new FooterRow();
-        this.addComponent(this.footer);
+        this._footer = new FooterRow();
+        this.addComponent(this._footer);
 
         const effectiveHidden = this.getEffectiveHiddenSet();
 
         if (effectiveHidden.size > 0) {
-            this.header.setHiddenColumns(effectiveHidden);
-            this.body.setHiddenColumns(effectiveHidden);
+            this._header.setHiddenColumns(effectiveHidden);
+            this._body.setHiddenColumns(effectiveHidden);
         }
 
         if (spec) {
-            this.columnConfigs = this.buildColumnConfigs(spec);
-            this.body.setColumnConfigs(this.columnConfigs);
+            this._columnConfigs = this.buildColumnConfigs(spec);
+            this._body.setColumnConfigs(this._columnConfigs);
         }
 
         this.getAria().setColCount(this.getColumns().length);
@@ -143,14 +143,14 @@ class Table extends Component<TableOptions> {
         // Sync header horizontal scroll with body. The body has overflow:auto so the browser
         // scrolls it natively; the header is outside that scroll container, so we mirror the
         // body's scrollLeft into the header via transform on every scroll event.
-        Event.addListener(this.body, "scroll", () => {
-            const el = this.body.getElement();
+        Event.addListener(this._body, "scroll", () => {
+            const el = this._body.getElement();
 
             if (!el) {
                 return;
             }
 
-            this.header.setTranslate(-el.scrollLeft, 0);
+            this._header.setTranslate(-el.scrollLeft, 0);
         });
     }
 
@@ -165,7 +165,7 @@ class Table extends Component<TableOptions> {
     getColumns(): Column[] {
         const effective = this.getEffectiveHiddenSet();
 
-        return this.resolvedColumns.filter(c => !effective.has(c.getField().getName()));
+        return this._resolvedColumns.filter(c => !effective.has(c.getField().getName()));
     }
 
     /**
@@ -174,7 +174,7 @@ class Table extends Component<TableOptions> {
      * @returns The current {@link AbstractStore}.
      */
     getStore(): AbstractStore {
-        return this.store;
+        return this._store;
     }
 
     /**
@@ -183,7 +183,7 @@ class Table extends Component<TableOptions> {
      * @returns The model from the store.
      */
     getModel() {
-        return this.store.model;
+        return this._store.model;
     }
 
     /**
@@ -193,14 +193,14 @@ class Table extends Component<TableOptions> {
      * @param store - The new store to bind to the table.
      */
     setStore(store: AbstractStore): this {
-        this.store = store;
-        this.columnWidths = [];
-        this.savedColumnWidths = new Map();
-        this.resolvedColumns = Column.resolve(store.model.getFields(), this.spec);
+        this._store = store;
+        this._columnWidths = [];
+        this._savedColumnWidths = new Map();
+        this._resolvedColumns = Column.resolve(store.model.getFields(), this._spec);
 
-        this.body.setStore(store);
-        this.header.setModel(store.model);
-        this.header.setHiddenColumns(this.getEffectiveHiddenSet());
+        this._body.setStore(store);
+        this._header.setModel(store.model);
+        this._header.setHiddenColumns(this.getEffectiveHiddenSet());
         this.getAria().setColCount(this.getColumns().length);
 
         return this;
@@ -212,7 +212,7 @@ class Table extends Component<TableOptions> {
      * @returns The current column widths in pixels.
      */
     getColumnWidths(): number[] {
-        return this.columnWidths;
+        return this._columnWidths;
     }
 
     /**
@@ -223,7 +223,7 @@ class Table extends Component<TableOptions> {
      * that show/hide toggles can restore per-column widths without a full re-initialisation.
      */
     setColumnWidths(widths: number[]): this {
-        this.columnWidths = widths;
+        this._columnWidths = widths;
 
         const visibleColumns = this.getColumns();
 
@@ -231,7 +231,7 @@ class Table extends Component<TableOptions> {
             const col = visibleColumns[i];
 
             if (col) {
-                this.savedColumnWidths.set(col.getField().getName(), w);
+                this._savedColumnWidths.set(col.getField().getName(), w);
             }
         });
 
@@ -254,26 +254,26 @@ class Table extends Component<TableOptions> {
      */
     setColumnVisible(fieldName: string, visible: boolean): this {
         if (visible) {
-            this.hiddenColumns.delete(fieldName);
+            this._hiddenColumns.delete(fieldName);
         } else {
-            this.hiddenColumns.add(fieldName);
+            this._hiddenColumns.add(fieldName);
         }
 
         const newVisibleColumns = this.getColumns();
         const rawWidths = newVisibleColumns.map(col =>
-            this.savedColumnWidths.get(col.getField().getName()) ?? this.defaultColumnWidth(col)
+            this._savedColumnWidths.get(col.getField().getName()) ?? this.defaultColumnWidth(col)
         );
-        const savedTotal = this.columnWidths.reduce((s, w) => s + w, 0);
+        const savedTotal = this._columnWidths.reduce((s, w) => s + w, 0);
         const rawTotal   = rawWidths.reduce((s, w) => s + w, 0);
 
-        this.columnWidths = (rawTotal > savedTotal + 0.5 && savedTotal > 0)
+        this._columnWidths = (rawTotal > savedTotal + 0.5 && savedTotal > 0)
             ? this.trimToTarget(newVisibleColumns, rawWidths, savedTotal, fieldName)
             : rawWidths;
 
         const effectiveHidden = this.getEffectiveHiddenSet();
 
-        this.header.setHiddenColumns(effectiveHidden);
-        this.body.setHiddenColumns(effectiveHidden);
+        this._header.setHiddenColumns(effectiveHidden);
+        this._body.setHiddenColumns(effectiveHidden);
         this.getAria().setColCount(this.getColumns().length);
         this.doLayout();
 
@@ -286,7 +286,7 @@ class Table extends Component<TableOptions> {
      * @returns The {@link Header} section of this table.
      */
     getHeader() {
-        return this.header;
+        return this._header;
     }
 
     /**
@@ -295,7 +295,7 @@ class Table extends Component<TableOptions> {
      * @returns `true` if the header is visible.
      */
     isHeaderVisible() {
-        return this.headerVisible;
+        return this._headerVisible;
     }
 
     /**
@@ -304,7 +304,7 @@ class Table extends Component<TableOptions> {
      * @returns The virtual-scrolling {@link Body} section of this table.
      */
     getBody() {
-        return this.body;
+        return this._body;
     }
 
     /**
@@ -313,7 +313,7 @@ class Table extends Component<TableOptions> {
      * @returns `true` if the body is visible.
      */
     isBodyVisible() {
-        return this.bodyVisible;
+        return this._bodyVisible;
     }
 
     /**
@@ -322,7 +322,7 @@ class Table extends Component<TableOptions> {
      * @returns The {@link FooterRow} section of this table.
      */
     getFooter() {
-        return this.footer;
+        return this._footer;
     }
 
     /**
@@ -331,7 +331,7 @@ class Table extends Component<TableOptions> {
      * @returns `true` if the footer is visible.
      */
     isFooterVisible() {
-        return this.footerVisible;
+        return this._footerVisible;
     }
 
     /**
@@ -342,9 +342,9 @@ class Table extends Component<TableOptions> {
      * @returns The newly created {@link ModelRecord}.
      */
     addRow(defaults: Record<string, any> = {}): ModelRecord {
-        const [record] = this.store.add(defaults);
-        this.body.scrollToRecord(record);
-        this.body.selectRecord(record);
+        const [record] = this._store.add(defaults);
+        this._body.scrollToRecord(record);
+        this._body.selectRecord(record);
 
         return record;
     }
@@ -353,14 +353,14 @@ class Table extends Component<TableOptions> {
      * Removes the currently selected record from the store.
      */
     removeSelectedRow(): this {
-        const record = this.body.getSelectedRecord();
+        const record = this._body.getSelectedRecord();
 
         if (!record) {
             return this;
         }
 
-        this.body.selectRecord(null);
-        this.store.remove(record);
+        this._body.selectRecord(null);
+        this._store.remove(record);
 
         return this;
     }
@@ -371,7 +371,7 @@ class Table extends Component<TableOptions> {
      * @returns A Promise that resolves when the sync operation completes.
      */
     async sync(): Promise<void> {
-        return this.store.sync();
+        return this._store.sync();
     }
 
     /**
@@ -379,7 +379,7 @@ class Table extends Component<TableOptions> {
      * ones, and restores pending removals.
      */
     reject(): void {
-        this.store.reject();
+        this._store.reject();
     }
 
     /**
@@ -388,7 +388,7 @@ class Table extends Component<TableOptions> {
      * @returns The selected {@link ModelRecord}, or null.
      */
     getSelectedRecord(): ModelRecord | null {
-        return this.body.getSelectedRecord();
+        return this._body.getSelectedRecord();
     }
 
     /**
@@ -397,7 +397,7 @@ class Table extends Component<TableOptions> {
      * @returns An array of selected {@link ModelRecord} instances.
      */
     getSelectedRecords(): ModelRecord[] {
-        return this.body.getSelectedRecords();
+        return this._body.getSelectedRecords();
     }
 
     /**
@@ -410,11 +410,11 @@ class Table extends Component<TableOptions> {
      */
     addComponent(row: Header | Body | FooterRow, constraints?: LayoutConstraints): this {
         if (row instanceof Header) {
-            this.header = row;
+            this._header = row;
         } else if (row instanceof Body) {
-            this.body = row;
+            this._body = row;
         } else if (row instanceof FooterRow) {
-            this.footer = row;
+            this._footer = row;
         }
 
         super.addComponent(row, constraints);
@@ -493,7 +493,7 @@ class Table extends Component<TableOptions> {
                 i,
                 room: (isFixedType(col) === fixedType
                     && col.getField().getName() !== exemptField
-                    && this.savedColumnWidths.has(col.getField().getName()))
+                    && this._savedColumnWidths.has(col.getField().getName()))
                     ? result[i] - (col.getMinWidth() ?? 30)
                     : 0
             }))
@@ -525,9 +525,9 @@ class Table extends Component<TableOptions> {
     }
 
     private initHiddenFromSpec(): void {
-        for (const col of this.resolvedColumns) {
+        for (const col of this._resolvedColumns) {
             if (col.isInitiallyHidden()) {
-                this.hiddenColumns.add(col.getField().getName());
+                this._hiddenColumns.add(col.getField().getName());
             }
         }
     }
@@ -539,10 +539,10 @@ class Table extends Component<TableOptions> {
      * @returns The effective set of field names that must not be rendered.
      */
     private getEffectiveHiddenSet(): Set<string> {
-        const resolvedNames = new Set(this.resolvedColumns.map(c => c.getField().getName()));
-        const result = new Set(this.hiddenColumns);
+        const resolvedNames = new Set(this._resolvedColumns.map(c => c.getField().getName()));
+        const result = new Set(this._hiddenColumns);
 
-        for (const f of this.store.model.getFields()) {
+        for (const f of this._store.model.getFields()) {
             if (!resolvedNames.has(f.getName())) {
                 result.add(f.getName());
             }
@@ -559,13 +559,13 @@ class Table extends Component<TableOptions> {
      * @param y - Viewport y coordinate for the menu.
      */
     private showColumnMenu(x: number, y: number): void {
-        const columns = this.resolvedColumns
+        const columns = this._resolvedColumns
             .slice()
             .sort((a, b) => a.getField().getOrder() - b.getField().getOrder());
 
         const items: MenuItemConfig[] = columns.map(col => {
             const fieldName = col.getField().getName();
-            const visible = !this.hiddenColumns.has(fieldName);
+            const visible = !this._hiddenColumns.has(fieldName);
 
             return {
                 text: (visible ? '✓ ' : '  ') + col.getField().getName(),
@@ -578,7 +578,7 @@ class Table extends Component<TableOptions> {
             { text: 'Reset columns', action: () => this.resetColumns() }
         );
 
-        if (this.exportMenuEnabled) {
+        if (this._exportMenuEnabled) {
             items.push(
                 { separator: true },
                 { text: 'Export as CSV',  action: () => this.exportCSV()  },
@@ -586,7 +586,7 @@ class Table extends Component<TableOptions> {
             );
         }
 
-        this.columnContextMenu.show(x, y, items);
+        this._columnContextMenu.show(x, y, items);
     }
 
     /**
@@ -596,7 +596,7 @@ class Table extends Component<TableOptions> {
      * @param enabled - When true the export items are appended to the menu.
      */
     setExportMenuEnabled(enabled: boolean): this {
-        this.exportMenuEnabled = enabled;
+        this._exportMenuEnabled = enabled;
 
         return this;
     }
@@ -608,9 +608,9 @@ class Table extends Component<TableOptions> {
      */
     exportCSV(options?: ExportOptions): void {
         const columns = this.getExportColumns(options?.includeHidden ?? false);
-        const records = this.store.getRecords();
+        const records = this._store.getRecords();
 
-        TableExporter.exportCSV(columns, records, this.columnConfigs, options);
+        TableExporter.exportCSV(columns, records, this._columnConfigs, options);
     }
 
     /**
@@ -620,9 +620,9 @@ class Table extends Component<TableOptions> {
      */
     exportJSON(options?: ExportOptions): void {
         const columns = this.getExportColumns(options?.includeHidden ?? false);
-        const records = this.store.getRecords();
+        const records = this._store.getRecords();
 
-        TableExporter.exportJSON(columns, records, this.columnConfigs, options);
+        TableExporter.exportJSON(columns, records, this._columnConfigs, options);
     }
 
     /**
@@ -632,7 +632,7 @@ class Table extends Component<TableOptions> {
      * @returns The columns to export, in display order.
      */
     private getExportColumns(includeHidden: boolean): Column[] {
-        return includeHidden ? this.resolvedColumns.slice() : this.getColumns();
+        return includeHidden ? this._resolvedColumns.slice() : this.getColumns();
     }
 
     /**
@@ -643,7 +643,7 @@ class Table extends Component<TableOptions> {
      * @param delta    - Pixel delta: positive moves the edge right, negative moves it left.
      */
     private onColumnResize(colIndex: number, delta: number): void {
-        const n = this.columnWidths.length;
+        const n = this._columnWidths.length;
 
         if (n === 0 || colIndex >= n - 1) {
             return;
@@ -655,8 +655,8 @@ class Table extends Component<TableOptions> {
         const min1 = columns[colIndex + 1]?.getMinWidth() ?? 30;
         const max1 = columns[colIndex + 1]?.getMaxWidth() ?? Infinity;
 
-        let w0 = this.columnWidths[colIndex]     + delta;
-        let w1 = this.columnWidths[colIndex + 1] - delta;
+        let w0 = this._columnWidths[colIndex]     + delta;
+        let w1 = this._columnWidths[colIndex + 1] - delta;
 
         if (w0 < min0) {
             w1 += w0 - min0;
@@ -672,8 +672,8 @@ class Table extends Component<TableOptions> {
             return;
         }
 
-        this.columnWidths[colIndex]     = w0;
-        this.columnWidths[colIndex + 1] = w1;
+        this._columnWidths[colIndex]     = w0;
+        this._columnWidths[colIndex + 1] = w1;
 
         this.doLayout();
     }
@@ -685,15 +685,15 @@ class Table extends Component<TableOptions> {
      * All manually resized widths are discarded and recomputed from defaults.
      */
     private resetColumns(): void {
-        this.hiddenColumns = new Set();
+        this._hiddenColumns = new Set();
         this.initHiddenFromSpec();
-        this.savedColumnWidths = new Map();
-        this.columnWidths = this.getColumns().map(col => this.defaultColumnWidth(col));
+        this._savedColumnWidths = new Map();
+        this._columnWidths = this.getColumns().map(col => this.defaultColumnWidth(col));
 
         const effectiveHidden = this.getEffectiveHiddenSet();
 
-        this.header.setHiddenColumns(effectiveHidden);
-        this.body.setHiddenColumns(effectiveHidden);
+        this._header.setHiddenColumns(effectiveHidden);
+        this._body.setHiddenColumns(effectiveHidden);
         this.doLayout();
     }
 }

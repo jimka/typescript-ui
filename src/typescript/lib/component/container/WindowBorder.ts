@@ -41,24 +41,24 @@ export interface WindowBorderOptions extends ComponentOptions {
  */
 class WindowBorder extends Component {
 
-    private direction: Direction = Direction.NORTH;
-    private dragListeners: Function[] = [];
-    private dragStartListener: Function;
-    private dragStopListener: Function;
-    private fireDragListener: Function;
+    private _direction: Direction = Direction.NORTH;
+    private _dragListeners: Function[] = [];
+    private _dragStartListener: Function;
+    private _dragStopListener: Function;
+    private _fireDragListener: Function;
 
     constructor(direction: Direction, options?: WindowBorderOptions) {
         super({ tag: "div" });
 
         if (direction) {
-            this.direction = direction;
+            this._direction = direction;
         }
 
-        this.dragStartListener = this.onDragStart.bind(this);
-        this.dragStopListener = this.onDragStop.bind(this);
-        this.fireDragListener = this.fireDragListeners.bind(this);
+        this._dragStartListener = this.onDragStart.bind(this);
+        this._dragStopListener = this.onDragStop.bind(this);
+        this._fireDragListener = this.fireDragListeners.bind(this);
 
-        Event.addListener(this, 'mousedown', this.dragStartListener);
+        Event.addListener(this, 'mousedown', this._dragStartListener);
 
         if (options) {
             this.applyOptions(options);
@@ -71,7 +71,7 @@ class WindowBorder extends Component {
      * @returns The Direction enum value for this border.
      */
     getDirection() {
-        return this.direction;
+        return this._direction;
     }
 
     /**
@@ -84,7 +84,7 @@ class WindowBorder extends Component {
             direction = Direction.NORTH;
         }
 
-        this.direction = direction;
+        this._direction = direction;
 
         return this;
     }
@@ -95,7 +95,7 @@ class WindowBorder extends Component {
      * @param listener - The callback invoked with this WindowBorder and the MouseEvent on each drag.
      */
     addDragListener(listener: Function) : this {
-        this.dragListeners.push(listener);
+        this._dragListeners.push(listener);
 
         return this;
     }
@@ -106,12 +106,12 @@ class WindowBorder extends Component {
      * @param listener - The callback to remove.
      */
     removeDragListener(listener: Function) : this {
-        let idx = this.dragListeners.indexOf(listener);
+        let idx = this._dragListeners.indexOf(listener);
         if (idx < 0) {
             return this;
         }
 
-        this.dragListeners.push(listener);
+        this._dragListeners.push(listener);
 
         return this;
     }
@@ -124,8 +124,8 @@ class WindowBorder extends Component {
     fireDragListeners(e: MouseEvent) {
         let me = this;
 
-        for (let idx in this.dragListeners) {
-            let dragListener = this.dragListeners[idx];
+        for (let idx in this._dragListeners) {
+            let dragListener = this._dragListeners[idx];
 
             dragListener(me, e);
         }
@@ -135,11 +135,11 @@ class WindowBorder extends Component {
      * Attaches viewport mouse/touch move and stop listeners and disables body pointer events.
      */
     onDragStart() {
-        Event.addViewportListener(this, 'mouseup', this.dragStopListener);
-        Event.addViewportListener(this, 'touchend', this.dragStopListener);
-        Event.addViewportListener(this, 'touchcancel', this.dragStopListener);
-        Event.addViewportListener(this, 'mousemove', this.fireDragListener);
-        Event.addViewportListener(this, 'touchmove', this.fireDragListener);
+        Event.addViewportListener(this, 'mouseup', this._dragStopListener);
+        Event.addViewportListener(this, 'touchend', this._dragStopListener);
+        Event.addViewportListener(this, 'touchcancel', this._dragStopListener);
+        Event.addViewportListener(this, 'mousemove', this._fireDragListener);
+        Event.addViewportListener(this, 'touchmove', this._fireDragListener);
 
         Util.select("body").style.pointerEvents = "none";
     }
@@ -148,11 +148,11 @@ class WindowBorder extends Component {
      * Removes viewport listeners and restores body pointer events when drag ends.
      */
     onDragStop() {
-        Event.removeViewportListener(this, 'mouseup', this.dragStopListener);
-        Event.removeViewportListener(this, 'touchend', this.dragStopListener);
-        Event.removeViewportListener(this, 'touchcancel', this.dragStopListener);
-        Event.removeViewportListener(this, 'mousemove', this.fireDragListener);
-        Event.removeViewportListener(this, 'touchmove', this.fireDragListener);
+        Event.removeViewportListener(this, 'mouseup', this._dragStopListener);
+        Event.removeViewportListener(this, 'touchend', this._dragStopListener);
+        Event.removeViewportListener(this, 'touchcancel', this._dragStopListener);
+        Event.removeViewportListener(this, 'mousemove', this._fireDragListener);
+        Event.removeViewportListener(this, 'touchmove', this._fireDragListener);
 
         Util.select("body").style.pointerEvents = "";
     }
@@ -166,7 +166,7 @@ class WindowBorder extends Component {
         let element = super.render();
 
         let cursor;
-        switch (this.direction) {
+        switch (this._direction) {
             case Direction.NORTH:
             case Direction.SOUTH:
                 cursor = "ns-resize";

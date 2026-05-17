@@ -49,10 +49,10 @@ function getThemeFontSize(): number {
  */
 class ProgressSpinner extends Component {
 
-    private arc: Component;
-    private size: number;
-    private trackThemeFontSize: boolean;
-    private overlayTarget: Component | null = null;
+    private _arc: Component;
+    private _size: number;
+    private _trackThemeFontSize: boolean;
+    private _overlayTarget: Component | null = null;
 
     /**
      * Constructs a ProgressSpinner.
@@ -64,41 +64,41 @@ class ProgressSpinner extends Component {
     constructor(size?: number, options?: ProgressSpinnerOptions) {
         super();
 
-        this.trackThemeFontSize = size === undefined;
-        this.size               = this.trackThemeFontSize ? getThemeFontSize() : size!;
+        this._trackThemeFontSize = size === undefined;
+        this._size               = this._trackThemeFontSize ? getThemeFontSize() : size!;
 
         // Use no insets so the arc fills the declared size — otherwise the
         // default 4-pixel inset shrinks a 24-pixel spinner's arc to 16 pixels
         // and leaves 8 pixels of empty space around it.
         this.clearInsets();
 
-        this.arc = new Component();
-        this.arc.setPosition(Position.ABSOLUTE);
-        this.arc.setBorderRadius("50%");
-        this.arc.setBorder({
+        this._arc = new Component();
+        this._arc.setPosition(Position.ABSOLUTE);
+        this._arc.setBorderRadius("50%");
+        this._arc.setBorder({
             style: BorderStyle.SOLID,
             width: ARC_BORDER_WIDTH,
             color: "var(--ts-ui-progress-spinner-color, rgb(30, 100, 200))",
             top  : { style: BorderStyle.SOLID, width: ARC_BORDER_WIDTH, color: "transparent" },
         });
-        this.arc.setAnimation("ts-ui-progress-spinner-rotate 0.8s linear infinite");
+        this._arc.setAnimation("ts-ui-progress-spinner-rotate 0.8s linear infinite");
 
-        super.addComponent(this.arc);
+        super.addComponent(this._arc);
 
-        this.setPreferredSize(this.size, this.size);
+        this.setPreferredSize(this._size, this._size);
 
-        if (this.trackThemeFontSize) {
+        if (this._trackThemeFontSize) {
             ThemeManager.onThemeChange(() => {
-                if (!this.trackThemeFontSize) {
+                if (!this._trackThemeFontSize) {
                     return;
                 }
 
                 const next = getThemeFontSize();
-                if (next === this.size) {
+                if (next === this._size) {
                     return;
                 }
 
-                this.size = next;
+                this._size = next;
                 this.setPreferredSize(next, next);
                 this.scheduleLayout();
             });
@@ -134,7 +134,7 @@ class ProgressSpinner extends Component {
      * @returns The diameter.
      */
     getSpinnerSize(): number {
-        return this.size;
+        return this._size;
     }
 
     /**
@@ -146,13 +146,13 @@ class ProgressSpinner extends Component {
      * the spinner stays at the explicit size across subsequent theme changes.
      */
     setSpinnerSize(size: number): this {
-        this.trackThemeFontSize = false;
+        this._trackThemeFontSize = false;
 
-        if (this.size === size) {
+        if (this._size === size) {
             return this;
         }
 
-        this.size = size;
+        this._size = size;
         this.setPreferredSize(size, size);
         this.scheduleLayout();
 
@@ -171,11 +171,11 @@ class ProgressSpinner extends Component {
      * @param target - The component to overlay.
      */
     showOverlay(target: Component): void {
-        if (this.overlayTarget) {
+        if (this._overlayTarget) {
             return;
         }
 
-        this.overlayTarget = target;
+        this._overlayTarget = target;
 
         this.setPosition(Position.ABSOLUTE);
         this.setBackgroundColor("var(--ts-ui-progress-spinner-backdrop, rgba(255, 255, 255, 0.6))");
@@ -197,11 +197,11 @@ class ProgressSpinner extends Component {
      * as an overlay.
      */
     hideOverlay(): void {
-        if (!this.overlayTarget) {
+        if (!this._overlayTarget) {
             return;
         }
 
-        this.overlayTarget = null;
+        this._overlayTarget = null;
 
         this.removeElement();
 
@@ -215,7 +215,7 @@ class ProgressSpinner extends Component {
      * @returns True if showOverlay has been called and hideOverlay has not.
      */
     isOverlay(): boolean {
-        return this.overlayTarget !== null;
+        return this._overlayTarget !== null;
     }
 
     /**
@@ -224,8 +224,8 @@ class ProgressSpinner extends Component {
      * @returns This component, for method chaining.
      */
     doLayout(): this {
-        if (this.overlayTarget) {
-            this.setSize({ width: this.overlayTarget.getWidth(), height: this.overlayTarget.getHeight() });
+        if (this._overlayTarget) {
+            this.setSize({ width: this._overlayTarget.getWidth(), height: this._overlayTarget.getHeight() });
         }
 
         const inner = this.getInnerSize();
@@ -235,13 +235,13 @@ class ProgressSpinner extends Component {
             return this;
         }
 
-        const diameter = Math.min(this.size, inner.width, inner.height);
+        const diameter = Math.min(this._size, inner.width, inner.height);
         const x        = Math.round((inner.width  - diameter) / 2);
         const y        = Math.round((inner.height - diameter) / 2);
 
-        this.arc.setX(x);
-        this.arc.setY(y);
-        this.arc.setSize({ width: diameter, height: diameter });
+        this._arc.setX(x);
+        this._arc.setY(y);
+        this._arc.setSize({ width: diameter, height: diameter });
 
         super.doLayout();
 
