@@ -94,6 +94,7 @@ export interface ComponentOptions {
     willChange?:      string | null;
     opacity?:         number;
     position?:        Position;
+    display?:         string;
     overflow?:        string;
     pointerEvents?:   string;
     layoutManager?:   LayoutManager;
@@ -325,6 +326,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (options.willChange      !== undefined) this.setWillChange(options.willChange);
         if (options.opacity         !== undefined) this.setOpacity(options.opacity);
         if (options.position        !== undefined) this.setPosition(options.position);
+        if (options.display         !== undefined) this.setDisplay(options.display);
         if (options.overflow        !== undefined) this.setOverflow(options.overflow);
         if (options.pointerEvents   !== undefined) this.setPointerEvents(options.pointerEvents);
 
@@ -2013,6 +2015,37 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the CSS `display` mode for this component.
+     *
+     * @returns The current display value (e.g. `"block"`, `"grid"`, `"flex"`).
+     */
+    getDisplay(): string {
+        return this._display;
+    }
+
+    /**
+     * Sets the CSS `display` mode (e.g. `"grid"`, `"flex"`, `"inline-block"`).
+     *
+     * Updates the cached display so that {@link setDisplayed} restores the
+     * correct mode when toggling visibility, and writes through to the
+     * per-component CSS rule.
+     *
+     * @param value - A valid CSS `display` value.
+     *
+     * @returns This component, for method chaining.
+     */
+    setDisplay(value: string): this {
+        this._display = value;
+        this._options.display = value;
+
+        if (this._options.displayed !== false) {
+            this.setElementCSSRule("display", value);
+        }
+
+        return this;
+    }
+
+    /**
      * Removes the explicit position override from the component's CSS rule.
      * The framework default (`Position.ABSOLUTE`) reported by {@link getPosition}
      * remains in effect.
@@ -2270,9 +2303,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._disabledAttribute = value;
 
         if (value) {
-            this.setElementAttribute("disabled", "");
+            this.setAttribute("disabled", "");
         } else {
-            this.removeElementAttribute("disabled");
+            this.delAttribute("disabled");
         }
 
         return this;
@@ -3101,10 +3134,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // write through directly.
         this._inlineStyle.attach(element);
 
-        for (let key in this._attributes) {
-            let value = this._attributes.get(key);
+        // `for…in` walks own enumerable property names. A `Map` has no own
+        // enumerable properties (its entries live behind its public API), so
+        // the prior `for (let key in this._attributes)` form silently iterated
+        // nothing — every attribute cached during detached construction was
+        // dropped at render time. Use the `Map` iterator directly.
+        for (const [key, value] of this._attributes) {
             if (value != null) {
-                element.setAttribute(key, value.valueOf());
+                element.setAttribute(key.valueOf(), value.valueOf());
             }
         }
 

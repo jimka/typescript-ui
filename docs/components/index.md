@@ -15,6 +15,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Dialog`](/api/core/classes/Dialog) | Modal dialog with async result |
 | [`Tooltip`](/api/core/classes/Tooltip) | Singleton hover hint, attach via `Tooltip.attach(component, text)` |
 | [`Notification`](/api/core/classes/Notification) | Static toast — `Notification.show(message, type, duration?)` |
+| [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown) | Floating-panel base with shared fade lifecycle |
 
 ## Buttons
 
@@ -37,8 +38,9 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Checkbox`](/api/component/input/classes/Checkbox) | Boolean toggle |
 | [`ComboBox`](/api/component/input/classes/ComboBox) | Drop-down selection from a list of [`Option`](/api/component/input/classes/Option) or a [`Store`](/api/data/classes/Store) |
 | [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField) | Text field with type-ahead suggestions |
-| [`DateField`](/api/component/input/classes/DateField) | Date picker |
-| [`TimeField`](/api/component/input/classes/TimeField) | Time picker |
+| [`DateField`](/api/component/input/classes/DateField) | Date picker with animated calendar dropdown |
+| [`TimeField`](/api/component/input/classes/TimeField) | Time picker with animated hour/minute dropdown |
+| [`DateTimeField`](/api/component/input/classes/DateTimeField) | Combined date + time picker with animated dropdown |
 | [`NumberSpinner`](/api/component/input/classes/NumberSpinner) | Number field with up / down spinner |
 | [`Slider`](/api/component/input/classes/Slider) | Continuous-value slider |
 

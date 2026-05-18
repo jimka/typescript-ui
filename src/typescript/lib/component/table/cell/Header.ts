@@ -115,7 +115,7 @@ class HeaderCell extends DefaultCell {
         }
 
         if (this._headerGlyph) {
-            this._mountHeaderGlyph(el);
+            this.setHeaderGlyph(this._headerGlyph);
         }
 
         return this;

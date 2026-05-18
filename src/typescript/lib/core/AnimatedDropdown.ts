@@ -1,0 +1,387 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+import { Component, ComponentOptions } from "~/core/Component.js";
+import { Animation } from "~/core/Animation.js";
+import { Position } from "~/primitive/Position.js";
+import { callable } from "~/core/Callable.js";
+
+/** Default fade duration in milliseconds. Matches `MENU_ANIM_DURATION_MS` from `Menu`. */
+const DEFAULT_DURATION_MS: number = 120;
+
+/** Default entrance vertical-offset distance in pixels. */
+const DEFAULT_TRANSLATE_PX: number = 4;
+
+/**
+ * Per-component `_dismissing` flag used by the free-function form
+ * (`fadeShow` / `fadeHideAndDetach`). `WeakMap`-keyed so a `Component` that
+ * never opts into the helper carries no extra state.
+ */
+const _dismissingByComponent: WeakMap<Component, boolean> = new WeakMap();
+
+/**
+ * Construction-time options for {@link AnimatedDropdown}.
+ *
+ * @category Core
+ */
+export interface AnimatedDropdownOptions extends ComponentOptions {
+    /** When false, `showAnimated` / `hideAnimated` skip the transition. Default: true. */
+    animated?:    boolean;
+    /** Fade duration in milliseconds. Default: 120. */
+    durationMs?:  number;
+    /** Vertical translation distance in pixels for the entrance. Default: 4. */
+    translatePx?: number;
+}
+
+/**
+ * Options forwarded to the free-function forms `fadeShow` / `fadeHideAndDetach`.
+ *
+ * @category Core
+ */
+export interface FadeOptions {
+    /** Fade duration in milliseconds. Default: 120. */
+    durationMs?:  number;
+    /** Vertical translation distance in pixels for the entrance. Default: 4. */
+    translatePx?: number;
+    /** When false, the helper bypasses the transition and applies the end state synchronously. Default: true. */
+    animated?:    boolean;
+    /** Called once the fade completes (or immediately when animation is disabled). */
+    onComplete?:  () => void;
+}
+
+/**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each present setter once
+ * with the final value, so any field the caller supplied wins.
+ */
+const _defaultAnimatedDropdownOptions: Partial<AnimatedDropdownOptions> = {
+    visible:  false,
+    position: Position.FIXED,
+    zIndex:   10050,
+};
+
+/**
+ * Floating panel that fades in on `showAnimated` and fades out + detaches on
+ * `hideAnimated`. Subclasses (e.g. picker dropdowns for `ComboBox`, `DateField`,
+ * `TimeField`, `DateTimeField`) own the panel's interactive content; this base
+ * class owns only the open/close lifecycle, the `opacity + translateY`
+ * transition, the dismissing-flag re-entrancy guard, and the `will-change`
+ * pre-promotion.
+ *
+ * Positioning math (anchor rect, viewport clamping, flip-above-anchor) lives
+ * in the host component or in a subclass — `AnimatedDropdown` does not
+ * presume anything about where it should appear.
+ *
+ * ## Pointer-down contract for hosts mounted under a re-used input element
+ *
+ * Hosts that compose this dropdown alongside a focusable element whose `blur`
+ * commits state (e.g. [`CellEditorPool`](/api/component/table/classes/CellEditorPool)'s pooled editors) must call
+ * `event.preventDefault()` on **`pointerdown`** inside the dropdown so the
+ * host element keeps focus while the dropdown's selection callback runs. The
+ * callback then explicitly drives commit. If the dropdown does not suppress
+ * the blur, the editor's blur listener fires first, commits the stale value,
+ * and the dropdown's later write goes to a no-longer-active editor.
+ *
+ * @category Core
+ */
+class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdownOptions> extends Component<TOptions> {
+
+    private _animated:    boolean = true;
+    private _durationMs:  number  = DEFAULT_DURATION_MS;
+    private _translatePx: number  = DEFAULT_TRANSLATE_PX;
+    // Set true while a fade-out is in flight; reset to false either when the
+    // fade completes (so the deferred detach runs) or when a fresh `showAnimated`
+    // re-displays the dropdown mid-fade (the deferred detach skips because the
+    // dropdown is back on screen).
+    private _dismissing:  boolean = false;
+    private _open:        boolean = false;
+
+    /**
+     * @param options - Optional construction-time options.
+     */
+    constructor(options?: AnimatedDropdownOptions) {
+        super({ ..._defaultAnimatedDropdownOptions, ...(options ?? {}) } as TOptions);
+    }
+
+    /**
+     * Applies an {@link AnimatedDropdownOptions} bag, dispatching dropdown-specific
+     * fields after inherited Component fields.
+     *
+     * @param options - The options bag carrying the values to apply.
+     */
+    protected applyOptions(options: TOptions): this {
+        super.applyOptions(options);
+
+        if (options.animated    !== undefined) this.setAnimated(options.animated);
+        if (options.durationMs  !== undefined) this.setDurationMs(options.durationMs);
+        if (options.translatePx !== undefined) this.setTranslatePx(options.translatePx);
+
+        return this;
+    }
+
+    /**
+     * Enables or disables the fade transition. When false, `showAnimated` /
+     * `hideAnimated` apply visibility synchronously.
+     *
+     * @param value - true to enable the fade; false for instant show/hide.
+     */
+    setAnimated(value: boolean): this {
+        this._animated = value;
+        this._options.animated = value;
+
+        return this;
+    }
+
+    /**
+     * Returns whether the fade transition is enabled.
+     *
+     * @returns true when the fade transition runs on show/hide.
+     */
+    isAnimated(): boolean {
+        return this._animated;
+    }
+
+    /**
+     * Sets the fade duration in milliseconds.
+     *
+     * @param ms - Duration in milliseconds.
+     */
+    setDurationMs(ms: number): this {
+        this._durationMs = ms;
+        this._options.durationMs = ms;
+
+        return this;
+    }
+
+    /**
+     * Returns the configured fade duration in milliseconds.
+     *
+     * @returns The duration in milliseconds.
+     */
+    getDurationMs(): number {
+        return this._durationMs;
+    }
+
+    /**
+     * Sets the entrance vertical-offset distance in pixels.
+     *
+     * @param px - Translation distance in pixels.
+     */
+    setTranslatePx(px: number): this {
+        this._translatePx = px;
+        this._options.translatePx = px;
+
+        return this;
+    }
+
+    /**
+     * Returns the configured entrance vertical-offset distance.
+     *
+     * @returns The translation distance in pixels.
+     */
+    getTranslatePx(): number {
+        return this._translatePx;
+    }
+
+    /**
+     * Mounts the dropdown on `document.documentElement` (if not already mounted)
+     * and plays the entrance fade. Cancels any in-flight fade-out so a fresh
+     * show mid-dismiss keeps the panel on screen.
+     */
+    showAnimated(): this {
+        this._dismissing = false;
+        this._open       = true;
+
+        const el = this.getElement(true);
+
+        if (!document.documentElement.contains(el)) {
+            document.documentElement.appendChild(el);
+        }
+
+        this.setVisible(true);
+
+        if (!this._animated) {
+            this.onShowComplete();
+            return this;
+        }
+
+        this.setWillChange("opacity, transform");
+
+        Animation.play(el, {
+            from:       { opacity: "0", transform: `translateY(-${this._translatePx}px)` },
+            to:         { opacity: "1", transform: "translateY(0)" },
+            durationMs: this._durationMs,
+            properties: ["opacity", "transform"],
+            onComplete: () => {
+                this.setWillChange(null);
+                this.onShowComplete();
+            },
+        });
+
+        return this;
+    }
+
+    /**
+     * Plays the exit fade, then hides and detaches the dropdown when the
+     * transition completes. A fresh `showAnimated` during the fade cancels the
+     * deferred detach by flipping the `_dismissing` flag, so the panel stays
+     * mounted.
+     */
+    hideAnimated(): this {
+        this._open = false;
+
+        const el = this.getElement();
+        const finalize = (): void => {
+            this.setVisible(false);
+            this.removeElement();
+            this.onHideComplete();
+        };
+
+        if (!el || !this._animated) {
+            finalize();
+            return this;
+        }
+
+        this._dismissing = true;
+        this.setWillChange("opacity, transform");
+
+        Animation.play(el, {
+            to:         { opacity: "0", transform: `translateY(-${this._translatePx}px)` },
+            durationMs: this._durationMs,
+            properties: ["opacity", "transform"],
+            onComplete: () => {
+                if (!this._dismissing) {
+                    this.setWillChange(null);
+                    return;
+                }
+                this._dismissing = false;
+                this.setWillChange(null);
+                finalize();
+            },
+        });
+
+        return this;
+    }
+
+    /**
+     * Returns whether the dropdown is currently open (showing or fading in).
+     *
+     * @returns true when the dropdown is open.
+     */
+    isOpen(): boolean {
+        return this._open;
+    }
+
+    /**
+     * Hook invoked after the entrance fade completes (or immediately when
+     * animation is disabled). Override to wire post-show state.
+     */
+    protected onShowComplete(): void {
+        // default: no-op
+    }
+
+    /**
+     * Hook invoked after the exit fade completes (or immediately when
+     * animation is disabled). Override to wire post-hide cleanup.
+     */
+    protected onHideComplete(): void {
+        // default: no-op
+    }
+}
+
+/**
+ * Plays the standard dropdown-style entrance fade on the given component's
+ * element. Mirror of {@link AnimatedDropdown.showAnimated} for components that
+ * extend `Component` directly and cannot re-parent to `AnimatedDropdown`.
+ *
+ * Cancels any in-flight fade-out queued by {@link fadeHideAndDetach} so a
+ * fresh show mid-dismiss keeps the panel on screen.
+ *
+ * @param component - The component to fade in.
+ * @param options - Optional duration / translate / animated overrides.
+ */
+export function fadeShow(component: Component, options?: FadeOptions): void {
+    const durationMs  = options?.durationMs  ?? DEFAULT_DURATION_MS;
+    const translatePx = options?.translatePx ?? DEFAULT_TRANSLATE_PX;
+    const animated    = options?.animated    ?? true;
+
+    _dismissingByComponent.set(component, false);
+
+    const el = component.getElement();
+
+    if (!el) {
+        options?.onComplete?.();
+        return;
+    }
+
+    if (!animated) {
+        options?.onComplete?.();
+        return;
+    }
+
+    component.setWillChange("opacity, transform");
+
+    Animation.play(el, {
+        from:       { opacity: "0", transform: `translateY(-${translatePx}px)` },
+        to:         { opacity: "1", transform: "translateY(0)" },
+        durationMs: durationMs,
+        properties: ["opacity", "transform"],
+        onComplete: () => {
+            component.setWillChange(null);
+            options?.onComplete?.();
+        },
+    });
+}
+
+/**
+ * Plays the standard dropdown-style exit fade on the given component's
+ * element, then hides and detaches it from the DOM when the transition
+ * completes.
+ *
+ * A fresh {@link fadeShow} during the fade cancels the deferred detach so the
+ * panel stays mounted.
+ *
+ * @param component - The component to fade out and detach.
+ * @param options - Optional duration / translate / animated overrides; `onComplete` fires after detach.
+ */
+export function fadeHideAndDetach(component: Component, options?: FadeOptions): void {
+    const durationMs  = options?.durationMs  ?? DEFAULT_DURATION_MS;
+    const translatePx = options?.translatePx ?? DEFAULT_TRANSLATE_PX;
+    const animated    = options?.animated    ?? true;
+
+    const el = component.getElement();
+    const finalize = (): void => {
+        component.setVisible(false);
+        component.removeElement();
+        options?.onComplete?.();
+    };
+
+    if (!el || !animated) {
+        finalize();
+        return;
+    }
+
+    _dismissingByComponent.set(component, true);
+    component.setWillChange("opacity, transform");
+
+    Animation.play(el, {
+        to:         { opacity: "0", transform: `translateY(-${translatePx}px)` },
+        durationMs: durationMs,
+        properties: ["opacity", "transform"],
+        onComplete: () => {
+            if (!_dismissingByComponent.get(component)) {
+                component.setWillChange(null);
+                return;
+            }
+            _dismissingByComponent.set(component, false);
+            component.setWillChange(null);
+            finalize();
+        },
+    });
+}
+
+const AnimatedDropdownCallable = callable(AnimatedDropdown);
+type AnimatedDropdownCallable<TOptions extends AnimatedDropdownOptions = AnimatedDropdownOptions> = AnimatedDropdown<TOptions>;
+export {
+    AnimatedDropdown         as _AnimatedDropdown,
+    AnimatedDropdownCallable as AnimatedDropdown
+};
