@@ -8,7 +8,7 @@
     "hash": "70971c2cf987eb519083a8683e6fb25e"
   },
   "/home/jika/typescript/typescript/vite.config.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.580921,
     "hash": "c3270e79562a3cd5a44166612cb808c1"
   },
   "/home/jika/typescript/typescript/vite.lib.config.ts": {
@@ -32,8 +32,8 @@
     "hash": "eca627bd16d8190f337fda8fac04cb83"
   },
   "/home/jika/typescript/typescript/src/typescript/MiscPanel.ts": {
-    "mtime": 1779133388.6641395,
-    "hash": "12999fc9934c420546dea09dde226507"
+    "mtime": 1779210710.8458095,
+    "hash": "4b4dcf972ffcec7aaa75308427091864"
   },
   "/home/jika/typescript/typescript/src/typescript/HBoxPanel.ts": {
     "mtime": 1778743227.3899438,
@@ -44,7 +44,7 @@
     "hash": "d0d46f3656e0115993e6b1629e135830"
   },
   "/home/jika/typescript/typescript/src/typescript/BindingPanel.ts": {
-    "mtime": 1779133388.458289,
+    "mtime": 1779133996.0060604,
     "hash": "078c32492f0107f27011f9f76913114f"
   },
   "/home/jika/typescript/typescript/src/typescript/VBoxPanel.ts": {
@@ -60,7 +60,7 @@
     "hash": "dd2051c8bc293fa3281ba2b63e873a8b"
   },
   "/home/jika/typescript/typescript/src/typescript/MenuBarPanel.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.5700867,
     "hash": "33befa21848a9c22f0752f9f85f9cbe3"
   },
   "/home/jika/typescript/typescript/src/typescript/BaselinePanel.ts": {
@@ -224,7 +224,7 @@
     "hash": "9970db2729d7cc3203c76c5b50fc8027"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/tree/TreeRow.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.580921,
     "hash": "1dcba67ac03d4c1341e570986bcebe34"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/tree/TreeNode.ts": {
@@ -256,7 +256,7 @@
     "hash": "47e0185e086e7cbb629b50ed30df2e70"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/display/PaginationBar.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.5700867,
     "hash": "af55d47deeb93d3a132cb071e4a0d4aa"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/display/Glyphs.ts": {
@@ -264,7 +264,7 @@
     "hash": "ddd1a317947fd6468d3c8e83a4d3a1f4"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/display/Glyph.ts": {
-    "mtime": 1779133388.3391123,
+    "mtime": 1779134496.5700867,
     "hash": "b3f259a4efb57f11bae62ccbf2fbad45"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/display/ProgressSpinner.ts": {
@@ -296,7 +296,7 @@
     "hash": "d71523b888265f1a6206ad193483baec"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/Slider.ts": {
-    "mtime": 1779133388.3391123,
+    "mtime": 1779134496.5700867,
     "hash": "a9231f1db31656fe90d6eb3abef5b30a"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/NumberSpinner.ts": {
@@ -312,7 +312,7 @@
     "hash": "d8ed19a71a6855056ed2e242c71a0abe"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/DateField.ts": {
-    "mtime": 1779133388.501626,
+    "mtime": 1779134496.5700867,
     "hash": "7606712523a6693cfbc5a255a33878c1"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/Checkbox.ts": {
@@ -320,11 +320,11 @@
     "hash": "17d3e55b7475573317a8ee2736c7df93"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/TimePickerDropdown.ts": {
-    "mtime": 1779133388.5341287,
+    "mtime": 1779134496.5700867,
     "hash": "7e280fbebae838b1e113a68bac3cd26e"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/TextArea.ts": {
-    "mtime": 1779133388.3391123,
+    "mtime": 1779134496.5700867,
     "hash": "ae829efaf98197966628ddfb12df2627"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/AutoCompleteField.ts": {
@@ -332,51 +332,51 @@
     "hash": "806f21a41219a7b6b8fee2e74f68a9a2"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/DatePickerDropdown.ts": {
-    "mtime": 1779133388.501626,
+    "mtime": 1779134496.5700867,
     "hash": "85cd8bee5570ac5256d634cf7606430d"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/Text.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.5700867,
     "hash": "f0f01786f4931b18eed0d10aa37a4554"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/Input.ts": {
-    "mtime": 1779133388.3391123,
+    "mtime": 1779134496.5700867,
     "hash": "bb5e4f97ea5b12201c11c4945ae4cd8e"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/ComboBox.ts": {
-    "mtime": 1779133388.458289,
+    "mtime": 1779134496.5700867,
     "hash": "42c97ff6b5084ac181a0e8044a3fe67b"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/DateTimeField.ts": {
-    "mtime": 1779133388.5666313,
+    "mtime": 1779134496.5700867,
     "hash": "280f999829f7fe2403f5d2aa3d009af7"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/RadioButton.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.5700867,
     "hash": "e8ea71b54993cffba675ee2d3a677638"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/AutoCompleteDropdown.ts": {
-    "mtime": 1779133388.3824494,
+    "mtime": 1779133996.0060604,
     "hash": "d36fccaa1d4fdc2e1d92132c801c5343"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/SpinButton.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.5700867,
     "hash": "9e60254b7946be363e1580e8e8a83af9"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/Option.ts": {
-    "mtime": 1779133388.458289,
+    "mtime": 1779134496.5700867,
     "hash": "69d40d801f080b804b7a53fd6e5884a7"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/TextInput.ts": {
-    "mtime": 1779133388.3391123,
+    "mtime": 1779134496.5700867,
     "hash": "58af0881bdaf0c44f9141f8aed49fff1"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/TimeField.ts": {
-    "mtime": 1779133388.5341287,
+    "mtime": 1779134496.5700867,
     "hash": "b1a898690b15c18d88806eb1ae610231"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/index.ts": {
-    "mtime": 1779133388.5666313,
+    "mtime": 1779133996.0060604,
     "hash": "0fd094a3a54fb337ebc03ecb16625655"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/Label.ts": {
@@ -384,7 +384,7 @@
     "hash": "3ad291173cb3026407459bb6593d19d1"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/input/DateTimePickerDropdown.ts": {
-    "mtime": 1779133388.5666313,
+    "mtime": 1779134496.5700867,
     "hash": "56297d1d0cf0f44a323e5e4afb2ab411"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/button/Button.ts": {
@@ -396,7 +396,7 @@
     "hash": "b7d3eb3fb80bcf137772672aeedf5a31"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/button/TabCloseButton.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.5700867,
     "hash": "db08fdd06c10d3636edfa399f7b2b765"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/button/index.ts": {
@@ -428,7 +428,7 @@
     "hash": "b4826f5e01d3ffdab3232dc08fb64763"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/container/WindowHeader.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.5700867,
     "hash": "44deb9e4a292eaa130fc29f943bf97db"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/container/Scrollbar.ts": {
@@ -480,7 +480,7 @@
     "hash": "ff74d6dc01bf10d3f02de031e6a2f24d"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/list/List.ts": {
-    "mtime": 1779133388.458289,
+    "mtime": 1779133996.0060604,
     "hash": "6ab830a7dcd28a665a15f3cfa64b63a7"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/list/BulletedList.ts": {
@@ -500,7 +500,7 @@
     "hash": "54d3603bda44c03678ba29c694456b45"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/table/TablePanel.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.5700867,
     "hash": "845ed1c56931b608b3b3c58033d3896f"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/table/ColumnConfig.ts": {
@@ -572,7 +572,7 @@
     "hash": "08cc4f5fa09f1871ca96dc8370bc98c6"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/table/cell/Header.ts": {
-    "mtime": 1779133388.2632728,
+    "mtime": 1779134496.580921,
     "hash": "3ad392289f0afe04ecc7c958ab385b89"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/table/cell/Date.ts": {
@@ -608,7 +608,7 @@
     "hash": "e3bd49ad18f0429f1521ca9918151714"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/table/cell/editor/Time.ts": {
-    "mtime": 1779133388.6208026,
+    "mtime": 1779134496.580921,
     "hash": "4f0b0ffb05347a1b752074737f022ec9"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/table/cell/editor/Number.ts": {
@@ -624,7 +624,7 @@
     "hash": "1922984e1443b7b0c7d76f9985f829d1"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/table/cell/editor/DateTime.ts": {
-    "mtime": 1779133388.6099684,
+    "mtime": 1779134496.580921,
     "hash": "5a6b82ddd90d2b1307b02ea97fe9c18c"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/table/cell/editor/Boolean.ts": {
@@ -632,7 +632,7 @@
     "hash": "7857315f5017aef38d732ca9341c9cfd"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/table/cell/editor/Date.ts": {
-    "mtime": 1779133388.6099684,
+    "mtime": 1779134496.580921,
     "hash": "ec0bf99033f527ce5e6464b4622bc6ea"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/component/table/cell/editor/CellEditor.ts": {
@@ -12148,7 +12148,7 @@
     "hash": "490d5def32972303f100c329390acf3a"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Window.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.580921,
     "hash": "f4d03f706f41559375cd4a89b4471a40"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Panel.ts": {
@@ -12164,11 +12164,11 @@
     "hash": "865fd65c03e77934056128ff328659f2"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Notification.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.580921,
     "hash": "1d450a9d153378cfbf24e3cf84ff0978"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Menu.ts": {
-    "mtime": 1779133388.414952,
+    "mtime": 1779134496.580921,
     "hash": "3eaec7b804487d3763ce5c43dc98a21d"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Type.ts": {
@@ -12184,7 +12184,7 @@
     "hash": "4d8f361dc5bed784c87099349587caad"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/AnimatedDropdown.ts": {
-    "mtime": 1779133388.3391123,
+    "mtime": 1779133996.0168946,
     "hash": "217e8137694f331abea5b13abd1ffd49"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/RovingTabIndex.ts": {
@@ -12208,7 +12208,7 @@
     "hash": "f8a377c782b428303e4859874898dd24"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Dialog.ts": {
-    "mtime": 1779036455.8209836,
+    "mtime": 1779134496.580921,
     "hash": "c48ca7fbc409561a5aef73927ff97e78"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Animation.ts": {
@@ -12216,32 +12216,36 @@
     "hash": "cee8a6eb1826bd3bb8b8c58de239e1a4"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Aria.ts": {
-    "mtime": 1779029812.3346272,
-    "hash": "b2ecaf73793f637a4ba64aee3dcb6f81"
+    "mtime": 1779134501.7921891,
+    "hash": "ef73862fbbb3162a9996e17689311f9c"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Binding.ts": {
     "mtime": 1779029812.3346272,
     "hash": "eb1beb0816f6543d24fce78235e68462"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Component.ts": {
-    "mtime": 1779133388.3391123,
+    "mtime": 1779134496.580921,
     "hash": "367277c218093f873d36c460f204ae38"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Theme.ts": {
-    "mtime": 1779133388.3391123,
-    "hash": "42cc32355a30d1d6b3e86b46673e05c0"
+    "mtime": 1779134501.7921891,
+    "hash": "3e6d449b2bd3a3dea8598146bbb8942d"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Body.ts": {
     "mtime": 1778842519.2171571,
     "hash": "920be505d144635d8ef3c47466d81c0f"
+  },
+  "/home/jika/typescript/typescript/src/typescript/lib/core/Popover.ts": {
+    "mtime": 1779210710.9228094,
+    "hash": "e45121759f7d76a7785f08dd84bf010b"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/Callable.ts": {
     "mtime": 1778962815.1107988,
     "hash": "a40866b7b4dbb816c6f53b026edfc86b"
   },
   "/home/jika/typescript/typescript/src/typescript/lib/core/index.ts": {
-    "mtime": 1779133388.3391123,
-    "hash": "fba1f102a348686298cb2be6859d0bad"
+    "mtime": 1779134501.7921891,
+    "hash": "d5160dc716bf245c7c67f0f72fb11907"
   },
   "/home/jika/typescript/typescript/src/typescript/perf/Benchmark.ts": {
     "mtime": 1778743227.4319103,
@@ -12303,10 +12307,6 @@
     "mtime": 1779015796.6116967,
     "hash": "ab1ffcf2c58dd63c0dd9d4c9e341d549"
   },
-  "/home/jika/typescript/typescript/plans/popover-component.md": {
-    "mtime": 1779016028.8072803,
-    "hash": "561955b504a5deb9c58cb04e37242f94"
-  },
   "/home/jika/typescript/typescript/plans/table-column-pinning.md": {
     "mtime": 1778271289.444006,
     "hash": "bba2ffeeb343ba2e05b4b250849953dc"
@@ -12316,7 +12316,7 @@
     "hash": "999ea301eedc6d503375190e3251ca49"
   },
   "/home/jika/typescript/typescript/plans/header-cell-decompose-helpers.md": {
-    "mtime": 1779036455.8102126,
+    "mtime": 1779134496.5592525,
     "hash": "129937f833ea9b66fc8ceb46266bf44f"
   },
   "/home/jika/typescript/typescript/plans/npm-package.md": {
@@ -12380,7 +12380,7 @@
     "hash": "019d08d1756d81e0c963b4d1de14eb36"
   },
   "/home/jika/typescript/typescript/plans/implemented/fontawesome-free-registry-import.md": {
-    "mtime": 1779036467.3054082,
+    "mtime": 1779134496.5592525,
     "hash": "f86e98dca9a1f480223b625187bce353"
   },
   "/home/jika/typescript/typescript/plans/implemented/accordion.md": {
@@ -12424,15 +12424,19 @@
     "hash": "820bd52d53c6b77000faf5d4fce37577"
   },
   "/home/jika/typescript/typescript/plans/implemented/component-setter-api-audit.md": {
-    "mtime": 1779036455.8102126,
+    "mtime": 1779134496.5592525,
     "hash": "de8083a645a9ae06d3e248a9cf95c1c2"
   },
   "/home/jika/typescript/typescript/plans/implemented/table-header-glyph.md": {
     "mtime": 1779036209.689035,
     "hash": "f19955177b5c5cc43f97a472684881ef"
   },
+  "/home/jika/typescript/typescript/plans/implemented/popover-component.md": {
+    "mtime": 1779210710.8788095,
+    "hash": "561955b504a5deb9c58cb04e37242f94"
+  },
   "/home/jika/typescript/typescript/plans/implemented/dropdown-fade-animation.md": {
-    "mtime": 1779133388.6966422,
+    "mtime": 1779134496.5592525,
     "hash": "be9e0d759e037f8cf3f6d3686e6e6de5"
   },
   "/home/jika/typescript/typescript/plans/implemented/closeable-tabs.md": {
@@ -12791,8 +12795,12 @@
     "mtime": 1778963682.1669414,
     "hash": "2821dc882796ac46c9909f52961cf2d3"
   },
+  "/home/jika/typescript/typescript/docs/components/Popover.md": {
+    "mtime": 1779210710.9118094,
+    "hash": "8e17041320e177ce68229ebb814d6be5"
+  },
   "/home/jika/typescript/typescript/docs/components/TimeField.md": {
-    "mtime": 1779133388.7399793,
+    "mtime": 1779133995.9735575,
     "hash": "c5551cc8a27cf9783da8ab84584aac9e"
   },
   "/home/jika/typescript/typescript/docs/components/BulletedList.md": {
@@ -12872,7 +12880,7 @@
     "hash": "1cc34a23b142391f759bbf4ed81a4cc2"
   },
   "/home/jika/typescript/typescript/docs/components/DateField.md": {
-    "mtime": 1779133388.7399793,
+    "mtime": 1779133995.9735575,
     "hash": "143f076d405316fa632ccd3bc26d1cf1"
   },
   "/home/jika/typescript/typescript/docs/components/ButtonGroup.md": {
@@ -12900,7 +12908,7 @@
     "hash": "357b6e41c80900ce5d3a998374811853"
   },
   "/home/jika/typescript/typescript/docs/components/DateTimeField.md": {
-    "mtime": 1779133388.7399793,
+    "mtime": 1779133995.9735575,
     "hash": "41126b39ecb873094b1c303a9c1c26c3"
   },
   "/home/jika/typescript/typescript/docs/components/Legend.md": {
@@ -12916,8 +12924,8 @@
     "hash": "b535cd2477fb915ea86141e5768ee8c3"
   },
   "/home/jika/typescript/typescript/docs/components/index.md": {
-    "mtime": 1779133388.7399793,
-    "hash": "cc9a3cb318e16a472ba815ad439e399b"
+    "mtime": 1779210710.9118094,
+    "hash": "c660882554b1b766524ec7d484289bdb"
   },
   "/home/jika/typescript/typescript/docs/components/IconLabel.md": {
     "mtime": 1778963682.1669414,
@@ -12932,7 +12940,7 @@
     "hash": "39d6b379e4b70666e936238b6c8736d3"
   },
   "/home/jika/typescript/typescript/docs/components/AnimatedDropdown.md": {
-    "mtime": 1779133388.7399793,
+    "mtime": 1779133995.9735575,
     "hash": "cca46e031d8205096964d893da6e8285"
   },
   "/home/jika/typescript/typescript/docs/components/Table.md": {
