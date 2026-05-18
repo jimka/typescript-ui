@@ -213,8 +213,7 @@ class BindingPanel extends Panel {
         });
 
         recordCombo.addActionListener(() => {
-            const selected = recordCombo.getElement();
-            const id = Number(selected.value);
+            const id = Number(recordCombo.getValue());
             const record = personStore.find('id', id);
 
             if (!record) {
@@ -228,7 +227,7 @@ class BindingPanel extends Panel {
             const active = binding.getRecord();
 
             if (active && active !== record) {
-                recordCombo.getElement().value = String(active.get('id'));
+                recordCombo.setValue(String(active.get('id')));
             }
         });
     }

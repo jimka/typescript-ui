@@ -67,7 +67,7 @@ class Input<TOptions extends InputOptions = InputOptions> extends Component<TOpt
      * @returns This component, for method chaining.
      */
     setType(value: string): this {
-        this.setElementAttribute("type", value);
+        this.setAttribute("type", value);
 
         return this;
     }
@@ -90,7 +90,7 @@ class Input<TOptions extends InputOptions = InputOptions> extends Component<TOpt
      */
     setName(value: string): this {
         this._options.name = value;
-        this.setElementAttribute("name", value);
+        this.setAttribute("name", value);
 
         return this;
     }
@@ -106,7 +106,7 @@ class Input<TOptions extends InputOptions = InputOptions> extends Component<TOpt
         }
 
         this._options.name = undefined;
-        this.removeElementAttribute("name");
+        this.delAttribute("name");
 
         return this;
     }

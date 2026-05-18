@@ -2,17 +2,30 @@
 
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
+import { Event } from "~/core/Event.js";
+import { DatePickerDropdown } from "~/component/input/DatePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
 
 /**
  * An in-place editor for date cell values.
  *
- * Renders directly as `<input type="date">` by passing the tag through to
- * {@link CellEditor}. This avoids the TextField inheritance chain, which forces
- * type="text" after render. Blur and keydown events reach the parent {@link Cell}
- * directly — no proxying needed.
+ * Renders a focusable `<input type="text" inputmode="none">` element and
+ * pops a [`DatePickerDropdown`](/api/component/input/classes/DatePickerDropdown)
+ * (the same class used by the form-field
+ * [`DateField`](/api/component/input/classes/DateField)) on focus. The
+ * dropdown's row `pointerdown` handler calls `preventDefault()` so the input
+ * keeps focus while the user clicks a day — preserving the
+ * [`CellEditorPool`](/api/component/table/classes/CellEditorPool)'s
+ * blur-to-commit contract without modifying the pool.
+ *
+ * @category Components
  */
 class DateEditor extends CellEditor<Date | null> {
+
+    private _value:    Date | null = null;
+    private _dropdown: DatePickerDropdown | null = null;
+    private _animated: boolean = true;
+    private _text:     string = "";
 
     constructor() {
         super("input");
@@ -22,36 +35,173 @@ class DateEditor extends CellEditor<Date | null> {
         this.setBorder({ style: BorderStyle.SOLID, width: 0, color: 'transparent' });
         this.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-editor-border, rgba(30, 100, 200, 0.6))');
         this.setOutline('none');
+
+        Event.addListener(this, "focus", () => this.openDropdown());
+        Event.addListener(this, "blur",  () => this.closeDropdown());
+        Event.addListener(this, "input", () => this.onInput());
     }
 
     applyStyle(element: HTMLElement): this {
         super.applyStyle(element);
-        element.setAttribute('type', 'date');
+        element.setAttribute('type', 'text');
+        element.setAttribute('inputmode', 'none');
+        element.setAttribute('autocomplete', 'off');
 
         return this;
     }
 
+    /**
+     * Returns whether the input is empty (no typed text, no committed value).
+     *
+     * @returns true when both the rendered text and the cached value are empty.
+     */
     isEmpty(): boolean {
-        const el = this.getElement() as HTMLInputElement | null;
-        // badInput is true when the user has partially filled the date (value is ""
-        // but the field is not blank). Only treat the field as empty when there is
-        // genuinely no input, so partial dates revert instead of committing null.
-        return !el?.value && !el?.validity.badInput;
+        return !this.getText() && this._value === null;
     }
 
+    /**
+     * Returns the currently committed `Date`, or null when the field is empty
+     * or contains an unparseable value.
+     */
     getValue(): Date | null {
-        const raw = (this.getElement() as HTMLInputElement | null)?.value ?? "";
-        if (!raw) return null;
-        // Parse as local midnight to avoid UTC-offset day shifts.
-        const d = new Date(raw + 'T00:00:00');
-        return isNaN(d.getTime()) ? null : d;
+        return this._value;
     }
 
+    /**
+     * Sets the field value and renders the formatted string in the input.
+     *
+     * @param value - The Date to display, or null to clear the field.
+     */
     setValue(value: Date | null): this {
-        const el = this.getElement() as HTMLInputElement | null;
-        if (el) el.value = value ? this.toInputString(value) : "";
+        this._value = value;
+        this.setText(value ? this.toInputString(value) : "");
 
         return this;
+    }
+
+    /**
+     * Writes `text` into the underlying `<input>` element's value through a
+     * typed setter so call sites never touch `element.value` directly.
+     *
+     * @param text - The string to render in the input.
+     */
+    private setText(text: string): this {
+        this._text = text;
+
+        const el = this.getElement() as HTMLInputElement | null;
+        if (el) {
+            el.value = text;
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the cached input text. Stays in sync via {@link syncTextFromDom}
+     * which is called from the input listener before `onInput`.
+     */
+    private getText(): string {
+        return this._text;
+    }
+
+    /**
+     * Reads the live value from the `<input>` element into the text cache.
+     * Confines the raw `element.value` read to a single typed helper so
+     * `onInput` can work off {@link getText}.
+     */
+    private syncTextFromDom(): void {
+        const el = this.getElement() as HTMLInputElement | null;
+        this._text = el?.value ?? "";
+    }
+
+    /**
+     * Enables or disables the fade animation on the dropdown.
+     *
+     * @param value - true to fade, false for instant open/close.
+     */
+    setDropdownAnimated(value: boolean): this {
+        this._animated = value;
+
+        if (this._dropdown) {
+            this._dropdown.setAnimated(value);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether the dropdown fade is enabled.
+     *
+     * @returns true when the dropdown fades; false when it opens/closes instantly.
+     */
+    isDropdownAnimated(): boolean {
+        return this._animated;
+    }
+
+    /**
+     * Returns or lazily creates the picker dropdown.
+     */
+    private ensureDropdown(): DatePickerDropdown {
+        if (!this._dropdown) {
+            this._dropdown = new DatePickerDropdown(date => this.onDateSelected(date));
+            this._dropdown.setAnimated(this._animated);
+        }
+
+        return this._dropdown;
+    }
+
+    /**
+     * Opens the picker dropdown anchored to the input element.
+     */
+    private openDropdown(): void {
+        const dropdown = this.ensureDropdown();
+        if (dropdown.isOpen()) {
+            return;
+        }
+
+        const el = this.getElement();
+        if (!el) {
+            return;
+        }
+
+        dropdown.showAt(el, this._value);
+    }
+
+    /**
+     * Hides the picker dropdown if it is currently open. Called when the
+     * editor's input element loses focus (the cell exits edit mode).
+     */
+    private closeDropdown(): void {
+        if (this._dropdown?.isOpen()) {
+            this._dropdown.hideAnimated();
+        }
+    }
+
+    /**
+     * Updates the cached value from a typed text edit.
+     */
+    private onInput(): void {
+        this.syncTextFromDom();
+        const raw = this.getText();
+
+        if (!raw) {
+            this._value = null;
+            return;
+        }
+
+        const d = new Date(raw + 'T00:00:00');
+        this._value = isNaN(d.getTime()) ? null : d;
+    }
+
+    /**
+     * Called when the user picks a day in the dropdown. Sets the value,
+     * hides the dropdown, and fires the editor's blur to drive
+     * `CellEditorPool`'s commit path.
+     */
+    private onDateSelected(date: Date): void {
+        this.setValue(date);
+        this._dropdown?.hideAnimated();
+        this.getElement()?.blur();
     }
 
     private toInputString(date: Date): string {

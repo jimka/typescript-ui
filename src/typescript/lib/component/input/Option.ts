@@ -76,6 +76,25 @@ class Option extends Component {
     }
 
     /**
+     * Returns the option's key (the underlying `value` attribute, used for
+     * binding and selection matching).
+     *
+     * @returns The key string.
+     */
+    getKey(): string {
+        return this._key;
+    }
+
+    /**
+     * Returns the option's display text.
+     *
+     * @returns The display string.
+     */
+    getValue(): string {
+        return this._value;
+    }
+
+    /**
      * Returns whether the option is marked as the default selection.
      *
      * @returns True when the `selected` attribute is set.
@@ -95,9 +114,9 @@ class Option extends Component {
         this._selected = value;
 
         if (value) {
-            this.setElementAttribute("selected", "");
+            this.setAttribute("selected", "");
         } else {
-            this.removeElementAttribute("selected");
+            this.delAttribute("selected");
         }
 
         return this;

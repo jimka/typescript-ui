@@ -230,6 +230,13 @@ export interface Theme {
         };
     };
 
+    dropdown: {
+        fade: {
+            duration : string;
+            translate: string;
+        };
+    };
+
     spinner: {
         buttonWidth : string;
         dividerColor: string;
@@ -398,6 +405,9 @@ export const DefaultTheme: Theme = {
             disabledColor      : 'rgb(170, 170, 170)',
         },
     },
+    dropdown: {
+        fade: { duration: '120ms', translate: '4px' },
+    },
     dialog: {
         backdrop: { background: 'rgba(0, 0, 0, 0.45)' },
         border  : 'rgb(220, 220, 220)',
@@ -561,6 +571,9 @@ export const DarkTheme: Theme = {
             disabledColor      : 'rgb(100, 100, 100)',
         },
     },
+    dropdown: {
+        fade: { duration: '120ms', translate: '4px' },
+    },
     dialog: {
         backdrop: { background: 'rgba(0, 0, 0, 0.65)' },
         border  : 'rgb(70, 70, 70)',
@@ -668,6 +681,8 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-autocomplete-item-highlight-bg'   : theme.autoComplete.item.highlightBackground,
         '--ts-ui-autocomplete-item-highlight-color': theme.autoComplete.item.highlightColor,
         '--ts-ui-autocomplete-item-disabled-color' : theme.autoComplete.item.disabledColor,
+        '--ts-ui-dropdown-fade-duration'           : theme.dropdown.fade.duration,
+        '--ts-ui-dropdown-fade-translate'          : theme.dropdown.fade.translate,
         '--ts-ui-menu-bar-bg'                      : theme.menuBar.background,
         '--ts-ui-menu-bar-border'                  : theme.menuBar.border,
         '--ts-ui-menu-bar-btn-bg'                  : theme.menuBar.button.background,
