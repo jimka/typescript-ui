@@ -1,23 +1,72 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { ButtonGroup, callable, Component, DarkTheme, DefaultTheme, Dialog, Event, Menu, Notification, Panel, Popover, ThemeManager, Tooltip, Window } from '@jimka/typescript-ui/core';
+import { 
+    ButtonGroup,
+    callable,
+    Component,
+    DarkTheme,
+    DefaultTheme,
+    Event,
+    Menu,
+    Notification,
+    Panel,
+    Popover,
+    ThemeManager,
+    Tooltip,
+    Window
+} from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
-import { HBox, VBox } from '@jimka/typescript-ui/layout';
-import { MemoryStore, Model, ModelRecord, Proxy, ReadParams, Store } from '@jimka/typescript-ui/data';
-import { AutoCompleteField, ComboBox, DateField, DateTimeField, NumberSpinner, RadioButton, Text, TextField, TimeField } from '@jimka/typescript-ui/component/input';
+import {
+    HBox,
+    VBox
+} from '@jimka/typescript-ui/layout';
+import {
+    MemoryStore,
+    Model,
+    ModelRecord,
+    Proxy,
+    ReadParams,
+    Store
+} from '@jimka/typescript-ui/data';
+import {
+    AutoCompleteField,
+    ComboBox,
+    DateField,
+    DateTimeField,
+    NumberSpinner,
+    RadioButton,
+    Text,
+    TextField,
+    TimeField
+} from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
-import { Glyph, IconLabel, IconText, Image, PaginationBar, ProgressBar, ProgressSpinner } from '@jimka/typescript-ui/component/display';
+import {
+    Glyph,
+    IconLabel,
+    IconText,
+    Image,
+    PaginationBar,
+    ProgressBar,
+    ProgressSpinner
+} from '@jimka/typescript-ui/component/display';
 import { FieldSet } from '@jimka/typescript-ui/component/container';
-import { ColumnSpec, Table, TablePanel } from '@jimka/typescript-ui/component/table';
-import { IconLabelTreeNodeRenderer, Tree } from '@jimka/typescript-ui/component/tree';
+import {
+    ColumnSpec,
+    Table,
+    TablePanel
+} from '@jimka/typescript-ui/component/table';
+import {
+    IconLabelTreeNodeRenderer,
+    Tree
+} from '@jimka/typescript-ui/component/tree';
 import type { TreeNode } from '@jimka/typescript-ui/component/tree';
-import { xmark } from '@jimka/typescript-ui/glyphs/solid/xmark';
-import { arrow_right } from '@jimka/typescript-ui/glyphs/solid/arrow_right';
-import { arrow_down } from '@jimka/typescript-ui/glyphs/solid/arrow_down';
-import { folder } from '@jimka/typescript-ui/glyphs/solid/folder';
-import { file } from '@jimka/typescript-ui/glyphs/solid/file';
-import { file_code } from '@jimka/typescript-ui/glyphs/solid/file_code';
-import { file_lines } from '@jimka/typescript-ui/glyphs/solid/file_lines';
+import { xmark }         from '@jimka/typescript-ui/glyphs/solid/xmark';
+import { arrow_right }   from '@jimka/typescript-ui/glyphs/solid/arrow_right';
+import { arrow_down }    from '@jimka/typescript-ui/glyphs/solid/arrow_down';
+import { folder }        from '@jimka/typescript-ui/glyphs/solid/folder';
+import { file }          from '@jimka/typescript-ui/glyphs/solid/file';
+import { file_code }     from '@jimka/typescript-ui/glyphs/solid/file_code';
+import { file_lines }    from '@jimka/typescript-ui/glyphs/solid/file_lines';
 
 Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines);
 /**
@@ -91,7 +140,13 @@ class MiscPanel extends Panel {
     constructor() {
         super();
 
-        this.setLayoutManager(new VBox());
+        this.setLayoutManager(new HBox());
+
+        const leftColumn  = new Component({ layoutManager: new VBox() });
+        const rightColumn = new Component({ layoutManager: new VBox() });
+
+        this.addComponent(leftColumn);
+        this.addComponent(rightColumn);
 
         let buttonWindowImage = new Button("Show window with image!");
         buttonWindowImage.addActionListener(function () {
@@ -105,7 +160,7 @@ class MiscPanel extends Panel {
 
             win.show();
         });
-        this.addComponent(buttonWindowImage);
+        leftColumn.addComponent(buttonWindowImage);
 
         let buttonWindowTable = new Button("Show window with table (slow)!");
         buttonWindowTable.addActionListener(function () {
@@ -171,7 +226,7 @@ class MiscPanel extends Panel {
 
             win2.show();
         });
-        this.addComponent(buttonWindowTable);
+        leftColumn.addComponent(buttonWindowTable);
 
         let buttonPaginatedTable = new Button("Show window with paginated table!")
             .addActionListener(function () {
@@ -208,7 +263,7 @@ class MiscPanel extends Panel {
                     onReady: () => void pagStore.load()
                 }).show();
         });
-        this.addComponent(buttonPaginatedTable);
+        leftColumn.addComponent(buttonPaginatedTable);
 
         let buttonWindowTableSpec = new Button("Show window with table (column spec)!");
         buttonWindowTableSpec.addActionListener(function () {
@@ -266,7 +321,7 @@ class MiscPanel extends Panel {
 
             win3.show();
         });
-        this.addComponent(buttonWindowTableSpec);
+        leftColumn.addComponent(buttonWindowTableSpec);
 
         let isDark = false;
         let buttonTheme = new Button("Switch to dark theme");
@@ -275,10 +330,10 @@ class MiscPanel extends Panel {
             ThemeManager.setTheme(isDark ? DarkTheme : DefaultTheme);
             buttonTheme.getText().setText(isDark ? "Switch to default theme" : "Switch to dark theme");
         });
-        this.addComponent(buttonTheme);
+        leftColumn.addComponent(buttonTheme);
 
         let fieldSet = new FieldSet("Hello World fieldset!");
-        this.addComponent(fieldSet);
+        leftColumn.addComponent(fieldSet);
 
         const contextMenu = new Menu();
 
@@ -295,11 +350,11 @@ class MiscPanel extends Panel {
                 { text: "Action 3", action: () => alert("Action 3 clicked!") },
             ]);
         });
-        this.addComponent(buttonContextMenu);
+        leftColumn.addComponent(buttonContextMenu);
 
         const buttonTooltip = new Button("Hover over me for a tooltip");
         Tooltip.attach(buttonTooltip, "This tooltip appears after a short delay");
-        this.addComponent(buttonTooltip);
+        leftColumn.addComponent(buttonTooltip);
 
         const buttonTree = new Button("Show tree component");
         buttonTree.addActionListener(() => {
@@ -347,7 +402,7 @@ class MiscPanel extends Panel {
 
             win.show();
         });
-        this.addComponent(buttonTree);
+        leftColumn.addComponent(buttonTree);
 
         const buttonTreeIcons = new Button("Show tree component (icon renderer)");
         buttonTreeIcons.addActionListener(() => {
@@ -405,31 +460,31 @@ class MiscPanel extends Panel {
 
             win.show();
         });
-        this.addComponent(buttonTreeIcons);
+        leftColumn.addComponent(buttonTreeIcons);
 
         const buttonNotificationInfo = new Button("Notification — info");
         buttonNotificationInfo.addActionListener(() => {
             Notification.show("This is an informational message.", "info");
         });
-        this.addComponent(buttonNotificationInfo);
+        leftColumn.addComponent(buttonNotificationInfo);
 
         const buttonNotificationSuccess = new Button("Notification — success");
         buttonNotificationSuccess.addActionListener(() => {
             Notification.show("Record saved successfully.", "success");
         });
-        this.addComponent(buttonNotificationSuccess);
+        leftColumn.addComponent(buttonNotificationSuccess);
 
         const buttonNotificationWarning = new Button("Notification — warning");
         buttonNotificationWarning.addActionListener(() => {
             Notification.show("Unsaved changes will be lost.", "warning");
         });
-        this.addComponent(buttonNotificationWarning);
+        leftColumn.addComponent(buttonNotificationWarning);
 
         const buttonNotificationError = new Button("Notification — error");
         buttonNotificationError.addActionListener(() => {
             Notification.show("Connection failed. Please try again.", "error");
         });
-        this.addComponent(buttonNotificationError);
+        leftColumn.addComponent(buttonNotificationError);
 
         const buttonNotificationStack = new Button("Notification — show all types");
         buttonNotificationStack.addActionListener(() => {
@@ -438,7 +493,7 @@ class MiscPanel extends Panel {
             Notification.show("Unsaved changes will be lost.", "warning");
             Notification.show("Connection failed. Please try again.", "error");
         });
-        this.addComponent(buttonNotificationStack);
+        leftColumn.addComponent(buttonNotificationStack);
 
         const fruits = [
             "Apple", "Apricot", "Avocado", "Banana", "Blackberry", "Blueberry",
@@ -481,9 +536,9 @@ class MiscPanel extends Panel {
         autoCompleteRow.setLayoutManager(new HBox());
         autoCompleteRow.addComponent(new Text("AutoComplete:"));
         autoCompleteRow.addComponent(autoCompleteField);
-        this.addComponent(modeRow);
-        this.addComponent(autoCompleteRow);
-        this.addComponent(selectedText);
+        rightColumn.addComponent(modeRow);
+        rightColumn.addComponent(autoCompleteRow);
+        rightColumn.addComponent(selectedText);
 
         const buttonDialogConfirm = new Button("Dialog — confirm/cancel");
         buttonDialogConfirm.addActionListener(async () => {
@@ -494,7 +549,7 @@ class MiscPanel extends Panel {
 
             Notification.show(`Dialog closed with: ${confirmed ? 'confirm' : 'cancel'}`, confirmed ? 'success' : 'info');
         });
-        this.addComponent(buttonDialogConfirm);
+        leftColumn.addComponent(buttonDialogConfirm);
 
         const buttonDialogOk = new Button("Dialog — OK only");
         buttonDialogOk.addActionListener(async () => {
@@ -503,7 +558,7 @@ class MiscPanel extends Panel {
                 message: 'This is a simple informational dialog with a single OK button.',
             });
         });
-        this.addComponent(buttonDialogOk);
+        leftColumn.addComponent(buttonDialogOk);
 
         const buttonDialogBackdrop = new Button("Dialog — close on backdrop click");
         buttonDialogBackdrop.addActionListener(async () => {
@@ -515,7 +570,7 @@ class MiscPanel extends Panel {
 
             Notification.show(`Dialog closed with: ${result}`, 'info');
         });
-        this.addComponent(buttonDialogBackdrop);
+        leftColumn.addComponent(buttonDialogBackdrop);
 
         const integerSpinner = new NumberSpinner({
             min  : 0,
@@ -558,8 +613,8 @@ class MiscPanel extends Panel {
         spinnerRow.addComponent(new Text("step 5:"));
         spinnerRow.addComponent(unboundedSpinner);
 
-        this.addComponent(spinnerRow);
-        this.addComponent(spinnerText);
+        rightColumn.addComponent(spinnerRow);
+        rightColumn.addComponent(spinnerText);
 
         const progressBar = new ProgressBar(0, false, {
             preferredSize: { width: 300, height: 12 },
@@ -574,7 +629,7 @@ class MiscPanel extends Panel {
         progressBarRow.addComponent(progressBar);
         progressBarRow.addComponent(progressText);
 
-        this.addComponent(progressBarRow);
+        rightColumn.addComponent(progressBarRow);
 
         const buttonProgressStart = new Button("Animate progress bar");
         buttonProgressStart.addActionListener(() => {
@@ -593,21 +648,21 @@ class MiscPanel extends Panel {
                 }
             }, 100);
         });
-        this.addComponent(buttonProgressStart);
+        rightColumn.addComponent(buttonProgressStart);
 
         const buttonProgressIndeterminate = new Button("Toggle indeterminate progress bar");
         buttonProgressIndeterminate.addActionListener(() => {
             progressBar.setIndeterminate(!progressBar.isIndeterminate());
             progressText.setText(progressBar.isIndeterminate() ? "Progress: indeterminate" : "Progress: " + progressBar.getValue() + "%");
         });
-        this.addComponent(buttonProgressIndeterminate);
+        rightColumn.addComponent(buttonProgressIndeterminate);
 
         const inlineSpinner = new ProgressSpinner();
         const spinnerDemoRow = new Component();
         spinnerDemoRow.setLayoutManager(new HBox());
         spinnerDemoRow.addComponent(new Text("Inline ProgressSpinner:"));
         spinnerDemoRow.addComponent(inlineSpinner);
-        this.addComponent(spinnerDemoRow);
+        rightColumn.addComponent(spinnerDemoRow);
 
         const glyphRow = new Component();
         glyphRow.setLayoutManager(new HBox());
@@ -615,7 +670,7 @@ class MiscPanel extends Panel {
         glyphRow.addComponent(new Glyph("xmark"));
         glyphRow.addComponent(new Glyph("arrow-right"));
         glyphRow.addComponent(new Glyph("arrow-down"));
-        this.addComponent(glyphRow);
+        rightColumn.addComponent(glyphRow);
 
         const animatedGlyphRow = new Component();
         animatedGlyphRow.setLayoutManager(new HBox());
@@ -623,24 +678,24 @@ class MiscPanel extends Panel {
         animatedGlyphRow.addComponent(new Glyph("xmark",       { animation: "spin"  }));
         animatedGlyphRow.addComponent(new Glyph("arrow-right", { animation: "pulse" }));
         animatedGlyphRow.addComponent(new Glyph("arrow-down",  { animation: "beat"  }));
-        this.addComponent(animatedGlyphRow);
+        rightColumn.addComponent(animatedGlyphRow);
 
         const buttonWithGlyph = new Button("Save", { glyph: "xmark" });
-        this.addComponent(buttonWithGlyph);
+        rightColumn.addComponent(buttonWithGlyph);
 
         const iconTextRow = new Component();
         iconTextRow.setLayoutManager(new HBox());
         iconTextRow.addComponent(new Text("IconText:"));
         iconTextRow.addComponent(new IconText("xmark", "Close"));
         iconTextRow.addComponent(new IconText("arrow-right", "Next"));
-        this.addComponent(iconTextRow);
+        rightColumn.addComponent(iconTextRow);
 
         const iconLabelField = new TextField();
         const iconLabelRow = new Component();
         iconLabelRow.setLayoutManager(new HBox());
         iconLabelRow.addComponent(new IconLabel("xmark", "Email:", iconLabelField.getId()));
         iconLabelRow.addComponent(iconLabelField);
-        this.addComponent(iconLabelRow);
+        rightColumn.addComponent(iconLabelRow);
 
         const buttonGlyphWindow = new Button("Show window with title glyph");
         buttonGlyphWindow.addActionListener(() => {
@@ -651,7 +706,7 @@ class MiscPanel extends Panel {
             win.setHeight(180);
             win.show();
         });
-        this.addComponent(buttonGlyphWindow);
+        rightColumn.addComponent(buttonGlyphWindow);
 
         const buttonOverlaySpinner = new Button("Overlay spinner on this panel for 2 s");
         buttonOverlaySpinner.addActionListener(() => {
@@ -660,11 +715,11 @@ class MiscPanel extends Panel {
 
             setTimeout(() => overlay.hideOverlay(), 2000);
         });
-        this.addComponent(buttonOverlaySpinner);
+        rightColumn.addComponent(buttonOverlaySpinner);
 
         // ── AnimatedDropdown demo: ComboBox / DateField / TimeField / DateTimeField ──
         const animatedDropdownsLabel = new Text("Animated dropdowns:");
-        this.addComponent(animatedDropdownsLabel);
+        rightColumn.addComponent(animatedDropdownsLabel);
 
         const fieldsRow = new Component();
         fieldsRow.setLayoutManager(new HBox());
@@ -683,11 +738,11 @@ class MiscPanel extends Panel {
         const animatedDateTime = new DateTimeField({ showSeconds: true });
         fieldsRow.addComponent(animatedDateTime);
 
-        this.addComponent(fieldsRow);
+        rightColumn.addComponent(fieldsRow);
 
         // ── Popover demo ──
         const popoverLabel = new Text("Popovers (placement and dismiss modes):");
-        this.addComponent(popoverLabel);
+        leftColumn.addComponent(popoverLabel);
 
         const popoverRow = new Component();
         popoverRow.setLayoutManager(new HBox());
@@ -767,7 +822,7 @@ class MiscPanel extends Panel {
         });
         popoverRow.addComponent(buttonPopoverManual);
 
-        this.addComponent(popoverRow);
+        leftColumn.addComponent(popoverRow);
     }
 }
 
