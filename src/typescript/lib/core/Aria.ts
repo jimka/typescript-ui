@@ -30,7 +30,8 @@ export type AriaRole =
     | 'separator'
     | 'spinbutton'
     | 'progressbar'
-    | 'status';
+    | 'status'
+    | 'dialog';
 
 /**
  * Valid values for the `aria-sort` attribute.

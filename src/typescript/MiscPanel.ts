@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { ButtonGroup, callable, Component, DarkTheme, DefaultTheme, Dialog, Event, Menu, Notification, Panel, ThemeManager, Tooltip, Window } from '@jimka/typescript-ui/core';
+import { ButtonGroup, callable, Component, DarkTheme, DefaultTheme, Dialog, Event, Menu, Notification, Panel, Popover, ThemeManager, Tooltip, Window } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
 import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model, ModelRecord, Proxy, ReadParams, Store } from '@jimka/typescript-ui/data';
@@ -684,6 +684,90 @@ class MiscPanel extends Panel {
         fieldsRow.addComponent(animatedDateTime);
 
         this.addComponent(fieldsRow);
+
+        // ── Popover demo ──
+        const popoverLabel = new Text("Popovers (placement and dismiss modes):");
+        this.addComponent(popoverLabel);
+
+        const popoverRow = new Component();
+        popoverRow.setLayoutManager(new HBox());
+
+        // Auto-placement: a popover whose chosen side flips based on viewport space.
+        const buttonPopoverAuto = new Button("Auto placement");
+        const popoverAuto = new Popover({
+            placement: "auto",
+            dismissOn: "click-outside",
+            title    : "Auto placement",
+        });
+        popoverAuto.setBody("Resolves the side with the most viewport space at show time.");
+        popoverAuto.addAction("OK", () => popoverAuto.hide());
+        Event.addListener(buttonPopoverAuto, "click", () => {
+            if (popoverAuto.isOpen()) {
+                popoverAuto.hide();
+            } else {
+                popoverAuto.attachToComponent(buttonPopoverAuto);
+                popoverAuto.show();
+            }
+        });
+        popoverRow.addComponent(buttonPopoverAuto);
+
+        // Explicit placement: opens to the right; falls back to left if the viewport is too narrow.
+        const buttonPopoverRight = new Button("Explicit right");
+        const popoverRight = new Popover({
+            placement: "right",
+            dismissOn: "click-outside",
+            title    : "Explicit placement",
+        });
+        popoverRight.setBody("Opens to the right; flips to the left only when the viewport cannot fit it.");
+        Event.addListener(buttonPopoverRight, "click", () => {
+            if (popoverRight.isOpen()) {
+                popoverRight.hide();
+            } else {
+                popoverRight.attachToComponent(buttonPopoverRight);
+                popoverRight.show();
+            }
+        });
+        popoverRow.addComponent(buttonPopoverRight);
+
+        // Blur dismissal.
+        const buttonPopoverBlur = new Button("Dismiss on blur");
+        const popoverBlur = new Popover({
+            placement: "bottom",
+            dismissOn: "blur",
+            title    : "Blur dismissal",
+        });
+        popoverBlur.setBody("Tab focus outside the popover (or click outside) to close.");
+        popoverBlur.addAction("OK", () => popoverBlur.hide());
+        Event.addListener(buttonPopoverBlur, "click", () => {
+            if (popoverBlur.isOpen()) {
+                popoverBlur.hide();
+            } else {
+                popoverBlur.attachToComponent(buttonPopoverBlur);
+                popoverBlur.show();
+            }
+        });
+        popoverRow.addComponent(buttonPopoverBlur);
+
+        // Manual dismissal — only programmatic hide() closes it.
+        const buttonPopoverManual = new Button("Manual dismissal");
+        const popoverManual = new Popover({
+            placement: "top",
+            dismissOn: "manual",
+            title    : "Manual",
+        });
+        popoverManual.setBody("Only the Close button below dismisses this popover.");
+        popoverManual.addAction("Close", () => popoverManual.hide());
+        Event.addListener(buttonPopoverManual, "click", () => {
+            if (popoverManual.isOpen()) {
+                popoverManual.hide();
+            } else {
+                popoverManual.attachToComponent(buttonPopoverManual);
+                popoverManual.show();
+            }
+        });
+        popoverRow.addComponent(buttonPopoverManual);
+
+        this.addComponent(popoverRow);
     }
 }
 

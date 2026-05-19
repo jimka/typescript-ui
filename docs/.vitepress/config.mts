@@ -57,6 +57,7 @@ export default defineConfig({
                     { text: 'Window',           link: '/components/Window' },
                     { text: 'Dialog',           link: '/components/Dialog' },
                     { text: 'Tooltip',          link: '/components/Tooltip' },
+                    { text: 'Popover',          link: '/components/Popover' },
                     { text: 'Notification',     link: '/components/Notification' },
                     { text: 'AnimatedDropdown', link: '/components/AnimatedDropdown' },
                 ] },
