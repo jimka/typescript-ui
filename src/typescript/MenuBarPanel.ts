@@ -1,25 +1,28 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { callable, Panel } from '@jimka/typescript-ui/core';
-import { VBox } from '@jimka/typescript-ui/layout';
-import { Text } from '@jimka/typescript-ui/component/input';
-import { MenuBar } from '@jimka/typescript-ui/component/menubar';
-import { Glyph } from '@jimka/typescript-ui/component/display';
-import {
-    file,
-    pen_to_square,
-    circle_check,
-    angles_right,
-    angle_left,
-    angle_right,
-    ban,
-    plus,
-    minus,
-    eye,
-    arrows_rotate,
-    maximize,
-    circle_info,
-} from '@jimka/typescript-ui/glyphs/solid';
+import { VBox }            from '@jimka/typescript-ui/layout';
+import { Text }            from '@jimka/typescript-ui/component/input';
+import { MenuBar }         from '@jimka/typescript-ui/component/menubar';
+import { Glyph }           from '@jimka/typescript-ui/component/display';
+// Glyphs are imported per-file rather than from the `glyphs/solid` barrel.
+// The barrel re-exports ~2,000 individual modules; Vite's dev server fetches
+// every statically-reachable module, so a single barrel import would pull all
+// 2,000 over HTTP on page load. Production builds tree-shake the barrel, but
+// dev mode does not. Stick to per-glyph subpath imports.
+import { file }                 from '@jimka/typescript-ui/glyphs/solid/file';
+import { pen_to_square }        from '@jimka/typescript-ui/glyphs/solid/pen_to_square';
+import { circle_check }         from '@jimka/typescript-ui/glyphs/solid/circle_check';
+import { angles_right }         from '@jimka/typescript-ui/glyphs/solid/angles_right';
+import { angle_left }           from '@jimka/typescript-ui/glyphs/solid/angle_left';
+import { angle_right }          from '@jimka/typescript-ui/glyphs/solid/angle_right';
+import { ban }                  from '@jimka/typescript-ui/glyphs/solid/ban';
+import { plus }                 from '@jimka/typescript-ui/glyphs/solid/plus';
+import { minus }                from '@jimka/typescript-ui/glyphs/solid/minus';
+import { eye }                  from '@jimka/typescript-ui/glyphs/solid/eye';
+import { arrows_rotate }        from '@jimka/typescript-ui/glyphs/solid/arrows_rotate';
+import { maximize }             from '@jimka/typescript-ui/glyphs/solid/maximize';
+import { circle_info }          from '@jimka/typescript-ui/glyphs/solid/circle_info';
 
 Glyph.register(
     file, pen_to_square, circle_check, angles_right, angle_left, angle_right,
