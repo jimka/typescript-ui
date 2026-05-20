@@ -303,40 +303,42 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * setters.
      */
     protected applyOptions(options: TOptions): this {
-        if (options.id              !== undefined) this.setId(options.id);
-        if (options.layoutManager   !== undefined) this.setLayoutManager(options.layoutManager);
-        if (options.visible         !== undefined) this.setVisible(options.visible);
-        if (options.displayed       !== undefined) this.setDisplayed(options.displayed);
-        if (options.zIndex          !== undefined) this.setZIndex(options.zIndex);
-        if (options.insets          !== undefined) this.setInsets(options.insets);
-        if (options.padding         !== undefined) this.setPadding(options.padding);
-        if (options.backgroundColor !== undefined) this.setBackgroundColor(options.backgroundColor);
-        if (options.backgroundImage !== undefined) this.setBackgroundImage(options.backgroundImage);
-        if (options.foregroundColor !== undefined) this.setForegroundColor(options.foregroundColor);
-        if (options.colorScheme     !== undefined) this.setColorScheme(options.colorScheme);
-        if (options.border          !== undefined) this.setBorder(options.border);
-        if (options.borderRadius    !== undefined) this.setBorderRadius(options.borderRadius);
-        if (options.shadow          !== undefined) this.setShadow(options.shadow);
-        if (options.outline         !== undefined) this.setOutline(options.outline);
-        if (options.cursor          !== undefined) this.setCursor(options.cursor);
-        if (options.preferredSize   !== undefined) this.setPreferredSize(options.preferredSize.width, options.preferredSize.height);
-        if (options.minSize         !== undefined) this.setMinSize(options.minSize.width, options.minSize.height);
-        if (options.maxSize         !== undefined) this.setMaxSize(options.maxSize.width, options.maxSize.height);
-        if (options.transform       !== undefined) this.setTransform(options.transform);
-        if (options.willChange      !== undefined) this.setWillChange(options.willChange);
-        if (options.opacity         !== undefined) this.setOpacity(options.opacity);
-        if (options.position        !== undefined) this.setPosition(options.position);
-        if (options.display         !== undefined) this.setDisplay(options.display);
-        if (options.overflow        !== undefined) this.setOverflow(options.overflow);
-        if (options.pointerEvents   !== undefined) this.setPointerEvents(options.pointerEvents);
+        const opts = { ...this._defaultOptions, ...options };
 
-        if (options.attributes !== undefined) {
-            for (const key of Object.keys(options.attributes)) {
-                this.setAttribute(key, options.attributes[key]);
+        if (opts.id              !== undefined) this.setId(opts.id);
+        if (opts.layoutManager   !== undefined) this.setLayoutManager(opts.layoutManager);
+        if (opts.visible         !== undefined) this.setVisible(opts.visible);
+        if (opts.displayed       !== undefined) this.setDisplayed(opts.displayed);
+        if (opts.zIndex          !== undefined) this.setZIndex(opts.zIndex);
+        if (opts.insets          !== undefined) this.setInsets(opts.insets);
+        if (opts.padding         !== undefined) this.setPadding(opts.padding);
+        if (opts.backgroundColor !== undefined) this.setBackgroundColor(opts.backgroundColor);
+        if (opts.backgroundImage !== undefined) this.setBackgroundImage(opts.backgroundImage);
+        if (opts.foregroundColor !== undefined) this.setForegroundColor(opts.foregroundColor);
+        if (opts.colorScheme     !== undefined) this.setColorScheme(opts.colorScheme);
+        if (opts.border          !== undefined) this.setBorder(opts.border);
+        if (opts.borderRadius    !== undefined) this.setBorderRadius(opts.borderRadius);
+        if (opts.shadow          !== undefined) this.setShadow(opts.shadow);
+        if (opts.outline         !== undefined) this.setOutline(opts.outline);
+        if (opts.cursor          !== undefined) this.setCursor(opts.cursor);
+        if (opts.preferredSize   !== undefined) this.setPreferredSize(opts.preferredSize.width, opts.preferredSize.height);
+        if (opts.minSize         !== undefined) this.setMinSize(opts.minSize.width, opts.minSize.height);
+        if (opts.maxSize         !== undefined) this.setMaxSize(opts.maxSize.width, opts.maxSize.height);
+        if (opts.transform       !== undefined) this.setTransform(opts.transform);
+        if (opts.willChange      !== undefined) this.setWillChange(opts.willChange);
+        if (opts.opacity         !== undefined) this.setOpacity(opts.opacity);
+        if (opts.position        !== undefined) this.setPosition(opts.position);
+        if (opts.display         !== undefined) this.setDisplay(opts.display);
+        if (opts.overflow        !== undefined) this.setOverflow(opts.overflow);
+        if (opts.pointerEvents   !== undefined) this.setPointerEvents(opts.pointerEvents);
+
+        if (opts.attributes !== undefined) {
+            for (const key of Object.keys(opts.attributes)) {
+                this.setAttribute(key, opts.attributes[key]);
             }
         }
 
-        if (options.components !== undefined) this.addComponents(options.components);
+        if (opts.components !== undefined) this.addComponents(opts.components);
 
         return this;
     }
@@ -1596,7 +1598,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns The inner Size in pixels, or null if the element is not yet in the DOM.
      */
-    getInnerSize() {
+    getInnerSize(): { width: number, height: number } | null {
         let element = this.getElement();
         if (!element) {
             return null;
@@ -2064,43 +2066,36 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Returns the CSS overflow value.
+     * Returns the CSS overflow value when both axes agree, or null otherwise.
      *
-     * @returns The CSS overflow string, or null if not set.
+     * @returns The shared overflow string, or null if the axes diverge or are unset.
      */
     getOverflow(): string | null {
-        return this._options.overflow ?? null;
+        return this._overflowX !== null
+               && this._overflowX === this._overflowY ? this._overflowX : null;
     }
 
     /**
-     * Sets the CSS overflow property on the component's CSS rule.
+     * Sets the CSS overflow property on both axes. Convenience for callers that
+     * want the same value on x and y; routes through {@link Component.setOverflowX}
+     * and {@link Component.setOverflowY} so the per-axis state stays canonical.
      *
      * @param overflow - A CSS overflow value (e.g. "hidden", "auto", "visible").
      *
      * @returns This component, for method chaining.
      */
     setOverflow(overflow: string): this {
-        this._options.overflow = overflow;
-
-        this.setElementCSSRule("overflow", overflow);
-
-        return this;
+        return this.setOverflowX(overflow)
+                   .setOverflowY(overflow);
     }
 
     /**
-     * Removes the overflow CSS property from the component's CSS rule.
+     * Clears both per-axis overflow values.
      *
      * @returns This component, for method chaining.
      */
     clearOverflow(): this {
-        if (this._options.overflow === undefined) {
-            return this;
-        }
-
-        this._options.overflow = undefined;
-        this.setElementCSSRule("overflow", null);
-
-        return this;
+        return this.clearOverflowX().clearOverflowY();
     }
 
     /**
@@ -2657,8 +2652,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this.setAttribute("maxSize", maxSize.width + " " + maxSize.height);
         }
 
-        if (opts.overflow) {
-            rule.style.overflow = opts.overflow;
+        if (this._overflowX !== null) {
+            rule.style.overflowX = this._overflowX;
+        }
+        if (this._overflowY !== null) {
+            rule.style.overflowY = this._overflowY;
         }
 
         if (this._whiteSpace) {
