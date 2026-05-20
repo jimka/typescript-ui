@@ -3,6 +3,14 @@ name: plan
 description: Produce an implementation plan for a described feature, saved as a markdown file in the {workspace}/plans folder using the project's established plan format.
 ---
 
+## Required reading
+
+Before drafting, read in full:
+
+- [`.claude/skills/_shared/code-conventions.md`](../_shared/code-conventions.md) — Code style, JSDoc, Framework rules. Plans must not silently violate these; flag any unavoidable violation in `## Architecture Decisions`.
+- [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — What docs need to change when public API moves. Cited from `## Documentation Impact`.
+- [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
+
 ## Purpose
 
 Produce a written Markdown plan matching `{workspace}/plans/` conventions. Plans are design artefacts — they do **not** modify source code. Execution happens later via `/implement`.
@@ -31,7 +39,7 @@ Rules for each spawned agent:
 
 If the features turn out to share architecture or touch the same files, abort the fan-out and plan them sequentially instead — coherence beats throughput.
 
-When you can confidently identify cross-plan dependencies (hard deps in the prose, shared files in the `## Files to Create / Modify / Delete` tables), set the `depends-on` and `touches-shared` frontmatter keys on each plan. The format is documented in `.claude/skills/implement/SKILL.md` under _Plan frontmatter_. When in doubt, omit them — `/implement` derives missing values per its _Order derivation_ rules.
+When you can confidently identify cross-plan dependencies (hard deps in the prose, shared files in the `## Files to Create / Modify / Delete` tables), set the `depends-on` and `touches-shared` frontmatter keys on each plan (spec: `.claude/skills/_shared/plan-frontmatter.md`). When in doubt, omit them — `/implement` derives missing values per its _Order derivation_ rules.
 
 After all parallel agents return, emit a short phase plan in the closing summary (the same shape `/implement` will derive) so the user can see the suggested execution order alongside the file paths.
 
@@ -40,7 +48,7 @@ After all parallel agents return, emit a short phase plan in the closing summary
 Descriptive, not rigid. Include a section only when it adds information. Canonical order:
 
 ### Frontmatter (optional)
-YAML block at line 1, listing `depends-on` and/or `touches-shared`. Spec: `.claude/skills/implement/SKILL.md` § _Plan frontmatter_. Omit when uncertain; `/implement` derives missing values.
+YAML block at line 1, listing `depends-on` and/or `touches-shared`. Spec: `.claude/skills/_shared/plan-frontmatter.md`. Omit when uncertain; `/implement` derives missing values.
 
 ### Title (required)
 `# {Feature Name} — Implementation Plan` (em-dash `—`, not `--`).
@@ -74,7 +82,7 @@ Concrete checks: typecheck, grep invariants, manual smoke tests, theme-toggle, `
 ### `## Documentation Impact` (when public API changes)
 - Which per-subpath barrel exports the symbol (`src/typescript/lib/<group>/index.ts` — there is no root barrel).
 - Which curated page under `docs/<group>/` covers it; update its catalog `index.md` and the sidebar in `docs/.vitepress/config.mts`.
-- Cross-bucket JSDoc references (need markdown links, not `{@link}`).
+- Cross-bucket JSDoc references (need markdown links, not `{@link}` — see `_shared/docs-conventions.md`).
 - Renames/removals: list every doc page referencing the old name (`grep -rln '\bOldName\b' docs/`).
 
 Skip for internal refactors and bug fixes.
@@ -93,7 +101,7 @@ Bullets stating what's intentionally out, with reason.
 - **Concise and opinionated.** State the choice, not a survey.
 - **Cite real code.** Every path exists; line numbers accurate at write time.
 - **No filler.** No "this section will…", no "in conclusion…".
-- **Respect CLAUDE.md.** Surgical changes, typed setters, `Event` class, one-element-per-class, theme tokens in `Theme.ts`. If the feature would violate one, flag it in Architecture Decisions.
+- **Respect CLAUDE.md and `_shared/code-conventions.md`.** Surgical changes, typed setters, `Event` class, one-element-per-class, theme tokens in `Theme.ts`. If the feature would violate one, flag it in `## Architecture Decisions`.
 - **Em-dash `—`** in titles and decision headings, not `--` or `-`.
 - **`---` horizontal rules** between top-level sections.
 

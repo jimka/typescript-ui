@@ -3,116 +3,15 @@ name: implement
 description: Implement a pre-generated implementation plan. Use when the user asks to implement an implementation plan and that plan exists in the {workspace}/plans folder
 ---
 
-## Code Style
+## Required reading
 
-- **Formatting:** blank lines between logical groups in a method body. Always brace `if`/`else`/`for`. Blank line before a non-leading `return`. Blank line after a mutating call that ends a logical operation. One statement per line — never `a.setX(1); a.setY(2);`.
-- **Functions:** arrow functions for callbacks instead of `.bind(this)`; explicit param types when the target signature is `Function`.
-- **Types:** explicit return type on every function/method (including `void`); explicit type on every class field.
-- **Naming collisions:** underscore-prefix backing fields (`private _foo`).
-- **Separation:** keep presentation/UI state out of data Models.
+Before producing any code or commits, read in full:
 
-## JSDoc
+- [`.claude/skills/_shared/code-conventions.md`](../_shared/code-conventions.md) — Code style, JSDoc, Framework rules, deferred DOM writes.
+- [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — Documentation updates, JSDoc cross-bucket links, typedoc-callable plugin.
+- [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
 
-Every function, method, and class needs a JSDoc block:
-- Multi-line `/** … */`. Description first, blank line, then tags.
-- `@param <name> - <desc>` (no type — TS has it). `@returns <desc>` for non-void. `@remarks` / `@example` only when behaviour is non-obvious.
-- Tags flow consecutively, no blank lines between.
-- Each overload gets its own JSDoc block.
-
-## Framework rules
-
-### Event handling
-Component listeners go through `Event.addListener(this, type, handler)` / `Event.addViewportListener`. Native `addEventListener` only on raw DOM helper elements that aren't `Component`s.
-
-### One DOM element per class
-A class owns exactly one DOM element. If a sub-element needs independent behaviour (event routing, its own CSS rule, layout), extract it into a `Component` subclass. Trivial non-interactive helpers (e.g. a resize-handle div) can stay as raw children.
-
-### Minimize direct DOM access
-Before `element.style.*`, `document.createElement`, or `element.addEventListener`, check for a Component setter or `Event` API. Raw DOM is for things the framework has no API for.
-
-### All attributes and styles go through typed setters
-
-| Category | Use |
-|---|---|
-| CSS | Component setters (`setBackgroundColor`, `setWidth`, …) — add one if missing |
-| ARIA / `role` / `tabindex` | `this.getAria()`; extend `Aria.ts` if missing |
-| HTML attribute on every Component | typed setter in `Component.ts` |
-| HTML attribute specific to one component | private field + typed setter on that class; calls `setElementAttribute` internally |
-
-Never call `element.setAttribute(...)` or `element.style.*` directly from component code.
-
-### Three non-negotiable rules for every DOM write
-
-These apply to **every** use of the escape hatches — `setElementCSSRule(s)`, `setElementStyle(s)`, `setElementAttribute`, `removeElementAttribute`, and their `clear*` / `remove*` companions:
-
-1. **Always through a typed setter.** No call site outside the typed setter (or its `clearX` / `removeX`) may touch the low-level API. Constructors route through the setter too. Add the setter if it doesn't exist.
-2. **Always cache in a class field.** Every DOM write updates a private backing field; reads return the field, never re-query the DOM.
-3. **Always expose on the `XOptions` bag.** The class's options interface gets a matching optional field; `applyOptions()` forwards it to the setter. Construction-time and post-construction APIs stay in lockstep.
-
-```typescript
-export interface FooOptions extends ComponentOptions {
-    lineHeight?: number | string;
-}
-
-private _lineHeight: string | null = null;
-
-setLineHeight(value: number | string): this {
-    this._lineHeight = typeof value === "number" ? value + "px" : value;
-    this.setElementCSSRule("lineHeight", this._lineHeight);
-    return this;
-}
-
-getLineHeight(): string | null {
-    return this._lineHeight;
-}
-
-protected applyOptions(options: FooOptions): this {
-    super.applyOptions(options);
-
-    if (options.lineHeight !== undefined) {
-        this.setLineHeight(options.lineHeight);
-    }
-
-    return this;
-}
-```
-
-### Defer DOM work to render time
-
-Construction must stay JS-only. Every framework primitive buffers DOM writes until first render — keep them queued:
-
-- **Component CSS rule**: `setElementCSSRule(s)` queues into `styleRule`; `applyStyle` flushes at render. Never call `ensureCSSRule()` from a setter.
-- **State rules** (`:active`, `:hover`, `.selected`, …): allocate via `this.createStyleRule(suffix)`. The builder dedupes by suffix and registers for render-time materialisation. Never `new StyleRule(...)` directly.
-- **Inline styles**: `setElementStyle(s)` queues into `inlineStyle`; `init()` attaches and flushes.
-- **Measurement**: never read layout (`getBoundingClientRect`, `getComputedStyle`) during construction. Defer to a layout pass or theme-change callback.
-- **Children**: build child Components in the constructor; their DOM is realised when the parent renders. Don't `getElement(true)` during construction.
-
-## Documentation updates
-
-When implementation changes consumer-visible behaviour, update `docs/`:
-
-- **New public symbol** (class/type/enum/function): re-export from the per-subpath barrel (`core`, `primitive`, `layout`, `data`, `validation`, `component/<sub>` — no root barrel). Add `@category` (Core / Components / Layouts / Data / Theme / Validation / Util). Verify it lands in `docs/api/<group>/index.md` after build.
-- **New component / layout / data class:** add a curated page under `docs/<group>/`, link it in `docs/.vitepress/config.mts`, add it to that group's `index.md` catalog.
-- **New recipe-worthy pattern:** page under `docs/recipes/`, linked in sidebar and `docs/recipes/index.md`.
-- **Consumer-visible behaviour change:** update matching `docs/concepts/` page; touch `docs/reference/faq.md` / `troubleshooting.md` if relevant.
-
-Run `npm run docs:build` and confirm **0 errors and 0 link warnings** (typedoc's "unsupported TypeScript version" notice is the only acceptable warning).
-
-### JSDoc cross-bucket references
-
-TypeDoc emits one entry-point bundle per subpath, so `{@link Foo}` only resolves within the same bucket.
-
-| Target | Form |
-|---|---|
-| Same file or bucket | `{@link Foo}` |
-| Different bucket | `[\`Foo\`](/api/<subpath>/<kind>/Foo)` |
-| Class referencing itself | plain backticks `` `Foo` `` |
-
-Subpath kinds: `classes`, `interfaces`, `enumerations`, `type-aliases`, `variables`, `functions`. For colliding names (`Border`, `Body`, `Column`, `Header`, `Row`), spell out the subpath in the link.
-
-### typedoc-callable-plugin
-
-Classes exported as `export { XCallable as X }` (where `const X = callable(_X)`) are auto-promoted from `variables/` to `classes/` by `typedoc-callable-plugin.mjs`. No setup needed. If a new class lands under `variables/` after build, verify: export form is `XCallable as X`, inner `_X` is a real `class` declaration, wrapping call is literally `callable(...)`.
+These contain the project's authoritative conventions. Sections below assume you've read them.
 
 ## Git workflow
 
@@ -123,19 +22,6 @@ Classes exported as `export { XCallable as X }` (where `const X = callable(_X)`)
   3. **Graphify** — `graphify-out/**` from `graphify update . --directed`. Always its own commit.
 - **Do not merge or rebase onto a base branch.** Leave for the user.
 - **Do not push.** User publishes.
-
-## Plan frontmatter
-
-Optional YAML at the top of a plan:
-
-```yaml
----
-depends-on: [plan-name, ...]      # must be in plans/implemented/ before this starts
-touches-shared: [path, ...]       # files whose concurrent edit would conflict
----
-```
-
-Missing values are filled by _Order derivation_. Frontmatter is authoritative when present.
 
 ## Order derivation
 
@@ -185,6 +71,39 @@ When `touches-shared` is non-empty: edit each shared file last; one atomic commi
 
 In worktree mode, before declaring done: `git fetch origin && git rebase origin/master`. Resolve any conflicts in the worktree and re-run typecheck + `docs:build` + smoke. Don't return a branch that won't merge.
 
+## Expert review
+
+Before declaring done, spawn a sub-agent to review the implementation with a fresh context window. The review must be independent: the sub-agent gets only the plan path and branch name, not your reasoning or summary of what you did.
+
+Invocation: `Agent({ subagent_type: "general-purpose", description: "Implementation review", prompt: <below> })`.
+
+Prompt template:
+
+> Review the implementation of plan `plans/implemented/<slug>.md` on branch `feature/<slug>`. Start by reading the plan in full, then read `.claude/skills/_shared/code-conventions.md` and `.claude/skills/_shared/docs-conventions.md` for the project's authoritative rules. Then run `git diff master...HEAD` and audit the diff against those rules. Verify every entry in the plan's Ordered Implementation Steps and Files to Create/Modify/Delete table is addressed.
+>
+> Return two lists, citing file paths and line numbers:
+> - **BLOCKING:** correctness bugs, missing plan items, framework-rule violations, regressions, type errors, doc-build breakage.
+> - **ADVISORY:** style nits, refactor opportunities, future-work observations.
+>
+> Do not fix anything. Report only.
+
+On return:
+- BLOCKING empty → proceed to _Pre-termination checklist_.
+- BLOCKING non-empty → fix each issue in a follow-up commit (separate from the original three-commit structure), then re-spawn a fresh reviewer. Hard cap: 3 review cycles. If still not converging, stop and surface the remaining findings to the user.
+
+## Pre-termination checklist
+
+Walk this list before yielding control. Any unchecked item means you are not done:
+
+- [ ] Plan file is at `plans/implemented/<slug>.md`
+- [ ] `npx tsc --noEmit` reports 0 errors
+- [ ] `npm run docs:build` reports 0 errors and 0 link warnings (typedoc's "unsupported TypeScript version" notice is acceptable)
+- [ ] Expert review returned no BLOCKING issues on the most recent cycle
+- [ ] Commits follow the three-commit structure (code / docs / graphify), plus any review-fix commits
+- [ ] If in worktree mode: rebase-clean checkpoint passed
+
+If any item is unchecked, resume at the appropriate step. Do not stop just because the last file write succeeded or the last command returned cleanly.
+
 ## Work Instructions
 
 1. Resolve every plan name to `plans/<name>.md`. Reject if any file is missing.
@@ -197,8 +116,12 @@ In worktree mode, before declaring done: `git fetch origin && git rebase origin/
    5. **(fresh only)** If on `master`, create and check out `feature/<short-feature-slug>`. Otherwise stay on the current branch.
    6. **(fresh only)** Move the plan from `plans/` to `plans/in-progress/`. Commit.
    7. Implement. On resume, pick up at the step identified by _Resume detection_.
+
+      **Definition of done for this step:** every file in the plan's "Files to Create/Modify/Delete" table has been written, every entry in "Ordered Implementation Steps" is addressed, and `npx tsc --noEmit` is clean. Do not advance to step 8 until this clears. Running `git status` / `ls` and seeing reasonable output is not the same as verifying this list.
    8. Extend demo panel(s) where applicable.
    9. Edit any `touches-shared` files last, one commit per file (_Shared-file etiquette_).
    10. Move plan from `plans/in-progress/` to `plans/implemented/`.
-   11. Update `docs/` per _Documentation updates_.
+   11. Update `docs/` per the rules in `_shared/docs-conventions.md`.
    12. Run _Rebase-clean checkpoint_.
+   13. Run _Expert review_. Fix any BLOCKING findings and re-review until clean.
+   14. Walk _Pre-termination checklist_. Yield only when every item is checked.
