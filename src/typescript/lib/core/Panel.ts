@@ -3,7 +3,6 @@
 import { Component, ComponentOptions } from "~/core/Component";
 import { Insets } from "~/primitive/Insets";
 import { callable } from "~/core/Callable.js";
-import { Absolute } from "../layout";
 
 /**
  * Selects the per-axis scroll behaviour for a {@link Panel}.
