@@ -33,7 +33,7 @@ export type { RadioButtonOptions } from '~/component/input/RadioButton.js';
 export { Slider } from '~/component/input/Slider.js';
 export type { SliderOptions } from '~/component/input/Slider.js';
 export { ComboBox } from '~/component/input/ComboBox.js';
-export type { ComboBoxOptions } from '~/component/input/ComboBox.js';
+export type { ComboBoxOptions, ComboBoxItem } from '~/component/input/ComboBox.js';
 export { Option } from '~/component/input/Option.js';
 export type { OptionOptions } from '~/component/input/Option.js';
 export { AutoCompleteField } from '~/component/input/AutoCompleteField.js';

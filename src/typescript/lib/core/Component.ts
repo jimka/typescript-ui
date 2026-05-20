@@ -2077,8 +2077,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Sets the CSS overflow property on both axes. Convenience for callers that
-     * want the same value on x and y; routes through {@link Component.setOverflowX}
-     * and {@link Component.setOverflowY} so the per-axis state stays canonical.
+     * want the same value on x and y; routes through [`setOverflowX`](/api/core/classes/Component#setoverflowx)
+     * and [`setOverflowY`](/api/core/classes/Component#setoverflowy) so the per-axis state stays canonical.
      *
      * @param overflow - A CSS overflow value (e.g. "hidden", "auto", "visible").
      *

@@ -6,7 +6,7 @@ export { Image } from '~/component/display/Image.js';
 export type { ImageOptions } from '~/component/display/Image.js';
 export { Glyph } from '~/component/display/Glyph.js';
 export type { GlyphAnimation, GlyphOptions } from '~/component/display/Glyph.js';
-export type { NamedGlyphDef } from '~/component/display/Glyphs.js';
+export type { GlyphDef, NamedGlyphDef } from '~/component/display/Glyphs.js';
 export { IconText } from '~/component/display/IconText.js';
 export type { IconTextOptions } from '~/component/display/IconText.js';
 export { IconLabel } from '~/component/display/IconLabel.js';
