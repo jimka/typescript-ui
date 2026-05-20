@@ -6,6 +6,13 @@ Release history. For breaking-change details by version, see [Migration](/refere
 
 The package is at version `0.0.0` — pre-release, not yet published. Until a `0.x` or `1.0.0` is tagged, anything here may change without a migration note. Highlights below describe work-in-progress capabilities of the development snapshot, not stable contracts.
 
+**Panel native auto-scroll** (additive):
+
+- **New [`Panel.setAutoScroll(mode)`](/api/core/classes/Panel#setautoscroll)** plus matching `getAutoScroll()` / `clearAutoScroll()` and an `autoScroll?` field on [`PanelOptions`](/api/core/interfaces/PanelOptions). The mode is a `"none" | "auto" | "x" | "y" | "both"` string union (re-exported as `AutoScrollMode` from `@jimka/typescript-ui/core`) that translates to per-axis `overflow` writes — `"auto"` shows scrollbars only when content overflows, `"x"` / `"y"` constrain scrolling to a single axis, `"both"` keeps both bars visible unconditionally.
+- **Native browser scrollbars**, not the framework's custom [`Scrollbar`](/api/component/container/classes/Scrollbar) overlay. Zero extra DOM, kinetic scrolling and keyboard navigation come free; themed bars are out of scope for v1.
+- **`scrollbar-gutter: stable` reserved** for every non-`"none"` mode so an auto-appearing bar does not reflow children. Requires Chromium 94+ / Firefox 97+ / Safari 18.2+.
+- **Backwards compatible.** The default `"none"` keeps the inherited `Component` `overflow: hidden` clipping, so existing `Panel` instances (including `Window`, `Dialog`, layout helpers) are unchanged unless they opt in.
+
 **Compositor-layer hints via `will-change`** (additive):
 
 - **New [`Component.setWillChange(value)`](/api/core/classes/Component#setwillchange)** and matching `willChange?` field on `ComponentOptions`. Routes through the existing batched style channel and caches the value so subsequent identical writes short-circuit.
