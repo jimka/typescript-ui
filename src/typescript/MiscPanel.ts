@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { 
+import {
     ButtonGroup,
     callable,
     Component,
@@ -15,8 +15,10 @@ import {
     Tooltip,
     Window
 } from '@jimka/typescript-ui/core';
+import type { AutoScrollMode } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
 import {
+    Fit,
     HBox,
     VBox
 } from '@jimka/typescript-ui/layout';
@@ -739,6 +741,51 @@ class MiscPanel extends Panel {
         fieldsRow.addComponent(animatedDateTime);
 
         rightColumn.addComponent(fieldsRow);
+
+        // ── Panel auto-scroll demo ──
+        const autoScrollLabel = new Text("Panel auto-scroll modes:");
+        leftColumn.addComponent(autoScrollLabel);
+
+        const autoScrollRow = new Component();
+        autoScrollRow.setLayoutManager(new HBox());
+
+        const autoScrollModes: AutoScrollMode[] = ["none", "auto", "x", "y", "both"];
+
+        for (const mode of autoScrollModes) {
+            const button = new Button("autoScroll: " + mode);
+            button.addActionListener(() => {
+                const win = new Window("Panel autoScroll = \"" + mode + "\"");
+                win.setX(240);
+                win.setY(200);
+                win.setWidth(360);
+                win.setHeight(240);
+
+                win.setContentFactory(() => {
+                    // Oversized child: 800 x 600 inside a ~360 x 200 viewport so
+                    // both axes overflow under every non-"none" mode.
+                    const oversized = new Component({
+                        preferredSize  : { width: 800, height: 600 },
+                        minSize        : { width: 800, height: 600 },
+                        maxSize        : { width: 800, height: 600 },
+                        backgroundColor: "lightsteelblue",
+                    });
+
+                    const scrollPanel: Panel = new Panel({
+                        layoutManager: new Fit(),
+                        autoScroll: mode
+                    });
+
+                    scrollPanel.addComponent(oversized);
+
+                    return scrollPanel;
+                });
+
+                win.show();
+            });
+            autoScrollRow.addComponent(button);
+        }
+
+        leftColumn.addComponent(autoScrollRow);
 
         // ── Popover demo ──
         const popoverLabel = new Text("Popovers (placement and dismiss modes):");

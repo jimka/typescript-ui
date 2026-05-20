@@ -69,14 +69,8 @@ class IconText extends Component<IconTextOptions> {
         super({
             ..._defaultIconTextOptions,
             ...(options ?? {}),
+            layoutManager: new HBox()
         });
-
-        // Per-instance layout manager. Reads the merged `_options.gap` so a
-        // consumer override of `gap` (or the default) flows into the HBox
-        // spacing on first build.
-        if (this._options.layoutManager === undefined) {
-            this.setLayoutManager(new HBox({ spacing: this._options.gap }));
-        }
 
         this._glyph = new Glyph(glyph);
         this._text  = new Text(text);
