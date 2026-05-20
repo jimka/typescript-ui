@@ -10,7 +10,7 @@ export type { Callable } from '~/core/Callable.js';
 export { Component } from '~/core/Component.js';
 export type { Comparator, Style, ComponentOptions, ConstrainedComponent, PerimeterSize } from '~/core/Component.js';
 export { Panel } from '~/core/Panel.js';
-export type { PanelOptions } from '~/core/Panel.js';
+export type { AutoScrollMode, PanelOptions } from '~/core/Panel.js';
 export { Aria } from '~/core/Aria.js';
 export type { AriaRole, AriaSort } from '~/core/Aria.js';
 export { RovingTabIndex } from '~/core/RovingTabIndex.js';
