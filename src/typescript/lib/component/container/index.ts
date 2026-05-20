@@ -12,6 +12,8 @@ export { Scrollbar } from '~/component/container/Scrollbar.js';
 export type { ScrollbarListener, ScrollbarOrientation } from '~/component/container/Scrollbar.js';
 export { VirtualScroller } from '~/component/container/VirtualScroller.js';
 export type { VirtualScrollerOnScroll } from '~/component/container/VirtualScroller.js';
+export { Spacer } from '~/component/container/Spacer.js';
+export type { SpacerOptions } from '~/component/container/Spacer.js';
 export { SplitGutter } from '~/component/container/SplitGutter.js';
 export type { SplitGutterOptions } from '~/component/container/SplitGutter.js';
 export { WindowBorder, Direction } from '~/component/container/WindowBorder.js';
