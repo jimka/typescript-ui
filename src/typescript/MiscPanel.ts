@@ -6,6 +6,7 @@ import {
     Component,
     DarkTheme,
     DefaultTheme,
+    Dialog,
     Event,
     Menu,
     Notification,
