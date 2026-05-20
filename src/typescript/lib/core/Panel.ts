@@ -104,8 +104,8 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
 
     /**
      * Selects the panel's native scroll behaviour. Translates `mode` to
-     * per-axis `overflow` writes via {@link Component.setOverflowX} /
-     * {@link Component.setOverflowY} and sets `scrollbar-gutter: stable` for
+     * per-axis `overflow` writes via [`Component.setOverflowX`](/api/core/classes/Component#setoverflowx) /
+     * [`Component.setOverflowY`](/api/core/classes/Component#setoverflowy) and sets `scrollbar-gutter: stable` for
      * every non-`"none"` mode so an auto-appearing scrollbar does not reflow
      * children.
      *
