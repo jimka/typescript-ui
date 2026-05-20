@@ -125,6 +125,7 @@ These components are usually internal but are publicly exposed in case you need 
 
 | Component | Purpose |
 | --- | --- |
+| [`Spacer`](/components/Spacer) | Invisible gap — fixed `(w, h)` or flex (absorbs leftover row/column space via `weight`) |
 | [`SplitGutter`](/api/component/container/classes/SplitGutter) | Drag handle for the [`Split`](/api/layout/classes/Split) layout |
 | [`AccordionHeader`](/api/component/container/classes/AccordionHeader) | Collapsible section header for the [`Accordion`](/api/layout/classes/Accordion) layout |
 | [`Scrollbar`](/components/Scrollbar) | Custom vertical or horizontal scrollbar overlay for components that own their scroll state |
