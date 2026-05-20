@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DefaultCell } from "~/component/table/cell/Default.js";
+import { ResizeHandle } from "~/component/table/cell/ResizeHandle.js";
+import { SortPriorityBadge } from "~/component/table/cell/SortPriorityBadge.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { CSS } from "~/core/CSS.js";
@@ -8,17 +10,63 @@ import { Tooltip } from "~/core/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Insets } from "~/primitive/Insets.js";
+import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * Width (px) used both for the side-loaded `Glyph`'s preferred size and for
+ * computing the renderer's left inset when a glyph is mounted.
+ */
+const GLYPH_W = 16;
+
+/**
+ * Height (px) used for the side-loaded `Glyph`'s preferred size.
+ */
+const GLYPH_H = 16;
+
+/**
+ * Default gap (px) between the cell's left edge and the side-loaded glyph.
+ * Mirrors the `--ts-ui-table-header-glyph-gap` token default and is used as
+ * the fallback term when computing the renderer's left inset.
+ */
+const GLYPH_GAP = 4;
+
+let _glyphClassRuleInjected = false;
+
+/**
+ * Registers the shared `.HeaderCellGlyph` class rule once on first use. The
+ * rule holds the side-loaded glyph's static placement (position, left, top)
+ * so per-instance Component setters only carry transform, size, color, and
+ * pointer-events.
+ *
+ * Idempotent and module-local; safe across hot reloads.
+ */
+function ensureHeaderCellGlyphClassRule(): void {
+    if (_glyphClassRuleInjected) {
+        return;
+    }
+
+    _glyphClassRuleInjected = true;
+
+    const rule = CSS.createClassRule("HeaderCellGlyph");
+
+    if (rule) {
+        rule.style.setProperty("position", "absolute");
+        rule.style.setProperty("left",     "var(--ts-ui-table-header-glyph-gap, 4px)");
+        rule.style.setProperty("top",      "50%");
+    }
+}
 
 /**
  * A non-editable header cell rendered as a `<th>` element.
  *
- * Extends {@link DefaultCell} with a sort state indicator (▲/▼ suffix on the label),
- * a click-to-sort callback, and a drag handle at the right edge for column resizing.
- *
- * The resize handle is a raw `<div>` (not a Component) appended in `init()`. Native
- * listeners are used on the div; `Event.addViewportListener` is used for the
- * mousemove/mouseup drag phase so they route through the framework's event system.
+ * Extends {@link DefaultCell} with a sort state indicator (▲/▼ suffix on the
+ * label), a click-to-sort callback, and a right-edge drag handle for column
+ * resizing. The drag handle and the multi-sort priority badge are dedicated
+ * Component subclasses ([`ResizeHandle`](/api/component/table/classes/ResizeHandle)
+ * and [`SortPriorityBadge`](/api/component/table/classes/SortPriorityBadge))
+ * added through the framework's render lifecycle; both use absolute
+ * positioning so they overlay the renderer without disturbing its layout.
  *
  * @category Components
  */
@@ -31,7 +79,8 @@ class HeaderCell extends DefaultCell {
     private _resizeDragCallback: ((delta: number) => void) | null = null;
     private _isDragging: boolean = false;
     private _tooltipText: string = '';
-    private _priorityBadge: HTMLSpanElement | null = null;
+    declare private _resizeHandle: ResizeHandle;
+    declare private _priorityBadge: SortPriorityBadge;
     private _sortState: { state: 'asc' | 'desc', priority: number | null } | null = null;
     private _headerGlyph: string | null = null;
     private _headerGlyphInstance: Glyph | null = null;
@@ -63,10 +112,22 @@ class HeaderCell extends DefaultCell {
         if (activeRule) {
             activeRule.style.setProperty('box-shadow', 'var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0,0,0,0.2) inset)');
         }
+
+        // Wire the resize-handle drag lifecycle: mousedown installs viewport
+        // mousemove/mouseup listeners that forward through the handle's
+        // callbacks. The `_isDragging` flag straddles the handle and the
+        // host's click listener (which suppresses the synthetic post-drag
+        // click) so the bookkeeping must live on the host.
+        this._resizeHandle = new ResizeHandle({
+            onDragStart: (e: MouseEvent) => this.onResizeDragStart(e),
+            onDragMove : (delta: number) => this._resizeDragCallback?.(delta),
+        });
+        this._priorityBadge = new SortPriorityBadge();
     }
 
     /**
-     * Appends the resize handle div to the rendered element.
+     * Wires the host click + contextmenu listeners, attaches the tooltip,
+     * and mounts the side-loaded glyph if one was supplied at construction.
      *
      * @param element - Optional element passed from the framework init chain.
      */
@@ -88,27 +149,12 @@ class HeaderCell extends DefaultCell {
             this._onContextMenuCallback?.(this._fieldName, e.clientX, e.clientY);
         });
 
-        const handle = document.createElement('div');
-
-        // Thin vertical bar (right 2 px of the 5 px hit area) as visual drag indicator.
-        handle.style.cssText = 'position:absolute;top:0;right:0;width:5px;height:100%;cursor:ew-resize;z-index:1;' +
-                               'background:linear-gradient(to right,transparent 60%,rgba(0,0,0,0.2) 60%);';
-        handle.addEventListener('mousedown', (e: MouseEvent) => this.onResizeDragStart(e));
-        handle.addEventListener('click', (e: MouseEvent) => e.stopPropagation()); // never trigger sort
-
-        el.appendChild(handle);
-
-        const badge = document.createElement('span');
-
-        // Multi-sort priority indicator. Shown only when two or more sorters are active.
-        badge.style.cssText =
-            'position:absolute;top:2px;right:8px;font-size:10px;line-height:1;' +
-            'background:var(--ts-ui-sort-badge-bg,rgba(0,0,0,0.15));' +
-            'color:var(--ts-ui-sort-badge-color,inherit);' +
-            'border-radius:3px;padding:1px 3px;display:none;pointer-events:none;';
-
-        el.appendChild(badge);
-        this._priorityBadge = badge;
+        // Side-load the resize handle and sort-priority badge as overlays.
+        // Their `position:absolute` means they don't disturb the cell's `Card`
+        // layout flow, and side-loading (instead of `addComponent`) keeps the
+        // Card from hiding them as non-visible siblings of the renderer.
+        el.appendChild(this._resizeHandle.getElement(true));
+        el.appendChild(this._priorityBadge.getElement(true));
 
         if (this._tooltipText) {
             Tooltip.attachToElement(el, this._tooltipText);
@@ -174,21 +220,23 @@ class HeaderCell extends DefaultCell {
             return;
         }
 
-        const glyph = new Glyph(name);
-        const gEl   = glyph.getElement(true);
+        ensureHeaderCellGlyphClassRule();
 
-        gEl.style.cssText =
-            'position:absolute;left:var(--ts-ui-table-header-glyph-gap,4px);' +
-            'top:50%;transform:translateY(-50%);' +
-            'width:16px;height:16px;' +
-            'color:var(--ts-ui-table-header-glyph-color,currentColor);' +
-            'pointer-events:none;';
+        const glyph = new Glyph(name);
+
+        glyph.setPosition(Position.ABSOLUTE);
+        glyph.setTransform("translateY(-50%)");
+        glyph.setSize({ width: GLYPH_W, height: GLYPH_H });
+        glyph.setForegroundColor("var(--ts-ui-table-header-glyph-color, currentColor)");
+        glyph.setPointerEvents("none");
+
+        const gEl = glyph.getElement(true);
+        gEl.classList.add("HeaderCellGlyph");
 
         el.appendChild(gEl);
         this._headerGlyphInstance = glyph;
 
-        // 16 = Glyph default width; 4 = default gap (matches token default).
-        const offset = 16 + 4 + themePad;
+        const offset = GLYPH_W + GLYPH_GAP + themePad;
         this.getRenderer().setInsets(new Insets(0, themePad, 0, offset));
     }
 
@@ -208,12 +256,7 @@ class HeaderCell extends DefaultCell {
         this.getRenderer().getText().setText(this._text + arrow);
         this.getAria().setSort(state === 'asc' ? 'ascending' : 'descending');
 
-        if (this._priorityBadge) {
-            const showBadge = priority != null && priority >= 2;
-
-            this._priorityBadge.textContent   = showBadge ? String(priority) : '';
-            this._priorityBadge.style.display = showBadge ? '' : 'none';
-        }
+        this._priorityBadge.setPriority(priority ?? null);
 
         return this;
     }
@@ -240,10 +283,7 @@ class HeaderCell extends DefaultCell {
         this.getRenderer().getText().setText(this._text);
         this.getAria().setSort('none');
 
-        if (this._priorityBadge) {
-            this._priorityBadge.textContent   = '';
-            this._priorityBadge.style.display = 'none';
-        }
+        this._priorityBadge.clearPriority();
 
         return this;
     }
@@ -328,7 +368,7 @@ class HeaderCell extends DefaultCell {
     }
 
     private onResizeDrag(e: MouseEvent): void {
-        this._resizeDragCallback?.(e.movementX);
+        this._resizeHandle.fireDragMove(e.movementX);
     }
 
     private onResizeDragStop(): void {
@@ -336,6 +376,8 @@ class HeaderCell extends DefaultCell {
         Event.removeViewportListener(this, 'mouseup', this.onResizeDragStop);
 
         Util.select('body').style.pointerEvents = '';
+
+        this._resizeHandle.fireDragEnd();
 
         // clear flag after synthesized click fires
         setTimeout(() => { this._isDragging = false; }, 0);
