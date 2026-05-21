@@ -136,6 +136,89 @@ export namespace Animation {
         }
     }
 
+    /**
+     * Configuration for {@link Animation.afterTransition}.
+     *
+     * @category Core
+     */
+    export interface AfterTransitionConfig {
+        /**
+         * Component whose `transitionend` event to listen for. The event must
+         * fire on this component's own element (not a descendant) for the
+         * filter to match.
+         */
+        component: Component;
+
+        /**
+         * Optional CSS property filter — `onComplete` fires only when the
+         * transition of the named property ends. Other property completions
+         * (e.g. a concurrent `top` transition on a multi-property declaration)
+         * are ignored. Omit to fire on the first transitionend of any property.
+         */
+        property?: string;
+
+        /**
+         * Transition duration in milliseconds, used to size the fallback timer
+         * that guarantees `onComplete` fires even when `transitionend` doesn't
+         * (toggling between identical values, tab switch mid-transition, …).
+         */
+        durationMs: number;
+
+        /**
+         * Milliseconds added to {@link AfterTransitionConfig.durationMs} for
+         * the fallback `setTimeout`. Defaults to 40 ms.
+         */
+        fallbackBufferMs?: number;
+
+        /**
+         * Invoked when the transition completes (via `transitionend`) or when
+         * the fallback timer fires. Always called exactly once.
+         */
+        onComplete: () => void;
+    }
+
+    /**
+     * Wires up a one-shot completion handler for a CSS transition installed
+     * on a Component out-of-band — i.e. when the "to" styles are written by
+     * something other than this helper, so {@link Animation.play} doesn't fit.
+     *
+     * @param config - The component, property filter, duration, and callback.
+     *
+     * @remarks Mirrors the `transitionend`-with-`setTimeout`-fallback
+     * bookkeeping in {@link Animation.play} so layouts that install
+     * transitions outside `play()` (notably the
+     * [`Accordion`](/api/layout/classes/Accordion), whose section heights are
+     * written by the parent layout's `getPreferredSize` query) stay
+     * consistent with the framework's one-finish-only contract.
+     */
+    export function afterTransition(config: AfterTransitionConfig): void {
+        const el = config.component.getElement();
+
+        if (!el) {
+            config.onComplete();
+            return;
+        }
+
+        let done = false;
+        const finish = (): void => {
+            if (done) {
+                return;
+            }
+            done = true;
+            el.removeEventListener("transitionend", onEnd);
+            config.onComplete();
+        };
+        const onEnd = (event: TransitionEvent): void => {
+            if (config.property !== undefined && event.propertyName !== config.property) {
+                return;
+            }
+            finish();
+        };
+
+        el.addEventListener("transitionend", onEnd);
+        setTimeout(finish, config.durationMs + (config.fallbackBufferMs ?? 40));
+    }
+
     /** Default duration of the cross-fade between spinner and materialized content. */
     const MATERIALIZE_FADE_DURATION_MS = 160;
 
