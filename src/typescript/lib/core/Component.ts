@@ -175,6 +175,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _translateX           : number                  = 0;
     private _translateY           : number                  = 0;
     private _willChange          : string | null           = null;
+    private _transition           : string | null           = null;
 
     // Derived / runtime-only fields that have no direct ComponentOptions counterpart.
     private _onPreferredSizeChange: (() => void) | null     = null;
@@ -2442,6 +2443,43 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the cached CSS `transition` shorthand last passed to
+     * {@link setTransition}.
+     *
+     * @returns The active transition string, or `null` if no transition is set.
+     */
+    getTransition(): string | null {
+        return this._transition;
+    }
+
+    /**
+     * Sets the CSS `transition` shorthand on the element's inline style.
+     * Pass `null` to clear it.
+     *
+     * @param value - A CSS transition value (e.g. `"height 200ms ease-out"`)
+     *                or `null` to remove.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks Caching short-circuits identical writes so re-issuing the same
+     * transition from a layout pass doesn't thrash the inline style attribute.
+     * Use `"none"` (not `null`) to disable transitions while keeping the
+     * declaration in place — e.g. for a one-frame suppression before restoring
+     * the original value.
+     */
+    setTransition(value: string | null): this {
+        if (this._transition === value) {
+            return this;
+        }
+
+        this._transition = value;
+
+        this.setElementStyle("transition", value);
+
+        return this;
+    }
+
+    /**
      * Returns the CSS `white-space` value last written by {@link setWhiteSpace},
      * or `null` if cleared.
      *
@@ -2685,6 +2723,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         if (opts.zIndex) {
             element.style.zIndex = String(opts.zIndex);
+        }
+
+        // Replay the cached transition so setters that fired before init
+        // (e.g. accordion section setup) survive the `removeAttribute("style")`
+        // wipe a few lines above. Inline rather than CSS-rule so callers can
+        // freely overwrite per-instance (the height transition wouldn't make
+        // sense at the class-rule level).
+        if (this._transition !== null) {
+            element.style.transition = this._transition;
         }
 
         if (this._userSelect) {

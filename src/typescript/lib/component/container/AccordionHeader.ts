@@ -27,7 +27,9 @@ class AccordionHeader extends Button<AccordionHeaderOptions> {
 
     private static _stylesCreated: boolean = false;
 
-    private _indicatorEl: HTMLSpanElement | null = null;
+    private _indicatorEl:        HTMLSpanElement | null = null;
+    private _animationDurationMs: number | null         = null;
+    private _animationEasing:     string | null         = null;
 
     /**
      * Creates CSS class rules for the indicator once, shared across all instances.
@@ -114,6 +116,10 @@ class AccordionHeader extends Button<AccordionHeaderOptions> {
         this._indicatorEl.className = 'ts-accordion-indicator';
         this._indicatorEl.textContent = '▶';
 
+        if (this._animationDurationMs !== null && this._animationEasing !== null) {
+            this._indicatorEl.style.transition = `transform ${this._animationDurationMs}ms ${this._animationEasing}`;
+        }
+
         el.appendChild(this._indicatorEl);
 
         return this;
@@ -145,6 +151,27 @@ class AccordionHeader extends Button<AccordionHeaderOptions> {
      */
     isExpanded(): boolean {
         return this._options.expanded ?? false;
+    }
+
+    /**
+     * Overrides the indicator's `transform` transition timing inline so it
+     * matches the duration and easing of the owning Accordion's panel-height
+     * transition. Called by [`Accordion`](/api/layout/classes/Accordion) (from `@jimka/typescript-ui/layout`)
+     * from `createSection`; not exposed via {@link AccordionHeaderOptions} since
+     * the timing is a wiring detail, not a configuration knob.
+     *
+     * @param durationMs - Transition duration in milliseconds.
+     * @param easing - CSS easing function string.
+     */
+    setAnimationTiming(durationMs: number, easing: string): this {
+        this._animationDurationMs = durationMs;
+        this._animationEasing = easing;
+
+        if (this._indicatorEl) {
+            this._indicatorEl.style.transition = `transform ${durationMs}ms ${easing}`;
+        }
+
+        return this;
     }
 }
 
