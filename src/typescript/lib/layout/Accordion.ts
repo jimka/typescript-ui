@@ -3,11 +3,33 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { AccordionConstraints } from "~/layout/AccordionConstraints.js";
 import { AccordionHeader } from "~/component/container/AccordionHeader.js";
+import { Animation } from "~/core/Animation.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Position } from "~/primitive/Position.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * Symmetric easing curve, shared between the panel wrapper height transition,
+ * the headers'/wrappers' `top` transitions, and the indicator transform
+ * transition so the open and close animations are exact time-reverses of each
+ * other. Encoded as a module-private constant — motion personality belongs to
+ * the layout, not the theme.
+ *
+ * The Material "standard" curve `cubic-bezier(0.4, 0, 0.2, 1)` was rejected
+ * because it's asymmetric — `easing(0.5) ≈ 0.77`, so a close shrinks ~77% of
+ * the way in the first half of the duration and crawls through the final 23%
+ * for the second half. The visual weight lands at large sizes first, which
+ * reads as "content vanished, then nothing happened." A symmetric curve has
+ * `easing(t) + easing(1 - t) = 1`, so the close mirrors the open frame-for-frame.
+ *
+ * `scaleY` was rejected as the animated property: the wrapper participates
+ * in document flow and siblings need to reflow as it grows. `height` with
+ * `contain: layout paint` scopes the reflow cost and produces the correct
+ * layout-tracking motion.
+ */
+const ACCORDION_EASING: string = "cubic-bezier(0.4, 0, 0.6, 1)";
 
 /**
  * Callback invoked when a section is opened or closed.
@@ -204,6 +226,7 @@ class Accordion extends LayoutManager {
         if (this._singleOpen) {
             for (let i = 0; i < this._openState.length; i++) {
                 if (i !== index && this._openState[i]) {
+                    this.primeWrapper(i);
                     this._openState[i] = false;
                     this._headers[i].setExpanded(false);
                     this._headers[i].getAria().setExpanded(false);
@@ -212,6 +235,7 @@ class Accordion extends LayoutManager {
             }
         }
 
+        this.primeWrapper(index);
         this._openState[index] = true;
         this._headers[index].setExpanded(true);
         this._headers[index].getAria().setExpanded(true);
@@ -231,6 +255,7 @@ class Accordion extends LayoutManager {
             return this;
         }
 
+        this.primeWrapper(index);
         this._openState[index] = false;
         this._headers[index].setExpanded(false);
         this._headers[index].getAria().setExpanded(false);
@@ -385,6 +410,13 @@ class Accordion extends LayoutManager {
         const header = new AccordionHeader(label);
 
         header.setPosition(Position.ABSOLUTE);
+        header.setAnimationTiming(this._animationDuration, ACCORDION_EASING);
+
+        // Headers slide vertically with the panels opening or closing above them
+        // — without animating `top`, headers below a toggled section snap to
+        // their final position while the panel height transitions, which reads
+        // as broken motion.
+        header.setTransition(this.buildHeaderTransition());
 
         Event.addListener(header, 'click', () => this.onHeaderClicked(index));
         Event.addListener(header, 'keydown', (e: KeyboardEvent) => this.onHeaderKeyDown(e, index));
@@ -397,8 +429,9 @@ class Accordion extends LayoutManager {
         // reflow during the height transition without affecting the rest of the document.
         wrapper.setContain("layout paint");
 
-        // CSS transitions have no Component API setter; element.style is necessary here.
-        wrapper.getElement(true).style.transition = `height ${this._animationDuration}ms ease`;
+        // `height` animates this wrapper's own grow/shrink; `top` animates wrappers
+        // below a toggled section so they slide with the headers instead of jumping.
+        wrapper.setTransition(this.buildWrapperTransition());
 
         container.getElement().appendChild(header.getElement(true));
         container.getElement().appendChild(wrapper.getElement(true));
@@ -454,12 +487,14 @@ class Accordion extends LayoutManager {
 
             y += this._headerHeight;
 
-            let panelHeight = 0;
-
-            if (isOpen) {
-                const preferred = component.getPreferredSize();
-                panelHeight = preferred ? preferred.height : 100;
-            }
+            // The content keeps its preferred height in both open and closed
+            // states so the wrapper's `overflow: hidden` does the clipping during
+            // the close animation. If the content collapses to 0 instantly while
+            // the wrapper transitions N → 0, the close reads as the content
+            // vanishing followed by an empty wrapper sliding shut.
+            const preferred = component.getPreferredSize();
+            const contentHeight = preferred ? preferred.height : 100;
+            const panelHeight = isOpen ? contentHeight : 0;
 
             wrapper.setX(insets.getLeft());
             wrapper.setY(y);
@@ -469,7 +504,7 @@ class Accordion extends LayoutManager {
             component.setX(0);
             component.setY(0);
             component.setWidth(containerWidth);
-            component.setHeight(panelHeight);
+            component.setHeight(contentHeight);
             component.doLayout();
 
             y += panelHeight;
@@ -515,6 +550,7 @@ class Accordion extends LayoutManager {
         if (this._singleOpen && !wasOpen) {
             for (let i = 0; i < this._openState.length; i++) {
                 if (i !== index && this._openState[i]) {
+                    this.primeWrapper(i);
                     this._openState[i] = false;
                     this._headers[i].setExpanded(false);
                     this._headers[i].getAria().setExpanded(false);
@@ -525,11 +561,100 @@ class Accordion extends LayoutManager {
 
         const nowOpen = !wasOpen;
 
+        this.primeWrapper(index);
         this._openState[index] = nowOpen;
         this._headers[index].setExpanded(nowOpen);
         this._headers[index].getAria().setExpanded(nowOpen);
         this._onSectionToggleCallback?.(index, nowOpen);
         this.getContainer()?.scheduleLayout();
+    }
+
+    /**
+     * Pre-promotes the panel wrapper to its own compositor layer for the
+     * duration of the active toggle so the first transition frame doesn't
+     * pay a layer-creation cost, then schedules the layer's release on
+     * `transitionend` (filtered to `height`) with a `setTimeout` fallback
+     * for the cases where `transitionend` never fires — toggling a section
+     * whose height didn't change, tab-switch mid-transition, …
+     *
+     * Under `prefers-reduced-motion: reduce` the will-change hint is skipped
+     * entirely, and the inline `transition` on every header and panel wrapper
+     * is set to `"none"` so the upcoming `doLayout` writes — wrapper height,
+     * plus the `top` of every header and wrapper below the toggled section —
+     * land instantly. Transitions are restored on the next frame so subsequent
+     * toggles animate normally.
+     *
+     * Mirrors the `transitionend`-with-fallback pattern in
+     * [`Animation.play`](/api/core/namespaces/Animation/functions/play) so
+     * the bookkeeping stays in one shape across the framework.
+     *
+     * @param index - Zero-based index of the section whose wrapper to prime.
+     */
+    private primeWrapper(index: number): void {
+        const wrapper = this._panelWrappers[index];
+
+        if (Animation.isReducedMotion()) {
+            // A toggle moves this wrapper's height AND the top of every header
+            // + wrapper below it, so all of those transitions need suppressing
+            // for the upcoming doLayout writes to land instantly.
+            for (let i = 0; i < this._headers.length; i++) {
+                this._headers[i].setTransition("none");
+                this._panelWrappers[i].setTransition("none");
+            }
+
+            requestAnimationFrame(() => {
+                for (let i = 0; i < this._headers.length; i++) {
+                    this._headers[i].setTransition(this.buildHeaderTransition());
+                    this._panelWrappers[i].setTransition(this.buildWrapperTransition());
+                }
+            });
+
+            return;
+        }
+
+        // Give the container's own height the same transition so the outer
+        // layout's instant resize (triggered when the parent re-queries our
+        // `getPreferredSize` after the open state flips) animates in lockstep
+        // with the wrappers and headers inside. Without this, the container
+        // (which defaults to `overflow: hidden`) snaps to the closed size and
+        // clips the still-animating sections — they vanish for ~75% of the
+        // duration and pop back in near the end. Cleared on cleanup so
+        // unrelated height changes (window resize, etc.) stay instant.
+        const container = this.getContainer();
+
+        container?.setTransition(`height ${this._animationDuration}ms ${ACCORDION_EASING}`);
+
+        wrapper.setWillChange("height");
+
+        Animation.afterTransition({
+            component:        wrapper,
+            property:         "height",
+            durationMs:       this._animationDuration,
+            fallbackBufferMs: 40,
+            onComplete:       () => {
+                wrapper.setWillChange(null);
+                container?.setTransition(null);
+            },
+        });
+    }
+
+    /**
+     * Builds the `top`-only transition shorthand applied to every header.
+     * Centralised so `createSection` and `primeWrapper`'s reduced-motion
+     * restore path stay in sync.
+     */
+    private buildHeaderTransition(): string {
+        return `top ${this._animationDuration}ms ${ACCORDION_EASING}`;
+    }
+
+    /**
+     * Builds the multi-property transition shorthand applied to every panel
+     * wrapper — `height` animates the wrapper's own grow/shrink, `top`
+     * animates the wrappers below a toggled section so they slide with the
+     * headers instead of jumping.
+     */
+    private buildWrapperTransition(): string {
+        return `height ${this._animationDuration}ms ${ACCORDION_EASING}, top ${this._animationDuration}ms ${ACCORDION_EASING}`;
     }
 }
 
