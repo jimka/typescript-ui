@@ -52,7 +52,7 @@ import {
     ProgressBar,
     ProgressSpinner
 } from '@jimka/typescript-ui/component/display';
-import { FieldSet } from '@jimka/typescript-ui/component/container';
+import { FieldSet, Spacer } from '@jimka/typescript-ui/component/container';
 import {
     ColumnSpec,
     Table,
@@ -143,7 +143,7 @@ class MiscPanel extends Panel {
     constructor() {
         super();
 
-        this.setLayoutManager(new HBox());
+        this.setLayoutManager(new HBox({ stretching: true }));
 
         const leftColumn  = new Component({ layoutManager: new VBox() });
         const rightColumn = new Component({ layoutManager: new VBox() });
@@ -406,6 +406,9 @@ class MiscPanel extends Panel {
             win.show();
         });
         leftColumn.addComponent(buttonTree);
+
+        const spacer = new Spacer({ flex: true });
+        leftColumn.addComponent(spacer);
 
         const buttonTreeIcons = new Button("Show tree component (icon renderer)");
         buttonTreeIcons.addActionListener(() => {
