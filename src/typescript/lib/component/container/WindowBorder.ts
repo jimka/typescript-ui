@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
 import { callable } from "~/core/Callable.js";
@@ -31,6 +32,15 @@ export interface WindowBorderOptions extends ComponentOptions {
 }
 
 /**
+ * CSS class added to the DOM element of the currently snap-targeted strip.
+ * Kept package-private (`@internal`) — the owning [`Window`](/api/core/classes/Window)
+ * toggles it through {@link WindowBorder.setSnapTarget}.
+ *
+ * @internal
+ */
+const SNAP_TARGET_CLASS = "snap-target";
+
+/**
  * A resizable window border strip component.
  *
  * Each instance represents one edge or corner of a resizable window. It listens for
@@ -46,6 +56,16 @@ class WindowBorder extends Component {
     private _dragStartListener: Function;
     private _dragStopListener: Function;
     private _fireDragListener: Function;
+    private _snapTarget: boolean = false;
+
+    // Lazy `.snap-target` rule. The slot is a fast-path cache for the wrapper
+    // returned by Component's `createStyleRule` builder, which dedupes by
+    // selector suffix — see Button's `_pressedStyleRule` for the full
+    // explanation.
+    private declare _snapTargetStyleRule?: StyleRule;
+    private get snapTargetStyleRule(): StyleRule {
+        return this._snapTargetStyleRule ??= this.createStyleRule("." + SNAP_TARGET_CLASS);
+    }
 
     constructor(direction: Direction, options?: WindowBorderOptions) {
         super({ tag: "div" });
@@ -59,6 +79,10 @@ class WindowBorder extends Component {
         this._fireDragListener = this.fireDragListeners.bind(this);
 
         Event.addListener(this, 'mousedown', this._dragStartListener);
+
+        // Queue the snap-target highlight into the lazy state rule. Materialises
+        // at render time through Component's batched style channel.
+        this.snapTargetStyleRule.set("boxShadow", "var(--ts-ui-window-snap-glow, 0 0 0 2px rgba(30, 100, 200, 0.7))");
 
         if (options) {
             this.applyOptions(options);
@@ -132,6 +156,39 @@ class WindowBorder extends Component {
     }
 
     /**
+     * Returns whether this border strip is currently flagged as the snap target.
+     *
+     * @returns True when the snap-target CSS class is applied.
+     */
+    isSnapTarget(): boolean {
+        return this._snapTarget;
+    }
+
+    /**
+     * Toggles the snap-target CSS class on this strip's DOM element. Called by
+     * the owning [`Window`](/api/core/classes/Window) while the snap modifier
+     * is held and the cursor is within the configured threshold.
+     *
+     * @param value - True to highlight this strip as the snap target.
+     *
+     * @returns This component, for method chaining.
+     */
+    setSnapTarget(value: boolean): this {
+        if (this._snapTarget === value) {
+            return this;
+        }
+
+        this._snapTarget = value;
+
+        const element = this.getElement();
+        if (element) {
+            element.classList.toggle(SNAP_TARGET_CLASS, value);
+        }
+
+        return this;
+    }
+
+    /**
      * Attaches viewport mouse/touch move and stop listeners and disables body pointer events.
      */
     onDragStart() {
@@ -155,6 +212,10 @@ class WindowBorder extends Component {
         Event.removeViewportListener(this, 'touchmove', this._fireDragListener);
 
         Util.select("body").style.pointerEvents = "";
+
+        // Drop the snap-target highlight (if any) once the drag commits, so a
+        // subsequent Ctrl-release on the same hover doesn't leave the strip glowing.
+        this.setSnapTarget(false);
     }
 
     /**
@@ -187,6 +248,10 @@ class WindowBorder extends Component {
 
         if (cursor) {
             element.style.cursor = cursor;
+        }
+
+        if (this._snapTarget) {
+            element.classList.add(SNAP_TARGET_CLASS);
         }
 
         return element;

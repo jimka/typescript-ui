@@ -88,7 +88,9 @@ export interface Theme {
     };
 
     window: {
-        shadow: string;
+        shadow      : string;
+        snapGlow    : string;
+        minDockWidth: string;
     };
 
     header: {
@@ -345,7 +347,11 @@ export const DefaultTheme: Theme = {
         toolbar: { background: '#eee',     border: '#e1e1e8' },
         button : { background: '#b8b8c3' },
     },
-    window: { shadow: '3px 3px 2px rgba(0, 0, 0, 0.4)' },
+    window: {
+        shadow      : '3px 3px 2px rgba(0, 0, 0, 0.4)',
+        snapGlow    : '0 0 0 2px rgba(30, 100, 200, 0.7)',
+        minDockWidth: '200px',
+    },
     header: { font: { size: '12px' }, padding: 5 },
     table : {
         header: {
@@ -537,7 +543,11 @@ export const DarkTheme: Theme = {
         toolbar: { background: '#2a2a2a', border: '#444' },
         button : { background: '#3a3a3a' },
     },
-    window    : { shadow: '3px 3px 2px rgba(0, 0, 0, 0.6)' },
+    window    : {
+        shadow      : '3px 3px 2px rgba(0, 0, 0, 0.6)',
+        snapGlow    : '0 0 0 2px rgba(80, 150, 240, 0.8)',
+        minDockWidth: '200px',
+    },
     header    : { font: { size: '12px' }, padding: 4 },
     table     : {
         header: {
@@ -716,6 +726,8 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-tab-toolbar-border'               : theme.tab.toolbar.border,
         '--ts-ui-tab-button-bg'                    : theme.tab.button.background,
         '--ts-ui-window-shadow'                    : theme.window.shadow,
+        '--ts-ui-window-snap-glow'                 : theme.window.snapGlow,
+        '--ts-ui-window-min-dock-width'            : theme.window.minDockWidth,
         '--ts-ui-header-font-size'                 : theme.header.font.size,
         '--ts-ui-table-header-border'              : theme.table.header.border,
         '--ts-ui-table-header-font-size'           : theme.table.header.font.size,
