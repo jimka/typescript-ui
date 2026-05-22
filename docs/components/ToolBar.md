@@ -1,0 +1,75 @@
+# ToolBar
+
+[`ToolBar`](/api/component/menubar/classes/ToolBar) is a horizontal (or vertical) strip of related controls — Buttons, ToggleButtons, ComboBoxes, [`ToolBarSeparator`](/components/ToolBarSeparator) rules — that sits at the top (or side) of a panel, window, or document.
+
+`ToolBar` extends [`Panel`](/api/core/classes/Panel) so it inherits the 4-px default insets. Layout defaults to a horizontal [`HBox`](/api/layout/classes/HBox); pass `orientation: "vertical"` (or call `setOrientation("vertical")`) to swap to a [`VBox`](/api/layout/classes/VBox). Children can be any [`Component`](/api/core/classes/Component); focusable children are auto-registered with an internal [`RovingTabIndex`](/api/core/classes/RovingTabIndex) so Arrow keys cycle focus through them.
+
+## Usage
+
+```typescript
+import { ToolBar, ToolBarSeparator } from '@jimka/typescript-ui/component/menubar';
+import { Button, ToggleButton }      from '@jimka/typescript-ui/component/button';
+
+const bar = new ToolBar();
+
+const bold      = new ToggleButton('B');
+const italic    = new ToggleButton('I');
+const underline = new ToggleButton('U');
+
+bar.addComponent(bold);
+bar.addComponent(italic);
+bar.addComponent(underline);
+bar.addComponent(new ToolBarSeparator());
+bar.addComponent(new Button('Cut'));
+bar.addComponent(new Button('Copy'));
+bar.addComponent(new Button('Paste'));
+
+parent.addComponent(bar);
+```
+
+## Options
+
+| Field | Default | Purpose |
+| --- | --- | --- |
+| `orientation` | `"horizontal"` | `"horizontal"` packs children with [`HBox`](/api/layout/classes/HBox); `"vertical"` swaps to [`VBox`](/api/layout/classes/VBox). |
+| `compact` | `false` | When `true`, insets shrink to `(2, 2, 2, 2)` and child spacing collapses to `0`. |
+| `overflow` | `"clip"` | v1 ships `"clip"` only. `"menu"` is accepted as a forward-compat placeholder; a follow-up plan will render a trailing dropdown of overflowed children. |
+
+## Setters
+
+- `setOrientation(value)` — flips the layout manager between [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox), preserving child spacing. The trailing-edge border flips from bottom to right (or vice versa). Existing [`ToolBarSeparator`](/components/ToolBarSeparator) children are **not** auto-flipped — recreate them with the matching orientation if needed.
+- `setCompact(value)` — toggles between the default insets / gap and the compact `(2, 2, 2, 2)` / `0` pair.
+- `setOverflow(value)` — caches the strategy. Currently behaves as `"clip"` regardless of value.
+
+## Keyboard nav
+
+- Tab enters the toolbar at the first focusable child.
+- Arrow Right / Left (horizontal) or Arrow Down / Up (vertical) cycle focus through focusable children.
+- Non-focusable children (separators, plain spacers) are skipped.
+
+`RovingTabIndex.add` snapshots focusability at insertion time. A child whose tabindex changes after `addComponent` (e.g. a disabled button later re-enabled) will not be retroactively added to the roving group.
+
+## Theming
+
+`ToolBar` reads five CSS custom properties:
+
+| Property | Purpose |
+| --- | --- |
+| `--ts-ui-toolbar-bg` | Toolbar background. |
+| `--ts-ui-toolbar-border` | Trailing-edge border colour. |
+| `--ts-ui-toolbar-padding` | Outer inset. |
+| `--ts-ui-toolbar-gap` | Spacing between child controls. |
+| `--ts-ui-toolbar-separator-color` | Used by [`ToolBarSeparator`](/components/ToolBarSeparator). |
+
+All five are populated by the [`Theme`](/api/core/interfaces/Theme) `toolBar` block.
+
+## Notes
+
+- A `ToolBar` is layout-passive — the parent decides where it sits. Sticky, dockable, and floating modes are explicit non-goals.
+- For a flexible-width gap between groups of children, add a [`Spacer.flex()`](/api/component/container/classes/Spacer). The underlying [`HBox`](/api/layout/classes/HBox) / [`VBox`](/api/layout/classes/VBox) weight system divides the leftover row/column between any flex spacers.
+
+## See also
+
+- [API: ToolBar](/api/component/menubar/classes/ToolBar)
+- [`ToolBarSeparator`](/components/ToolBarSeparator) — divider rule
+- [`MenuBar`](/components/MenuBar) — sister component for top-of-window menus

@@ -107,6 +107,10 @@ export default defineConfig({
                     { text: 'NumberedList',    link: '/components/NumberedList' },
                     { text: 'Option',          link: '/components/Option' },
                 ] },
+                { text: 'Toolbar', collapsed: false, items: [
+                    { text: 'ToolBar',          link: '/components/ToolBar' },
+                    { text: 'ToolBarSeparator', link: '/components/ToolBarSeparator' },
+                ] },
                 { text: 'Menus', collapsed: false, items: [
                     { text: 'MenuBar',              link: '/components/MenuBar' },
                     { text: 'MenuBarButton',        link: '/components/MenuBarButton' },
