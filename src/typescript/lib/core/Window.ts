@@ -168,7 +168,7 @@ class Window extends Panel<WindowOptions> {
     private _maximizable:       boolean = true;
     private _maximizeBounds:    WindowMaximizeBounds = "viewport";
     private _bodyHost:          Component | null = null;
-    private _stateAnimFrameId:  number | null = null;
+    private _stateAnimHandle:   Animation.TweenHandle | null = null;
     private _viewportResizeBound: boolean = false;
 
     private _snapResizeEnabled: boolean = true;
@@ -452,10 +452,9 @@ class Window extends Panel<WindowOptions> {
             cancelAnimationFrame(this._animationFrameId);
             this._animationFrameId = null;
         }
-        if (this._stateAnimFrameId !== null) {
-            cancelAnimationFrame(this._stateAnimFrameId);
-            this._stateAnimFrameId = null;
-        }
+
+        this._stateAnimHandle?.cancel();
+        this._stateAnimHandle = null;
 
         // Drop any pending factory / onReady closure so its captured
         // references are free for GC if the window is closed before show()
@@ -1232,10 +1231,8 @@ class Window extends Panel<WindowOptions> {
      * by skipping straight to the final rect in one frame.
      */
     private animateRect(target: WindowRect, onDone?: () => void): void {
-        if (this._stateAnimFrameId !== null) {
-            cancelAnimationFrame(this._stateAnimFrameId);
-            this._stateAnimFrameId = null;
-        }
+        this._stateAnimHandle?.cancel();
+        this._stateAnimHandle = null;
 
         const commit = (rect: WindowRect): void => {
             this.setAutoCommitStyle(false);
@@ -1247,48 +1244,16 @@ class Window extends Panel<WindowOptions> {
             this.setAutoCommitStyle(true);
         };
 
-        if (Animation.isReducedMotion()) {
-            commit(target);
-            if (onDone) {
-                onDone();
-            }
-            return;
-        }
-
-        const start = this.currentRect();
-        const startTime = performance.now();
-        const duration = WINDOW_ANIM_DURATION_MS;
-
-        const ease = (t: number): number => {
-            // Cubic ease-out: 1 - (1 - t)^3
-            const u = 1 - t;
-            return 1 - u * u * u;
-        };
-
-        const step = (now: number): void => {
-            const elapsed = now - startTime;
-            const t = Math.min(1, elapsed / duration);
-            const k = ease(t);
-
-            const rect: WindowRect = {
-                x:      start.x      + (target.x      - start.x)      * k,
-                y:      start.y      + (target.y      - start.y)      * k,
-                width:  start.width  + (target.width  - start.width)  * k,
-                height: start.height + (target.height - start.height) * k,
-            };
-            commit(rect);
-
-            if (t < 1) {
-                this._stateAnimFrameId = requestAnimationFrame(step);
-            } else {
-                this._stateAnimFrameId = null;
-                if (onDone) {
-                    onDone();
-                }
-            }
-        };
-
-        this._stateAnimFrameId = requestAnimationFrame(step);
+        this._stateAnimHandle = Animation.tween<WindowRect>({
+            from:       this.currentRect(),
+            to:         target,
+            durationMs: WINDOW_ANIM_DURATION_MS,
+            onStep:     commit,
+            onComplete: (): void => {
+                this._stateAnimHandle = null;
+                onDone?.();
+            },
+        });
     }
 
     // ----- viewport-resize handling while maximized -----

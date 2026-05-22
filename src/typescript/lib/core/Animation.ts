@@ -219,6 +219,121 @@ export namespace Animation {
         setTimeout(finish, config.durationMs + (config.fallbackBufferMs ?? 40));
     }
 
+    /**
+     * Configuration for {@link Animation.tween}.
+     *
+     * @category Core
+     */
+    export interface TweenConfig<T extends { [K in keyof T]: number }> {
+        /** Starting values, keyed by property name. */
+        from: T;
+
+        /** Ending values. Must carry the same keys as `from`. */
+        to: T;
+
+        /** Tween duration in milliseconds. */
+        durationMs: number;
+
+        /**
+         * Easing function mapping linear progress `t` (0..1) to eased progress.
+         * Defaults to cubic ease-out (`1 - (1 - t)^3`).
+         */
+        easing?: (t: number) => number;
+
+        /**
+         * Invoked on every frame with the interpolated values for that tick.
+         * Use this to route the values through typed setters or any other
+         * write channel — `tween` does not assume DOM access.
+         */
+        onStep: (values: T) => void;
+
+        /** Invoked once when the tween completes naturally. Not called on cancel. */
+        onComplete?: () => void;
+    }
+
+    /**
+     * Handle returned by {@link Animation.tween}. Call `cancel()` to stop the
+     * tween mid-flight; subsequent calls are no-ops.
+     *
+     * @category Core
+     */
+    export interface TweenHandle {
+        /** Stops the rAF loop. Idempotent. */
+        cancel(): void;
+    }
+
+    /**
+     * Drives a JS-side numeric tween via `requestAnimationFrame`, interpolating
+     * every key in `from` toward the matching key in `to` over `durationMs`.
+     *
+     * @param config - Start/end values, duration, easing, step / complete hooks.
+     * @returns A handle whose `cancel()` aborts the rAF loop.
+     *
+     * @remarks Honours `prefers-reduced-motion: reduce` by invoking
+     * `onStep(to)` and `onComplete` synchronously, then returning a no-op
+     * handle. Each frame's interpolated values are passed as a freshly
+     * allocated object — callers may keep the reference. Use this for
+     * numeric tweens that have to route through the framework's typed setters
+     * (window-rect transitions, scroll-to, animated layout swaps); for raw
+     * CSS-property transitions use {@link Animation.play} instead.
+     */
+    export function tween<T extends { [K in keyof T]: number }>(config: TweenConfig<T>): TweenHandle {
+        if (isReducedMotion()) {
+            config.onStep(config.to);
+            config.onComplete?.();
+
+            return { cancel: (): void => {} };
+        }
+
+        const startTime = performance.now();
+        const ease      = config.easing ?? defaultTweenEase;
+
+        let frameId: number | null = null;
+
+        const step = (now: number): void => {
+            const elapsed = now - startTime;
+            const t       = Math.min(1, elapsed / config.durationMs);
+            const k       = ease(t);
+
+            const values = {} as T;
+            for (const key in config.from) {
+                const f      = config.from[key];
+                const target = config.to[key];
+                values[key]  = (f + (target - f) * k) as T[Extract<keyof T, string>];
+            }
+
+            config.onStep(values);
+
+            if (t < 1) {
+                frameId = requestAnimationFrame(step);
+
+                return;
+            }
+
+            frameId = null;
+            config.onComplete?.();
+        };
+
+        frameId = requestAnimationFrame(step);
+
+        return {
+            cancel: (): void => {
+                if (frameId === null) {
+                    return;
+                }
+
+                cancelAnimationFrame(frameId);
+                frameId = null;
+            },
+        };
+    }
+
+    const defaultTweenEase = (t: number): number => {
+        const u = 1 - t;
+
+        return 1 - u * u * u;
+    };
+
     /** Default duration of the cross-fade between spinner and materialized content. */
     const MATERIALIZE_FADE_DURATION_MS = 160;
 
