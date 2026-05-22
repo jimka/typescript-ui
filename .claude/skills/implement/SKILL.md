@@ -7,7 +7,7 @@ description: Implement a pre-generated implementation plan. Use when the user as
 
 Before producing any code or commits, read in full:
 
-- [`.claude/skills/_shared/code-conventions.md`](../_shared/code-conventions.md) — Code style, JSDoc, Framework rules, deferred DOM writes.
+- [`CODE_CONVENTIONS.md`](../../../CODE_CONVENTIONS.md) — Code style, JSDoc, Framework rules, deferred DOM writes.
 - [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — Documentation updates, JSDoc cross-bucket links, typedoc-callable plugin.
 - [`.claude/skills/_shared/graphify.md`](../_shared/graphify.md) — Use the knowledge graph (not grep) to investigate the codebase; run `graphify update .` once code edits land.
 - [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
@@ -80,7 +80,7 @@ Invocation: `Agent({ subagent_type: "general-purpose", description: "Implementat
 
 Prompt template:
 
-> Review the implementation of plan `plans/implemented/<slug>.md` on branch `feature/<slug>`. Start by reading the plan in full, then read `.claude/skills/_shared/code-conventions.md` and `.claude/skills/_shared/docs-conventions.md` for the project's authoritative rules. Then run `git diff master...HEAD` and audit the diff against those rules. Verify every entry in the plan's Ordered Implementation Steps and Files to Create/Modify/Delete table is addressed.
+> Review the implementation of plan `plans/implemented/<slug>.md` on branch `feature/<slug>`. Start by reading the plan in full, then read `CODE_CONVENTIONS.md` and `.claude/skills/_shared/docs-conventions.md` for the project's authoritative rules. Then run `git diff master...HEAD` and audit the diff against those rules. Verify every entry in the plan's Ordered Implementation Steps and Files to Create/Modify/Delete table is addressed.
 >
 > Return two lists, citing file paths and line numbers:
 > - **BLOCKING:** correctness bugs, missing plan items, framework-rule violations, regressions, type errors, doc-build breakage.

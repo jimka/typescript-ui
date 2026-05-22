@@ -15,6 +15,51 @@ import { Panel, PanelOptions } from "~/core/Panel.js";
 import { callable } from "~/core/Callable.js";
 
 const WINDOW_ANIM_DURATION_MS: number = 150;
+const SNAP_DOCK_GAP_PX:         number = 4;
+const DEFAULT_MIN_DOCK_WIDTH_PX: number = 200;
+
+/**
+ * Lifecycle state for {@link Window}. The three values are mutually
+ * exclusive — a window is always exactly one of:
+ *
+ * - `"normal"`     — free-floating; user can drag and resize it.
+ * - `"minimized"`  — docked along the bottom of the viewport at header height.
+ * - `"maximized"`  — filling the viewport (or its parent, per `maximizeBounds`).
+ *
+ * The state field carries no presentation state; the corresponding rect and
+ * body-visibility are computed by `Window`'s state-transition switch.
+ *
+ * @category Core
+ */
+export type WindowState = "normal" | "minimized" | "maximized";
+
+/**
+ * Snap-resize modifier key. Matches the matching property names exposed by
+ * `KeyboardEvent`.
+ *
+ * @category Core
+ */
+export type WindowSnapModifier = "ctrl" | "meta" | "alt" | "shift";
+
+/**
+ * Where to fill when entering the `"maximized"` state.
+ *
+ * - `"viewport"` — fill `window.innerWidth` / `window.innerHeight` (default;
+ *   matches the natural mount point since `Window` appends itself directly to
+ *   `document.documentElement`).
+ * - `"parent"`   — fill the window element's `parentElement` rect. Use when
+ *   the window has been re-parented into a regular Panel.
+ *
+ * @category Core
+ */
+export type WindowMaximizeBounds = "viewport" | "parent";
+
+interface WindowRect {
+    x:      number;
+    y:      number;
+    width:  number;
+    height: number;
+}
 
 /**
  * Construction-time options for {@link Window}.
@@ -22,14 +67,21 @@ const WINDOW_ANIM_DURATION_MS: number = 150;
  * @category Core
  */
 export interface WindowOptions extends PanelOptions {
-    headerText?:     string;
-    glyph?:          string;
-    x?:              number;
-    y?:              number;
-    width?:          number;
-    height?:         number;
-    contentFactory?: () => Component;
-    onReady?:        (component: Component) => void;
+    headerText?:        string;
+    glyph?:             string;
+    x?:                 number;
+    y?:                 number;
+    width?:             number;
+    height?:            number;
+    contentFactory?:    () => Component;
+    onReady?:           (component: Component) => void;
+    minimizable?:       boolean;
+    maximizable?:       boolean;
+    maximizeBounds?:    WindowMaximizeBounds;
+    windowState?:       WindowState;
+    snapResizeEnabled?: boolean;
+    snapThreshold?:     number;
+    snapModifier?:      WindowSnapModifier;
 }
 
 /**
@@ -56,7 +108,11 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
  * A floating, resizable, and draggable window component.
  *
  * Renders a titled panel with eight border-handle strips that the user can
- * drag to resize the window from any edge or corner.
+ * drag to resize the window from any edge or corner. Supports a three-state
+ * lifecycle (`"normal"` / `"minimized"` / `"maximized"`) accessed through
+ * {@link Window.setWindowState}, plus an opt-in Ctrl-snap resize affordance
+ * that highlights the nearest border within a 12-pixel threshold so the
+ * 4-pixel-wide grab strips are easier to land on.
  *
  * @category Core
  */
@@ -104,8 +160,33 @@ class Window extends Panel<WindowOptions> {
     private _dragDY: number = 0;
     private _contentFactory: (() => Component) | null = null;
     private _contentReadyCallback: ((component: Component) => void) | null = null;
+
+    private _windowState:       WindowState = "normal";
+    private _preMinimizeState:  "normal" | "maximized" = "normal";
+    private _restoreRect:       WindowRect | null = null;
+    private _minimizable:       boolean = true;
+    private _maximizable:       boolean = true;
+    private _maximizeBounds:    WindowMaximizeBounds = "viewport";
+    private _bodyHost:          Component | null = null;
+    private _stateAnimHandle:   Animation.TweenHandle | null = null;
+    private _viewportResizeBound: boolean = false;
+
+    private _snapResizeEnabled: boolean = true;
+    private _snapThreshold:     number = 12;
+    private _snapModifier:      WindowSnapModifier = "ctrl";
+    private _snapEnabled:       boolean = false;
+    private _snapKeysAttached:  boolean = false;
+    private _snapMoveAttached:  boolean = false;
+    private _snapTargetBorder:  WindowBorder | null = null;
+
     private readonly _boundOnDrag: (e: MouseEvent) => void = (e: MouseEvent) => this.onDrag(e);
     private readonly _boundOnMouseUp: () => void = () => this.onMouseUp();
+    private readonly _boundOnSnapKeyDown:   (e: KeyboardEvent) => void = (e) => this.onSnapKeyDown(e);
+    private readonly _boundOnSnapKeyUp:     (e: KeyboardEvent) => void = (e) => this.onSnapKeyUp(e);
+    private readonly _boundOnSnapMouseMove: (e: MouseEvent)    => void = (e) => this.onSnapMouseMove(e);
+    private readonly _boundOnSnapMouseDown: (e: MouseEvent)    => void = (e) => this.onSnapMouseDown(e);
+    private readonly _boundOnViewportResize: () => void                = () => this.onViewportResize();
+    private readonly _boundOnSnapBlur:       () => void                = () => this.clearSnapState();
 
     constructor(headerText: string, options?: WindowOptions) {
         // Merge defaults → consumer options. `headerText`, `glyph`,
@@ -150,6 +231,9 @@ class Window extends Panel<WindowOptions> {
             ignoreParentInsets: true
         });
         this._header.addExitButtonListener(() => this.onExitAction());
+        this._header.addMinimizeButtonListener(() => this.toggleMinimize());
+        this._header.addMaximizeButtonListener(() => this.toggleMaximize());
+        this._header.addHeaderDoubleClickListener((e: MouseEvent) => this.onHeaderDoubleClick(e));
 
         this.setVisible(false);
         // Resizable — size containment unsafe; layout containment scopes reflow to the window subtree.
@@ -167,6 +251,15 @@ class Window extends Panel<WindowOptions> {
         if (this._options.contentFactory !== undefined) {
             this.setContentFactory(this._options.contentFactory, this._options.onReady);
         }
+
+        // Late-built dispatch for state-affecting flags: these mutate the
+        // header's button visibility (minimizable / maximizable) or trigger
+        // a tween (windowState), so they must run after `this._header` is
+        // wired and the geometry fields are initialised.
+        if (this._options.minimizable    !== undefined) this.setMinimizable(this._options.minimizable);
+        if (this._options.maximizable    !== undefined) this.setMaximizable(this._options.maximizable);
+        if (this._options.maximizeBounds !== undefined) this.setMaximizeBounds(this._options.maximizeBounds);
+        if (this._options.windowState    !== undefined) this.setWindowState(this._options.windowState);
     }
 
     /**
@@ -192,6 +285,19 @@ class Window extends Panel<WindowOptions> {
         if (options.y      !== undefined) this.setY(options.y);
         if (options.width  !== undefined) this.setWidth(options.width);
         if (options.height !== undefined) this.setHeight(options.height);
+
+        // State-affecting flags are written pure into `_options` here and
+        // dispatched late from the constructor body — the corresponding
+        // setters need `this._header` (minimizable / maximizable) or geometry
+        // (windowState) which only exist after super.
+        if (options.minimizable       !== undefined) this._options.minimizable       = options.minimizable;
+        if (options.maximizable       !== undefined) this._options.maximizable       = options.maximizable;
+        if (options.maximizeBounds    !== undefined) this._options.maximizeBounds    = options.maximizeBounds;
+        if (options.windowState       !== undefined) this._options.windowState       = options.windowState;
+
+        if (options.snapResizeEnabled !== undefined) this.setSnapResizeEnabled(options.snapResizeEnabled);
+        if (options.snapThreshold     !== undefined) this.setSnapThreshold(options.snapThreshold);
+        if (options.snapModifier      !== undefined) this.setSnapModifier(options.snapModifier);
 
         return this;
     }
@@ -256,8 +362,19 @@ class Window extends Panel<WindowOptions> {
                 host:             this,
                 factory:          factory,
                 spinnerComponent: spinner,
-                onReady:          onReady ?? undefined
+                onReady:          (component: Component) => {
+                    this._bodyHost = component;
+                    if (onReady) {
+                        onReady(component);
+                    }
+                }
             });
+        } else {
+            this._bodyHost = this.findBodyHost();
+        }
+
+        if (this._snapResizeEnabled) {
+            this.attachSnapKeyboardListeners();
         }
 
         return this;
@@ -336,11 +453,19 @@ class Window extends Panel<WindowOptions> {
             this._animationFrameId = null;
         }
 
+        this._stateAnimHandle?.cancel();
+        this._stateAnimHandle = null;
+
         // Drop any pending factory / onReady closure so its captured
         // references are free for GC if the window is closed before show()
         // ran the factory.
         this._contentFactory       = null;
         this._contentReadyCallback = null;
+
+        this.detachSnapKeyboardListeners();
+        this.detachSnapMouseListeners();
+        this.detachViewportResizeListener();
+        this.clearSnapTargetBorder();
 
         if (Window.activeWindow === this) {
             Window.activeWindow = null;
@@ -351,6 +476,10 @@ class Window extends Panel<WindowOptions> {
         if (Window.openWindows.size === 0) {
             window.removeEventListener('mousedown', Window.deactivateIfOutside, true);
         }
+
+        // Re-layout the dock so any sibling minimized windows close any gap
+        // this one's removal left behind.
+        Window.relayoutMinimizedStack();
 
         const el = this.getElement();
         const finalize = (): void => {
@@ -387,9 +516,340 @@ class Window extends Panel<WindowOptions> {
     }
 
     /**
+     * Returns the current lifecycle state (`"normal"`, `"minimized"`, or
+     * `"maximized"`).
+     *
+     * @returns The current {@link WindowState}.
+     */
+    getWindowState(): WindowState {
+        return this._windowState;
+    }
+
+    /**
+     * Sets the lifecycle state. Tweens geometry between the current rect and
+     * the rect implied by the target state over `WINDOW_ANIM_DURATION_MS`.
+     * Under `prefers-reduced-motion: reduce` the tween collapses to a single
+     * synchronous commit.
+     *
+     * @param state - One of `"normal"`, `"minimized"`, or `"maximized"`.
+     *
+     * @returns This window, for method chaining.
+     *
+     * @remarks Round-trips through `_restoreRect`: leaving `"normal"` caches
+     * the current rect; returning to `"normal"` reads it back and clears the
+     * cache. While minimized or maximized, drag and resize are suppressed
+     * (see `onMouseDown` and `onResize` early-returns).
+     */
+    setWindowState(state: WindowState): this {
+        const from = this._windowState;
+        if (from === state) {
+            return this;
+        }
+
+        // If a drag is in flight, commit it first so `_restoreRect` captures
+        // the post-drag position instead of the stale start position.
+        if (this._animationFrameId !== null) {
+            cancelAnimationFrame(this._animationFrameId);
+            this._animationFrameId = null;
+        }
+
+        this._options.windowState = state;
+        this._windowState         = state;
+
+        if (state === "normal") {
+            // Restore body visibility BEFORE the tween starts so the
+            // animation plays against the body content, not against an
+            // empty rect.
+            this.setBodyHostDisplayed(true);
+            this._header.setMaximizeButtonGlyph("window-maximize");
+
+            const target = this._restoreRect ?? this.currentRect();
+            this._restoreRect = null;
+
+            this.detachViewportResizeListener();
+            this.animateRect(target, () => Window.relayoutMinimizedStack());
+        } else if (state === "minimized") {
+            if (from === "normal") {
+                this._restoreRect = this.currentRect();
+            }
+            this._preMinimizeState = from === "maximized" ? "maximized" : "normal";
+            this._header.setMaximizeButtonGlyph("window-maximize");
+            this.detachViewportResizeListener();
+
+            const target = this.computeDockRect();
+            this.animateRect(target, () => {
+                this.setBodyHostDisplayed(false);
+                Window.relayoutMinimizedStack();
+            });
+        } else {
+            // maximized
+            if (from === "normal") {
+                this._restoreRect = this.currentRect();
+            }
+            this.setBodyHostDisplayed(true);
+            this._header.setMaximizeButtonGlyph("window-restore");
+
+            const target = this.computeMaximizeRect();
+            this.animateRect(target, () => {
+                this.attachViewportResizeListener();
+                Window.relayoutMinimizedStack();
+            });
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether the window is currently in the `"maximized"` state.
+     *
+     * @returns True when the current state is `"maximized"`.
+     */
+    isMaximized(): boolean {
+        return this._windowState === "maximized";
+    }
+
+    /**
+     * Returns whether the window is currently in the `"minimized"` state.
+     *
+     * @returns True when the current state is `"minimized"`.
+     */
+    isMinimized(): boolean {
+        return this._windowState === "minimized";
+    }
+
+    /**
+     * Toggles between `"normal"` and `"minimized"`. No-ops when the window is
+     * not minimizable, or when transitioning from `"maximized"` (use
+     * `setWindowState("minimized")` directly for that path).
+     */
+    private toggleMinimize(): void {
+        if (!this._minimizable) {
+            return;
+        }
+
+        if (this._windowState === "minimized") {
+            this.setWindowState("normal");
+        } else {
+            this.setWindowState("minimized");
+        }
+    }
+
+    /**
+     * Toggles between `"normal"` and `"maximized"`. No-ops when the window is
+     * not maximizable.
+     */
+    private toggleMaximize(): void {
+        if (!this._maximizable) {
+            return;
+        }
+
+        if (this._windowState === "maximized") {
+            this.setWindowState("normal");
+        } else {
+            this.setWindowState("maximized");
+        }
+    }
+
+    /**
+     * Handles `dblclick` on the header bar. When minimized, restores to the
+     * pre-minimize state (`"normal"` or `"maximized"`); otherwise toggles
+     * maximize. Clicks on the trailing buttons are ignored — they own their
+     * own handlers.
+     */
+    private onHeaderDoubleClick(e: MouseEvent): void {
+        const target = e.target as Node | null;
+        if (target && this.targetIsInTrailingButton(target)) {
+            return;
+        }
+
+        if (this._windowState === "minimized") {
+            this.setWindowState(this._preMinimizeState);
+            return;
+        }
+
+        if (!this._maximizable) {
+            return;
+        }
+        this.toggleMaximize();
+    }
+
+    private targetIsInTrailingButton(target: Node): boolean {
+        const buttons: Array<HTMLElement | undefined> = [
+            this._header.getMinimizeButtonElement(),
+            this._header.getMaximizeButtonElement(),
+            this._header.getExitButtonElement(),
+        ];
+        for (const btn of buttons) {
+            if (btn && btn.contains(target)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Toggles whether the minimize button is visible in the title bar.
+     *
+     * @param value - True to show the minimize button.
+     *
+     * @returns This window, for method chaining.
+     */
+    setMinimizable(value: boolean): this {
+        this._minimizable = value;
+        this._options.minimizable = value;
+        this._header.setMinimizable(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the minimize button is visible.
+     *
+     * @returns True when the minimize button is shown.
+     */
+    isMinimizable(): boolean {
+        return this._minimizable;
+    }
+
+    /**
+     * Toggles whether the maximize button is visible in the title bar.
+     *
+     * @param value - True to show the maximize button.
+     *
+     * @returns This window, for method chaining.
+     */
+    setMaximizable(value: boolean): this {
+        this._maximizable = value;
+        this._options.maximizable = value;
+        this._header.setMaximizable(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the maximize button is visible.
+     *
+     * @returns True when the maximize button is shown.
+     */
+    isMaximizable(): boolean {
+        return this._maximizable;
+    }
+
+    /**
+     * Sets the rect the window fills when entering the `"maximized"` state.
+     *
+     * @param value - `"viewport"` to fill the browser viewport,
+     *                `"parent"` to fill the window element's parent rect.
+     *
+     * @returns This window, for method chaining.
+     */
+    setMaximizeBounds(value: WindowMaximizeBounds): this {
+        this._maximizeBounds = value;
+        this._options.maximizeBounds = value;
+
+        return this;
+    }
+
+    /**
+     * Returns the current maximize-bounds policy.
+     *
+     * @returns Either `"viewport"` or `"parent"`.
+     */
+    getMaximizeBounds(): WindowMaximizeBounds {
+        return this._maximizeBounds;
+    }
+
+    /**
+     * Enables or disables the Ctrl-snap resize affordance. When disabled, the
+     * keyboard listeners are detached and the snap-target border (if any) is
+     * cleared.
+     *
+     * @param value - True to enable snap-to-edge detection.
+     *
+     * @returns This window, for method chaining.
+     */
+    setSnapResizeEnabled(value: boolean): this {
+        if (this._snapResizeEnabled === value) {
+            return this;
+        }
+
+        this._snapResizeEnabled = value;
+        this._options.snapResizeEnabled = value;
+
+        if (!value) {
+            this.clearSnapState();
+            this.detachSnapKeyboardListeners();
+        } else if (this.getElement()) {
+            this.attachSnapKeyboardListeners();
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether the snap-resize affordance is enabled.
+     *
+     * @returns True when snap-resize is enabled.
+     */
+    isSnapResizeEnabled(): boolean {
+        return this._snapResizeEnabled;
+    }
+
+    /**
+     * Sets the cursor-to-edge distance (in pixels) under which a border strip
+     * is treated as the snap target while the modifier key is held.
+     *
+     * @param px - Threshold distance in pixels.
+     *
+     * @returns This window, for method chaining.
+     */
+    setSnapThreshold(px: number): this {
+        this._snapThreshold = px;
+        this._options.snapThreshold = px;
+
+        return this;
+    }
+
+    /**
+     * Returns the current snap-detection threshold in pixels.
+     *
+     * @returns The threshold in pixels.
+     */
+    getSnapThreshold(): number {
+        return this._snapThreshold;
+    }
+
+    /**
+     * Sets the modifier key that activates snap-resize detection.
+     *
+     * @param key - `"ctrl"`, `"meta"`, `"alt"`, or `"shift"`.
+     *
+     * @returns This window, for method chaining.
+     */
+    setSnapModifier(key: WindowSnapModifier): this {
+        this._snapModifier = key;
+        this._options.snapModifier = key;
+
+        return this;
+    }
+
+    /**
+     * Returns the modifier key currently activating snap-resize detection.
+     *
+     * @returns One of `"ctrl"`, `"meta"`, `"alt"`, `"shift"`.
+     */
+    getSnapModifier(): WindowSnapModifier {
+        return this._snapModifier;
+    }
+
+    /**
      * Attaches document-level move and mouseup listeners to begin dragging the window.
      */
     onMouseDown() {
+        if (this._windowState !== "normal") {
+            return;
+        }
+
         // Snapshot the current position so onDrag's accumulator runs from a fixed origin
         // and onMouseUp can commit (origin + accumulated delta) back to left/top.
         this._dragStartLeft = this.getX();
@@ -416,6 +876,10 @@ class Window extends Panel<WindowOptions> {
      * @param e - The mouse event carrying the movement delta.
      */
     onResize(border: WindowBorder, e: MouseEvent) {
+        if (this._windowState !== "normal") {
+            return;
+        }
+
         e.preventDefault();
 
         this._pendingMouseDX += e.movementX;
@@ -650,6 +1114,359 @@ class Window extends Panel<WindowOptions> {
         element.appendChild(this._borderComponents.southwest.getElement(true));
 
         return element;
+    }
+
+    // ----- state-transition helpers -----
+
+    private currentRect(): WindowRect {
+        return {
+            x:      this.getX(),
+            y:      this.getY(),
+            width:  this.getWidth(),
+            height: this.getHeight(),
+        };
+    }
+
+    private findBodyHost(): Component | null {
+        // The first non-header child component, if any. Used to hide the body
+        // while minimized so the docked strip shows only the title bar.
+        const children = this.getComponents();
+        for (const child of children) {
+            if (child !== this._header) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    private setBodyHostDisplayed(displayed: boolean): void {
+        if (!this._bodyHost) {
+            this._bodyHost = this.findBodyHost();
+        }
+        if (this._bodyHost) {
+            this._bodyHost.setDisplayed(displayed);
+        }
+    }
+
+    private computeMaximizeRect(): WindowRect {
+        if (this._maximizeBounds === "parent") {
+            const el = this.getElement();
+            const parent = el ? el.parentElement : null;
+            if (parent && parent !== document.documentElement) {
+                const r = parent.getBoundingClientRect();
+                return { x: 0, y: 0, width: r.width, height: r.height };
+            }
+        }
+
+        return {
+            x:      0,
+            y:      0,
+            width:  window.innerWidth,
+            height: window.innerHeight,
+        };
+    }
+
+    private computeDockRect(): WindowRect {
+        const dockWidth = this.getMinDockWidth();
+        const slotIndex = this.computeDockSlotIndex();
+        const headerHeight = this._header.getHeight() || 26;
+        const x = slotIndex * (dockWidth + SNAP_DOCK_GAP_PX);
+        const y = window.innerHeight - headerHeight;
+
+        return { x, y, width: dockWidth, height: headerHeight };
+    }
+
+    private getMinDockWidth(): number {
+        const cssVar = getComputedStyle(document.documentElement)
+            .getPropertyValue("--ts-ui-window-min-dock-width").trim();
+        if (cssVar) {
+            const parsed = parseFloat(cssVar);
+            if (!isNaN(parsed) && parsed > 0) {
+                return parsed;
+            }
+        }
+
+        return DEFAULT_MIN_DOCK_WIDTH_PX;
+    }
+
+    private computeDockSlotIndex(): number {
+        let index = 0;
+        for (const win of Window.openWindows) {
+            if (win === this) {
+                return index;
+            }
+            if (win._windowState === "minimized") {
+                index++;
+            }
+        }
+        return index;
+    }
+
+    private static relayoutMinimizedStack(): void {
+        let index = 0;
+        for (const win of Window.openWindows) {
+            if (win._windowState !== "minimized") {
+                continue;
+            }
+            const dockWidth   = win.getMinDockWidth();
+            const headerHeight = win._header.getHeight() || 26;
+            const x = index * (dockWidth + SNAP_DOCK_GAP_PX);
+            const y = window.innerHeight - headerHeight;
+
+            win.setAutoCommitStyle(false);
+            win.setX(x);
+            win.setY(y);
+            win.setWidth(dockWidth);
+            win.setHeight(headerHeight);
+            win.doLayout();
+            win.setAutoCommitStyle(true);
+
+            index++;
+        }
+    }
+
+    /**
+     * Tweens the window's `x`, `y`, `width`, `height` from the current rect to
+     * `target` over `WINDOW_ANIM_DURATION_MS`. Honours `prefers-reduced-motion`
+     * by skipping straight to the final rect in one frame.
+     */
+    private animateRect(target: WindowRect, onDone?: () => void): void {
+        this._stateAnimHandle?.cancel();
+        this._stateAnimHandle = null;
+
+        const commit = (rect: WindowRect): void => {
+            this.setAutoCommitStyle(false);
+            this.setX(rect.x);
+            this.setY(rect.y);
+            this.setWidth(rect.width);
+            this.setHeight(rect.height);
+            this.doLayout();
+            this.setAutoCommitStyle(true);
+        };
+
+        this._stateAnimHandle = Animation.tween<WindowRect>({
+            from:       this.currentRect(),
+            to:         target,
+            durationMs: WINDOW_ANIM_DURATION_MS,
+            onStep:     commit,
+            onComplete: (): void => {
+                this._stateAnimHandle = null;
+                onDone?.();
+            },
+        });
+    }
+
+    // ----- viewport-resize handling while maximized -----
+
+    private attachViewportResizeListener(): void {
+        if (this._viewportResizeBound) {
+            return;
+        }
+        window.addEventListener("resize", this._boundOnViewportResize);
+        this._viewportResizeBound = true;
+    }
+
+    private detachViewportResizeListener(): void {
+        if (!this._viewportResizeBound) {
+            return;
+        }
+        window.removeEventListener("resize", this._boundOnViewportResize);
+        this._viewportResizeBound = false;
+    }
+
+    private onViewportResize(): void {
+        if (this._windowState !== "maximized") {
+            return;
+        }
+
+        const rect = this.computeMaximizeRect();
+        this.setAutoCommitStyle(false);
+        this.setX(rect.x);
+        this.setY(rect.y);
+        this.setWidth(rect.width);
+        this.setHeight(rect.height);
+        this.doLayout();
+        this.setAutoCommitStyle(true);
+
+        Window.relayoutMinimizedStack();
+    }
+
+    // ----- snap-resize listeners -----
+
+    private attachSnapKeyboardListeners(): void {
+        if (this._snapKeysAttached) {
+            return;
+        }
+
+        Event.addViewportListener(this, "keydown", this._boundOnSnapKeyDown);
+        Event.addViewportListener(this, "keyup",   this._boundOnSnapKeyUp);
+        window.addEventListener("blur", this._boundOnSnapBlur);
+        this._snapKeysAttached = true;
+    }
+
+    private detachSnapKeyboardListeners(): void {
+        if (!this._snapKeysAttached) {
+            return;
+        }
+
+        Event.removeViewportListener(this, "keydown", this._boundOnSnapKeyDown);
+        Event.removeViewportListener(this, "keyup",   this._boundOnSnapKeyUp);
+        window.removeEventListener("blur", this._boundOnSnapBlur);
+        this._snapKeysAttached = false;
+    }
+
+    private attachSnapMouseListeners(): void {
+        if (this._snapMoveAttached) {
+            return;
+        }
+
+        Event.addViewportListener(this, "mousemove", this._boundOnSnapMouseMove);
+        Event.addViewportListener(this, "mousedown", this._boundOnSnapMouseDown);
+        this._snapMoveAttached = true;
+    }
+
+    private detachSnapMouseListeners(): void {
+        if (!this._snapMoveAttached) {
+            return;
+        }
+
+        Event.removeViewportListener(this, "mousemove", this._boundOnSnapMouseMove);
+        Event.removeViewportListener(this, "mousedown", this._boundOnSnapMouseDown);
+        this._snapMoveAttached = false;
+    }
+
+    private clearSnapTargetBorder(): void {
+        if (this._snapTargetBorder) {
+            this._snapTargetBorder.setSnapTarget(false);
+            this._snapTargetBorder = null;
+        }
+    }
+
+    private clearSnapState(): void {
+        this._snapEnabled = false;
+        this.detachSnapMouseListeners();
+        this.clearSnapTargetBorder();
+    }
+
+    private onSnapKeyDown(e: KeyboardEvent): void {
+        if (!this._snapResizeEnabled) {
+            return;
+        }
+        if (this._windowState !== "normal") {
+            return;
+        }
+        if (!this.modifierMatches(e)) {
+            return;
+        }
+        if (this._snapEnabled) {
+            return;
+        }
+
+        this._snapEnabled = true;
+        this.attachSnapMouseListeners();
+    }
+
+    private onSnapKeyUp(e: KeyboardEvent): void {
+        if (!this._snapEnabled) {
+            return;
+        }
+        // Some browsers fire keyup with a different key field when modifiers
+        // chord; only release when the watched modifier is no longer active.
+        if (this.modifierStillHeld(e)) {
+            return;
+        }
+
+        this.clearSnapState();
+    }
+
+    private modifierMatches(e: KeyboardEvent): boolean {
+        switch (this._snapModifier) {
+            case "ctrl":  return e.ctrlKey;
+            case "meta":  return e.metaKey;
+            case "alt":   return e.altKey;
+            case "shift": return e.shiftKey;
+        }
+    }
+
+    private modifierStillHeld(e: KeyboardEvent): boolean {
+        return this.modifierMatches(e);
+    }
+
+    private onSnapMouseMove(e: MouseEvent): void {
+        if (!this._snapEnabled) {
+            return;
+        }
+
+        const winner = this.pickSnapBorder(e.clientX, e.clientY);
+        if (winner === this._snapTargetBorder) {
+            return;
+        }
+
+        if (this._snapTargetBorder) {
+            this._snapTargetBorder.setSnapTarget(false);
+        }
+        this._snapTargetBorder = winner;
+        if (winner) {
+            winner.setSnapTarget(true);
+        }
+    }
+
+    private pickSnapBorder(cx: number, cy: number): WindowBorder | null {
+        const candidates: WindowBorder[] = [
+            // Corners first so ties go to corners over edges.
+            this._borderComponents.northwest,
+            this._borderComponents.northeast,
+            this._borderComponents.southeast,
+            this._borderComponents.southwest,
+            this._borderComponents.north,
+            this._borderComponents.east,
+            this._borderComponents.south,
+            this._borderComponents.west,
+        ];
+
+        let best: WindowBorder | null = null;
+        let bestDist = this._snapThreshold;
+
+        for (const border of candidates) {
+            const el = border.getElement();
+            if (!el) {
+                continue;
+            }
+            const rect = el.getBoundingClientRect();
+            const dx = Math.max(rect.left - cx, 0, cx - rect.right);
+            const dy = Math.max(rect.top  - cy, 0, cy - rect.bottom);
+            const dist = Math.hypot(dx, dy);
+
+            if (dist <= bestDist) {
+                best     = border;
+                bestDist = dist;
+            }
+        }
+
+        return best;
+    }
+
+    private onSnapMouseDown(e: MouseEvent): void {
+        const target = this._snapTargetBorder;
+        if (!target) {
+            return;
+        }
+
+        // If the mousedown landed directly on the highlighted border, the
+        // strip's own `mousedown` listener (registered in WindowBorder's
+        // constructor) will already fire onDragStart — forwarding here would
+        // double-register the viewport listeners. The snap forwarding is only
+        // useful when the cursor sits *outside* the 4 px strip.
+        const targetEl = target.getElement();
+        if (targetEl && e.target instanceof Node && targetEl.contains(e.target)) {
+            this._snapTargetBorder = null;
+            return;
+        }
+
+        // Forward into the border's own drag flow. The snap-target highlight
+        // is cleared in the matching onDragStop hook the border owns.
+        target.onDragStart();
+        this._snapTargetBorder = null;
     }
 }
 
