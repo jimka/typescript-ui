@@ -43,6 +43,12 @@ The package is at version `0.0.0` — pre-release, not yet published. Until a `0
 - **New `WindowOptions` fields:** `minimizable` (default `true`), `maximizable` (default `true`), `maximizeBounds` (`"viewport"` | `"parent"`, default `"viewport"`), `windowState` (default `"normal"`), `snapResizeEnabled` (default `true`), `snapThreshold` (default `12`), `snapModifier` (`"ctrl"` | `"meta"` | `"alt"` | `"shift"`, default `"ctrl"`).
 - **New types exported from `@jimka/typescript-ui/core`:** [`WindowState`](/api/core/type-aliases/WindowState), [`WindowMaximizeBounds`](/api/core/type-aliases/WindowMaximizeBounds), [`WindowSnapModifier`](/api/core/type-aliases/WindowSnapModifier).
 
+**`Animation.tween` numeric tween helper** (additive):
+
+- **New [`Animation.tween`](/api/core/namespaces/Animation/functions/tween)** — drives a JS-side numeric tween via `requestAnimationFrame`, interpolating every key in `from` toward `to` over `durationMs` and calling `onStep(values)` each frame. Returns a [`TweenHandle`](/api/core/namespaces/Animation/interfaces/TweenHandle) whose `cancel()` aborts the loop. Honours `prefers-reduced-motion: reduce` (synchronous step-to-end then `onComplete`). Default easing is cubic ease-out (`1 - (1 - t)^3`); override via `easing`. Generic over any `T` whose values are `number`, so window rects, scroll positions, or arbitrary numeric records all flow through the same plumbing.
+- **Refactor.** [`Window.animateRect`](/api/core/classes/Window) was the framework's only numeric tween; its inline rAF loop, cancel bookkeeping, and easing now route through `Animation.tween`. The setter writes, `setAutoCommitStyle` bracketing, and `doLayout` call stay in `Window` — `Animation.tween` keeps no DOM assumptions and is unaware of typed setters.
+- **New types exported from `@jimka/typescript-ui/core`:** [`TweenConfig`](/api/core/namespaces/Animation/interfaces/TweenConfig), [`TweenHandle`](/api/core/namespaces/Animation/interfaces/TweenHandle).
+
 **Compositor-layer hints via `will-change`** (additive):
 
 - **New [`Component.setWillChange(value)`](/api/core/classes/Component#setwillchange)** and matching `willChange?` field on `ComponentOptions`. Routes through the existing batched style channel and caches the value so subsequent identical writes short-circuit.
