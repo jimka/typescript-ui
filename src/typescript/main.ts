@@ -17,6 +17,7 @@ import { GridPanel } from "./GridPanel.js";
 import { AccordionPanel } from "./AccordionPanel.js";
 import { TabPanel } from "./TabPanel.js";
 import { MenuBarPanel } from "./MenuBarPanel.js";
+import { ToolBarPanel } from "./ToolBarPanel.js";
 import { MultiSelectListPanel } from "./MultiSelectListPanel.js";
 
 import { Benchmark } from "./perf/Benchmark.js";
@@ -44,6 +45,7 @@ layoutManager.addLazyTab(() => new ComplexUIPanel(),       "Complex"    );
 layoutManager.addLazyTab(() => new AccordionPanel(),       "Accordion"  );
 layoutManager.addLazyTab(() => new TabPanel(),             "Tab"        );
 layoutManager.addLazyTab(() => new MenuBarPanel(),         "MenuBar"    );
+layoutManager.addLazyTab(() => new ToolBarPanel(),         "ToolBar"    );
 layoutManager.addLazyTab(() => new MultiSelectListPanel(), "MultiSelect");
 layoutManager.addLazyTab(() => new BaselinePanel(),        "Baseline"   );
 
