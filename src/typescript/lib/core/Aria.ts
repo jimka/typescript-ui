@@ -41,6 +41,14 @@ export type AriaRole =
 export type AriaSort = 'none' | 'ascending' | 'descending';
 
 /**
+ * Valid values for the `aria-live` attribute, which controls how assistive
+ * technology announces dynamic content updates.
+ *
+ * @category Core
+ */
+export type AriaLive = 'off' | 'polite' | 'assertive';
+
+/**
  * Typed accessor for WAI-ARIA attributes on a {@link Component}.
  *
  * Obtained via {@link Component.getAria}. Each attribute has its own getter/setter
@@ -111,6 +119,27 @@ export class Aria {
      */
     getTabIndex(): number | null {
         return this._tabIndex;
+    }
+
+    /**
+     * Sets `aria-live`, controlling how assistive technology announces updates
+     * to a region's contents.
+     *
+     * @param value - `'off'`, `'polite'`, or `'assertive'`.
+     */
+    setLive(value: AriaLive): this {
+        this.setAttribute("live", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the current `aria-live` value, or null if not set.
+     *
+     * @returns The live-region politeness, or null.
+     */
+    getLive(): AriaLive | null {
+        return (this._attributes.get("live") as AriaLive) ?? null;
     }
 
     /**
