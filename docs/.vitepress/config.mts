@@ -97,6 +97,7 @@ export default defineConfig({
                     { text: 'ProgressSpinner', link: '/components/ProgressSpinner' },
                     { text: 'PaginationBar',   link: '/components/PaginationBar' },
                     { text: 'Spacer',          link: '/components/Spacer' },
+                    { text: 'StatusBar',       link: '/components/StatusBar' },
                 ] },
                 { text: 'Lists', collapsed: false, items: [
                     { text: 'List',            link: '/components/List' },
