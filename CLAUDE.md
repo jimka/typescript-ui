@@ -8,6 +8,7 @@ Whenever a task matches one of the entries below, **invoke the named skill** ins
 - **Implementing an existing plan** (a markdown file in `plans/`) — use the `implement` skill. Don't open the plan and start editing source files freehand; the skill is the entry point.
 - **Debugging a bug, layout glitch, or perf regression** — use the `debug` skill. It holds the project's debugging heuristics (size-constraint root causes, `px` suffix, O(N²) profiling) and the after-fix tracing checklist.
 - **Updating documentation after a public-API change** — use the `document` skill. It owns subpath-export rules, JSDoc cross-bucket linking, typedoc setup, and the `docs:build` verification gate.
+- **Committing work on a feature branch** — use the `commit` skill. It owns the commit-bucket structure (code / documentation / tooling / graphify / bookkeeping), the one-functionality-per-code-commit rule, and the title-plus-paragraph message format.
 
 ## Architecture
 
