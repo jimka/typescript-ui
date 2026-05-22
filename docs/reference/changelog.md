@@ -33,6 +33,16 @@ The package is at version `0.0.0` — pre-release, not yet published. Until a `0
 
 - [`StatusBar`](/components/StatusBar) component, a thin chrome strip with a transient message and left / right indicator zones; ships through the `component/container` barrel.
 
+**Window maximize / minimize + Ctrl-snap resize** (additive):
+
+- **Three-state lifecycle.** [`Window`](/api/core/classes/Window) now carries a [`WindowState`](/api/core/type-aliases/WindowState) field — `"normal"`, `"minimized"`, or `"maximized"` — toggled by new header buttons on [`WindowHeader`](/api/component/container/classes/WindowHeader). Double-click on the header bar toggles maximize; on a minimized window it restores to the pre-minimize state (`"normal"` or `"maximized"`). State changes tween `x` / `y` / `width` / `height` over 150 ms (or snap when `prefers-reduced-motion: reduce` is set). Drag and border-resize are gated to `"normal"` so a minimized or maximized window stays put.
+- **Minimized windows dock along the bottom edge.** Each minimized window collapses to a 200 px-wide title-only strip and is positioned in insertion order along the viewport bottom. Restoring or closing a minimized window re-flows the remaining strips. Width is configurable via the new `--ts-ui-window-min-dock-width` CSS variable / `window.minDockWidth` theme token.
+- **Maximize tracks the viewport.** While `"maximized"` the window registers a viewport `resize` listener and re-fills the new viewport on each tick. `setMaximizeBounds("parent")` opts an embedded window into filling its parent rect instead.
+- **Ctrl-snap resize.** Holding Ctrl (configurable via `setSnapModifier(...)`) over a [`Window`](/api/core/classes/Window) highlights the nearest border within 12 px (`setSnapThreshold(...)`) and lets `mousedown` anywhere in that zone start a resize drag through the underlying border strip. Glow colour is the new `--ts-ui-window-snap-glow` CSS variable / `window.snapGlow` theme token.
+- **New typed setters on [`Window`](/api/core/classes/Window):** `setWindowState`, `getWindowState`, `isMaximized`, `isMinimized`, `setMinimizable`, `isMinimizable`, `setMaximizable`, `isMaximizable`, `setMaximizeBounds`, `getMaximizeBounds`, `setSnapResizeEnabled`, `isSnapResizeEnabled`, `setSnapThreshold`, `getSnapThreshold`, `setSnapModifier`, `getSnapModifier`.
+- **New `WindowOptions` fields:** `minimizable` (default `true`), `maximizable` (default `true`), `maximizeBounds` (`"viewport"` | `"parent"`, default `"viewport"`), `windowState` (default `"normal"`), `snapResizeEnabled` (default `true`), `snapThreshold` (default `12`), `snapModifier` (`"ctrl"` | `"meta"` | `"alt"` | `"shift"`, default `"ctrl"`).
+- **New types exported from `@jimka/typescript-ui/core`:** [`WindowState`](/api/core/type-aliases/WindowState), [`WindowMaximizeBounds`](/api/core/type-aliases/WindowMaximizeBounds), [`WindowSnapModifier`](/api/core/type-aliases/WindowSnapModifier).
+
 **Compositor-layer hints via `will-change`** (additive):
 
 - **New [`Component.setWillChange(value)`](/api/core/classes/Component#setwillchange)** and matching `willChange?` field on `ComponentOptions`. Routes through the existing batched style channel and caches the value so subsequent identical writes short-circuit.
