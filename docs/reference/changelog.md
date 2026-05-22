@@ -25,6 +25,10 @@ The package is at version `0.0.0` — pre-release, not yet published. Until a `0
 - **`scrollbar-gutter: stable` reserved** for every non-`"none"` mode so an auto-appearing bar does not reflow children. Requires Chromium 94+ / Firefox 97+ / Safari 18.2+.
 - **Backwards compatible.** The default `"none"` keeps the inherited `Component` `overflow: hidden` clipping, so existing `Panel` instances (including `Window`, `Dialog`, layout helpers) are unchanged unless they opt in.
 
+**Internal: HeaderCell helper decomposition** (refactor, no public-API change):
+
+- The right-edge resize handle and multi-sort priority badge that lived as raw `<div>` / `<span>` overlays inside `HeaderCell.init()` are now dedicated internal `Component` subclasses (`ResizeHandle`, `SortPriorityBadge`) with typed setter surfaces. Adds new `theme.table.resizeHandle` and `theme.table.sortBadge` token blocks so dark-mode flipping carries the overlay colours.
+
 **Compositor-layer hints via `will-change`** (additive):
 
 - **New [`Component.setWillChange(value)`](/api/core/classes/Component#setwillchange)** and matching `willChange?` field on `ComponentOptions`. Routes through the existing batched style channel and caches the value so subsequent identical writes short-circuit.
