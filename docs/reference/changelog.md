@@ -29,6 +29,10 @@ The package is at version `0.0.0` — pre-release, not yet published. Until a `0
 
 - The right-edge resize handle and multi-sort priority badge that lived as raw `<div>` / `<span>` overlays inside `HeaderCell.init()` are now dedicated internal `Component` subclasses (`ResizeHandle`, `SortPriorityBadge`) with typed setter surfaces. Adds new `theme.table.resizeHandle` and `theme.table.sortBadge` token blocks so dark-mode flipping carries the overlay colours.
 
+**StatusBar component** (additive):
+
+- [`StatusBar`](/components/StatusBar) component, a thin chrome strip with a transient message and left / right indicator zones; ships through the `component/container` barrel.
+
 **Compositor-layer hints via `will-change`** (additive):
 
 - **New [`Component.setWillChange(value)`](/api/core/classes/Component#setwillchange)** and matching `willChange?` field on `ComponentOptions`. Routes through the existing batched style channel and caches the value so subsequent identical writes short-circuit.
