@@ -274,6 +274,9 @@ class VBox extends LayoutManager {
                     || this._defaultComponentHeight;
             }
 
+            if (minSize) height = Math.max(height, minSize.height);
+            if (maxSize) height = Math.min(height, maxSize.height);
+
             if (!size || this.isStretching()) {
                 width = maxSize ? Math.min(maxSize.width, containerSize.width) : containerSize.width;
             } else {
