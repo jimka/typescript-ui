@@ -10,6 +10,8 @@ export { MenuSeparator } from '~/component/container/MenuSeparator.js';
 export type { MenuSeparatorOptions } from '~/component/container/MenuSeparator.js';
 export { Scrollbar } from '~/component/container/Scrollbar.js';
 export type { ScrollbarListener, ScrollbarOrientation } from '~/component/container/Scrollbar.js';
+export { StatusBar, STATUS_BAR_HEIGHT } from '~/component/container/StatusBar.js';
+export type { StatusBarOptions } from '~/component/container/StatusBar.js';
 export { VirtualScroller } from '~/component/container/VirtualScroller.js';
 export type { VirtualScrollerOnScroll } from '~/component/container/VirtualScroller.js';
 export { Spacer } from '~/component/container/Spacer.js';

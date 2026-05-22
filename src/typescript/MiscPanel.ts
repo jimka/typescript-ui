@@ -52,7 +52,7 @@ import {
     ProgressBar,
     ProgressSpinner
 } from '@jimka/typescript-ui/component/display';
-import { FieldSet, Spacer } from '@jimka/typescript-ui/component/container';
+import { FieldSet, Spacer, StatusBar } from '@jimka/typescript-ui/component/container';
 import {
     ColumnSpec,
     Table,
@@ -319,7 +319,19 @@ class MiscPanel extends Panel {
                 let specTable = new Table(specStore, spec);
                 specTable.setExportMenuEnabled(true);
 
-                return specTable;
+                const statusBar = new StatusBar({
+                    defaultMessage: `${specStore.getCount()} rows`,
+                });
+
+                const wrapper = Panel({
+                    layoutManager: new VBox({ stretching: true }),
+                    components: [
+                        { component: specTable, constraints: { weight: 1 } },
+                        statusBar
+                    ]
+                });
+
+                return wrapper;
             });
 
             win3.show();
