@@ -7,7 +7,7 @@ description: Produce an implementation plan for a described feature, saved as a 
 
 Before drafting, read in full:
 
-- [`.claude/skills/_shared/code-conventions.md`](../_shared/code-conventions.md) — Code style, JSDoc, Framework rules. Plans must not silently violate these; flag any unavoidable violation in `## Architecture Decisions`.
+- [`CODE_CONVENTIONS.md`](../../../CODE_CONVENTIONS.md) — Code style, JSDoc, Framework rules. Plans must not silently violate these; flag any unavoidable violation in `## Architecture Decisions`.
 - [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — What docs need to change when public API moves. Cited from `## Documentation Impact`.
 - [`.claude/skills/_shared/graphify.md`](../_shared/graphify.md) — Use the knowledge graph (not grep) to investigate the codebase before drafting.
 - [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
@@ -102,7 +102,7 @@ Bullets stating what's intentionally out, with reason.
 - **Concise and opinionated.** State the choice, not a survey.
 - **Cite real code.** Every path exists; line numbers accurate at write time.
 - **No filler.** No "this section will…", no "in conclusion…".
-- **Respect CLAUDE.md and `_shared/code-conventions.md`.** Surgical changes, typed setters, `Event` class, one-element-per-class, theme tokens in `Theme.ts`. If the feature would violate one, flag it in `## Architecture Decisions`.
+- **Respect CLAUDE.md and `CODE_CONVENTIONS.md`.** Surgical changes, typed setters, `Event` class, one-element-per-class, theme tokens in `Theme.ts`. If the feature would violate one, flag it in `## Architecture Decisions`.
 - **Em-dash `—`** in titles and decision headings, not `--` or `-`.
 - **`---` horizontal rules** between top-level sections.
 

@@ -18,7 +18,7 @@ export { Body } from '~/core/Body.js';
 export { ButtonGroup } from '~/core/ButtonGroup.js';
 export type { ButtonGroupOptions } from '~/core/ButtonGroup.js';
 export { Window } from '~/core/Window.js';
-export type { WindowOptions } from '~/core/Window.js';
+export type { WindowOptions, WindowState, WindowMaximizeBounds, WindowSnapModifier } from '~/core/Window.js';
 export { Menu } from '~/core/Menu.js';
 export { AnimatedDropdown, fadeShow, fadeHideAndDetach } from '~/core/AnimatedDropdown.js';
 export type { AnimatedDropdownOptions, FadeOptions } from '~/core/AnimatedDropdown.js';
