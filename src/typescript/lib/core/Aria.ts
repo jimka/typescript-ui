@@ -27,6 +27,7 @@ export type AriaRole =
     | 'menubar'
     | 'menuitem'
     | 'menu'
+    | 'toolbar'
     | 'separator'
     | 'spinbutton'
     | 'progressbar'
@@ -47,6 +48,13 @@ export type AriaSort = 'none' | 'ascending' | 'descending';
  * @category Core
  */
 export type AriaLive = 'off' | 'polite' | 'assertive';
+
+/**
+ * Valid values for the `aria-orientation` attribute.
+ *
+ * @category Core
+ */
+export type AriaOrientation = 'horizontal' | 'vertical';
 
 /**
  * Typed accessor for WAI-ARIA attributes on a {@link Component}.
@@ -632,6 +640,28 @@ export class Aria {
      */
     getLabel(): string | null {
         return this._attributes.get("label") ?? null;
+    }
+
+    /**
+     * Sets `aria-orientation`, indicating whether a composite widget (toolbar,
+     * separator, scrollbar, slider, tablist) is laid out horizontally or
+     * vertically.
+     *
+     * @param value - `'horizontal'` or `'vertical'`.
+     */
+    setOrientation(value: AriaOrientation): this {
+        this.setAttribute("orientation", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the current `aria-orientation` value, or null if not set.
+     *
+     * @returns The orientation, or null.
+     */
+    getOrientation(): AriaOrientation | null {
+        return (this._attributes.get("orientation") as AriaOrientation) ?? null;
     }
 
     /**
