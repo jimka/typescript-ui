@@ -9,6 +9,7 @@ Before drafting, read in full:
 
 - [`.claude/skills/_shared/code-conventions.md`](../_shared/code-conventions.md) — Code style, JSDoc, Framework rules. Plans must not silently violate these; flag any unavoidable violation in `## Architecture Decisions`.
 - [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — What docs need to change when public API moves. Cited from `## Documentation Impact`.
+- [`.claude/skills/_shared/graphify.md`](../_shared/graphify.md) — Use the knowledge graph (not grep) to investigate the codebase before drafting.
 - [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
 
 ## Purpose

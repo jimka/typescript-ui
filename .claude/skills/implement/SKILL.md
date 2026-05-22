@@ -9,6 +9,7 @@ Before producing any code or commits, read in full:
 
 - [`.claude/skills/_shared/code-conventions.md`](../_shared/code-conventions.md) — Code style, JSDoc, Framework rules, deferred DOM writes.
 - [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — Documentation updates, JSDoc cross-bucket links, typedoc-callable plugin.
+- [`.claude/skills/_shared/graphify.md`](../_shared/graphify.md) — Use the knowledge graph (not grep) to investigate the codebase; run `graphify update .` once code edits land.
 - [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
 
 These contain the project's authoritative conventions. Sections below assume you've read them.
@@ -90,6 +91,14 @@ Prompt template:
 On return:
 - BLOCKING empty → proceed to _Pre-termination checklist_.
 - BLOCKING non-empty → fix each issue in a follow-up commit (separate from the original three-commit structure), then re-spawn a fresh reviewer. Hard cap: 3 review cycles. If still not converging, stop and surface the remaining findings to the user.
+
+## Post-edit verification
+
+Before treating any step as done, walk these in order:
+
+- **Trigger re-render.** After multi-file changes, call `doLayout()` (or the equivalent re-render hook for the surface touched). Layout does not re-run automatically just because a backing field changed.
+- **Refactor regression check.** When you change a setter's signature or semantics, re-test the original call sites. The canonical telltale: `setBorder()` with no args must preserve the existing border, not clear it. If a similar zero-arg-preserves-state contract exists for the setter you touched, exercise it.
+- **Inheritance chain sweep.** A change in a base class or shared helper typically affects more than the call site that surfaced the request. Enumerate subclasses and sibling components that share the touched code path before declaring done.
 
 ## Pre-termination checklist
 
