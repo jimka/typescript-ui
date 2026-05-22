@@ -4,7 +4,7 @@ Project-wide reference: code style, JSDoc, and framework rules. Applies to every
 
 ## Code Style
 
-- **Formatting:** blank lines between logical groups in a method body. Always brace `if`/`else`/`for`. Blank line between consecutive `if` statements (never two `if` blocks back-to-back). Blank line before a non-leading `return`. Blank line after a mutating call that ends a logical operation. One statement per line — never `a.setX(1); a.setY(2);`.
+- **Formatting:** blank lines between logical groups in a method body. Always brace `if`/`else`/`for`. Blank line after every `if` statement or loop (`for`, `while`, `do`), unless it is the last statement in its scope. Blank line before every `return`, unless it is the only statement in its scope. Blank line after a mutating call that ends a logical operation. One statement per line — never `a.setX(1); a.setY(2);`.
 - **Functions:** arrow functions for callbacks instead of `.bind(this)`; explicit param types when the target signature is `Function`.
 - **Types:** explicit return type on every function/method (including `void`); explicit type on every class field.
 - **Naming collisions:** underscore-prefix backing fields (`private _foo`).
