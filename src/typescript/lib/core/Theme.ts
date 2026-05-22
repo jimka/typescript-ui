@@ -123,6 +123,16 @@ export interface Theme {
             border           : string;
             editorBorderColor: string;
         };
+        resizeHandle: {
+            width : string;
+            color : string;
+            cursor: string;
+        };
+        sortBadge: {
+            background: string;
+            color     : string;
+            fontSize  : string;
+        };
     };
 
     contextMenu: {
@@ -349,6 +359,16 @@ export const DefaultTheme: Theme = {
             border           : 'none',
             editorBorderColor: 'rgba(30, 100, 200, 0.6)',
         },
+        resizeHandle: {
+            width : '5px',
+            color : 'rgba(0, 0, 0, 0.2)',
+            cursor: 'ew-resize',
+        },
+        sortBadge: {
+            background: 'rgba(0, 0, 0, 0.15)',
+            color     : 'inherit',
+            fontSize  : '10px',
+        },
     },
     contextMenu: {
         background    : 'rgb(255, 255, 255)',
@@ -524,6 +544,16 @@ export const DarkTheme: Theme = {
             border           : 'none',
             editorBorderColor: 'rgba(30, 100, 200, 0.8)',
         },
+        resizeHandle: {
+            width : '5px',
+            color : 'rgba(255, 255, 255, 0.25)',
+            cursor: 'ew-resize',
+        },
+        sortBadge: {
+            background: 'rgba(255, 255, 255, 0.2)',
+            color     : 'inherit',
+            fontSize  : '10px',
+        },
     },
     contextMenu: {
         background    : 'rgb(45, 45, 45)',
@@ -678,6 +708,12 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-table-cell-color'                 : theme.table.cell.color,
         '--ts-ui-table-cell-border'                : theme.table.cell.border,
         '--ts-ui-table-cell-editor-border'         : theme.table.cell.editorBorderColor,
+        '--ts-ui-table-resize-handle-width'        : theme.table.resizeHandle.width,
+        '--ts-ui-table-resize-handle-color'        : theme.table.resizeHandle.color,
+        '--ts-ui-table-resize-handle-cursor'       : theme.table.resizeHandle.cursor,
+        '--ts-ui-sort-badge-bg'                    : theme.table.sortBadge.background,
+        '--ts-ui-sort-badge-color'                 : theme.table.sortBadge.color,
+        '--ts-ui-sort-badge-font-size'             : theme.table.sortBadge.fontSize,
         '--ts-ui-color-scheme'                     : theme.colorScheme,
         '--ts-ui-context-menu-bg'                  : theme.contextMenu.background,
         '--ts-ui-context-menu-border'              : theme.contextMenu.border,
