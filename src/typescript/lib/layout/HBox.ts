@@ -280,6 +280,9 @@ class HBox extends LayoutManager {
                     || this._defaultComponentWidth;
             }
 
+            if (minSize) width = Math.max(width, minSize.width);
+            if (maxSize) width = Math.min(width, maxSize.width);
+
             let height: number;
 
             if (!size || this.isStretching()) {

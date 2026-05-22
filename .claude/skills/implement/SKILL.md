@@ -16,11 +16,11 @@ These contain the project's authoritative conventions. Sections below assume you
 
 ## Git workflow
 
-- **No author / co-author attribution.** No `Co-Authored-By:` trailer, no "Generated with …" line. Authorship is in the git fields, not the message.
-- **At least three commits, by concern, in order:**
-  1. **Code** — `src/**`, plan-file move from `plans/` to `plans/implemented/`, demo-panel updates. May be split into focused slices.
-  2. **Documentation** — `docs/**` curated pages, changelog, migration notes. Auto-generated `docs/api/**` only if manually edited.
-  3. **Graphify** — `graphify-out/**` from `graphify update . --directed`. Always its own commit.
+All commits made during implementation follow the `commit` skill: bucket structure (code / documentation / tooling / graphify / bookkeeping), one-functionality-per-code-commit, and the title-plus-paragraph message format. Read [`../commit/SKILL.md`](../commit/SKILL.md) before making any commits.
+
+Implementation-specific notes that supplement the `commit` skill:
+
+- Plan-file moves (`plans/` → `plans/in-progress/` → `plans/implemented/`) are bookkeeping commits — never fold them into the code commit.
 - **Do not merge or rebase onto a base branch.** Leave for the user.
 - **Do not push.** User publishes.
 
@@ -108,7 +108,7 @@ Walk this list before yielding control. Any unchecked item means you are not don
 - [ ] `npx tsc --noEmit` reports 0 errors
 - [ ] `npm run docs:build` reports 0 errors and 0 link warnings (typedoc's "unsupported TypeScript version" notice is acceptable)
 - [ ] Expert review returned no BLOCKING issues on the most recent cycle
-- [ ] Commits follow the three-commit structure (code / docs / graphify), plus any review-fix commits
+- [ ] Commits follow the `commit` skill's bucket structure (code / docs / tooling / graphify / bookkeeping), plus any review-fix commits
 - [ ] If in worktree mode: rebase-clean checkpoint passed
 
 If any item is unchecked, resume at the appropriate step. Do not stop just because the last file write succeeded or the last command returned cleanly.
@@ -129,7 +129,7 @@ If any item is unchecked, resume at the appropriate step. Do not stop just becau
       **Definition of done for this step:** every file in the plan's "Files to Create/Modify/Delete" table has been written, every entry in "Ordered Implementation Steps" is addressed, and `npx tsc --noEmit` is clean. Do not advance to step 8 until this clears. Running `git status` / `ls` and seeing reasonable output is not the same as verifying this list.
    8. Extend demo panel(s) where applicable.
    9. Edit any `touches-shared` files last, one commit per file (_Shared-file etiquette_).
-   10. Move plan from `plans/in-progress/` to `plans/implemented/`.
+   10. Move plan from `plans/in-progress/` to `plans/implemented/`. Commit as bookkeeping.
    11. Update `docs/` per the rules in `_shared/docs-conventions.md`.
    12. Run _Rebase-clean checkpoint_.
    13. Run _Expert review_. Fix any BLOCKING findings and re-review until clean.

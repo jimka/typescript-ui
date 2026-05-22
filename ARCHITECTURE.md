@@ -94,3 +94,31 @@ Construction must stay JS-only. Every framework primitive buffers DOM writes unt
 - **Inline styles**: `setElementStyle(s)` queues into `inlineStyle`; `init()` attaches and flushes.
 - **Measurement**: never read layout (`getBoundingClientRect`, `getComputedStyle`) during construction. Defer to a layout pass or theme-change callback.
 - **Children**: build child Components in the constructor; their DOM is realised when the parent renders. Don't `getElement(true)` during construction.
+
+## Magic numbers must be documented
+
+Every literal numeric value in code — pixel sizes, durations, timeouts, retry counts, weights, ratios, thresholds — must be documented with **both**:
+
+1. **What it represents.** Prefer extracting to a named `const` whose name carries the meaning (`STATUS_BAR_HEIGHT`, `DEFAULT_DEBOUNCE_MS`). When the value stays inline, the comment must say what it is.
+2. **Why it's hardcoded.** A comment explaining the constraint that produced the number — the spec it tracks, the related theme token it mirrors, the empirical tuning behind it, or why a derived value isn't possible here. "Why this number and not another, and why isn't it computed."
+
+The name covers the "what"; the comment covers the "why," which is the part that rots silently when the constraint shifts. If you can't articulate the "why," the number is probably wrong — find the constraint first.
+
+## Components are exported through `callable()`
+
+Every `Component` subclass must be wrapped with `callable()` before export. The raw class stays available behind an underscored alias purely as a typing escape hatch; the callable form is the public name.
+
+```typescript
+class StatusBar extends Panel<StatusBarOptions> { /* ... */ }
+
+const StatusBarCallable = callable(StatusBar);
+type StatusBarCallable = StatusBar;
+export {
+    StatusBar         as _StatusBar,
+    StatusBarCallable as StatusBar,
+};
+```
+
+Callable wrapping lets call sites write `StatusBar({ message: "Ready" })` and `new StatusBar({ … })` interchangeably, keeping component construction at parity with the framework's factory-style API.
+
+**Imports always use the callable name.** Write `import { Panel } from "~/core/Panel.js"`, never `_Panel`. This holds even for `extends` clauses — the callable preserves the prototype chain, so `class Foo extends Panel` works correctly. The underscored alias exists only for the rare site that genuinely needs the unwrapped class for typing; reach for it only after confirming the callable form doesn't work.

@@ -12,7 +12,7 @@ export type { Comparator, Style, ComponentOptions, ConstrainedComponent, Perimet
 export { Panel } from '~/core/Panel.js';
 export type { AutoScrollMode, PanelOptions } from '~/core/Panel.js';
 export { Aria } from '~/core/Aria.js';
-export type { AriaRole, AriaSort } from '~/core/Aria.js';
+export type { AriaRole, AriaSort, AriaLive } from '~/core/Aria.js';
 export { RovingTabIndex } from '~/core/RovingTabIndex.js';
 export { Body } from '~/core/Body.js';
 export { ButtonGroup } from '~/core/ButtonGroup.js';
