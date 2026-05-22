@@ -176,6 +176,13 @@ export interface Theme {
         border    : string;
         height    : string;
         padding   : string;
+    },
+    toolBar: {
+        background    : string;
+        border        : string;
+        padding       : string;
+        gap           : string;
+        separatorColor: string;
     };
 
     tooltip: {
@@ -422,6 +429,13 @@ export const DefaultTheme: Theme = {
         height    : '22px',
         padding   : '6px',
     },
+    toolBar: {
+        background    : 'transparent',
+        border        : 'rgb(220, 220, 220)',
+        padding       : '4px',
+        gap           : '4px',
+        separatorColor: 'rgb(220, 220, 220)',
+    },
     tooltip: {
         background: 'rgb(255, 255, 240)',
         color     : 'rgb(0, 0, 0)',
@@ -618,6 +632,13 @@ export const DarkTheme: Theme = {
         height    : '22px',
         padding   : '6px',
     },
+    toolBar: {
+        background    : 'transparent',
+        border        : 'rgb(70, 70, 70)',
+        padding       : '4px',
+        gap           : '4px',
+        separatorColor: 'rgb(70, 70, 70)',
+    },
     tooltip: {
         background: 'rgb(60, 60, 45)',
         color     : 'rgb(220, 220, 180)',
@@ -806,6 +827,11 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-statusbar-border'                 : theme.statusBar.border,
         '--ts-ui-statusbar-height'                 : theme.statusBar.height,
         '--ts-ui-statusbar-padding'                : theme.statusBar.padding,
+        '--ts-ui-toolbar-bg'                       : theme.toolBar.background,
+        '--ts-ui-toolbar-border'                   : theme.toolBar.border,
+        '--ts-ui-toolbar-padding'                  : theme.toolBar.padding,
+        '--ts-ui-toolbar-gap'                      : theme.toolBar.gap,
+        '--ts-ui-toolbar-separator-color'          : theme.toolBar.separatorColor,
         '--ts-ui-dialog-backdrop-bg'               : theme.dialog.backdrop.background,
         '--ts-ui-dialog-border'                    : theme.dialog.border,
         '--ts-ui-dialog-shadow'                    : theme.dialog.shadow,

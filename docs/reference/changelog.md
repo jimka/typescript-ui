@@ -49,6 +49,13 @@ The package is at version `0.0.0` — pre-release, not yet published. Until a `0
 - **Refactor.** [`Window.animateRect`](/api/core/classes/Window) was the framework's only numeric tween; its inline rAF loop, cancel bookkeeping, and easing now route through `Animation.tween`. The setter writes, `setAutoCommitStyle` bracketing, and `doLayout` call stay in `Window` — `Animation.tween` keeps no DOM assumptions and is unaware of typed setters.
 - **New types exported from `@jimka/typescript-ui/core`:** [`TweenConfig`](/api/core/namespaces/Animation/interfaces/TweenConfig), [`TweenHandle`](/api/core/namespaces/Animation/interfaces/TweenHandle).
 
+**`ToolBar` + `ToolBarSeparator` components** (additive):
+
+- **New [`ToolBar`](/api/component/menubar/classes/ToolBar)** under `component/menubar/`. Extends [`Panel`](/api/core/classes/Panel); defaults to a horizontal [`HBox`](/api/layout/classes/HBox) and swaps to [`VBox`](/api/layout/classes/VBox) via `setOrientation("vertical")`. Wires a [`RovingTabIndex`](/api/core/classes/RovingTabIndex) on focusable children so Arrow keys cycle focus. Setters: `setOrientation`, `setCompact`, `setOverflow`. `"menu"` overflow is reserved for a follow-up plan and currently behaves as `"clip"`.
+- **New [`ToolBarSeparator`](/api/component/menubar/classes/ToolBarSeparator)** — thin vertical (for horizontal toolbars) or horizontal (for vertical toolbars) divider rule. Theme-driven colour, `role="separator"` with matching `aria-orientation`, stays out of the keyboard tab order.
+- **New `toolBar` theme block** with five tokens: `background`, `border`, `padding`, `gap`, `separatorColor`. Populated in both `DefaultTheme` and `DarkTheme`; emitted as `--ts-ui-toolbar-*` CSS custom properties.
+- **New `Aria.setOrientation(value)` / `getOrientation()`** typed accessor for the `aria-orientation` attribute. Used by `ToolBar` and `ToolBarSeparator`; available to any component that needs the attribute.
+
 **Compositor-layer hints via `will-change`** (additive):
 
 - **New [`Component.setWillChange(value)`](/api/core/classes/Component#setwillchange)** and matching `willChange?` field on `ComponentOptions`. Routes through the existing batched style channel and caches the value so subsequent identical writes short-circuit.

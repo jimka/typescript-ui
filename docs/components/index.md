@@ -73,6 +73,13 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`NumberedList`](/api/component/list/classes/NumberedList) | `<ol>`-style numbered list (style via [`NumberedListItemStyle`](/api/component/list/enumerations/NumberedListItemStyle)) |
 | [`Option`](/api/component/input/classes/Option) | Item inside a [`ComboBox`](/api/component/input/classes/ComboBox) |
 
+## Toolbar
+
+| Component | Purpose |
+| --- | --- |
+| [`ToolBar`](/components/ToolBar) | Horizontal or vertical strip of related controls — Buttons, ToggleButtons, ComboBoxes, separators |
+| [`ToolBarSeparator`](/components/ToolBarSeparator) | Divider rule inside a `ToolBar` |
+
 ## Menus
 
 | Component | Purpose |
