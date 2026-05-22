@@ -122,7 +122,7 @@ placeComponent(
 
 `placeComponent` keeps its current public visibility (no modifier — same as today at [line 126](../src/typescript/lib/layout/LayoutManager.ts#L126)). The new methods are `protected` because they are subclass-only seams.
 
-The current `placeComponent` has an implicit `void` return; the explicit `void` on all three signatures matches the project's "explicit return type on every function/method" rule from [`_shared/code-conventions.md`](../.claude/skills/_shared/code-conventions.md).
+The current `placeComponent` has an implicit `void` return; the explicit `void` on all three signatures matches the project's "explicit return type on every function/method" rule from [`CODE_CONVENTIONS.md`](../CODE_CONVENTIONS.md).
 
 ---
 
@@ -234,7 +234,7 @@ The child can be larger than the container — `commitBounds` writes raw values,
 1. **Extract `resolveBounds`** as a `protected` method on `LayoutManager` containing lines 127-239 of the current `placeComponent` body, returning `{ x, y, width, height }`. Update the existing locals (`width`, `height`, `x`, `y`) to flow into the return value. Verify: `npm run typecheck` clean.
 2. **Extract `commitBounds`** as a `protected` method on `LayoutManager` containing lines 241-249 of the current `placeComponent` body. Verify: `npm run typecheck` clean.
 3. **Rewrite `placeComponent`** body as the two-line composition shown above; keep public signature unchanged. Verify: `npm run typecheck` clean; `grep -n 'placeComponent(' src/typescript/lib/layout/*.ts` shows all ten existing callers untouched.
-4. **JSDoc both new methods** per the project's JSDoc conventions ([`_shared/code-conventions.md`](../.claude/skills/_shared/code-conventions.md)). Same-bucket references (`Component`, `LayoutConstraints`, `FillType`, `AnchorType`, `LayoutManager`) — `Component` lives in `core`, the others in `layout`, so the cross-bucket markdown-link rule from [CLAUDE.md](../CLAUDE.md) applies for `Component`. Use ``[`Component`](/api/core/classes/Component)`` for that one; `{@link FillType}` / `{@link AnchorType}` / `{@link LayoutConstraints}` stay as same-bucket `{@link}`.
+4. **JSDoc both new methods** per the project's JSDoc conventions ([`CODE_CONVENTIONS.md`](../CODE_CONVENTIONS.md)). Same-bucket references (`Component`, `LayoutConstraints`, `FillType`, `AnchorType`, `LayoutManager`) — `Component` lives in `core`, the others in `layout`, so the cross-bucket markdown-link rule from [CLAUDE.md](../CLAUDE.md) applies for `Component`. Use ``[`Component`](/api/core/classes/Component)`` for that one; `{@link FillType}` / `{@link AnchorType}` / `{@link LayoutConstraints}` stay as same-bucket `{@link}`.
 5. **Rewrite `Absolute.doLayout`** per the block above. Verify: `npm run typecheck` clean.
 6. **Manual smoke test on `MiscPanel`** — `npm run dev`, open `http://localhost:8015`, click through every `autoScroll: <mode>` button on the Misc tab ([MiscPanel.ts:752](../src/typescript/MiscPanel.ts#L752)). The 800x600 child in the 360x240 window must overflow the viewport (not silently shrink) and the scrollbars must appear per the mode:
    - `"none"`: child overflows, no scrollbars, content clips at the viewport edge.
