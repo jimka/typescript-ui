@@ -3,6 +3,7 @@
 import { Header, HeaderOptions } from "~/component/display/Header.js";
 import { Button } from "~/component/button/Button.js";
 import { Component } from "~/core/Component.js";
+import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -12,8 +13,10 @@ import { Placement } from "~/primitive/Placement.js";
 import { callable } from "~/core/Callable.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
 import { window_maximize } from "~/glyphs/solid/window_maximize.js";
+import { window_minimize } from "~/glyphs/solid/window_minimize.js";
+import { window_restore } from "~/glyphs/solid/window_restore.js";
 
-Glyph.register(xmark, window_maximize);
+Glyph.register(xmark, window_maximize, window_minimize, window_restore);
 
 /**
  * Construction-time options for {@link WindowHeader}.
@@ -21,8 +24,10 @@ Glyph.register(xmark, window_maximize);
  * @category Components
  */
 export interface WindowHeaderOptions extends HeaderOptions {
-    closeable?: boolean;
-    glyph?:     string;
+    closeable?:   boolean;
+    minimizable?: boolean;
+    maximizable?: boolean;
+    glyph?:       string;
 }
 
 /**
@@ -30,17 +35,22 @@ export interface WindowHeaderOptions extends HeaderOptions {
  * and an optional title icon shown to the west of the title text.
  *
  * Extends [`Header`](/api/component/display/classes/Header) by anchoring a
- * close button to the east side and exposing an optional title-icon slot on
- * the west.
+ * trailing row of minimize / maximize / close buttons to the east side and
+ * exposing an optional title-icon slot on the west.
  *
  * @category Components
  */
 class WindowHeader extends Header {
 
-    private _exitButton: Button;
+    private _exitButton:      Button;
+    private _minimizeButton:  Button;
+    private _maximizeButton:  Button;
+    private _trailingRow:     Component;
     private _activeBackgroundImage: string;
-    private _titleGlyph: Glyph | null = null;
-    private _titleRow: Component;
+    private _titleGlyph:      Glyph | null = null;
+    private _titleRow:        Component;
+    private _minimizable:     boolean = true;
+    private _maximizable:     boolean = true;
 
     constructor(text: string, options?: WindowHeaderOptions) {
         super(text);
@@ -66,11 +76,26 @@ class WindowHeader extends Header {
             fill:      FillType.HORIZONTAL
         });
 
+        this._minimizeButton = new Button({ glyph: "window-minimize" });
+        this._minimizeButton.setBackgroundImage(this._activeBackgroundImage);
+        this._minimizeButton.clearBorder();
+
+        this._maximizeButton = new Button({ glyph: "window-maximize" });
+        this._maximizeButton.setBackgroundImage(this._activeBackgroundImage);
+        this._maximizeButton.clearBorder();
+
         this._exitButton = new Button({ glyph: "xmark" });
         this._exitButton.setBackgroundImage(this._activeBackgroundImage);
         this._exitButton.clearBorder();
 
-        this.addComponent(this._exitButton, { placement: Placement.EAST });
+        this._trailingRow = new Component();
+        this._trailingRow.setLayoutManager(new HBox({ spacing: 2 }));
+        this._trailingRow.setInsets(new Insets(0, 0, 0, 0));
+        this._trailingRow.addComponent(this._minimizeButton);
+        this._trailingRow.addComponent(this._maximizeButton);
+        this._trailingRow.addComponent(this._exitButton);
+
+        this.addComponent(this._trailingRow, { placement: Placement.EAST });
 
         // Default title icon: applied unless an explicit glyph name was passed.
         // Call clearGlyph() on the resulting WindowHeader to opt out entirely.
@@ -84,8 +109,9 @@ class WindowHeader extends Header {
     }
 
     /**
-     * Applies a {@link WindowHeaderOptions} bag, dispatching the closeable flag
-     * and the optional title-glyph name after inherited Header fields.
+     * Applies a {@link WindowHeaderOptions} bag, dispatching the closeable,
+     * minimizable, and maximizable flags and the optional title-glyph name
+     * after inherited Header fields.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -94,6 +120,14 @@ class WindowHeader extends Header {
 
         if (options.closeable !== undefined) {
             this._exitButton.setVisible(options.closeable);
+        }
+
+        if (options.minimizable !== undefined) {
+            this.setMinimizable(options.minimizable);
+        }
+
+        if (options.maximizable !== undefined) {
+            this.setMaximizable(options.maximizable);
         }
 
         if (options.glyph !== undefined) {
@@ -172,6 +206,67 @@ class WindowHeader extends Header {
     }
 
     /**
+     * Toggles the visibility of the minimize button.
+     *
+     * @param value - True to show the minimize button, false to hide it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setMinimizable(value: boolean): this {
+        this._minimizable = value;
+        this._minimizeButton.setVisible(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the minimize button is visible.
+     *
+     * @returns True when the minimize button is shown.
+     */
+    isMinimizable(): boolean {
+        return this._minimizable;
+    }
+
+    /**
+     * Toggles the visibility of the maximize button.
+     *
+     * @param value - True to show the maximize button, false to hide it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setMaximizable(value: boolean): this {
+        this._maximizable = value;
+        this._maximizeButton.setVisible(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the maximize button is visible.
+     *
+     * @returns True when the maximize button is shown.
+     */
+    isMaximizable(): boolean {
+        return this._maximizable;
+    }
+
+    /**
+     * Swaps the maximize button's glyph between the "maximize" and "restore"
+     * icons. Called by the owning [`Window`](/api/core/classes/Window) when
+     * transitioning between the `"normal"` and `"maximized"` states.
+     *
+     * @param name - Either `"window-maximize"` or `"window-restore"`.
+     *
+     * @returns This component, for method chaining.
+     */
+    setMaximizeButtonGlyph(name: "window-maximize" | "window-restore"): this {
+        this._maximizeButton.setGlyph(name);
+
+        return this;
+    }
+
+    /**
      * Registers a click listener on the window close button.
      *
      * @param listener - The callback to invoke when the close button is clicked.
@@ -180,6 +275,75 @@ class WindowHeader extends Header {
         this._exitButton.addActionListener(listener);
 
         return this;
+    }
+
+    /**
+     * Registers a click listener on the window minimize button.
+     *
+     * @param listener - The callback to invoke when the minimize button is clicked.
+     */
+    addMinimizeButtonListener(listener: Function): this {
+        this._minimizeButton.addActionListener(listener);
+
+        return this;
+    }
+
+    /**
+     * Registers a click listener on the window maximize button.
+     *
+     * @param listener - The callback to invoke when the maximize button is clicked.
+     */
+    addMaximizeButtonListener(listener: Function): this {
+        this._maximizeButton.addActionListener(listener);
+
+        return this;
+    }
+
+    /**
+     * Registers a `dblclick` listener on the header bar itself, used by the
+     * owning [`Window`](/api/core/classes/Window) to toggle the maximize state
+     * when the user double-clicks the title (but not the trailing buttons).
+     *
+     * @param listener - The callback to invoke on `dblclick`.
+     */
+    addHeaderDoubleClickListener(listener: Function): this {
+        Event.addListener(this, "dblclick", listener);
+
+        return this;
+    }
+
+    /**
+     * Returns the minimize button DOM element, if the header has been rendered.
+     *
+     * @returns The minimize button's HTMLElement, or undefined when the header
+     *          has not yet been rendered.
+     *
+     * @remarks Used by the owning [`Window`](/api/core/classes/Window) to
+     * short-circuit `dblclick`-on-header maximize toggling when the click
+     * target sits inside one of the trailing buttons.
+     */
+    getMinimizeButtonElement(): HTMLElement | undefined {
+        return this._minimizeButton.getElement();
+    }
+
+    /**
+     * Returns the maximize button DOM element, if the header has been rendered.
+     *
+     * @returns The maximize button's HTMLElement, or undefined when the header
+     *          has not yet been rendered.
+     */
+    getMaximizeButtonElement(): HTMLElement | undefined {
+        return this._maximizeButton.getElement();
+    }
+
+    /**
+     * Returns the close (exit) button DOM element, if the header has been rendered.
+     *
+     * @returns The exit button's HTMLElement, or undefined when the header
+     *          has not yet been rendered.
+     */
+    getExitButtonElement(): HTMLElement | undefined {
+        return this._exitButton.getElement();
     }
 }
 
