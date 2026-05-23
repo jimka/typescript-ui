@@ -25,6 +25,14 @@ Before `element.style.*`, `document.createElement`, or `element.addEventListener
 
 Never call `element.setAttribute(...)` or `element.style.*` directly from component code.
 
+### `Component.setAttribute` / `getAttribute` are for data-carrying attributes only
+
+`Component.setAttribute` and `Component.getAttribute` exist for attributes whose **purpose is the data they expose** on the rendered element — framework-internal markers, debugging tags, identity reflection. The canonical example is `Component.setLayoutManager`, which dispatches a typed layout manager *and* mirrors the choice as `setAttribute("layout", layoutManager.getClassName())` so DevTools shows which layout is in effect.
+
+Properties that **change how the component behaves** — input `type` / `inputmode` / `autocomplete`, `disabled`, `readonly`, `placeholder`, ARIA roles, layout primitives, anything the platform interprets — never reach `Component.setAttribute` at the call site. Define a typed setter on the owning class and call that; add the setter (private/protected if subclass-scoped) if it doesn't exist. The typed setter may still route through `Component.setAttribute` internally as the cache + DOM-flush primitive (that's an implementation detail), but the consumer-facing surface is the typed method.
+
+This rule applies to constructors too. `this.setAttribute("type", "text")` in a subclass constructor is a violation; add `setType` and call that instead. The fix for the three bare-`<input>` cell editors (`DateEditor`, `DateTimeEditor`, `TimeEditor`) is the canonical pattern: a shared `TextInputCellEditor` base owns `setType` / `setInputMode` / `setAutoComplete`, and the editors call those from their constructor rather than the string-keyed `setAttribute` API.
+
 ## Three non-negotiable rules for every DOM write
 
 These apply to **every** use of the escape hatches — `setElementCSSRule(s)`, `setElementStyle(s)`, `setElementAttribute`, `removeElementAttribute`, and their `clear*` / `remove*` companions:
