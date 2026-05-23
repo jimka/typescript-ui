@@ -30,6 +30,8 @@ export { Checkbox } from '~/component/input/Checkbox.js';
 export type { CheckboxOptions } from '~/component/input/Checkbox.js';
 export { RadioButton } from '~/component/input/RadioButton.js';
 export type { RadioButtonOptions } from '~/component/input/RadioButton.js';
+export { Toggle } from '~/component/input/Toggle.js';
+export type { ToggleOptions } from '~/component/input/Toggle.js';
 export { Slider } from '~/component/input/Slider.js';
 export type { SliderOptions } from '~/component/input/Slider.js';
 export { ComboBox } from '~/component/input/ComboBox.js';

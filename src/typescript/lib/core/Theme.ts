@@ -73,6 +73,46 @@ export interface Theme {
         background: string;
     };
 
+    form: {
+        background       : string;
+        border           : string;
+        color            : string;
+        disabledBackground: string;
+        disabledColor    : string;
+        focusRing        : string;
+
+        toggle: {
+            trackOffBackground: string;
+            trackOnBackground : string;
+            thumbBackground   : string;
+            width             : string;
+            height            : string;
+        };
+
+        slider: {
+            trackBackground      : string;
+            trackActiveBackground: string;
+            thumbBackground      : string;
+            thumbSize            : string;
+            trackThickness       : string;
+        };
+
+        checkbox: {
+            background        : string;
+            selectedBackground: string;
+            checkColor        : string;
+            size              : string;
+            radius            : string;
+        };
+
+        radio: {
+            background        : string;
+            selectedBackground: string;
+            dotColor          : string;
+            size              : string;
+        };
+    };
+
     gutter: {
         background: string;
     };
@@ -340,6 +380,41 @@ export const DefaultTheme: Theme = {
         },
     },
     input : { background: 'rgb(255, 255, 255)' },
+    form  : {
+        background        : 'rgb(255, 255, 255)',
+        border            : 'rgb(160, 160, 160)',
+        color             : 'rgb(40, 40, 40)',
+        disabledBackground: 'rgb(240, 240, 240)',
+        disabledColor     : 'rgb(170, 170, 170)',
+        focusRing         : '2px solid rgb(30, 100, 200)',
+        toggle  : {
+            trackOffBackground: 'rgb(200, 200, 200)',
+            trackOnBackground : 'rgb(30, 100, 200)',
+            thumbBackground   : 'rgb(255, 255, 255)',
+            width             : '36px',
+            height            : '20px',
+        },
+        slider  : {
+            trackBackground      : 'rgb(220, 220, 220)',
+            trackActiveBackground: 'rgb(30, 100, 200)',
+            thumbBackground      : 'rgb(255, 255, 255)',
+            thumbSize            : '16px',
+            trackThickness       : '4px',
+        },
+        checkbox: {
+            background        : 'rgb(255, 255, 255)',
+            selectedBackground: 'rgb(30, 100, 200)',
+            checkColor        : 'rgb(255, 255, 255)',
+            size              : '16px',
+            radius            : '3px',
+        },
+        radio   : {
+            background        : 'rgb(255, 255, 255)',
+            selectedBackground: 'rgb(30, 100, 200)',
+            dotColor          : 'rgb(255, 255, 255)',
+            size              : '16px',
+        },
+    },
     gutter: { background: '#AAAAAA' },
     accordion: {
         header   : {
@@ -543,6 +618,41 @@ export const DarkTheme: Theme = {
         },
     },
     input : { background: 'rgb(40, 40, 40)' },
+    form  : {
+        background        : 'rgb(40, 40, 40)',
+        border            : 'rgb(110, 110, 110)',
+        color             : 'rgb(230, 230, 230)',
+        disabledBackground: 'rgb(60, 60, 60)',
+        disabledColor     : 'rgb(120, 120, 120)',
+        focusRing         : '2px solid rgb(120, 170, 240)',
+        toggle  : {
+            trackOffBackground: 'rgb(70, 70, 70)',
+            trackOnBackground : 'rgb(120, 170, 240)',
+            thumbBackground   : 'rgb(230, 230, 230)',
+            width             : '36px',
+            height            : '20px',
+        },
+        slider  : {
+            trackBackground      : 'rgb(70, 70, 70)',
+            trackActiveBackground: 'rgb(120, 170, 240)',
+            thumbBackground      : 'rgb(230, 230, 230)',
+            thumbSize            : '16px',
+            trackThickness       : '4px',
+        },
+        checkbox: {
+            background        : 'rgb(40, 40, 40)',
+            selectedBackground: 'rgb(120, 170, 240)',
+            checkColor        : 'rgb(20, 20, 20)',
+            size              : '16px',
+            radius            : '3px',
+        },
+        radio   : {
+            background        : 'rgb(40, 40, 40)',
+            selectedBackground: 'rgb(120, 170, 240)',
+            dotColor          : 'rgb(20, 20, 20)',
+            size              : '16px',
+        },
+    },
     gutter: { background: '#555' },
     accordion: {
         header   : {
@@ -737,6 +847,31 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-toggle-selected-bg'               : theme.toggle.selected.background,
         '--ts-ui-toggle-selected-shadow'           : theme.toggle.selected.shadow,
         '--ts-ui-input-bg'                         : theme.input.background,
+        '--ts-ui-form-bg'                          : theme.form.background,
+        '--ts-ui-form-border'                      : theme.form.border,
+        '--ts-ui-form-color'                       : theme.form.color,
+        '--ts-ui-form-disabled-bg'                 : theme.form.disabledBackground,
+        '--ts-ui-form-disabled-color'              : theme.form.disabledColor,
+        '--ts-ui-focus-ring'                       : theme.form.focusRing,
+        '--ts-ui-toggle-track-bg-off'              : theme.form.toggle.trackOffBackground,
+        '--ts-ui-toggle-track-bg-on'               : theme.form.toggle.trackOnBackground,
+        '--ts-ui-toggle-thumb-bg'                  : theme.form.toggle.thumbBackground,
+        '--ts-ui-toggle-width'                     : theme.form.toggle.width,
+        '--ts-ui-toggle-height'                    : theme.form.toggle.height,
+        '--ts-ui-slider-track-bg'                  : theme.form.slider.trackBackground,
+        '--ts-ui-slider-track-active-bg'           : theme.form.slider.trackActiveBackground,
+        '--ts-ui-slider-thumb-bg'                  : theme.form.slider.thumbBackground,
+        '--ts-ui-slider-thumb-size'                : theme.form.slider.thumbSize,
+        '--ts-ui-slider-track-thickness'           : theme.form.slider.trackThickness,
+        '--ts-ui-checkbox-bg'                      : theme.form.checkbox.background,
+        '--ts-ui-checkbox-bg-selected'             : theme.form.checkbox.selectedBackground,
+        '--ts-ui-checkbox-check-color'             : theme.form.checkbox.checkColor,
+        '--ts-ui-checkbox-size'                    : theme.form.checkbox.size,
+        '--ts-ui-checkbox-radius'                  : theme.form.checkbox.radius,
+        '--ts-ui-radio-bg'                         : theme.form.radio.background,
+        '--ts-ui-radio-bg-selected'                : theme.form.radio.selectedBackground,
+        '--ts-ui-radio-dot-color'                  : theme.form.radio.dotColor,
+        '--ts-ui-radio-size'                       : theme.form.radio.size,
         '--ts-ui-gutter-bg'                        : theme.gutter.background,
         '--ts-ui-accordion-header-bg'              : theme.accordion.header.background,
         '--ts-ui-accordion-header-border'          : theme.accordion.header.border,
