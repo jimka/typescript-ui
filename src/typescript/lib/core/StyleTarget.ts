@@ -95,14 +95,24 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
     }
 
     private write(style: CSSStyleDeclaration, key: string, value: string | null): void {
-        // Properties are stored camelCase. Assignment form (`style.X = value`)
-        // preserves the pre-existing Component behaviour which used
-        // `Object.assign(target.style, dirty)` on flush and direct
-        // `style.X = ...` writes elsewhere.
-        if (value === null) {
-            (style as any)[key] = "";
+        // CSS custom properties (`--foo`) cannot be set via the indexed
+        // accessor — `(style as any)["--foo"] = v` just stores a JS own-property
+        // on the wrapper and never reaches the underlying declaration. Custom
+        // properties must go through `style.setProperty` / `removeProperty`.
+        // Regular camelCase keys keep the existing assignment form which
+        // matches the pre-existing `Object.assign(target.style, dirty)` shape.
+        if (key.startsWith("--")) {
+            if (value === null) {
+                style.removeProperty(key);
+            } else {
+                style.setProperty(key, value);
+            }
         } else {
-            (style as any)[key] = value;
+            if (value === null) {
+                (style as any)[key] = "";
+            } else {
+                (style as any)[key] = value;
+            }
         }
     }
 }
