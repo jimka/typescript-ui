@@ -4,7 +4,11 @@ Binding architectural rules for the framework. Every implementation plan (built 
 
 ## Event handling
 
-Component listeners go through `Event.addListener(this, type, handler)` / `Event.addViewportListener`. Native `addEventListener` only on raw DOM helper elements that aren't `Component`s.
+All event registration goes through the `Event` class — `Event.addListener(this, type, handler)`, `Event.addSubtreeListener`, `Event.addViewportListener`. Raw `element.addEventListener` is reserved for the `Event` module itself and for targets the Event API cannot model today (a `MediaQueryList`, a non-`Component` ancestor element, a one-shot `transitionend` on a raw node). Extend the `Event` API rather than introducing new raw-`addEventListener` sites.
+
+### Listeners must reference a named function
+
+The `handler` (or `listener`) argument must always be a reference to a named function — a method on the component (`this.handleClick`) or a module-level function. Never pass an inline arrow function or function expression. A named reference is removable via `removeListener`, surfaces by name in stack traces, and is grep-able for audits; an inline closure is none of those. The rule applies equally to the raw `addEventListener` escape hatches above.
 
 ## One DOM element per class
 
