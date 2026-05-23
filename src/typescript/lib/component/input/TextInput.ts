@@ -11,7 +11,7 @@ import { callable } from "~/core/Callable.js";
  */
 export interface TextInputOptions extends InputOptions {
     text?:         string;
-    textAlign?:    string;
+    textAlign?:    string | null;
     placeholder?:  string;
     readOnly?:     boolean;
     maxLength?:    number;
@@ -28,6 +28,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
 
     private _inputMode:    string | null = null;
     private _autoComplete: string | null = null;
+    declare private _textAlign: string | null;
 
     constructor(options?: TOptions) {
         super({ ...(options ?? {}), tag: options?.tag ?? "input" } as TOptions);
@@ -199,22 +200,33 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      * @returns The CSS text-align string, or null if not set.
      */
     getTextAlign(): string | null {
-        return this._options.textAlign ?? null;
+        return this._textAlign ?? null;
     }
 
     /**
      * Sets the CSS text-align and updates the component's CSS rule.
      *
-     * @param align - A CSS text-align value (e.g. "left", "center", "right").
+     * @param align - A CSS text-align value (e.g. "left", "center", "right"),
+     *   or null to clear the rule.
      *
      * @returns This component, for method chaining.
      */
-    setTextAlign(align: string): this {
+    setTextAlign(align: string | null): this {
+        this._textAlign         = align;
         this._options.textAlign = align;
 
         this.setElementCSSRule("textAlign", align);
 
         return this;
+    }
+
+    /**
+     * Clears the CSS text-align value, removing the rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearTextAlign(): this {
+        return this.setTextAlign(null);
     }
 
     /**
@@ -376,20 +388,6 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         }
 
         element.setSelectionRange(start, end);
-
-        return this;
-    }
-
-    /**
-     * Applies base input styles and writes text-align to the CSS rule.
-     *
-     * @param element - The HTMLElement to apply styles to.
-     */
-    applyStyle(element: HTMLElement): this {
-        super.applyStyle(element);
-
-        let rule = this.getCSSRule();
-        rule.style.textAlign = this._options.textAlign ?? "";
 
         return this;
     }

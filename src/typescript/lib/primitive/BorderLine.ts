@@ -3,6 +3,18 @@
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 
 /**
+ * Converts a hyphenated placement prefix (e.g. `"border-top"`) to its
+ * camelCase equivalent (`"borderTop"`). Used to compose the camelCase
+ * property keys emitted by {@link BorderLine.toStyle}.
+ *
+ * @param placement - The CSS property prefix (e.g. `"border-top"`).
+ * @returns The camelCase prefix (e.g. `"borderTop"`).
+ */
+function camelCasePrefix(placement: string): string {
+    return placement.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+}
+
+/**
  * Represents a single side of a CSS border, holding its placement prefix,
  * style, width, and color.
  *
@@ -100,43 +112,25 @@ export class BorderLine extends Object {
     }
 
     /**
-     * Writes this border side's width, style, and color properties onto the given CSS rule.
-     *
-     * @param rule - The `CSSStyleRule` to apply the border properties to.
-     *
-     * @remarks Sets three separate CSS properties using the placement prefix:
-     * `<placement>-width`, `<placement>-style`, and `<placement>-color`. Thin
-     * wrapper over {@link BorderLine.toStyle} retained for callers that hold a
-     * pseudo-class rule (e.g. Button's `:active` rule).
-     */
-    applyOnCSSRule(rule: CSSStyleRule): void {
-        const style = this.toStyle();
-
-        for (const key in style) {
-            const value = style[key];
-
-            if (value === null) {
-                rule.style.removeProperty(key);
-            } else {
-                rule.style.setProperty(key, value);
-            }
-        }
-    }
-
-    /**
      * Returns this side's width / style / color as a [`Style`](/api/core/interfaces/Style)
      * map so callers can batch the writes through `Component.setElementCSSRules`
-     * rather than mutating a live `CSSStyleRule`.
+     * (or the underlying `StyleRule.setMany`) rather than mutating a live
+     * `CSSStyleRule`.
      *
-     * @returns A map of CSS property names to string values.
+     * @returns A map of camelCase CSS property names to string values
+     *   (e.g. `borderTopWidth`, `borderTopStyle`, `borderTopColor`).
+     *
+     * @remarks Keys are camelCase because the underlying `StyleRule` /
+     * `InlineStyle` buffers write via bracket-indexed assignment on
+     * `CSSStyleDeclaration`, which only honours camelCase property names.
      */
     toStyle(): { [key: string]: string | null } {
-        const prefix = this._placement.valueOf();
+        const prefix = camelCasePrefix(this._placement);
 
         return {
-            [prefix + "-width"]: this.getWidth() + "px",
-            [prefix + "-style"]: this.getStyleString(),
-            [prefix + "-color"]: this.getColor()
+            [prefix + "Width"]: this.getWidth() + "px",
+            [prefix + "Style"]: this.getStyleString(),
+            [prefix + "Color"]: this.getColor()
         };
     }
 };
