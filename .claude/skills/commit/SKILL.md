@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Stage and commit work on a feature branch using the project's commit-bucket structure (code / documentation / tooling / graphify / bookkeeping) and the title-plus-paragraph message format. Use whenever the user asks you to commit on a `feature/*` branch, including follow-up commits after `/implement` has finished.
+description: Stage and commit work on a feature branch using the project's commit-bucket structure (code / documentation / tooling / graphify / bookkeeping), the one-functionality-per-code-commit rule, and the title-plus-paragraph message format. Use whenever the user asks you to commit on a `feature/*` branch, including follow-up commits after `/implement` has finished.
 ---
 
 ## When to use

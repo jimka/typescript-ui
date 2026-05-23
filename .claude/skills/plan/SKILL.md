@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Produce an implementation plan for a described feature, saved as a markdown file in the {workspace}/plans folder using the project's established plan format.
+description: Produce an implementation plan for a described feature, saved as a markdown file in {workspace}/plans/ using the project's established plan format. Use whenever the user asks for a plan, design, or approach for non-trivial work — never hand-write plan markdown freehand; this skill enforces the format the `implement` skill consumes.
 ---
 
 ## Required reading
