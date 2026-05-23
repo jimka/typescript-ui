@@ -144,10 +144,10 @@ class HeaderCell extends DefaultCell {
             return this;
         }
 
-        // Native listener so clicks on any child element (e.g. the Label) bubble up here.
-        el.addEventListener('click', (e: MouseEvent) => this.onSortClick(e.shiftKey));
+        // Subtree listener so clicks on any child element (e.g. the Label) bubble up here.
+        Event.addSubtreeListener(this, 'click', (e: MouseEvent) => this.onSortClick(e.shiftKey));
 
-        el.addEventListener('contextmenu', (e: MouseEvent) => {
+        Event.addSubtreeListener(this, 'contextmenu', (e: MouseEvent) => {
             e.preventDefault();
 
             this._onContextMenuCallback?.(this._fieldName, e.clientX, e.clientY);

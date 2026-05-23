@@ -161,16 +161,14 @@ export class Notification extends Component {
         // addSubtreeListener so double-clicks on the badge / text bubble up.
         Event.addSubtreeListener(this, "dblclick", () => this.openDetail());
 
-        // Native mouseover / mouseout on the root element. These bubble from
-        // every descendant of the toast, so the handlers below filter out
+        // Subtree mouseover / mouseout on the root. These bubble from every
+        // descendant of the toast, so the handlers below filter out
         // intra-element movements via `relatedTarget`. mouseenter / mouseleave
         // look cleaner on paper but proved unreliable here in practice —
         // mouseleave didn't always fire on a root carrying a non-empty
         // `transition` CSS rule left over from the entrance animation.
-        const el = this.getElement(true);
-
-        el.addEventListener("mouseover", (e: MouseEvent) => Notification.acquireHoverHold(e));
-        el.addEventListener("mouseout",  (e: MouseEvent) => Notification.releaseHoverHold(e));
+        Event.addSubtreeListener(this, "mouseover", (e: MouseEvent) => Notification.acquireHoverHold(e));
+        Event.addSubtreeListener(this, "mouseout",  (e: MouseEvent) => Notification.releaseHoverHold(e));
     }
 
     /**
