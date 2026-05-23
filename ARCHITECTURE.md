@@ -134,12 +134,13 @@ Both buffer writes into a dirty bag until the target materialises, then flush vi
 For a module-level shared class rule, the canonical pattern is:
 
 ```typescript
-const rule = new StyleRule(() =>
-    (CSS.getClassRule(name) ?? CSS.createClassRule(name)) as CSSStyleRule);
+const rule = new StyleRule({ scope: "class", name: "Foo" });
 
 rule.setMany({ position: "absolute", top: "0", /* … */ });
 rule.ensure();
 ```
+
+`StyleRuleScope` covers three shapes: `"class"` prepends `.`; `"component"` prepends `#`; `"selector"` is verbatim selector text for pseudo-classes / compound selectors / pseudo-elements. The constructor owns the get-or-create handshake against a module-level cache.
 
 If you find yourself reaching for `.style.X` on a `CSSStyleRule` or `HTMLElement`, stop — there is a `StyleRule` / `InlineStyle` (or a Component setter that wraps one) that should own that write.
 
@@ -149,7 +150,7 @@ Construction must stay JS-only. Every framework primitive buffers DOM writes unt
 
 - **Component CSS rule**: `setElementCSSRule(s)` queues into `styleRule`; `applyStyle` flushes at render. Never call `ensureCSSRule()` from a setter.
 - **Per-component state rules** (`:active`, `:hover`, `.selected`, …): allocate via `this.createStyleRule(suffix)`. The builder dedupes by suffix and registers for render-time materialisation. Don't construct a `StyleRule` directly for these — go through `createStyleRule` so the dedupe + register path runs.
-- **Module-level shared class rules** (`.SortPriorityBadge`, `.ResizeHandle`, …): `new StyleRule(() => CSS.getClassRule(name) ?? CSS.createClassRule(name)!)` inside a module-singleton `ensureXClassRule()` is the correct path; the `StyleRule` buffer is the public seam over `CSSStyleRule.style`.
+- **Module-level shared class rules** (`.SortPriorityBadge`, `.ResizeHandle`, …): `new StyleRule({ scope: "class", name: "Foo" })` inside a module-singleton `ensureXClassRule()` is the correct path; the `StyleRule` buffer is the public seam over `CSSStyleRule.style`.
 - **Inline styles**: `setElementStyle(s)` queues into `inlineStyle`; `init()` attaches and flushes.
 - **Measurement**: never read layout (`getBoundingClientRect`, `getComputedStyle`) during construction. Defer to a layout pass or theme-change callback.
 - **Children**: build child Components in the constructor; their DOM is realised when the parent renders. Don't `getElement(true)` during construction.
