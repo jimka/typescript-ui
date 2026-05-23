@@ -74,6 +74,7 @@ export default defineConfig({
                     { text: 'TextArea',          link: '/components/TextArea' },
                     { text: 'PasswordField',     link: '/components/PasswordField' },
                     { text: 'Checkbox',          link: '/components/Checkbox' },
+                    { text: 'Toggle',            link: '/components/Toggle' },
                     { text: 'ComboBox',          link: '/components/ComboBox' },
                     { text: 'AutoCompleteField', link: '/components/AutoCompleteField' },
                     { text: 'DateField',         link: '/components/DateField' },
