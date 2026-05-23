@@ -244,7 +244,6 @@ The child can be larger than the container — `commitBounds` writes raw values,
    - `"both"`: both scrollbars always visible.
 7. **Regression sweep on the other nine layout managers** — open the existing demo screens (HBox/VBox/Column/Row/Grid/Border/Card/Tab/Fit/Split) and confirm visually that no child's size changes from the master baseline. The composition is mechanical so this is a sanity check, not a behaviour change.
 8. **Run `npm run docs:build`** — expect 0 errors and 0 link warnings (the lone acceptable warning is typedoc's pre-existing "unsupported TypeScript version" notice).
-9. **Run `graphify update .`** to refresh the knowledge graph (per [CLAUDE.md](../CLAUDE.md) graphify rules).
 
 ---
 
@@ -269,7 +268,6 @@ No new files. No deletions. No barrel changes (the new methods are `protected` a
 - The other four `autoScroll` modes on the same row behave as enumerated in step 6.
 - Visual spot-check of HBox / VBox / Column / Row / Border / Grid / Tab / Card / Fit / Split demos — no visible change from master.
 - `npm run docs:build` — 0 errors, 0 link warnings (typedoc "unsupported TypeScript version" notice excepted).
-- `graphify update .` — runs to completion.
 
 ---
 
@@ -301,7 +299,7 @@ No new files. No deletions. No barrel changes (the new methods are `protected` a
 - [src/typescript/lib/core/Panel.ts](../src/typescript/lib/core/Panel.ts) — the shipped `setAutoScroll` that this plan unblocks; reads the host's `overflow*` properties which only matter once `commitBounds` lets children actually overflow.
 - [src/typescript/MiscPanel.ts:746-788](../src/typescript/MiscPanel.ts#L746) — the golden-path demo: oversized 800x600 child inside a 360x240 `Fit`-laid `autoScroll` `Panel`.
 - [plans/implemented/panel-auto-scroll.md](implemented/panel-auto-scroll.md) — the upstream feature that depends on this seam; format precedent for this plan.
-- [CLAUDE.md](../CLAUDE.md) — JSDoc cross-bucket link rules and the graphify update step.
+- [CLAUDE.md](../CLAUDE.md) — JSDoc cross-bucket link rules.
 
 ---
 

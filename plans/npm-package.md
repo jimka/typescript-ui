@@ -130,7 +130,7 @@ tsconfig*.json
 .trunk/
 .vscode/
 .claude/
-graphify-out/
+.codegraph/
 tests/
 ```
 
