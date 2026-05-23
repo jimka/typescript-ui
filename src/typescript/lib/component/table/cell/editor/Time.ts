@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
+import { TextInputCellEditor } from "~/component/table/cell/editor/TextInputCellEditor.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Event } from "~/core/Event.js";
 import { TimePickerDropdown } from "~/component/input/TimePickerDropdown.js";
@@ -21,7 +21,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-class TimeEditor extends CellEditor<Date | null> {
+class TimeEditor extends TextInputCellEditor<Date | null> {
 
     private _showSeconds: boolean;
     private _value:       Date | null = null;
@@ -30,7 +30,7 @@ class TimeEditor extends CellEditor<Date | null> {
     private _text:        string = "";
 
     constructor(showSeconds: boolean = false) {
-        super("input");
+        super();
         this._showSeconds = showSeconds;
 
         this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
@@ -42,15 +42,10 @@ class TimeEditor extends CellEditor<Date | null> {
         Event.addListener(this, "focus", () => this.openDropdown());
         Event.addListener(this, "blur",  () => this.closeDropdown());
         Event.addListener(this, "input", () => this.onInput());
-    }
 
-    applyStyle(element: HTMLElement): this {
-        super.applyStyle(element);
-        element.setAttribute('type', 'text');
-        element.setAttribute('inputmode', 'none');
-        element.setAttribute('autocomplete', 'off');
-
-        return this;
+        this.setType("text");
+        this.setInputMode("none");
+        this.setAutoComplete("off");
     }
 
     /**

@@ -38,6 +38,8 @@ class PasswordField extends TextInput<PasswordFieldOptions> {
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());
+
+        this.setType("password");
     }
 
     /**
@@ -51,19 +53,6 @@ class PasswordField extends TextInput<PasswordFieldOptions> {
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
-    }
-
-    /**
-     * Renders the input element with type="password".
-     *
-     * @returns The created input element with its type attribute set to "password".
-     */
-    render() {
-        let element = super.render();
-
-        element.setAttribute("type", "password");
-
-        return element;
     }
 }
 
