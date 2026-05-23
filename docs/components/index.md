@@ -128,6 +128,13 @@ tree.setNodes([
 ]);
 ```
 
+## Containers
+
+| Component | Purpose |
+| --- | --- |
+| [`TabPanel`](/components/TabPanel) | [`Panel`](/api/core/classes/Panel) subclass wrapping the [`Tab`](/api/layout/classes/Tab) layout — typed `addTab` / `addLazyTab` / `setOnTabClose` |
+| [`AccordionPanel`](/components/AccordionPanel) | [`Panel`](/api/core/classes/Panel) subclass wrapping the [`Accordion`](/api/layout/classes/Accordion) layout — typed `addSection` / `openSection` / `setSingleOpen` |
+
 ## Layout primitives
 
 These components are usually internal but are publicly exposed in case you need them:
