@@ -15,6 +15,12 @@ import { callable } from "~/core/Callable.js";
 
 Glyph.register(calendar);
 
+// Width of the picker glyph button in pixels. Matches the prior `display: flex`
+// + 24px caret column the framework used before the per-field doLayout
+// override; sized to the calendar/clock glyph's intrinsic 16px box plus 4px
+// padding on each side so the icon centres without crowding the input edge.
+const PICKER_BUTTON_WIDTH_PX = 24;
+
 /**
  * Internal Input subclass that exposes typed setters for the input attributes
  * the picker fields need. Lives here (not in `Input.ts`) because these
@@ -208,18 +214,17 @@ class DateField extends Component<DateFieldOptions> implements Bindable<Date | n
     doLayout(): this {
         super.doLayout();
 
-        const w  = this.getWidth();
-        const h  = this.getHeight();
-        const bw = 24;
+        const w = this.getWidth();
+        const h = this.getHeight();
 
         this._input.setX(0);
         this._input.setY(0);
-        this._input.setWidth(Math.max(0, w - bw));
+        this._input.setWidth(Math.max(0, w - PICKER_BUTTON_WIDTH_PX));
         this._input.setHeight(h);
 
-        this._button.setX(w - bw);
+        this._button.setX(w - PICKER_BUTTON_WIDTH_PX);
         this._button.setY(0);
-        this._button.setWidth(bw);
+        this._button.setWidth(PICKER_BUTTON_WIDTH_PX);
         this._button.setHeight(h);
 
         return this;
