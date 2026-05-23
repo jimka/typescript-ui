@@ -9,7 +9,6 @@ import { BaseObject } from "~/core/BaseObject.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Type } from "~/core/Type.js";
 import { Util } from "~/core/Util.js";
-import { CSS } from "~/core/CSS.js";
 import { Position } from "~/primitive/Position.js";
 import { Aria } from "~/core/Aria.js";
 import { StyleRule, InlineStyle } from "~/core/StyleTarget.js";
@@ -207,7 +206,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // Deferred-write style buffers. `styleRule` lazily materialises the
     // component's per-id `CSSStyleRule` on first `ensure()` call; `inlineStyle`
     // queues `element.style.X = ...` writes until `init()` attaches it.
-    private _styleRule            : StyleRule    = new StyleRule(() => CSS.createComponentRule(this.getId()) as CSSStyleRule);
+    private _styleRule            : StyleRule    = new StyleRule({ scope: "component", name: this.getId() });
     private _inlineStyle          : InlineStyle  = new InlineStyle();
     // Subclass-owned state rules (e.g. Button's `:active` / `:hover`,
     // ToggleButton's `.selected`) keyed by selector suffix and materialised
@@ -455,7 +454,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     protected createStyleRule(selectorSuffix: string): StyleRule {
         let rule = this._deferredStyleRules.get(selectorSuffix);
         if (!rule) {
-            rule = new StyleRule(() => CSS.createComponentRule(this.getId() + selectorSuffix) as CSSStyleRule);
+            rule = new StyleRule({ scope: "component", name: this.getId() + selectorSuffix });
             this._deferredStyleRules.set(selectorSuffix, rule);
         }
 

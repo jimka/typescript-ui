@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 
-CSS.ensureKeyframes(
+StyleRule.ensureKeyframes(
     'ts-ui-progress-indeterminate',
     '0% { transform: translateX(-100%); } 100% { transform: translateX(400%); }'
 );

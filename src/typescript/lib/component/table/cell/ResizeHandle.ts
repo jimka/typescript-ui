@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { CSS } from "~/core/CSS.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { callable } from "~/core/Callable.js";
@@ -31,9 +30,7 @@ function ensureResizeHandleClassRule(): void {
         return;
     }
 
-    const rule = new StyleRule(() =>
-        (CSS.getClassRule("ResizeHandle")
-            ?? CSS.createClassRule("ResizeHandle")) as CSSStyleRule);
+    const rule = new StyleRule({ scope: "class", name: "ResizeHandle" });
 
     rule.setMany({
         position: "absolute",
