@@ -19,6 +19,16 @@ const SNAP_DOCK_GAP_PX:         number = 4;
 const DEFAULT_MIN_DOCK_WIDTH_PX: number = 200;
 
 /**
+ * Sentinel Component used as the registration key for the window-wide
+ * `mousedown` outside-click listener. The handler is a static (one per
+ * `Window` namespace, not per instance), but `Event.addViewportListener`
+ * requires a Component to bind to. Allocating one stable sentinel
+ * preserves the existing install/uninstall lifecycle that's tied to
+ * `Window.openWindows.size`, rather than to any individual window.
+ */
+const _viewportListenerOwner: Component = new Component();
+
+/**
  * Lifecycle state for {@link Window}. The three values are mutually
  * exclusive — a window is always exactly one of:
  *
@@ -329,7 +339,11 @@ class Window extends Panel<WindowOptions> {
         this.bringToFront();
 
         if (Window.openWindows.size === 0) {
-            window.addEventListener('mousedown', Window.deactivateIfOutside, true);
+            Event.addViewportListener(
+                _viewportListenerOwner,
+                'mousedown',
+                Window.deactivateIfOutside
+            );
         }
 
         Window.openWindows.add(this);
@@ -474,7 +488,11 @@ class Window extends Panel<WindowOptions> {
         Window.openWindows.delete(this);
 
         if (Window.openWindows.size === 0) {
-            window.removeEventListener('mousedown', Window.deactivateIfOutside, true);
+            Event.removeViewportListener(
+                _viewportListenerOwner,
+                'mousedown',
+                Window.deactivateIfOutside
+            );
         }
 
         // Re-layout the dock so any sibling minimized windows close any gap
@@ -1255,7 +1273,8 @@ class Window extends Panel<WindowOptions> {
         if (this._viewportResizeBound) {
             return;
         }
-        window.addEventListener("resize", this._boundOnViewportResize);
+
+        Event.addViewportListener(this, "resize", this._boundOnViewportResize);
         this._viewportResizeBound = true;
     }
 
@@ -1263,7 +1282,8 @@ class Window extends Panel<WindowOptions> {
         if (!this._viewportResizeBound) {
             return;
         }
-        window.removeEventListener("resize", this._boundOnViewportResize);
+
+        Event.removeViewportListener(this, "resize", this._boundOnViewportResize);
         this._viewportResizeBound = false;
     }
 
@@ -1293,7 +1313,7 @@ class Window extends Panel<WindowOptions> {
 
         Event.addViewportListener(this, "keydown", this._boundOnSnapKeyDown);
         Event.addViewportListener(this, "keyup",   this._boundOnSnapKeyUp);
-        window.addEventListener("blur", this._boundOnSnapBlur);
+        Event.addViewportListener(this, "blur",    this._boundOnSnapBlur);
         this._snapKeysAttached = true;
     }
 
@@ -1304,7 +1324,7 @@ class Window extends Panel<WindowOptions> {
 
         Event.removeViewportListener(this, "keydown", this._boundOnSnapKeyDown);
         Event.removeViewportListener(this, "keyup",   this._boundOnSnapKeyUp);
-        window.removeEventListener("blur", this._boundOnSnapBlur);
+        Event.removeViewportListener(this, "blur",    this._boundOnSnapBlur);
         this._snapKeysAttached = false;
     }
 

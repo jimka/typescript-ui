@@ -14,15 +14,69 @@ export namespace Event {
         listeners: Function[]
     };
 
+    /**
+     * Per-call override of the default registration options for a listener.
+     *
+     * @remarks Once a listener type has been registered with a given
+     * `passive` setting, subsequent registrations for the same type must use
+     * the same setting — `addListener` / `addSubtreeListener` throw on
+     * conflict. The window-level capture handler is installed once per type,
+     * so the first registration locks the options for that type's lifetime.
+     */
+    export interface ListenerOptions {
+        /**
+         * Override the type's default passive setting. When `false`, listeners
+         * for this type may call `preventDefault()` on the received event.
+         */
+        passive?: boolean;
+    }
+
     let listenerMap = new Map<String, Map<String, CompFunc>>();
     let viewportListenerMap = new Map<String, Map<String, CompFunc>>();
     let subtreeListenerMap = new Map<String, Map<String, CompFunc>>();
     let installedListenerTypes = new Set<string>();
+    let installedListenerOpts = new Map<string, AddEventListenerOptions>();
 
     const PASSIVE_TYPES: Set<string> = new Set(["scroll", "wheel", "touchstart", "touchmove"]);
 
-    function captureOpts(type: string): AddEventListenerOptions {
-        return { capture: true, passive: PASSIVE_TYPES.has(type) };
+    function captureOpts(type: string, override?: ListenerOptions): AddEventListenerOptions {
+        const passive = override?.passive ?? PASSIVE_TYPES.has(type);
+
+        return { capture: true, passive };
+    }
+
+    function installBaseListener(type: string, options?: ListenerOptions): void {
+        if (!installedListenerTypes.has(type)) {
+            const opts = captureOpts(type, options);
+
+            installedListenerTypes.add(type);
+            installedListenerOpts.set(type, opts);
+            window.addEventListener(type, baseListener, opts);
+
+            return;
+        }
+
+        if (!options) {
+            return;
+        }
+
+        const prev = installedListenerOpts.get(type)!;
+        const next = captureOpts(type, options);
+
+        if (prev.passive !== next.passive || prev.capture !== next.capture) {
+            throw new Error(
+                "Event listener options for '" + type +
+                "' conflict with earlier registration"
+            );
+        }
+    }
+
+    function uninstallBaseListener(type: string): void {
+        const opts = installedListenerOpts.get(type) ?? captureOpts(type);
+
+        installedListenerTypes.delete(type);
+        installedListenerOpts.delete(type);
+        window.removeEventListener(type, baseListener, opts);
     }
 
     let baseListener = function (evnt: Event) {
@@ -131,11 +185,20 @@ export namespace Event {
      * @param component - The component to associate the listener with.
      * @param type - The DOM event type string to listen for.
      * @param listener - The callback function to invoke when the event fires on this component.
+     * @param options - Optional override for the default registration options
+     * (currently only `passive`). Once a type has been registered, subsequent
+     * registrations must use the same `passive` setting or this function
+     * throws.
      *
      * @remarks A capture-phase window listener is installed the first time a given event type is registered,
      * and removed automatically when the last listener for that type is unregistered.
      */
-    export function addListener(component: Component, type: string, listener: Function) {
+    export function addListener(
+        component: Component,
+        type: string,
+        listener: Function,
+        options?: ListenerOptions
+    ) {
         if (!listener || !component) {
             return;
         }
@@ -146,10 +209,7 @@ export namespace Event {
             listenerMap.set(type, typeMap);
         }
 
-        if (!installedListenerTypes.has(type)) {
-            installedListenerTypes.add(type);
-            window.addEventListener(type, baseListener, captureOpts(type));
-        }
+        installBaseListener(type, options);
 
         let compFunc = typeMap.get(component.getId());
         if (!compFunc) {
@@ -203,8 +263,7 @@ export namespace Event {
         const subtreeMap = subtreeListenerMap.get(type);
         const bothEmpty = !listenerMap.has(type) && (!subtreeMap || subtreeMap.size === 0);
         if (bothEmpty && installedListenerTypes.has(type)) {
-            installedListenerTypes.delete(type);
-            window.removeEventListener(type, baseListener, captureOpts(type));
+            uninstallBaseListener(type);
         }
     }
 
@@ -215,12 +274,21 @@ export namespace Event {
      * @param component - The ancestor component to watch.
      * @param type - The DOM event type string to listen for.
      * @param listener - The callback invoked when a matching event bubbles through this component's subtree.
+     * @param options - Optional override for the default registration options
+     * (currently only `passive`). Once a type has been registered, subsequent
+     * registrations must use the same `passive` setting or this function
+     * throws.
      *
      * @remarks Unlike `addListener`, which only matches the exact event target, this fires for
      * any event whose target is a descendant of the component's element. Multiple components
      * may register subtree listeners for the same event type; all matching ancestors are notified.
      */
-    export function addSubtreeListener(component: Component, type: string, listener: Function): void {
+    export function addSubtreeListener(
+        component: Component,
+        type: string,
+        listener: Function,
+        options?: ListenerOptions
+    ): void {
         if (!listener || !component) {
             return;
         }
@@ -231,10 +299,7 @@ export namespace Event {
             subtreeListenerMap.set(type, typeMap);
         }
 
-        if (!installedListenerTypes.has(type)) {
-            installedListenerTypes.add(type);
-            window.addEventListener(type, baseListener, captureOpts(type));
-        }
+        installBaseListener(type, options);
 
         let compFunc = typeMap.get(component.getId());
         if (!compFunc) {
@@ -283,8 +348,7 @@ export namespace Event {
         const exactMap = listenerMap.get(type);
         const bothEmpty = (!exactMap || exactMap.size === 0) && !subtreeListenerMap.has(type);
         if (bothEmpty && installedListenerTypes.has(type)) {
-            installedListenerTypes.delete(type);
-            window.removeEventListener(type, baseListener, captureOpts(type));
+            uninstallBaseListener(type);
         }
     }
 
