@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { InlineStyle } from "~/core/StyleTarget.js";
 
 /**
  * Small helpers for playing CSS transitions on raw DOM elements.
@@ -91,18 +92,29 @@ export namespace Animation {
         const easing   = config.easing ?? "ease-out";
         const fallback = config.fallbackBufferMs ?? 40;
 
+        // Route every write through the framework's deferred inline-style
+        // buffer rather than touching `el.style` directly. `attach()` flushes
+        // synchronously so subsequent `set` / `setMany` calls land on the
+        // live element. The buffer is scoped to this `play()` invocation;
+        // each call gets a fresh wrapper bound to `el`.
+        const buf = new InlineStyle();
+        buf.attach(el);
+
         if (isReducedMotion()) {
-            Object.assign(el.style, config.to);
+            buf.setMany(config.to as Record<string, string | null>);
             config.onComplete?.();
             return;
         }
 
         const applyTransitionAndTo = (): void => {
-            el.style.transition = config.properties
-                .map(p => `${p} ${config.durationMs}ms ${easing}`)
-                .join(", ");
+            buf.set(
+                "transition",
+                config.properties
+                    .map(p => `${p} ${config.durationMs}ms ${easing}`)
+                    .join(", "),
+            );
 
-            Object.assign(el.style, config.to);
+            buf.setMany(config.to as Record<string, string | null>);
 
             let done = false;
             const finish = (): void => {
@@ -117,7 +129,7 @@ export namespace Animation {
                 // through it. Done before `onComplete` so callers that
                 // start a fresh `play()` from the callback can install
                 // their own transition without it being clobbered.
-                el.style.transition = "";
+                buf.set("transition", null);
 
                 config.onComplete?.();
             };
@@ -127,7 +139,7 @@ export namespace Animation {
         };
 
         if (config.from) {
-            Object.assign(el.style, config.from);
+            buf.setMany(config.from as Record<string, string | null>);
             requestAnimationFrame(() => {
                 requestAnimationFrame(applyTransitionAndTo);
             });
