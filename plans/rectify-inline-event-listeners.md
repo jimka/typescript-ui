@@ -341,7 +341,6 @@ No files created or deleted.
 - `npx tsc --noEmit` → 0 errors.
 - `npm run docs:build` → 0 errors, 0 link warnings (typedoc's "unsupported TypeScript version" notice is the only acceptable warning). Confirm `Event.addViewportResizeListener` no longer appears in the regenerated API page.
 - Manual smoke per step 6.
-- `graphify update .` succeeds; the `addViewportResizeListener` node disappears from the graph; new in-edges to `addViewportListener` appear from `Body.init`.
 
 ---
 

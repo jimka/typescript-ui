@@ -8,7 +8,7 @@ Four interlocked concerns in the layout stack are addressed together because the
 
 2. **Remove HTML/CSS layout primitives.** The framework already positions every laid-out child via absolute `left`/`top`/`width`/`height` written by `LayoutManager.commitBounds` (proposed in [plans/layout-manager-place-component-split.md](layout-manager-place-component-split.md)). What remains: five sites where `display: flex` (or implicit flow layout) handles intra-component layout — [ComboBox.ts:247](../src/typescript/lib/component/input/ComboBox.ts#L247), [ComboBox.ts:436](../src/typescript/lib/component/input/ComboBox.ts#L436), [DateField.ts:140](../src/typescript/lib/component/input/DateField.ts#L140), [DateTimeField.ts:139](../src/typescript/lib/component/input/DateTimeField.ts#L139), [TimeField.ts:141](../src/typescript/lib/component/input/TimeField.ts#L141). Goal: every child position is computed by a layout manager and committed via `setX/setY/setWidth/setHeight`; the only display values remaining are `block` (the framework default) and the Component-default `position: absolute`.
 
-3. **`TabPanel` / `AccordionPanel` framework Panel subclasses.** Today [`AccordionPanel`](../src/typescript/AccordionPanel.ts) and [`TabPanel`](../src/typescript/TabPanel.ts) are **demo screens** under `src/typescript/`, not framework classes — they live next to `MiscPanel`, `BindingPanel`, etc. (see Community 4 of [graphify-out/GRAPH_REPORT.md](../graphify-out/GRAPH_REPORT.md#community-4)). The framework only exposes the bare layout managers ([`Tab`](../src/typescript/lib/layout/Tab.ts), [`Accordion`](../src/typescript/lib/layout/Accordion.ts)) — callers wire `new Panel({ layoutManager: new Tab() })` themselves and re-implement keyboard wiring, ARIA, close hooks each time. Introduce framework-side `TabPanel` and `AccordionPanel` as `Panel` subclasses that ship that chrome, while keeping the bare `new Panel({ layoutManager: new Tab() })` path working unchanged.
+3. **`TabPanel` / `AccordionPanel` framework Panel subclasses.** Today [`AccordionPanel`](../src/typescript/AccordionPanel.ts) and [`TabPanel`](../src/typescript/TabPanel.ts) are **demo screens** under `src/typescript/`, not framework classes — they live next to `MiscPanel`, `BindingPanel`, etc. The framework only exposes the bare layout managers ([`Tab`](../src/typescript/lib/layout/Tab.ts), [`Accordion`](../src/typescript/lib/layout/Accordion.ts)) — callers wire `new Panel({ layoutManager: new Tab() })` themselves and re-implement keyboard wiring, ARIA, close hooks each time. Introduce framework-side `TabPanel` and `AccordionPanel` as `Panel` subclasses that ship that chrome, while keeping the bare `new Panel({ layoutManager: new Tab() })` path working unchanged.
 
 4. **`setLayoutManager` debug attribute + rename `Component.setAttribute` → `setDataAttribute`.** [Component.ts:3148](../src/typescript/lib/core/Component.ts#L3148) already mirrors the manager's class name via `this.setAttribute("layout", layoutManager.getClassName())` — but the attribute is being written as the non-standard `layout=` rather than the conventional `data-layout=`. The brief's "not surfacing in HTML" reading is the same finding from the consumer side: DevTools surfaces `data-*` natively but lints `layout=` as invalid HTML, so users scanning the inspector miss it. The fix is part of a broader reframing: `Component.setAttribute` / `getAttribute` / `delAttribute` are renamed to `setDataAttribute` / `getDataAttribute` / `delDataAttribute`, signal data-only intent at the API level, and auto-prepend `data-` to the key. Behavioral HTML attributes that the browser interprets natively (`placeholder`, `readonly`, `maxlength`, `inputmode`, `autocomplete`, `rows`, `cols`, `wrap`, `type`, `name`, `selected`) migrate to the already-existing direct-write `Component.setElementAttribute`. ARIA stays self-contained on its own [`Aria`](../src/typescript/lib/core/Aria.ts) class. The rename is self-enforcing: any leftover `setAttribute` caller after the migration surfaces as a typecheck error.
 
@@ -419,8 +419,6 @@ The order keeps the framework buildable at every checkpoint. Steps 1–3 (the `s
 
 16. **`npm run docs:build` — 0 errors, 0 link warnings.** Typedoc's pre-existing "unsupported TypeScript version" notice is the only acceptable warning.
 
-17. **`graphify update .`** — refresh the knowledge graph.
-
 ---
 
 ## Files to Create / Modify / Delete
@@ -459,7 +457,7 @@ No deletions outright; the two demo file renames preserve content.
 - `import { TabPanel, AccordionPanel } from "@jimka/typescript-ui/component/container"` resolves and both render in a smoke demo screen.
 - The pre-existing demo screens at the renamed paths (`AccordionDemoPanel`, `TabDemoPanel`) still render under their "Accordion" / "Tab" tabs in `main.ts`.
 - `npm run docs:build` — 0 errors, 0 link warnings.
-- `graphify update .` — runs to completion; `AccordionPanel` and `TabPanel` appear in the graph as members of the container community (not Community 4's demo community).
+- After the move, `AccordionPanel` and `TabPanel` live in the `component/container` package (not next to `MiscPanel` in the demo tree).
 
 ---
 
@@ -505,7 +503,6 @@ No deletions outright; the two demo file renames preserve content.
 - [plans/implemented/accordion.md](implemented/accordion.md), [plans/implemented/closeable-tabs.md](implemented/closeable-tabs.md) — `Accordion` / `Tab` manager shape that `AccordionPanel` / `TabPanel` wrap.
 - [src/typescript/AccordionPanel.ts](../src/typescript/AccordionPanel.ts), [TabPanel.ts](../src/typescript/TabPanel.ts) — demo files to rename.
 - [src/typescript/main.ts](../src/typescript/main.ts) — demo `addLazyTab` registrations.
-- [graphify-out/GRAPH_REPORT.md](../graphify-out/GRAPH_REPORT.md) — Community 4 (demo panels), 21 (Accordion), 41 (Tab), 51 (Card), 52 (Column), 59 (Row), 30 (BaseObject layout constraints).
 
 ---
 
