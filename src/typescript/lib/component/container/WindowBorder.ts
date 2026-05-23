@@ -247,7 +247,7 @@ class WindowBorder extends Component {
         }
 
         if (cursor) {
-            element.style.cursor = cursor;
+            this.setCursor(cursor);
         }
 
         if (this._snapTarget) {

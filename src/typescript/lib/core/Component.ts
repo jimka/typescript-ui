@@ -97,6 +97,7 @@ export interface ComponentOptions {
     position?:        Position;
     overflow?:        string;
     pointerEvents?:   string;
+    touchAction?:     string;
     layoutManager?:   LayoutManager;
     id?:              string;
     attributes?:      Record<string, string>;
@@ -332,6 +333,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.position        !== undefined) this.setPosition(opts.position);
         if (opts.overflow        !== undefined) this.setOverflow(opts.overflow);
         if (opts.pointerEvents   !== undefined) this.setPointerEvents(opts.pointerEvents);
+        if (opts.touchAction     !== undefined) this.setTouchAction(opts.touchAction);
 
         if (opts.attributes !== undefined) {
             for (const key of Object.keys(opts.attributes)) {
@@ -825,7 +827,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        element.style.display = v ? this._display : "none";
+        this.setElementStyle("display", v ? this._display : "none");
 
         return this;
     }
@@ -1163,6 +1165,49 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this._options.cursor = undefined;
         this.setElementStyle("cursor", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the CSS `touch-action` value, or null if not set.
+     *
+     * @returns The CSS `touch-action` string, or null.
+     */
+    getTouchAction(): string | null {
+        return this._options.touchAction ?? null;
+    }
+
+    /**
+     * Sets the CSS `touch-action` style on the element. Use
+     * {@link clearTouchAction} to remove.
+     *
+     * @param touchAction - A CSS `touch-action` value (e.g. "none", "pan-y", "manipulation").
+     *
+     * @returns This component, for method chaining.
+     */
+    setTouchAction(touchAction: string): this {
+        if (this._options.touchAction === touchAction) {
+            return this;
+        }
+        this._options.touchAction = touchAction;
+        this.setElementStyle("touchAction", touchAction);
+
+        return this;
+    }
+
+    /**
+     * Removes the inline `touch-action` style from the element.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearTouchAction(): this {
+        if (this._options.touchAction === undefined) {
+            return this;
+        }
+
+        this._options.touchAction = undefined;
+        this.setElementStyle("touchAction", null);
 
         return this;
     }
@@ -2718,19 +2763,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // NaN means "never assigned by a setter" — skip the DOM write for those.
         // Any finite value (including 0) MUST be written so the DOM matches the cached field.
         if (!Number.isNaN(this._width)) {
-            element.style.width = this._width + "px";
+            this._inlineStyle.set("width", this._width + "px");
         }
 
         if (!Number.isNaN(this._top)) {
-            element.style.top = this._top + "px";
+            this._inlineStyle.set("top", this._top + "px");
         }
 
         if (!Number.isNaN(this._left)) {
-            element.style.left = this._left + "px";
+            this._inlineStyle.set("left", this._left + "px");
         }
 
         if (!Number.isNaN(this._height)) {
-            element.style.height = this._height + "px";
+            this._inlineStyle.set("height", this._height + "px");
         }
 
         const minSize = opts.minSize;
@@ -2774,11 +2819,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (opts.pointerEvents) {
-            element.style.pointerEvents = opts.pointerEvents;
+            this._inlineStyle.set("pointerEvents", opts.pointerEvents);
         }
 
         if (opts.zIndex) {
-            element.style.zIndex = String(opts.zIndex);
+            this._inlineStyle.set("zIndex", String(opts.zIndex));
         }
 
         // Replay the cached transition so setters that fired before init
@@ -2787,7 +2832,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // freely overwrite per-instance (the height transition wouldn't make
         // sense at the class-rule level).
         if (this._transition !== null) {
-            element.style.transition = this._transition;
+            this._inlineStyle.set("transition", this._transition);
         }
 
         if (this._userSelect) {
