@@ -273,7 +273,6 @@ Run as a single pass after all six bug fixes land:
 - `npx tsc --noEmit` — 0 new errors.
 - `npx vite build` — succeeds.
 - `npm run docs:build` — 0 errors, 0 link warnings (typedoc's "unsupported TypeScript version" notice is the lone acceptable warning). Confirms the new `Util.measureLabelBaseline` export and `HeaderCell.setColumnFocused` / `Body.setHeader` symbols land in the API docs.
-- `graphify update .` to refresh the knowledge graph.
 
 Manual smoke at `http://localhost:8015`:
 

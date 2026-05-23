@@ -103,12 +103,20 @@ This plan presumes the user has installed CodeGraph and registered the MCP serve
 8. **Remove the PreToolUse hook from [.claude/settings.json](../.claude/settings.json).** Keep the surrounding JSON shape valid (`permissions` and `PostToolUse` stay).
 9. **Add `.codegraph/` to [.gitignore](../.gitignore)** (one new line, after `node_modules`).
 10. **Delete [`graphify-out/`](../graphify-out/) recursively.** `git rm -r graphify-out/`. This is the large diff.
-11. **Edit active plan files that reference graphify update:**
-    - [plans/callable-inline-class.md:142](callable-inline-class.md#L142) — drop the `graphify update .` step.
-    - [plans/layout-manager-place-component-split.md:247,272,304](layout-manager-place-component-split.md#L247) — drop the graphify update step, drop the `graphify update .` verification line, drop the `[CLAUDE.md](../CLAUDE.md) — … graphify update step` Critical Files note.
-    - [plans/scrollbar-arrow-buttons.md:303](scrollbar-arrow-buttons.md#L303) — drop the `Knowledge graph refresh` step.
-    - [plans/npm-package.md:133](npm-package.md#L133) — replace `graphify-out/` with `.codegraph/` in the publish-ignore list.
-    → verify: `grep -rn 'graphify' plans/ — expect zero matches (plans/implemented/ is historical, leave alone).`
+11. **Edit active plan files that reference graphify update or graphify-out/:**
+    - [plans/callable-inline-class.md:142](../callable-inline-class.md#L142) — drop the `graphify update .` step.
+    - [plans/layout-manager-place-component-split.md:247,272,304](../layout-manager-place-component-split.md#L247) — drop the graphify update step, drop the `graphify update .` verification line, drop the `[CLAUDE.md](../CLAUDE.md) — … graphify update step` Critical Files note.
+    - [plans/scrollbar-arrow-buttons.md:303](../scrollbar-arrow-buttons.md#L303) — drop the `Knowledge graph refresh` step.
+    - [plans/npm-package.md:133](../npm-package.md#L133) — replace `graphify-out/` with `.codegraph/` in the publish-ignore list.
+    - [plans/input-component-class-hierarchy-audit.md](../input-component-class-hierarchy-audit.md) — drop the `graphify update .` verification line.
+    - [plans/layout-system-overhaul.md](../layout-system-overhaul.md) — drop two `graphify update .` steps; convert `graphify-out/GRAPH_REPORT.md` link in Overview + Critical Files to plain "Community NN" descriptions.
+    - [plans/autocomplete-case-insensitive.md](../autocomplete-case-insensitive.md) — drop the `graphify update .` step; convert the `graphify-out/GRAPH_REPORT.md` Community 33/11 reference to plain text.
+    - [plans/stylerule-constructor-redesign.md](../stylerule-constructor-redesign.md) — drop two `graphify update .` steps + the "Community 54" Critical Files link; rewrite the verification mentioning Community 54 as a plain note.
+    - [plans/ui-component-bug-bash.md](../ui-component-bug-bash.md) — drop the `graphify update .` verification line.
+    - [plans/picker-combobox-interaction-fix.md](../picker-combobox-interaction-fix.md) — drop the `graphify update` references in the Ordered Steps and the graph-refresh verification.
+    - [plans/modal-glyph-theming.md](../modal-glyph-theming.md) — drop two `graphify update .` references.
+    - [plans/rectify-inline-event-listeners.md](../rectify-inline-event-listeners.md) — drop the `graphify update .` verification line.
+    → verify: `grep -rn 'graphify' plans/ — expect zero matches outside plans/in-progress/replace-graphify-with-codegraph.md itself (plans/implemented/ is historical, leave alone).`
 12. **Delete memory files** `~/.claude/projects/-home-jika-typescript-typescript/memory/feedback_graphify_directed.md` and `.../project_graphify_corpus.md`. Edit `.../MEMORY.md` to remove the two corresponding index lines. → verify: `grep -n graphify ~/.claude/projects/-home-jika-typescript-typescript/memory/MEMORY.md — expect zero matches`.
 
 Commit grouping follows the (now-four-bucket) `commit` skill:

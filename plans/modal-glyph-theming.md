@@ -122,7 +122,6 @@ if (titleGlyph !== null) {
 6. **Tint the notification detail title-bar glyph** in [`Notification.openDetail`](../src/typescript/lib/core/Notification.ts#L395) after the `setGlyph` call at [Notification.ts:416](../src/typescript/lib/core/Notification.ts#L416). → verify: double-click an `error` notification — header glyph renders in the same red as the title text and the source notification's border.
 7. **Theme toggle smoke test** — flip `ThemeManager.setTheme(DarkTheme)` while a confirm dialog is open and while a notification detail dialog is open: both tints should re-resolve through the CSS variable system, no JS reflow needed.
 8. **Run `npm run docs:build`** — expect 0 errors and 0 link warnings (typedoc's "unsupported TypeScript version" notice is the lone acceptable warning).
-9. **`graphify update .`** to refresh the knowledge graph.
 
 ---
 
@@ -146,7 +145,6 @@ No new files. No deletions.
 - Manual: trigger each notification type (`info`, `success`, `warning`, `error`), double-click each, and confirm the modal title-bar glyph matches the same accent the title text uses.
 - Manual: open a confirm dialog, switch theme via `ThemeManager.setTheme(DarkTheme)`, and confirm both glyphs re-resolve to their dark-mode token values without re-opening the dialog.
 - `npm run docs:build` — 0 errors and 0 link warnings.
-- `graphify update .`.
 
 ---
 

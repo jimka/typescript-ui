@@ -6,7 +6,7 @@
 
 This plan keeps the default (case-insensitive `'contains'`) and extends `AutoCompleteMatchMode` with two additional values — `'containsCaseSensitive'` and `'startsWithCaseSensitive'` — so a consumer who *wants* case-sensitive matching can reach it through the existing setter. No parallel `setCaseSensitive` toggle is introduced (per the brief).
 
-Community 33 ([GRAPH_REPORT.md#L234](../graphify-out/GRAPH_REPORT.md#L234)) is the `AutoCompleteField` node and Community 11 ([GRAPH_REPORT.md#L146](../graphify-out/GRAPH_REPORT.md#L146)) is `AutoCompleteDropdown` + `AutoCompleteItem`. Filtering lives entirely in the field — the dropdown is presentation only — so the dropdown classes are untouched.
+Filtering lives entirely in `AutoCompleteField`; `AutoCompleteDropdown` and `AutoCompleteItem` are presentation only, so the dropdown classes are untouched.
 
 The store-side primitive ([FilterDescriptor.ts:13-14](../src/typescript/lib/data/FilterDescriptor.ts#L13)) already supports `caseSensitive?: boolean` on `contains` / `startsWith`, so the store branch needs only a value forward, not a new descriptor type.
 
@@ -172,7 +172,6 @@ No changes to `AutoCompleteDropdown.ts`, `AutoCompleteItem.ts`, `FilterDescripto
   - `matchMode: 'containsCaseSensitive'` — typing `"a"` matches `apricot`, `Banana`; typing `"A"` matches `Apple`, `BANANA`.
   - `matchMode: 'startsWithCaseSensitive'` — typing `"a"` matches `apricot`; typing `"A"` matches `Apple`.
 - Store-backed verification: bind one field to an in-memory store and confirm the same matrix by toggling `matchMode` between case-sensitive / case-insensitive variants (the descriptor's `caseSensitive` flag is honored by [FilterDescriptor.ts:52-61](../src/typescript/lib/data/FilterDescriptor.ts#L52)).
-- `graphify update .` — keeps the graph current.
 
 ---
 
