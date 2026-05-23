@@ -232,6 +232,25 @@ class Body extends Component {
 
         Event.addListener(this, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
 
+        // One subtree click listener replaces the per-row listener that
+        // growRowPool used to install. Walk up from the event target to find
+        // the matching pool row; identical complexity per click, one window
+        // registration regardless of pool size.
+        Event.addSubtreeListener(this, "click", (e: MouseEvent) => {
+            let node: HTMLElement | null = e.target as HTMLElement | null;
+
+            while (node) {
+                const row = this._rowPool.find(r => r.getElement() === node);
+
+                if (row) {
+                    this.onRowClick(row, e);
+                    return;
+                }
+
+                node = node.parentElement;
+            }
+        });
+
         this.renderWindow();
 
         return this;
@@ -425,7 +444,8 @@ class Body extends Component {
 
             growFragment.appendChild(rowEl);
 
-            rowEl.addEventListener('click', (e: MouseEvent) => this.onRowClick(row, e));
+            // Click handler is a single subtree listener on Body.init(); see
+            // there for the row-lookup walk.
 
             // Pin row's static top to 0 once. Per-frame Y offset comes from translateY,
             // which is composite-only (avoids layout/paint per scroll tick).

@@ -867,7 +867,7 @@ class Popover extends Panel<PopoverOptions> {
      * ancestor of the anchor so the popover follows the anchor while open.
      */
     private attachRepositionListeners(): void {
-        window.addEventListener("resize", this._onWindowResize);
+        Event.addViewportListener(this, "resize", this._onWindowResize);
 
         if (this._anchorElement) {
             this._scrollAncestors = this.collectScrollAncestors(this._anchorElement);
@@ -882,7 +882,7 @@ class Popover extends Panel<PopoverOptions> {
      * Detaches every reposition listener registered by {@link attachRepositionListeners}.
      */
     private detachRepositionListeners(): void {
-        window.removeEventListener("resize", this._onWindowResize);
+        Event.removeViewportListener(this, "resize", this._onWindowResize);
 
         for (const ancestor of this._scrollAncestors) {
             ancestor.removeEventListener("scroll", this._onScroll);
