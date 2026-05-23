@@ -256,6 +256,24 @@ class Card extends LayoutManager {
     }
 
     /**
+     * Computes the children's combined minSize along this manager's geometry:
+     * the currently-visible child's minSize. Used by `doLayout` to inflate
+     * the working size when the host has opted into `setOverflowing`.
+     *
+     * @returns The visible child's min-size; `{ width: 0, height: 0 }` when
+     *   no child is visible.
+     */
+    protected computeTotalMinSize(): Size {
+        if (!this._currentVisible) {
+            return { width: 0, height: 0 };
+        }
+
+        const min = this._currentVisible.getMinSize();
+
+        return min ?? { width: 0, height: 0 };
+    }
+
+    /**
      * Sizes the visible component to fill the container's inner bounds.
      * Visibility transitions are handled in `setVisibleComponentId`, not here.
      */
@@ -273,8 +291,20 @@ class Card extends LayoutManager {
             return;
         }
 
-        const containerSize = container.getInnerSize();
+        let containerSize = container.getInnerSize();
         const containerInsets = container.getInsets();
+
+        // Universal scroll: see HBox.doLayout for the rationale. When the
+        // host has marked the corresponding axis as overflowing, grow the
+        // working size past the host's inner rect to the visible child's
+        // minSize so the host's CSS `overflow: auto` produces a scrollbar.
+        if (containerSize && (this.isOverflowingX() || this.isOverflowingY())) {
+            const totalMin = this.computeTotalMinSize();
+            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
+            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
+
+            containerSize = { width: w, height: h };
+        }
 
         this.placeComponent(
             this._currentVisible,

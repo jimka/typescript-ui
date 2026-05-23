@@ -191,46 +191,41 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
     }
 }
 
-// Static layout / typography for the ComboBox surface and its row pool.
-// Class rules below match by `this.constructor.name`, which Component
-// auto-tags on every element. Properties that have typed setters
-// (`display`, `padding`, `cursor`) live on the Components themselves;
-// the rules carry only the properties Component has no setter for.
+// Static typography for the ComboBox surface and its row pool. Layout
+// (label + caret placement, row text centering) is handled by the
+// framework's HBox manager and per-component `line-height` so no class
+// rule needs to write `display: flex` here. Class rules below match by
+// `this.constructor.name`, which Component auto-tags on every element.
 (() => {
     const surface = new StyleRule(() =>
         (CSS.getClassRule("ComboBox")
             ?? CSS.createClassRule("ComboBox")) as CSSStyleRule);
-    // `gap` separates the label and caret. The per-component CSS rule writes
-    // `margin: 0`, which would clobber a `margin-left` on the caret by
-    // ID-selector specificity; `gap` lives on the parent and sidesteps that.
     surface.setMany({
-        alignItems: "center",
         userSelect: "none",
         whiteSpace: "nowrap",
-        gap:        "6px",
     });
     surface.ensure();
 
     const label = new StyleRule(() =>
         (CSS.getClassRule("ComboBoxLabel")
             ?? CSS.createClassRule("ComboBoxLabel")) as CSSStyleRule);
+    // No `flex` here — `HBox` sizes the label component directly. `overflow`
+    // and `text-overflow` keep long labels truncating with an ellipsis when
+    // HBox clamps the label width to fit the row.
     label.setMany({
-        flex:         "1 1 auto",
         overflow:     "hidden",
         textOverflow: "ellipsis",
     });
     label.ensure();
 
-    const caret = new StyleRule(() =>
-        (CSS.getClassRule("ComboBoxCaret")
-            ?? CSS.createClassRule("ComboBoxCaret")) as CSSStyleRule);
-    caret.set("flex", "0 0 16px");
-    caret.ensure();
-
     const row = new StyleRule(() =>
         (CSS.getClassRule("ComboBoxRow")
             ?? CSS.createClassRule("ComboBoxRow")) as CSSStyleRule);
-    row.set("alignItems", "center");
+    // Row height matches the cached `preferredSize(0, 22)` from the
+    // ComboBoxRow constructor; `lineHeight` centers the single line of text
+    // vertically without `display: flex`. Keep these two values in sync if
+    // the row height changes.
+    row.set("lineHeight", "22px");
     row.ensure();
 
     const rowHover = new StyleRule(() =>
@@ -244,16 +239,17 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 /**
  * The visible label `<span>` inside a {@link ComboBox}. Holds a typed
  * `setLabel` setter so call sites never write `element.textContent` directly.
- * Lives at static position so the ComboBox's `display: flex` lays it out
- * alongside the caret.
+ * Positioned by the parent `ComboBox`'s `doLayout` (flush left, taking the
+ * row's remaining width after the fixed-size caret).
  */
 class ComboBoxLabel extends Component {
     // Cached so `setLabel` calls made before the element renders (e.g. from
     // the ComboBox constructor) survive to be applied at render time.
-    private _text: string = "";
+    private _text:       string = "";
+    private _lineHeight: string | null = null;
 
     constructor() {
-        super({ tag: "span", position: Position.STATIC });
+        super({ tag: "span" });
         this.setPointerEvents("none");
     }
 
@@ -271,6 +267,32 @@ class ComboBoxLabel extends Component {
         }
 
         return this;
+    }
+
+    /**
+     * Sets the CSS `line-height` so the single line of label text vertically
+     * centers within the label's allocated height. Numeric values are stored
+     * with a `"px"` suffix; string values pass through unchanged.
+     *
+     * @param value - A pixel count (number) or a CSS line-height string.
+     *
+     * @returns This component, for method chaining.
+     */
+    setLineHeight(value: number | string): this {
+        this._lineHeight = typeof value === "number" ? value + "px" : value;
+
+        this.setElementCSSRule("lineHeight", this._lineHeight);
+
+        return this;
+    }
+
+    /**
+     * Returns the cached CSS `line-height` value, or null when unset.
+     *
+     * @returns The line-height string (e.g. `"22px"`), or null.
+     */
+    getLineHeight(): string | null {
+        return this._lineHeight;
     }
 
     protected render(): HTMLElement {
@@ -326,7 +348,6 @@ class ComboBoxRow extends Component {
         this.setMaxSize(Number.MAX_SAFE_INTEGER, 22);
         this.setPadding(new Insets(0, 8, 0, 8));
         this.setCursor("pointer");
-        this.setDisplay("flex");
 
         Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
         Event.addListener(this, "click",       ()                => this.onClick());
@@ -433,10 +454,6 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
         this.getAria().setExpanded(false);
         this.getAria().setTabIndex(0);
 
-        // `display: flex` plus the static layout/typography on the
-        // `.ComboBox` class rule lay the label and caret out side by side.
-        this.setDisplay("flex");
-
         this._label = new ComboBoxLabel();
         this._caret = new ComboBoxCaret();
         this.addComponent(this._label);
@@ -509,6 +526,49 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
+    }
+
+    /**
+     * Places the label flush left and the caret flush right, both vertically
+     * centered within the inner height. Replaces the prior `display: flex`
+     * arrangement on the surface element so every child position is committed
+     * via framework setters.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        const inner = this.getInnerSize();
+        if (!inner) {
+            return this;
+        }
+
+        // Layout constants. `gap` matches the prior `gap: 6px` on the
+        // `.ComboBox` class rule; `caretSize` matches the 16×16 `ComboBoxCaret`
+        // min/max box. The label fills the remaining width.
+        const gap       = 6;
+        const caretSize = 16;
+        const insets    = this.getInsets();
+
+        const innerLeft = insets.getLeft();
+        const innerTop  = insets.getTop();
+        const labelW    = Math.max(0, inner.width - caretSize - gap);
+        const caretX    = innerLeft + labelW + gap;
+        const caretY    = innerTop + Math.max(0, (inner.height - caretSize) / 2);
+
+        this._label.setX(innerLeft);
+        this._label.setY(innerTop);
+        this._label.setWidth(labelW);
+        this._label.setHeight(inner.height);
+        // `lineHeight` equals the label's height so the single line of label
+        // text vertically centers without `display: flex` on the parent.
+        this._label.setLineHeight(inner.height);
+
+        this._caret.setX(caretX);
+        this._caret.setY(caretY);
+        this._caret.setWidth(caretSize);
+        this._caret.setHeight(caretSize);
+
+        return this;
     }
 
     /**

@@ -96,10 +96,12 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
 
         this._options.inputMode = value;
 
-        // `setAttribute` (vs. `setElementAttribute`) caches into the
-        // `_attributes` map so the write survives detached construction and
-        // gets replayed at render time.
-        this.setAttribute("inputmode", value);
+        // Behavioral HTML attribute the browser interprets natively. Routed
+        // via `setElementAttribute` rather than `setDataAttribute` so the
+        // attribute renders as `inputmode="…"` (not `data-inputmode="…"`).
+        // The value lives on `_options.inputMode`; `init()` replays it from
+        // there once the element exists.
+        this.setElementAttribute("inputmode", value);
 
         return this;
     }
@@ -116,7 +118,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
 
         this._options.inputMode = undefined;
 
-        this.delAttribute("inputmode");
+        this.removeElementAttribute("inputmode");
 
         return this;
     }
@@ -145,7 +147,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
 
         this._options.autoComplete = value;
 
-        this.setAttribute("autocomplete", value);
+        this.setElementAttribute("autocomplete", value);
 
         return this;
     }
@@ -162,7 +164,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
 
         this._options.autoComplete = undefined;
 
-        this.delAttribute("autocomplete");
+        this.removeElementAttribute("autocomplete");
 
         return this;
     }
@@ -267,7 +269,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      */
     setPlaceholder(value: string): this {
         this._options.placeholder = value;
-        this.setAttribute("placeholder", value);
+        this.setElementAttribute("placeholder", value);
 
         return this;
     }
@@ -283,7 +285,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         }
 
         this._options.placeholder = undefined;
-        this.delAttribute("placeholder");
+        this.removeElementAttribute("placeholder");
 
         return this;
     }
@@ -308,9 +310,9 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         this._options.readOnly = value;
 
         if (value) {
-            this.setAttribute("readonly", "");
+            this.setElementAttribute("readonly", "");
         } else {
-            this.delAttribute("readonly");
+            this.removeElementAttribute("readonly");
         }
 
         return this;
@@ -334,7 +336,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      */
     setMaxLength(value: number): this {
         this._options.maxLength = value;
-        this.setAttribute("maxlength", String(value));
+        this.setElementAttribute("maxlength", String(value));
 
         return this;
     }
@@ -350,7 +352,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         }
 
         this._options.maxLength = undefined;
-        this.delAttribute("maxlength");
+        this.removeElementAttribute("maxlength");
 
         return this;
     }
@@ -379,6 +381,34 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         }
 
         element.setSelectionRange(start, end);
+
+        return this;
+    }
+
+    protected init(element?: HTMLElement): this {
+        super.init(element);
+
+        const el = (element || this.getElement()!) as HTMLInputElement & HTMLTextAreaElement;
+
+        if (this._options.placeholder !== undefined) {
+            el.setAttribute("placeholder", this._options.placeholder);
+        }
+
+        if (this._options.readOnly) {
+            el.setAttribute("readonly", "");
+        }
+
+        if (this._options.maxLength !== undefined) {
+            el.setAttribute("maxlength", String(this._options.maxLength));
+        }
+
+        if (this._options.inputMode !== undefined) {
+            el.setAttribute("inputmode", this._options.inputMode);
+        }
+
+        if (this._options.autoComplete !== undefined) {
+            el.setAttribute("autocomplete", this._options.autoComplete);
+        }
 
         return this;
     }

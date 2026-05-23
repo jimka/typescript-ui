@@ -8,9 +8,9 @@ import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
  * Owns the typed setters for the three input attributes that every
  * bare-input editor needs to declare its identity — `type`, `inputmode`,
  * and `autocomplete`. Subclasses call these from their constructor instead
- * of routing through {@link Component.setAttribute} directly, which keeps
+ * of routing through `Component.setElementAttribute` directly, which keeps
  * the rule that behaviour-affecting attributes never reach the string-keyed
- * setAttribute API at the call site.
+ * attribute API at the call site.
  *
  * Cannot reuse `Input`'s typed setters because [`CellEditor`](/api/component/table/classes/CellEditor)
  * extends [`Component`](/api/core/classes/Component) (not `Input`):
@@ -21,6 +21,10 @@ import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
  * @category Components
  */
 export abstract class TextInputCellEditor<T> extends CellEditor<T> {
+
+    private _type:         string | null = null;
+    private _inputMode:    string | null = null;
+    private _autoComplete: string | null = null;
 
     constructor() {
         super("input");
@@ -35,7 +39,8 @@ export abstract class TextInputCellEditor<T> extends CellEditor<T> {
      * @returns This component, for method chaining.
      */
     protected setType(value: string): this {
-        this.setAttribute("type", value);
+        this._type = value;
+        this.setElementAttribute("type", value);
 
         return this;
     }
@@ -50,7 +55,8 @@ export abstract class TextInputCellEditor<T> extends CellEditor<T> {
      * @returns This component, for method chaining.
      */
     protected setInputMode(value: string): this {
-        this.setAttribute("inputmode", value);
+        this._inputMode = value;
+        this.setElementAttribute("inputmode", value);
 
         return this;
     }
@@ -65,7 +71,28 @@ export abstract class TextInputCellEditor<T> extends CellEditor<T> {
      * @returns This component, for method chaining.
      */
     protected setAutoComplete(value: string): this {
-        this.setAttribute("autocomplete", value);
+        this._autoComplete = value;
+        this.setElementAttribute("autocomplete", value);
+
+        return this;
+    }
+
+    protected init(element?: HTMLElement): this {
+        super.init(element);
+
+        const el = element || this.getElement()!;
+
+        if (this._type !== null) {
+            el.setAttribute("type", this._type);
+        }
+
+        if (this._inputMode !== null) {
+            el.setAttribute("inputmode", this._inputMode);
+        }
+
+        if (this._autoComplete !== null) {
+            el.setAttribute("autocomplete", this._autoComplete);
+        }
 
         return this;
     }
