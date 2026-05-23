@@ -23,10 +23,10 @@ The migration also reveals two API gaps in `Event.ts` that block a clean convers
 
 | Call site | API |
 |---|---|
-| `HeaderCell.init()` — click / contextmenu on the cell's own root element | `Event.addListener(this, type, handler)` — exact-target match against the cell's id is correct because the cell's `Card` layout puts content inside child Components but the root catches bubbled clicks via the window-level capture handler. |
+| `HeaderCell.init()` — click / contextmenu on the cell's own root element | `Event.addSubtreeListener(this, type, handler)` — clicks can target child Components (the Label inside the renderer, the side-loaded glyph, the resize handle). `Event.addListener` only fires when `event.target.id` exactly equals the cell's id, missing bubbled clicks from children. Updated from the original plan after codebase recheck — the cell's `Card` layout wraps the text in a `Text` Component whose element carries its own id, so child-target events would be dropped by `addListener`. The native `addEventListener` the file had also relied on bubbling (see in-file comment "Native listener so clicks on any child element (e.g. the Label) bubble up here"), confirming subtree semantics are required. |
 | `Body.growRowPool()` — click on a row element that lives inside Body's DOM tree | `Event.addSubtreeListener(this, "click", …)` on **Body**, not per-row. One subtree listener replaces N per-row listeners and aligns with the memory entry "addListener matches exact target ID only — use addSubtreeListener when catching events from child components." The handler determines which row was clicked by walking up from `event.target` to find the `Row` element. |
 | `Notification` mouseover / mouseout — events fire on the toast root and bubble from children | `Event.addSubtreeListener(this, "mouseover" / "mouseout", …)`. The `addListener` exact-id form would miss bubbled events from the badge / label children, exactly the regression the existing memory entry warns about. The two `Notification.acquireHoverHold` / `releaseHoverHold` statics take a `MouseEvent` and already filter via `relatedTarget`; the subtree-listener invocation count is unchanged because the events bubble to the root naturally. |
-| `VirtualScroller` wheel + touch — events fire on the owner element | `Event.addListener(this._owner, type, …)` for wheel (exact target — `wheel` doesn't bubble to children we care about) and `Event.addListener(this._owner, …)` for the four touch types. VirtualScroller itself isn't a Component; it holds an `_owner: Component` field at [VirtualScroller.ts:36](../src/typescript/lib/component/container/VirtualScroller.ts#L36) and routes through that. |
+| `VirtualScroller` wheel + touch — events fire on the owner element or one of its children | `Event.addSubtreeListener(this._owner, type, …)` for wheel and the four touch types. Wheel and touch events fire on whichever element the pointer is over — typically a `Row` or `Cell` child of the owner, not the owner itself. `Event.addListener` would only match `event.target.id === owner.getId()` and miss these. Updated from the original plan after codebase recheck. VirtualScroller itself isn't a Component; it holds an `_owner: Component` field at [VirtualScroller.ts:36](../src/typescript/lib/component/container/VirtualScroller.ts#L36) and routes subtree registrations through that. |
 | `Dialog` keydown (document) + resize (window) | `Event.addViewportListener(this, type, handler)` on both — fires irrespective of element id. |
 | `Window` mousedown (window-wide outside-click) | `Event.addViewportListener` — but the existing handler is a **static** (`Window.deactivateIfOutside`), not per-instance. The static needs a "marker" Component to register against. Use the first open `Window` instance — see "Window's static handler" below. |
 | `Popover` resize | `Event.addViewportListener(this, "resize", this._onWindowResize)`. Straightforward per-instance migration. |
@@ -217,11 +217,11 @@ The 14 migration sites are internal-to-component refactors. No `XOptions` field 
 ### Canonical Component-listener migration
 
 ```typescript
-// Before — Header.ts:144:
+// Before — Header.ts:148:
 el.addEventListener('click', (e: MouseEvent) => this.onSortClick(e.shiftKey));
 
 // After:
-Event.addListener(this, 'click', (e: MouseEvent) => this.onSortClick(e.shiftKey));
+Event.addSubtreeListener(this, 'click', (e: MouseEvent) => this.onSortClick(e.shiftKey));
 ```
 
 ### Canonical viewport-listener migration
@@ -278,7 +278,7 @@ Event.addSubtreeListener(this, 'click', (e: MouseEvent) => {
 element.addEventListener("wheel", (e: WheelEvent) => this.onWheel(e), { passive: false });
 
 // After:
-Event.addListener(
+Event.addSubtreeListener(
     this._owner,
     "wheel",
     (e: WheelEvent) => this.onWheel(e),
@@ -286,7 +286,7 @@ Event.addListener(
 );
 ```
 
-The four touch listeners (lines 281, 294, 384, 392) route through `Event.addListener(this._owner, …)` **without** an options bag — they don't `preventDefault`.
+The four touch listeners (lines 281, 294, 384, 392) route through `Event.addSubtreeListener(this._owner, …)` **without** an options bag — they don't `preventDefault`.
 
 ### Window's static handler routed through a sentinel
 
@@ -346,8 +346,9 @@ Each step ends with a grep checkpoint targeting just the file(s) it touched, plu
    - **Verify:** `npx tsc --noEmit src/typescript/lib/core/Event.ts` → 0 errors; `grep -n 'ListenerOptions\|installedListenerOpts' src/typescript/lib/core/Event.ts` → ≥ 4 hits.
 
 2. **Header.ts — migrate two listeners.**
-   - Replace [line 144](../src/typescript/lib/component/table/cell/Header.ts#L144) `el.addEventListener('click', …)` with `Event.addListener(this, 'click', …)`.
-   - Replace [line 146](../src/typescript/lib/component/table/cell/Header.ts#L146) `el.addEventListener('contextmenu', …)` with `Event.addListener(this, 'contextmenu', …)`.
+   - Replace `el.addEventListener('click', …)` (now at line 148) with `Event.addSubtreeListener(this, 'click', …)`.
+   - Replace `el.addEventListener('contextmenu', …)` (now at line 150) with `Event.addSubtreeListener(this, 'contextmenu', …)`.
+   - **Why subtree** — child Components inside the cell (the renderer's `Text`, side-loaded glyph, etc.) carry their own ids and would not match the parent's id under `addListener`. The in-file comment at line 147 already documents that the original native listener relied on child-element bubbling. Updated from the original plan after codebase recheck (the plan's Decisions table is updated to match).
    - **Verify:** `grep -n '\.addEventListener(' src/typescript/lib/component/table/cell/Header.ts` → 0.
 
 3. **Body.ts — replace per-row listener with one subtree listener.**
@@ -361,8 +362,9 @@ Each step ends with a grep checkpoint targeting just the file(s) it touched, plu
    - **Verify:** `grep -n '\.addEventListener(' src/typescript/lib/core/Notification.ts` → 0.
 
 5. **VirtualScroller.ts — migrate one wheel listener (passive: false) + four touch listeners.**
-   - Replace line 79 `element.addEventListener("wheel", …, { passive: false })` with `Event.addListener(this._owner, "wheel", …, { passive: false })`.
-   - Replace lines 281, 294, 384, 392 (touch handlers) with `Event.addListener(this._owner, type, handler)` — no options bag.
+   - Replace line 79 `element.addEventListener("wheel", …, { passive: false })` with `Event.addSubtreeListener(this._owner, "wheel", …, { passive: false })`.
+   - Replace lines 281, 294, 384, 392 (touch handlers) with `Event.addSubtreeListener(this._owner, type, handler)` — no options bag.
+   - **Why subtree** — wheel and touch events fire on whichever element the pointer is over, typically a row or cell descendant of the owner. `Event.addListener` only matches `event.target.id === owner.getId()` and would miss those. Updated from the original plan after codebase recheck (the plan's Decisions table is updated to match).
    - **Verify:** `grep -n '\.addEventListener(' src/typescript/lib/component/container/VirtualScroller.ts` → 0; in the slow-table demo, mouse-wheel scrolls the table without triggering native page scroll, and touch-scrolling (Chrome DevTools mobile mode) works.
 
 6. **Dialog.ts — migrate two install + two uninstall calls.**
@@ -372,8 +374,9 @@ Each step ends with a grep checkpoint targeting just the file(s) it touched, plu
 
 7. **Window.ts — introduce module-level sentinel + migrate install/uninstall.**
    - Add `const _viewportListenerOwner = new Component();` at module scope (after imports).
-   - Replace lines 225-227 (`window.addEventListener('mousedown', Window.deactivateIfOutside, true)`) with `Event.addViewportListener(_viewportListenerOwner, 'mousedown', Window.deactivateIfOutside)`.
-   - Replace lines 351-353 with the matching `Event.removeViewportListener(_viewportListenerOwner, …)`.
+   - Replace `window.addEventListener('mousedown', Window.deactivateIfOutside, true)` (now at line 332) with `Event.addViewportListener(_viewportListenerOwner, 'mousedown', Window.deactivateIfOutside)`.
+   - Replace the matching `window.removeEventListener` (now at line 477) with `Event.removeViewportListener(_viewportListenerOwner, …)`.
+   - **Drift fix** — two additional Window listeners exist that were not in the original plan: the maximized-window viewport-resize install/uninstall (now lines 1258 / 1266, `window.addEventListener("resize", this._boundOnViewportResize)`) and the snap-keyboard blur install/uninstall (now lines 1296 / 1307, `window.addEventListener("blur", this._boundOnSnapBlur)`). Both are per-instance and fire irrespective of element id, so route them through `Event.addViewportListener(this, "resize", …)` / `Event.removeViewportListener` and `Event.addViewportListener(this, "blur", …)` / `Event.removeViewportListener`. Same migration directive, same per-instance shape as the keydown/keyup/mousemove/mousedown calls already routed through `Event.addViewportListener` in the surrounding code.
    - **Verify:** `grep -n '\.addEventListener(\|\.removeEventListener(' src/typescript/lib/core/Window.ts` → 0.
 
 8. **Popover.ts — migrate the window resize listener.**
