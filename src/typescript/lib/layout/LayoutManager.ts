@@ -123,14 +123,41 @@ export abstract class LayoutManager extends BaseObject {
      * the `fill` and `anchor` parameters serve as fallbacks. After positioning,
      * `doLayout` is called on the child so nested layouts are updated in a single pass.
      */
-    placeComponent(component: Component, x: number, y: number, maxWidth: number, maxHeight: number, fill?: FillType | null, anchor?: AnchorType | null) {
-        let layoutConstraints = this.getLayoutConstraints(component);
-        let preferredSize = component.getPreferredSize();
-        let size = component.getSize();
-        let maxSize = component.getMaxSize();
-        let minSize = component.getMinSize();
-        let width;
-        let height;
+    placeComponent(component: Component, x: number, y: number, maxWidth: number, maxHeight: number, fill?: FillType | null, anchor?: AnchorType | null): void {
+        const r = this.resolveBounds(component, x, y, maxWidth, maxHeight, fill, anchor);
+
+        this.commitBounds(component, r.x, r.y, r.width, r.height);
+    }
+
+    /**
+     * Pure resolution of a child's effective bounds within a cell.
+     *
+     * Reads the child's stored [`LayoutConstraints`](/api/layout/classes/LayoutConstraints), applies the
+     * {@link FillType} / {@link AnchorType} policy, clamps the result to
+     * `maxWidth`/`maxHeight` and the child's own min/max sizes, and computes
+     * the anchor displacement that centres or pins the child within the cell.
+     *
+     * Does NOT mutate the [`Component`](/api/core/classes/Component). Layout managers that need to
+     * place a child outside the cell (e.g. to let it overflow a scroll panel)
+     * can skip this method and call {@link LayoutManager.commitBounds} directly.
+     *
+     * @param component - The child whose bounds are being resolved.
+     * @param x - Left edge of the cell in the container's coordinate space.
+     * @param y - Top edge of the cell in the container's coordinate space.
+     * @param maxWidth - Available width for the child.
+     * @param maxHeight - Available height for the child.
+     * @param fill - Optional. Fill strategy overriding the child's own constraints.
+     * @param anchor - Optional. Anchor point overriding the child's own constraints.
+     * @returns The resolved `{ x, y, width, height }` ready for {@link LayoutManager.commitBounds}.
+     */
+    protected resolveBounds(component: Component, x: number, y: number, maxWidth: number, maxHeight: number, fill?: FillType | null, anchor?: AnchorType | null): { x: number; y: number; width: number; height: number } {
+        const layoutConstraints = this.getLayoutConstraints(component);
+        const preferredSize = component.getPreferredSize();
+        const size = component.getSize();
+        const maxSize = component.getMaxSize();
+        const minSize = component.getMinSize();
+        let width: number;
+        let height: number;
 
         fill = ((layoutConstraints ? layoutConstraints.fill : undefined) || fill || FillType.NONE) as FillType;
         anchor = ((layoutConstraints ? layoutConstraints.anchor : undefined) || anchor || AnchorType.CENTER) as AnchorType;
@@ -238,6 +265,28 @@ export abstract class LayoutManager extends BaseObject {
             y += displace;
         }
 
+        return { x, y, width, height };
+    }
+
+    /**
+     * Commits a resolved rect to the child: writes `setX`/`setY`/`setWidth`/
+     * `setHeight`, then recurses into the child's `doLayout`, all wrapped in
+     * `setAutoCommitStyle(false/true)` so the four positional writes flush as
+     * a single DOM update.
+     *
+     * Used by {@link LayoutManager.placeComponent} (via {@link LayoutManager.resolveBounds}) and by
+     * layout managers that need to bypass the cell clamp — e.g. [`Absolute`](/api/layout/classes/Absolute)
+     * places children at their own preferred size, even when that exceeds the
+     * container, so a host `Panel` with `autoScroll: "auto"` can scroll the
+     * overflow.
+     *
+     * @param component - The child to update.
+     * @param x - Final left position in the container's coordinate space.
+     * @param y - Final top position in the container's coordinate space.
+     * @param width - Final width.
+     * @param height - Final height.
+     */
+    protected commitBounds(component: Component, x: number, y: number, width: number, height: number): void {
         component.setAutoCommitStyle(false);
         component.setX(x);
         component.setY(y);
