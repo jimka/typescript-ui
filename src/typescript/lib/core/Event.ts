@@ -80,18 +80,35 @@ export namespace Event {
     }
 
     let baseListener = function (evnt: Event) {
+        // Wrap stopPropagation so the dispatcher can tell user-issued cancels
+        // (which must skip the subtree walk that runs after the exact-target
+        // dispatch) apart from its own native-bubble suppression call below
+        // (which must not). Both invoke the native method; only the
+        // user-issued one flips `propagationStopped`.
+        let propagationStopped = false;
+
+        const originalStop = evnt.stopPropagation.bind(evnt);
+        evnt.stopPropagation = function (): void {
+            propagationStopped = true;
+            originalStop();
+        };
+
         let listeners = listenerMap.get(evnt.type);
         if (listeners) {
             let elementId = (evnt.target as HTMLElement).id;
             let compFunc = listeners.get(elementId);
 
             if (compFunc) {
-                evnt.stopPropagation();
+                originalStop();
 
                 for (let listener of compFunc.listeners) {
                     listener.apply(compFunc.component, [evnt]);
                 }
             }
+        }
+
+        if (propagationStopped) {
+            return;
         }
 
         let subtreeListeners = subtreeListenerMap.get(evnt.type);
