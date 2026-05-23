@@ -78,9 +78,9 @@ The DOM specification allows `mouseenter`/`mouseleave` to bubble, but Chrome imp
 
 ## Scroll, wheel, and touch listeners are passive
 
-Listeners registered through `Event.addListener`, `Event.addSubtreeListener`, or `Event.addViewportListener` for `scroll`, `wheel`, `touchstart`, and `touchmove` are installed as **passive**. The browser does not wait for the handler to return before scrolling, which keeps scroll inertia on the compositor thread.
+Listeners registered through `Event.addListener`, `Event.addSubtreeListener`, or `Event.addViewportListener` for `scroll`, `wheel`, `touchstart`, and `touchmove` are installed as **passive** by default. The browser does not wait for the handler to return before scrolling, which keeps scroll inertia on the compositor thread.
 
-The trade-off: calling `event.preventDefault()` from such a handler is silently ignored and logs `[Intervention] Unable to preventDefault inside passive event listener` in the console.
+The trade-off: calling `event.preventDefault()` from a passive handler is silently ignored and logs `[Intervention] Unable to preventDefault inside passive event listener` in the console.
 
 ```typescript
 // Fires; preventDefault is silently dropped:
@@ -90,7 +90,21 @@ Event.addListener(grid, 'wheel', (e: WheelEvent) => {
 });
 ```
 
-If you need to suppress the browser's default scroll/wheel/touch behaviour (e.g. trapping wheel input for a custom JS-controlled scroll surface), attach the listener directly to the element with `{ passive: false }` — the framework's own `VirtualScroller` is the in-tree precedent.
+When a custom scroll surface needs to suppress the browser default (e.g. trapping wheel input on a JS-controlled grid), pass `{ passive: false }` as an extra options bag to `addListener` / `addSubtreeListener`:
+
+```typescript
+Event.addSubtreeListener(
+    grid,
+    'wheel',
+    (e: WheelEvent) => {
+        e.preventDefault();    // ✅ now actually preventDefaults
+        customScroll(e.deltaY);
+    },
+    { passive: false }
+);
+```
+
+The framework installs one window-level handler per event type, so the first registration for a type locks the passive flag for that type's lifetime. Subsequent registrations must agree or `addListener` / `addSubtreeListener` throws. The in-tree precedent is `VirtualScroller`, which is currently the only `passive: false` consumer.
 
 ## When to use which
 
