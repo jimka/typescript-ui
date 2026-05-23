@@ -430,7 +430,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     setPressedBorder(options?: BorderOptions): this {
         this._pressedBorder = new Border(options);
-        this._pressedBorder.applyOnCSSRule(this.pressedStyleRule.ensure());
+        this.pressedStyleRule.setMany(this._pressedBorder.toStyle());
 
         return this;
     }
@@ -628,7 +628,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     setHoverBorder(options?: BorderOptions): this {
         this._hoverBorder = new Border(options);
-        this._hoverBorder.applyOnCSSRule(this.hoverStyleRule.ensure());
+        this.hoverStyleRule.setMany(this._hoverBorder.toStyle());
 
         return this;
     }

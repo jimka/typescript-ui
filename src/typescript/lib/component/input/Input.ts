@@ -38,6 +38,15 @@ class Input<TOptions extends InputOptions = InputOptions> extends Component<TOpt
             ...(options ?? {}),
             tag: options?.tag ?? "input",
         } as TOptions);
+
+        // Default sans-serif 12px font lives on the per-component CSS rule.
+        // Queueing through `setElementCSSRules` at construction defers the
+        // write until `applyStyle` flushes the buffer at render time, so we
+        // no longer need a class-level `applyStyle` override.
+        this.setElementCSSRules({
+            fontFamily: "var(--ts-ui-font-family, sans-serif)",
+            fontSize:   "var(--ts-ui-font-size, 12px)",
+        });
     }
 
     /**
@@ -120,21 +129,6 @@ class Input<TOptions extends InputOptions = InputOptions> extends Component<TOpt
      */
     getElement(createIfMissing: boolean = false) {
         return super.getElement(createIfMissing) as HTMLInputElement & HTMLTextAreaElement;
-    }
-
-    /**
-     * Applies base styles and sets a default sans-serif 12px font on the CSS rule.
-     *
-     * @param element - The HTMLElement to apply styles to.
-     */
-    applyStyle(element: HTMLElement): this {
-        super.applyStyle(element);
-
-        let rule = this.getCSSRule();
-        rule.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
-        rule.style.fontSize   = "var(--ts-ui-font-size, 12px)";
-
-        return this;
     }
 
     /**

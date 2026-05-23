@@ -116,23 +116,6 @@ export class Border extends Object {
     }
 
     /**
-     * Writes all four border sides as CSS properties onto the given rule.
-     *
-     * @param rule - The `CSSStyleRule` to apply the border properties to.
-     *
-     * @remarks Thin wrapper over {@link Border.toStyle} retained for callers
-     * that hold a pseudo-class rule (e.g. Button's `:active` rule). Component
-     * code should prefer `setElementCSSRules(border.toStyle())` so the writes
-     * flow through the batched dirty-style path.
-     */
-    applyOnCSSRule(rule: CSSStyleRule): void {
-        this._top.applyOnCSSRule(rule);
-        this._right.applyOnCSSRule(rule);
-        this._bottom.applyOnCSSRule(rule);
-        this._left.applyOnCSSRule(rule);
-    }
-
-    /**
      * Returns all four border sides as a [`Style`](/api/core/interfaces/Style)
      * map ready to feed into `Component.setElementCSSRules`, so the writes are
      * buffered through the component's dirty-style path instead of mutating a

@@ -5,6 +5,7 @@ import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
 import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Position } from "~/primitive/Position.js";
@@ -44,14 +45,15 @@ class PickerInput extends TextInput<TextInputOptions> {
 
 // `align-items` has no typed setter on Component, so the picker buttons' inline
 // flex-centering lives on a shared class rule. The IIFE registers once; later
-// imports of files that define their own `PickerButton` class get null back
-// from `createClassRule` and continue silently. All call sites use identical
+// imports of files that define their own `PickerButton` class get the cached
+// rule via `getClassRule` and re-flush onto it. All call sites use identical
 // styling so this is safe.
 (() => {
-    const rule = CSS.createClassRule("PickerButton");
-    if (rule) {
-        rule.style.setProperty("align-items", "center");
-    }
+    const rule = new StyleRule(() =>
+        (CSS.getClassRule("PickerButton")
+            ?? CSS.createClassRule("PickerButton")) as CSSStyleRule);
+    rule.set("alignItems", "center");
+    rule.ensure();
 })();
 
 /**

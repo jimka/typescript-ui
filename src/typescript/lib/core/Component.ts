@@ -2671,11 +2671,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     applyStyle(element: HTMLElement): this {
         element.removeAttribute("style");
 
-        // Materialize the stylesheet rule once and write directly to it from
-        // this method. applyStyle runs during render() before `this.element`
-        // has been cached, so routing through setElementCSSRule (which gates
-        // on getElement()) would no-op.
-        const rule = this.ensureCSSRule();
+        // Materialise the stylesheet rule once so subsequent `_styleRule.set`
+        // calls write through directly (rather than queueing into the dirty
+        // bag). The returned rule isn't referenced — every write below routes
+        // through the StyleRule buffer, the architectural seam over
+        // `CSSStyleRule.style`.
+        this.ensureCSSRule();
 
         // Read through the default-options fallback so class-level defaults
         // (position, cursor, insets, padding, minSize/maxSize, overflow,
@@ -2684,37 +2685,37 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const opts = { ...this._defaultOptions, ...this._options };
 
         if (this._boxSizing) {
-            rule.style.boxSizing = this._boxSizing;
+            this._styleRule.set("boxSizing", this._boxSizing);
         }
 
         if (opts.position) {
-            rule.style.position = opts.position;
+            this._styleRule.set("position", opts.position);
         }
 
         if (opts.visible != null) {
-            rule.style.visibility = opts.visible ? "visible" : "hidden";
+            this._styleRule.set("visibility", opts.visible ? "visible" : "hidden");
         } else {
-            rule.style.visibility = "inherit";
+            this._styleRule.set("visibility", "inherit");
         }
 
         if (opts.displayed != null) {
-            rule.style.display = opts.displayed ? this._display : "none";
+            this._styleRule.set("display", opts.displayed ? this._display : "none");
         }
 
         if (opts.cursor) {
-            rule.style.cursor = opts.cursor;
+            this._styleRule.set("cursor", opts.cursor);
         }
 
         if (opts.foregroundColor) {
-            rule.style.setProperty('color', opts.foregroundColor);
+            this._styleRule.set("color", opts.foregroundColor);
         }
 
         if (opts.backgroundColor) {
-            rule.style.setProperty('background-color', opts.backgroundColor);
+            this._styleRule.set("backgroundColor", opts.backgroundColor);
         }
 
         if (opts.backgroundImage) {
-            rule.style.setProperty('background-image', opts.backgroundImage);
+            this._styleRule.set("backgroundImage", opts.backgroundImage);
         }
 
         // NaN means "never assigned by a setter" — skip the DOM write for those.
@@ -2737,42 +2738,42 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const minSize = opts.minSize;
         if (minSize) {
-            rule.style.minWidth = minSize.width + "px";
-            rule.style.minHeight = minSize.height + "px";
+            this._styleRule.set("minWidth",  minSize.width  + "px");
+            this._styleRule.set("minHeight", minSize.height + "px");
         }
 
         const maxSize = opts.maxSize;
         if (maxSize) {
-            rule.style.maxWidth = maxSize.width === Number.MAX_VALUE ? "none" : maxSize.width + "px";
-            rule.style.maxHeight = maxSize.height === Number.MAX_VALUE ? "none" : maxSize.height + "px";
+            this._styleRule.set("maxWidth",  maxSize.width  === Number.MAX_VALUE ? "none" : maxSize.width  + "px");
+            this._styleRule.set("maxHeight", maxSize.height === Number.MAX_VALUE ? "none" : maxSize.height + "px");
             this.setAttribute("maxSize", maxSize.width + " " + maxSize.height);
         }
 
         if (this._overflowX !== null) {
-            rule.style.overflowX = this._overflowX;
+            this._styleRule.set("overflowX", this._overflowX);
         }
         if (this._overflowY !== null) {
-            rule.style.overflowY = this._overflowY;
+            this._styleRule.set("overflowY", this._overflowY);
         }
 
         if (this._whiteSpace) {
-            rule.style.whiteSpace = this._whiteSpace;
+            this._styleRule.set("whiteSpace", this._whiteSpace);
         }
 
         if (this._borderCSS) {
-            rule.style.setProperty('border', this._borderCSS);
+            this._styleRule.set("border", this._borderCSS);
         } else if (this._border) {
-            this._border.applyOnCSSRule(rule);
+            this._styleRule.setMany(this._border.toStyle());
         } else {
-            rule.style.removeProperty("border");
+            this._styleRule.set("border", null);
         }
 
         if (opts.borderRadius) {
-            rule.style.borderRadius = opts.borderRadius;
+            this._styleRule.set("borderRadius", opts.borderRadius);
         }
 
         if (opts.shadow) {
-            rule.style.setProperty('box-shadow', opts.shadow);
+            this._styleRule.set("boxShadow", opts.shadow);
         }
 
         if (opts.pointerEvents) {
@@ -2793,18 +2794,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (this._userSelect) {
-            rule.style.userSelect = this._userSelect;
+            this._styleRule.set("userSelect", this._userSelect);
         }
 
         if (opts.padding) {
-            rule.style.padding = opts.padding.render();
+            this._styleRule.set("padding", opts.padding.render());
         }
 
         if (opts.insets) {
             this.setAttribute("insets", opts.insets.render());
         }
 
-        rule.style.margin = "0px 0px 0px 0px";
+        this._styleRule.set("margin", "0px 0px 0px 0px");
 
         // Materialise state-specific rules registered by subclasses (Button's
         // `:active` / `:hover`, ToggleButton's `.selected`). Each rule's
