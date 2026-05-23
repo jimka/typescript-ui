@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Size } from "~/primitive/Size.js";
+import { InlineStyle } from "~/core/StyleTarget.js";
 
 /**
  * Font options for off-screen text measurement.
@@ -75,25 +76,36 @@ export namespace Util {
             lineHeight  = "50px",
         } = options;
 
-        const probe = document.createElement("span");
+        const probe    = document.createElement("span");
+        const probeBuf = new InlineStyle();
 
-        probe.style.cssText = [
-            "position:fixed",
-            "visibility:hidden",
-            "white-space:nowrap",
-            `font-family:${fontFamily}`,
-            `font-size:${fontSize}`,
-            `font-weight:${fontWeight}`,
-            `font-style:${fontStyle}`,
-            `font-variant:${fontVariant}`,
-            `font-stretch:${fontStretch}`,
-            `line-height:${lineHeight}`,
-        ].join(";");
+        probeBuf.attach(probe);
+        probeBuf.setMany({
+            position:    "fixed",
+            visibility:  "hidden",
+            whiteSpace:  "nowrap",
+            fontFamily:  fontFamily,
+            fontSize:    fontSize,
+            fontWeight:  fontWeight,
+            fontStyle:   fontStyle,
+            fontVariant: fontVariant,
+            fontStretch: fontStretch,
+            lineHeight:  lineHeight,
+        });
 
         probe.textContent = text;
 
-        const ref = document.createElement("span");
-        ref.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
+        const ref    = document.createElement("span");
+        const refBuf = new InlineStyle();
+
+        refBuf.attach(ref);
+        refBuf.setMany({
+            display:       "inline-block",
+            width:         "0",
+            height:        "0",
+            verticalAlign: "baseline",
+        });
+
         probe.appendChild(ref);
 
         document.body.appendChild(probe);

@@ -182,7 +182,7 @@ class SplitGutter extends Component {
     render() {
         let element = super.render();
 
-        element.style.cursor = this._direction == "horizontal" ? "ew-resize" : "ns-resize";
+        this.setCursor(this._direction == "horizontal" ? "ew-resize" : "ns-resize");
 
         return element;
     }

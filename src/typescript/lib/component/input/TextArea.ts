@@ -14,6 +14,7 @@ export interface TextAreaOptions extends TextInputOptions {
     rows?: number;
     cols?: number;
     wrap?: string;
+    resize?: string;
 }
 
 /**
@@ -27,6 +28,7 @@ const _defaultTextAreaOptions: Partial<TextAreaOptions> = {
     preferredSize:   { width: 200, height: 200 },
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
+    resize:          "none",
 };
 
 /**
@@ -71,6 +73,10 @@ class TextArea extends TextInput<TextAreaOptions> {
 
         if (options.wrap !== undefined) {
             this.setWrap(options.wrap);
+        }
+
+        if (options.resize !== undefined) {
+            this.setResize(options.resize);
         }
 
         return this;
@@ -194,6 +200,51 @@ class TextArea extends TextInput<TextAreaOptions> {
     }
 
     /**
+     * Returns the configured CSS `resize` value, or null if not set.
+     *
+     * @returns The CSS `resize` string, or null.
+     */
+    getResize(): string | null {
+        return this._options.resize ?? null;
+    }
+
+    /**
+     * Sets the CSS `resize` style on the underlying textarea. Use
+     * {@link clearResize} to remove the inline declaration and fall back to
+     * the user-agent default.
+     *
+     * @param value - A CSS `resize` value (e.g. "none", "both", "vertical", "horizontal").
+     *
+     * @returns This component, for method chaining.
+     */
+    setResize(value: string): this {
+        if (this._options.resize === value) {
+            return this;
+        }
+
+        this._options.resize = value;
+        this.setElementStyle("resize", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the inline CSS `resize` declaration from the underlying textarea.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearResize(): this {
+        if (this._options.resize === undefined) {
+            return this;
+        }
+
+        this._options.resize = undefined;
+        this.setElementStyle("resize", null);
+
+        return this;
+    }
+
+    /**
      * Returns `null` so a `TextArea` is treated as a graphical / replaced element
      * by horizontal layouts.
      *
@@ -234,18 +285,6 @@ class TextArea extends TextInput<TextAreaOptions> {
         return this;
     }
 
-    /**
-     * Renders the textarea element with CSS resize disabled.
-     *
-     * @returns The created textarea element with resize set to "none".
-     */
-    render() {
-        let element = super.render();
-
-        element.style.resize = "none";
-
-        return element;
-    }
 }
 
 const TextAreaCallable = callable(TextArea);

@@ -74,7 +74,7 @@ export class VirtualScroller {
         element.appendChild(this._scrollbarH.getElement(true));
         this._scrollbarH.addScrollListener((p: number) => this.setScrollX(p));
 
-        element.style.touchAction = "none";
+        this._owner.setTouchAction("none");
 
         element.addEventListener("wheel", (e: WheelEvent) => this.onWheel(e), { passive: false });
 
