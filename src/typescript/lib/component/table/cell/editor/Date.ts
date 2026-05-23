@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
+import { TextInputCellEditor } from "~/component/table/cell/editor/TextInputCellEditor.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Event } from "~/core/Event.js";
 import { DatePickerDropdown } from "~/component/input/DatePickerDropdown.js";
@@ -20,7 +20,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-class DateEditor extends CellEditor<Date | null> {
+class DateEditor extends TextInputCellEditor<Date | null> {
 
     private _value:    Date | null = null;
     private _dropdown: DatePickerDropdown | null = null;
@@ -28,7 +28,7 @@ class DateEditor extends CellEditor<Date | null> {
     private _text:     string = "";
 
     constructor() {
-        super("input");
+        super();
 
         this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
         this.setBorderRadius('0');
@@ -40,9 +40,9 @@ class DateEditor extends CellEditor<Date | null> {
         Event.addListener(this, "blur",  () => this.closeDropdown());
         Event.addListener(this, "input", () => this.onInput());
 
-        this.setAttribute('type',         'text');
-        this.setAttribute('inputmode',    'none');
-        this.setAttribute('autocomplete', 'off');
+        this.setType("text");
+        this.setInputMode("none");
+        this.setAutoComplete("off");
     }
 
     /**
