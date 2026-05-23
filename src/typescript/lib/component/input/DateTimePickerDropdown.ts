@@ -105,14 +105,16 @@ const PANEL_WIDTH_SECONDS:  number = 280;
  */
 class DateTimePickerRoot extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC, display: "flex" });
+        super({ tag: "div", position: Position.STATIC });
+        this.setDisplay("flex");
     }
 }
 
 /** Calendar month grid. */
 class DateTimePickerGrid extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC, display: "grid" });
+        super({ tag: "div", position: Position.STATIC });
+        this.setDisplay("grid");
     }
 }
 
@@ -199,7 +201,8 @@ class DateTimePickerDay extends Text {
 /** Horizontal "Time hh : mm" row. */
 class DateTimePickerTimeRow extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC, display: "flex" });
+        super({ tag: "div", position: Position.STATIC });
+        this.setDisplay("flex");
     }
 }
 

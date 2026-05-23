@@ -94,14 +94,21 @@ export interface WindowOptions extends PanelOptions {
  * once the children/fields exist.
  */
 const _defaultWindowOptions: Partial<WindowOptions> = {
-    x:               50,
-    y:               50,
-    width:           400,
-    height:          300,
-    border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" },
-    borderRadius:    "var(--ts-ui-border-radius, 4px)",
-    shadow:          "var(--ts-ui-window-shadow, 3px 3px 2px rgba(0, 0, 0, 0.4))",
-    backgroundColor: "var(--ts-ui-body-bg, rgb(241, 241, 241))",
+    x:                 50,
+    y:                 50,
+    width:             400,
+    height:            300,
+    border:            { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" },
+    borderRadius:      "var(--ts-ui-border-radius, 4px)",
+    shadow:            "var(--ts-ui-window-shadow, 3px 3px 2px rgba(0, 0, 0, 0.4))",
+    backgroundColor:   "var(--ts-ui-body-bg, rgb(241, 241, 241))",
+    minimizable:       true,
+    maximizable:       true,
+    maximizeBounds:    "viewport",
+    windowState:       "normal",
+    snapResizeEnabled: true,
+    snapThreshold:     12,
+    snapModifier:      "ctrl",
 };
 
 /**
@@ -161,19 +168,12 @@ class Window extends Panel<WindowOptions> {
     private _contentFactory: (() => Component) | null = null;
     private _contentReadyCallback: ((component: Component) => void) | null = null;
 
-    private _windowState:       WindowState = "normal";
     private _preMinimizeState:  "normal" | "maximized" = "normal";
     private _restoreRect:       WindowRect | null = null;
-    private _minimizable:       boolean = true;
-    private _maximizable:       boolean = true;
-    private _maximizeBounds:    WindowMaximizeBounds = "viewport";
     private _bodyHost:          Component | null = null;
     private _stateAnimHandle:   Animation.TweenHandle | null = null;
     private _viewportResizeBound: boolean = false;
 
-    private _snapResizeEnabled: boolean = true;
-    private _snapThreshold:     number = 12;
-    private _snapModifier:      WindowSnapModifier = "ctrl";
     private _snapEnabled:       boolean = false;
     private _snapKeysAttached:  boolean = false;
     private _snapMoveAttached:  boolean = false;
@@ -373,7 +373,7 @@ class Window extends Panel<WindowOptions> {
             this._bodyHost = this.findBodyHost();
         }
 
-        if (this._snapResizeEnabled) {
+        if (this.isSnapResizeEnabled()) {
             this.attachSnapKeyboardListeners();
         }
 
@@ -522,7 +522,7 @@ class Window extends Panel<WindowOptions> {
      * @returns The current {@link WindowState}.
      */
     getWindowState(): WindowState {
-        return this._windowState;
+        return this._options.windowState ?? "normal";
     }
 
     /**
@@ -541,7 +541,7 @@ class Window extends Panel<WindowOptions> {
      * (see `onMouseDown` and `onResize` early-returns).
      */
     setWindowState(state: WindowState): this {
-        const from = this._windowState;
+        const from = this.getWindowState();
         if (from === state) {
             return this;
         }
@@ -554,7 +554,6 @@ class Window extends Panel<WindowOptions> {
         }
 
         this._options.windowState = state;
-        this._windowState         = state;
 
         if (state === "normal") {
             // Restore body visibility BEFORE the tween starts so the
@@ -605,7 +604,7 @@ class Window extends Panel<WindowOptions> {
      * @returns True when the current state is `"maximized"`.
      */
     isMaximized(): boolean {
-        return this._windowState === "maximized";
+        return this.getWindowState() === "maximized";
     }
 
     /**
@@ -614,7 +613,7 @@ class Window extends Panel<WindowOptions> {
      * @returns True when the current state is `"minimized"`.
      */
     isMinimized(): boolean {
-        return this._windowState === "minimized";
+        return this.getWindowState() === "minimized";
     }
 
     /**
@@ -623,11 +622,11 @@ class Window extends Panel<WindowOptions> {
      * `setWindowState("minimized")` directly for that path).
      */
     private toggleMinimize(): void {
-        if (!this._minimizable) {
+        if (!this.isMinimizable()) {
             return;
         }
 
-        if (this._windowState === "minimized") {
+        if (this.getWindowState() === "minimized") {
             this.setWindowState("normal");
         } else {
             this.setWindowState("minimized");
@@ -639,11 +638,11 @@ class Window extends Panel<WindowOptions> {
      * not maximizable.
      */
     private toggleMaximize(): void {
-        if (!this._maximizable) {
+        if (!this.isMaximizable()) {
             return;
         }
 
-        if (this._windowState === "maximized") {
+        if (this.getWindowState() === "maximized") {
             this.setWindowState("normal");
         } else {
             this.setWindowState("maximized");
@@ -662,12 +661,12 @@ class Window extends Panel<WindowOptions> {
             return;
         }
 
-        if (this._windowState === "minimized") {
+        if (this.getWindowState() === "minimized") {
             this.setWindowState(this._preMinimizeState);
             return;
         }
 
-        if (!this._maximizable) {
+        if (!this.isMaximizable()) {
             return;
         }
         this.toggleMaximize();
@@ -695,7 +694,6 @@ class Window extends Panel<WindowOptions> {
      * @returns This window, for method chaining.
      */
     setMinimizable(value: boolean): this {
-        this._minimizable = value;
         this._options.minimizable = value;
         this._header.setMinimizable(value);
 
@@ -708,7 +706,7 @@ class Window extends Panel<WindowOptions> {
      * @returns True when the minimize button is shown.
      */
     isMinimizable(): boolean {
-        return this._minimizable;
+        return this._options.minimizable ?? true;
     }
 
     /**
@@ -719,7 +717,6 @@ class Window extends Panel<WindowOptions> {
      * @returns This window, for method chaining.
      */
     setMaximizable(value: boolean): this {
-        this._maximizable = value;
         this._options.maximizable = value;
         this._header.setMaximizable(value);
 
@@ -732,7 +729,7 @@ class Window extends Panel<WindowOptions> {
      * @returns True when the maximize button is shown.
      */
     isMaximizable(): boolean {
-        return this._maximizable;
+        return this._options.maximizable ?? true;
     }
 
     /**
@@ -744,7 +741,6 @@ class Window extends Panel<WindowOptions> {
      * @returns This window, for method chaining.
      */
     setMaximizeBounds(value: WindowMaximizeBounds): this {
-        this._maximizeBounds = value;
         this._options.maximizeBounds = value;
 
         return this;
@@ -756,7 +752,7 @@ class Window extends Panel<WindowOptions> {
      * @returns Either `"viewport"` or `"parent"`.
      */
     getMaximizeBounds(): WindowMaximizeBounds {
-        return this._maximizeBounds;
+        return this._options.maximizeBounds ?? "viewport";
     }
 
     /**
@@ -769,11 +765,10 @@ class Window extends Panel<WindowOptions> {
      * @returns This window, for method chaining.
      */
     setSnapResizeEnabled(value: boolean): this {
-        if (this._snapResizeEnabled === value) {
+        if (this._options.snapResizeEnabled === value) {
             return this;
         }
 
-        this._snapResizeEnabled = value;
         this._options.snapResizeEnabled = value;
 
         if (!value) {
@@ -792,7 +787,7 @@ class Window extends Panel<WindowOptions> {
      * @returns True when snap-resize is enabled.
      */
     isSnapResizeEnabled(): boolean {
-        return this._snapResizeEnabled;
+        return this._options.snapResizeEnabled ?? true;
     }
 
     /**
@@ -804,7 +799,6 @@ class Window extends Panel<WindowOptions> {
      * @returns This window, for method chaining.
      */
     setSnapThreshold(px: number): this {
-        this._snapThreshold = px;
         this._options.snapThreshold = px;
 
         return this;
@@ -816,7 +810,7 @@ class Window extends Panel<WindowOptions> {
      * @returns The threshold in pixels.
      */
     getSnapThreshold(): number {
-        return this._snapThreshold;
+        return this._options.snapThreshold ?? 12;
     }
 
     /**
@@ -827,7 +821,6 @@ class Window extends Panel<WindowOptions> {
      * @returns This window, for method chaining.
      */
     setSnapModifier(key: WindowSnapModifier): this {
-        this._snapModifier = key;
         this._options.snapModifier = key;
 
         return this;
@@ -839,14 +832,14 @@ class Window extends Panel<WindowOptions> {
      * @returns One of `"ctrl"`, `"meta"`, `"alt"`, `"shift"`.
      */
     getSnapModifier(): WindowSnapModifier {
-        return this._snapModifier;
+        return this._options.snapModifier ?? "ctrl";
     }
 
     /**
      * Attaches document-level move and mouseup listeners to begin dragging the window.
      */
     onMouseDown() {
-        if (this._windowState !== "normal") {
+        if (this.getWindowState() !== "normal") {
             return;
         }
 
@@ -876,7 +869,7 @@ class Window extends Panel<WindowOptions> {
      * @param e - The mouse event carrying the movement delta.
      */
     onResize(border: WindowBorder, e: MouseEvent) {
-        if (this._windowState !== "normal") {
+        if (this.getWindowState() !== "normal") {
             return;
         }
 
@@ -1149,7 +1142,7 @@ class Window extends Panel<WindowOptions> {
     }
 
     private computeMaximizeRect(): WindowRect {
-        if (this._maximizeBounds === "parent") {
+        if (this.getMaximizeBounds() === "parent") {
             const el = this.getElement();
             const parent = el ? el.parentElement : null;
             if (parent && parent !== document.documentElement) {
@@ -1195,7 +1188,7 @@ class Window extends Panel<WindowOptions> {
             if (win === this) {
                 return index;
             }
-            if (win._windowState === "minimized") {
+            if (win.getWindowState() === "minimized") {
                 index++;
             }
         }
@@ -1205,7 +1198,7 @@ class Window extends Panel<WindowOptions> {
     private static relayoutMinimizedStack(): void {
         let index = 0;
         for (const win of Window.openWindows) {
-            if (win._windowState !== "minimized") {
+            if (win.getWindowState() !== "minimized") {
                 continue;
             }
             const dockWidth   = win.getMinDockWidth();
@@ -1275,7 +1268,7 @@ class Window extends Panel<WindowOptions> {
     }
 
     private onViewportResize(): void {
-        if (this._windowState !== "maximized") {
+        if (this.getWindowState() !== "maximized") {
             return;
         }
 
@@ -1349,10 +1342,10 @@ class Window extends Panel<WindowOptions> {
     }
 
     private onSnapKeyDown(e: KeyboardEvent): void {
-        if (!this._snapResizeEnabled) {
+        if (!this.isSnapResizeEnabled()) {
             return;
         }
-        if (this._windowState !== "normal") {
+        if (this.getWindowState() !== "normal") {
             return;
         }
         if (!this.modifierMatches(e)) {
@@ -1380,7 +1373,7 @@ class Window extends Panel<WindowOptions> {
     }
 
     private modifierMatches(e: KeyboardEvent): boolean {
-        switch (this._snapModifier) {
+        switch (this.getSnapModifier()) {
             case "ctrl":  return e.ctrlKey;
             case "meta":  return e.metaKey;
             case "alt":   return e.altKey;
@@ -1425,7 +1418,7 @@ class Window extends Panel<WindowOptions> {
         ];
 
         let best: WindowBorder | null = null;
-        let bestDist = this._snapThreshold;
+        let bestDist = this.getSnapThreshold();
 
         for (const border of candidates) {
             const el = border.getElement();

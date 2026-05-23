@@ -54,9 +54,12 @@ export interface FadeOptions {
  * with the final value, so any field the caller supplied wins.
  */
 const _defaultAnimatedDropdownOptions: Partial<AnimatedDropdownOptions> = {
-    visible:  false,
-    position: Position.FIXED,
-    zIndex:   10050,
+    visible:     false,
+    position:    Position.FIXED,
+    zIndex:      10050,
+    animated:    true,
+    durationMs:  DEFAULT_DURATION_MS,
+    translatePx: DEFAULT_TRANSLATE_PX,
 };
 
 /**
@@ -85,9 +88,6 @@ const _defaultAnimatedDropdownOptions: Partial<AnimatedDropdownOptions> = {
  */
 class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdownOptions> extends Component<TOptions> {
 
-    private _animated:    boolean = true;
-    private _durationMs:  number  = DEFAULT_DURATION_MS;
-    private _translatePx: number  = DEFAULT_TRANSLATE_PX;
     // Set true while a fade-out is in flight; reset to false either when the
     // fade completes (so the deferred detach runs) or when a fresh `showAnimated`
     // re-displays the dropdown mid-fade (the deferred detach skips because the
@@ -125,7 +125,6 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @param value - true to enable the fade; false for instant show/hide.
      */
     setAnimated(value: boolean): this {
-        this._animated = value;
         this._options.animated = value;
 
         return this;
@@ -137,7 +136,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @returns true when the fade transition runs on show/hide.
      */
     isAnimated(): boolean {
-        return this._animated;
+        return this._options.animated ?? true;
     }
 
     /**
@@ -146,7 +145,6 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @param ms - Duration in milliseconds.
      */
     setDurationMs(ms: number): this {
-        this._durationMs = ms;
         this._options.durationMs = ms;
 
         return this;
@@ -158,7 +156,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @returns The duration in milliseconds.
      */
     getDurationMs(): number {
-        return this._durationMs;
+        return this._options.durationMs ?? DEFAULT_DURATION_MS;
     }
 
     /**
@@ -167,7 +165,6 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @param px - Translation distance in pixels.
      */
     setTranslatePx(px: number): this {
-        this._translatePx = px;
         this._options.translatePx = px;
 
         return this;
@@ -179,7 +176,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @returns The translation distance in pixels.
      */
     getTranslatePx(): number {
-        return this._translatePx;
+        return this._options.translatePx ?? DEFAULT_TRANSLATE_PX;
     }
 
     /**
@@ -199,7 +196,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
 
         this.setVisible(true);
 
-        if (!this._animated) {
+        if (!this.isAnimated()) {
             this.onShowComplete();
             return this;
         }
@@ -207,9 +204,9 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
         this.setWillChange("opacity, transform");
 
         Animation.play(el, {
-            from:       { opacity: "0", transform: `translateY(-${this._translatePx}px)` },
+            from:       { opacity: "0", transform: `translateY(-${this.getTranslatePx()}px)` },
             to:         { opacity: "1", transform: "translateY(0)" },
-            durationMs: this._durationMs,
+            durationMs: this.getDurationMs(),
             properties: ["opacity", "transform"],
             onComplete: () => {
                 this.setWillChange(null);
@@ -236,7 +233,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
             this.onHideComplete();
         };
 
-        if (!el || !this._animated) {
+        if (!el || !this.isAnimated()) {
             finalize();
             return this;
         }
@@ -245,8 +242,8 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
         this.setWillChange("opacity, transform");
 
         Animation.play(el, {
-            to:         { opacity: "0", transform: `translateY(-${this._translatePx}px)` },
-            durationMs: this._durationMs,
+            to:         { opacity: "0", transform: `translateY(-${this.getTranslatePx()}px)` },
+            durationMs: this.getDurationMs(),
             properties: ["opacity", "transform"],
             onComplete: () => {
                 if (!this._dismissing) {

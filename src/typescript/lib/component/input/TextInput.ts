@@ -26,10 +26,6 @@ export interface TextInputOptions extends InputOptions {
  */
 class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends Input<TOptions> {
 
-    private _inputMode:    string | null = null;
-    private _autoComplete: string | null = null;
-    declare private _textAlign: string | null;
-
     constructor(options?: TOptions) {
         super({ ...(options ?? {}), tag: options?.tag ?? "input" } as TOptions);
     }
@@ -81,7 +77,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      * @returns The inputmode string, or null.
      */
     getInputMode(): string | null {
-        return this._inputMode;
+        return this._options.inputMode ?? null;
     }
 
     /**
@@ -94,11 +90,10 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      * @returns This component, for method chaining.
      */
     setInputMode(value: string): this {
-        if (this._inputMode === value) {
+        if (this._options.inputMode === value) {
             return this;
         }
 
-        this._inputMode = value;
         this._options.inputMode = value;
 
         // `setAttribute` (vs. `setElementAttribute`) caches into the
@@ -115,11 +110,10 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      * @returns This component, for method chaining.
      */
     clearInputMode(): this {
-        if (this._inputMode === null) {
+        if (this._options.inputMode === undefined) {
             return this;
         }
 
-        this._inputMode = null;
         this._options.inputMode = undefined;
 
         this.delAttribute("inputmode");
@@ -133,7 +127,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      * @returns The autocomplete string, or null.
      */
     getAutoComplete(): string | null {
-        return this._autoComplete;
+        return this._options.autoComplete ?? null;
     }
 
     /**
@@ -145,11 +139,10 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      * @returns This component, for method chaining.
      */
     setAutoComplete(value: string): this {
-        if (this._autoComplete === value) {
+        if (this._options.autoComplete === value) {
             return this;
         }
 
-        this._autoComplete = value;
         this._options.autoComplete = value;
 
         this.setAttribute("autocomplete", value);
@@ -163,11 +156,10 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      * @returns This component, for method chaining.
      */
     clearAutoComplete(): this {
-        if (this._autoComplete === null) {
+        if (this._options.autoComplete === undefined) {
             return this;
         }
 
-        this._autoComplete = null;
         this._options.autoComplete = undefined;
 
         this.delAttribute("autocomplete");
@@ -200,7 +192,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      * @returns The CSS text-align string, or null if not set.
      */
     getTextAlign(): string | null {
-        return this._textAlign ?? null;
+        return this._options.textAlign ?? null;
     }
 
     /**
@@ -212,7 +204,6 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      * @returns This component, for method chaining.
      */
     setTextAlign(align: string | null): this {
-        this._textAlign         = align;
         this._options.textAlign = align;
 
         this.setElementCSSRule("textAlign", align);

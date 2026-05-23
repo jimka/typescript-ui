@@ -91,7 +91,8 @@ const PANEL_HEIGHT:         number = 220;
  */
 class TimePickerGrid extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC, display: "grid" });
+        super({ tag: "div", position: Position.STATIC });
+        this.setDisplay("grid");
     }
 }
 
@@ -101,7 +102,8 @@ class TimePickerGrid extends Component {
  */
 class TimePickerGridSeconds extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC, display: "grid" });
+        super({ tag: "div", position: Position.STATIC });
+        this.setDisplay("grid");
     }
 }
 
@@ -111,7 +113,8 @@ class TimePickerGridSeconds extends Component {
  */
 class TimePickerColumn extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC, display: "flex" });
+        super({ tag: "div", position: Position.STATIC });
+        this.setDisplay("flex");
     }
 }
 

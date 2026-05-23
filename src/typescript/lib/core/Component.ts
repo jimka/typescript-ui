@@ -95,7 +95,6 @@ export interface ComponentOptions {
     willChange?:      string | null;
     opacity?:         number;
     position?:        Position;
-    display?:         string;
     overflow?:        string;
     pointerEvents?:   string;
     layoutManager?:   LayoutManager;
@@ -331,7 +330,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.willChange      !== undefined) this.setWillChange(opts.willChange);
         if (opts.opacity         !== undefined) this.setOpacity(opts.opacity);
         if (opts.position        !== undefined) this.setPosition(opts.position);
-        if (opts.display         !== undefined) this.setDisplay(opts.display);
         if (opts.overflow        !== undefined) this.setOverflow(opts.overflow);
         if (opts.pointerEvents   !== undefined) this.setPointerEvents(opts.pointerEvents);
 
@@ -2087,7 +2085,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     setDisplay(value: string): this {
         this._display = value;
-        this._options.display = value;
 
         if (this._options.displayed !== false) {
             this.setElementCSSRule("display", value);

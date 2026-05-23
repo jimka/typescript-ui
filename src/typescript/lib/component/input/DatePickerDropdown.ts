@@ -65,7 +65,8 @@ const PANEL_WIDTH:  number = 240;
  */
 class DatePickerGrid extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC, display: "grid" });
+        super({ tag: "div", position: Position.STATIC });
+        this.setDisplay("grid");
     }
 }
 

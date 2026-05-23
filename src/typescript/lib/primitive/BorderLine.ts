@@ -1,18 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { BorderStyle } from "~/primitive/BorderStyle.js";
-
-/**
- * Converts a hyphenated placement prefix (e.g. `"border-top"`) to its
- * camelCase equivalent (`"borderTop"`). Used to compose the camelCase
- * property keys emitted by {@link BorderLine.toStyle}.
- *
- * @param placement - The CSS property prefix (e.g. `"border-top"`).
- * @returns The camelCase prefix (e.g. `"borderTop"`).
- */
-function camelCasePrefix(placement: string): string {
-    return placement.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-}
+import { Util } from "~/core/Util.js";
 
 /**
  * Represents a single side of a CSS border, holding its placement prefix,
@@ -125,7 +114,7 @@ export class BorderLine extends Object {
      * `CSSStyleDeclaration`, which only honours camelCase property names.
      */
     toStyle(): { [key: string]: string | null } {
-        const prefix = camelCasePrefix(this._placement);
+        const prefix = Util.kebabToCamel(this._placement);
 
         return {
             [prefix + "Width"]: this.getWidth() + "px",
