@@ -2,6 +2,7 @@
 
 import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 
@@ -41,25 +42,29 @@ class AccordionHeader extends Button<AccordionHeaderOptions> {
 
         AccordionHeader._stylesCreated = true;
 
-        const baseRule = CSS.createClassRule('ts-accordion-indicator');
+        const baseRule = new StyleRule(() =>
+            (CSS.getClassRule('ts-accordion-indicator')
+                ?? CSS.createClassRule('ts-accordion-indicator')) as CSSStyleRule);
 
-        if (baseRule) {
-            baseRule.style.setProperty('position', 'absolute');
-            baseRule.style.setProperty('right', '10px');
-            baseRule.style.setProperty('top', '50%');
-            baseRule.style.setProperty('transform', 'translateY(-50%)');
-            baseRule.style.setProperty('pointer-events', 'none');
-            baseRule.style.setProperty('font-size', '10px');
-            baseRule.style.setProperty('line-height', '1');
-            baseRule.style.setProperty('color', 'var(--ts-ui-accordion-indicator-color, rgb(100,100,100))');
-            baseRule.style.setProperty('transition', 'transform 200ms ease');
-        }
+        baseRule.setMany({
+            position:      'absolute',
+            right:         '10px',
+            top:           '50%',
+            transform:     'translateY(-50%)',
+            pointerEvents: 'none',
+            fontSize:      '10px',
+            lineHeight:    '1',
+            color:         'var(--ts-ui-accordion-indicator-color, rgb(100,100,100))',
+            transition:    'transform 200ms ease',
+        });
+        baseRule.ensure();
 
-        const expandedRule = CSS.createRule('.ts-accordion-indicator.expanded');
+        const expandedRule = new StyleRule(() =>
+            (CSS.getRule('.ts-accordion-indicator.expanded')
+                ?? CSS.createRule('.ts-accordion-indicator.expanded')) as CSSStyleRule);
 
-        if (expandedRule) {
-            expandedRule.style.setProperty('transform', 'translateY(-50%) rotate(90deg)');
-        }
+        expandedRule.set('transform', 'translateY(-50%) rotate(90deg)');
+        expandedRule.ensure();
     }
 
     /**

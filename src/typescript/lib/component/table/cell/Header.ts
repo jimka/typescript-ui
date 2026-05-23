@@ -6,6 +6,7 @@ import { SortPriorityBadge } from "~/component/table/cell/SortPriorityBadge.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Tooltip } from "~/core/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -31,7 +32,7 @@ const GLYPH_H = 16;
  */
 const GLYPH_GAP = 4;
 
-let _glyphClassRuleInjected = false;
+let _glyphClassRule: StyleRule | null = null;
 
 /**
  * Registers the shared `.HeaderCellGlyph` class rule once on first use. The
@@ -42,19 +43,22 @@ let _glyphClassRuleInjected = false;
  * Idempotent and module-local; safe across hot reloads.
  */
 function ensureHeaderCellGlyphClassRule(): void {
-    if (_glyphClassRuleInjected) {
+    if (_glyphClassRule) {
         return;
     }
 
-    _glyphClassRuleInjected = true;
+    const rule = new StyleRule(() =>
+        (CSS.getClassRule("HeaderCellGlyph")
+            ?? CSS.createClassRule("HeaderCellGlyph")) as CSSStyleRule);
 
-    const rule = CSS.createClassRule("HeaderCellGlyph");
+    rule.setMany({
+        position: "absolute",
+        left:     "var(--ts-ui-table-header-glyph-gap, 4px)",
+        top:      "50%",
+    });
+    rule.ensure();
 
-    if (rule) {
-        rule.style.setProperty("position", "absolute");
-        rule.style.setProperty("left",     "var(--ts-ui-table-header-glyph-gap, 4px)");
-        rule.style.setProperty("top",      "50%");
-    }
+    _glyphClassRule = rule;
 }
 
 /**

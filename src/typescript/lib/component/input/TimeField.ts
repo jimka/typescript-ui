@@ -5,6 +5,7 @@ import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
 import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Position } from "~/primitive/Position.js";
@@ -56,12 +57,14 @@ class PickerInput extends TextInput<TextInputOptions> {
 // `align-items` has no typed setter on Component, so the picker buttons' inline
 // flex-centering lives on a shared class rule registered once at module load.
 // `createClassRule` returns null on subsequent registrations from sibling
-// files, which is fine — all picker buttons share identical styling.
+// files; the factory's `getClassRule ?? createClassRule` handshake picks up
+// the existing rule in that case and re-flushes onto it, which is safe.
 (() => {
-    const rule = CSS.createClassRule("PickerButton");
-    if (rule) {
-        rule.style.setProperty("align-items", "center");
-    }
+    const rule = new StyleRule(() =>
+        (CSS.getClassRule("PickerButton")
+            ?? CSS.createClassRule("PickerButton")) as CSSStyleRule);
+    rule.set("alignItems", "center");
+    rule.ensure();
 })();
 
 /**

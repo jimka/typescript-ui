@@ -3,6 +3,7 @@
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Component } from "~/core/Component.js";
 import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
 import { Position } from "~/primitive/Position.js";
@@ -20,62 +21,82 @@ const PANEL_WIDTH_SECONDS:  number = 280;
 // Component below auto-tags its element with its `this.constructor.name`,
 // so the rules apply by class name without inline style writes.
 (() => {
-    const root = CSS.createClassRule("DateTimePickerRoot");
-    if (root) {
-        root.style.setProperty("flex-direction", "column");
-        root.style.setProperty("width", "100%");
-        root.style.setProperty("gap", "6px");
-    }
+    const root = new StyleRule(() =>
+        (CSS.getClassRule("DateTimePickerRoot")
+            ?? CSS.createClassRule("DateTimePickerRoot")) as CSSStyleRule);
+    root.setMany({
+        flexDirection: "column",
+        width:         "100%",
+        gap:           "6px",
+    });
+    root.ensure();
 
-    const grid = CSS.createClassRule("DateTimePickerGrid");
-    if (grid) {
-        grid.style.setProperty("grid-template-columns", "repeat(7, 1fr)");
-        grid.style.setProperty("gap", "2px");
-    }
+    const grid = new StyleRule(() =>
+        (CSS.getClassRule("DateTimePickerGrid")
+            ?? CSS.createClassRule("DateTimePickerGrid")) as CSSStyleRule);
+    grid.setMany({
+        gridTemplateColumns: "repeat(7, 1fr)",
+        gap:                 "2px",
+    });
+    grid.ensure();
 
-    const monthLabel = CSS.createClassRule("DateTimePickerMonthLabel");
-    if (monthLabel) {
-        monthLabel.style.setProperty("grid-column", "1 / -1");
-        monthLabel.style.setProperty("text-align", "center");
-        monthLabel.style.setProperty("font-weight", "bold");
-        monthLabel.style.setProperty("padding", "4px 0");
-    }
+    const monthLabel = new StyleRule(() =>
+        (CSS.getClassRule("DateTimePickerMonthLabel")
+            ?? CSS.createClassRule("DateTimePickerMonthLabel")) as CSSStyleRule);
+    monthLabel.setMany({
+        gridColumn: "1 / -1",
+        textAlign:  "center",
+        fontWeight: "bold",
+        padding:    "4px 0",
+    });
+    monthLabel.ensure();
 
-    const dayHeader = CSS.createClassRule("DateTimePickerDayHeader");
-    if (dayHeader) {
-        dayHeader.style.setProperty("text-align", "center");
-        dayHeader.style.setProperty("font-size", "0.85em");
-        dayHeader.style.setProperty("opacity", "0.7");
-    }
+    const dayHeader = new StyleRule(() =>
+        (CSS.getClassRule("DateTimePickerDayHeader")
+            ?? CSS.createClassRule("DateTimePickerDayHeader")) as CSSStyleRule);
+    dayHeader.setMany({
+        textAlign: "center",
+        fontSize:  "0.85em",
+        opacity:   "0.7",
+    });
+    dayHeader.ensure();
 
-    const day = CSS.createClassRule("DateTimePickerDay");
-    if (day) {
-        day.style.setProperty("text-align", "center");
-        day.style.setProperty("padding", "3px 0");
-        day.style.setProperty("cursor", "pointer");
-        day.style.setProperty("border-radius", "3px");
-    }
+    const day = new StyleRule(() =>
+        (CSS.getClassRule("DateTimePickerDay")
+            ?? CSS.createClassRule("DateTimePickerDay")) as CSSStyleRule);
+    day.setMany({
+        textAlign:    "center",
+        padding:      "3px 0",
+        cursor:       "pointer",
+        borderRadius: "3px",
+    });
+    day.ensure();
 
-    const dayHover = CSS.createRule(".DateTimePickerDay:hover");
-    if (dayHover) {
-        dayHover.style.setProperty(
-            "background-color",
-            "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))"
-        );
-    }
+    const dayHover = new StyleRule(() =>
+        (CSS.getRule(".DateTimePickerDay:hover")
+            ?? CSS.createRule(".DateTimePickerDay:hover")) as CSSStyleRule);
+    dayHover.set("backgroundColor",
+        "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
+    dayHover.ensure();
 
-    const timeRow = CSS.createClassRule("DateTimePickerTimeRow");
-    if (timeRow) {
-        timeRow.style.setProperty("align-items", "center");
-        timeRow.style.setProperty("gap", "4px");
-        timeRow.style.setProperty("padding", "4px 6px 2px 6px");
-    }
+    const timeRow = new StyleRule(() =>
+        (CSS.getClassRule("DateTimePickerTimeRow")
+            ?? CSS.createClassRule("DateTimePickerTimeRow")) as CSSStyleRule);
+    timeRow.setMany({
+        alignItems: "center",
+        gap:        "4px",
+        padding:    "4px 6px 2px 6px",
+    });
+    timeRow.ensure();
 
-    const timeLabel = CSS.createClassRule("DateTimePickerTimeLabel");
-    if (timeLabel) {
-        timeLabel.style.setProperty("font-size", "0.85em");
-        timeLabel.style.setProperty("opacity", "0.7");
-    }
+    const timeLabel = new StyleRule(() =>
+        (CSS.getClassRule("DateTimePickerTimeLabel")
+            ?? CSS.createClassRule("DateTimePickerTimeLabel")) as CSSStyleRule);
+    timeLabel.setMany({
+        fontSize: "0.85em",
+        opacity:  "0.7",
+    });
+    timeLabel.ensure();
 })();
 
 /**
@@ -84,14 +105,16 @@ const PANEL_WIDTH_SECONDS:  number = 280;
  */
 class DateTimePickerRoot extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC, display: "flex" });
+        super({ tag: "div", position: Position.STATIC });
+        this.setDisplay("flex");
     }
 }
 
 /** Calendar month grid. */
 class DateTimePickerGrid extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC, display: "grid" });
+        super({ tag: "div", position: Position.STATIC });
+        this.setDisplay("grid");
     }
 }
 
@@ -178,7 +201,8 @@ class DateTimePickerDay extends Text {
 /** Horizontal "Time hh : mm" row. */
 class DateTimePickerTimeRow extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC, display: "flex" });
+        super({ tag: "div", position: Position.STATIC });
+        this.setDisplay("flex");
     }
 }
 
