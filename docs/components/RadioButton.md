@@ -1,13 +1,11 @@
 # RadioButton
 
-[`RadioButton`](/api/component/input/classes/RadioButton) is a single-selection input composed of an `<input type="radio">` and an associated [`Label`](/components/Label). Clicking the label toggles the radio because the label's `for` attribute is wired to the input's ID.
-
-`RadioButton` is meant to be used inside a [`ButtonGroup`](/components/ButtonGroup), which enforces the mutual-exclusivity contract.
+[`RadioButton`](/api/component/input/classes/RadioButton) is a single-selection input rendered as a focusable `<div>` with `role="radio"` plus a custom-drawn ring and dot — no native `<input>`. It implements [`Bindable<boolean>`](/api/core/interfaces/Bindable) and is normally used inside a [`ButtonGroup`](/components/ButtonGroup) to enforce mutual exclusivity.
 
 ## Usage
 
 ```typescript
-import { ButtonGroup, Event } from '@jimka/typescript-ui/core';
+import { ButtonGroup } from '@jimka/typescript-ui/core';
 import { RadioButton } from '@jimka/typescript-ui/component/input';
 const small  = RadioButton('Small');
 const medium = RadioButton('Medium');
@@ -18,13 +16,13 @@ group.addButton(small);
 group.addButton(medium);
 group.addButton(large);
 
-medium.setSelected(true); // initial selection
+medium.setSelected(true);
 
-[small, medium, large].forEach(rb =>
-    Event.addListener(rb, 'change', () => {
-        if (rb.isSelected()) console.log('chose', rb.getText());
-    })
-);
+[small, medium, large].forEach(rb => {
+    rb.addChangeListener(selected => {
+        if (selected) console.log('chose', rb.getLabel());
+    });
+});
 
 panel.addComponent(small);
 panel.addComponent(medium);
@@ -36,15 +34,31 @@ panel.addComponent(large);
 | Method | Purpose |
 | --- | --- |
 | `isSelected()` / `setSelected(boolean)` | Read / write selection state. |
-| `getText()` / `setText(text)` | Label text. |
+| `getValue()` / `setValue(boolean)` | Bindable interface alias. |
+| `getLabel()` / `setLabel(text \| null)` | Inline label text. |
+| `isEnabled()` / `setEnabled(boolean)` | Toggle interactivity. |
+| `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user input. |
+| `addActionListener(fn)` | Back-compat — wired by [`ButtonGroup`](/api/core/classes/ButtonGroup) on `"change"`. |
+| `addChangeListener(fn)` / `removeChangeListener(fn)` | Subscribe to selection changes. |
+| `addBindingListener(fn)` | Used by [`Binding`](/data/binding). |
+
+## Group navigation
+
+Now that radios are no longer native `<input type="radio">`, the browser does not handle arrow-key navigation for free. Wire a container on the group with [`ButtonGroup.setContainer`](/api/core/classes/ButtonGroup#setcontainer) to enable Arrow / Home / End traversal via [`RovingTabIndex`](/api/core/classes/RovingTabIndex):
+
+```typescript
+const groupRow = Component();
+group.setContainer(groupRow); // arrow keys now move focus within the group
+```
 
 ## Notes
 
-- Without a [`ButtonGroup`](/components/ButtonGroup), each radio acts independently — you'll see multiple selected radios at once. Always wire them through a group.
-- The browser handles keyboard navigation natively because all radios in the group share a `name` attribute (set by `ButtonGroup`).
+- Themed through the shared `--ts-ui-form-*` family plus radio-specific tokens (`--ts-ui-radio-bg`, `--ts-ui-radio-bg-selected`, `--ts-ui-radio-dot-color`, `--ts-ui-radio-size`).
+- Keyboard: Space selects the focused radio.
+- `setRadioName` / `getRadioName` are retained as back-compat shims — they store the supplied name on the options bag but no longer drive grouping (the new control has no shared `name` attribute).
 
 ## See also
 
 - [API: RadioButton](/api/component/input/classes/RadioButton)
 - [`ButtonGroup`](/components/ButtonGroup)
-- [`ToggleButton`](/components/ToggleButton) — alternative for non-radio button toggles
+- [`ToggleButton`](/components/ToggleButton) — push-button alternative for non-radio toggles

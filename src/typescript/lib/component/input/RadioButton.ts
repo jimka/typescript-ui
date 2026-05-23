@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { Animation } from "~/core/Animation.js";
+import { Bindable } from "~/core/Bindable.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { Glyph } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
-import { Input } from "~/component/input/Input.js";
-import { Label } from "~/component/input/Label.js";
+import { Text } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
+import { circle } from "~/glyphs/solid/circle.js";
+
+// Idempotent registration: makes the `"circle"` glyph available for the dot
+// regardless of which control imports first.
+Glyph.register(circle);
 
 /**
  * Construction-time options for {@link RadioButton}.
@@ -13,205 +20,470 @@ import { callable } from "~/core/Callable.js";
  * @category Components
  */
 export interface RadioButtonOptions extends ComponentOptions {
+    selected?:  boolean;
+    value?:     boolean;
+    label?:     string | null;
     text?:      string;
     radioName?: string;
-    selected?:  boolean;
     enabled?:   boolean;
+    readOnly?:  boolean;
 }
 
 /**
- * A radio button component composed of an `<input type="radio">` and an associated Label.
- *
- * The label's `for` attribute is wired to the radio input's ID so clicking the label
- * toggles the radio. The selected state is kept in sync via a 'change' listener.
+ * A custom-drawn radio button rendered as a focusable `<div>` with
+ * `role="radio"`. The ring + dot is drawn with framework primitives; the
+ * native `<input type="radio">` is intentionally not used. Group selection
+ * is coordinated by [`ButtonGroup`](/api/core/classes/ButtonGroup); keyboard
+ * navigation within a group is provided by
+ * [`RovingTabIndex`](/api/core/classes/RovingTabIndex).
  *
  * @category Components
  */
-class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions> extends Component<TOptions> {
+class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
+    extends Component<TOptions>
+    implements Bindable<boolean>
+{
+    private _ring:             Component;
+    private _dot:              Glyph;
+    private _label:            Text | null = null;
+    private _changeListeners:  Array<(value: boolean) => void> = [];
+    private _bindingListeners: Array<() => void> = [];
 
-    private _label!: Label;
-    private _radio!: Input;
-
-    constructor(text? : string, options?: RadioButtonOptions) {
-        // Forward options through the super cascade. `text`/`radioName`/
-        // `selected`/`enabled` are late-built state (their setters reach into
-        // `this.label` / `this.radio` which don't exist yet), so `applyOptions`
-        // writes them pure to `_options` and they're dispatched from the body
-        // below once the children are built.
+    /**
+     * Constructs a RadioButton.
+     *
+     * @param text - Optional label text. Equivalent to `options.label`; kept
+     *               positional for back-compat with consumers that wrote
+     *               `new RadioButton("Hello")`.
+     * @param options - Optional construction-time options bag.
+     */
+    constructor(text?: string, options?: TOptions) {
         super({ ...(options ?? {}) } as TOptions);
 
         this.setLayoutManager(new HBox());
 
-        this._radio = new Input();
+        this._ring = new Component();
+        this._ring.setPreferredSize(16, 16);
+        this._ring.setMaxSize(16, 16);
+        this._ring.setSize({ width: 16, height: 16 });
+        this._ring.setBackgroundColor("var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
+        this._ring.setBorder("1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
+        this._ring.setBorderRadius("50%");
+        // The ring owns the click + cursor surface so the pointer/click area
+        // matches the visible graphic exactly. The root stays inert (default
+        // cursor, no click listener), so clicks on a label or in any
+        // stretched empty space don't select and don't show the pointer cursor.
+        this._ring.setCursor("pointer");
 
-        // Build the label with empty text — the late-built dispatch below
-        // calls `setText` with the effective value (either the consumer's
-        // `options.text` written into `_options` by the cascade, or the
-        // positional `text` argument). Constructing with the value up-front
-        // and then setting it again would be a double-write.
-        this._label = new Label("", this._radio.getId());
+        this._dot = new Glyph("circle");
+        this._dot.setForegroundColor("var(--ts-ui-radio-dot-color, rgb(255, 255, 255))");
+        this._dot.setPreferredSize(8, 8);
+        this._dot.setMaxSize(8, 8);
+        this._dot.setX(3);
+        this._dot.setY(3);
+        this._dot.setOpacity(0);
+        // Pass-through so clicks on the dot still hit the ring underneath.
+        this._dot.setPointerEvents("none");
 
-        this.addComponent(this._radio);
-        this.addComponent(this._label);
-
-        this._radio.setPreferredSize(16, 16);
-        this._radio.setMaxSize(16, 16);
-        this._radio.setCursor("pointer");
-
-        this.addActionListener(() => {
-            this._options.selected = this._radio.getElement().checked;
-        });
-
-        // Late-built state: `applyOptions` wrote these pure into `_options`
-        // because `this.label`/`this.radio` didn't exist yet. Dispatch now.
-        const effectiveText = this._options.text ?? text;
-        if (effectiveText !== undefined) {
-            this._label.setText(effectiveText);
+        if (!Animation.isReducedMotion()) {
+            this._dot.setTransition("opacity 120ms ease-out");
+            this._ring.setTransition("background-color 120ms ease-out, border-color 120ms ease-out");
         }
-        if (this._options.radioName !== undefined) {
-            this.setRadioName(this._options.radioName);
+
+        this._ring.addComponent(this._dot);
+        super.addComponent(this._ring);
+
+        this.getAria().setRole("radio");
+        this.getAria().setTabIndex(0);
+        this.getAria().setChecked(false);
+
+        this.setOutline("none");
+
+        this.installInteraction();
+
+        // The positional `text` arg wins only when `options.label` (or
+        // `options.text`) was not provided.
+        if (this._options.label === undefined && this._options.text === undefined && text !== undefined) {
+            this._options.label = text;
+        } else if (this._options.label === undefined && this._options.text !== undefined) {
+            this._options.label = this._options.text;
         }
+
+        if (this._options.value !== undefined && this._options.selected === undefined) {
+            this._options.selected = this._options.value;
+        }
+
         if (this._options.selected !== undefined) {
-            this.setSelected(this._options.selected);
+            this.applySelected(this._options.selected);
         }
+
+        if (this._options.label !== undefined) {
+            this.applyLabel(this._options.label);
+        }
+
         if (this._options.enabled !== undefined) {
-            this._radio.setDisabledAttribute(!this._options.enabled);
+            this.applyEnabled(this._options.enabled);
+        }
+
+        if (this._options.readOnly !== undefined) {
+            this.applyReadOnly(this._options.readOnly);
         }
     }
 
     /**
      * Applies a {@link RadioButtonOptions} bag. Inherited Component fields
-     * cascade through `super.applyOptions`; the late-built fields
-     * (`text`/`radioName`/`selected`/`enabled`, all of which touch
-     * `this.label`/`this.radio`) are written pure to `_options` here and
-     * dispatched from the constructor body once children exist.
+     * cascade through `super.applyOptions`; radio-button-specific fields are
+     * stored pure on `_options` so the constructor body can dispatch them
+     * after children are built.
      *
      * @param options - The options bag carrying the values to apply.
+     *
+     * @returns This component, for method chaining.
      */
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
+        if (options.selected  !== undefined) this._options.selected  = options.selected;
+        if (options.value     !== undefined) this._options.value     = options.value;
+        if (options.label     !== undefined) this._options.label     = options.label;
         if (options.text      !== undefined) this._options.text      = options.text;
         if (options.radioName !== undefined) this._options.radioName = options.radioName;
-        if (options.selected  !== undefined) this._options.selected  = options.selected;
         if (options.enabled   !== undefined) this._options.enabled   = options.enabled;
+        if (options.readOnly  !== undefined) this._options.readOnly  = options.readOnly;
 
         return this;
     }
 
     /**
-     * Returns the DOM element cast to HTMLInputElement.
-     *
-     * @param createIfMissing - Optional. When true, renders the element if it does not yet exist.
-     *
-     * @returns The component's container element cast to HTMLInputElement.
+     * Wires the click + Space-key handlers that select the radio button.
      */
-    getElement(createIfMissing: boolean = false) {
-        return <HTMLInputElement>super.getElement(createIfMissing);
-    }
+    private installInteraction(): void {
+        const userSelect = (): void => {
+            if (!this.isEnabled() || this.isReadOnly()) {
+                return;
+            }
 
-    /**
-     * Returns the offset from the top of the radio button to the label's text baseline.
-     *
-     * @returns The baseline offset in pixels, or `null` when the label has no baseline.
-     */
-    getBaseline(): number | null {
-        return this.wrapInnerBaseline(this._label.getBaseline());
-    }
+            // Radio buttons can only be selected, never directly deselected by
+            // the user — the ButtonGroup deselects siblings on change.
+            if (!this.isSelected()) {
+                this.setSelected(true);
+                Event.fireEvent(this, "change");
+            }
+        };
 
-    /**
-     * Registers a listener for the radio input's 'change' event.
-     *
-     * @param listener - The callback to invoke when the radio selection changes.
-     */
-    addActionListener(listener: Function) : this {
-        Event.addListener(this._radio, "change", listener);
-
-        return this;
-    }
-
-    /**
-     * Assigns a shared `name` attribute to the underlying radio input, grouping it with other radio buttons.
-     *
-     * @param name - The name to set on the radio input element.
-     */
-    setRadioName(name: string): this {
-        this._options.radioName = name;
-        this._radio.setName(name);
-
-        return this;
-    }
-
-    /**
-     * Removes the shared `name` attribute from the underlying radio input,
-     * detaching it from any radio group it was part of.
-     *
-     * @returns This component, for method chaining.
-     */
-    clearRadioName(): this {
-        if (this._options.radioName === undefined) {
-            return this;
-        }
-
-        this._options.radioName = undefined;
-        this._radio.clearName();
-
-        return this;
-    }
-
-    /**
-     * Returns the radio group name, or null if none has been set.
-     *
-     * @returns The name string, or null.
-     */
-    getRadioName(): string | null {
-        return this._options.radioName ?? null;
-    }
-
-    /**
-     * Sets the selected state and updates the radio input's checked property.
-     *
-     * @param value - True to select the radio button, false to deselect it.
-     */
-    setSelected(value: boolean) : this {
-        this._options.selected = !!value;
-
-        let element = this._radio.getElement();
-        if (!element) {
-            return this;
-        }
-
-        element.checked = this.isSelected();
-
-        return this;
+        // The ring owns the user-select handler so the click and cursor surface
+        // is exactly the visible 16 × 16 graphic — clicks on a label or in
+        // any stretched empty area pass through to the root, which has no
+        // listener of its own. Keydown still targets the focused root.
+        Event.addListener(this._ring, "click", userSelect);
+        Event.addListener(this, "keydown", (e: KeyboardEvent) => {
+            if (e.key === " ") {
+                e.preventDefault();
+                userSelect();
+            }
+        });
     }
 
     /**
      * Returns whether the radio button is currently selected.
      *
-     * @returns True if the radio button is checked.
+     * @returns `true` when selected.
      */
     isSelected(): boolean {
         return this._options.selected ?? false;
     }
 
     /**
-     * Renders the container element and sets the radio input type and checked state.
+     * Sets the selected state and updates the visual + ARIA cache. Used both
+     * by user-driven selection and by `ButtonGroup` when it deselects
+     * siblings.
      *
-     * @returns The created container HTMLInputElement with the internal radio input initialised.
+     * @param value - `true` to select, `false` to deselect.
+     *
+     * @returns This component, for method chaining.
      */
-    render() {
-        let element = <HTMLInputElement>super.render();
-
-        this._radio.setType("radio");
-        this._radio.getElement().checked = this.isSelected();
-
-        if (this._options.radioName !== undefined) {
-            this._radio.setName(this._options.radioName);
+    setSelected(value: boolean): this {
+        const next = !!value;
+        if (next === this.isSelected()) {
+            return this;
         }
 
-        return element;
+        this._options.selected = next;
+        this.applySelected(next);
+        this.notifyChange(next);
+
+        return this;
     }
+
+    /**
+     * Returns the current value (alias for {@link isSelected}, satisfies
+     * {@link Bindable}).
+     *
+     * @returns `true` when selected.
+     */
+    getValue(): boolean {
+        return this.isSelected();
+    }
+
+    /**
+     * Sets the value (alias for {@link setSelected}, satisfies {@link Bindable}).
+     *
+     * @param value - The new selected state.
+     *
+     * @returns This component, for method chaining.
+     */
+    setValue(value: boolean): this {
+        return this.setSelected(value);
+    }
+
+    /**
+     * Returns the label text, or `null` when none was set.
+     *
+     * @returns The label string, or `null`.
+     */
+    getLabel(): string | null {
+        return this._options.label ?? null;
+    }
+
+    /**
+     * Sets the inline label text. Pass `null` to remove the label entirely.
+     *
+     * @param text - The label text, or `null` to clear.
+     *
+     * @returns This component, for method chaining.
+     */
+    setLabel(text: string | null): this {
+        this._options.label = text;
+        this.applyLabel(text);
+
+        return this;
+    }
+
+    /**
+     * Back-compat shim that stores the supplied group name on `_options` but
+     * does not emit a `name` attribute (the host element is no longer
+     * `<input>`). Consumers that read the group name through
+     * {@link getRadioName} keep working.
+     *
+     * @param name - Group name string.
+     *
+     * @returns This component, for method chaining.
+     */
+    setRadioName(name: string): this {
+        this._options.radioName = name;
+
+        return this;
+    }
+
+    /**
+     * Clears the back-compat radio-name field.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearRadioName(): this {
+        this._options.radioName = undefined;
+
+        return this;
+    }
+
+    /**
+     * Returns the group name set via {@link setRadioName}, or `null`.
+     *
+     * @returns The group name string, or `null`.
+     */
+    getRadioName(): string | null {
+        return this._options.radioName ?? null;
+    }
+
+    /**
+     * Returns whether the radio button is enabled.
+     *
+     * @returns `true` when enabled.
+     */
+    isEnabled(): boolean {
+        return this._options.enabled ?? true;
+    }
+
+    /**
+     * Enables or disables the radio button. Disabled radios announce
+     * `aria-disabled="true"` and skip keyboard focus.
+     *
+     * @param value - `true` to enable, `false` to disable.
+     *
+     * @returns This component, for method chaining.
+     */
+    setEnabled(value: boolean): this {
+        this._options.enabled = !!value;
+        this.applyEnabled(this._options.enabled);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the radio button is read-only.
+     *
+     * @returns `true` when read-only.
+     */
+    isReadOnly(): boolean {
+        return this._options.readOnly ?? false;
+    }
+
+    /**
+     * Marks the radio button as read-only. Read-only radios stay focusable
+     * but ignore user input.
+     *
+     * @param value - `true` to mark read-only.
+     *
+     * @returns This component, for method chaining.
+     */
+    setReadOnly(value: boolean): this {
+        this._options.readOnly = !!value;
+        this.applyReadOnly(this._options.readOnly);
+
+        return this;
+    }
+
+    /**
+     * Registers a "change" listener used by [`ButtonGroup`](/api/core/classes/ButtonGroup) to enforce mutual
+     * exclusivity across the group. The event fires on user-driven selection.
+     *
+     * @param listener - The callback to invoke when the radio selection changes.
+     *
+     * @returns This component, for method chaining.
+     */
+    addActionListener(listener: Function): this {
+        Event.addListener(this, "change", listener);
+
+        return this;
+    }
+
+    /**
+     * Registers a callback fired on every user-driven and programmatic value
+     * change.
+     *
+     * @param fn - Callback invoked with the new selected state.
+     *
+     * @returns This component, for method chaining.
+     */
+    addChangeListener(fn: (value: boolean) => void): this {
+        this._changeListeners.push(fn);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered change listener.
+     *
+     * @param fn - The exact callback reference to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    removeChangeListener(fn: (value: boolean) => void): this {
+        const idx = this._changeListeners.indexOf(fn);
+
+        if (idx >= 0) {
+            this._changeListeners.splice(idx, 1);
+        }
+
+        return this;
+    }
+
+    /**
+     * Subscribes a callback invoked on every user-driven value change. Used by
+     * the {@link Bindable} interface.
+     *
+     * @param fn - Callback fired on each change.
+     *
+     * @returns This component, for method chaining.
+     */
+    addBindingListener(fn: () => void): this {
+        this._bindingListeners.push(fn);
+
+        return this;
+    }
+
+    /**
+     * Returns the offset from the top of the radio button to the inline
+     * label's text baseline, or `null` when the radio has no label (HBox
+     * falls back to bottom-edge alignment).
+     *
+     * @returns The baseline offset in pixels, or `null`.
+     */
+    getBaseline(): number | null {
+        if (this._label === null) {
+            return null;
+        }
+
+        return this.wrapInnerBaseline(this._label.getBaseline());
+    }
+
+    /**
+     * Updates the visual + ARIA state for the given selected flag.
+     */
+    private applySelected(selected: boolean): void {
+        this.getAria().setChecked(selected);
+
+        this._ring.setBackgroundColor(selected
+            ? "var(--ts-ui-radio-bg-selected, rgb(30, 100, 200))"
+            : "var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
+        this._ring.setBorder(selected
+            ? "1px solid var(--ts-ui-radio-bg-selected, rgb(30, 100, 200))"
+            : "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
+
+        this._dot.setOpacity(selected ? 1 : 0);
+    }
+
+    /**
+     * Mounts, replaces, or removes the inline label.
+     */
+    private applyLabel(text: string | null): void {
+        if (text === null) {
+            if (this._label !== null) {
+                super.removeComponent(this._label);
+                this._label = null;
+            }
+
+            return;
+        }
+
+        if (this._label === null) {
+            this._label = new Text(text);
+            this._label.setPointerEvents("none");
+            super.addComponent(this._label);
+        } else {
+            this._label.setText(text);
+        }
+    }
+
+    /**
+     * Reflects the enabled flag in the ARIA tree and the tabindex.
+     */
+    private applyEnabled(value: boolean): void {
+        this.getAria().setDisabled(!value);
+        this.getAria().setTabIndex(value ? 0 : -1);
+        this._ring.setCursor(value ? "pointer" : "default");
+    }
+
+    /**
+     * Reflects the read-only flag in the ARIA tree.
+     */
+    private applyReadOnly(value: boolean): void {
+        this.getAria().setReadOnly(value);
+    }
+
+    /**
+     * Fires change and binding listeners.
+     */
+    private notifyChange(value: boolean): void {
+        for (const fn of this._changeListeners) {
+            fn(value);
+        }
+
+        for (const fn of this._bindingListeners) {
+            fn();
+        }
+    }
+
 }
 
 const RadioButtonCallable = callable(RadioButton);

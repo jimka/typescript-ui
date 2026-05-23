@@ -1,21 +1,16 @@
 # Slider
 
-[`Slider`](/api/component/input/classes/Slider) is a continuous-value range input backed by an `<input type="range">` element. Tracks min, max, step, and current value internally, keeping the DOM in sync on every input event.
+[`Slider`](/api/component/input/classes/Slider) is a continuous-value range input rendered as a focusable `<div>` with `role="slider"`. Track and thumb are drawn with framework Components, so the visual is fully themable. Implements [`Bindable<number>`](/api/core/interfaces/Bindable).
 
 ## Usage
 
 ```typescript
-import { Event } from '@jimka/typescript-ui/core';
 import { Slider } from '@jimka/typescript-ui/component/input';
-const volume = Slider();
-volume.setMin(0);
-volume.setMax(100);
-volume.setStep(1);
-volume.setValue(50);
+const volume = Slider({ min: 0, max: 100, step: 1, value: 50 });
 volume.setPreferredSize(200, 24);
 
-Event.addListener(volume, 'input', () => {
-    console.log('volume:', volume.getValue());
+volume.addChangeListener(v => {
+    console.log('volume:', v);
 });
 
 panel.addComponent(volume);
@@ -27,12 +22,30 @@ panel.addComponent(volume);
 | --- | --- |
 | `getValue()` / `setValue(n)` | Read / write the slider position. |
 | `setMin(n)` / `setMax(n)` | Range bounds. |
-| `setStep(n)` | Discrete step size; use `0.01` etc. for fine-grained ranges. |
+| `setStep(n)` | Discrete step size; arrow keys move by this amount. |
+| `setLargeStep(n)` | PageUp / PageDown step (defaults to `10 * step`). |
+| `setOrientation('horizontal' \| 'vertical')` | Track axis. |
+| `isEnabled()` / `setEnabled(boolean)` | Toggle interactivity. |
+| `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user-driven changes. |
+| `addChangeListener(fn)` / `removeChangeListener(fn)` | Subscribe to value changes. |
+| `addBindingListener(fn)` | Used by [`Binding`](/data/binding). |
+
+## Keyboard model
+
+| Key | Action |
+| --- | --- |
+| ArrowRight / ArrowUp | `+step` |
+| ArrowLeft / ArrowDown | `−step` |
+| PageUp | `+largeStep` |
+| PageDown | `−largeStep` |
+| Home | `min` |
+| End | `max` |
 
 ## Notes
 
-- Browser styling for the slider track varies. Use `setForegroundColor` / `setBackgroundColor` to nudge the look, or apply `getElement()`-level CSS for full control.
-- `change` fires only on release; `input` fires on every value change during a drag.
+- Drag is handled via `pointerdown` + `setPointerCapture`, so the cursor can leave the track mid-drag without losing the input stream.
+- Themed through the shared `--ts-ui-form-*` family plus per-control slider tokens (`--ts-ui-slider-track-bg`, `--ts-ui-slider-track-active-bg`, `--ts-ui-slider-thumb-bg`, `--ts-ui-slider-thumb-size`, `--ts-ui-slider-track-thickness`).
+- `addActionListener` and the deprecated `setMinValue` / `setMaxValue` / `getMinValue` / `getMaxValue` aliases remain available for migration; prefer `addChangeListener` and `setMin` / `setMax` in new code.
 
 ## See also
 

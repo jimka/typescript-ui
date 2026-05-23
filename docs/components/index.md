@@ -36,7 +36,8 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`TextField`](/api/component/input/classes/TextField) | Single-line text input |
 | [`TextArea`](/api/component/input/classes/TextArea) | Multi-line text input |
 | [`PasswordField`](/api/component/input/classes/PasswordField) | Masked text input |
-| [`Checkbox`](/api/component/input/classes/Checkbox) | Boolean toggle |
+| [`Checkbox`](/api/component/input/classes/Checkbox) | Boolean toggle (supports indeterminate / mixed state) |
+| [`Toggle`](/api/component/input/classes/Toggle) | Sliding-pill on/off switch |
 | [`ComboBox`](/api/component/input/classes/ComboBox) | Drop-down selection from a list of [`Option`](/api/component/input/classes/Option) or a [`Store`](/api/data/classes/Store) |
 | [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField) | Text field with type-ahead suggestions |
 | [`DateField`](/api/component/input/classes/DateField) | Date picker with animated calendar dropdown |

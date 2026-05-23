@@ -91,6 +91,7 @@ export interface ComponentOptions {
     minSize?:         Size;
     maxSize?:         Size;
     transform?:       string;
+    transition?:      string;
     willChange?:      string | null;
     opacity?:         number;
     position?:        Position;
@@ -326,6 +327,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.minSize         !== undefined) this.setMinSize(opts.minSize.width, opts.minSize.height);
         if (opts.maxSize         !== undefined) this.setMaxSize(opts.maxSize.width, opts.maxSize.height);
         if (opts.transform       !== undefined) this.setTransform(opts.transform);
+        if (opts.transition      !== undefined) this.setTransition(opts.transition);
         if (opts.willChange      !== undefined) this.setWillChange(opts.willChange);
         if (opts.opacity         !== undefined) this.setOpacity(opts.opacity);
         if (opts.position        !== undefined) this.setPosition(opts.position);
@@ -1783,8 +1785,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setSize(size: Size): this {
-        this._width = size.width;
-        this._height = size.height;
+        const width  = this.clampWidth(size.width);
+        const height = this.clampHeight(size.height);
+
+        this._width = width;
+        this._height = height;
 
         let element = this.getElement();
         if (!element) {
@@ -1792,8 +1797,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this.setElementStyles({
-            "width": size.width + "px",
-            "height": size.height + "px"
+            "width": width + "px",
+            "height": height + "px"
         });
 
         this.scheduleLayout();
@@ -1823,6 +1828,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setWidth(width: number): this {
+        width = this.clampWidth(width);
+
         if (this._width === width) {
             return this;
         }
@@ -1837,6 +1844,26 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.setElementStyle("width", this._width + "px");
 
         return this;
+    }
+
+    /**
+     * Clamps a width value to this component's own `[minSize.width,
+     * maxSize.width]` range. Used by {@link setWidth}, {@link setHeight}, and
+     * {@link setSize} so that callers cannot drive `_width` / `_height` past
+     * the constraint a subclass declared via {@link setMinSize} / {@link setMaxSize}.
+     */
+    private clampWidth(width: number): number {
+        const maxSize = this._options.maxSize ?? this._defaultOptions.maxSize;
+        if (maxSize && width > maxSize.width) {
+            width = maxSize.width;
+        }
+
+        const minSize = this._options.minSize ?? this._defaultOptions.minSize;
+        if (minSize && width < minSize.width) {
+            width = minSize.width;
+        }
+
+        return width;
     }
 
     /**
@@ -1861,6 +1888,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setHeight(height: number): this {
+        height = this.clampHeight(height);
+
         if (this._height === height) {
             return this;
         }
@@ -1875,6 +1904,25 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.setElementStyle("height", this._height + "px");
 
         return this;
+    }
+
+    /**
+     * Clamps a height value to this component's own `[minSize.height,
+     * maxSize.height]` range. Mirror of {@link clampWidth}; see that method
+     * for the rationale.
+     */
+    private clampHeight(height: number): number {
+        const maxSize = this._options.maxSize ?? this._defaultOptions.maxSize;
+        if (maxSize && height > maxSize.height) {
+            height = maxSize.height;
+        }
+
+        const minSize = this._options.minSize ?? this._defaultOptions.minSize;
+        if (minSize && height < minSize.height) {
+            height = minSize.height;
+        }
+
+        return height;
     }
 
     /**
@@ -2273,6 +2321,53 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the current CSS `transition` shorthand, or `null` if none has
+     * been set.
+     *
+     * @returns The cached transition value, or null.
+     */
+    getTransition(): string | null {
+        return this._transition;
+    }
+
+    /**
+     * Sets the CSS `transition` shorthand on the component's CSS rule. Use
+     * this to declare a property-by-property crossfade ahead of state writes
+     * (e.g. setting a `transition: background-color 120ms ease-out` rule and
+     * then later calling `setBackgroundColor` to fire the crossfade).
+     *
+     * @param value - A CSS transition shorthand (e.g. `"transform 120ms ease-out"`).
+     *
+     * @returns This component, for method chaining.
+     */
+    setTransition(value: string): this {
+        if (this._transition === value) {
+            return this;
+        }
+
+        this._transition = value;
+        this.setElementCSSRule("transition", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the CSS `transition` property from the component's CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearTransition(): this {
+        if (this._transition === null) {
+            return this;
+        }
+
+        this._transition = null;
+        this.setElementCSSRule("transition", null);
+
+        return this;
+    }
+
+    /**
      * Returns the cached state of the HTML `disabled` attribute on the element.
      *
      * @returns True when the `disabled` attribute is set, false otherwise.
@@ -2438,43 +2533,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._willChange = value;
 
         this.setElementStyle("willChange", value);
-
-        return this;
-    }
-
-    /**
-     * Returns the cached CSS `transition` shorthand last passed to
-     * {@link setTransition}.
-     *
-     * @returns The active transition string, or `null` if no transition is set.
-     */
-    getTransition(): string | null {
-        return this._transition;
-    }
-
-    /**
-     * Sets the CSS `transition` shorthand on the element's inline style.
-     * Pass `null` to clear it.
-     *
-     * @param value - A CSS transition value (e.g. `"height 200ms ease-out"`)
-     *                or `null` to remove.
-     *
-     * @returns This component, for method chaining.
-     *
-     * @remarks Caching short-circuits identical writes so re-issuing the same
-     * transition from a layout pass doesn't thrash the inline style attribute.
-     * Use `"none"` (not `null`) to disable transitions while keeping the
-     * declaration in place — e.g. for a one-frame suppression before restoring
-     * the original value.
-     */
-    setTransition(value: string | null): this {
-        if (this._transition === value) {
-            return this;
-        }
-
-        this._transition = value;
-
-        this.setElementStyle("transition", value);
 
         return this;
     }

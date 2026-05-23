@@ -32,7 +32,11 @@ export type AriaRole =
     | 'spinbutton'
     | 'progressbar'
     | 'status'
-    | 'dialog';
+    | 'dialog'
+    | 'checkbox'
+    | 'radio'
+    | 'slider'
+    | 'switch';
 
 /**
  * Valid values for the `aria-sort` attribute.
@@ -620,6 +624,80 @@ export class Aria {
         const v = this._attributes.get("valuemax");
 
         return v !== undefined ? Number(v) : null;
+    }
+
+    /**
+     * Sets `aria-checked`. Accepts `"mixed"` for the indeterminate / tri-state
+     * checkbox surface and a boolean for ordinary on/off widgets such as
+     * `Checkbox` / `RadioButton` / `Toggle`.
+     *
+     * @param value - `true`, `false`, or `"mixed"`.
+     */
+    setChecked(value: boolean | "mixed"): this {
+        this.setAttribute("checked", typeof value === "string" ? value : String(value));
+
+        return this;
+    }
+
+    /**
+     * Returns the current `aria-checked` value, or null if not set.
+     *
+     * @returns The checked state (boolean), `"mixed"`, or null.
+     */
+    getChecked(): boolean | "mixed" | null {
+        const v = this._attributes.get("checked");
+
+        if (v === undefined) {
+            return null;
+        }
+
+        if (v === "mixed") {
+            return "mixed";
+        }
+
+        return v === "true";
+    }
+
+    /**
+     * Sets `aria-orientation`, used by slider, separator, scrollbar, and similar widgets.
+     *
+     * @param value - `"horizontal"` or `"vertical"`.
+     */
+    setOrientation(value: "horizontal" | "vertical"): this {
+        this.setAttribute("orientation", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the current `aria-orientation` value, or null if not set.
+     *
+     * @returns The orientation string, or null.
+     */
+    getOrientation(): "horizontal" | "vertical" | null {
+        return (this._attributes.get("orientation") as "horizontal" | "vertical" | undefined) ?? null;
+    }
+
+    /**
+     * Sets `aria-readonly`.
+     *
+     * @param value - Whether the element is read-only.
+     */
+    setReadOnly(value: boolean): this {
+        this.setAttribute("readonly", String(value));
+
+        return this;
+    }
+
+    /**
+     * Returns the current `aria-readonly` value, or null if not set.
+     *
+     * @returns The read-only state, or null.
+     */
+    getReadOnly(): boolean | null {
+        const v = this._attributes.get("readonly");
+
+        return v !== undefined ? v === "true" : null;
     }
 
     /**
