@@ -19,6 +19,7 @@ import {
 import type { AutoScrollMode } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
 import {
+    Absolute,
     Fit,
     HBox,
     VBox
@@ -787,7 +788,7 @@ class MiscPanel extends Panel {
                     });
 
                     const scrollPanel: Panel = new Panel({
-                        layoutManager: new Fit(),
+                        layoutManager: new Absolute(),
                         autoScroll: mode
                     });
 
