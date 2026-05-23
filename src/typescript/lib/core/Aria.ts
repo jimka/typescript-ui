@@ -175,6 +175,29 @@ export class Aria {
     }
 
     /**
+     * Sets `aria-multiselectable`, indicating that the widget supports multiple
+     * selection.
+     *
+     * @param value - Whether multiple items can be selected.
+     */
+    setMultiselectable(value: boolean): this {
+        this.setAttribute("multiselectable", String(value));
+
+        return this;
+    }
+
+    /**
+     * Returns the current `aria-multiselectable` value, or null if not set.
+     *
+     * @returns The multiselectable state, or null.
+     */
+    getMultiselectable(): boolean | null {
+        const v = this._attributes.get("multiselectable");
+
+        return v !== undefined ? v === "true" : null;
+    }
+
+    /**
      * Sets `aria-selected`.
      *
      * @param value - Whether the element is selected.

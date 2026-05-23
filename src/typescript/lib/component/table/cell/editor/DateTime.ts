@@ -40,15 +40,10 @@ class DateTimeEditor extends CellEditor<Date | null> {
         Event.addListener(this, "focus", () => this.openDropdown());
         Event.addListener(this, "blur",  () => this.closeDropdown());
         Event.addListener(this, "input", () => this.onInput());
-    }
 
-    applyStyle(element: HTMLElement): this {
-        super.applyStyle(element);
-        element.setAttribute('type', 'text');
-        element.setAttribute('inputmode', 'none');
-        element.setAttribute('autocomplete', 'off');
-
-        return this;
+        this.setAttribute('type',         'text');
+        this.setAttribute('inputmode',    'none');
+        this.setAttribute('autocomplete', 'off');
     }
 
     /**
