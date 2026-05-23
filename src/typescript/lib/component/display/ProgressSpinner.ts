@@ -28,7 +28,7 @@ const ARC_BORDER_WIDTH = 3;
  *
  * @returns The current theme font size in pixels, or `14` as a fallback.
  */
-function getThemeFontSize(): number {
+function readThemeFontSizePx(): number {
     const raw    = getComputedStyle(document.documentElement)
                        .getPropertyValue("--ts-ui-font-size").trim();
     const parsed = parseFloat(raw);
@@ -52,6 +52,7 @@ class ProgressSpinner extends Component {
     private _arc: Component;
     private _size: number;
     private _trackThemeFontSize: boolean;
+    private _themeFontSizeResolved: boolean = false;
     private _overlayTarget: Component | null = null;
 
     /**
@@ -65,7 +66,12 @@ class ProgressSpinner extends Component {
         super();
 
         this._trackThemeFontSize = size === undefined;
-        this._size               = this._trackThemeFontSize ? getThemeFontSize() : size!;
+        // Theme font-size is resolved at first `doLayout` (post-attach) so
+        // construction stays JS-only per ARCHITECTURE.md "Defer DOM work to
+        // render time". Use the same `14` fallback that `readThemeFontSizePx`
+        // returns when the variable is missing, so the preferred-size write a
+        // few lines below has a sensible value before the theme read fires.
+        this._size               = this._trackThemeFontSize ? 14 : size!;
 
         // Use no insets so the arc fills the declared size — otherwise the
         // default 4-pixel inset shrinks a 24-pixel spinner's arc to 16 pixels
@@ -93,7 +99,7 @@ class ProgressSpinner extends Component {
                     return;
                 }
 
-                const next = getThemeFontSize();
+                const next = readThemeFontSizePx();
                 if (next === this._size) {
                     return;
                 }
@@ -132,6 +138,11 @@ class ProgressSpinner extends Component {
      * Returns the spinner arc diameter in pixels.
      *
      * @returns The diameter.
+     *
+     * @remarks Returns the most recently resolved diameter; when the spinner
+     * tracks the theme font-size (default constructor with no `size` argument),
+     * the resolved value is only available after the first layout pass — earlier
+     * calls return the `14`-pixel fallback.
      */
     getSpinnerSize(): number {
         return this._size;
@@ -224,6 +235,16 @@ class ProgressSpinner extends Component {
      * @returns This component, for method chaining.
      */
     doLayout(): this {
+        if (this._trackThemeFontSize && !this._themeFontSizeResolved) {
+            this._themeFontSizeResolved = true;
+
+            const next = readThemeFontSizePx();
+            if (next !== this._size) {
+                this._size = next;
+                this.setPreferredSize(next, next);
+            }
+        }
+
         if (this._overlayTarget) {
             this.setSize({ width: this._overlayTarget.getWidth(), height: this._overlayTarget.getHeight() });
         }
