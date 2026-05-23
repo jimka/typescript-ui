@@ -97,7 +97,7 @@ class Tree extends Component<TreeOptions> {
 
         this.getAria().setRole("tree");
         this.getAria().setTabIndex(0);
-        this.setAttribute("aria-multiselectable", "true");
+        this.getAria().setMultiselectable(true);
     }
 
     /**
