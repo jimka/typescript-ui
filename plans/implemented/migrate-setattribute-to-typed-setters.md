@@ -181,9 +181,9 @@ This sits alongside the existing `this.getAria().setRole("tree")` and `this.getA
 
 4. **Migrate `PasswordField.ts`.** Same shape: `this.setType("password")` in the constructor, delete the `render()` override at [PasswordField.ts:61-67](../src/typescript/lib/component/input/PasswordField.ts#L61-L67).
 
-5. **Migrate `Checkbox.ts`.** Add `this.setType("checkbox")` to the constructor. In the `render()` override at [Checkbox.ts:151-158](../src/typescript/lib/component/input/Checkbox.ts#L151-L158), delete the `element.setAttribute("type", "checkbox")` line only; keep the `element.checked = this.isSelected()` line.
+5. **Migrate `Checkbox.ts`.** No-op as of implementation. The current `Checkbox` is a custom-drawn `<div>` with `role="checkbox"` (a `Component` subclass, not an `Input`). It has no `render()` override, no `element.setAttribute` call, and no native `<input type="checkbox">`. The plan was authored against a prior native-input shape; the modern shape has nothing to migrate.
 
-6. **Migrate `Slider.ts`.** Add `this.setType("range")` to the constructor. Delete the entire `render()` override at [Slider.ts:207-217](../src/typescript/lib/component/input/Slider.ts#L207-L217). Verify the four range attributes still appear in the DOM by reading `Slider.applyOptions` and confirming each is forwarded to its typed setter — already true at [Slider.ts:74-89](../src/typescript/lib/component/input/Slider.ts#L74-L89).
+6. **Migrate `Slider.ts`.** No-op as of implementation. The current `Slider` is a custom-drawn `<div>` with `role="slider"` and child track / thumb Components. It has no `render()` override, no `element.setAttribute` call, and no native `<input type="range">`. The plan was authored against a prior native-input shape; the modern shape has nothing to migrate.
 
 7. **Migrate `editor/Date.ts`.** Add three constructor lines after the existing event listeners (`this.setAttribute("type", "text")`; `this.setAttribute("inputmode", "none")`; `this.setAttribute("autocomplete", "off")`). Delete the `applyStyle` override at [Date.ts:44-51](../src/typescript/lib/component/table/cell/editor/Date.ts#L44-L51).
 
@@ -211,8 +211,8 @@ This sits alongside the existing `this.getAria().setRole("tree")` and `this.getA
 | Modify | `src/typescript/lib/component/tree/Tree.ts` — line 100 to `getAria().setMultiselectable(true)` |
 | Modify | `src/typescript/lib/component/input/TextField.ts` — constructor `setType("text")`, delete `render()` |
 | Modify | `src/typescript/lib/component/input/PasswordField.ts` — constructor `setType("password")`, delete `render()` |
-| Modify | `src/typescript/lib/component/input/Checkbox.ts` — constructor `setType("checkbox")`, drop the `setAttribute` line from `render()` |
-| Modify | `src/typescript/lib/component/input/Slider.ts` — constructor `setType("range")`, delete `render()` |
+| Skip   | `src/typescript/lib/component/input/Checkbox.ts` — drift: modern Checkbox is a custom-drawn `<div>`, no `render()` override and no `element.setAttribute` |
+| Skip   | `src/typescript/lib/component/input/Slider.ts` — drift: modern Slider is a custom-drawn `<div>`, no `render()` override and no `element.setAttribute` |
 | Modify | `src/typescript/lib/component/table/cell/editor/Date.ts` — three constructor `setAttribute` lines, delete `applyStyle` |
 | Modify | `src/typescript/lib/component/table/cell/editor/DateTime.ts` — same |
 | Modify | `src/typescript/lib/component/table/cell/editor/Time.ts` — same |
