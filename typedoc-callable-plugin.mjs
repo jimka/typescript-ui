@@ -25,7 +25,7 @@ export function load(app) {
 function onCreateDeclaration(context, reflection) {
     if (reflection.kind !== ReflectionKind.Variable) return;
 
-    const valueSymbol = context.project.getSymbolFromReflection(reflection);
+    const valueSymbol = context.getSymbolFromReflection(reflection);
     if (!valueSymbol) return;
 
     const found = findCallableTarget(context, valueSymbol, reflection.name);
@@ -82,14 +82,14 @@ function onResolveBegin(context) {
         const variableRef = context.project.getReflectionById(id);
         if (!variableRef) continue;
 
-        const variableSymbol = context.project.getSymbolFromReflection(variableRef);
+        const variableSymbol = context.getSymbolFromReflection(variableRef);
 
         const siblings = info.parent.children ?? [];
         const typeAliasSibling = siblings.find(c =>
             c.name === variableRef.name && c.kind === ReflectionKind.TypeAlias
         );
         const typeAliasSymbol = typeAliasSibling
-            ? context.project.getSymbolFromReflection(typeAliasSibling)
+            ? context.getSymbolFromReflection(typeAliasSibling)
             : undefined;
 
         context.project.removeReflection(variableRef);
@@ -117,10 +117,10 @@ function onResolveBegin(context) {
             scoped.setActiveProgram(undefined);
         }
 
-        const newClass = context.project.getReflectionFromSymbol(info.innerClassSymbol);
+        const newClass = context.getReflectionFromSymbol(info.innerClassSymbol);
         if (newClass) {
-            if (variableSymbol) context.project.registerReflection(newClass, variableSymbol);
-            if (typeAliasSymbol) context.project.registerReflection(newClass, typeAliasSymbol);
+            if (variableSymbol) context.registerReflection(newClass, variableSymbol);
+            if (typeAliasSymbol) context.registerReflection(newClass, typeAliasSymbol);
         }
     }
 

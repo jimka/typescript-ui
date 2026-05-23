@@ -34,7 +34,7 @@ export interface PanelOptions extends ComponentOptions {
     tag?:        string;
 
     /**
-     * Construction-time shortcut for {@link Panel.setAutoScroll}. Defaults to
+     * Construction-time shortcut for [`Panel.setAutoScroll`](/api/core/classes/Panel#setautoscroll). Defaults to
      * `"none"` (oversized children clip, matching the inherited `Component`
      * `overflow: hidden` behaviour).
      */

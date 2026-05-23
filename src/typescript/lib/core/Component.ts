@@ -2340,7 +2340,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @returns This component, for method chaining.
      */
-    setTransition(value: string): this {
+    setTransition(value: string | null): this {
         if (this._transition === value) {
             return this;
         }
