@@ -9,7 +9,7 @@ Before drafting, read in full:
 
 - [`CODE_CONVENTIONS.md`](../../../CODE_CONVENTIONS.md) — Code style, JSDoc, Framework rules. Plans must not silently violate these; flag any unavoidable violation in `## Architecture Decisions`.
 - [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — What docs need to change when public API moves. Cited from `## Documentation Impact`.
-- [`.claude/skills/_shared/graphify.md`](../_shared/graphify.md) — Use the knowledge graph (not grep) to investigate the codebase before drafting.
+- [`.claude/skills/_shared/codegraph.md`](../_shared/codegraph.md) — Use the CodeGraph MCP tools (not grep) to investigate the codebase before drafting.
 - [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
 
 ## Purpose
@@ -78,7 +78,7 @@ Numbered steps. Each names the file and what to do. Include cheap regression che
 Table: `Action | File`.
 
 ### `## Verification` (when behaviour is testable)
-Concrete checks: typecheck, grep invariants, manual smoke tests, theme-toggle, `npm run docs:build` (0 errors and 0 link warnings — typedoc's "unsupported TypeScript version" notice is the lone acceptable warning), `graphify update .`. Name the demo screen.
+Concrete checks: typecheck, grep invariants, manual smoke tests, theme-toggle, `npm run docs:build` (0 errors and 0 link warnings — typedoc's "unsupported TypeScript version" notice is the lone acceptable warning). Name the demo screen.
 
 ### `## Documentation Impact` (when public API changes)
 - Which per-subpath barrel exports the symbol (`src/typescript/lib/<group>/index.ts` — there is no root barrel).

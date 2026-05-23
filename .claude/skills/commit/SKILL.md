@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Stage and commit work on a feature branch using the project's commit-bucket structure (code / documentation / tooling / graphify / bookkeeping), the one-functionality-per-code-commit rule, and the title-plus-paragraph message format. Use whenever the user asks you to commit on a `feature/*` branch, including follow-up commits after `/implement` has finished.
+description: Stage and commit work on a feature branch using the project's commit-bucket structure (code / documentation / tooling / bookkeeping), the one-functionality-per-code-commit rule, and the title-plus-paragraph message format. Use whenever the user asks you to commit on a `feature/*` branch, including follow-up commits after `/implement` has finished.
 ---
 
 ## When to use
@@ -13,20 +13,19 @@ For one-off commits on `master` or unrelated maintenance branches, fall back to 
 
 ## Commit buckets
 
-Every commit on a feature branch falls into exactly one of five buckets:
+Every commit on a feature branch falls into exactly one of four buckets:
 
 1. **Code** — one commit per *functionality* (see next section). Touches `src/**`, demo-panel updates, theme tokens / CSS, barrel exports, dependency fixes required for the functionality.
 2. **Documentation** — one commit per functionality. Touches `docs/**`, changelog, migration notes. Auto-generated `docs/api/**` is included only if hand-edited.
 3. **Tooling** — one commit per *tooling functionality*. Touches `.claude/**`, `ARCHITECTURE.md`, `CLAUDE.md`, and other repo-level governance or developer-workflow files. Tooling changes shape how the project is built or maintained but aren't shipped to library consumers, so they're a separate concern from feature code and product documentation.
-4. **Graphify** — **exactly one commit per branch**, regardless of how many code/docs/tooling cycles landed. Touches `graphify-out/**` from `graphify update . --directed`. Always its own commit, and always the last non-bookkeeping commit on the branch. Follow-up cycles rebase the prior graphify commit out and re-create it at the tip (see _Follow-up changes_) — never stack a second graphify commit on top.
-5. **Bookkeeping** *(optional, any number)* — plan-file moves (`plans/` → `plans/in-progress/` → `plans/implemented/`) and similar pure-housekeeping changes. **Must contain only bookkeeping** — never fold housekeeping into a code, docs, tooling, or graphify commit. The move to `plans/implemented/` is always the very last commit on the branch (after graphify), since it signals the work is complete.
+4. **Bookkeeping** *(optional, any number)* — plan-file moves (`plans/` → `plans/in-progress/` → `plans/implemented/`) and similar pure-housekeeping changes. **Must contain only bookkeeping** — never fold housekeeping into a code, docs, or tooling commit. The move to `plans/implemented/` is always the very last commit on the branch, since it signals the work is complete.
 
 Ordering rules:
-- Within a single feature: code → docs → graphify (when graphify changes).
-- Tooling commits stand alone and may appear anywhere in the sequence; they don't trigger a docs or graphify commit by themselves.
+- Within a single feature: code → docs.
+- Tooling commits stand alone and may appear anywhere in the sequence; they don't trigger a docs commit by themselves.
 - Bookkeeping commits may appear anywhere, except the plan-implemented move which always lands last.
 
-**Follow-up changes.** If new changes arrive on the branch after the graphify commit (a bug found in review, a demo tweak, a doc fix), re-run the cycle for that new functionality: code, then docs, then refresh graphify. **Refresh, not re-commit:** there is exactly one graphify commit per branch, no matter how many follow-up cycles. Rebase the prior graphify commit out (drop it), re-run `graphify update . --directed`, and create the new graphify commit at the tip — just below the plan-implemented bookkeeping move.
+**Follow-up changes.** If new changes arrive on the branch after the initial cycle (a bug found in review, a demo tweak, a doc fix), re-run the cycle for that new functionality: code, then docs.
 
 ## What counts as "one functionality"
 
@@ -53,7 +52,7 @@ Split into multiple code commits **only** when the branch ships genuinely indepe
 
 - **Title:** a single sentence, **80 characters max**. Starts with a capital letter and uses imperative mood ("Add", "Fix", "Refactor"). **No conventional-commit prefixes** (`feat(...)`, `fix(...)`, `docs(...)`, `chore(...)`) — the bucket is conveyed by the wording, not a tag. The existing history uses prefixes; do not copy that pattern.
 - **Blank line** between title and body.
-- **Body:** at most one paragraph, with each line wrapped at **80 characters max**. Explain *why* the change exists or *what* it enables, not a line-by-line restatement of the diff. The body is the default; omit it only when the title is genuinely self-explanatory (mechanical graphify refreshes, plan-file moves, trivial typo fixes).
+- **Body:** at most one paragraph, with each line wrapped at **80 characters max**. Explain *why* the change exists or *what* it enables, not a line-by-line restatement of the diff. The body is the default; omit it only when the title is genuinely self-explanatory (plan-file moves, trivial typo fixes).
 - **No bullet lists, no headings, no checklists** in the body — one prose paragraph.
 - **No author / co-author trailers.** No `Co-Authored-By:`, no "Generated with …" line.
 
@@ -78,8 +77,6 @@ This format is new. The repo's existing history mixes title-only messages with c
 ## Common pitfalls
 
 - **Splitting one functionality into many code commits.** A new component plus its theme tokens plus the barrel export plus the typed-API fix it needed is *one* feature, hence *one* code commit.
-- **Mixing bookkeeping into a code/docs/tooling/graphify commit.** If a plan-file move belongs alongside the feature, commit it separately as bookkeeping — don't tuck it into the feature commit and mention it in the body.
+- **Mixing bookkeeping into a code/docs/tooling commit.** If a plan-file move belongs alongside the feature, commit it separately as bookkeeping — don't tuck it into the feature commit and mention it in the body.
 - **Putting tooling changes into the code bucket.** Skill updates, CLAUDE.md edits, and ARCHITECTURE.md additions are tooling, not code, even when they were prompted by a feature you just shipped.
 - **Defaulting to title-only messages.** The history will tempt you; write a body unless the change is genuinely trivial.
-- **Mixing `src/**` and `graphify-out/**` in one commit.** The graphify diff is large and noisy; isolating it keeps review readable.
-- **Stacking a second graphify commit on follow-up.** Each branch has exactly one graphify commit. When follow-up code lands, rebase the prior graphify commit out before running `graphify update . --directed`, then commit the refresh at the tip — don't add a second graphify commit on top of the first. After any reorganization, sanity-check with `git log --oneline master..HEAD | grep -c graphify` — expect exactly `1`.
