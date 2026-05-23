@@ -39,8 +39,9 @@ export interface TextOptions extends ComponentOptions {
  *   onto every Text's CSS rule, blocking a parent's `font-family` override
  *   from cascading through.
  * - `lineHeight` is theme-derived (`readThemeLineHeightPx()`), so the value
- *   isn't known at module load. The per-instance fallback write in the
- *   constructor body resolves it from the live theme tokens.
+ *   isn't known at module load. It is resolved lazily on first
+ *   `calculateSize()` (post-attach), keeping construction JS-only per
+ *   ARCHITECTURE.md "Defer DOM work to render time".
  */
 const _defaultTextOptions: Partial<TextOptions> = {
     textAlign:      "left",
@@ -92,8 +93,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         // run after super returns) restore both to their var-binding values —
         // so theme reactivity is preserved by the DOM `var(...)` binding even
         // though the cascade temporarily writes a literal.
+        //
+        // `_defaultOptions.lineHeight` is resolved lazily on first
+        // `calculateSize()` (post-attach) — see ARCHITECTURE.md "Defer DOM
+        // work to render time".
         this._defaultOptions.fontFamily = "var(--ts-ui-font-family, system-ui, sans-serif)";
-        this._defaultOptions.lineHeight = this.readThemeLineHeightPx();
 
         this.clearInsets();
         this.setElementCSSRule("lineHeight", this._lineHeightCSSRule);
@@ -267,6 +271,16 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      */
     private calculateSize(): void {
         this._measurementDirty = false;
+
+        // First-read deferral: populate the default line-height the first
+        // time we measure, when the component is attached and
+        // `getComputedStyle` is safe. Subsequent reads come through the
+        // `ThemeManager.onThemeChange` callback above. Placed before the
+        // `_autoMeasure` gate so non-measuring `Text` instances still get
+        // a resolved value populated for `getLineHeight()` callers.
+        if (this._defaultOptions.lineHeight === undefined) {
+            this._defaultOptions.lineHeight = this.readThemeLineHeightPx();
+        }
 
         if (!this._autoMeasure) {
             return;
