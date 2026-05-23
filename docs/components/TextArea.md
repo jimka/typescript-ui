@@ -23,6 +23,7 @@ panel.addComponent(notes);
 | --- | --- |
 | `getText()` / `setText(text)` | Read / write the text content. |
 | `setRows(n)` / `setColumns(n)` | DOM-level row / column hints. |
+| `setResize(value)` | CSS `resize` mode for the corner handle (defaults to `"none"`). |
 
 ## See also
 
