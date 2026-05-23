@@ -61,7 +61,7 @@ This format is new. The repo's existing history mixes title-only messages with c
 ## Workflow
 
 1. Run `git status` and `git diff` to see what's staged and unstaged.
-2. Group changed paths into the five buckets. If the code or tooling bucket spans multiple genuinely independent functionalities, partition further.
+2. Group changed paths into the four buckets. If the code or tooling bucket spans multiple genuinely independent functionalities, partition further.
 3. For each commit, stage only that commit's files (`git add <paths>` — never `git add -A` or `git add .`), then commit with the format above. Pass the message via a HEREDOC so the blank line survives:
    ```
    git commit -m "$(cat <<'EOF'
