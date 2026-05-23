@@ -659,26 +659,6 @@ export class Aria {
     }
 
     /**
-     * Sets `aria-orientation`, used by slider, separator, scrollbar, and similar widgets.
-     *
-     * @param value - `"horizontal"` or `"vertical"`.
-     */
-    setOrientation(value: "horizontal" | "vertical"): this {
-        this.setAttribute("orientation", value);
-
-        return this;
-    }
-
-    /**
-     * Returns the current `aria-orientation` value, or null if not set.
-     *
-     * @returns The orientation string, or null.
-     */
-    getOrientation(): "horizontal" | "vertical" | null {
-        return (this._attributes.get("orientation") as "horizontal" | "vertical" | undefined) ?? null;
-    }
-
-    /**
      * Sets `aria-readonly`.
      *
      * @param value - Whether the element is read-only.
