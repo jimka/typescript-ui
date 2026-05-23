@@ -3,7 +3,7 @@
 import { Component } from '@jimka/typescript-ui/core';
 import { ButtonGroup, callable, Panel } from '@jimka/typescript-ui/core';
 import { HBox } from '@jimka/typescript-ui/layout';
-import { Checkbox, ComboBox, PasswordField, RadioButton, Slider, Text, TextArea, TextField } from '@jimka/typescript-ui/component/input';
+import { Checkbox, ComboBox, PasswordField, RadioButton, Slider, Text, TextArea, TextField, Toggle } from '@jimka/typescript-ui/component/input';
 import { Button, ToggleButton } from '@jimka/typescript-ui/component/button';
 import { List } from '@jimka/typescript-ui/component/list';
 import { FieldSet } from '@jimka/typescript-ui/component/container';
@@ -90,6 +90,9 @@ class LayoutTestPanel extends Panel {
 
         let toggleButton = new ToggleButton("Hello World toggle button!");
         this.addComponent(toggleButton);
+
+        let toggle = Toggle({ label: "I am a custom toggle switch!" });
+        this.addComponent(toggle);
 
         let fieldSet = new FieldSet("Hello World fieldset!");
         this.addComponent(fieldSet);

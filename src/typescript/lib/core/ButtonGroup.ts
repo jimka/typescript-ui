@@ -107,8 +107,10 @@ class ButtonGroup {
     /**
      * Adds a button to the group and wires its selection to enforce mutual exclusivity.
      *
-     * @remarks For [`RadioButton`](/api/component/input/classes/RadioButton) instances, a shared `name` attribute is applied for native browser grouping.
-     * For [`ToggleButton`](/api/component/button/classes/ToggleButton) instances, the button is added to the roving tabindex group if a container has been set.
+     * @remarks The shared group id is stored on each [`RadioButton`](/api/component/input/classes/RadioButton) (via `setRadioName`) for
+     * back-compat with consumers that read `getRadioName()`. Group navigation is delegated
+     * to {@link RovingTabIndex} once a container has been wired via {@link setContainer};
+     * both [`ToggleButton`](/api/component/button/classes/ToggleButton) and [`RadioButton`](/api/component/input/classes/RadioButton) members are registered there.
      * @param button - The button to add to the group.
      */
     addButton(button: RadioButton | ToggleButton): this {
@@ -120,7 +122,9 @@ class ButtonGroup {
 
         if (button instanceof RadioButton) {
             button.setRadioName(this._groupId);
-        } else if (button instanceof ToggleButton && this._rovingTabIndex !== null) {
+        }
+
+        if (this._rovingTabIndex !== null) {
             this._rovingTabIndex.add(button);
         }
 
@@ -141,7 +145,7 @@ class ButtonGroup {
 
         this.buttons.splice(idx, 1);
 
-        if (button instanceof ToggleButton && this._rovingTabIndex !== null) {
+        if (this._rovingTabIndex !== null) {
             this._rovingTabIndex.remove(button);
         }
 
@@ -149,19 +153,18 @@ class ButtonGroup {
     }
 
     /**
-     * Sets the container component for keyboard navigation of [`ToggleButton`](/api/component/button/classes/ToggleButton) groups.
+     * Sets the container component for keyboard navigation of the group.
      *
      * @remarks Registers Left/Right/Up/Down arrow key handlers on the container via subtree listener.
-     * Also initialises the {@link RovingTabIndex} and adds any already-registered [`ToggleButton`](/api/component/button/classes/ToggleButton) members to it.
-     * @param container - The component that wraps the toggle buttons and should receive key events.
+     * Also initialises the {@link RovingTabIndex} and adds every already-registered
+     * [`RadioButton`](/api/component/input/classes/RadioButton) or [`ToggleButton`](/api/component/button/classes/ToggleButton) member to it.
+     * @param container - The component that wraps the buttons and should receive key events.
      */
     setContainer(container: Component): this {
         this._rovingTabIndex = new RovingTabIndex();
 
         for (const button of this.buttons) {
-            if (button instanceof ToggleButton) {
-                this._rovingTabIndex.add(button);
-            }
+            this._rovingTabIndex.add(button);
         }
 
         Event.addSubtreeListener(container, "keydown", (e: KeyboardEvent) => {
