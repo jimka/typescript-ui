@@ -3,6 +3,7 @@
 import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import {
     ensureGlyphSprite,
@@ -71,23 +72,26 @@ function ensureGlyphKeyframes(): void {
     CSS.ensureKeyframes("ts-ui-glyph-beat",
         "0%, 90% { transform: scale(1); } 45% { transform: scale(1.25); }");
 
-    const spinRule = CSS.createClassRule(CLASS_PREFIX + "spin");
-    if (spinRule) {
-        spinRule.style.cssText =
-            "animation: ts-ui-glyph-spin var(--ts-ui-glyph-spin-duration, 2000ms) linear infinite;";
-    }
+    const spinRule = new StyleRule(() =>
+        (CSS.getClassRule(CLASS_PREFIX + "spin")
+            ?? CSS.createClassRule(CLASS_PREFIX + "spin")) as CSSStyleRule);
+    spinRule.set("animation",
+        "ts-ui-glyph-spin var(--ts-ui-glyph-spin-duration, 2000ms) linear infinite");
+    spinRule.ensure();
 
-    const pulseRule = CSS.createClassRule(CLASS_PREFIX + "pulse");
-    if (pulseRule) {
-        pulseRule.style.cssText =
-            "animation: ts-ui-glyph-pulse var(--ts-ui-glyph-pulse-duration, 1000ms) steps(8) infinite;";
-    }
+    const pulseRule = new StyleRule(() =>
+        (CSS.getClassRule(CLASS_PREFIX + "pulse")
+            ?? CSS.createClassRule(CLASS_PREFIX + "pulse")) as CSSStyleRule);
+    pulseRule.set("animation",
+        "ts-ui-glyph-pulse var(--ts-ui-glyph-pulse-duration, 1000ms) steps(8) infinite");
+    pulseRule.ensure();
 
-    const beatRule = CSS.createClassRule(CLASS_PREFIX + "beat");
-    if (beatRule) {
-        beatRule.style.cssText =
-            "animation: ts-ui-glyph-beat var(--ts-ui-glyph-beat-duration, 1000ms) ease-in-out infinite;";
-    }
+    const beatRule = new StyleRule(() =>
+        (CSS.getClassRule(CLASS_PREFIX + "beat")
+            ?? CSS.createClassRule(CLASS_PREFIX + "beat")) as CSSStyleRule);
+    beatRule.set("animation",
+        "ts-ui-glyph-beat var(--ts-ui-glyph-beat-duration, 1000ms) ease-in-out infinite");
+    beatRule.ensure();
 }
 
 /**

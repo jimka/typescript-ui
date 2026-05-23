@@ -30,8 +30,38 @@ Never call `element.setAttribute(...)` or `element.style.*` directly from compon
 These apply to **every** use of the escape hatches — `setElementCSSRule(s)`, `setElementStyle(s)`, `setElementAttribute`, `removeElementAttribute`, and their `clear*` / `remove*` companions:
 
 1. **Always through a typed setter.** No call site outside the typed setter (or its `clearX` / `removeX`) may touch the low-level API. Constructors route through the setter too. Add the setter if it doesn't exist.
-2. **Always cache in a class field.** Every DOM write updates a private backing field; reads return the field, never re-query the DOM.
-3. **Always expose on the `XOptions` bag.** The class's options interface gets a matching optional field; `applyOptions()` forwards it to the setter. Construction-time and post-construction APIs stay in lockstep.
+2. **Always cache in memory.** Reads return cached state, never re-query the DOM. The options bag is the default cache — for any setter whose input matches its `XOptions` field 1:1, write `this._options.foo = value` and read `this._options.foo ?? null`. Add a private `_foo` backing field only when the setter normalises or derives the stored form (e.g. `number | string` input stored as a `string` with a `"px"` suffix), so reads return the canonical form.
+3. **Always expose on the `XOptions` bag** — *for consumer-configurable properties only*. The class's options interface gets a matching optional field; `applyOptions()` forwards it to the setter. Construction-time and post-construction APIs stay in lockstep. Properties that are intrinsic to the component's internal functioning — runtime caches, framework-managed bookkeeping, derived state, anything the consumer should not modify — must stay off the `XOptions` bag and live in a private backing field instead. The options bag is the consumer's configuration surface; reserve it for fields that genuinely belong there.
+
+Default shape — options bag is the cache:
+
+```typescript
+export interface FooOptions extends ComponentOptions {
+    textAlign?: string | null;
+}
+
+setTextAlign(value: string | null): this {
+    this._options.textAlign = value;
+    this.setElementCSSRule("textAlign", value);
+    return this;
+}
+
+getTextAlign(): string | null {
+    return this._options.textAlign ?? null;
+}
+
+protected applyOptions(options: FooOptions): this {
+    super.applyOptions(options);
+
+    if (options.textAlign !== undefined) {
+        this.setTextAlign(options.textAlign);
+    }
+
+    return this;
+}
+```
+
+When the setter normalises the value before storage, declare a private backing field of the normalised type and read from it instead:
 
 ```typescript
 export interface FooOptions extends ComponentOptions {
@@ -49,17 +79,17 @@ setLineHeight(value: number | string): this {
 getLineHeight(): string | null {
     return this._lineHeight;
 }
-
-protected applyOptions(options: FooOptions): this {
-    super.applyOptions(options);
-
-    if (options.lineHeight !== undefined) {
-        this.setLineHeight(options.lineHeight);
-    }
-
-    return this;
-}
 ```
+
+### `setElement*` is the low-level seam
+
+`setElementCSSRule(s)`, `setElementStyle(s)`, and `setElementAttribute` are the buffered writes that the three rules above sit on top of. Restrict the callers to:
+
+- A typed setter — the setter provides the cache.
+- A constructor or initialiser writing static constants (e.g. theme-token CSS variable references like `var(--ts-ui-font-family, sans-serif)`).
+- A flush whose source values are already cached elsewhere (e.g. `this._styleRule.setMany(this._border.toStyle())` — `_border` is the cache, `toStyle()` is its serialiser).
+
+Never use them to plumb a stateful value that isn't cached anywhere.
 
 ## CSS writes go through `StyleRule` / `InlineStyle`
 

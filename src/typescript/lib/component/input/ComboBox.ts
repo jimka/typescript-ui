@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { Type } from "~/core/Type.js";
@@ -196,42 +197,48 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 // (`display`, `padding`, `cursor`) live on the Components themselves;
 // the rules carry only the properties Component has no setter for.
 (() => {
-    const surface = CSS.createClassRule("ComboBox");
-    if (surface) {
-        surface.style.setProperty("align-items", "center");
-        surface.style.setProperty("user-select", "none");
-        surface.style.setProperty("white-space", "nowrap");
-        // `gap` separates the label and caret. The per-component CSS rule
-        // writes `margin: 0`, which would clobber a `margin-left` on the
-        // caret by ID-selector specificity; `gap` lives on the parent and
-        // sidesteps that.
-        surface.style.setProperty("gap",         "6px");
-    }
+    const surface = new StyleRule(() =>
+        (CSS.getClassRule("ComboBox")
+            ?? CSS.createClassRule("ComboBox")) as CSSStyleRule);
+    // `gap` separates the label and caret. The per-component CSS rule writes
+    // `margin: 0`, which would clobber a `margin-left` on the caret by
+    // ID-selector specificity; `gap` lives on the parent and sidesteps that.
+    surface.setMany({
+        alignItems: "center",
+        userSelect: "none",
+        whiteSpace: "nowrap",
+        gap:        "6px",
+    });
+    surface.ensure();
 
-    const label = CSS.createClassRule("ComboBoxLabel");
-    if (label) {
-        label.style.setProperty("flex",          "1 1 auto");
-        label.style.setProperty("overflow",      "hidden");
-        label.style.setProperty("text-overflow", "ellipsis");
-    }
+    const label = new StyleRule(() =>
+        (CSS.getClassRule("ComboBoxLabel")
+            ?? CSS.createClassRule("ComboBoxLabel")) as CSSStyleRule);
+    label.setMany({
+        flex:         "1 1 auto",
+        overflow:     "hidden",
+        textOverflow: "ellipsis",
+    });
+    label.ensure();
 
-    const caret = CSS.createClassRule("ComboBoxCaret");
-    if (caret) {
-        caret.style.setProperty("flex", "0 0 16px");
-    }
+    const caret = new StyleRule(() =>
+        (CSS.getClassRule("ComboBoxCaret")
+            ?? CSS.createClassRule("ComboBoxCaret")) as CSSStyleRule);
+    caret.set("flex", "0 0 16px");
+    caret.ensure();
 
-    const row = CSS.createClassRule("ComboBoxRow");
-    if (row) {
-        row.style.setProperty("align-items", "center");
-    }
+    const row = new StyleRule(() =>
+        (CSS.getClassRule("ComboBoxRow")
+            ?? CSS.createClassRule("ComboBoxRow")) as CSSStyleRule);
+    row.set("alignItems", "center");
+    row.ensure();
 
-    const rowHover = CSS.createRule(".ComboBoxRow:hover");
-    if (rowHover) {
-        rowHover.style.setProperty(
-            "background-color",
-            "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))",
-        );
-    }
+    const rowHover = new StyleRule(() =>
+        (CSS.getRule(".ComboBoxRow:hover")
+            ?? CSS.createRule(".ComboBoxRow:hover")) as CSSStyleRule);
+    rowHover.set("backgroundColor",
+        "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
+    rowHover.ensure();
 })();
 
 /**

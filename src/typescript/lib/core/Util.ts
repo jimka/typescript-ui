@@ -246,6 +246,19 @@ export namespace Util {
     }
 
     /**
+     * Converts a hyphen-separated identifier (e.g. `"border-top-width"`) to its
+     * camelCase equivalent (`"borderTopWidth"`). Useful for translating
+     * CSS-style kebab-case property names into the camelCase form expected by
+     * `CSSStyleDeclaration` bracket-indexed assignment.
+     *
+     * @param value - The kebab-case input string.
+     * @returns The camelCase equivalent.
+     */
+    export function kebabToCamel(value: string): string {
+        return value.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+    }
+
+    /**
      * Queries the DOM for the first element matching the CSS selector.
      *
      * @param selector - A valid CSS selector string.
