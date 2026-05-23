@@ -5,7 +5,6 @@ import { ResizeHandle } from "~/component/table/cell/ResizeHandle.js";
 import { SortPriorityBadge } from "~/component/table/cell/SortPriorityBadge.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
-import { CSS } from "~/core/CSS.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Tooltip } from "~/core/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -46,9 +45,7 @@ function ensureHeaderCellGlyphClassRule(): void {
         return;
     }
 
-    const rule = new StyleRule(() =>
-        (CSS.getClassRule("HeaderCellGlyph")
-            ?? CSS.createClassRule("HeaderCellGlyph")) as CSSStyleRule);
+    const rule = new StyleRule({ scope: "class", name: "HeaderCellGlyph" });
 
     rule.setMany({
         position: "absolute",
@@ -110,11 +107,10 @@ class HeaderCell extends DefaultCell {
         renderer.getText().setFontWeight("bold");
         renderer.getText().setText(text);
 
-        const activeRule = CSS.createComponentRule(this.getId() + ':active');
-
-        if (activeRule) {
-            activeRule.style.setProperty('box-shadow', 'var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0,0,0,0.2) inset)');
-        }
+        const activeRule = new StyleRule({ scope: "component", name: this.getId() + ":active" });
+        activeRule.set("boxShadow",
+            "var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0,0,0,0.2) inset)");
+        activeRule.ensure();
 
         // Wire the resize-handle drag lifecycle: mousedown installs viewport
         // mousemove/mouseup listeners that forward through the handle's

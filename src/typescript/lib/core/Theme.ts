@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { CSS } from '~/core/CSS.js';
+import { InlineStyle } from '~/core/StyleTarget.js';
 import { Util } from '~/core/Util.js';
 
 /**
@@ -1031,7 +1031,9 @@ export class ThemeManager {
     static setTheme(theme: Theme): void {
         ThemeManager.current = theme;
 
-        CSS.setRootVariables(themeToVars(theme));
+        const rootStyle = new InlineStyle();
+        rootStyle.setMany(themeToVars(theme));
+        rootStyle.attach(document.documentElement);
 
         document.documentElement.style.colorScheme = theme.colorScheme;
         document.documentElement.style.color       = theme.text.color;

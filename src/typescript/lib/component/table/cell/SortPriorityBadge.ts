@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { CSS } from "~/core/CSS.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 
@@ -30,9 +29,7 @@ function ensureSortBadgeClassRule(): void {
         return;
     }
 
-    const rule = new StyleRule(() =>
-        (CSS.getClassRule("SortPriorityBadge")
-            ?? CSS.createClassRule("SortPriorityBadge")) as CSSStyleRule);
+    const rule = new StyleRule({ scope: "class", name: "SortPriorityBadge" });
 
     rule.setMany({
         position:      "absolute",

@@ -2,7 +2,6 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
-import { CSS } from "~/core/CSS.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
@@ -297,18 +296,14 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 // rule needs to write `display: flex` here. Class rules below match by
 // `this.constructor.name`, which Component auto-tags on every element.
 (() => {
-    const surface = new StyleRule(() =>
-        (CSS.getClassRule("ComboBox")
-            ?? CSS.createClassRule("ComboBox")) as CSSStyleRule);
+    const surface = new StyleRule({ scope: "class", name: "ComboBox" });
     surface.setMany({
         userSelect: "none",
         whiteSpace: "nowrap",
     });
     surface.ensure();
 
-    const label = new StyleRule(() =>
-        (CSS.getClassRule("ComboBoxLabel")
-            ?? CSS.createClassRule("ComboBoxLabel")) as CSSStyleRule);
+    const label = new StyleRule({ scope: "class", name: "ComboBoxLabel" });
     // No `flex` here — `HBox` sizes the label component directly. `overflow`
     // and `text-overflow` keep long labels truncating with an ellipsis when
     // HBox clamps the label width to fit the row.
@@ -318,9 +313,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
     });
     label.ensure();
 
-    const row = new StyleRule(() =>
-        (CSS.getClassRule("ComboBoxRow")
-            ?? CSS.createClassRule("ComboBoxRow")) as CSSStyleRule);
+    const row = new StyleRule({ scope: "class", name: "ComboBoxRow" });
     // Row height matches the cached `preferredSize(0, 22)` from the
     // ComboBoxRow constructor; `lineHeight` centers the single line of text
     // vertically without `display: flex`. Keep these two values in sync if
@@ -337,9 +330,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
     });
     row.ensure();
 
-    const rowHover = new StyleRule(() =>
-        (CSS.getRule(".ComboBoxRow:hover")
-            ?? CSS.createRule(".ComboBoxRow:hover")) as CSSStyleRule);
+    const rowHover = new StyleRule({ scope: "selector", name: ".ComboBoxRow:hover" });
     rowHover.set("backgroundColor",
         "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
     rowHover.ensure();
