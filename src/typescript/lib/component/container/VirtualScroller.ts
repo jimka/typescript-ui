@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { Event } from "~/core/Event.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
 
 /**
@@ -76,9 +77,17 @@ export class VirtualScroller {
 
         this._owner.setTouchAction("none");
 
-        element.addEventListener("wheel", (e: WheelEvent) => this.onWheel(e), { passive: false });
+        // Subtree because wheel events fire on whichever descendant of the
+        // owner the pointer is over (a row, a cell, …) — not the owner root.
+        // passive: false so onWheel can preventDefault the native page scroll.
+        Event.addSubtreeListener(
+            this._owner,
+            "wheel",
+            (e: WheelEvent) => this.onWheel(e),
+            { passive: false }
+        );
 
-        this.attachTouchHandlers(element);
+        this.attachTouchHandlers();
     }
 
     /**
@@ -259,10 +268,8 @@ export class VirtualScroller {
      * Installs the touch handlers: 1:1 finger drag scrolls both axes, and on
      * release a 2D fling momentum decays per frame until it falls below
      * threshold or hits a scroll boundary.
-     *
-     * @param element - The owner element on which to attach the touch handlers.
      */
-    private attachTouchHandlers(element: HTMLElement): void {
+    private attachTouchHandlers(): void {
         let touchActive       = false;
         let touchStartY       = 0;
         let touchStartX       = 0;
@@ -278,7 +285,9 @@ export class VirtualScroller {
             }
         };
 
-        element.addEventListener("touchstart", (e: TouchEvent) => {
+        // Subtree because touch events fire on descendants of the owner
+        // (rows / cells) — not the owner root.
+        Event.addSubtreeListener(this._owner, "touchstart", (e: TouchEvent) => {
             if (e.touches.length !== 1) {
                 return;
             }
@@ -289,9 +298,9 @@ export class VirtualScroller {
             touchStartScrollY = this._scrollY;
             touchStartScrollX = this._scrollX;
             touchSamples      = [{ time: performance.now(), x: touchStartX, y: touchStartY }];
-        }, { passive: true });
+        });
 
-        element.addEventListener("touchmove", (e: TouchEvent) => {
+        Event.addSubtreeListener(this._owner, "touchmove", (e: TouchEvent) => {
             if (!touchActive || e.touches.length !== 1) {
                 return;
             }
@@ -306,7 +315,7 @@ export class VirtualScroller {
 
             this.setScrollY(touchStartScrollY + (touchStartY - y));
             this.setScrollX(touchStartScrollX + (touchStartX - x));
-        }, { passive: true });
+        });
 
         const startMomentum = (): void => {
             if (touchSamples.length < 2) {
@@ -381,17 +390,17 @@ export class VirtualScroller {
             momentumRaf = requestAnimationFrame(step);
         };
 
-        element.addEventListener("touchend", () => {
+        Event.addSubtreeListener(this._owner, "touchend", () => {
             if (!touchActive) {
                 return;
             }
             touchActive = false;
             startMomentum();
-        }, { passive: true });
+        });
 
-        element.addEventListener("touchcancel", () => {
+        Event.addSubtreeListener(this._owner, "touchcancel", () => {
             touchActive = false;
             cancelMomentum();
-        }, { passive: true });
+        });
     }
 }

@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
+import { Event } from "~/core/Event.js";
 import { Position } from "~/primitive/Position.js";
 import { Util } from "~/core/Util.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
@@ -525,8 +526,8 @@ class Dialog extends Component {
         this.center();
         this.animateIn();
 
-        document.addEventListener('keydown', this._boundKeyHandler, true);
-        window.addEventListener('resize', this._boundResizeHandler);
+        Event.addViewportListener(this, 'keydown', this._boundKeyHandler);
+        Event.addViewportListener(this, 'resize', this._boundResizeHandler);
 
         this.focusFirst();
     }
@@ -658,8 +659,8 @@ class Dialog extends Component {
      * skipped when motion is reduced.
      */
     hide(result: DialogResult): this {
-        document.removeEventListener('keydown', this._boundKeyHandler, true);
-        window.removeEventListener('resize', this._boundResizeHandler);
+        Event.removeViewportListener(this, 'keydown', this._boundKeyHandler);
+        Event.removeViewportListener(this, 'resize', this._boundResizeHandler);
 
         const finalize = (): void => {
             this._backdrop.destroy();
