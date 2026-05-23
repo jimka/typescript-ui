@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Implement a pre-generated implementation plan. Use when the user asks to implement an implementation plan and that plan exists in the {workspace}/plans folder
+description: Implement a pre-generated implementation plan from {workspace}/plans/. Use whenever the user asks you to implement, build, or carry out a plan that exists in plans/ — never open the plan and start editing source files freehand; this skill is the entry point and enforces the project's implementation flow.
 ---
 
 ## Required reading

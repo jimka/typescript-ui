@@ -2,13 +2,7 @@
 
 ## Skills
 
-Whenever a task matches one of the entries below, **invoke the named skill** instead of working freehand. The skill is the entry point; bypassing it loses the project-specific rules it enforces.
-
-- **Building an implementation plan** — use the `plan` skill. Don't hand-write plan markdown files; let the skill produce them in the format the `implement` skill consumes.
-- **Implementing an existing plan** (a markdown file in `plans/`) — use the `implement` skill. Don't open the plan and start editing source files freehand; the skill is the entry point.
-- **Debugging a bug, layout glitch, or perf regression** — use the `debug` skill. It holds the project's debugging heuristics (size-constraint root causes, `px` suffix, O(N²) profiling) and the after-fix tracing checklist.
-- **Updating documentation after a public-API change** — use the `document` skill. It owns subpath-export rules, JSDoc cross-bucket linking, typedoc setup, and the `docs:build` verification gate.
-- **Committing work on a feature branch** — use the `commit` skill. It owns the commit-bucket structure (code / documentation / tooling / graphify / bookkeeping), the one-functionality-per-code-commit rule, and the title-plus-paragraph message format.
+Whenever a task matches a skill's description (see the available-skills list in your context), **invoke the named skill** instead of working freehand. The skill is the entry point; bypassing it loses the project-specific rules it enforces — and "freehand" includes the obvious traps: hand-writing plan markdown, editing source files straight from a plan, diving into a bug without the skill's heuristics, updating exported APIs without running the docs gate, or committing without the bucket/message rules. If a request even partially matches a skill description, invoke the skill first and let it decide scope.
 
 ## Architecture
 
