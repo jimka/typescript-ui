@@ -300,7 +300,6 @@ No new files. No deletions. `VirtualScroller.ts`, `Body.ts`, `Tree.ts` are untou
 6. **Track click still pages** — clicking the track between the arrows pages by one viewport (existing behaviour); clicking *on* an arrow does not also fire the track-paging handler.
 7. **Theme toggle** — switch `DefaultTheme` ↔ `DarkTheme` in the dev server; arrow colour and hover background change correctly via the inline `var(...)` fallbacks.
 8. **Docs build clean** — `npm run docs:build` reports zero errors and zero new link warnings (the typedoc "unsupported TypeScript version" notice is the lone acceptable warning).
-9. **Knowledge graph refresh** — `graphify update . --directed`.
 
 ---
 

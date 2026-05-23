@@ -9,7 +9,7 @@ const rule = new StyleRule(() =>
     (CSS.getClassRule(name) ?? CSS.createClassRule(name)) as CSSStyleRule);
 ```
 
-The `CSS` namespace at [core/CSS.ts](../src/typescript/lib/core/CSS.ts) holds Community 54 in the knowledge graph (9 nodes: `createClassRule`, `createComponentRule`, `createRule`, `ensureKeyframes`, `getClassRule`, `getComponentRule`, `getMainStyle`, `getRule`, `setRootVariables` — `graphify-out/GRAPH_REPORT.md:320`). The factory-pair shape (`getX ?? createX`) is repeated verbatim at 19 module-level sites today; the cast to `CSSStyleRule` and the parenthesised `??` are pure boilerplate. The previous plan [`plans/implemented/migrate-rule-style-to-stylerule.md`](implemented/migrate-rule-style-to-stylerule.md) introduced the pattern; this is its follow-up, collapsing the call sites onto a scoped constructor.
+The `CSS` namespace at [core/CSS.ts](../src/typescript/lib/core/CSS.ts) exposes 9 helpers (`createClassRule`, `createComponentRule`, `createRule`, `ensureKeyframes`, `getClassRule`, `getComponentRule`, `getMainStyle`, `getRule`, `setRootVariables`). The factory-pair shape (`getX ?? createX`) is repeated verbatim at 19 module-level sites today; the cast to `CSSStyleRule` and the parenthesised `??` are pure boilerplate. The previous plan [`plans/implemented/migrate-rule-style-to-stylerule.md`](implemented/migrate-rule-style-to-stylerule.md) introduced the pattern; this is its follow-up, collapsing the call sites onto a scoped constructor.
 
 This plan redesigns [`StyleRule`](../src/typescript/lib/core/StyleTarget.ts#L128) so callers write `new StyleRule({ scope: "class", name: "Foo" })` and the class itself owns the get-or-create handshake. The `CSS` utility namespace is then deleted. `ensureKeyframes` moves to `StyleRule.ensureKeyframes` as a static method (it inserts an `@keyframes` at-rule into the framework's shared `<style id="Base">` stylesheet — naturally clusters with `StyleRule`). `setRootVariables` does not migrate as a static: the existing [`InlineStyle`](../src/typescript/lib/core/StyleTarget.ts#L155) class already covers it — `document.documentElement` is an `HTMLElement`, and `InlineStyle extends StyleTarget<HTMLElement>` is exactly the shape needed. Its lone caller, [Theme.ts:1034](../src/typescript/lib/core/Theme.ts#L1034), is rewritten to use `InlineStyle` directly. Generated CSS is byte-identical, caching semantics are preserved (the existing `ruleCache` `Map` migrates into the `StyleRule` module), and keyframe handling stays idempotent.
 
@@ -349,9 +349,7 @@ Each step ends with a verification gate.
     - `ProgressSpinner` rotation.
     - Theme toggle to dark mode — every CSS custom property still updates.
 
-13. **`graphify update .`** — refresh the graph. Verify Community 54 collapses (the 9 nodes disappear); the new `StyleRule.ensureKeyframes` shows up as a static method on `StyleRule`, and `Theme` now has an edge to `InlineStyle`.
-
-14. **`npm run docs:build`** → 0 errors, 0 link warnings (typedoc's "unsupported TypeScript version" notice is the lone acceptable warning).
+13. **`npm run docs:build`** → 0 errors, 0 link warnings (typedoc's "unsupported TypeScript version" notice is the lone acceptable warning).
 
 ---
 
@@ -392,7 +390,6 @@ Each step ends with a verification gate.
 - `grep -rn '\.style\.setProperty\|\.style\.cssText\|\.style\.removeProperty' src/typescript` → **0 matches** (a strict superset of the prior plan's gate; the three leftover sites from `AutoCompleteItem` / `MenuBarButton` / `Header` are eliminated in step 6).
 - `ls src/typescript/lib/core/CSS.ts` → **No such file**.
 - `npm run docs:build` → 0 errors, 0 link warnings.
-- `graphify update .` succeeds; Community 54 disappears from `graphify-out/GRAPH_REPORT.md`.
 - Manual smoke per step 12 in light and dark themes.
 
 ---
@@ -416,7 +413,7 @@ The `CSS` namespace is currently exported via `core` (verify with `grep -n 'CSS'
 - **`createStyleRule(suffix)` allocation timing.** The builder at line 421 captures `this.getId()` inside its closure today. The new `name: this.getId() + selectorSuffix` evaluates at call time, which is correct — `createStyleRule` is invoked from a constructor body (post-super), so `getId()` is stable.
 - **`_ruleCache` shared across `StyleRule` instances.** The cache currently keyed by selector string in `CSS.ts:9` becomes a module-level `Map` in `StyleTarget.ts`. Two `StyleRule` instances with the same selector spec share the underlying `CSSStyleRule` — same as today. Document this in the constructor JSDoc (`@remarks Two StyleRules constructed with the same scope+name share the underlying CSSStyleRule, which is also shared with any prior cached rule of the same selector.`).
 - **`CSS` import in `Component.ts`'s top-of-file barrel.** `Component.ts` currently imports `CSS` for the two factory closures. After step 2, drop the `import { CSS } ...` line. `tsc` flags unused imports — surface them as you go.
-- **`graphify` re-run reveals new dependencies.** After step 13, the graph should show `StyleRule` gaining edges from `Theme`, `Glyph`, `ProgressBar`, `ProgressSpinner` (the keyframe callers) and losing the `CSS` namespace nodes entirely. If the report still lists Community 54, a `CSS.` reference slipped through — re-run `grep -rn 'CSS\.' src/typescript` to find it.
+- **Verifying every `CSS.` call site moved.** After the migration, `grep -rn 'CSS\.' src/typescript` must return zero. If a `CSS.` reference slipped through, the build will still pass (the deleted file would surface as a type error) but the verification step catches it directly.
 - **`@keyframes` insertion order.** Today `CSS.ensureKeyframes` inserts at `cssRules.length` (append). The new `StyleRule.ensureKeyframes` must preserve that — keyframe declarations need to land before any rule that references them. Move the helper verbatim; don't change the insertion index.
 - **`ruleCache` survives module reload but `_ruleCache` is per-module.** The original `ruleCache` was scoped to the `CSS` namespace, which is also a single module. Moving the cache into `StyleTarget.ts` preserves the same single-instance semantics. Hot-reload behaviour unchanged.
 
@@ -431,7 +428,6 @@ The `CSS` namespace is currently exported via `core` (verify with `grep -n 'CSS'
 - [src/typescript/lib/component/table/cell/SortPriorityBadge.ts](../src/typescript/lib/component/table/cell/SortPriorityBadge.ts) and [ResizeHandle.ts](../src/typescript/lib/component/table/cell/ResizeHandle.ts) — the canonical class-rule patterns, already in tree.
 - [src/typescript/lib/component/container/AccordionIndicator.ts](../src/typescript/lib/component/container/AccordionIndicator.ts) — second canonical class-rule pattern.
 - [plans/implemented/migrate-rule-style-to-stylerule.md](implemented/migrate-rule-style-to-stylerule.md) — the prior plan; this is the follow-up that finishes the constructor-redesign half it deliberately deferred.
-- [graphify-out/GRAPH_REPORT.md](../graphify-out/GRAPH_REPORT.md), Community 54 (line 318) — the cluster being dismantled.
 - [ARCHITECTURE.md](../ARCHITECTURE.md), section "CSS writes go through `StyleRule` / `InlineStyle`" — the binding rule this plan finishes implementing.
 
 ---

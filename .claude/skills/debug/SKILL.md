@@ -6,7 +6,7 @@ description: Investigate a bug, layout/sizing issue, or performance regression i
 ## Required reading
 
 - [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) — the framework rules a fix must not silently violate. A bug that goes away only because a typed setter was bypassed is not fixed.
-- [`.claude/skills/_shared/graphify.md`](../_shared/graphify.md) — use the knowledge graph to trace cross-module behaviour before grep.
+- [`.claude/skills/_shared/codegraph.md`](../_shared/codegraph.md) — use the CodeGraph MCP tools to trace cross-module behaviour before grep.
 
 ## Approach
 

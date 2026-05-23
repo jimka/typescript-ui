@@ -9,14 +9,14 @@ Before producing any code or commits, read in full:
 
 - [`CODE_CONVENTIONS.md`](../../../CODE_CONVENTIONS.md) — Code style, JSDoc, Framework rules, deferred DOM writes.
 - [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — Documentation updates, JSDoc cross-bucket links, typedoc-callable plugin.
-- [`.claude/skills/_shared/graphify.md`](../_shared/graphify.md) — Use the knowledge graph (not grep) to investigate the codebase; run `graphify update .` once code edits land.
+- [`.claude/skills/_shared/codegraph.md`](../_shared/codegraph.md) — Use the CodeGraph MCP tools (not grep) to investigate the codebase.
 - [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
 
 These contain the project's authoritative conventions. Sections below assume you've read them.
 
 ## Git workflow
 
-All commits made during implementation follow the `commit` skill: bucket structure (code / documentation / tooling / graphify / bookkeeping), one-functionality-per-code-commit, and the title-plus-paragraph message format. Read [`../commit/SKILL.md`](../commit/SKILL.md) before making any commits.
+All commits made during implementation follow the `commit` skill: bucket structure (code / documentation / tooling / bookkeeping), one-functionality-per-code-commit, and the title-plus-paragraph message format. Read [`../commit/SKILL.md`](../commit/SKILL.md) before making any commits.
 
 Implementation-specific notes that supplement the `commit` skill:
 
@@ -108,7 +108,7 @@ Walk this list before yielding control. Any unchecked item means you are not don
 - [ ] `npx tsc --noEmit` reports 0 errors
 - [ ] `npm run docs:build` reports 0 errors and 0 link warnings (typedoc's "unsupported TypeScript version" notice is acceptable)
 - [ ] Expert review returned no BLOCKING issues on the most recent cycle
-- [ ] Commits follow the `commit` skill's bucket structure (code / docs / tooling / graphify / bookkeeping), plus any review-fix commits
+- [ ] Commits follow the `commit` skill's bucket structure (code / docs / tooling / bookkeeping), plus any review-fix commits
 - [ ] If in worktree mode: rebase-clean checkpoint passed
 
 If any item is unchecked, resume at the appropriate step. Do not stop just because the last file write succeeded or the last command returned cleanly.

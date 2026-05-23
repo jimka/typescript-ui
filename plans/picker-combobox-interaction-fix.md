@@ -195,7 +195,7 @@ Recursive on `children`; depth is bounded by nesting (in practice ≤ 2). No all
 5. **Add a demo screen exercising the bug fix** to `src/typescript/MiscPanel.ts`, just after the existing AnimatedDropdown picker demo block at line 738. Place a `DateTimeField` next to a `ComboBox` that hosts a small set (e.g. `["UTC", "Europe/Stockholm", "America/New_York"]`), arranged so the ComboBox is reachable from inside the picker dropdown body. **Important:** the goal is to verify the *combination*, so the demo must put the ComboBox **inside the picker dropdown's content** — the cleanest path is to extend `DateTimePickerDropdown` with an optional trailing-row ComboBox slot wired through the demo only, or to construct a one-off subclass in the demo file. Pick the lighter option after reading the dropdown's constructor.
    - **Verify:** open the picker, click the ComboBox surface — *the combo opens; the picker stays open*. Pick a combo option — combo closes, picker stays open. Click outside both — both close.
 
-6. **Run `npm run typecheck`** and **`graphify update .`** to refresh the knowledge graph (Communities 14 / 24 / 29 / 31 / 35–37 should pick up the new edge into Community 11 via `AnimatedDropdown.isTargetInsideLayer`).
+6. **Run `npm run typecheck`** — 0 errors.
 
 ---
 
@@ -225,7 +225,6 @@ No new files, no deletions, no backwards-compat shims.
   6. Open picker, open combo, click in the picker's body but outside the combo → combo closes (its own viewport listener fires and the picker dropdown is *its* parent layer, so the picker-body click is inside the parent only, not inside the combo). Picker stays open.
 - **Theme toggle:** open both layers, toggle light/dark — no visual artifacts; both layers re-render correctly.
 - **Docs:** `npm run docs:build` — 0 errors, 0 link warnings (only acceptable warning: typedoc's "unsupported TypeScript version" notice).
-- **Graph refresh:** `graphify update --directed .` — the new `AnimatedDropdown.isTargetInsideLayer` edges show up from the three picker fields.
 
 ---
 

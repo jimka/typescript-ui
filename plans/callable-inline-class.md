@@ -137,11 +137,6 @@ End-to-end checks, ordered for safe rollout:
    npx tsc --noEmit
    ```
 
-8. **Refresh the graph** (per CLAUDE.md):
-   ```
-   graphify update .
-   ```
-
 ## Things explicitly NOT done in this plan
 
 - **No behavioral changes.** Pure restructuring. Runtime semantics, types, `instanceof`, `.name`, and stack traces are all preserved.
