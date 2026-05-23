@@ -44,6 +44,8 @@ class TextField extends TextInput<TextFieldOptions> implements Bindable<string> 
         ThemeManager.onThemeChange(() => this.updateHeight());
 
         Event.addListener(this, "input", this.onInput);
+
+        this.setType("text");
     }
 
     /**
@@ -97,19 +99,6 @@ class TextField extends TextInput<TextFieldOptions> implements Bindable<string> 
 
     addBindingListener(fn: () => void): void {
         this.addActionListener(fn);
-    }
-
-    /**
-     * Renders the input element with type="text".
-     *
-     * @returns The created input element with its type attribute set to "text".
-     */
-    render() {
-        let element = super.render();
-
-        element.setAttribute("type", "text");
-
-        return element;
     }
 }
 
