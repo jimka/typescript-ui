@@ -24,3 +24,5 @@ export { WindowHeader } from '~/component/container/WindowHeader.js';
 export type { WindowHeaderOptions } from '~/component/container/WindowHeader.js';
 export { AccordionHeader } from '~/component/container/AccordionHeader.js';
 export type { AccordionHeaderOptions } from '~/component/container/AccordionHeader.js';
+export { AccordionIndicator } from '~/component/container/AccordionIndicator.js';
+export type { AccordionIndicatorOptions } from '~/component/container/AccordionIndicator.js';
