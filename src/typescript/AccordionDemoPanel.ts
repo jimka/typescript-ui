@@ -6,11 +6,12 @@ import { Accordion, AccordionConstraints, Fit, HBox, VBox } from '@jimka/typescr
 import { Checkbox, Text, TextField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { List } from '@jimka/typescript-ui/component/list';
+import { AccordionPanel, AccordionPanelOptions } from '@jimka/typescript-ui/component/container';
 /**
  * Demonstrates the Accordion layout manager with multiple collapsible sections,
  * programmatic open/close controls, and single-open mode toggling.
  */
-class AccordionPanel extends Panel {
+class AccordionDemoPanel extends Panel {
 
     private accordion: Accordion;
     private singleOpenToggle: Button;
@@ -55,6 +56,26 @@ class AccordionPanel extends Panel {
         accordionContainer.addComponent(this.buildAboutSection(), new AccordionConstraints('About'));
 
         this.addComponent(accordionContainer);
+
+        // --- Framework AccordionPanel exemplar ---
+        // Same content shape as the bare-Accordion-on-Component form above,
+        // but built through the convenience `AccordionPanel` subclass so the
+        // two paths render identically side by side. Demonstrates that the
+        // framework class is a drop-in replacement.
+        const exemplarHeader = new Text("Framework AccordionPanel:", {
+            fontWeight   : 'bold',
+            preferredSize: { width: 0, height: 24 },
+        });
+        this.addComponent(exemplarHeader);
+
+        const frameworkExemplar = new AccordionPanel({
+            sections: [
+                { label: "Profile",     component: this.buildInfoSection(),        initiallyOpen: true },
+                { label: "Preferences", component: this.buildPreferencesSection() },
+                { label: "About",       component: this.buildAboutSection()       },
+            ],
+        } as AccordionPanelOptions);
+        this.addComponent(frameworkExemplar);
 
         // --- Wire controls ---
         openAllBtn.addActionListener(() => {
@@ -197,9 +218,9 @@ class AccordionPanel extends Panel {
     }
 }
 
-const AccordionPanelCallable = callable(AccordionPanel);
-type AccordionPanelCallable = AccordionPanel;
+const AccordionDemoPanelCallable = callable(AccordionDemoPanel);
+type AccordionDemoPanelCallable = AccordionDemoPanel;
 export {
-    AccordionPanel         as _AccordionPanel,
-    AccordionPanelCallable as AccordionPanel
+    AccordionDemoPanel         as _AccordionDemoPanel,
+    AccordionDemoPanelCallable as AccordionDemoPanel
 };

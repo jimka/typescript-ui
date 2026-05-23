@@ -336,8 +336,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.touchAction     !== undefined) this.setTouchAction(opts.touchAction);
 
         if (opts.attributes !== undefined) {
-            for (const key of Object.keys(opts.attributes)) {
-                this.setAttribute(key, opts.attributes[key]);
+            // The options bag's `attributes` is a raw-HTML-attribute escape
+            // hatch — callers pass arbitrary attribute names (e.g.
+            // `placeholder`, `data-foo`, `aria-bar`) and expect a literal
+            // write. Stash on `_options.attributes` so `init()` can replay
+            // them when the element is created; write through immediately if
+            // the element already exists.
+            this._options.attributes = opts.attributes;
+
+            const element = this.getElement();
+            if (element) {
+                for (const key of Object.keys(opts.attributes)) {
+                    element.setAttribute(key, opts.attributes[key]);
+                }
             }
         }
 
@@ -503,19 +514,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param value - The attribute value. Passing null or undefined removes the attribute.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks Write-through to the element only — no internal cache. Setters
+     * that need their value to survive detached construction store it in
+     * their own specialized field (e.g. `_options.placeholder`,
+     * `_disabledAttribute`) and replay it from the subclass `init()` after
+     * the element is created.
      */
     protected setElementAttribute(key: string, value: Object | null | undefined): this {
+        if (value === null || value === undefined) {
+            return this.removeElementAttribute(key);
+        }
+
         let element = this.getElement();
         if (!element) {
-            //console.warn("Component #" + this.id + " is not yet in the DOM. Attribute '" + key + "' will not be set.");
             return this;
         }
 
-        if (value) {
-            element.setAttribute(key, String(value));
-        } else {
-            this.removeElementAttribute(key);
-        }
+        element.setAttribute(key, String(value));
 
         return this;
     }
@@ -530,7 +546,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     protected removeElementAttribute(key: string): this {
         let element = this.getElement();
         if (!element) {
-            //console.warn("Component #" + this.id + " is not yet in the DOM. Attribute '" + key + "' will not be removed.");
             return this;
         }
 
@@ -694,43 +709,69 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Returns a component-level attribute value from the internal attributes map.
+     * Returns a data attribute value from the component's cached `data-*`
+     * attribute map.
      *
-     * @param key - The attribute name.
+     * @param key - The attribute name (with or without the `data-` prefix).
      *
      * @returns The stored attribute value, or undefined if not set.
+     *
+     * @remarks Symmetric with {@link setDataAttribute}: the key is normalised
+     * with a leading `data-` (idempotent if already prefixed) before lookup.
      */
-    getAttribute(key: string) {
-        return this._attributes.get(key);
+    getDataAttribute(key: string) {
+        const dataKey = key.startsWith("data-") ? key : `data-${key}`;
+
+        return this._attributes.get(dataKey);
     }
 
     /**
-     * Stores a component-level attribute and mirrors it onto the DOM element.
+     * Stores a component-level data attribute and mirrors it as `data-<key>`
+     * on the DOM element.
      *
-     * @param key - The attribute name.
-     * @param value - The attribute value. Passing null delegates to delAttribute.
+     * @param key - The attribute name (with or without the `data-` prefix).
+     * @param value - The attribute value. Passing null delegates to {@link delDataAttribute}.
+     *
+     * @remarks `setDataAttribute` is for *data-carrying* attributes — debug
+     * markers, framework-internal identity reflection (`data-layout`), and
+     * other consumer-readable `data-*` tags. Behavioral HTML attributes the
+     * browser interprets (placeholder, readonly, inputmode, …) use the
+     * `setElementAttribute` low-level seam instead.
      */
-    setAttribute(key: string, value: string): this {
+    setDataAttribute(key: string, value: string): this {
         if (value === null) {
-            this.delAttribute(key);
+            this.delDataAttribute(key);
 
             return this;
         }
 
-        this._attributes.set(key, value);
-        this.setElementAttribute(key, value);
+        const dataKey = key.startsWith("data-") ? key : `data-${key}`;
+
+        this._attributes.set(dataKey, value);
+
+        let element = this.getElement();
+        if (element) {
+            element.setAttribute(dataKey, value);
+        }
 
         return this;
     }
 
     /**
-     * Removes a component-level attribute from both the internal map and the DOM element.
+     * Removes a component-level data attribute from both the internal map and
+     * the DOM element.
      *
-     * @param key - The attribute name to remove.
+     * @param key - The attribute name (with or without the `data-` prefix).
      */
-    delAttribute(key: string): this {
-        this._attributes.delete(key);
-        this.removeElementAttribute(key);
+    delDataAttribute(key: string): this {
+        const dataKey = key.startsWith("data-") ? key : `data-${key}`;
+
+        this._attributes.delete(dataKey);
+
+        let element = this.getElement();
+        if (element) {
+            element.removeAttribute(dataKey);
+        }
 
         return this;
     }
@@ -850,7 +891,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     setInsets(insets: Insets): this {
         this._options.insets = insets;
-        this.setAttribute("insets", insets.render());
+        this.setDataAttribute("insets", insets.render());
 
         return this;
     }
@@ -867,7 +908,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     clearInsets(): this {
         const insets = new Insets(0, 0, 0, 0);
         this._options.insets = insets;
-        this.setAttribute("insets", insets.render());
+        this.setDataAttribute("insets", insets.render());
 
         return this;
     }
@@ -1497,7 +1538,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const next: Size = { width, height };
         this._options.preferredSize = next;
-        this.setAttribute("preferredSize", next.width + " " + next.height);
+        this.setDataAttribute("preferredSize", next.width + " " + next.height);
         this._onPreferredSizeChange?.();
 
         return this;
@@ -1634,7 +1675,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             maxHeight: next.height === Number.MAX_VALUE ? "none" : next.height + "px"
         });
 
-        this.setAttribute("maxSize", next.width + " " + next.height);
+        this.setDataAttribute("maxSize", next.width + " " + next.height);
 
         return this;
     }
@@ -2436,9 +2477,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._disabledAttribute = value;
 
         if (value) {
-            this.setAttribute("disabled", "");
+            this.setElementAttribute("disabled", "");
         } else {
-            this.delAttribute("disabled");
+            this.removeElementAttribute("disabled");
         }
 
         return this;
@@ -2788,7 +2829,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (maxSize) {
             this._styleRule.set("maxWidth",  maxSize.width  === Number.MAX_VALUE ? "none" : maxSize.width  + "px");
             this._styleRule.set("maxHeight", maxSize.height === Number.MAX_VALUE ? "none" : maxSize.height + "px");
-            this.setAttribute("maxSize", maxSize.width + " " + maxSize.height);
+            this.setDataAttribute("maxSize", maxSize.width + " " + maxSize.height);
         }
 
         if (this._overflowX !== null) {
@@ -2844,7 +2885,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (opts.insets) {
-            this.setAttribute("insets", opts.insets.render());
+            this.setDataAttribute("insets", opts.insets.render());
         }
 
         this._styleRule.set("margin", "0px 0px 0px 0px");
@@ -3145,7 +3186,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             layoutManager.attach(this);
         }
 
-        this.setAttribute("layout", layoutManager.getClassName());
+        // `callable()`-wrapped classes report their underscored alias
+        // (`_HBox`) through `constructor.name`; strip the leading underscore
+        // so DevTools shows `data-layout="HBox"` rather than `_HBox`.
+        this.setDataAttribute("layout", layoutManager.getClassName().replace(/^_/, ""));
 
         return this;
     }
@@ -3288,6 +3332,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         for (const [key, value] of this._attributes) {
             if (value != null) {
                 element.setAttribute(key.valueOf(), value.valueOf());
+            }
+        }
+
+        if (this._disabledAttribute) {
+            element.setAttribute("disabled", "");
+        }
+
+        if (this._options.attributes) {
+            for (const key of Object.keys(this._options.attributes)) {
+                element.setAttribute(key, this._options.attributes[key]);
             }
         }
 

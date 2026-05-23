@@ -5,11 +5,12 @@ import { Insets } from '@jimka/typescript-ui/primitive';
 import { Fit, HBox, Tab, VBox } from '@jimka/typescript-ui/layout';
 import { Text } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
+import { TabPanel, TabPanelOptions } from '@jimka/typescript-ui/component/container';
 /**
  * Demonstrates the Tab layout manager with both normal and closeable tabs,
  * including programmatic tab addition and a close-event log.
  */
-class TabPanel extends Component {
+class TabDemoPanel extends Component {
 
     private tabContainer: Component;
     private tabLayout: Tab;
@@ -17,7 +18,7 @@ class TabPanel extends Component {
     private tabCounter: number;
 
     /**
-     * Creates the TabPanel demo with a control toolbar, a tabbed area, and a close-event log.
+     * Creates the TabDemoPanel demo with a control toolbar, a tabbed area, and a close-event log.
      */
     constructor() {
         super();
@@ -66,6 +67,29 @@ class TabPanel extends Component {
 
         this.addComponent(logRow);
 
+        // --- Framework TabPanel exemplar ---
+        // Same content shape as the bare-Tab-on-Component form above, but
+        // built through the convenience `TabPanel` subclass so the two
+        // paths render identically side by side. Demonstrates that the
+        // framework class is a drop-in replacement.
+        const exemplarHeader = new Text("Framework TabPanel:", {
+            preferredSize: { width: 0, height: 24 },
+        });
+        this.addComponent(exemplarHeader);
+
+        const frameworkExemplar = new TabPanel({
+            preferredSize: { width: 0, height: 200 },
+            tabs: [
+                { label: "One",   component: this.buildContent("One")  },
+                { label: "Two",   component: this.buildContent("Two"), closeable: true },
+                { label: "Three", component: this.buildContent("Three") },
+            ],
+            onTabClose: (component: Component) => {
+                this.logText.setText(`Framework closed: ${component.getId()}`);
+            },
+        } as TabPanelOptions);
+        this.addComponent(frameworkExemplar);
+
         // --- Wire controls ---
         addNormalBtn.addActionListener(() => {
             this.tabCounter += 1;
@@ -101,9 +125,9 @@ class TabPanel extends Component {
     }
 }
 
-const TabPanelCallable = callable(TabPanel);
-type TabPanelCallable = TabPanel;
+const TabDemoPanelCallable = callable(TabDemoPanel);
+type TabDemoPanelCallable = TabDemoPanel;
 export {
-    TabPanel         as _TabPanel,
-    TabPanelCallable as TabPanel
+    TabDemoPanel         as _TabDemoPanel,
+    TabDemoPanelCallable as TabDemoPanel
 };

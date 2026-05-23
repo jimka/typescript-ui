@@ -214,6 +214,41 @@ class HBox extends LayoutManager {
     }
 
     /**
+     * Computes the children's combined minSize along this manager's geometry:
+     * width is the sum of per-child `minSize.width` plus the inter-child
+     * spacing, height is the max per-child `minSize.height`. Used by
+     * `doLayout` to inflate the working size when the host has opted into
+     * `setOverflowing` on the corresponding axis.
+     *
+     * @returns The total min-size; `{ width: 0, height: 0 }` when the
+     *   container is absent or has no children.
+     */
+    protected computeTotalMinSize(): Size {
+        const container = this.getContainer();
+        if (!container) {
+            return { width: 0, height: 0 };
+        }
+
+        const components = container.getComponents();
+        if (components.length === 0) {
+            return { width: 0, height: 0 };
+        }
+
+        let width = this.getComponentSpacing() * (components.length - 1);
+        let height = 0;
+
+        for (const component of components) {
+            const min = component.getMinSize();
+            if (min) {
+                width  += min.width;
+                height  = Math.max(height, min.height);
+            }
+        }
+
+        return { width, height };
+    }
+
+    /**
      * Places children left-to-right using their preferred widths, with optional height stretching.
      *
      * @remarks When `stretching` is enabled, each child's height is clamped to its max size rather
@@ -235,6 +270,19 @@ class HBox extends LayoutManager {
         let containerInsets = container.getInsets();
         let components = container.getComponents();
         let spacing = this.getComponentSpacing();
+
+        // Universal scroll: when the host enabled per-axis overflow and the
+        // children's combined minSize exceeds the host's inner rect on that
+        // axis, lay out against the minSize total instead of clamping. The
+        // trailing children then land past `innerSize` and the host's CSS
+        // `overflow: auto` produces the scrollbar.
+        if (this.isOverflowingX() || this.isOverflowingY()) {
+            const totalMin = this.computeTotalMinSize();
+            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
+            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
+
+            containerSize = { width: w, height: h };
+        }
 
         let totalWeight = 0;
         let fixedWidth = spacing * (components.length - 1);

@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component";
 import { Insets } from "~/primitive/Insets";
+import { LayoutManager } from "~/layout/LayoutManager.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -142,6 +143,32 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
         }
 
         this.setElementCSSRule("scrollbarGutter", mode === "none" ? null : "stable");
+
+        // Forward the per-axis "let children overflow the host" decision to
+        // the layout manager. Each manager honours these flags from its own
+        // `doLayout` so trailing children land past `innerSize` when their
+        // combined minSize exceeds the host's allocated rect, producing the
+        // scrollbar the CSS `overflow: auto` above is waiting for.
+        const x = mode === "auto" || mode === "x" || mode === "both";
+        const y = mode === "auto" || mode === "y" || mode === "both";
+
+        this.getLayoutManager()?.setOverflowing(x, y);
+
+        return this;
+    }
+
+    /**
+     * Re-applies the cached `autoScroll` mode to the new layout manager so
+     * swapping managers preserves scroll behaviour. The base `setLayoutManager`
+     * does the attach work; this override only forwards the overflow flags.
+     *
+     * @param layoutManager - The new LayoutManager to use for this panel.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setLayoutManager(layoutManager: LayoutManager): this {
+        super.setLayoutManager(layoutManager);
+        this.setAutoScroll(this._autoScroll);
 
         return this;
     }

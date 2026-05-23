@@ -13,6 +13,7 @@ import { callable } from "~/core/Callable.js";
  */
 export interface InputOptions extends ComponentOptions {
     name?: string;
+    type?: string;
 }
 
 /**
@@ -76,7 +77,8 @@ class Input<TOptions extends InputOptions = InputOptions> extends Component<TOpt
      * @returns This component, for method chaining.
      */
     setType(value: string): this {
-        this.setAttribute("type", value);
+        this._options.type = value;
+        this.setElementAttribute("type", value);
 
         return this;
     }
@@ -99,7 +101,7 @@ class Input<TOptions extends InputOptions = InputOptions> extends Component<TOpt
      */
     setName(value: string): this {
         this._options.name = value;
-        this.setAttribute("name", value);
+        this.setElementAttribute("name", value);
 
         return this;
     }
@@ -115,7 +117,7 @@ class Input<TOptions extends InputOptions = InputOptions> extends Component<TOpt
         }
 
         this._options.name = undefined;
-        this.delAttribute("name");
+        this.removeElementAttribute("name");
 
         return this;
     }
@@ -129,6 +131,22 @@ class Input<TOptions extends InputOptions = InputOptions> extends Component<TOpt
      */
     getElement(createIfMissing: boolean = false) {
         return super.getElement(createIfMissing) as HTMLInputElement & HTMLTextAreaElement;
+    }
+
+    protected init(element?: HTMLElement): this {
+        super.init(element);
+
+        const el = element || this.getElement()!;
+
+        if (this._options.type !== undefined) {
+            el.setAttribute("type", this._options.type);
+        }
+
+        if (this._options.name !== undefined) {
+            el.setAttribute("name", this._options.name);
+        }
+
+        return this;
     }
 
     /**

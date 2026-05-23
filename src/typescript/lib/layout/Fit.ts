@@ -200,6 +200,30 @@ class Fit extends LayoutManager {
     }
 
     /**
+     * Computes the children's combined minSize along this manager's geometry:
+     * the single child's minSize. Used by `doLayout` to inflate the working
+     * size when the host has opted into `setOverflowing`.
+     *
+     * @returns The single child's min-size; `{ width: 0, height: 0 }` when
+     *   the container is absent or empty.
+     */
+    protected computeTotalMinSize(): Size {
+        const container = this.getContainer();
+        if (!container) {
+            return { width: 0, height: 0 };
+        }
+
+        const component = container.getComponents()[0];
+        if (!component) {
+            return { width: 0, height: 0 };
+        }
+
+        const min = component.getMinSize();
+
+        return min ?? { width: 0, height: 0 };
+    }
+
+    /**
      * Places the single child component inside the container's inner bounds
      * using the configured fill mode.
      *
@@ -232,6 +256,18 @@ class Fit extends LayoutManager {
 
         let containerSize = container.getInnerSize();
         let containerInsets = container.getInsets();
+
+        // Universal scroll: see HBox.doLayout for the rationale. When the
+        // host has marked the corresponding axis as overflowing, grow the
+        // working size past the host's inner rect to the child's minSize so
+        // the host's CSS `overflow: auto` produces a scrollbar.
+        if (containerSize && (this.isOverflowingX() || this.isOverflowingY())) {
+            const totalMin = this.computeTotalMinSize();
+            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
+            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
+
+            containerSize = { width: w, height: h };
+        }
 
         this.placeComponent(
             component,

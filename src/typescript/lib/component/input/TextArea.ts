@@ -100,7 +100,7 @@ class TextArea extends TextInput<TextAreaOptions> {
      */
     setRows(value: number): this {
         this._options.rows = value;
-        this.setAttribute("rows", String(value));
+        this.setElementAttribute("rows", String(value));
 
         return this;
     }
@@ -116,7 +116,7 @@ class TextArea extends TextInput<TextAreaOptions> {
         }
 
         this._options.rows = undefined;
-        this.delAttribute("rows");
+        this.removeElementAttribute("rows");
 
         return this;
     }
@@ -139,7 +139,7 @@ class TextArea extends TextInput<TextAreaOptions> {
      */
     setCols(value: number): this {
         this._options.cols = value;
-        this.setAttribute("cols", String(value));
+        this.setElementAttribute("cols", String(value));
 
         return this;
     }
@@ -155,7 +155,7 @@ class TextArea extends TextInput<TextAreaOptions> {
         }
 
         this._options.cols = undefined;
-        this.delAttribute("cols");
+        this.removeElementAttribute("cols");
 
         return this;
     }
@@ -178,7 +178,7 @@ class TextArea extends TextInput<TextAreaOptions> {
      */
     setWrap(value: string): this {
         this._options.wrap = value;
-        this.setAttribute("wrap", value);
+        this.setElementAttribute("wrap", value);
 
         return this;
     }
@@ -194,7 +194,7 @@ class TextArea extends TextInput<TextAreaOptions> {
         }
 
         this._options.wrap = undefined;
-        this.delAttribute("wrap");
+        this.removeElementAttribute("wrap");
 
         return this;
     }
@@ -257,6 +257,26 @@ class TextArea extends TextInput<TextAreaOptions> {
      */
     getBaseline(): number | null {
         return null;
+    }
+
+    protected init(element?: HTMLElement): this {
+        super.init(element);
+
+        const el = element || this.getElement()!;
+
+        if (this._options.rows !== undefined) {
+            el.setAttribute("rows", String(this._options.rows));
+        }
+
+        if (this._options.cols !== undefined) {
+            el.setAttribute("cols", String(this._options.cols));
+        }
+
+        if (this._options.wrap !== undefined) {
+            el.setAttribute("wrap", this._options.wrap);
+        }
+
+        return this;
     }
 
     /**

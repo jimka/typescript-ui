@@ -114,9 +114,19 @@ class Option extends Component {
         this._selected = value;
 
         if (value) {
-            this.setAttribute("selected", "");
+            this.setElementAttribute("selected", "");
         } else {
-            this.delAttribute("selected");
+            this.removeElementAttribute("selected");
+        }
+
+        return this;
+    }
+
+    protected init(element?: HTMLElement): this {
+        super.init(element);
+
+        if (this._selected) {
+            (element || this.getElement()!).setAttribute("selected", "");
         }
 
         return this;

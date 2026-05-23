@@ -4,6 +4,7 @@ import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { SplitGutter } from "~/component/container/SplitGutter.js";
 import { Component } from "~/core/Component.js";
 import { FillType } from "~/layout/FillType.js";
+import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -135,6 +136,55 @@ class Split extends LayoutManager {
     }
 
     /**
+     * Computes the children's combined minSize along this manager's geometry:
+     * along the split axis the per-pane `_sizes` are the user's floor (their
+     * sum is the total); the cross-axis follows the max child minSize. Used
+     * by `doLayout` to inflate the working size when the host has opted into
+     * `setOverflowing`.
+     *
+     * @returns The total min-size; `{ width: 0, height: 0 }` when the
+     *   container is absent.
+     */
+    protected computeTotalMinSize(): Size {
+        const container = this.getContainer();
+        if (!container) {
+            return { width: 0, height: 0 };
+        }
+
+        const components = container.getComponents();
+        if (components.length === 0) {
+            return { width: 0, height: 0 };
+        }
+
+        const gutterSize = 4;
+        const gutterCount = Math.max(0, components.length - 1);
+
+        let splitTotal = gutterCount * gutterSize;
+        let crossMax = 0;
+
+        for (const component of components) {
+            const stored = this._sizes.get(component);
+            if (stored != null) {
+                splitTotal += stored;
+            } else {
+                const min = component.getMinSize();
+                if (min) {
+                    splitTotal += this._direction === "horizontal" ? min.width : min.height;
+                }
+            }
+
+            const min = component.getMinSize();
+            if (min) {
+                crossMax = Math.max(crossMax, this._direction === "horizontal" ? min.height : min.width);
+            }
+        }
+
+        return this._direction === "horizontal"
+            ? { width: splitTotal, height: crossMax }
+            : { width: crossMax,   height: splitTotal };
+    }
+
+    /**
      * Creates missing gutters, computes panel sizes, and positions all panels and gutters.
      *
      * @remarks New [`SplitGutter`](/api/component/container/classes/SplitGutter) instances are appended to the container's DOM element on first layout.
@@ -150,6 +200,19 @@ class Split extends LayoutManager {
         let containerSize = container.getInnerSize();
         if (!containerSize) {
             return;
+        }
+
+        // Universal scroll: see HBox.doLayout for the rationale. When the
+        // host has marked the corresponding axis as overflowing, grow the
+        // working size past the host's inner rect so trailing panes land
+        // past `innerSize` and the host's CSS `overflow: auto` produces a
+        // scrollbar.
+        if (this.isOverflowingX() || this.isOverflowingY()) {
+            const totalMin = this.computeTotalMinSize();
+            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
+            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
+
+            containerSize = { width: w, height: h };
         }
 
         let element = container.getElement();

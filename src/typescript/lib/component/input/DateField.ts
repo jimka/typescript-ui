@@ -4,11 +4,8 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
-import { CSS } from "~/core/CSS.js";
-import { StyleRule } from "~/core/StyleTarget.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
-import { Position } from "~/primitive/Position.js";
 import { Bindable } from "~/core/Bindable.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -43,24 +40,11 @@ class PickerInput extends TextInput<TextInputOptions> {
     }
 }
 
-// `align-items` has no typed setter on Component, so the picker buttons' inline
-// flex-centering lives on a shared class rule. The IIFE registers once; later
-// imports of files that define their own `PickerButton` class get the cached
-// rule via `getClassRule` and re-flush onto it. All call sites use identical
-// styling so this is safe.
-(() => {
-    const rule = new StyleRule(() =>
-        (CSS.getClassRule("PickerButton")
-            ?? CSS.createClassRule("PickerButton")) as CSSStyleRule);
-    rule.set("alignItems", "center");
-    rule.ensure();
-})();
-
 /**
  * Internal `<button>` Component used by {@link DateField}, {@link TimeField},
  * and {@link DateTimeField} as the glyph-bearing trigger to the right of the
- * input. Defines the static styling via typed setters plus the
- * `.PickerButton` class rule for `align-items`.
+ * input. Centers a single glyph child via a `doLayout` override; no
+ * `display: flex` needed on the button element itself.
  */
 class PickerButton extends Component {
     constructor() {
@@ -70,7 +54,37 @@ class PickerButton extends Component {
         this.setBackgroundColor("transparent");
         this.setCursor("pointer");
         this.setPadding(new Insets(0, 4, 0, 4));
-        this.setDisplay("flex");
+    }
+
+    /**
+     * Centers the single glyph child within the button's inner rect. The
+     * glyph is sized to its preferred 16×16 box (Glyph default) and placed
+     * at the geometric center of the inner area.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        const inner = this.getInnerSize();
+        const child = this.getComponents()[0];
+        if (!inner || !child) {
+            return this;
+        }
+
+        const childSize = child.getPreferredSize();
+        if (!childSize) {
+            return this;
+        }
+
+        const insets = this.getInsets();
+        const x = insets.getLeft() + Math.max(0, (inner.width  - childSize.width)  / 2);
+        const y = insets.getTop()  + Math.max(0, (inner.height - childSize.height) / 2);
+
+        child.setX(x);
+        child.setY(y);
+        child.setWidth(childSize.width);
+        child.setHeight(childSize.height);
+
+        return this;
     }
 }
 
@@ -137,11 +151,10 @@ class DateField extends Component<DateFieldOptions> implements Bindable<Date | n
 
         this._button = new PickerButton();
 
-        // Glyph runs in static position so the button's `display: flex;
-        // align-items: center` actually centers it (flex skips abs-positioned
-        // children). `setPointerEvents("none")` lets clicks pass through to
-        // the button.
-        const glyph = new Glyph("calendar", { position: Position.STATIC });
+        // Glyph is placed by `PickerButton.doLayout` (framework-positioned,
+        // centered within the button's inner rect). `setPointerEvents("none")`
+        // lets clicks pass through to the button.
+        const glyph = new Glyph("calendar");
         glyph.setPointerEvents("none");
         this._button.addComponent(glyph);
 
