@@ -158,6 +158,7 @@ class Accordion extends LayoutManager {
             }
 
             if (foundOpen) {
+                this.primeWrapper(i);
                 this._openState[i] = false;
                 this._headers[i].setExpanded(false);
                 this._headers[i].getAria().setExpanded(false);
