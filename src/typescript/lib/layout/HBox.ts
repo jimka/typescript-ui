@@ -6,18 +6,41 @@ import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 
 /**
+ * Sizing strategy along an {@link HBox} or {@link VBox}'s main axis.
+ *
+ * - `"preferred"` — each child gets its preferred width (height for VBox);
+ *   `weight`-constrained children split the remaining space; an overflow
+ *   shrinks non-weighted children proportionally toward their min sizes.
+ * - `"equal"` — children split the container's inner extent equally; the
+ *   per-cell floor is `max(child.minSize.width)` (height for VBox);
+ *   `weight` constraints are ignored.
+ *
+ * @category Layouts
+ */
+export type BoxMode = "preferred" | "equal";
+
+/**
  * Construction-time options for {@link HBox}.
+ *
+ * @remarks `mode` selects the sizing strategy along the horizontal axis.
+ * `"preferred"` (the default) honours each child's preferred width and
+ * supports `weight` cells. `"equal"` divides the container width equally
+ * and ignores `weight`. The `stretching` default depends on `mode`:
+ * `false` for `"preferred"`, `true` for `"equal"`. An explicit
+ * `stretching` value in the options bag always wins.
  *
  * @category Layouts
  */
 export interface HBoxOptions extends LayoutManagerOptions {
     spacing?:    number;
     stretching?: boolean;
+    mode?:       BoxMode;
 }
 
 /**
- * A layout manager that places children in a single horizontal row,
- * using each child's preferred width and an optional height-stretching mode.
+ * A layout manager that places children in a single horizontal row. The
+ * `mode` option selects between preferred-width sequencing (with weight-cell
+ * support) and equal-width division of the container.
  *
  * @category Layouts
  */
@@ -25,6 +48,7 @@ class HBox extends LayoutManager {
 
     private _spacing: number = 5;
     private _stretching: boolean = false;
+    private _mode: BoxMode = "preferred";
     private _defaultComponentWidth: number = 100;
 
     constructor(options?: HBoxOptions) {
@@ -36,13 +60,22 @@ class HBox extends LayoutManager {
     }
 
     /**
-     * Applies an {@link HBoxOptions} bag, dispatching spacing and stretching
-     * after the inherited LayoutManager defaults.
+     * Applies an {@link HBoxOptions} bag, dispatching mode, spacing, and
+     * stretching after the inherited LayoutManager defaults.
      *
      * @param options - The options bag carrying the values to apply.
+     *
+     * @remarks `mode` is dispatched before `stretching` so the
+     * mode-dependent stretching default (`true` for `"equal"`, `false` for
+     * `"preferred"`) can be resolved when the options bag does not pass
+     * an explicit `stretching` value.
      */
     protected applyOptions(options: HBoxOptions): void {
         super.applyOptions(options);
+
+        if (options.mode !== undefined) {
+            this.setMode(options.mode);
+        }
 
         if (options.spacing !== undefined) {
             this.setComponentSpacing(options.spacing);
@@ -50,6 +83,8 @@ class HBox extends LayoutManager {
 
         if (options.stretching !== undefined) {
             this.setStretching(options.stretching);
+        } else if (options.mode === "equal") {
+            this.setStretching(true);
         }
     }
 
@@ -94,8 +129,31 @@ class HBox extends LayoutManager {
     }
 
     /**
-     * Returns the preferred size: the sum of child widths plus spacing, and a row
-     * height computed from the children's preferred heights and reported baselines.
+     * Returns the current sizing mode along the horizontal axis.
+     *
+     * @returns Either `"preferred"` or `"equal"`.
+     */
+    getMode(): BoxMode {
+        return this._mode;
+    }
+
+    /**
+     * Sets the sizing mode along the horizontal axis.
+     *
+     * @param mode - `"preferred"` honours each child's preferred width;
+     *   `"equal"` divides the container width equally among children.
+     */
+    setMode(mode: BoxMode): this {
+        this._mode = mode;
+
+        return this;
+    }
+
+    /**
+     * Returns the preferred size. In `"preferred"` mode this is the sum
+     * of child widths plus spacing. In `"equal"` mode it is
+     * `count * (maxChildWidth + spacing) - spacing`. Row height in both
+     * modes is the baseline-aware row height of the children.
      *
      * @returns The preferred `{width, height}`, or `null` if no container is attached.
      */
@@ -113,20 +171,39 @@ class HBox extends LayoutManager {
         const heights: number[] = [];
         const baselines: Array<number | null> = [];
 
-        for (let idx in components) {
-            let component = components[idx];
-            let size = component.getPreferredSize();
+        if (this._mode === "equal") {
+            let maxChildWidth = 0;
 
-            if (size) {
-                width += size.width;
-                heights.push(size.height);
-                baselines.push(component.getBaseline());
+            for (let idx in components) {
+                let component = components[idx];
+                let size = component.getPreferredSize();
+
+                if (size) {
+                    maxChildWidth = Math.max(maxChildWidth, size.width);
+                    heights.push(size.height);
+                    baselines.push(component.getBaseline());
+                }
             }
+
+            width += components.length * (maxChildWidth + this._spacing) - this._spacing;
+        } else {
+            for (let idx in components) {
+                let component = components[idx];
+                let size = component.getPreferredSize();
+
+                if (size) {
+                    width += size.width;
+                    heights.push(size.height);
+                    baselines.push(component.getBaseline());
+                }
+            }
+
+            width += this._spacing * (components.length - 1);
         }
 
         let height = this.computeRowHeight(heights, baselines);
 
-        width += this.getComponentSpacing() * (components.length - 1) + containerBorderSize.left + containerBorderSize.right;
+        width  += containerBorderSize.left + containerBorderSize.right;
         height += containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
 
         return {
@@ -136,8 +213,11 @@ class HBox extends LayoutManager {
     }
 
     /**
-     * Returns the minimum size: the sum of child minimum widths plus spacing, and the
-     * row height required by the children's minimum heights and reported baselines.
+     * Returns the minimum size. In `"preferred"` mode this is the sum of
+     * child min widths plus spacing. In `"equal"` mode it is
+     * `count * (maxChildMinWidth + spacing) - spacing`. Row height in
+     * both modes is the baseline-aware row height of the children's
+     * minimums.
      *
      * @returns The minimum `{width, height}`, or `null` if no container is attached.
      */
@@ -155,20 +235,39 @@ class HBox extends LayoutManager {
         const heights: number[] = [];
         const baselines: Array<number | null> = [];
 
-        for (let idx in components) {
-            let component = components[idx];
-            let size = component.getMinSize();
+        if (this._mode === "equal") {
+            let maxChildMinWidth = 0;
 
-            if (size) {
-                width += size.width;
-                heights.push(size.height);
-                baselines.push(component.getBaseline());
+            for (let idx in components) {
+                let component = components[idx];
+                let size = component.getMinSize();
+
+                if (size) {
+                    maxChildMinWidth = Math.max(maxChildMinWidth, size.width);
+                    heights.push(size.height);
+                    baselines.push(component.getBaseline());
+                }
             }
+
+            width += components.length * (maxChildMinWidth + this._spacing) - this._spacing;
+        } else {
+            for (let idx in components) {
+                let component = components[idx];
+                let size = component.getMinSize();
+
+                if (size) {
+                    width += size.width;
+                    heights.push(size.height);
+                    baselines.push(component.getBaseline());
+                }
+            }
+
+            width += this._spacing * (components.length - 1);
         }
 
         let height = this.computeRowHeight(heights, baselines);
 
-        width += this.getComponentSpacing() * (components.length - 1) + containerBorderSize.left + containerBorderSize.right;
+        width  += containerBorderSize.left + containerBorderSize.right;
         height += containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
 
         return {
@@ -178,7 +277,9 @@ class HBox extends LayoutManager {
     }
 
     /**
-     * Returns the maximum size: the sum of child widths plus spacing, and the minimum of child maximum heights.
+     * Returns the maximum size. In `"preferred"` mode width is the sum of
+     * child widths plus spacing, height is the minimum of child max heights.
+     * In `"equal"` mode width is `count * (minChildMaxWidth + spacing) - spacing`.
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
@@ -194,17 +295,35 @@ class HBox extends LayoutManager {
         let width = containerInsets.getLeft() + containerInsets.getRight();
         let height = Number.MAX_SAFE_INTEGER;
 
-        for (let idx in components) {
-            let component = components[idx];
-            let size = component.getMinSize();
+        if (this._mode === "equal") {
+            let minChildMaxWidth = Number.MAX_SAFE_INTEGER;
 
-            if (size) {
-                width += size.width;
-                height = Math.min(height, size.height);
+            for (let idx in components) {
+                let component = components[idx];
+                let size = component.getMaxSize();
+
+                if (size) {
+                    minChildMaxWidth = Math.min(minChildMaxWidth, size.width);
+                    height = Math.min(height, size.height);
+                }
             }
+
+            width += components.length * (minChildMaxWidth + this._spacing) - this._spacing;
+        } else {
+            for (let idx in components) {
+                let component = components[idx];
+                let size = component.getMinSize();
+
+                if (size) {
+                    width += size.width;
+                    height = Math.min(height, size.height);
+                }
+            }
+
+            width += this._spacing * (components.length - 1);
         }
 
-        width += this.getComponentSpacing() * (components.length - 1) + containerBorderSize.left + containerBorderSize.right;
+        width  += containerBorderSize.left + containerBorderSize.right;
         height += containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
 
         return {
@@ -214,9 +333,12 @@ class HBox extends LayoutManager {
     }
 
     /**
-     * Computes the children's combined minSize along this manager's geometry:
-     * width is the sum of per-child `minSize.width` plus the inter-child
-     * spacing, height is the max per-child `minSize.height`. Used by
+     * Computes the children's combined minSize along this manager's geometry.
+     * In `"preferred"` mode width is the sum of per-child `minSize.width`
+     * plus spacing. In `"equal"` mode width is
+     * `count * maxChildMinWidth + spacing*(n-1)` (HBox distributes width
+     * equally so the per-cell floor is the max of every child's min width).
+     * Height in both modes is the max per-child `minSize.height`. Used by
      * `doLayout` to inflate the working size when the host has opted into
      * `setOverflowing` on the corresponding axis.
      *
@@ -234,8 +356,26 @@ class HBox extends LayoutManager {
             return { width: 0, height: 0 };
         }
 
-        let width = this.getComponentSpacing() * (components.length - 1);
         let height = 0;
+
+        if (this._mode === "equal") {
+            let maxWidth = 0;
+
+            for (const component of components) {
+                const min = component.getMinSize();
+                if (min) {
+                    maxWidth = Math.max(maxWidth, min.width);
+                    height   = Math.max(height,   min.height);
+                }
+            }
+
+            return {
+                width:  components.length * (maxWidth + this._spacing) - this._spacing,
+                height,
+            };
+        }
+
+        let width = this._spacing * (components.length - 1);
 
         for (const component of components) {
             const min = component.getMinSize();
@@ -249,12 +389,16 @@ class HBox extends LayoutManager {
     }
 
     /**
-     * Places children left-to-right using their preferred widths, with optional height stretching.
+     * Places children left-to-right. In `"preferred"` mode each child takes
+     * its preferred width (with `weight` cells dividing the remainder).
+     * In `"equal"` mode the container width is divided equally among
+     * children, clamped to the largest child's min width.
      *
-     * @remarks When `stretching` is enabled, each child's height is clamped to its max size rather
-     * than its preferred size. Children without a preferred size fall back to `defaultComponentWidth`.
-     * Children with a `weight` layout constraint share the remaining width (after unweighted children
-     * have taken their preferred widths) proportionally to their weight values.
+     * @remarks When `stretching` is enabled, each child's height is clamped
+     * to its max size rather than its preferred size. Children without a
+     * preferred size fall back to `defaultComponentWidth` (preferred mode
+     * only). `weight` constraints are honoured only in `"preferred"` mode;
+     * `"equal"` mode silently ignores them.
      */
     doLayout() {
         let container = this.getContainer();
@@ -284,6 +428,103 @@ class HBox extends LayoutManager {
             containerSize = { width: w, height: h };
         }
 
+        if (this._mode === "equal") {
+            // Equal-mode: divide the container width equally among children
+            // and clamp the per-cell width to the largest child's min width,
+            // mirroring preferred-mode's `Math.max(width, minSize.width)`
+            // invariant. When the equal-share is smaller than a child's min
+            // width, the row total exceeds the container and trailing cells
+            // spill past the right edge — the host's `overflow: hidden` (or
+            // `setAutoScroll`) takes over. Without the clamp, equal-mode
+            // silently squeezes children with fixed-graphic minSizes (e.g.
+            // RadioButton rings) below their min width and clips them.
+            let maxChildMinWidth = 0;
+
+            for (const component of components) {
+                const min = component.getMinSize();
+                if (min) {
+                    maxChildMinWidth = Math.max(maxChildMinWidth, min.width);
+                }
+            }
+
+            const equalShare = (containerSize.width - spacing * (components.length - 1)) / components.length;
+            const columnWidth = Math.max(equalShare, maxChildMinWidth);
+
+            if (this.isStretching()) {
+                const columnHeight = containerSize.height;
+                let x = containerInsets.getLeft();
+                const y = containerInsets.getTop();
+
+                for (let idx in components) {
+                    let component = components[idx];
+
+                    this.placeComponent(
+                        component,
+                        x,
+                        y,
+                        columnWidth,
+                        columnHeight,
+                        FillType.BOTH
+                    );
+
+                    x += columnWidth + spacing;
+                }
+
+                return;
+            }
+
+            const heights: number[] = [];
+            const baselines: Array<number | null> = [];
+
+            for (let idx = 0; idx < components.length; idx += 1) {
+                let component = components[idx];
+                let size = component.getPreferredSize();
+                let height = size ? size.height : 0;
+
+                heights.push(height);
+                baselines.push(component.getBaseline());
+            }
+
+            const { rowAscent, rowDescent } = this.computeRowMetrics(heights, baselines);
+
+            let x = containerInsets.getLeft();
+
+            for (let idx = 0; idx < components.length; idx += 1) {
+                let component = components[idx];
+                const height = heights[idx];
+
+                let y: number;
+
+                if (rowAscent !== null) {
+                    const b = baselines[idx];
+
+                    if (b !== null) {
+                        y = containerInsets.getTop() + (rowAscent - b);
+                    } else {
+                        y = containerInsets.getTop() + this.nullChildY(height, rowAscent, rowDescent);
+                    }
+                } else {
+                    y = containerInsets.getTop();
+                }
+
+                this.placeComponent(
+                    component,
+                    x,
+                    y,
+                    columnWidth,
+                    height,
+                    FillType.BOTH
+                );
+
+                x += columnWidth + spacing;
+            }
+
+            return;
+        }
+
+        // Preferred-mode: each child takes its preferred width; weight cells
+        // split the remainder; non-weighted children shrink proportionally
+        // toward their min sizes when the row overflows.
         let totalWeight = 0;
         let fixedPreferredWidth = spacing * (components.length - 1);
         let fixedMinWidth       = spacing * (components.length - 1);

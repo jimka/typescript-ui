@@ -2,13 +2,14 @@
 
 import { LayoutTestPanel } from "./LayoutTestPanel.js";
 import { callable } from '@jimka/typescript-ui/core';
-import { Column } from '@jimka/typescript-ui/layout';
+import { HBox } from '@jimka/typescript-ui/layout';
 class ColumnPanel extends LayoutTestPanel {
 
     constructor() {
         super();
 
-        this.setLayoutManager(new Column({
+        this.setLayoutManager(new HBox({
+            mode:       "equal",
             stretching: false
         }));
     }

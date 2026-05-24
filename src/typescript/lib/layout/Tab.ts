@@ -12,7 +12,6 @@ import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { FillType } from "~/layout/FillType.js";
 import { ButtonGroup } from "~/core/ButtonGroup.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
-import { Column } from "~/layout/Column.js";
 import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
@@ -101,9 +100,7 @@ class Tab extends LayoutManager {
     constructor(options?: TabOptions) {
         super();
 
-        let columnLayout = new Column();
-        columnLayout.setGap(0);
-        this._toolbar.setLayoutManager(columnLayout);
+        this._toolbar.setLayoutManager(new HBox({ mode: "equal", spacing: 0 }));
         this._toolbar.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
         this._toolbar.clearInsets();
         this._toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
