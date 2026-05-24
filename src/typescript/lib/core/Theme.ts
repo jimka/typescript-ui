@@ -351,6 +351,27 @@ export interface Theme {
         };
     };
 
+    /**
+     * Tokens used by the picker dropdowns
+     * ([`DatePickerDropdown`](/api/component/input/classes/DatePickerDropdown),
+     * [`DateTimePickerDropdown`](/api/component/input/classes/DateTimePickerDropdown)).
+     * The cell hover and selection highlight keep tracking `autoComplete.item.*`
+     * numerically because both surfaces share the
+     * [`PickerCell`](/api/component/input/classes/PickerCell) class — a theme
+     * that customises one gets the other matching automatically. These three
+     * tokens cover the surfaces the autoComplete tokens cannot: a
+     * navigation-chevron / header-as-button affordance and the dim background
+     * for out-of-range day cells.
+     */
+    picker: {
+        /** Foreground colour for the header chevron glyph and the year-scroller toggle. */
+        navForeground:       string;
+        /** Background applied to the navigation chevron / header-toggle under hover. */
+        navHoverBackground:  string;
+        /** Background applied to a day cell that falls outside `minDate`/`maxDate`. */
+        cellDisabledBackground: string;
+    };
+
     spinner: {
         buttonWidth : string;
         dividerColor: string;
@@ -611,6 +632,14 @@ export const DefaultTheme: Theme = {
     dropdown: {
         fade: { duration: '120ms', translate: '4px' },
     },
+    // Picker tokens stay numerically in step with `autoComplete.item.*` — they
+    // share the {@link PickerCell} class — so a theme that customises one
+    // gets the other matching automatically.
+    picker: {
+        navForeground:          'var(--ts-ui-text-color)',
+        navHoverBackground:     'rgba(30, 100, 200, 0.08)',
+        cellDisabledBackground: 'transparent',
+    },
     dialog: {
         backdrop: { background: 'rgba(0, 0, 0, 0.45)' },
         border  : 'rgb(220, 220, 220)',
@@ -867,6 +896,13 @@ export const DarkTheme: Theme = {
     dropdown: {
         fade: { duration: '120ms', translate: '4px' },
     },
+    // Dark picker tokens follow the dark `autoComplete.item.*` hue family for
+    // chevron-hover consistency with cell hover.
+    picker: {
+        navForeground:          'var(--ts-ui-text-color)',
+        navHoverBackground:     'rgba(120, 170, 255, 0.12)',
+        cellDisabledBackground: 'transparent',
+    },
     dialog: {
         backdrop: { background: 'rgba(0, 0, 0, 0.65)' },
         border  : 'rgb(70, 70, 70)',
@@ -1028,6 +1064,9 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-list-row-separator'               : theme.list.row.separator,
         '--ts-ui-dropdown-fade-duration'           : theme.dropdown.fade.duration,
         '--ts-ui-dropdown-fade-translate'          : theme.dropdown.fade.translate,
+        '--ts-ui-picker-nav-fg'                    : theme.picker.navForeground,
+        '--ts-ui-picker-nav-hover-bg'              : theme.picker.navHoverBackground,
+        '--ts-ui-picker-cell-disabled-bg'          : theme.picker.cellDisabledBackground,
         '--ts-ui-menu-bar-bg'                      : theme.menuBar.background,
         '--ts-ui-menu-bar-border'                  : theme.menuBar.border,
         '--ts-ui-menu-bar-btn-bg'                  : theme.menuBar.button.background,

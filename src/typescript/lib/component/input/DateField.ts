@@ -18,7 +18,11 @@ Glyph.register(calendar);
  * @category Components
  */
 export interface DateFieldOptions extends AbstractPickerFieldOptions {
-    value?: Date | null;
+    value?:    Date | null;
+    /** Earliest date the picker will allow selection of. Optional. */
+    minDate?:  Date | null;
+    /** Latest date the picker will allow selection of. Optional. */
+    maxDate?:  Date | null;
 }
 
 /**
@@ -94,6 +98,14 @@ class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldO
             this._options.value = opts.value;
         }
 
+        if (opts.minDate !== undefined) {
+            this._options.minDate = opts.minDate;
+        }
+
+        if (opts.maxDate !== undefined) {
+            this._options.maxDate = opts.maxDate;
+        }
+
         return this;
     }
 
@@ -125,10 +137,18 @@ class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldO
     }
 
     /**
-     * Builds the date dropdown with the field's selection callback.
+     * Builds the date dropdown with the field's selection callback and any
+     * cached `minDate` / `maxDate` bounds forwarded into the dropdown's own
+     * options bag.
      */
     protected createDropdown(): DatePickerDropdown {
-        return new DatePickerDropdown(date => this.onDropdownSelected(date));
+        return new DatePickerDropdown(
+            date => this.onDropdownSelected(date),
+            {
+                minDate: this._options.minDate ?? null,
+                maxDate: this._options.maxDate ?? null,
+            },
+        );
     }
 
     /**

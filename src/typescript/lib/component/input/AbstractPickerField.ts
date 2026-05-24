@@ -409,10 +409,24 @@ abstract class AbstractPickerField<
 
     /**
      * Keyboard shortcuts: ArrowDown opens the dropdown; Escape closes it.
+     * While the dropdown is open the event is first offered to
+     * {@link AnimatedDropdown.handleKey} so the dropdown can consume
+     * navigation keys (arrows for day grid / year scroller, PageUp/Down,
+     * Home/End, Enter / Space, and digit-keys for the year-scroller's
+     * type-ahead). Keys the dropdown does not consume fall through to the
+     * host input's own contract.
      *
      * @param e - The keyboard event.
      */
     protected onKeyDown(e: KeyboardEvent): void {
+        if (this._dropdown && this._dropdown.isOpen()) {
+            if (this._dropdown.handleKey(e)) {
+                e.preventDefault();
+
+                return;
+            }
+        }
+
         if (e.key === "ArrowDown") {
             e.preventDefault();
             this.openDropdown();

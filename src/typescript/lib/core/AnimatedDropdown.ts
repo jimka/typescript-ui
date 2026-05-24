@@ -341,6 +341,21 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     }
 
     /**
+     * Subclass hook: handle a keystroke arriving via the host input's `keydown`
+     * listener while the dropdown is open. Subclasses with a navigation surface
+     * (e.g. [`DatePickerDropdown`](/api/component/input/classes/DatePickerDropdown))
+     * override to consume arrows / Page / Home / End / type-ahead. The base
+     * implementation returns `false` so plain dropdowns without keyboard
+     * semantics let the host input's contract run.
+     *
+     * @param _e - The keyboard event forwarded from the host input.
+     * @returns True when the dropdown consumed the keystroke (caller should `preventDefault`).
+     */
+    handleKey(_e: KeyboardEvent): boolean {
+        return false;
+    }
+
+    /**
      * Places the dropdown relative to an anchor rect at its current
      * width/height, with viewport clamping on both axes. Picks the better of
      * "below" or "above" the anchor vertically (more available space wins

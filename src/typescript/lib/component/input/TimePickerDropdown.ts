@@ -2,16 +2,13 @@
 
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Component } from "~/core/Component.js";
-import { Panel } from "~/core/Panel.js";
-import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
-import { Text } from "~/component/input/Text.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
-import { VBox } from "~/layout/VBox.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import { PickerCell, PickerColumn } from "~/component/input/PickerColumn.js";
 import { callable } from "~/core/Callable.js";
 
 /** Pixel width of the time picker panel (Hour + Minute). */
@@ -22,164 +19,6 @@ const PANEL_WIDTH_SECONDS:  number = 200;
 
 /** Pixel height of the time picker panel. */
 const PANEL_HEIGHT:         number = 220;
-
-/** Pixel height of each clickable cell row. */
-const CELL_HEIGHT:          number = 22;
-
-/** Pixel height of the column header row. */
-const HEADER_HEIGHT:        number = 18;
-
-// Static typography and hover effect defined once via class rules. Layout
-// (column widths, cell stacking, scrolling) is driven by the framework
-// HBox / VBox managers and Panel.autoScroll — no display:flex/grid here.
-(() => {
-    const header = new StyleRule({ scope: "class", name: "TimePickerColumnHeader" });
-    header.set("opacity", "0.7");
-    header.ensure();
-
-    const cell = new StyleRule({ scope: "class", name: "TimePickerCell" });
-    cell.setMany({
-        cursor:       "pointer",
-        borderRadius: "3px",
-    });
-    cell.ensure();
-
-    const cellHover = new StyleRule({ scope: "selector", name: ".TimePickerCell:hover" });
-    cellHover.set("backgroundColor",
-        "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
-    cellHover.ensure();
-})();
-
-/** Column header label ("Hour" / "Min" / "Sec"). Centred within its row. */
-class TimePickerColumnHeader extends Text {
-    constructor(text: string) {
-        super(text, { textAlign: "center", fontSize: 12 });
-    }
-}
-
-/**
- * Scrollable list of time cells. A Panel with `autoScroll: 'y'` and a
- * stretching VBox so cells render at the full column width — giving the
- * mouse-hover region the full row, not just the digits' bounding box.
- */
-class TimePickerCellList extends Panel {
-    constructor() {
-        super({
-            layoutManager: new VBox({ spacing: 0, stretching: true }),
-            autoScroll:    "y",
-            insets:        new Insets(0, 0, 0, 0),
-        });
-    }
-}
-
-/**
- * A single hour/minute/second cell. Text-only leaf; the row width is set by
- * the parent's stretching VBox so `text-align: center` actually centres
- * across the column.
- */
-class TimePickerCell extends Text {
-    private _value:    number;
-    private _selected: boolean = false;
-    private readonly _onClick: (value: number) => void;
-
-    constructor(value: number, onClick: (value: number) => void) {
-        super(String(value).padStart(2, "0"), {
-            textAlign:     "center",
-            preferredSize: { width: 0, height: CELL_HEIGHT },
-        });
-        this._value   = value;
-        this._onClick = onClick;
-
-        // `lineHeight = CELL_HEIGHT` centres the single line of digits vertically
-        // within the row so the hover area looks consistent.
-        this.setLineHeight(CELL_HEIGHT);
-
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
-        Event.addListener(this, "click",       ()                => this.onClick());
-    }
-
-    /**
-     * Suppresses focus loss when the cell is pointed at so the host input's
-     * blur-to-commit path doesn't fire mid-click.
-     *
-     * @param e - The pointerdown event.
-     */
-    private onPointerDown(e: PointerEvent): void {
-        e.preventDefault();
-    }
-
-    /**
-     * Forwards the cell's numeric value to the owner-supplied click callback.
-     */
-    private onClick(): void {
-        this._onClick(this._value);
-    }
-
-    /**
-     * Toggles the selected (highlighted) state.
-     *
-     * @param selected - True to highlight this cell as the active value.
-     */
-    setSelected(selected: boolean): this {
-        if (this._selected === selected) {
-            return this;
-        }
-
-        this._selected = selected;
-
-        if (selected) {
-            this.setBackgroundColor("var(--ts-ui-autocomplete-item-highlight-bg, rgba(30, 100, 200, 0.18))");
-            this.setFontWeight("bold");
-        } else {
-            this.clearBackgroundColor();
-            this.setFontWeight("normal");
-        }
-
-        return this;
-    }
-}
-
-/**
- * A single hour or minute column. Stacks its header above the scrollable cell
- * list via a stretching VBox — no `display: flex` on the column element.
- */
-class TimePickerColumn extends Component {
-    private _cellList: TimePickerCellList;
-
-    constructor(headerText: string) {
-        super();
-        this.setLayoutManager(new VBox({ spacing: 2, stretching: true }));
-
-        const header = new TimePickerColumnHeader(headerText);
-        header.setPreferredSize(0, HEADER_HEIGHT);
-        this.addComponent(header);
-
-        this._cellList = new TimePickerCellList();
-        // Weight=1 so the list takes all remaining vertical space after the
-        // fixed-height header.
-        const listConstraints = new LayoutConstraints();
-        listConstraints.weight = 1;
-        this.addComponent(this._cellList, listConstraints);
-    }
-
-    /**
-     * Adds a cell to this column's scrollable list.
-     */
-    addCell(cell: TimePickerCell): this {
-        this._cellList.addComponent(cell);
-
-        return this;
-    }
-
-    /**
-     * Clears all cells from this column's scrollable list.
-     */
-    clearCells(): this {
-        this._cellList.removeAllComponents();
-
-        return this;
-    }
-}
 
 /**
  * Construction-time options for {@link TimePickerDropdown}.
@@ -327,14 +166,17 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
         activeValue: number,
         onSelect:    (value: number) => void,
         step:        number = 1,
-    ): TimePickerColumn {
-        const column = new TimePickerColumn(label);
+    ): PickerColumn {
+        const column = new PickerColumn(label);
 
         for (let v = 0; v < count; v += step) {
-            const cell = new TimePickerCell(v, onSelect);
-            if (v === activeValue) {
+            const value = v;
+            const cell  = new PickerCell(String(value).padStart(2, "0"), () => onSelect(value));
+
+            if (value === activeValue) {
                 cell.setSelected(true);
             }
+
             column.addCell(cell);
         }
 
