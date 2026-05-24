@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "~/core/Component.js";
-import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
-import { Util } from "~/core/Util.js";
-import { Event } from "~/core/Event.js";
+import { AbstractPickerField, AbstractPickerFieldOptions } from "~/component/input/AbstractPickerField.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
-import { Bindable } from "~/core/Bindable.js";
-import { ThemeManager } from "~/core/Theme.js";
+import { BorderOptions } from "~/primitive/Border.js";
+import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { clock } from "~/glyphs/solid/clock.js";
 import { TimePickerDropdown } from "~/component/input/TimePickerDropdown.js";
@@ -15,94 +12,15 @@ import { callable } from "~/core/Callable.js";
 
 Glyph.register(clock);
 
-// Width of the picker glyph button in pixels. Matches the prior `display: flex`
-// + 24px caret column the framework used before the per-field doLayout
-// override; sized to the clock glyph's intrinsic 16px box plus 4px padding on
-// each side so the icon centres without crowding the input edge.
-const PICKER_BUTTON_WIDTH_PX = 24;
-
 /**
  * Construction-time options for {@link TimeField}.
  *
  * @category Components
  */
-export interface TimeFieldOptions extends ComponentOptions {
-    value?:             Date | null;
-    enabled?:           boolean;
-    /** When false, the dropdown opens/closes instantly. Default: true. */
-    dropdownAnimated?:  boolean;
+export interface TimeFieldOptions extends AbstractPickerFieldOptions {
+    value?:       Date | null;
     /** When true, the field formats and the picker exposes seconds. Default: false. */
-    showSeconds?:       boolean;
-}
-
-/**
- * Internal Input subclass exposing typed setters for picker-specific attributes.
- */
-class PickerInput extends TextInput<TextInputOptions> {
-
-    constructor() {
-        super({ cursor: "text" });
-
-        Event.addListener(this, "input", () => this.syncTextFromDom());
-    }
-
-    /**
-     * Mirrors `TextField`'s sync hook: pulls the live DOM value into the
-     * inherited cached text on every keystroke so callers can read it through
-     * `getText()` instead of `element.value`.
-     */
-    private syncTextFromDom(): void {
-        const el = this.getElement();
-        this.setText(el?.value ?? "");
-    }
-}
-
-/**
- * Internal `<button>` Component used by {@link TimeField}, {@link DateField},
- * and {@link DateTimeField} as the glyph-bearing trigger to the right of the
- * input. Centers a single glyph child via a `doLayout` override; no
- * `display: flex` needed on the button element itself.
- */
-class PickerButton extends Component {
-    constructor() {
-        super({ tag: "button" });
-
-        this.setBorder({ style: BorderStyle.NONE, width: 0, color: "transparent" });
-        this.setBackgroundColor("transparent");
-        this.setCursor("pointer");
-        this.setPadding(new Insets(0, 4, 0, 4));
-    }
-
-    /**
-     * Centers the single glyph child within the button's inner rect at its
-     * preferred size; mirrors the same one-child centering pattern as
-     * `DateField`'s `PickerButton`.
-     */
-    doLayout(): this {
-        super.doLayout();
-
-        const inner = this.getInnerSize();
-        const child = this.getComponents()[0];
-        if (!inner || !child) {
-            return this;
-        }
-
-        const childSize = child.getPreferredSize();
-        if (!childSize) {
-            return this;
-        }
-
-        const insets = this.getInsets();
-        const x = insets.getLeft() + Math.max(0, (inner.width  - childSize.width)  / 2);
-        const y = insets.getTop()  + Math.max(0, (inner.height - childSize.height) / 2);
-
-        child.setX(x);
-        child.setY(y);
-        child.setWidth(childSize.width);
-        child.setHeight(childSize.height);
-
-        return this;
-    }
+    showSeconds?: boolean;
 }
 
 /**
@@ -127,36 +45,20 @@ const _defaultTimeFieldOptions: Partial<TimeFieldOptions> = {
  * [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown) lifecycle. The
  * native browser time-picker is no longer used.
  *
- * Implements {@link Bindable} so it can participate in a
- * [`Binding`](/api/core/classes/Binding) directly. Returns `null` from
- * `getValue` when the field is empty. The Date value uses today's date for
- * its date portion; only hours and minutes are meaningful.
+ * Inherits the [`Bindable`](/api/core/interfaces/Bindable) value contract,
+ * change/binding listeners, and enabled/read-only surface from
+ * [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField).
+ * The Date value uses today's date for its date portion; only hours,
+ * minutes (and optionally seconds) are meaningful.
  *
  * @category Components
  */
-class TimeField extends Component<TimeFieldOptions> implements Bindable<Date | null> {
+class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldOptions> {
 
-    private _input:       PickerInput;
-    private _button:      PickerButton;
-    private _dropdown:    TimePickerDropdown | null = null;
-    private _value:       Date | null = null;
-    private _invalid:     boolean = false;
     private _showSeconds: boolean = false;
-    // The viewport listener is added and removed dynamically, so it needs a
-    // stable reference. The other listeners are registered once and never
-    // removed, so they use inline `() => this.handler()` delegates.
-    private readonly _onViewportPointerDown: (e: PointerEvent) => void;
 
     constructor(options?: TimeFieldOptions) {
         super(options, _defaultTimeFieldOptions);
-
-        this._input = new PickerInput();
-        this._input.setType("text");
-        this._input.setInputMode("none");
-        this._input.setAutoComplete("off");
-        this._input.setPadding(new Insets(0, 3, 0, 3));
-
-        this._button = new PickerButton();
 
         // Glyph is placed by `PickerButton.doLayout` (framework-positioned,
         // centered within the button's inner rect). `setPointerEvents("none")`
@@ -165,28 +67,31 @@ class TimeField extends Component<TimeFieldOptions> implements Bindable<Date | n
         glyph.setPointerEvents("none");
         this._button.addComponent(glyph);
 
-        this.addComponent(this._input);
-        this.addComponent(this._button);
+        // Late-built state: `applyOptions` dispatched these through `_options`
+        // at super-time. Re-apply now that `_input` exists. `showSeconds` is
+        // read into the private field before `setValue` so the initial
+        // formatting picks up the right precision.
+        if (this._options.showSeconds !== undefined) {
+            this._showSeconds = this._options.showSeconds;
+        }
 
-        this.updateHeight();
-        ThemeManager.onThemeChange(() => this.updateHeight());
+        if (this._options.value !== undefined) {
+            this.setValue(this._options.value);
+        }
 
-        Event.addListener(this._input,  "input",       ()                 => this.onInput());
-        Event.addListener(this._input,  "blur",        ()                 => this.onBlur());
-        Event.addListener(this._input,  "keydown",     (e: KeyboardEvent) => this.onKeyDown(e));
-        Event.addListener(this._button, "click",       ()                 => this.onButtonClick());
-        Event.addListener(this._button, "pointerdown", (e: PointerEvent)  => this.onButtonPointerDown(e));
+        if (this._options.enabled !== undefined) {
+            this.applyEnabled(this._options.enabled);
+        }
 
-        this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
-
-        if (options) {
-            this.applyOptions(options);
+        if (this._options.readOnly !== undefined) {
+            this.applyReadOnly(this._options.readOnly);
         }
     }
 
     /**
-     * Applies a {@link TimeFieldOptions} bag, dispatching the initial value and
-     * enabled/disabled state after inherited Component fields.
+     * Applies a {@link TimeFieldOptions} bag. Late-built fields (value,
+     * showSeconds) are cached pure on `_options` here and dispatched from
+     * the constructor body once `_input` exists.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -195,117 +100,45 @@ class TimeField extends Component<TimeFieldOptions> implements Bindable<Date | n
 
         const opts = { ...this._defaultOptions, ...options } as TimeFieldOptions;
 
-        // Must precede `setValue` so the initial formatting reflects the
-        // seconds setting.
         if (opts.showSeconds !== undefined) {
-            this._showSeconds = opts.showSeconds;
+            this._options.showSeconds = opts.showSeconds;
         }
 
         if (opts.value !== undefined) {
-            this.setValue(opts.value);
-        }
-
-        if (opts.enabled !== undefined) {
-            this._input.setDisabledAttribute(!opts.enabled);
-        }
-
-        if (opts.dropdownAnimated !== undefined) {
-            this.setDropdownAnimated(opts.dropdownAnimated);
+            this._options.value = opts.value;
         }
 
         return this;
     }
 
     /**
-     * Lays out the input flush left and the button flush right.
-     */
-    doLayout(): this {
-        super.doLayout();
-
-        const w = this.getWidth();
-        const h = this.getHeight();
-
-        this._input.setX(0);
-        this._input.setY(0);
-        this._input.setWidth(Math.max(0, w - PICKER_BUTTON_WIDTH_PX));
-        this._input.setHeight(h);
-
-        this._button.setX(w - PICKER_BUTTON_WIDTH_PX);
-        this._button.setY(0);
-        this._button.setWidth(PICKER_BUTTON_WIDTH_PX);
-        this._button.setHeight(h);
-
-        return this;
-    }
-
-    /**
-     * Recalculates preferred and maximum height from the native input's measured size.
-     */
-    private updateHeight(): void {
-        const h = Util.measureInputHeight();
-
-        this.setPreferredSize(140, h);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
-    }
-
-    /**
-     * Toggles the dropdown when the clock button is clicked. Re-focuses the
-     * input first so the caret stays in the field while the picker is open.
-     */
-    private onButtonClick(): void {
-        if (this._dropdown?.isOpen()) {
-            this.closeDropdown();
-        } else {
-            this._input.focus();
-            this.openDropdown();
-        }
-    }
-
-    /**
-     * Suppresses focus loss on the input when the button is pointed at; the
-     * subsequent `click` handler does the open/close work.
+     * Formats a Date as an "HH:MM" (or "HH:MM:SS" when `showSeconds` is
+     * true) string for display in the text input.
      *
-     * @param e - The pointerdown event.
+     * @param date - The Date to format.
+     * @returns The formatted time string.
      */
-    private onButtonPointerDown(e: PointerEvent): void {
-        e.preventDefault();
+    protected formatValue(date: Date): string {
+        const h = String(date.getHours()).padStart(2, "0");
+        const m = String(date.getMinutes()).padStart(2, "0");
+
+        if (this._showSeconds) {
+            const s = String(date.getSeconds()).padStart(2, "0");
+
+            return `${h}:${m}:${s}`;
+        }
+
+        return `${h}:${m}`;
     }
 
     /**
-     * Viewport-level pointerdown handler: closes the dropdown when the click
-     * lands outside both the field and the dropdown panel.
+     * Parses an "HH:MM" or "HH:MM:SS" string into a Date with today's date
+     * portion. Returns null on parse failure.
      *
-     * @param e - The pointerdown event from the viewport.
+     * @param raw - The raw text typed into the input.
+     * @returns The parsed Date, or null.
      */
-    private onViewportPointerDown(e: PointerEvent): void {
-        const target = e.target as Node;
-        const dropEl = this._dropdown?.getElement();
-        if (dropEl?.contains(target)) {
-            return;
-        }
-        if (this._dropdown?.isClickOnTopmostOverlay(target)) {
-            return;
-        }
-        if (this.getElement()?.contains(target)) {
-            return;
-        }
-        this.closeDropdown();
-    }
-
-    /**
-     * Syncs the internal value from the typed text on every input event and
-     * toggles the invalid-border state based on whether the typed text parses
-     * as a time.
-     */
-    private onInput(): void {
-        const raw = this._input.getText();
-
-        if (!raw) {
-            this._value = null;
-            this.setInvalid(false);
-            return;
-        }
-
+    protected parseRaw(raw: string): Date | null {
         const [hStr, mStr, sStr] = raw.split(":");
         const h = Number(hStr);
         const m = Number(mStr);
@@ -316,220 +149,74 @@ class TimeField extends Component<TimeFieldOptions> implements Bindable<Date | n
         const validMin   = !isNaN(m) && m >= 0 && m < 60;
         const validSec   = !isNaN(s) && s >= 0 && s < 60;
 
-        if (hasMinutes && validHour && validMin && validSec) {
-            const d = new Date();
-            d.setHours(h, m, s, 0);
-            this._value = d;
-            this.setInvalid(false);
-        } else {
-            this.setInvalid(true);
+        if (!hasMinutes || !validHour || !validMin || !validSec) {
+            return null;
         }
+
+        const d = new Date();
+        d.setHours(h, m, s, 0);
+
+        return d;
     }
 
     /**
-     * Clears non-empty unparseable text when the input loses focus, so the
-     * field doesn't carry an invalid string across interactions.
+     * Builds the time dropdown with the field's selection callback and the
+     * cached `showSeconds` flag.
      */
-    private onBlur(): void {
-        if (!this._invalid) {
-            return;
-        }
-
-        this._input.setText("");
-        this._value = null;
-        this.setInvalid(false);
+    protected createDropdown(): TimePickerDropdown {
+        return new TimePickerDropdown(
+            (h: number, m: number, s: number) => this.onTimeSelected(h, m, s),
+            { showSeconds: this._showSeconds },
+        );
     }
 
     /**
-     * Toggles the red validation-error border on the field root.
+     * Anchors the time dropdown to the inner input element.
      *
-     * @param invalid - True to show the red border, false to restore the default.
+     * @param dropdown - The dropdown instance to show.
+     * @param anchorEl - The element to anchor the panel to.
+     * @param value - The current field value (or null when empty).
      */
-    private setInvalid(invalid: boolean): void {
-        if (this._invalid === invalid) {
-            return;
-        }
-        this._invalid = invalid;
-
-        if (invalid) {
-            this.setBorder({
-                style: BorderStyle.SOLID,
-                width: 1,
-                color: "var(--ts-ui-validation-error-border)",
-            });
-        } else {
-            this.setBorder(_defaultTimeFieldOptions.border!);
-        }
+    protected showDropdown(dropdown: TimePickerDropdown, anchorEl: HTMLElement, value: Date | null): void {
+        dropdown.showAt(anchorEl, value);
     }
 
     /**
-     * Keyboard shortcuts: ArrowDown opens the dropdown; Escape closes it.
-     *
-     * @param e - The keyboard event.
-     */
-    private onKeyDown(e: KeyboardEvent): void {
-        if (e.key === "ArrowDown") {
-            e.preventDefault();
-            this.openDropdown();
-        } else if (e.key === "Escape") {
-            this.closeDropdown();
-        }
-    }
-
-    /**
-     * Returns or lazily creates the picker dropdown instance.
-     *
-     * @returns The owned dropdown instance.
-     */
-    private ensureDropdown(): TimePickerDropdown {
-        if (!this._dropdown) {
-            this._dropdown = new TimePickerDropdown(
-                (h: number, m: number, s: number) => this.onTimeSelected(h, m, s),
-                { showSeconds: this._showSeconds },
-            );
-            const animated = this._options.dropdownAnimated;
-            if (animated !== undefined) {
-                this._dropdown.setAnimated(animated);
-            }
-        }
-
-        return this._dropdown;
-    }
-
-    /**
-     * Opens the dropdown anchored to the input.
-     */
-    private openDropdown(): void {
-        const dropdown = this.ensureDropdown();
-        if (dropdown.isOpen()) {
-            return;
-        }
-
-        dropdown.showAt(this._input.getElement(true), this._value);
-        Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
-    }
-
-    /**
-     * Closes the dropdown if open.
-     */
-    private closeDropdown(): void {
-        if (this._dropdown && this._dropdown.isOpen()) {
-            Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
-            this._dropdown.hideAnimated();
-        }
-    }
-
-    /**
-     * Called when the user picks a new (hours, minutes, seconds) tuple from the dropdown.
-     *
-     * @param hours - The chosen hour (0-23).
-     * @param minutes - The chosen minute (0-59).
-     * @param seconds - The chosen second (0-59). Always 0 when `showSeconds` is false.
+     * Adapter from the inner dropdown's `(h, m, s)` selection callback to
+     * the abstract base's `(value)` shape. Builds a Date with today's date
+     * portion and the selected H:M:S.
      */
     private onTimeSelected(hours: number, minutes: number, seconds: number): void {
         const d = new Date();
         d.setHours(hours, minutes, seconds, 0);
-        this.setValue(d);
+        this.onDropdownSelected(d);
+    }
+
+    /**
+     * Called when the user picks a time from the dropdown. Commits the
+     * value and re-fires `input` on the inner field so any DOM-event
+     * consumer still sees the change.
+     *
+     * @param date - The chosen Date.
+     */
+    protected onDropdownSelected(date: Date): void {
+        this.setValue(date);
         Event.fireEvent(this._input, "input");
     }
 
     /**
-     * Registers a listener for the 'input' event, fired whenever the time changes.
-     *
-     * @param listener - The callback to invoke on each input event.
+     * The TimeField's preferred width — chosen to fit a "HH:MM[:SS]" string
+     * plus the 24-px glyph button without overflow at the default font size.
      */
-    addActionListener(listener: Function): this {
-        Event.addListener(this._input, "input", listener);
-
-        return this;
+    protected getPreferredWidth(): number {
+        return 140;
     }
 
     /**
-     * Sets the field value from a Date and updates the DOM element.
-     * Only the hours and minutes of the Date are used.
-     *
-     * @param value - The Date whose time to display, or null to clear the field.
+     * The default border restored when the invalid-border state clears.
      */
-    setValue(value: Date | null): this {
-        this._value = value;
-        // Optional chain because `applyOptions` may dispatch this from inside
-        // `super()` before `_input` is constructed; the explicit
-        // `applyOptions(options)` call at the end of the constructor re-runs
-        // the assignment once `_input` exists.
-        this._input?.setText(value ? this.formatTime(value) : "");
-
-        return this;
-    }
-
-    /**
-     * Returns a Date representing the currently entered time, or null if empty.
-     * The date portion reflects the moment of the most recent input event.
-     *
-     * @returns The selected time as a Date, or null.
-     */
-    getValue(): Date | null {
-        return this._value;
-    }
-
-    /**
-     * Registers a listener that fires on each user-driven time change.
-     *
-     * @param fn - The callback to invoke on change.
-     */
-    addBindingListener(fn: () => void): void {
-        this.addActionListener(fn);
-    }
-
-    /**
-     * Formats a Date as an "HH:MM" (or "HH:MM:SS" when `showSeconds` is true)
-     * string for display in the text input.
-     *
-     * @param date - The Date to format.
-     * @returns The formatted time string.
-     */
-    private formatTime(date: Date): string {
-        const h = String(date.getHours()).padStart(2, "0");
-        const m = String(date.getMinutes()).padStart(2, "0");
-
-        if (this._showSeconds) {
-            const s = String(date.getSeconds()).padStart(2, "0");
-            return `${h}:${m}:${s}`;
-        }
-
-        return `${h}:${m}`;
-    }
-
-    /**
-     * Returns the offset from the top of the time field to its inner-text baseline.
-     *
-     * @returns The baseline offset in pixels.
-     */
-    getBaseline(): number | null {
-        return this.wrapInnerBaseline(this._input.getBaseline());
-    }
-
-    /**
-     * Enables or disables the fade animation on the dropdown.
-     *
-     * @param value - true to fade, false for instant open/close.
-     */
-    setDropdownAnimated(value: boolean): this {
-        this._options.dropdownAnimated = value;
-
-        if (this._dropdown) {
-            this._dropdown.setAnimated(value);
-        }
-
-        return this;
-    }
-
-    /**
-     * Returns whether the dropdown fade is enabled.
-     *
-     * @returns true when the dropdown fades; false when it opens/closes instantly.
-     */
-    isDropdownAnimated(): boolean {
-        return this._options.dropdownAnimated ?? true;
+    protected getDefaultBorder(): BorderOptions {
+        return _defaultTimeFieldOptions.border as BorderOptions;
     }
 }
 
