@@ -53,8 +53,10 @@ class SplitGutter extends Component {
     protected applyOptions(options: SplitGutterOptions): this {
         super.applyOptions(options);
 
-        if (options.orientation !== undefined) {
-            this.setDirection(options.orientation);
+        const opts = { ...this._defaultOptions, ...options } as SplitGutterOptions;
+
+        if (opts.orientation !== undefined) {
+            this.setDirection(opts.orientation);
         }
 
         return this;

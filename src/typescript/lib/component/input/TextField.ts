@@ -38,7 +38,7 @@ const _defaultTextFieldOptions: Partial<TextFieldOptions> = {
 class TextField extends TextInput<TextFieldOptions> implements Bindable<string> {
 
     constructor(options?: TextFieldOptions) {
-        super({ ..._defaultTextFieldOptions, ...(options ?? {}) });
+        super(options, _defaultTextFieldOptions);
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());

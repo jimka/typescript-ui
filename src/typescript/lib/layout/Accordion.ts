@@ -6,7 +6,6 @@ import { AccordionHeader } from "~/component/container/AccordionHeader.js";
 import { Animation } from "~/core/Animation.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
-import { Position } from "~/primitive/Position.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 
@@ -409,7 +408,6 @@ class Accordion extends LayoutManager {
 
         const header = new AccordionHeader(label);
 
-        header.setPosition(Position.ABSOLUTE);
         header.setAnimationTiming(this._animationDuration, ACCORDION_EASING);
 
         // Headers slide vertically with the panels opening or closing above them
@@ -423,7 +421,6 @@ class Accordion extends LayoutManager {
 
         const wrapper = new Component();
 
-        wrapper.setPosition(Position.ABSOLUTE);
         wrapper.setOverflow('hidden');
         // Animation wrapper clips content via overflow:hidden — layout+paint containment scopes
         // reflow during the height transition without affecting the rest of the document.

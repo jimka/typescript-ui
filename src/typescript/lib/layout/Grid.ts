@@ -153,8 +153,9 @@ class Grid extends LayoutManager {
      *
      * @returns An object with `width` (row count) and `height` (column count), or `undefined` if no container is attached.
      *
-     * @remarks The property names `width` and `height` are repurposed here to carry row/column counts
-     * rather than pixel dimensions.
+     * @remarks The property names `width` and `height` are repurposed here to
+     * carry column and row counts rather than pixel dimensions —
+     * `result.width` is the column count, `result.height` is the row count.
      */
     getColRowCount() {
         let container = this.getContainer();
@@ -173,15 +174,18 @@ class Grid extends LayoutManager {
             rows = Math.ceil(componentCount / columns);
         } else if (this._rows && this._columns) {
             rows = this._rows;
-            columns = Math.floor(Math.sqrt(componentCount / rows));
+            columns = this._columns;
         } else if (this._columns) {
             columns = this._columns;
             rows = Math.ceil(componentCount / columns);
+        } else {
+            rows = this._rows;
+            columns = Math.ceil(componentCount / rows);
         }
 
         return {
-            width: rows,
-            height: columns
+            width: columns,
+            height: rows
         };
     }
 

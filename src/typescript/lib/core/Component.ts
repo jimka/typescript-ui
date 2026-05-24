@@ -94,7 +94,6 @@ export interface ComponentOptions {
     transition?:      string;
     willChange?:      string | null;
     opacity?:         number;
-    position?:        Position;
     overflow?:        string;
     pointerEvents?:   string;
     touchAction?:     string;
@@ -179,6 +178,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _transition           : string | null           = null;
 
     // Derived / runtime-only fields that have no direct ComponentOptions counterpart.
+    // `_position` is intentionally NOT in `ComponentOptions` — the framework
+    // positions every component absolutely (see ARCHITECTURE.md). Subclasses
+    // that need `FIXED` for a floating overlay or `STATIC` for a semantic
+    // HTML carve-out (e.g. `Legend`) call the protected `setPosition` setter
+    // post-`super()`. Public callers cannot reach it.
+    private _position             : Position                = Position.ABSOLUTE;
     private _onPreferredSizeChange: (() => void) | null     = null;
     private _overflowX            : string | null           = null;
     private _overflowY            : string | null           = null;
@@ -232,7 +237,23 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     protected _options!:        TOptions;
     protected _defaultOptions!: TOptions;
 
-    constructor(options?: TOptions) {
+    /**
+     * @param options - Caller-supplied options bag.
+     * @param subclassDefaults - Per-subclass default bag merged on top of the
+     *   built-in Component defaults to produce `_defaultOptions`. Subclasses
+     *   that extend Component (or any further-derived class) pass their
+     *   `_default<Name>Options` constant here so its values flow through every
+     *   `{ ...this._defaultOptions, ...options }` merge in `applyOptions` and
+     *   its overrides. Replaces the older pattern of spreading defaults into
+     *   the options arg at the call site — that pattern populated `_options`
+     *   directly and broke whenever `applyOptions` was re-invoked, because
+     *   Component's own defaults would silently override values set in the
+     *   subclass constructor body. Subclasses-of-subclasses accept their own
+     *   `subclassDefaults` parameter and forward it as
+     *   `{ ..._myDefaults, ...(subclassDefaults ?? {}) }` so the deepest
+     *   class's defaults win.
+     */
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
         super();
 
         // Structural setup that doesn't map to ComponentOptions.
@@ -251,13 +272,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._verticalAlign = "baseline";
 
         // Class-level defaults — fallback values consulted by getters when the
-        // caller (or a setter) hasn't written to `_options`. Subclasses may
-        // extend this bag in their own constructors (after `super()`) to add
-        // their per-class defaults — the parent default still flows through
-        // because subclass writes merge with what was already there.
+        // caller (or a setter) hasn't written to `_options`, and the source
+        // every `applyOptions` cascade merges over before dispatching setters.
+        // Subclass defaults are layered on top of the Component defaults here
+        // so deepest-class wins; `applyOptions` and its overrides then merge
+        // user `options` on top of this bag at dispatch time.
         this._defaultOptions = {
             layoutManager: new Absolute(),
-            position     : Position.ABSOLUTE,
             cursor       : "default",
             insets       : new Insets(0, 0, 0, 0),
             padding      : new Insets(0, 0, 0, 0),
@@ -266,6 +287,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             overflow     : "hidden",
             zIndex       : 0,
             displayed    : true,
+            ...(subclassDefaults ?? {}),
         } as TOptions;
 
         // Explicit state — starts empty. Only values the caller passed or that
@@ -277,6 +299,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // commonly forward this from `super({ tag: "..." })`.
         if (options?.tag !== undefined) {
             this._tag = options.tag;
+        } else if (this._defaultOptions.tag !== undefined) {
+            this._tag = this._defaultOptions.tag;
         }
 
         // Dispatch the caller-supplied options through virtual `applyOptions`.
@@ -330,7 +354,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.transition      !== undefined) this.setTransition(opts.transition);
         if (opts.willChange      !== undefined) this.setWillChange(opts.willChange);
         if (opts.opacity         !== undefined) this.setOpacity(opts.opacity);
-        if (opts.position        !== undefined) this.setPosition(opts.position);
         if (opts.overflow        !== undefined) this.setOverflow(opts.overflow);
         if (opts.pointerEvents   !== undefined) this.setPointerEvents(opts.pointerEvents);
         if (opts.touchAction     !== undefined) this.setTouchAction(opts.touchAction);
@@ -2123,26 +2146,38 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Returns the CSS position mode for this component.
      *
-     * @returns The current Position value (e.g. Position.ABSOLUTE).
+     * @returns The current Position value; defaults to `Position.ABSOLUTE`.
+     *
+     * @remarks Position is framework-internal — see [`setPosition`](/api/core/classes/Component#setposition).
+     * Application code never needs to read or set it.
      */
-    getPosition(): Position {
-        return (this._options.position ?? Position.ABSOLUTE) as Position;
+    protected getPosition(): Position {
+        return this._position;
     }
 
     /**
-     * Sets the CSS position mode and updates the component's CSS rule.
+     * Framework-internal CSS position setter. Application code should NOT
+     * call this — every framework component is positioned absolutely, and
+     * layout managers compute child coordinates against the parent's padding
+     * box on that assumption. See [ARCHITECTURE.md](../../../ARCHITECTURE.md)
+     * §Positioning for the rationale.
      *
-     * @param position - The CSS position mode to apply (e.g. Position.ABSOLUTE, Position.STATIC).
+     * Subclasses MAY call this with [`Position.FIXED`](/api/primitive/enums/Position#FIXED)
+     * when they are floating overlays anchored to the viewport
+     * ([`AnimatedDropdown`](/api/core/classes/AnimatedDropdown),
+     * [`Popover`](/api/core/classes/Popover), [`Notification`](/api/core/classes/Notification),
+     * [`Dialog`](/api/core/classes/Dialog), [`DialogBackdrop`](/api/core/classes/DialogBackdrop))
+     * or with [`Position.STATIC`](/api/primitive/enums/Position#STATIC) when
+     * the element's HTML semantics require in-flow rendering
+     * ([`Legend`](/api/component/container/classes/Legend) needs the notch in
+     * the parent fieldset border).
+     *
+     * @param position - The CSS position mode to apply.
      *
      * @returns This component, for method chaining.
      */
-    setPosition(position: Position): this {
-        this._options.position = position;
-
-        let element = this.getElement();
-        if (!element) {
-            return this;
-        }
+    protected setPosition(position: Position): this {
+        this._position = position;
 
         this.setElementCSSRule("position", position);
 
@@ -2180,21 +2215,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Removes the explicit position override from the component's CSS rule.
-     * The framework default (`Position.ABSOLUTE`) reported by {@link getPosition}
-     * remains in effect.
+     * Restores the framework default (`Position.ABSOLUTE`). Framework-internal
+     * companion to [`setPosition`](/api/core/classes/Component#setposition) —
+     * application code does not need this.
      *
      * @returns This component, for method chaining.
      */
-    clearPosition(): this {
-        if (this._options.position === undefined) {
-            return this;
-        }
-
-        this._options.position = undefined;
-        this.setElementCSSRule("position", null);
-
-        return this;
+    protected clearPosition(): this {
+        return this.setPosition(Position.ABSOLUTE);
     }
 
     /**
@@ -2762,18 +2790,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.ensureCSSRule();
 
         // Read through the default-options fallback so class-level defaults
-        // (position, cursor, insets, padding, minSize/maxSize, overflow,
-        // displayed, zIndex) reach the DOM even when no setter has fired —
-        // `_options` is empty for any field the caller didn't supply.
+        // (cursor, insets, padding, minSize/maxSize, overflow, displayed,
+        // zIndex) reach the DOM even when no setter has fired — `_options`
+        // is empty for any field the caller didn't supply.
         const opts = { ...this._defaultOptions, ...this._options };
 
         if (this._boxSizing) {
             this._styleRule.set("boxSizing", this._boxSizing);
         }
 
-        if (opts.position) {
-            this._styleRule.set("position", opts.position);
-        }
+        this._styleRule.set("position", this._position);
 
         if (opts.visible != null) {
             this._styleRule.set("visibility", opts.visible ? "visible" : "hidden");

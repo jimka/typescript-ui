@@ -114,7 +114,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Panel<TO
      * @param options - Optional construction-time options.
      */
     constructor(options?: TOptions) {
-        super({ ..._defaultToolBarOptions, ...(options ?? {}) } as TOptions);
+        super(options, _defaultToolBarOptions as Partial<TOptions>);
 
         this.getAria().setRole("toolbar");
         this.getAria().setTabIndex(0);
@@ -146,9 +146,11 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Panel<TO
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.orientation !== undefined) this.setOrientation(options.orientation);
-        if (options.compact     !== undefined) this.setCompact(options.compact);
-        if (options.overflow    !== undefined) this.setOverflow(options.overflow);
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.orientation !== undefined) this.setOrientation(opts.orientation);
+        if (opts.compact     !== undefined) this.setCompact(opts.compact);
+        if (opts.overflow    !== undefined) this.setOverflow(opts.overflow);
 
         return this;
     }

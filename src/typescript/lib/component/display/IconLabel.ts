@@ -69,14 +69,7 @@ class IconLabel extends Component<IconLabelOptions> {
      * @param options - Optional configuration bag (gap override, common Component fields).
      */
     constructor(glyph: string, text: string, forId: string, options?: IconLabelOptions) {
-        // Merge defaults → consumer options. `gap`/`glyph`/`text`/`forId` are
-        // written pure to `_options` by `applyOptions` because their setters
-        // reach into children that don't exist yet — we dispatch them once the
-        // row is built below.
-        super({
-            ..._defaultIconLabelOptions,
-            ...(options ?? {}),
-        });
+        super(options, _defaultIconLabelOptions);
 
         // Per-instance layout manager seeded with the merged `_options.gap`
         // so a consumer override (or the default) flows into the HBox spacing.
@@ -118,10 +111,12 @@ class IconLabel extends Component<IconLabelOptions> {
     protected applyOptions(options: IconLabelOptions): this {
         super.applyOptions(options);
 
-        if (options.gap   !== undefined) this._options.gap   = options.gap;
-        if (options.glyph !== undefined) this._options.glyph = options.glyph;
-        if (options.text  !== undefined) this._options.text  = options.text;
-        if (options.forId !== undefined) this._options.forId = options.forId;
+        const opts = { ...this._defaultOptions, ...options } as IconLabelOptions;
+
+        if (opts.gap   !== undefined) this._options.gap   = opts.gap;
+        if (opts.glyph !== undefined) this._options.glyph = opts.glyph;
+        if (opts.text  !== undefined) this._options.text  = opts.text;
+        if (opts.forId !== undefined) this._options.forId = opts.forId;
 
         return this;
     }

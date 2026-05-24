@@ -26,8 +26,8 @@ export interface TextInputOptions extends InputOptions {
  */
 class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends Input<TOptions> {
 
-    constructor(options?: TOptions) {
-        super({ ...(options ?? {}), tag: options?.tag ?? "input" } as TOptions);
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(options, subclassDefaults);
     }
 
     /**
@@ -40,32 +40,34 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.text !== undefined) {
-            this.setText(options.text);
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.text !== undefined) {
+            this.setText(opts.text);
         }
 
-        if (options.textAlign !== undefined) {
-            this.setTextAlign(options.textAlign);
+        if (opts.textAlign !== undefined) {
+            this.setTextAlign(opts.textAlign);
         }
 
-        if (options.placeholder !== undefined) {
-            this.setPlaceholder(options.placeholder);
+        if (opts.placeholder !== undefined) {
+            this.setPlaceholder(opts.placeholder);
         }
 
-        if (options.readOnly !== undefined) {
-            this.setReadOnly(options.readOnly);
+        if (opts.readOnly !== undefined) {
+            this.setReadOnly(opts.readOnly);
         }
 
-        if (options.maxLength !== undefined) {
-            this.setMaxLength(options.maxLength);
+        if (opts.maxLength !== undefined) {
+            this.setMaxLength(opts.maxLength);
         }
 
-        if (options.inputMode !== undefined) {
-            this.setInputMode(options.inputMode);
+        if (opts.inputMode !== undefined) {
+            this.setInputMode(opts.inputMode);
         }
 
-        if (options.autoComplete !== undefined) {
-            this.setAutoComplete(options.autoComplete);
+        if (opts.autoComplete !== undefined) {
+            this.setAutoComplete(opts.autoComplete);
         }
 
         return this;

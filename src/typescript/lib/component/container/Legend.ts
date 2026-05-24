@@ -22,15 +22,18 @@ export interface LegendOptions extends TextOptions {
 class Legend extends Text<LegendOptions> {
 
     constructor(options?: LegendOptions) {
-        // `position` and `tag` are structural — the legend only renders inside
-        // its fieldset's border when positioned statically, and the element
-        // type is by definition `<legend>`. Both go after the consumer spread
-        // so they can't be overridden.
+        // `tag` is structural — the element type is by definition `<legend>`.
         super(undefined, {
             ...(options ?? {}),
-            tag:      "legend",
-            position: Position.STATIC,
+            tag: "legend",
         });
+
+        // `<legend>` only renders inside its fieldset's notch when positioned
+        // statically — the framework's "every component is absolute" rule
+        // would float the legend out of the border. Documented HTML-semantics
+        // exception alongside `FIXED` floating overlays. See
+        // ARCHITECTURE.md §Positioning.
+        this.setPosition(Position.STATIC);
     }
 }
 

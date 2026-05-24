@@ -2,7 +2,6 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { CSS } from "~/core/CSS.js";
-import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
 
 CSS.ensureKeyframes(
@@ -54,12 +53,10 @@ class ProgressBar extends Component {
         this.setBorderRadius("var(--ts-ui-progress-track-radius, 4px)");
 
         this._track = new Component();
-        this._track.setPosition(Position.ABSOLUTE);
         this._track.setOverflow("hidden");
         this._track.setBorderRadius("var(--ts-ui-progress-track-radius, 4px)");
 
         this._fill = new Component();
-        this._fill.setPosition(Position.ABSOLUTE);
         this._fill.setBackgroundColor("var(--ts-ui-progress-fill-bg, rgb(30, 100, 200))");
 
         this._track.addComponent(this._fill);
@@ -88,12 +85,14 @@ class ProgressBar extends Component {
     protected applyOptions(options: ProgressBarOptions): this {
         super.applyOptions(options);
 
-        if (options.indeterminate !== undefined) {
-            this.setIndeterminate(options.indeterminate);
+        const opts = { ...this._defaultOptions, ...options } as ProgressBarOptions;
+
+        if (opts.indeterminate !== undefined) {
+            this.setIndeterminate(opts.indeterminate);
         }
 
-        if (options.value !== undefined) {
-            this.setValue(options.value);
+        if (opts.value !== undefined) {
+            this.setValue(opts.value);
         }
 
         return this;
