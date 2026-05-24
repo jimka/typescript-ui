@@ -11,12 +11,18 @@ import { callable } from "~/core/Callable.js";
 /**
  * Controls how typed input is matched against suggestion strings.
  *
- * - `'contains'` — matches anywhere in the string (default).
- * - `'startsWith'` — matches only from the beginning of the string.
+ * - `'contains'`                — substring match, case-insensitive (default).
+ * - `'startsWith'`              — prefix match, case-insensitive.
+ * - `'containsCaseSensitive'`   — substring match, case-sensitive.
+ * - `'startsWithCaseSensitive'` — prefix match, case-sensitive.
  *
  * @category Components
  */
-export type AutoCompleteMatchMode = 'contains' | 'startsWith';
+export type AutoCompleteMatchMode =
+    | 'contains'
+    | 'startsWith'
+    | 'containsCaseSensitive'
+    | 'startsWithCaseSensitive';
 
 /**
  * Construction-time options for {@link AutoCompleteField}.
@@ -38,7 +44,7 @@ export interface AutoCompleteFieldOptions extends AbstractInputOptions {
     maxSuggestions? : number;
     /** Placeholder text shown in the input when empty. */
     placeholder?    : string;
-    /** How the typed query is matched against suggestions. Default: `'contains'`. */
+    /** How the typed query is matched against suggestions. Default: `'contains'` (case-insensitive). */
     matchMode?      : AutoCompleteMatchMode;
 }
 
@@ -303,9 +309,11 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     }
 
     /**
-     * Sets how typed input is matched against suggestion strings.
+     * Sets how typed input is matched against suggestion strings. The default
+     * `'contains'` matches anywhere, case-insensitive. The `*CaseSensitive`
+     * variants opt in to case-sensitive matching.
      *
-     * @param mode - `'contains'` to match anywhere; `'startsWith'` to match from the beginning only.
+     * @param mode - One of `'contains'`, `'startsWith'`, `'containsCaseSensitive'`, `'startsWithCaseSensitive'`.
      */
     setMatchMode(mode: AutoCompleteMatchMode): this {
         this._options.matchMode = mode;
@@ -439,19 +447,25 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     }
 
     /**
-     * Returns true when `candidate` matches `lower` according to the current `matchMode`.
+     * Returns true when `candidate` matches `query` according to the current
+     * `matchMode`. Handles both axes: case-sensitivity via the `*CaseSensitive`
+     * variants and position via the `startsWith*` variants.
      *
-     * Both strings must already be lowercased by the caller.
-     *
-     * @param candidate - The lowercased suggestion string to test.
-     * @param lower - The lowercased query string.
+     * @param candidate - The raw suggestion string to test.
+     * @param query - The raw query string.
      */
-    private matches(candidate: string, lower: string): boolean {
-        if ((this._options.matchMode ?? 'contains') === 'startsWith') {
-            return candidate.startsWith(lower);
-        }
+    private matches(candidate: string, query: string): boolean {
+        const mode = this._options.matchMode ?? 'contains';
 
-        return candidate.includes(lower);
+        const caseSensitive = mode === 'containsCaseSensitive'
+                           || mode === 'startsWithCaseSensitive';
+        const startsWith    = mode === 'startsWith'
+                           || mode === 'startsWithCaseSensitive';
+
+        const haystack = caseSensitive ? candidate : candidate.toLowerCase();
+        const needle   = caseSensitive ? query     : query.toLowerCase();
+
+        return startsWith ? haystack.startsWith(needle) : haystack.includes(needle);
     }
 
     /**
@@ -470,9 +484,8 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
         const displayField   = this._options.displayField;
 
         if (suggestions !== undefined) {
-            const lower    = query.toLowerCase();
             const filtered = suggestions
-                .filter(s => this.matches(s.toLowerCase(), lower))
+                .filter(s => this.matches(s, query))
                 .slice(0, maxSuggestions);
 
             if (query === this.getValue()) {
@@ -483,12 +496,18 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
         }
 
         if (store !== undefined && displayField !== undefined) {
+            const caseSensitive = matchMode === 'containsCaseSensitive'
+                               || matchMode === 'startsWithCaseSensitive';
+            const filterType    = (matchMode === 'startsWith' || matchMode === 'startsWithCaseSensitive')
+                                ? 'startsWith'
+                                : 'contains';
+
             store.clearFilter();
             store.filterBy({
-                type: matchMode === 'startsWith' ? 'startsWith' : 'contains',
+                type: filterType,
                 field: displayField,
                 value: query,
-                caseSensitive: false,
+                caseSensitive,
             });
 
             const results = store.getRecords()

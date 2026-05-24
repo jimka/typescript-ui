@@ -514,12 +514,15 @@ class MiscPanel extends Panel {
         });
         leftColumn.addComponent(buttonNotificationStack);
 
+        // Mixed-case fruits so the *CaseSensitive match modes produce a
+        // visibly-different result set than the default case-insensitive ones.
         const fruits = [
-            "Apple", "Apricot", "Avocado", "Banana", "Blackberry", "Blueberry",
-            "Cherry", "Clementine", "Coconut", "Date", "Fig", "Grape", "Grapefruit",
-            "Guava", "Kiwi", "Lemon", "Lime", "Lychee", "Mango", "Melon",
-            "Nectarine", "Orange", "Papaya", "Peach", "Pear", "Pineapple",
-            "Plum", "Pomegranate", "Raspberry", "Strawberry", "Tangerine", "Watermelon",
+            "Apple", "apricot", "Avocado", "Banana", "BANANA", "Blackberry",
+            "blueberry", "Cherry", "Clementine", "Coconut", "Date", "Fig",
+            "Grape", "Grapefruit", "Guava", "Kiwi", "Lemon", "Lime", "Lychee",
+            "Mango", "Melon", "Nectarine", "Orange", "Papaya", "Peach", "Pear",
+            "Pineapple", "Plum", "Pomegranate", "Raspberry", "Strawberry",
+            "Tangerine", "Watermelon",
         ];
 
         const autoCompleteField = new AutoCompleteField({
@@ -534,22 +537,36 @@ class MiscPanel extends Panel {
             selectedText.setText("Selected: " + value);
         });
 
-        const radioContains    = new RadioButton("Contains");
-        const radioStartsWith  = new RadioButton("Starts with");
+        const radioContains      = new RadioButton("Contains");
+        const radioStartsWith    = new RadioButton("Starts with");
+        const radioContainsCS    = new RadioButton("Contains (CS)");
+        const radioStartsWithCS  = new RadioButton("Starts with (CS)");
         radioContains.setSelected(true);
 
         const modeGroup = new ButtonGroup();
         modeGroup.addButton(radioContains);
         modeGroup.addButton(radioStartsWith);
+        modeGroup.addButton(radioContainsCS);
+        modeGroup.addButton(radioStartsWithCS);
 
         modeGroup.addSelectionListener((button) => {
-            autoCompleteField.setMatchMode(button === radioContains ? 'contains' : 'startsWith');
+            if (button === radioContains) {
+                autoCompleteField.setMatchMode('contains');
+            } else if (button === radioStartsWith) {
+                autoCompleteField.setMatchMode('startsWith');
+            } else if (button === radioContainsCS) {
+                autoCompleteField.setMatchMode('containsCaseSensitive');
+            } else {
+                autoCompleteField.setMatchMode('startsWithCaseSensitive');
+            }
         });
 
         const modeRow = new Component({ layoutManager: new HBox() })
             .addComponent(new Text("Match mode:"))
             .addComponent(radioContains)
-            .addComponent(radioStartsWith);
+            .addComponent(radioStartsWith)
+            .addComponent(radioContainsCS)
+            .addComponent(radioStartsWithCS);
 
         const autoCompleteRow = new Component();
         autoCompleteRow.setLayoutManager(new HBox());
