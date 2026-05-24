@@ -46,7 +46,7 @@ See [`AutoCompleteFieldConfig`](/api/component/input/type-aliases/AutoCompleteFi
 | `debounceMs` | `200` | Debounce on each keystroke. |
 | `maxSuggestions` | `10` | Cap on suggestions shown at once. |
 | `placeholder` | — | Empty-state placeholder text. |
-| `matchMode` | `'contains'` | How the typed query matches — `'contains'` or `'startsWith'` ([`AutoCompleteMatchMode`](/api/component/input/type-aliases/AutoCompleteMatchMode)). |
+| `matchMode` | `'contains'` | How the typed query matches — one of `'contains'`, `'startsWith'`, `'containsCaseSensitive'`, `'startsWithCaseSensitive'` ([`AutoCompleteMatchMode`](/api/component/input/type-aliases/AutoCompleteMatchMode)). The default is case-insensitive; the `*CaseSensitive` variants opt in to case-sensitive matching. |
 
 ## Listeners
 
