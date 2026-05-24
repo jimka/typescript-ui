@@ -30,7 +30,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
     // explanation.
     private declare _selectedStyleRule?: StyleRule;
     private get selectedStyleRule(): StyleRule {
-        return this._selectedStyleRule ??= this.createStyleRule(".selected");
+        return this._selectedStyleRule ??= this.createStyleRule(".selected:not(:hover)");
     }
 
     constructor(text: string, options?: ToggleButtonOptions) {
