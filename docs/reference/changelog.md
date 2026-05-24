@@ -6,6 +6,12 @@ Release history. For breaking-change details by version, see [Migration](/refere
 
 The package is at version `0.0.0` — pre-release, not yet published. Until a `0.x` or `1.0.0` is tagged, anything here may change without a migration note. Highlights below describe work-in-progress capabilities of the development snapshot, not stable contracts.
 
+**Modal glyph theming** (additive theme tokens, two internal call-site changes):
+
+- **Dialog confirm / cancel buttons tint their glyph by result.** [`Dialog.confirm`](/api/core/classes/Dialog#confirm) emits `circle-check` / `xmark` glyphs that previously rendered in the button's `currentColor` — semantically indistinguishable. `DialogButtonRow` now reads the just-constructed button's glyph via `Button.getGlyph()` and applies `setForegroundColor` driven off the button's `result` (`'confirm'` → green, `'cancel'` → red, `'close'` keeps `currentColor`). New `theme.dialog.confirm` / `theme.dialog.cancel` token blocks surface as `--ts-ui-dialog-confirm-color` / `--ts-ui-dialog-cancel-color`, with light- and dark-mode defaults aligned to the existing notification success / error border accents.
+- **Notification detail dialogs tint the title-bar glyph to match.** [`Notification.openDetail`](/api/core/classes/Notification#opendetail) already tints the dialog title bar's background and title text with `--ts-ui-notification-${type}-border`; the leading badge glyph now propagates the same accent via `DialogTitleBar.getGlyph().setForegroundColor`, so an `error` detail dialog no longer renders a monochrome icon inside a red header.
+- **Backwards compatibility.** External `Theme` objects must add the two new `dialog.confirm` / `dialog.cancel` string fields. Built-in [`DefaultTheme`](/api/core/variables/DefaultTheme) and [`DarkTheme`](/api/core/variables/DarkTheme) consumers are unaffected.
+
 **UI component bug bash** (bug fixes, two additive Util functions, one additive HeaderCell setter):
 
 - **Accordion single-open enforcement animates instead of snapping.** [`Accordion.setSingleOpen(true)`](/api/layout/classes/Accordion#setsingleopen) now primes each auto-closing wrapper before flipping its open flag so the container `height` transition installs and the sections close over `animationDuration` like every other close path.
