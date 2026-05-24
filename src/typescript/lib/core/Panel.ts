@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component";
 import { Insets } from "~/primitive/Insets";
 import { LayoutManager } from "~/layout/LayoutManager.js";
+import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -14,9 +15,13 @@ import { callable } from "~/core/Callable.js";
  * - `"y"`    — vertical scrollbar on overflow; horizontal overflow clips.
  * - `"both"` — both scrollbars are always shown (`overflow: scroll`).
  *
- * @remarks For every value except `"none"` the panel also sets
- * `scrollbar-gutter: stable` so an auto-appearing scrollbar does not reflow
- * its children. Browser support: Chromium 94+, Firefox 97+, Safari 18.2+.
+ * @remarks For every value except `"none"` the panel measures the native
+ * scrollbar gutter after each `doLayout` pass and subtracts it from
+ * `getInnerSize` when a scrollbar is actually visible, so layout managers
+ * naturally lay out children within the post-gutter content area instead of
+ * letting them spill behind the scrollbar (which the browser would otherwise
+ * resolve by adding the opposite-axis scrollbar — the classic V→H cascade).
+ * A scrollbar transition triggers a one-frame re-layout via `scheduleLayout`.
  *
  * @category Core
  */
@@ -67,7 +72,13 @@ const _defaultPanelOptions: Partial<PanelOptions> = {
  */
 class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOptions> {
 
-    private _autoScroll: AutoScrollMode = "none";
+    // `declare` rather than initialiser to dodge the class-field super-cascade
+    // trap: a `= "none"` initialiser runs *after* super() returns, which
+    // overwrites whatever `setAutoScroll(opts.autoScroll)` had already
+    // written during the super-time cascade. `applyOptions` below always
+    // dispatches `setAutoScroll`, so the field gets seeded there.
+    declare private _autoScroll:      AutoScrollMode;
+    declare private _scrollbarGutter: { right: number; bottom: number };
 
     /**
      * Creates a panel with 4-pixel insets on all sides by default.
@@ -97,9 +108,18 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
 
         const opts = { ...this._defaultOptions, ...options } as TOptions;
 
-        if (opts.autoScroll !== undefined) {
-            this.setAutoScroll(opts.autoScroll);
-        }
+        // Seed the scrollbar gutter cache before `setAutoScroll` — the latter
+        // reads `_scrollbarGutter` to decide whether to clear it on a
+        // `"none"` transition, and the `declare`d field would otherwise be
+        // undefined at first dispatch.
+        this.setScrollbarGutter(0, 0);
+
+        // Always dispatch `setAutoScroll` — the `?? "none"` covers the
+        // no-option default. Routing through the setter (even for the
+        // default) keeps the `declare`d backing field initialised and
+        // dodges the class-field super-cascade trap that would bite a
+        // `= "none"` initialiser.
+        this.setAutoScroll(opts.autoScroll ?? "none");
 
         return this;
     }
@@ -107,9 +127,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
     /**
      * Selects the panel's native scroll behaviour. Translates `mode` to
      * per-axis `overflow` writes via [`Component.setOverflowX`](/api/core/classes/Component#setoverflowx) /
-     * [`Component.setOverflowY`](/api/core/classes/Component#setoverflowy) and sets `scrollbar-gutter: stable` for
-     * every non-`"none"` mode so an auto-appearing scrollbar does not reflow
-     * children.
+     * [`Component.setOverflowY`](/api/core/classes/Component#setoverflowy).
      *
      * @param mode - The {@link AutoScrollMode} to apply.
      *
@@ -117,6 +135,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
      *
      * @remarks Children render at their preferred size when `mode !== "none"`
      * — the panel no longer clips them to its allocated rect.
+     *
+     * Whenever a scrollbar becomes visible, `doLayout` measures the gutter
+     * and shrinks the panel's reported inner size by that amount so the next
+     * layout pass keeps children inside the visible content area (preventing
+     * the classic V→H cascade where a right-anchored child gets exposed
+     * behind a freshly-shown V scrollbar and triggers an H one).
      *
      * Do not combine with a [`Scrollbar`](/api/component/container/classes/Scrollbar) overlay or a
      * component (e.g. [`Table`](/api/component/table/classes/Table)) that already manages its own scroll
@@ -144,7 +168,12 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
                 break;
         }
 
-        this.setElementCSSRule("scrollbarGutter", mode === "none" ? null : "stable");
+        // Mode switched — drop any cached gutter from the previous mode so
+        // the next `doLayout` re-measures against the new overflow setting.
+        // ("none" never has a gutter; the other modes recompute below.)
+        if (mode === "none" && (this._scrollbarGutter.right !== 0 || this._scrollbarGutter.bottom !== 0)) {
+            this.setScrollbarGutter(0, 0);
+        }
 
         // Forward the per-axis "let children overflow the host" decision to
         // the layout manager. Each manager honours these flags from its own
@@ -186,12 +215,127 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
 
     /**
      * Resets the panel's scroll mode to `"none"`, restoring the inherited
-     * `overflow: hidden` clipping behaviour and clearing `scrollbar-gutter`.
+     * `overflow: hidden` clipping behaviour.
      *
      * @returns This panel, for method chaining.
      */
     clearAutoScroll(): this {
         return this.setAutoScroll("none");
+    }
+
+    /**
+     * Returns the panel's usable inner size with the currently-reserved
+     * scrollbar gutter subtracted from each axis. Layout managers read this
+     * to lay out children inside the post-gutter content area when a native
+     * scrollbar is visible, instead of letting them fill the full rect and
+     * spill behind (or be clipped by) the scrollbar.
+     *
+     * @returns The inner size minus the active scrollbar gutter, or null
+     * when the element is not yet in the DOM (matches the base
+     * `Component.getInnerSize` contract).
+     */
+    getInnerSize(): { width: number, height: number } | null {
+        const size = super.getInnerSize();
+        if (!size) {
+            return null;
+        }
+
+        return {
+            width:  size.width  - this._scrollbarGutter.right,
+            height: size.height - this._scrollbarGutter.bottom,
+        };
+    }
+
+    /**
+     * Lays out children, then measures the post-layout scrollbar visibility
+     * and, when it has changed since the last pass, caches the new gutter
+     * and schedules a follow-up layout so children land inside the new
+     * post-gutter content area. The follow-up is the "one-frame reflow"
+     * documented on {@link AutoScrollMode}.
+     *
+     * @returns This panel, for method chaining.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        // Flush queued inline-style writes (own size in particular) before
+        // reading scrollbar geometry: `LayoutManager.commitBounds` runs us
+        // with `autoCommitStyle === false`, so the new width/height
+        // `setSize` queued during the parent's layout pass haven't reached
+        // the DOM yet — `scrollHeight` / `clientHeight` would otherwise
+        // report the previous frame's dimensions and `measureScrollbarGutter`
+        // wouldn't see the scrollbar transition.
+        this.commitElementStyle();
+        this.measureScrollbarGutter();
+
+        return this;
+    }
+
+    /**
+     * Caches the new gutter for each axis. Internal — driven by
+     * `measureScrollbarGutter` after a layout pass; consumers can't
+     * configure this (it's derived from runtime DOM measurement, not a
+     * declarative input), so it stays off the `PanelOptions` bag.
+     *
+     * @param right - Reserved gutter on the right edge in pixels.
+     * @param bottom - Reserved gutter on the bottom edge in pixels.
+     */
+    private setScrollbarGutter(right: number, bottom: number): void {
+        this._scrollbarGutter = { right, bottom };
+    }
+
+    /**
+     * Reads the post-layout scrollbar visibility from the live DOM and
+     * updates the cached gutter to match. When the gutter changed,
+     * schedules a follow-up layout pass so children re-flow inside the new
+     * inner area. No-op for `mode === "none"` and on browsers whose
+     * scrollbars don't reserve space (e.g. macOS overlay scrollbars, where
+     * the native width measures as 0 — the cascade can't happen there).
+     */
+    private measureScrollbarGutter(): void {
+        if (this._autoScroll === "none") {
+            return;
+        }
+
+        const el = this.getElement();
+        if (!el) {
+            return;
+        }
+
+        const trackW = Util.getScrollBarWidth();
+        if (trackW === 0) {
+            return;
+        }
+
+        // `"both"` forces both scrollbars on (`overflow: scroll` on both
+        // axes), so the gutter is always reserved on both sides. The
+        // single-axis modes only show their one bar, and `"auto"` shows
+        // each independently; reading `scrollHeight > clientHeight` (and
+        // its X-axis twin) detects whichever bars the browser has chosen
+        // to render this frame, which matches the visible-only criterion.
+        let vReserved: boolean;
+        let hReserved: boolean;
+
+        if (this._autoScroll === "both") {
+            vReserved = true;
+            hReserved = true;
+        } else {
+            const vAxisEnabled = this._autoScroll === "y" || this._autoScroll === "auto";
+            const hAxisEnabled = this._autoScroll === "x" || this._autoScroll === "auto";
+
+            vReserved = vAxisEnabled && el.scrollHeight > el.clientHeight;
+            hReserved = hAxisEnabled && el.scrollWidth  > el.clientWidth;
+        }
+
+        const newRight  = vReserved ? trackW : 0;
+        const newBottom = hReserved ? trackW : 0;
+
+        if (newRight === this._scrollbarGutter.right && newBottom === this._scrollbarGutter.bottom) {
+            return;
+        }
+
+        this.setScrollbarGutter(newRight, newBottom);
+        this.scheduleLayout();
     }
 }
 
