@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "~/core/Component.js";
+import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Event } from "~/core/Event.js";
-import { Bindable } from "~/core/Bindable.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { TextField } from "~/component/input/TextField.js";
@@ -24,7 +23,7 @@ export type AutoCompleteMatchMode = 'contains' | 'startsWith';
  *
  * @category Components
  */
-export interface AutoCompleteFieldOptions extends ComponentOptions {
+export interface AutoCompleteFieldOptions extends AbstractInputOptions {
     /** Static list of suggestion strings. */
     suggestions?    : string[];
     /** Data store used when suggestions come from a remote/in-memory store. */
@@ -67,14 +66,12 @@ export type AutoCompleteFieldConfig = AutoCompleteFieldOptions;
  *
  * @category Components
  */
-class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements Bindable<string> {
+class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> {
 
-    private _textField         : TextField;
-    private _dropdown          : AutoCompleteDropdown;
-    private _debounceTimer     : ReturnType<typeof setTimeout> | null = null;
-    private _currentValue      : string                               = "";
-    private _bindingListeners  : Array<() => void>                    = [];
-    private _selectListeners   : Array<(value: string) => void>       = [];
+    private _textField     : TextField;
+    private _dropdown      : AutoCompleteDropdown;
+    private _debounceTimer : ReturnType<typeof setTimeout> | null = null;
+    private _selectListeners: Array<(value: string) => void>      = [];
 
     /**
      * @param options - Optional construction-time options for suggestions, store, behaviour, and base Component styling.
@@ -106,9 +103,23 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
         Event.addListener(this._textField, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
         Event.addListener(this._textField, "focus",   () => this.onFocus());
         Event.addListener(this._textField, "blur",    () => this.onBlur());
+        // Bridge user-driven text changes from the inner TextField up into
+        // AbstractInput's change / binding listener fan-out so consumers
+        // attached via the inherited `addChangeListener` see every keystroke
+        // and every suggestion-pick (suggestions hit setValue, which writes
+        // through the TextField and re-fires its own change listeners).
+        this._textField.addChangeListener(value => this.notifyChange(value));
 
         if (options) {
             this.applyOptions(options);
+        }
+
+        if (this._options.enabled !== undefined) {
+            this.applyEnabled(this._options.enabled);
+        }
+
+        if (this._options.readOnly !== undefined) {
+            this.applyReadOnly(this._options.readOnly);
         }
     }
 
@@ -195,33 +206,41 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
     // ── Bindable<string> ────────────────────────────────────────────────────
 
     /**
-     * Sets the field value programmatically without firing binding or select listeners.
+     * Sets the field value programmatically without firing binding or select
+     * listeners. Forwards directly to the inner TextField so the inherited
+     * `notifyChange` does not double-fire on this path; user-driven changes
+     * fire through the constructor's `_textField.addChangeListener` bridge.
      *
      * @param value - The string value to display.
      */
     setValue(value: string): this {
-        this._currentValue = value;
         this._textField.setValue(value);
 
         return this;
     }
 
     /**
-     * Returns the current text value of the field.
+     * Returns the current text value of the field, read directly from the
+     * inner TextField.
      *
      * @returns The current string value.
      */
     getValue(): string {
-        return this._currentValue;
+        return this._textField.getValue();
     }
 
     /**
-     * Registers a listener that is called whenever the field value changes due to user input.
-     *
-     * @param fn - Callback invoked after each value change.
+     * Reflects the enabled flag by forwarding to the inner TextField.
      */
-    addBindingListener(fn: () => void): void {
-        this._bindingListeners.push(fn);
+    protected applyEnabled(value: boolean): void {
+        this._textField.setEnabled(value);
+    }
+
+    /**
+     * Reflects the read-only flag by forwarding to the inner TextField.
+     */
+    protected applyReadOnly(value: boolean): void {
+        this._textField.setReadOnly(value);
     }
 
     // ── Configuration ────────────────────────────────────────────────────────
@@ -322,30 +341,27 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
     /**
      * Handles the `input` event on the internal text field.
      *
-     * Notifies binding listeners, then schedules a debounced query if the
-     * typed value meets the `minChars` threshold.
+     * Schedules a debounced query when the typed value meets the `minChars`
+     * threshold. AbstractInput's change / binding listeners fire through
+     * the constructor's `_textField.addChangeListener` bridge, so this
+     * handler doesn't fan out to them itself.
      */
     private onInput(): void {
-        this._currentValue = this._textField.getValue();
-
-        for (const fn of this._bindingListeners) {
-            fn();
-        }
-
         if (this._debounceTimer !== null) {
             clearTimeout(this._debounceTimer);
         }
 
         const minChars = this._options.minChars ?? 1;
+        const current  = this.getValue();
 
-        if (this._currentValue.length < minChars) {
+        if (current.length < minChars) {
             this._dropdown.hide();
 
             return;
         }
 
         this._debounceTimer = setTimeout(
-            () => this.querySuggestions(this._currentValue),
+            () => this.querySuggestions(current),
             this._options.debounceMs ?? 200
         );
     }
@@ -361,7 +377,7 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
                 e.preventDefault();
 
                 if (!this._dropdown.isOpen()) {
-                    this.querySuggestions(this._currentValue);
+                    this.querySuggestions(this.getValue());
                 } else {
                     this._dropdown.highlightNext();
                     this.updateActiveDescendant();
@@ -459,7 +475,7 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
                 .filter(s => this.matches(s.toLowerCase(), lower))
                 .slice(0, maxSuggestions);
 
-            if (query === this._currentValue) {
+            if (query === this.getValue()) {
                 this.showSuggestions(filtered);
             }
 
@@ -479,7 +495,7 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
                 .map(r => String(r.get(displayField)))
                 .slice(0, maxSuggestions);
 
-            if (query === this._currentValue) {
+            if (query === this.getValue()) {
                 this.showSuggestions(results);
             }
         }
@@ -522,21 +538,18 @@ class AutoCompleteField extends Component<AutoCompleteFieldOptions> implements B
     /**
      * Called when the user selects a suggestion from the dropdown.
      *
-     * Updates the field value, notifies listeners, hides the dropdown, and
-     * returns focus to the text field.
+     * Updates the field value (which fires the inherited change listeners
+     * through the constructor's TextField bridge), notifies the dedicated
+     * select listeners, hides the dropdown, and returns focus to the text
+     * field.
      *
      * @param value - The selected suggestion string.
      */
     private onSuggestionSelected(value: string): void {
-        this._textField.setValue(value);
-        this._currentValue = value;
+        this.setValue(value);
 
         for (const fn of this._selectListeners) {
             fn(value);
-        }
-
-        for (const fn of this._bindingListeners) {
-            fn();
         }
 
         this._dropdown.hide();
