@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "~/core/Component.js";
+import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
+import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { TextField } from "~/component/input/TextField.js";
 import { SpinButton } from "~/component/input/SpinButton.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { Insets } from "~/primitive/Insets.js";
-import { Bindable } from "~/core/Bindable.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Util } from "~/core/Util.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -18,13 +18,12 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export interface NumberSpinnerOptions extends ComponentOptions {
+export interface NumberSpinnerOptions extends AbstractInputOptions {
     value?:     number;
     min?:       number;
     max?:       number;
     step?:      number;
     precision?: number | null;
-    enabled?:   boolean;
 }
 
 /**
@@ -56,15 +55,12 @@ const _defaultNumberSpinnerOptions: Partial<NumberSpinnerOptions> = {
  *
  * @category Components
  */
-class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<number> {
+class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
 
     private _input!  : TextField;
     private _upBtn!  : SpinButton;
     private _downBtn!: SpinButton;
     private _btnBox! : Component;
-
-    private _bindingListeners: Array<() => void>              = [];
-    private _changeListeners : Array<(value: number) => void> = [];
 
     /**
      * Constructs a new NumberSpinner with default value `0`, step `1`, and unbounded min/max.
@@ -122,6 +118,7 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
         if (this._options.precision !== undefined) this.setPrecision(this._options.precision);
         if (this._options.value     !== undefined) this.setValue(this._options.value);
         if (this._options.enabled   !== undefined) this.setEnabled(this._options.enabled);
+        if (this._options.readOnly  !== undefined) this.setReadOnly(this._options.readOnly);
     }
 
     /**
@@ -277,23 +274,13 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
     }
 
     /**
-     * Returns whether the spinner accepts user input.
+     * Reflects the enabled flag: toggles the inner input's native `disabled`
+     * attribute, suppresses pointer events on the spin buttons, and dims the
+     * whole control.
      *
-     * @returns `true` if enabled, `false` if disabled.
+     * @param enabled - The new enabled state.
      */
-    isEnabled(): boolean {
-        return this._options.enabled ?? true;
-    }
-
-    /**
-     * Enables or disables the spinner. When disabled the text input is read-only,
-     * the spin buttons stop responding to pointer events, and the whole control is dimmed.
-     *
-     * @param enabled - `true` to enable, `false` to disable.
-     */
-    setEnabled(enabled: boolean): this {
-        this._options.enabled = enabled;
-
+    protected applyEnabled(enabled: boolean): void {
         if (enabled) {
             this._input.setDisabledAttribute(false);
             this._upBtn.setPointerEvents("auto");
@@ -305,26 +292,17 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
             this._downBtn.setPointerEvents("none");
             this.setOpacity(0.5);
         }
-
-        return this;
     }
 
     /**
-     * Registers a listener invoked whenever the user changes the value (click, hold-repeat, arrow key, or blur).
+     * Forwards the read-only flag to the inner text input. The spin buttons
+     * intentionally stay live so a user can still adjust the value through
+     * them while typing is suppressed.
      *
-     * @param listener - Callback invoked with the new numeric value.
+     * @param value - The new read-only state.
      */
-    addChangeListener(listener: (value: number) => void): void {
-        this._changeListeners.push(listener);
-    }
-
-    /**
-     * Subscribes a callback invoked on every user-driven value change. Used by the {@link Bindable} interface.
-     *
-     * @param fn - The callback to invoke on each user-driven change.
-     */
-    addBindingListener(fn: () => void): void {
-        this._bindingListeners.push(fn);
+    protected applyReadOnly(value: boolean): void {
+        this._input.setReadOnly(value);
     }
 
     /**
@@ -348,13 +326,7 @@ class NumberSpinner extends Component<NumberSpinnerOptions> implements Bindable<
         this._input.setText(this.formatValue(next));
         this.getAria().setValueNow(next);
 
-        for (const fn of this._changeListeners) {
-            fn(next);
-        }
-
-        for (const fn of this._bindingListeners) {
-            fn();
-        }
+        this.notifyChange(next);
     }
 
     /**
