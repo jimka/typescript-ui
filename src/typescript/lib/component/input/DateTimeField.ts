@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "~/core/Component.js";
-import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
-import { Util } from "~/core/Util.js";
-import { Event } from "~/core/Event.js";
+import { AbstractPickerField, AbstractPickerFieldOptions } from "~/component/input/AbstractPickerField.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
-import { Bindable } from "~/core/Bindable.js";
-import { ThemeManager } from "~/core/Theme.js";
+import { BorderOptions } from "~/primitive/Border.js";
+import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
 import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown.js";
@@ -15,94 +12,15 @@ import { callable } from "~/core/Callable.js";
 
 Glyph.register(calendar);
 
-// Width of the picker glyph button in pixels. Matches the prior `display: flex`
-// + 24px caret column the framework used before the per-field doLayout
-// override; sized to the calendar glyph's intrinsic 16px box plus 4px padding
-// on each side so the icon centres without crowding the input edge.
-const PICKER_BUTTON_WIDTH_PX = 24;
-
 /**
  * Construction-time options for {@link DateTimeField}.
  *
  * @category Components
  */
-export interface DateTimeFieldOptions extends ComponentOptions {
-    value?:             Date | null;
-    enabled?:           boolean;
-    /** When false, the dropdown opens/closes instantly. Default: true. */
-    dropdownAnimated?:  boolean;
+export interface DateTimeFieldOptions extends AbstractPickerFieldOptions {
+    value?:       Date | null;
     /** When true, the field formats and the picker exposes seconds. Default: false. */
-    showSeconds?:       boolean;
-}
-
-/**
- * Internal Input subclass exposing typed setters for picker-specific attributes.
- */
-class PickerInput extends TextInput<TextInputOptions> {
-
-    constructor() {
-        super({ cursor: "text" });
-
-        Event.addListener(this, "input", () => this.syncTextFromDom());
-    }
-
-    /**
-     * Mirrors `TextField`'s sync hook: pulls the live DOM value into the
-     * inherited cached text on every keystroke so callers can read it through
-     * `getText()` instead of `element.value`.
-     */
-    private syncTextFromDom(): void {
-        const el = this.getElement();
-        this.setText(el?.value ?? "");
-    }
-}
-
-/**
- * Internal `<button>` Component used by {@link DateTimeField},
- * {@link DateField}, and {@link TimeField} as the glyph-bearing trigger to
- * the right of the input. Centers a single glyph child via a `doLayout`
- * override; no `display: flex` needed on the button element itself.
- */
-class PickerButton extends Component {
-    constructor() {
-        super({ tag: "button" });
-
-        this.setBorder({ style: BorderStyle.NONE, width: 0, color: "transparent" });
-        this.setBackgroundColor("transparent");
-        this.setCursor("pointer");
-        this.setPadding(new Insets(0, 4, 0, 4));
-    }
-
-    /**
-     * Centers the single glyph child within the button's inner rect at its
-     * preferred size; mirrors the same one-child centering pattern as
-     * `DateField`'s `PickerButton`.
-     */
-    doLayout(): this {
-        super.doLayout();
-
-        const inner = this.getInnerSize();
-        const child = this.getComponents()[0];
-        if (!inner || !child) {
-            return this;
-        }
-
-        const childSize = child.getPreferredSize();
-        if (!childSize) {
-            return this;
-        }
-
-        const insets = this.getInsets();
-        const x = insets.getLeft() + Math.max(0, (inner.width  - childSize.width)  / 2);
-        const y = insets.getTop()  + Math.max(0, (inner.height - childSize.height) / 2);
-
-        child.setX(x);
-        child.setY(y);
-        child.setWidth(childSize.width);
-        child.setHeight(childSize.height);
-
-        return this;
-    }
+    showSeconds?: boolean;
 }
 
 /**
@@ -127,34 +45,18 @@ const _defaultDateTimeFieldOptions: Partial<DateTimeFieldOptions> = {
  * selector. The dropdown fades in via the shared
  * [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown) lifecycle.
  *
- * Implements {@link Bindable} so it can participate in a
- * [`Binding`](/api/core/classes/Binding) directly.
+ * Inherits the [`Bindable`](/api/core/interfaces/Bindable) value contract,
+ * change/binding listeners, and enabled/read-only surface from
+ * [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField).
  *
  * @category Components
  */
-class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<Date | null> {
+class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, DateTimeFieldOptions> {
 
-    private _input:       PickerInput;
-    private _button:      PickerButton;
-    private _dropdown:    DateTimePickerDropdown | null = null;
-    private _value:       Date | null = null;
-    private _invalid:     boolean = false;
     private _showSeconds: boolean = false;
-    // The viewport listener is added and removed dynamically, so it needs a
-    // stable reference. The other listeners are registered once and never
-    // removed, so they use inline `() => this.handler()` delegates.
-    private readonly _onViewportPointerDown: (e: PointerEvent) => void;
 
     constructor(options?: DateTimeFieldOptions) {
         super(options, _defaultDateTimeFieldOptions);
-
-        this._input = new PickerInput();
-        this._input.setType("text");
-        this._input.setInputMode("none");
-        this._input.setAutoComplete("off");
-        this._input.setPadding(new Insets(0, 3, 0, 3));
-
-        this._button = new PickerButton();
 
         // Glyph is placed by `PickerButton.doLayout` (framework-positioned,
         // centered within the button's inner rect). `setPointerEvents("none")`
@@ -163,42 +65,31 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
         glyph.setPointerEvents("none");
         this._button.addComponent(glyph);
 
-        this.addComponent(this._input);
-        this.addComponent(this._button);
-
-        this.updateHeight();
-        ThemeManager.onThemeChange(() => this.updateHeight());
-
-        Event.addListener(this._input,  "input",       ()                 => this.onInput());
-        Event.addListener(this._input,  "blur",        ()                 => this.onBlur());
-        Event.addListener(this._input,  "keydown",     (e: KeyboardEvent) => this.onKeyDown(e));
-        Event.addListener(this._button, "click",       ()                 => this.onButtonClick());
-        Event.addListener(this._button, "pointerdown", (e: PointerEvent)  => this.onButtonPointerDown(e));
-
-        this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
-
-        // Dispatch late-built fields from `_options` (set by the super-time
-        // cascade through `applyOptions`). No second `applyOptions(options)`
-        // re-call — the cascade already merged `_defaultOptions` + `options`.
-        const opts = this._options;
-
-        if (opts.showSeconds !== undefined) {
-            this._showSeconds = opts.showSeconds;
+        // Late-built state: `applyOptions` dispatched these through `_options`
+        // at super-time. Re-apply now that `_input` exists. `showSeconds` is
+        // read into the private field before `setValue` so the initial
+        // formatting picks up the right precision.
+        if (this._options.showSeconds !== undefined) {
+            this._showSeconds = this._options.showSeconds;
         }
-        if (opts.value !== undefined) {
-            this.setValue(opts.value);
+
+        if (this._options.value !== undefined) {
+            this.setValue(this._options.value);
         }
-        if (opts.enabled !== undefined) {
-            this._input.setDisabledAttribute(!opts.enabled);
+
+        if (this._options.enabled !== undefined) {
+            this.applyEnabled(this._options.enabled);
         }
-        if (opts.dropdownAnimated !== undefined) {
-            this.setDropdownAnimated(opts.dropdownAnimated);
+
+        if (this._options.readOnly !== undefined) {
+            this.applyReadOnly(this._options.readOnly);
         }
     }
 
     /**
-     * Applies a {@link DateTimeFieldOptions} bag, dispatching the initial value and
-     * enabled/disabled state after inherited Component fields.
+     * Applies a {@link DateTimeFieldOptions} bag. Late-built fields (value,
+     * showSeconds) are cached pure on `_options` here and dispatched from
+     * the constructor body once `_input` exists.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -207,274 +98,15 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
 
         const opts = { ...this._defaultOptions, ...options } as DateTimeFieldOptions;
 
-        // Must precede `setValue` so the initial formatting reflects the
-        // seconds setting.
         if (opts.showSeconds !== undefined) {
-            this._showSeconds = opts.showSeconds;
+            this._options.showSeconds = opts.showSeconds;
         }
 
         if (opts.value !== undefined) {
-            this.setValue(opts.value);
-        }
-
-        if (opts.enabled !== undefined) {
-            this._input.setDisabledAttribute(!opts.enabled);
-        }
-
-        if (opts.dropdownAnimated !== undefined) {
-            this.setDropdownAnimated(opts.dropdownAnimated);
+            this._options.value = opts.value;
         }
 
         return this;
-    }
-
-    /**
-     * Lays out the input flush left and the button flush right.
-     */
-    doLayout(): this {
-        super.doLayout();
-
-        const w = this.getWidth();
-        const h = this.getHeight();
-
-        this._input.setX(0);
-        this._input.setY(0);
-        this._input.setWidth(Math.max(0, w - PICKER_BUTTON_WIDTH_PX));
-        this._input.setHeight(h);
-
-        this._button.setX(w - PICKER_BUTTON_WIDTH_PX);
-        this._button.setY(0);
-        this._button.setWidth(PICKER_BUTTON_WIDTH_PX);
-        this._button.setHeight(h);
-
-        return this;
-    }
-
-    /**
-     * Recalculates preferred and maximum height from the native input's measured size.
-     */
-    private updateHeight(): void {
-        const h = Util.measureInputHeight();
-
-        this.setPreferredSize(200, h);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
-    }
-
-    /**
-     * Toggles the dropdown when the calendar button is clicked. Re-focuses the
-     * input first so the caret stays in the field while the picker is open.
-     */
-    private onButtonClick(): void {
-        if (this._dropdown?.isOpen()) {
-            this.closeDropdown();
-        } else {
-            this._input.focus();
-            this.openDropdown();
-        }
-    }
-
-    /**
-     * Suppresses focus loss on the input when the button is pointed at; the
-     * subsequent `click` handler does the open/close work.
-     *
-     * @param e - The pointerdown event.
-     */
-    private onButtonPointerDown(e: PointerEvent): void {
-        e.preventDefault();
-    }
-
-    /**
-     * Viewport-level pointerdown handler: closes the dropdown when the click
-     * lands outside both the field and the dropdown panel.
-     *
-     * @param e - The pointerdown event from the viewport.
-     */
-    private onViewportPointerDown(e: PointerEvent): void {
-        const target = e.target as Node;
-        const dropEl = this._dropdown?.getElement();
-        if (dropEl?.contains(target)) {
-            return;
-        }
-        // Ignore clicks landing inside a child popover spawned from within
-        // the picker panel (e.g. the ComboBox dropdowns in the time row).
-        if (this._dropdown?.isClickOnTopmostOverlay(target)) {
-            return;
-        }
-        if (this.getElement()?.contains(target)) {
-            return;
-        }
-        this.closeDropdown();
-    }
-
-    /**
-     * Syncs the internal Date value from the DOM element on every input event
-     * and toggles the invalid-border state based on whether the typed text
-     * parses as a date-time.
-     */
-    private onInput(): void {
-        const raw = this._input.getText();
-
-        if (!raw) {
-            this._value = null;
-            this.setInvalid(false);
-            return;
-        }
-
-        const d = new Date(raw);
-        if (!isNaN(d.getTime())) {
-            this._value = d;
-            this.setInvalid(false);
-        } else {
-            this.setInvalid(true);
-        }
-    }
-
-    /**
-     * Clears non-empty unparseable text when the input loses focus, so the
-     * field doesn't carry an invalid string across interactions.
-     */
-    private onBlur(): void {
-        if (!this._invalid) {
-            return;
-        }
-
-        this._input.setText("");
-        this._value = null;
-        this.setInvalid(false);
-    }
-
-    /**
-     * Toggles the red validation-error border on the field root.
-     *
-     * @param invalid - True to show the red border, false to restore the default.
-     */
-    private setInvalid(invalid: boolean): void {
-        if (this._invalid === invalid) {
-            return;
-        }
-        this._invalid = invalid;
-
-        if (invalid) {
-            this.setBorder({
-                style: BorderStyle.SOLID,
-                width: 1,
-                color: "var(--ts-ui-validation-error-border)",
-            });
-        } else {
-            this.setBorder(_defaultDateTimeFieldOptions.border!);
-        }
-    }
-
-    /**
-     * Keyboard shortcuts: ArrowDown opens the dropdown; Escape closes it.
-     *
-     * @param e - The keyboard event.
-     */
-    private onKeyDown(e: KeyboardEvent): void {
-        if (e.key === "ArrowDown") {
-            e.preventDefault();
-            this.openDropdown();
-        } else if (e.key === "Escape") {
-            this.closeDropdown();
-        }
-    }
-
-    /**
-     * Returns or lazily creates the picker dropdown instance.
-     *
-     * @returns The owned dropdown instance.
-     */
-    private ensureDropdown(): DateTimePickerDropdown {
-        if (!this._dropdown) {
-            this._dropdown = new DateTimePickerDropdown(
-                date => this.onDateTimeSelected(date),
-                { showSeconds: this._showSeconds },
-            );
-            const animated = this._options.dropdownAnimated;
-            if (animated !== undefined) {
-                this._dropdown.setAnimated(animated);
-            }
-        }
-
-        return this._dropdown;
-    }
-
-    /**
-     * Opens the dropdown anchored to the input.
-     */
-    private openDropdown(): void {
-        const dropdown = this.ensureDropdown();
-        if (dropdown.isOpen()) {
-            return;
-        }
-
-        dropdown.showAt(this._input.getElement(true), this._value);
-        Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
-    }
-
-    /**
-     * Closes the dropdown if open.
-     */
-    private closeDropdown(): void {
-        if (this._dropdown && this._dropdown.isOpen()) {
-            Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
-            this._dropdown.hideAnimated();
-        }
-    }
-
-    /**
-     * Called when the user picks a new date/time from the dropdown.
-     *
-     * @param date - The chosen Date.
-     */
-    private onDateTimeSelected(date: Date): void {
-        this.setValue(date);
-        Event.fireEvent(this._input, "input");
-    }
-
-    /**
-     * Registers a listener for the 'input' event, fired whenever the value changes.
-     *
-     * @param listener - The callback to invoke on each input event.
-     */
-    addActionListener(listener: Function): this {
-        Event.addListener(this._input, "input", listener);
-
-        return this;
-    }
-
-    /**
-     * Sets the field value from a Date and updates the DOM element.
-     *
-     * @param value - The Date to display, or null to clear the field.
-     */
-    setValue(value: Date | null): this {
-        this._value = value;
-        // Optional chain because `applyOptions` may dispatch this from inside
-        // `super()` before `_input` is constructed; the explicit
-        // `applyOptions(options)` call at the end of the constructor re-runs
-        // the assignment once `_input` exists.
-        this._input?.setText(value ? this.formatDateTime(value) : "");
-
-        return this;
-    }
-
-    /**
-     * Returns the currently selected Date, or null if the field is empty.
-     *
-     * @returns The selected Date, or null.
-     */
-    getValue(): Date | null {
-        return this._value;
-    }
-
-    /**
-     * Registers a listener that fires on each user-driven change.
-     *
-     * @param fn - The callback to invoke on change.
-     */
-    addBindingListener(fn: () => void): void {
-        this.addActionListener(fn);
     }
 
     /**
@@ -484,7 +116,7 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
      * @param date - The Date to format.
      * @returns The formatted date-time string.
      */
-    private formatDateTime(date: Date): string {
+    protected formatValue(date: Date): string {
         const y  = date.getFullYear();
         const mo = String(date.getMonth() + 1).padStart(2, "0");
         const d  = String(date.getDate()).padStart(2, "0");
@@ -493,6 +125,7 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
 
         if (this._showSeconds) {
             const s = String(date.getSeconds()).padStart(2, "0");
+
             return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
         }
 
@@ -500,36 +133,65 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
     }
 
     /**
-     * Returns the offset from the top of the field to its inner-text baseline.
+     * Parses the typed text into a Date. Returns null on parse failure.
      *
-     * @returns The baseline offset in pixels.
+     * @param raw - The raw text typed into the input.
+     * @returns The parsed Date, or null.
      */
-    getBaseline(): number | null {
-        return this.wrapInnerBaseline(this._input.getBaseline());
+    protected parseRaw(raw: string): Date | null {
+        const d = new Date(raw);
+
+        return isNaN(d.getTime()) ? null : d;
     }
 
     /**
-     * Enables or disables the fade animation on the dropdown.
-     *
-     * @param value - true to fade, false for instant open/close.
+     * Builds the date-time dropdown with the field's selection callback and
+     * the cached `showSeconds` flag.
      */
-    setDropdownAnimated(value: boolean): this {
-        this._options.dropdownAnimated = value;
-
-        if (this._dropdown) {
-            this._dropdown.setAnimated(value);
-        }
-
-        return this;
+    protected createDropdown(): DateTimePickerDropdown {
+        return new DateTimePickerDropdown(
+            date => this.onDropdownSelected(date),
+            { showSeconds: this._showSeconds },
+        );
     }
 
     /**
-     * Returns whether the dropdown fade is enabled.
+     * Anchors the date-time dropdown to the inner input element.
      *
-     * @returns true when the dropdown fades; false when it opens/closes instantly.
+     * @param dropdown - The dropdown instance to show.
+     * @param anchorEl - The element to anchor the panel to.
+     * @param value - The current field value (or null when empty).
      */
-    isDropdownAnimated(): boolean {
-        return this._options.dropdownAnimated ?? true;
+    protected showDropdown(dropdown: DateTimePickerDropdown, anchorEl: HTMLElement, value: Date | null): void {
+        dropdown.showAt(anchorEl, value);
+    }
+
+    /**
+     * Called when the user picks a date-time from the dropdown. Commits the
+     * value and re-fires `input` on the inner field so any DOM-event
+     * consumer still sees the change.
+     *
+     * @param date - The chosen Date.
+     */
+    protected onDropdownSelected(date: Date): void {
+        this.setValue(date);
+        Event.fireEvent(this._input, "input");
+    }
+
+    /**
+     * The DateTimeField's preferred width — chosen to fit a
+     * "YYYY-MM-DD HH:MM[:SS]" string plus the 24-px glyph button without
+     * overflow at the default font size.
+     */
+    protected getPreferredWidth(): number {
+        return 200;
+    }
+
+    /**
+     * The default border restored when the invalid-border state clears.
+     */
+    protected getDefaultBorder(): BorderOptions {
+        return _defaultDateTimeFieldOptions.border as BorderOptions;
     }
 }
 

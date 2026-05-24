@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Animation } from "~/core/Animation.js";
-import { Bindable } from "~/core/Bindable.js";
-import { Component, ComponentOptions } from "~/core/Component.js";
+import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
+import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
 import { Text } from "~/component/input/Text.js";
@@ -13,11 +13,9 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export interface ToggleOptions extends ComponentOptions {
-    value?:    boolean;
-    label?:    string | null;
-    enabled?:  boolean;
-    readOnly?: boolean;
+export interface ToggleOptions extends AbstractInputOptions {
+    value?: boolean;
+    label?: string | null;
 }
 
 /**
@@ -34,14 +32,11 @@ export interface ToggleOptions extends ComponentOptions {
  * @category Components
  */
 class Toggle<TOptions extends ToggleOptions = ToggleOptions>
-    extends Component<TOptions>
-    implements Bindable<boolean>
+    extends AbstractInput<boolean, TOptions>
 {
-    private _track:            Component;
-    private _thumb:            Component;
-    private _label:            Text | null = null;
-    private _changeListeners:  Array<(value: boolean) => void> = [];
-    private _bindingListeners: Array<() => void> = [];
+    private _track: Component;
+    private _thumb: Component;
+    private _label: Text | null = null;
 
     /**
      * Constructs a Toggle.
@@ -231,100 +226,6 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
     }
 
     /**
-     * Returns whether the toggle is enabled.
-     *
-     * @returns `true` when enabled, `false` when disabled.
-     */
-    isEnabled(): boolean {
-        return this._options.enabled ?? true;
-    }
-
-    /**
-     * Enables or disables the toggle. Disabled toggles ignore keyboard and
-     * pointer input and announce `aria-disabled="true"`.
-     *
-     * @param value - `true` to enable, `false` to disable.
-     *
-     * @returns This component, for method chaining.
-     */
-    setEnabled(value: boolean): this {
-        this._options.enabled = !!value;
-        this.applyEnabled(this._options.enabled);
-
-        return this;
-    }
-
-    /**
-     * Returns whether the toggle is read-only.
-     *
-     * @returns `true` when read-only.
-     */
-    isReadOnly(): boolean {
-        return this._options.readOnly ?? false;
-    }
-
-    /**
-     * Marks the toggle as read-only. Read-only toggles stay focusable and
-     * announce their state but ignore user-driven changes.
-     *
-     * @param value - `true` to mark read-only, `false` otherwise.
-     *
-     * @returns This component, for method chaining.
-     */
-    setReadOnly(value: boolean): this {
-        this._options.readOnly = !!value;
-        this.applyReadOnly(this._options.readOnly);
-
-        return this;
-    }
-
-    /**
-     * Registers a callback invoked on every user-driven and programmatic value
-     * change.
-     *
-     * @param fn - Callback invoked with the new value.
-     *
-     * @returns This component, for method chaining.
-     */
-    addChangeListener(fn: (value: boolean) => void): this {
-        this._changeListeners.push(fn);
-
-        return this;
-    }
-
-    /**
-     * Removes a previously registered change listener. The exact callback
-     * reference must match.
-     *
-     * @param fn - Callback to remove.
-     *
-     * @returns This component, for method chaining.
-     */
-    removeChangeListener(fn: (value: boolean) => void): this {
-        const idx = this._changeListeners.indexOf(fn);
-
-        if (idx >= 0) {
-            this._changeListeners.splice(idx, 1);
-        }
-
-        return this;
-    }
-
-    /**
-     * Subscribes a callback invoked on every user-driven value change. Used by
-     * the {@link Bindable} interface.
-     *
-     * @param fn - Callback to invoke on each change.
-     *
-     * @returns This component, for method chaining.
-     */
-    addBindingListener(fn: () => void): this {
-        this._bindingListeners.push(fn);
-
-        return this;
-    }
-
-    /**
      * Returns the offset from the top of the toggle to the inline label's text
      * baseline, or `null` when there is no label (HBox falls back to bottom-edge
      * alignment).
@@ -379,7 +280,7 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
     /**
      * Reflects the enabled flag in the ARIA tree and the tabindex.
      */
-    private applyEnabled(value: boolean): void {
+    protected applyEnabled(value: boolean): void {
         this.getAria().setDisabled(!value);
         this.getAria().setTabIndex(value ? 0 : -1);
         this._track.setCursor(value ? "pointer" : "default");
@@ -388,21 +289,8 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
     /**
      * Reflects the read-only flag in the ARIA tree.
      */
-    private applyReadOnly(value: boolean): void {
+    protected applyReadOnly(value: boolean): void {
         this.getAria().setReadOnly(value);
-    }
-
-    /**
-     * Fires change and binding listeners.
-     */
-    private notifyChange(value: boolean): void {
-        for (const fn of this._changeListeners) {
-            fn(value);
-        }
-
-        for (const fn of this._bindingListeners) {
-            fn();
-        }
     }
 
 }

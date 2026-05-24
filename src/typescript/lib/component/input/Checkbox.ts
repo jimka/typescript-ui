@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Animation } from "~/core/Animation.js";
-import { Bindable } from "~/core/Bindable.js";
-import { Component, ComponentOptions } from "~/core/Component.js";
+import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
+import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
@@ -20,13 +20,11 @@ Glyph.register(check);
  *
  * @category Components
  */
-export interface CheckboxOptions extends ComponentOptions {
+export interface CheckboxOptions extends AbstractInputOptions {
     selected?:      boolean;
     value?:         boolean;
     indeterminate?: boolean;
     label?:         string | null;
-    enabled?:       boolean;
-    readOnly?:      boolean;
 }
 
 /**
@@ -40,15 +38,12 @@ export interface CheckboxOptions extends ComponentOptions {
  * @category Components
  */
 class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
-    extends Component<TOptions>
-    implements Bindable<boolean>
+    extends AbstractInput<boolean, TOptions>
 {
-    private _box:              Component;
-    private _check:            Glyph;
-    private _dash:             Component;
-    private _label:            Text | null = null;
-    private _changeListeners:  Array<(value: boolean) => void> = [];
-    private _bindingListeners: Array<() => void> = [];
+    private _box:   Component;
+    private _check: Glyph;
+    private _dash:  Component;
+    private _label: Text | null = null;
 
     /**
      * Constructs a Checkbox.
@@ -240,7 +235,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
     /**
      * Returns the current value (alias for {@link isSelected}, satisfies
-     * {@link Bindable}).
+     * [`Bindable`](/api/core/interfaces/Bindable)).
      *
      * @returns `true` when checked.
      */
@@ -249,7 +244,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     }
 
     /**
-     * Sets the value (alias for {@link setSelected}, satisfies {@link Bindable}).
+     * Sets the value (alias for {@link setSelected}, satisfies [`Bindable`](/api/core/interfaces/Bindable)).
      *
      * @param value - The new boolean state.
      *
@@ -312,85 +307,6 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     }
 
     /**
-     * Returns whether the checkbox is enabled.
-     *
-     * @returns `true` when enabled.
-     */
-    isEnabled(): boolean {
-        return this._options.enabled ?? true;
-    }
-
-    /**
-     * Enables or disables the checkbox. Disabled checkboxes announce
-     * `aria-disabled="true"` and skip keyboard focus.
-     *
-     * @param value - `true` to enable, `false` to disable.
-     *
-     * @returns This component, for method chaining.
-     */
-    setEnabled(value: boolean): this {
-        this._options.enabled = !!value;
-        this.applyEnabled(this._options.enabled);
-
-        return this;
-    }
-
-    /**
-     * Returns whether the checkbox is read-only.
-     *
-     * @returns `true` when read-only.
-     */
-    isReadOnly(): boolean {
-        return this._options.readOnly ?? false;
-    }
-
-    /**
-     * Marks the checkbox as read-only. Read-only checkboxes stay focusable but
-     * ignore user input.
-     *
-     * @param value - `true` to mark read-only.
-     *
-     * @returns This component, for method chaining.
-     */
-    setReadOnly(value: boolean): this {
-        this._options.readOnly = !!value;
-        this.applyReadOnly(this._options.readOnly);
-
-        return this;
-    }
-
-    /**
-     * Registers a callback fired on every user-driven and programmatic value
-     * change.
-     *
-     * @param fn - Callback invoked with the new selected state.
-     *
-     * @returns This component, for method chaining.
-     */
-    addChangeListener(fn: (value: boolean) => void): this {
-        this._changeListeners.push(fn);
-
-        return this;
-    }
-
-    /**
-     * Removes a previously registered change listener.
-     *
-     * @param fn - The exact callback reference to remove.
-     *
-     * @returns This component, for method chaining.
-     */
-    removeChangeListener(fn: (value: boolean) => void): this {
-        const idx = this._changeListeners.indexOf(fn);
-
-        if (idx >= 0) {
-            this._changeListeners.splice(idx, 1);
-        }
-
-        return this;
-    }
-
-    /**
      * Back-compat alias kept for existing consumers (e.g. the [`BooleanEditor`](/api/component/table/cell/editor/classes/BooleanEditor)
      * cell editor) that listen for "click" on the underlying control. Wires
      * the listener through `Event.addListener` on this component.
@@ -401,20 +317,6 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
      */
     addActionListener(listener: Function): this {
         Event.addListener(this, "click", listener);
-
-        return this;
-    }
-
-    /**
-     * Subscribes a callback invoked on every user-driven value change. Used by
-     * the {@link Bindable} interface.
-     *
-     * @param fn - Callback fired on each change.
-     *
-     * @returns This component, for method chaining.
-     */
-    addBindingListener(fn: () => void): this {
-        this._bindingListeners.push(fn);
 
         return this;
     }
@@ -481,7 +383,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     /**
      * Reflects the enabled flag in the ARIA tree and the tabindex.
      */
-    private applyEnabled(value: boolean): void {
+    protected applyEnabled(value: boolean): void {
         this.getAria().setDisabled(!value);
         this.getAria().setTabIndex(value ? 0 : -1);
         this._box.setCursor(value ? "pointer" : "default");
@@ -490,21 +392,8 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     /**
      * Reflects the read-only flag in the ARIA tree.
      */
-    private applyReadOnly(value: boolean): void {
+    protected applyReadOnly(value: boolean): void {
         this.getAria().setReadOnly(value);
-    }
-
-    /**
-     * Fires change and binding listeners.
-     */
-    private notifyChange(value: boolean): void {
-        for (const fn of this._changeListeners) {
-            fn(value);
-        }
-
-        for (const fn of this._bindingListeners) {
-            fn();
-        }
     }
 
 }

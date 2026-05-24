@@ -1,39 +1,89 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Input, InputOptions } from "~/component/input/Input.js";
+import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
+import { ComponentOptions } from "~/core/Component.js";
+import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 
 /**
  * Construction-time options for {@link TextInput}.
  *
+ * @remarks `tag` is inherited from {@link ComponentOptions} but defaults to
+ * `"input"` for `TextInput` (subclasses such as {@link TextArea} pass
+ * `"textarea"`).
+ *
  * @category Components
  */
-export interface TextInputOptions extends InputOptions {
+export interface TextInputOptions extends AbstractInputOptions {
+    name?:         string;
+    type?:         string;
     text?:         string;
     textAlign?:    string | null;
     placeholder?:  string;
-    readOnly?:     boolean;
     maxLength?:    number;
     inputMode?:    string;
     autoComplete?: string;
 }
 
 /**
- * Base class for single-line and multi-line text input components.
- *
- * Tracks the current text value and text-align internally and exposes text selection support.
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each setter once with
+ * the final value, so any field the caller supplied wins.
  */
-class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends Input<TOptions> {
+const _defaultTextInputOptions: Partial<TextInputOptions> = {
+    tag:             "input",
+    backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+    borderRadius:    "var(--ts-ui-border-radius, 4px)",
+};
+
+/**
+ * Base class for `<input>`- and `<textarea>`-backed text controls. Owns
+ * the `<input>`-by-default `render()`, the type/name HTML attributes, the
+ * text value cache, placeholder / maxLength / inputMode / autoComplete /
+ * textAlign setters, the native `disabled` and `readonly` writes, and the
+ * `getValue` / `setValue` aliases that satisfy the {@link AbstractInput}
+ * value contract. Subclasses ({@link TextField}, {@link TextArea},
+ * {@link PasswordField}, [`PickerInput`](/api/component/input/classes/PickerInput))
+ * inherit the full surface.
+ *
+ * @category Components
+ */
+class TextInput<TOptions extends TextInputOptions = TextInputOptions>
+    extends AbstractInput<string, TOptions>
+{
 
     constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
-        super(options, subclassDefaults);
+        super(
+            options,
+            { ..._defaultTextInputOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
+
+        // Default sans-serif 12px font lives on the per-component CSS rule.
+        // Queueing through `setElementCSSRules` at construction defers the
+        // write until `applyStyle` flushes the buffer at render time, so we
+        // no longer need a class-level `applyStyle` override.
+        this.setElementCSSRules({
+            fontFamily: "var(--ts-ui-font-family, sans-serif)",
+            fontSize:   "var(--ts-ui-font-size, 12px)",
+        });
+
+        // Bridge the native `input` DOM event into AbstractInput's change /
+        // binding listener fan-out so `addChangeListener` fires on every
+        // keystroke for every text-derived control. Bindings already fire on
+        // the same DOM event in subclass-specific `onInput` hooks; this opens
+        // the second dispatch path for the unified listener API.
+        Event.addListener(this, "input", () => this.notifyChange(this.getValue()));
     }
 
     /**
-     * Applies a {@link TextInputOptions} bag, dispatching text, alignment, and
-     * native HTML attributes (placeholder, readOnly, maxLength) after
-     * inherited Input/Component fields.
+     * Applies a {@link TextInputOptions} bag, dispatching name, text,
+     * alignment, and native HTML attributes (placeholder, maxLength,
+     * inputMode, autoComplete) after inherited Component fields. The
+     * `enabled` / `readOnly` flags are routed through the typed setters
+     * because TextInput's `applyEnabled` / `applyReadOnly` are
+     * cascade-safe (the cache-then-write pattern survives the element not
+     * yet existing).
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -41,6 +91,10 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         super.applyOptions(options);
 
         const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.name !== undefined) {
+            this.setName(opts.name);
+        }
 
         if (opts.text !== undefined) {
             this.setText(opts.text);
@@ -58,6 +112,10 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
             this.setReadOnly(opts.readOnly);
         }
 
+        if (opts.enabled !== undefined) {
+            this.setEnabled(opts.enabled);
+        }
+
         if (opts.maxLength !== undefined) {
             this.setMaxLength(opts.maxLength);
         }
@@ -69,6 +127,63 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         if (opts.autoComplete !== undefined) {
             this.setAutoComplete(opts.autoComplete);
         }
+
+        return this;
+    }
+
+    /**
+     * Sets the HTML `type` attribute on the underlying input element.
+     *
+     * Typically called once at construction time by subclasses (e.g.
+     * `PasswordField` sets `"password"`, `PickerInput` sets `"text"`). Most
+     * consumers should not need this directly.
+     *
+     * @param value - The input type (e.g. "text", "password").
+     *
+     * @returns This component, for method chaining.
+     */
+    setType(value: string): this {
+        this._options.type = value;
+        this.setElementAttribute("type", value);
+
+        return this;
+    }
+
+    /**
+     * Returns the HTML `name` attribute value, or null if unset.
+     *
+     * @returns The name string, or null.
+     */
+    getName(): string | null {
+        return this._options.name ?? null;
+    }
+
+    /**
+     * Sets the HTML `name` attribute on the underlying input.
+     *
+     * @param value - The name used for form submission and radio grouping.
+     *
+     * @returns This component, for method chaining.
+     */
+    setName(value: string): this {
+        this._options.name = value;
+        this.setElementAttribute("name", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the HTML `name` attribute from the underlying input.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearName(): this {
+        if (this._options.name === undefined) {
+            return this;
+        }
+
+        this._options.name = undefined;
+        this.removeElementAttribute("name");
 
         return this;
     }
@@ -100,7 +215,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
 
         // Behavioral HTML attribute the browser interprets natively. Routed
         // via `setElementAttribute` rather than `setDataAttribute` so the
-        // attribute renders as `inputmode="…"` (not `data-inputmode="…"`).
+        // attribute renders as `inputmode="..."` (not `data-inputmode="..."`).
         // The value lives on `_options.inputMode`; `init()` replays it from
         // there once the element exists.
         this.setElementAttribute("inputmode", value);
@@ -181,10 +296,11 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
      * when sizing children; for a leaf input it does not visually push the
      * rendered element down, so it is excluded from the baseline. `padding` is
      * applied as real CSS padding (with `box-sizing: border-box`) and shifts
-     * the inner text down. Bare [`Input`](/api/component/input/classes/Input) subclasses without inner text (e.g.
-     * [`Checkbox`](/api/component/input/classes/Checkbox), the inner radio of [`RadioButton`](/api/component/input/classes/RadioButton)) inherit the default `null`
-     * baseline from [`Component`](/api/core/classes/Component) and are treated as graphical elements by
-     * horizontal layouts.
+     * the inner text down. Bare text controls without inner text (e.g.
+     * [`Checkbox`](/api/component/input/classes/Checkbox), the inner radio of
+     * [`RadioButton`](/api/component/input/classes/RadioButton)) inherit the
+     * default `null` baseline from [`Component`](/api/core/classes/Component)
+     * and are treated as graphical elements by horizontal layouts.
      */
     getBaseline(): number | null {
         return this.wrapInnerBaseline(Util.measureInputBaseline());
@@ -254,6 +370,28 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
     }
 
     /**
+     * Returns the current value (alias for {@link getText}, satisfies
+     * {@link AbstractInput}'s [`Bindable`](/api/core/interfaces/Bindable) contract).
+     *
+     * @returns The current text string.
+     */
+    getValue(): string {
+        return this.getText();
+    }
+
+    /**
+     * Sets the current value (alias for {@link setText}, satisfies
+     * {@link AbstractInput}'s [`Bindable`](/api/core/interfaces/Bindable) contract).
+     *
+     * @param value - The new text value.
+     *
+     * @returns This component, for method chaining.
+     */
+    setValue(value: string): this {
+        return this.setText(value);
+    }
+
+    /**
      * Returns the placeholder text shown when the input is empty, or null if none is set.
      *
      * @returns The placeholder string, or null.
@@ -288,34 +426,6 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
 
         this._options.placeholder = undefined;
         this.removeElementAttribute("placeholder");
-
-        return this;
-    }
-
-    /**
-     * Returns whether the input is in read-only mode.
-     *
-     * @returns True if the `readonly` attribute is set.
-     */
-    isReadOnly(): boolean {
-        return this._options.readOnly ?? false;
-    }
-
-    /**
-     * Sets the HTML `readonly` attribute on the underlying input.
-     *
-     * @param value - True to mark the input as read-only, false to remove the attribute.
-     *
-     * @returns This component, for method chaining.
-     */
-    setReadOnly(value: boolean): this {
-        this._options.readOnly = value;
-
-        if (value) {
-            this.setElementAttribute("readonly", "");
-        } else {
-            this.removeElementAttribute("readonly");
-        }
 
         return this;
     }
@@ -387,10 +497,54 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
         return this;
     }
 
+    /**
+     * Reflects the enabled flag by writing the native `disabled` attribute.
+     * Routes through {@link setDisabledAttribute} so the existing
+     * `_disabledAttribute` cache stays the single source of truth for the
+     * native attribute; the cache replays at render time when the element
+     * doesn't yet exist.
+     */
+    protected applyEnabled(value: boolean): void {
+        this.setDisabledAttribute(!value);
+    }
+
+    /**
+     * Reflects the read-only flag by writing the native `readonly`
+     * attribute. The cached `_options.readOnly` set by
+     * {@link AbstractInput.setReadOnly} drives `init()`'s replay path
+     * when the element doesn't yet exist.
+     */
+    protected applyReadOnly(value: boolean): void {
+        if (value) {
+            this.setElementAttribute("readonly", "");
+        } else {
+            this.removeElementAttribute("readonly");
+        }
+    }
+
+    /**
+     * Returns the DOM element cast to HTMLInputElement & HTMLTextAreaElement.
+     *
+     * @param createIfMissing - Optional. When true, renders the element if it does not yet exist.
+     *
+     * @returns The component's element typed as both HTMLInputElement and HTMLTextAreaElement.
+     */
+    getElement(createIfMissing: boolean = false) {
+        return super.getElement(createIfMissing) as HTMLInputElement & HTMLTextAreaElement;
+    }
+
     protected init(element?: HTMLElement): this {
         super.init(element);
 
         const el = (element || this.getElement()!) as HTMLInputElement & HTMLTextAreaElement;
+
+        if (this._options.type !== undefined) {
+            el.setAttribute("type", this._options.type);
+        }
+
+        if (this._options.name !== undefined) {
+            el.setAttribute("name", this._options.name);
+        }
 
         if (this._options.placeholder !== undefined) {
             el.setAttribute("placeholder", this._options.placeholder);
@@ -418,10 +572,10 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions> extends In
     /**
      * Renders the input element and sets its initial value.
      *
-     * @returns The created input element with its value initialised.
+     * @returns The created input element cast to HTMLInputElement & HTMLTextAreaElement.
      */
     protected render() {
-        let element = super.render();
+        let element = super.render() as HTMLInputElement & HTMLTextAreaElement;
 
         element.value = this._options.text ?? "";
 

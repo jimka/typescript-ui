@@ -31,8 +31,14 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 
 ## Inputs
 
+Every value-bearing control below extends [`AbstractInput<T>`](/api/component/input/classes/AbstractInput) — the abstract base owns the [`Bindable<T>`](/api/core/interfaces/Bindable) value contract, the `addChangeListener` / `addBindingListener` fan-out, and the `setEnabled` / `setReadOnly` surface. `instanceof AbstractInput` is the universal check for "this is a form input." The three picker fields share a second base, [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField), which owns the [`PickerInput`](/api/component/input/classes/PickerInput) + [`PickerButton`](/api/component/input/classes/PickerButton) chrome and the dropdown lifecycle.
+
 | Component | Purpose |
 | --- | --- |
+| [`AbstractInput`](/api/component/input/classes/AbstractInput) | Abstract base for every value-bearing input — Bindable, listeners, enabled/read-only |
+| [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField) | Abstract base for date/time/datetime picker fields — shares PickerInput + PickerButton chrome |
+| [`PickerInput`](/api/component/input/classes/PickerInput) | Internal text input used inside the picker fields |
+| [`PickerButton`](/api/component/input/classes/PickerButton) | Internal glyph button used to the right of a picker field's input |
 | [`TextField`](/api/component/input/classes/TextField) | Single-line text input |
 | [`TextArea`](/api/component/input/classes/TextArea) | Multi-line text input |
 | [`PasswordField`](/api/component/input/classes/PasswordField) | Masked text input |

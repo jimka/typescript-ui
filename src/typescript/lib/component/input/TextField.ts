@@ -4,7 +4,6 @@ import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
-import { Bindable } from "~/core/Bindable.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 
@@ -35,7 +34,7 @@ const _defaultTextFieldOptions: Partial<TextFieldOptions> = {
  *
  * @category Components
  */
-class TextField extends TextInput<TextFieldOptions> implements Bindable<string> {
+class TextField extends TextInput<TextFieldOptions> {
 
     constructor(options?: TextFieldOptions) {
         super(options, _defaultTextFieldOptions);
@@ -85,20 +84,6 @@ class TextField extends TextInput<TextFieldOptions> implements Bindable<string> 
         Event.addListener(this, "input", listener);
 
         return this;
-    }
-
-    setValue(value: string): this {
-        this.setText(value);
-
-        return this;
-    }
-
-    getValue(): string {
-        return String(this.getText());
-    }
-
-    addBindingListener(fn: () => void): void {
-        this.addActionListener(fn);
     }
 }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "~/core/Component.js";
+import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
+import { Component } from "~/core/Component.js";
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
@@ -24,7 +25,6 @@ export interface ComboBoxItem {
 }
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
-import { Bindable } from "~/core/Bindable.js";
 import { Panel } from "~/core/Panel.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
@@ -42,7 +42,7 @@ Glyph.register(chevron_down);
  *
  * @category Components
  */
-export interface ComboBoxOptions extends ComponentOptions {
+export interface ComboBoxOptions extends AbstractInputOptions {
     items?:             String | Array<String>;
     store?:             AbstractStore;
     displayField?:      string;
@@ -530,7 +530,7 @@ class ComboBoxRow extends Component {
  *
  * @category Components
  */
-class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Component<TOptions> implements Bindable<string> {
+class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends AbstractInput<string, TOptions> {
 
     private _items:         Array<ComboBoxItem> = [];
     private _selectedIndex: number = -1;
@@ -569,6 +569,12 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
 
         Event.addListener(this, "click",   ()                 => this.toggleDropdown());
         Event.addListener(this, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
+        // Bridge the existing "change" event into AbstractInput's change /
+        // binding listener fan-out so addChangeListener fires on every
+        // user-driven selection. The "change" event is dispatched by
+        // setSelectedIndex(idx, true) — the path both onRowSelected (mouse)
+        // and cycleSelection (keyboard arrow) take.
+        Event.addListener(this, "change", () => this.notifyChange(this.getValue()));
 
         this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
 
@@ -593,6 +599,14 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
 
         if (this._options.selectedItem !== undefined) {
             this.setValue(this._options.selectedItem);
+        }
+
+        if (this._options.enabled !== undefined) {
+            this.applyEnabled(this._options.enabled);
+        }
+
+        if (this._options.readOnly !== undefined) {
+            this.applyReadOnly(this._options.readOnly);
         }
     }
 
@@ -878,15 +892,6 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
     }
 
     /**
-     * Registers a listener that fires on each user-driven change.
-     *
-     * @param fn - The callback to invoke on change.
-     */
-    addBindingListener(fn: () => void): void {
-        this.addActionListener(fn);
-    }
-
-    /**
      * Returns the display text of the currently selected option.
      *
      * @returns The selected option's display text, or an empty string when nothing is selected.
@@ -1127,6 +1132,30 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
      */
     getDropdownMinWidth(): number {
         return this._options.dropdownMinWidth ?? COMBOBOX_DROPDOWN_MIN_WIDTH_PX;
+    }
+
+    /**
+     * Reflects the enabled flag in the ARIA tree and the tabindex. Closes
+     * the dropdown when transitioning to disabled so a stale panel doesn't
+     * outlast the state change.
+     */
+    protected applyEnabled(value: boolean): void {
+        this.getAria().setDisabled(!value);
+        this.getAria().setTabIndex(value ? 0 : -1);
+        this.setCursor(value ? "pointer" : "default");
+        if (!value) {
+            this.closeDropdown();
+        }
+    }
+
+    /**
+     * Reflects the read-only flag in the ARIA tree. Read-only ComboBoxes
+     * stay focusable and announce their state but the click handler
+     * intentionally still opens the dropdown for inspection; the inherited
+     * `isReadOnly` flag is what callers query to gate writes.
+     */
+    protected applyReadOnly(value: boolean): void {
+        this.getAria().setReadOnly(value);
     }
 }
 

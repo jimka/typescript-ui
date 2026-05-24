@@ -48,6 +48,18 @@ See [`AutoCompleteFieldConfig`](/api/component/input/type-aliases/AutoCompleteFi
 | `placeholder` | — | Empty-state placeholder text. |
 | `matchMode` | `'contains'` | How the typed query matches — `'contains'` or `'startsWith'` ([`AutoCompleteMatchMode`](/api/component/input/type-aliases/AutoCompleteMatchMode)). |
 
+## Listeners
+
+`AutoCompleteField` extends [`AbstractInput<string>`](/api/component/input/classes/AbstractInput), so it inherits the universal change/binding listener API on top of its own suggestion-pick hook:
+
+| Method | Fires on |
+| --- | --- |
+| `addChangeListener(fn)` | Every value change — keystroke **and** suggestion pick. |
+| `addBindingListener(fn)` | Same as `addChangeListener`; used by [`Binding`](/data/binding). |
+| `addSelectListener(fn)` | Only when a suggestion is picked from the dropdown. |
+
+A suggestion-select fires `addSelectListener` and, through the underlying value change, also fires `addChangeListener`.
+
 ## Notes
 
 - The suggestion dropdown fades in / out over 100 ms via [`Animation`](/api/core/classes/Animation). A fresh `show()` during a fade-out cancels the deferred detach, so a fast hide-then-reshow (typical when typing rapidly) doesn't snap. Honours `prefers-reduced-motion: reduce`.
