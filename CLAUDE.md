@@ -12,6 +12,10 @@ Binding architectural rules live in [ARCHITECTURE.md](ARCHITECTURE.md). They are
 
 Code style, formatting, and JSDoc rules live in [CODE_CONVENTIONS.md](CODE_CONVENTIONS.md). They are non-negotiable for every code change written. Read it (or recall it) **before writing or editing any TypeScript** — not just when explicitly asked about style. The most commonly tripped rule: every multi-line statement (braced `if`/`else`/`for`/`while`/`try`, multi-line initialisers, chained calls) is preceded **and** followed by a blank line, with exceptions for first/last/only statement in scope; back-to-back `if`-blocks without a blank between them is a violation. When unsure, cross-check against an adjacent method in the same file.
 
+## Searching the code
+
+Before reaching for `grep` on a code question, classify the query — there are three tools and three jobs, picked by query *shape*: known-string lookup → `grep`; cross-module / graph question ("what calls X") → **CodeGraph** (`codegraph query`, or `mcp__codegraph__*` when surfaced); structural-pattern audit ("every call shape matching `super($A, { ...$B })`") → **ast-grep**. The decision rule plus the concrete CLI cheat sheet live in [`.claude/skills/_shared/codegraph.md`](.claude/skills/_shared/codegraph.md). Default to `grep` only when the query is genuinely a string match — graph and structural questions are the cases where `grep` produces false positives or misses cross-file references entirely.
+
 ## Behavioral guidelines
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.

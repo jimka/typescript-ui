@@ -1,21 +1,76 @@
-# CodeGraph Knowledge Index
+# Code Search: CodeGraph, ast-grep, grep
 
-This project uses CodeGraph (https://github.com/colbymchenry/codegraph) to expose
-a tree-sitter-built symbol/call-graph index of `src/**` via MCP. The index lives
-at `.codegraph/codegraph.db` and stays current automatically while the MCP server
-runs (native file watcher).
+Three tools, three jobs. Pick by the *shape* of the query, not by habit.
 
-## Rules
+## Decision rule — match the query to the tool
 
-- For cross-module questions ("what calls X", "what does Y depend on", "what
-  breaks if I change Z"), prefer the `mcp__codegraph__*` MCP tools over grep or
-  reading files:
-  - `codegraph_search` — symbol/name search
-  - `codegraph_callers` / `codegraph_callees` — call graph
-  - `codegraph_impact` — change-impact analysis
-  - `codegraph_context` — symbol with surrounding context
-  - `codegraph_node` / `codegraph_files` — node and file lookup
-- For plain string matches in non-code files (markdown, JSON, comments), grep
-  is still the right tool. CodeGraph indexes code structure, not byte content.
-- Run `codegraph_status` if results look stale; the watcher can fall behind on
-  heavy edits. A manual `codegraph sync` from the shell forces a re-index.
+| Query shape | Right tool | Example |
+|---|---|---|
+| **Known string or one symbol, one answer.** Find a definition, an import, a literal. | `grep` (Bash) / `Grep` | "where is `setOverflow` defined", "find the string `--ts-ui-border-color`" |
+| **Cross-module / graph question.** Callers, callees, change impact, what-depends-on-what. The answer needs the call graph, not the text. | **CodeGraph** | "every site that calls `Component.applyOptions`", "what breaks if I rename `setMinSize`", "show the call chain reaching `doLayout`" |
+| **Structural pattern.** Find every occurrence of a *code shape* (e.g. a specific call form with placeholders) that regex can't express without false positives. | **ast-grep** | "every `super(opts, { ..._default$X, ...subclass })` call site", "every `if (opts.$X !== undefined) this.set$Y(opts.$X)` cascade", "every `class $C extends Component` declaration" |
+
+If grep would need a complex regex and still pull false positives — that's the ast-grep signal. If the question is "what flows through this code" — that's the CodeGraph signal.
+
+## CodeGraph — CLI (always available)
+
+The CLI works in any session and reads `.codegraph/codegraph.db` directly. Prefer it over MCP unless the MCP tools are explicitly surfaced as deferred tools in the current session.
+
+```bash
+# Symbol search — find where something is defined, with file:line
+codegraph query 'setOverflow'                          # everything matching
+codegraph query 'setOverflow' -k function              # only functions
+codegraph query 'Spacer' -k class                      # only classes
+codegraph query 'setOverflow' -j | jq '.[].location'   # JSON for scripting
+
+# Task-oriented context bundle — markdown digest of relevant symbols + code
+codegraph context 'how does the layout shrink path handle minSize'
+
+# Index status / refresh
+codegraph status                                       # node/edge counts
+codegraph sync                                         # re-index after heavy edits
+```
+
+`codegraph query` is the workhorse — file:line + kind for any symbol, faster and more precise than `grep` for "find the definition of X". The `-k` filter eliminates noise (e.g. excluding tests, examples).
+
+## CodeGraph — MCP tools (when surfaced)
+
+When the session lists `mcp__codegraph__*` as deferred tools, prefer them — they return structured graph data the CLI can only print as text. Load schemas via `ToolSearch` first:
+
+```
+ToolSearch query="select:mcp__codegraph__callers,mcp__codegraph__callees,mcp__codegraph__impact,mcp__codegraph__context,mcp__codegraph__search"
+```
+
+If `ToolSearch` returns nothing for those names, the MCP server isn't connected in this session — fall back to the CLI.
+
+## ast-grep — structural matching
+
+Installed at `/usr/local/bin/ast-grep`. **Use the full binary name `ast-grep`**, not `sg` — `sg` on this system resolves to `setsid`.
+
+```bash
+# Find every call shape — `$X` is a placeholder for any expression / identifier
+ast-grep --lang ts --pattern 'super($OPTS, { ...$DEF, ...$SUB })' src/typescript/lib
+
+# Find every options-cascade pattern in applyOptions
+ast-grep --lang ts --pattern 'if (opts.$X !== undefined) this.set$Y(opts.$X)' src/typescript/lib
+
+# Find every class declaration extending Component
+ast-grep --lang ts --pattern 'class $C extends Component' src/typescript/lib
+
+# Multi-line rewrite or query — write a rule file
+ast-grep scan --rule rules/my-rule.yaml
+```
+
+The win over grep: `super($A, $B)` matches every call regardless of whitespace, line breaks, or argument complexity, with no false positives from comments or strings. Regex can't do that without a parser.
+
+When ast-grep wins:
+- Migrations ("every call to `setX(x, y)` should become `setX({ x, y })`")
+- Audits ("every subclass that doesn't call `super.applyOptions`")
+- Cascade patterns ("every site that writes a CSS rule via the lazy getter")
+
+When ast-grep loses: comments, JSDoc text, plain strings, anything outside the AST. Use grep there.
+
+## Notes
+
+- CodeGraph's watcher keeps the index fresh, but on heavy edits it can fall behind. `codegraph status` shows when it last synced; `codegraph sync` forces a refresh.
+- For plain string matches in non-code files (markdown, JSON, comments), grep is still the right tool — CodeGraph indexes structure, not byte content.
