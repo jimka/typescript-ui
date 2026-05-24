@@ -415,6 +415,12 @@ export class Notification extends Component {
         titleBar.getTitleText().setForegroundColor(`var(--ts-ui-notification-${this._type}-border)`);
         titleBar.setGlyph(BADGE_GLYPH[this._type]);
 
+        const titleGlyph = titleBar.getGlyph();
+
+        if (titleGlyph !== null) {
+            titleGlyph.setForegroundColor(`var(--ts-ui-notification-${this._type}-border)`);
+        }
+
         dialog.show().then(() => Notification.resumeAll());
     }
 

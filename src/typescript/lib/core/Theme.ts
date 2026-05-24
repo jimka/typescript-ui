@@ -266,8 +266,10 @@ export interface Theme {
         backdrop: {
             background: string;
         };
-        border: string;
-        shadow: string;
+        border:  string;
+        shadow:  string;
+        confirm: string;
+        cancel:  string;
     };
 
     accordion: {
@@ -561,6 +563,8 @@ export const DefaultTheme: Theme = {
         backdrop: { background: 'rgba(0, 0, 0, 0.45)' },
         border  : 'rgb(220, 220, 220)',
         shadow  : '4px 8px 24px rgba(0, 0, 0, 0.35)',
+        confirm : 'rgb(30, 180, 80)',
+        cancel  : 'rgb(200, 50, 50)',
     },
     spinner: {
         buttonWidth : '18px',
@@ -799,6 +803,8 @@ export const DarkTheme: Theme = {
         backdrop: { background: 'rgba(0, 0, 0, 0.65)' },
         border  : 'rgb(70, 70, 70)',
         shadow  : '4px 8px 24px rgba(0, 0, 0, 0.6)',
+        confirm : 'rgb(80, 200, 110)',
+        cancel  : 'rgb(220, 90, 90)',
     },
     spinner: {
         buttonWidth : '18px',
@@ -970,6 +976,8 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-dialog-backdrop-bg'               : theme.dialog.backdrop.background,
         '--ts-ui-dialog-border'                    : theme.dialog.border,
         '--ts-ui-dialog-shadow'                    : theme.dialog.shadow,
+        '--ts-ui-dialog-confirm-color'             : theme.dialog.confirm,
+        '--ts-ui-dialog-cancel-color'              : theme.dialog.cancel,
         '--ts-ui-spinner-btn-width'                : theme.spinner.buttonWidth,
         '--ts-ui-spinner-divider'                  : theme.spinner.dividerColor,
         '--ts-ui-progress-track-bg'                : theme.progressBar.track.background,
