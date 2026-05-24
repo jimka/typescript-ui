@@ -41,7 +41,7 @@ export interface DateTimeFieldOptions extends ComponentOptions {
 class PickerInput extends TextInput<TextInputOptions> {
 
     constructor() {
-        super();
+        super({ cursor: "text" });
 
         Event.addListener(this, "input", () => this.syncTextFromDom());
     }
@@ -146,7 +146,7 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
     private readonly _onViewportPointerDown: (e: PointerEvent) => void;
 
     constructor(options?: DateTimeFieldOptions) {
-        super({ ..._defaultDateTimeFieldOptions, ...(options ?? {}) });
+        super(options, _defaultDateTimeFieldOptions);
 
         this._input = new PickerInput();
         this._input.setType("text");
@@ -177,8 +177,22 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
 
         this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
 
-        if (options) {
-            this.applyOptions(options);
+        // Dispatch late-built fields from `_options` (set by the super-time
+        // cascade through `applyOptions`). No second `applyOptions(options)`
+        // re-call — the cascade already merged `_defaultOptions` + `options`.
+        const opts = this._options;
+
+        if (opts.showSeconds !== undefined) {
+            this._showSeconds = opts.showSeconds;
+        }
+        if (opts.value !== undefined) {
+            this.setValue(opts.value);
+        }
+        if (opts.enabled !== undefined) {
+            this._input.setDisabledAttribute(!opts.enabled);
+        }
+        if (opts.dropdownAnimated !== undefined) {
+            this.setDropdownAnimated(opts.dropdownAnimated);
         }
     }
 
@@ -191,22 +205,24 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
     protected applyOptions(options: DateTimeFieldOptions): this {
         super.applyOptions(options);
 
+        const opts = { ...this._defaultOptions, ...options } as DateTimeFieldOptions;
+
         // Must precede `setValue` so the initial formatting reflects the
         // seconds setting.
-        if (options.showSeconds !== undefined) {
-            this._showSeconds = options.showSeconds;
+        if (opts.showSeconds !== undefined) {
+            this._showSeconds = opts.showSeconds;
         }
 
-        if (options.value !== undefined) {
-            this.setValue(options.value);
+        if (opts.value !== undefined) {
+            this.setValue(opts.value);
         }
 
-        if (options.enabled !== undefined) {
-            this._input.setDisabledAttribute(!options.enabled);
+        if (opts.enabled !== undefined) {
+            this._input.setDisabledAttribute(!opts.enabled);
         }
 
-        if (options.dropdownAnimated !== undefined) {
-            this.setDropdownAnimated(options.dropdownAnimated);
+        if (opts.dropdownAnimated !== undefined) {
+            this.setDropdownAnimated(opts.dropdownAnimated);
         }
 
         return this;
@@ -277,6 +293,11 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
         const target = e.target as Node;
         const dropEl = this._dropdown?.getElement();
         if (dropEl?.contains(target)) {
+            return;
+        }
+        // Ignore clicks landing inside a child popover spawned from within
+        // the picker panel (e.g. the ComboBox dropdowns in the time row).
+        if (this._dropdown?.isClickOnTopmostOverlay(target)) {
             return;
         }
         if (this.getElement()?.contains(target)) {

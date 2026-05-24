@@ -41,7 +41,7 @@ export interface TimeFieldOptions extends ComponentOptions {
 class PickerInput extends TextInput<TextInputOptions> {
 
     constructor() {
-        super();
+        super({ cursor: "text" });
 
         Event.addListener(this, "input", () => this.syncTextFromDom());
     }
@@ -148,7 +148,7 @@ class TimeField extends Component<TimeFieldOptions> implements Bindable<Date | n
     private readonly _onViewportPointerDown: (e: PointerEvent) => void;
 
     constructor(options?: TimeFieldOptions) {
-        super({ ..._defaultTimeFieldOptions, ...(options ?? {}) });
+        super(options, _defaultTimeFieldOptions);
 
         this._input = new PickerInput();
         this._input.setType("text");
@@ -193,22 +193,24 @@ class TimeField extends Component<TimeFieldOptions> implements Bindable<Date | n
     protected applyOptions(options: TimeFieldOptions): this {
         super.applyOptions(options);
 
+        const opts = { ...this._defaultOptions, ...options } as TimeFieldOptions;
+
         // Must precede `setValue` so the initial formatting reflects the
         // seconds setting.
-        if (options.showSeconds !== undefined) {
-            this._showSeconds = options.showSeconds;
+        if (opts.showSeconds !== undefined) {
+            this._showSeconds = opts.showSeconds;
         }
 
-        if (options.value !== undefined) {
-            this.setValue(options.value);
+        if (opts.value !== undefined) {
+            this.setValue(opts.value);
         }
 
-        if (options.enabled !== undefined) {
-            this._input.setDisabledAttribute(!options.enabled);
+        if (opts.enabled !== undefined) {
+            this._input.setDisabledAttribute(!opts.enabled);
         }
 
-        if (options.dropdownAnimated !== undefined) {
-            this.setDropdownAnimated(options.dropdownAnimated);
+        if (opts.dropdownAnimated !== undefined) {
+            this.setDropdownAnimated(opts.dropdownAnimated);
         }
 
         return this;
@@ -279,6 +281,9 @@ class TimeField extends Component<TimeFieldOptions> implements Bindable<Date | n
         const target = e.target as Node;
         const dropEl = this._dropdown?.getElement();
         if (dropEl?.contains(target)) {
+            return;
+        }
+        if (this._dropdown?.isClickOnTopmostOverlay(target)) {
             return;
         }
         if (this.getElement()?.contains(target)) {

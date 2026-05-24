@@ -55,7 +55,6 @@ export interface FadeOptions {
  */
 const _defaultAnimatedDropdownOptions: Partial<AnimatedDropdownOptions> = {
     visible:     false,
-    position:    Position.FIXED,
     zIndex:      10050,
     animated:    true,
     durationMs:  DEFAULT_DURATION_MS,
@@ -88,6 +87,17 @@ const _defaultAnimatedDropdownOptions: Partial<AnimatedDropdownOptions> = {
  */
 class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdownOptions> extends Component<TOptions> {
 
+    /**
+     * Stack of currently-open dropdowns in open-order. Used by
+     * {@link isClickOnTopmostOverlay} so a host can ignore viewport
+     * pointerdown events that land inside an overlay layered on top of its
+     * own panel — e.g. a ComboBox dropdown spawned from inside a
+     * DateTimePicker panel: the ComboBox row's click is outside the picker
+     * element but inside a popup that opened after the picker, so the picker
+     * must not treat it as an outside-click dismissal.
+     */
+    private static _openStack: AnimatedDropdown[] = [];
+
     // Set true while a fade-out is in flight; reset to false either when the
     // fade completes (so the deferred detach runs) or when a fresh `showAnimated`
     // re-displays the dropdown mid-fade (the deferred detach skips because the
@@ -97,9 +107,21 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
 
     /**
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults. Subclasses-of-subclasses forward their own defaults
+     *   here so the deepest class's values win.
      */
-    constructor(options?: AnimatedDropdownOptions) {
-        super({ ..._defaultAnimatedDropdownOptions, ...(options ?? {}) } as TOptions);
+    constructor(options?: AnimatedDropdownOptions, subclassDefaults?: Partial<AnimatedDropdownOptions>) {
+        super(
+            options as TOptions,
+            { ..._defaultAnimatedDropdownOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
+
+        // Floating overlays anchor to the viewport, not to a layout-managed
+        // ancestor — `Position.FIXED` is the documented exception to the
+        // framework's "every component is absolute" rule. See
+        // ARCHITECTURE.md §Positioning.
+        this.setPosition(Position.FIXED);
     }
 
     /**
@@ -111,9 +133,11 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.animated    !== undefined) this.setAnimated(options.animated);
-        if (options.durationMs  !== undefined) this.setDurationMs(options.durationMs);
-        if (options.translatePx !== undefined) this.setTranslatePx(options.translatePx);
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.animated    !== undefined) this.setAnimated(opts.animated);
+        if (opts.durationMs  !== undefined) this.setDurationMs(opts.durationMs);
+        if (opts.translatePx !== undefined) this.setTranslatePx(opts.translatePx);
 
         return this;
     }
@@ -188,6 +212,11 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
         this._dismissing = false;
         this._open       = true;
 
+        const stack = AnimatedDropdown._openStack;
+        if (!stack.includes(this)) {
+            stack.push(this);
+        }
+
         const el = this.getElement(true);
 
         if (!document.documentElement.contains(el)) {
@@ -225,6 +254,12 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      */
     hideAnimated(): this {
         this._open = false;
+
+        const stack = AnimatedDropdown._openStack;
+        const idx   = stack.indexOf(this);
+        if (idx >= 0) {
+            stack.splice(idx, 1);
+        }
 
         const el = this.getElement();
         const finalize = (): void => {
@@ -266,6 +301,79 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      */
     isOpen(): boolean {
         return this._open;
+    }
+
+    /**
+     * Places the dropdown relative to an anchor rect at its current
+     * width/height, with viewport clamping on both axes. Picks the better of
+     * "below" or "above" the anchor vertically (more available space wins
+     * when neither side fully fits), and clamps horizontally so the panel
+     * never extends past either viewport edge.
+     *
+     * Callers set `setWidth`/`setHeight` first, then invoke this helper.
+     *
+     * @param rect - The anchor element's bounding rect (typically from
+     *   `anchorEl.getBoundingClientRect()`).
+     */
+    placeAnchored(rect: DOMRect): this {
+        const w = this.getWidth();
+        const h = this.getHeight();
+
+        const vpWidth  = window.innerWidth;
+        const vpHeight = window.innerHeight;
+
+        // Vertical: prefer below; flip above when below overflows AND above
+        // has room; otherwise pick the side with more space and clamp.
+        let y: number;
+        const spaceBelow = vpHeight - rect.bottom;
+        const spaceAbove = rect.top;
+
+        if (h <= spaceBelow) {
+            y = rect.bottom;
+        } else if (h <= spaceAbove) {
+            y = rect.top - h;
+        } else if (spaceBelow >= spaceAbove) {
+            y = Math.max(0, vpHeight - h);
+        } else {
+            y = 0;
+        }
+
+        // Horizontal: anchor at rect.left, clamp so the panel stays within
+        // the viewport on both sides.
+        const x = Math.max(0, Math.min(rect.left, vpWidth - w));
+
+        this.setX(x);
+        this.setY(y);
+
+        return this;
+    }
+
+    /**
+     * Returns true when `target` is inside an overlay layered on top of this
+     * dropdown — i.e. a dropdown that opened *after* this one. Hosts that
+     * own a viewport-pointerdown dismiss handler call this to ignore clicks
+     * that land inside a child popover spawned from within their own panel
+     * (e.g. a `ComboBox` dropdown opened from within a `DateTimePicker`
+     * panel).
+     *
+     * @param target - The pointerdown target node.
+     * @returns `true` when `target` is inside any dropdown that opened after this one.
+     */
+    isClickOnTopmostOverlay(target: Node): boolean {
+        const stack = AnimatedDropdown._openStack;
+        const myIdx = stack.indexOf(this);
+        if (myIdx < 0) {
+            return false;
+        }
+
+        for (let i = myIdx + 1; i < stack.length; i++) {
+            const el = stack[i].getElement();
+            if (el && el.contains(target)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
