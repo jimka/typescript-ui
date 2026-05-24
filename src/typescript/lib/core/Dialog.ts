@@ -324,6 +324,18 @@ class DialogButtonRow extends Component {
                 btn.setBackgroundImage("var(--ts-ui-toggle-selected-bg, rgb(200, 200, 200))");
             }
 
+            if (cfg.glyph !== undefined) {
+                const glyph = btn.getGlyph();
+
+                if (glyph !== null) {
+                    if (result === 'confirm') {
+                        glyph.setForegroundColor("var(--ts-ui-dialog-confirm-color)");
+                    } else if (result === 'cancel') {
+                        glyph.setForegroundColor("var(--ts-ui-dialog-cancel-color)");
+                    }
+                }
+            }
+
             btn.addActionListener(() => onButton(result));
             this._buttons.push(btn);
             this.addComponent(btn);
