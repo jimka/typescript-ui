@@ -62,14 +62,11 @@ class IconText extends Component<IconTextOptions> {
      * @param options - Optional configuration bag (gap override, common Component fields).
      */
     constructor(glyph: string, text: string, options?: IconTextOptions) {
-        // Merge defaults → consumer options. `gap` is in the bag but its setter
-        // touches `getLayoutManager()`, which doesn't exist yet — `applyOptions`
-        // writes it pure to `_options` and we dispatch from the bag once the
-        // HBox is wired up below.
-        super({
+        // The HBox sits in the defaults bag (under user options) so a caller
+        // that wants a different layoutManager can still override it.
+        super(options, {
             ..._defaultIconTextOptions,
-            ...(options ?? {}),
-            layoutManager: new HBox()
+            layoutManager: new HBox(),
         });
 
         this._glyph = new Glyph(glyph);
@@ -103,9 +100,11 @@ class IconText extends Component<IconTextOptions> {
     protected applyOptions(options: IconTextOptions): this {
         super.applyOptions(options);
 
-        if (options.gap   !== undefined) this._options.gap   = options.gap;
-        if (options.glyph !== undefined) this._options.glyph = options.glyph;
-        if (options.text  !== undefined) this._options.text  = options.text;
+        const opts = { ...this._defaultOptions, ...options } as IconTextOptions;
+
+        if (opts.gap   !== undefined) this._options.gap   = opts.gap;
+        if (opts.glyph !== undefined) this._options.glyph = opts.glyph;
+        if (opts.text  !== undefined) this._options.text  = opts.text;
 
         return this;
     }

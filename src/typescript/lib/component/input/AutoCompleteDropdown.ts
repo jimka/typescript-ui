@@ -2,7 +2,6 @@
 
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Event } from "~/core/Event.js";
-import { Position } from "~/primitive/Position.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { VBox } from "~/layout/VBox.js";
 import { AutoCompleteItem } from "~/component/input/AutoCompleteItem.js";
@@ -24,7 +23,6 @@ export interface AutoCompleteDropdownOptions extends AnimatedDropdownOptions {
  */
 const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> = {
     zIndex:          10050,
-    position:        Position.FIXED,
     durationMs:      100,
     backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
     border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
@@ -53,7 +51,7 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
      * @param options - Optional construction-time options.
      */
     constructor(onSelect: (value: string) => void, onHide: () => void, options?: AutoCompleteDropdownOptions) {
-        super({ ..._defaultAutoCompleteDropdownOptions, ...(options ?? {}) });
+        super(options, _defaultAutoCompleteDropdownOptions);
 
         this._onSelect = onSelect;
         this._onHide   = onHide;
@@ -84,8 +82,10 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
     protected applyOptions(options: AutoCompleteDropdownOptions): this {
         super.applyOptions(options);
 
-        if (options.maxItems !== undefined) {
-            this.setMaxItems(options.maxItems);
+        const opts = { ...this._defaultOptions, ...options } as AutoCompleteDropdownOptions;
+
+        if (opts.maxItems !== undefined) {
+            this.setMaxItems(opts.maxItems);
         }
 
         return this;

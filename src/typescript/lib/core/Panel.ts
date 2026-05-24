@@ -48,7 +48,8 @@ export interface PanelOptions extends ComponentOptions {
  * final value, so a caller-supplied `insets` wins over the panel default.
  */
 const _defaultPanelOptions: Partial<PanelOptions> = {
-    insets: new Insets(4, 4, 4, 4)
+    tag:    "div",
+    insets: new Insets(4, 4, 4, 4),
 };
 
 /**
@@ -76,12 +77,11 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
      *   a different element (e.g. `"header"`, `"section"`). `options.insets`
      *   overrides the default `(4, 4, 4, 4)` perimeter.
      */
-    constructor(options?: TOptions) {
-        super({
-            ..._defaultPanelOptions,
-            ...(options ?? {}),
-            tag: options?.tag ?? "div",
-        } as TOptions);
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(
+            options,
+            { ..._defaultPanelOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
     }
 
     /**
@@ -95,8 +95,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.autoScroll !== undefined) {
-            this.setAutoScroll(options.autoScroll);
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.autoScroll !== undefined) {
+            this.setAutoScroll(opts.autoScroll);
         }
 
         return this;

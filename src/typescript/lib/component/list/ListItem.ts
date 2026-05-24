@@ -45,11 +45,13 @@ class ListItem extends Component {
     protected applyOptions(options: ListItemOptions): this {
         super.applyOptions(options);
 
-        if (options.text !== undefined) {
-            this._value = options.text;
+        const opts = { ...this._defaultOptions, ...options } as ListItemOptions;
+
+        if (opts.text !== undefined) {
+            this._value = opts.text;
             const element = this.getElement();
             if (element) {
-                element.textContent = options.text;
+                element.textContent = opts.text;
             }
         }
 

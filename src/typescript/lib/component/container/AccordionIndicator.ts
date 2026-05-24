@@ -97,8 +97,10 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
     protected applyOptions(options: AccordionIndicatorOptions): this {
         super.applyOptions(options);
 
-        if (options.expanded !== undefined) {
-            this.setExpanded(options.expanded);
+        const opts = { ...this._defaultOptions, ...options } as AccordionIndicatorOptions;
+
+        if (opts.expanded !== undefined) {
+            this.setExpanded(opts.expanded);
         }
 
         return this;

@@ -22,6 +22,7 @@ export interface InputOptions extends ComponentOptions {
  * the final value, so any field the caller supplied wins.
  */
 const _defaultInputOptions: Partial<InputOptions> = {
+    tag:             "input",
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     borderRadius:    "var(--ts-ui-border-radius, 4px)",
 };
@@ -33,12 +34,11 @@ const _defaultInputOptions: Partial<InputOptions> = {
  */
 class Input<TOptions extends InputOptions = InputOptions> extends Component<TOptions> {
 
-    constructor(options?: TOptions) {
-        super({
-            ..._defaultInputOptions,
-            ...(options ?? {}),
-            tag: options?.tag ?? "input",
-        } as TOptions);
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(
+            options,
+            { ..._defaultInputOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
 
         // Default sans-serif 12px font lives on the per-component CSS rule.
         // Queueing through `setElementCSSRules` at construction defers the
@@ -59,8 +59,10 @@ class Input<TOptions extends InputOptions = InputOptions> extends Component<TOpt
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.name !== undefined) {
-            this.setName(options.name);
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.name !== undefined) {
+            this.setName(opts.name);
         }
 
         return this;

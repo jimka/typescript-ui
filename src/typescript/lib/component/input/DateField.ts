@@ -30,7 +30,7 @@ const PICKER_BUTTON_WIDTH_PX = 24;
 class PickerInput extends TextInput<TextInputOptions> {
 
     constructor() {
-        super();
+        super({ cursor: "text" });
 
         Event.addListener(this, "input", () => this.syncTextFromDom());
     }
@@ -147,7 +147,7 @@ class DateField extends Component<DateFieldOptions> implements Bindable<Date | n
     private readonly _onViewportPointerDown: (e: PointerEvent) => void;
 
     constructor(options?: DateFieldOptions) {
-        super({ ..._defaultDateFieldOptions, ...(options ?? {}) });
+        super(options, _defaultDateFieldOptions);
 
         this._input = new PickerInput();
         this._input.setType("text");
@@ -193,16 +193,18 @@ class DateField extends Component<DateFieldOptions> implements Bindable<Date | n
     protected applyOptions(options: DateFieldOptions): this {
         super.applyOptions(options);
 
-        if (options.value !== undefined) {
-            this.setValue(options.value);
+        const opts = { ...this._defaultOptions, ...options } as DateFieldOptions;
+
+        if (opts.value !== undefined) {
+            this.setValue(opts.value);
         }
 
-        if (options.enabled !== undefined) {
-            this._input.setDisabledAttribute(!options.enabled);
+        if (opts.enabled !== undefined) {
+            this._input.setDisabledAttribute(!opts.enabled);
         }
 
-        if (options.dropdownAnimated !== undefined) {
-            this.setDropdownAnimated(options.dropdownAnimated);
+        if (opts.dropdownAnimated !== undefined) {
+            this.setDropdownAnimated(opts.dropdownAnimated);
         }
 
         return this;
@@ -273,6 +275,9 @@ class DateField extends Component<DateFieldOptions> implements Bindable<Date | n
         const target = e.target as Node;
         const dropEl = this._dropdown?.getElement();
         if (dropEl?.contains(target)) {
+            return;
+        }
+        if (this._dropdown?.isClickOnTopmostOverlay(target)) {
             return;
         }
         if (this.getElement()?.contains(target)) {

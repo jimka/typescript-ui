@@ -62,6 +62,10 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
         this._box = new Component();
         this._box.setPreferredSize(16, 16);
+        // Min = preferred = max so the outer HBox shrink-on-overallocation
+        // can't collapse the box graphic when the checkbox sits next to
+        // flexible siblings.
+        this._box.setMinSize(16, 16);
         this._box.setMaxSize(16, 16);
         this._box.setSize({ width: 16, height: 16 });
         this._box.setBackgroundColor("var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
@@ -149,12 +153,14 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.selected      !== undefined) this._options.selected      = options.selected;
-        if (options.value         !== undefined) this._options.value         = options.value;
-        if (options.indeterminate !== undefined) this._options.indeterminate = options.indeterminate;
-        if (options.label         !== undefined) this._options.label         = options.label;
-        if (options.enabled       !== undefined) this._options.enabled       = options.enabled;
-        if (options.readOnly      !== undefined) this._options.readOnly      = options.readOnly;
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.selected      !== undefined) this._options.selected      = opts.selected;
+        if (opts.value         !== undefined) this._options.value         = opts.value;
+        if (opts.indeterminate !== undefined) this._options.indeterminate = opts.indeterminate;
+        if (opts.label         !== undefined) this._options.label         = opts.label;
+        if (opts.enabled       !== undefined) this._options.enabled       = opts.enabled;
+        if (opts.readOnly      !== undefined) this._options.readOnly      = opts.readOnly;
 
         return this;
     }

@@ -51,8 +51,10 @@ class MultiSelectList extends List<MultiSelectListOptions> {
     protected applyOptions(options: MultiSelectListOptions): this {
         super.applyOptions(options);
 
-        if (options.selectedIndices !== undefined) {
-            this._options.selectedIndices = options.selectedIndices;
+        const opts = { ...this._defaultOptions, ...options } as MultiSelectListOptions;
+
+        if (opts.selectedIndices !== undefined) {
+            this._options.selectedIndices = opts.selectedIndices;
         }
 
         return this;

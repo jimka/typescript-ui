@@ -86,12 +86,14 @@ class AutoCompleteItem extends Component {
     protected applyOptions(options: AutoCompleteItemOptions): this {
         super.applyOptions(options);
 
-        if (options.text !== undefined) {
-            this.update(options.text);
+        const opts = { ...this._defaultOptions, ...options } as AutoCompleteItemOptions;
+
+        if (opts.text !== undefined) {
+            this.update(opts.text);
         }
 
-        if (options.highlighted !== undefined) {
-            this.setHighlighted(options.highlighted);
+        if (opts.highlighted !== undefined) {
+            this.setHighlighted(opts.highlighted);
         }
 
         return this;

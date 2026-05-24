@@ -29,14 +29,10 @@ class Option extends Component {
     private _selected: boolean = false;
 
     constructor(key: string, value: string, options?: OptionOptions) {
-        super({ tag: "option" });
+        super(options, { tag: "option" });
 
         this._key = key;
         this._value = value;
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
@@ -48,28 +44,30 @@ class Option extends Component {
     protected applyOptions(options: OptionOptions): this {
         super.applyOptions(options);
 
-        if (options.text !== undefined) {
-            this._value = options.text;
+        const opts = { ...this._defaultOptions, ...options } as OptionOptions;
+
+        if (opts.text !== undefined) {
+            this._value = opts.text;
             const element = this.getElement() as HTMLOptionElement | undefined;
             if (element) {
-                element.textContent = options.text;
+                element.textContent = opts.text;
             }
         }
 
-        if (options.value !== undefined) {
-            this._key = options.value;
+        if (opts.value !== undefined) {
+            this._key = opts.value;
             const element = this.getElement() as HTMLOptionElement | undefined;
             if (element) {
-                element.value = options.value;
+                element.value = opts.value;
             }
         }
 
-        if (options.selected !== undefined) {
-            this.setSelected(options.selected);
+        if (opts.selected !== undefined) {
+            this.setSelected(opts.selected);
         }
 
-        if (options.disabled !== undefined) {
-            this.setDisabledAttribute(options.disabled);
+        if (opts.disabled !== undefined) {
+            this.setDisabledAttribute(opts.disabled);
         }
 
         return this;

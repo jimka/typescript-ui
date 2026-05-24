@@ -23,6 +23,7 @@ export interface TextAreaOptions extends TextInputOptions {
  * the final value, so any field the caller supplied wins.
  */
 const _defaultTextAreaOptions: Partial<TextAreaOptions> = {
+    tag:             "textarea",
     cursor:          "text",
     padding:         new Insets(3, 3, 3, 3),
     preferredSize:   { width: 200, height: 200 },
@@ -41,15 +42,13 @@ const _defaultTextAreaOptions: Partial<TextAreaOptions> = {
 class TextArea extends TextInput<TextAreaOptions> {
 
     constructor(text: string = "", options?: TextAreaOptions) {
-        // Positional `text` falls through to `options.text` when the caller
-        // didn't pass it via the bag — `options.text` wins if both are given.
-        const mergedOptions: TextAreaOptions = {
-            ..._defaultTextAreaOptions,
-            ...(text ? { text } : {}),
-            ...(options ?? {}),
-        };
-
-        super({ ...mergedOptions, tag: "textarea" });
+        // Positional `text` lands as a subclass default — user-supplied
+        // `options.text` still wins because applyOptions merges
+        // `{...defaults, ...options}` at dispatch time.
+        super(
+            options,
+            text ? { ..._defaultTextAreaOptions, text } : _defaultTextAreaOptions,
+        );
 
         Event.addListener(this, "input", this.onInput);
     }
@@ -63,20 +62,22 @@ class TextArea extends TextInput<TextAreaOptions> {
     protected applyOptions(options: TextAreaOptions): this {
         super.applyOptions(options);
 
-        if (options.rows !== undefined) {
-            this.setRows(options.rows);
+        const opts = { ...this._defaultOptions, ...options } as TextAreaOptions;
+
+        if (opts.rows !== undefined) {
+            this.setRows(opts.rows);
         }
 
-        if (options.cols !== undefined) {
-            this.setCols(options.cols);
+        if (opts.cols !== undefined) {
+            this.setCols(opts.cols);
         }
 
-        if (options.wrap !== undefined) {
-            this.setWrap(options.wrap);
+        if (opts.wrap !== undefined) {
+            this.setWrap(opts.wrap);
         }
 
-        if (options.resize !== undefined) {
-            this.setResize(options.resize);
+        if (opts.resize !== undefined) {
+            this.setResize(opts.resize);
         }
 
         return this;

@@ -14,6 +14,23 @@ The `handler` (or `listener`) argument must always be a reference to a named fun
 
 A class owns exactly one DOM element. If a sub-element needs independent behaviour (event routing, its own CSS rule, layout), extract it into a `Component` subclass. Trivial non-interactive helpers (e.g. a resize-handle div) can stay as raw children.
 
+## Positioning is always absolute
+
+Every framework `Component` is positioned with `position: absolute`. Coordinates come from the parent's `LayoutManager` via `setX` / `setY` / `setWidth` / `setHeight`. No `position: relative`, no `position: sticky`, no `display: flex` / `display: grid` on a `Component` to lay out its children. The framework's containing-block math, scroll arithmetic, baseline alignment, and `overflow: auto` propagation all assume absolute children.
+
+If a layout manager can't express what a component needs:
+
+- **Add the feature to an existing manager.** Most missing behaviours fit cleanly into `HBox` / `VBox` / `Grid` / `Border` / `Tab` / `Accordion` / `Fit` / `Card` / `Absolute`. Add a constraint, an option, or an axis flag rather than a new layout primitive.
+- **Override `doLayout` on the owning component.** For one-off arrangements where no manager generalises (e.g. `ComboBox` positioning its caret + label, `PickerButton` centring its glyph), the component places its children directly.
+- **Write a specialised layout manager.** When the arrangement is reused across components and doesn't fit existing managers, write a new `LayoutManager` subclass (e.g. `Table`'s body layout). Keep it inside the layout system, not as CSS.
+
+`Component.setPosition` is `protected` — application code cannot reach it. Subclasses MAY call it post-`super()` for two documented carve-outs:
+
+- **`Position.FIXED`** for floating overlays that anchor to the viewport. Used by `AnimatedDropdown` (and every dropdown / picker that extends it), `Popover`, `Notification`, `Dialog`, `DialogBackdrop`. These escape the containing-block hierarchy so they can render above arbitrary scroll containers and stacking contexts.
+- **`Position.STATIC`** for an HTML element whose native semantics require in-flow rendering. Currently only `Legend` (the `<legend>` element renders inside its parent `<fieldset>`'s border notch only when statically positioned). Adding a new STATIC carve-out is a design decision — surface it in a plan rather than slipping it into a code change.
+
+No other values are exposed on the `Position` enum. `relative` / `sticky` / `initial` / `inherit` are deliberately absent.
+
 ## Minimize direct DOM access
 
 Before `element.style.*`, `document.createElement`, or `element.addEventListener`, check for a Component setter or `Event` API. Raw DOM is for things the framework has no API for.

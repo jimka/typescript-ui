@@ -97,10 +97,7 @@ class StatusBar extends Panel<StatusBarOptions> {
      *   for caller-overridable fields.
      */
     constructor(options?: StatusBarOptions) {
-        super({
-            ..._defaultStatusBarOptions,
-            ...(options ?? {}),
-        });
+        super(options, _defaultStatusBarOptions);
 
         const outer = new HBox();
         outer.setComponentSpacing(0);
@@ -166,8 +163,10 @@ class StatusBar extends Panel<StatusBarOptions> {
     protected applyOptions(options: StatusBarOptions): this {
         super.applyOptions(options);
 
-        if (options.message        !== undefined) this._options.message        = options.message;
-        if (options.defaultMessage !== undefined) this._options.defaultMessage = options.defaultMessage;
+        const opts = { ...this._defaultOptions, ...options } as StatusBarOptions;
+
+        if (opts.message        !== undefined) this._options.message        = opts.message;
+        if (opts.defaultMessage !== undefined) this._options.defaultMessage = opts.defaultMessage;
 
         return this;
     }

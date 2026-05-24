@@ -71,10 +71,7 @@ class MenuBarButton extends Component<MenuBarButtonOptions> {
      * @param options - Optional configuration bag (e.g. leading glyph).
      */
     constructor(text: string, onClick: () => void, onHover: () => void, options?: MenuBarButtonOptions) {
-        // Merge defaults → consumer options. `glyph` touches `this._text` (a
-        // child built below), so `applyOptions` writes it pure into `_options`
-        // and the constructor body dispatches it once the child exists.
-        super({ ..._defaultMenuBarButtonOptions, ...(options ?? {}) });
+        super(options, _defaultMenuBarButtonOptions);
 
         this._label = text;
 
@@ -123,7 +120,9 @@ class MenuBarButton extends Component<MenuBarButtonOptions> {
     protected applyOptions(options: MenuBarButtonOptions): this {
         super.applyOptions(options);
 
-        if (options.glyph !== undefined) this._options.glyph = options.glyph;
+        const opts = { ...this._defaultOptions, ...options } as MenuBarButtonOptions;
+
+        if (opts.glyph !== undefined) this._options.glyph = opts.glyph;
 
         return this;
     }
