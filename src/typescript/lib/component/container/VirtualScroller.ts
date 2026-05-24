@@ -120,14 +120,16 @@ export class VirtualScroller {
 
     /**
      * Sets the vertical scroll position. Clamped against the last-known
-     * content height and viewport height. Triggers the owner's `onScroll`
-     * callback if the position changed.
+     * content height and the *effective* viewport height (full owner height
+     * minus the horizontal scrollbar's reservation when that bar is visible),
+     * so the maximum reachable scroll position matches what the vertical
+     * scrollbar's thumb tops out at. Triggers the owner's `onScroll` callback
+     * if the position changed.
      *
      * @param y - The new scroll position in pixels.
      */
     setScrollY(y: number): this {
-        const viewportH = this._owner.getHeight() || 0;
-        const maxScroll = Math.max(0, this._contentHeight - viewportH);
+        const maxScroll = Math.max(0, this._contentHeight - this.effectiveViewportH());
         const next      = Math.max(0, Math.min(maxScroll, y));
 
         if (next === this._scrollY) {
@@ -143,14 +145,16 @@ export class VirtualScroller {
 
     /**
      * Sets the horizontal scroll position. Clamped against the last-known
-     * content width and viewport width. Triggers the owner's `onScroll`
-     * callback if the position changed.
+     * content width and the *effective* viewport width (full owner width
+     * minus the vertical scrollbar's reservation when that bar is visible),
+     * so the maximum reachable scroll position matches what the horizontal
+     * scrollbar's thumb tops out at. Triggers the owner's `onScroll` callback
+     * if the position changed.
      *
      * @param x - The new scroll position in pixels.
      */
     setScrollX(x: number): this {
-        const viewportW = this._owner.getWidth() || 0;
-        const maxScroll = Math.max(0, this._contentWidth - viewportW);
+        const maxScroll = Math.max(0, this._contentWidth - this.effectiveViewportW());
         const next      = Math.max(0, Math.min(maxScroll, x));
 
         if (next === this._scrollX) {
@@ -165,10 +169,44 @@ export class VirtualScroller {
     }
 
     /**
-     * Loose clamp using full viewports (no cross-axis scrollbar reservation).
-     * Call at the start of `renderWindow` so scrollX/Y are within range before
-     * being used for window calculations — important when content has shrunk
-     * since the last frame. Does not fire `onScroll`.
+     * Effective vertical viewport — the owner height minus the horizontal
+     * scrollbar's track-width reservation when that bar would be visible
+     * (matches the criterion in {@link layoutScrollbars}). Single source of
+     * truth so the clamps in `setScrollY` agree with what the vertical
+     * scrollbar's `setMetrics` is fed.
+     */
+    private effectiveViewportH(): number {
+        const outerH = this._owner.getHeight() || 0;
+        const outerW = this._owner.getWidth()  || 0;
+        const trackW = this._scrollbarV.getTrackWidth();
+        const hVisible = this._contentWidth > outerW;
+
+        return outerH - (hVisible ? trackW : 0);
+    }
+
+    /**
+     * Effective horizontal viewport — see {@link effectiveViewportH}.
+     */
+    private effectiveViewportW(): number {
+        const outerH = this._owner.getHeight() || 0;
+        const outerW = this._owner.getWidth()  || 0;
+        const trackW = this._scrollbarV.getTrackWidth();
+        const vVisible = this._contentHeight > outerH;
+
+        return outerW - (vVisible ? trackW : 0);
+    }
+
+    /**
+     * Clamps the current `scrollX` / `scrollY` against the new content size
+     * and the *effective* viewport on each axis (which subtracts the
+     * cross-axis scrollbar's track-width when that bar is visible). Call at
+     * the start of `renderWindow` so scrollX/Y are within range before being
+     * used for window calculations — important when content has shrunk since
+     * the last frame. Uses the same effective-viewport reasoning as
+     * `setScrollX/Y` so the clamps agree and scrollX/Y aren't pulled back to
+     * a smaller bound than the scrollbar's own `setMetrics` expects (which
+     * would leave the thumb stopping short of the end-arrow). Does not fire
+     * `onScroll`.
      *
      * @param contentWidth - The total scrollable content width in pixels.
      * @param contentHeight - The total scrollable content height in pixels.
@@ -177,10 +215,8 @@ export class VirtualScroller {
         this._contentWidth  = contentWidth;
         this._contentHeight = contentHeight;
 
-        const outerW = this._owner.getWidth();
-        const outerH = this._owner.getHeight();
-        const maxY   = Math.max(0, contentHeight - outerH);
-        const maxX   = Math.max(0, contentWidth  - outerW);
+        const maxY = Math.max(0, contentHeight - this.effectiveViewportH());
+        const maxX = Math.max(0, contentWidth  - this.effectiveViewportW());
 
         let changed = false;
         if (this._scrollY > maxY) {

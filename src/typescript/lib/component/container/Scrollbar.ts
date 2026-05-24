@@ -10,9 +10,15 @@ const TRACK_WIDTH    = 12;
 const THUMB_INSET    = 2;
 const THUMB_MIN_SIZE = 30;
 
-// Inner glyph size for arrow-end buttons. Matches the SpinButton glyph size
-// so the visual cadence between the two press-and-hold widgets stays in sync.
-const ARROW_GLYPH_SIZE = 8;
+// Font size for the Unicode triangle character rendered in each arrow button.
+// The arrow box is TRACK_WIDTH (12) px square; the ambient 14 px theme font
+// produces a 16 px line-box that overflows the 12 px element and is clipped
+// at the bottom by `overflow: hidden`, leaving the visible triangle slid up
+// against the top edge. 10 px shrinks the line-box (= font-size × line-height
+// 1) below the element height so the character fits with even padding above
+// and below — matches the value [`AccordionIndicator`](./AccordionIndicator.ts)
+// uses for its `▶` chevron.
+const ARROW_GLYPH_FONT_SIZE = 10;
 
 // Initial hold-repeat delay and acceleration parameters for ScrollArrowButton.
 // Mirrors SpinButton's scheduler so a long press on either widget produces the
@@ -109,15 +115,16 @@ class ScrollArrowButton extends Component {
         this.setBackgroundColor("var(--ts-ui-scrollbar-arrow-bg, transparent)");
         this.setForegroundColor("var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))");
 
-        this._glyph = new Glyph("arrow-" + direction);
-        this._glyph.setPreferredSize(ARROW_GLYPH_SIZE, ARROW_GLYPH_SIZE);
-
-        // Centre the glyph inside the TRACK_WIDTH × TRACK_WIDTH square. The
-        // glyph is positioned absolutely (the Component default) so a simple
-        // (button - glyph) / 2 offset places it on both axes.
-        const offset = (TRACK_WIDTH - ARROW_GLYPH_SIZE) / 2;
-        this._glyph.setX(offset);
-        this._glyph.setY(offset);
+        // Fill the full TRACK_WIDTH × TRACK_WIDTH button so `text-align: center`
+        // + `line-height: 1` (Glyph char-mode defaults) centre the character
+        // within that box. The explicit `fontSize` shrinks the inherited
+        // 14 px size so the Unicode triangle's line-box (which scales with
+        // font-size) fits inside the 12 px element box and isn't clipped at
+        // the bottom by `overflow: hidden` — mirrors the same fix
+        // AccordionIndicator applies to its `▶` chevron.
+        this._glyph = new Glyph("unicode-arrow-" + direction);
+        this._glyph.setPreferredSize(TRACK_WIDTH, TRACK_WIDTH);
+        this._glyph.setFontSize(ARROW_GLYPH_FONT_SIZE);
 
         super.addComponent(this._glyph);
 
@@ -280,13 +287,18 @@ class Scrollbar extends Component<ScrollbarOptions> {
     private _viewportSize    : number                   = 0;
     private _contentSize     : number                   = 0;
     private _scrollPosition  : number                   = 0;
-    private _thumbSize       : number                   = 0;
-    private _thumbPos        : number                   = 0;
+    // Sentinel `-1` rather than `0` so the first `setMetrics` call always
+    // writes the thumb's size/position through to the DOM, even when the
+    // computed values happen to be `0` (e.g. scroll position at top with
+    // arrows enabled, where the constructor-time `setY(0)` would otherwise
+    // never get corrected to the arrow-region origin offset).
+    private _thumbSize       : number                   = -1;
+    private _thumbPos        : number                   = -1;
     private _dragStartClient : number                   = 0;
     private _dragStartScroll : number                   = 0;
     private _scrollListeners : ScrollbarListener[]      = [];
 
-    private _arrowsEnabled   : boolean                  = false;
+    private _arrowsEnabled   : boolean                  = true;
     private _arrowStep       : number                   = DEFAULT_ARROW_STEP_PX;
     private _arrowStart      : ScrollArrowButton | null = null;
     private _arrowEnd        : ScrollArrowButton | null = null;
