@@ -220,8 +220,9 @@ class DatePickerDropdown extends AnimatedDropdown<DatePickerDropdownOptions> {
 
         // Suppress focus loss anywhere inside the panel — protects pooled
         // cell editors whose blur listener would otherwise commit before
-        // the day-click fires.
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
+        // the day-click fires. Uses `addSubtreeListener` so the guard fires
+        // for events landing on descendants too, not just the dropdown root.
+        Event.addSubtreeListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
     }
 
     /**
