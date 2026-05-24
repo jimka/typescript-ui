@@ -84,6 +84,7 @@ class HeaderCell extends DefaultCell {
     private _sortState: { state: 'asc' | 'desc', priority: number | null } | null = null;
     private _headerGlyph: string | null = null;
     private _headerGlyphInstance: Glyph | null = null;
+    private _columnFocused: boolean = false;
 
     /**
      * Creates a header cell with bold text and wires up the sort click listener.
@@ -379,6 +380,40 @@ class HeaderCell extends DefaultCell {
 
         // clear flag after synthesized click fires
         setTimeout(() => { this._isDragging = false; }, 0);
+    }
+
+    /**
+     * Toggles the column-focused visual indicator on this header cell.
+     *
+     * @param focused - True to paint the focus underline, false to clear it.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks The indicator is a 2 px inset bottom box-shadow in the
+     * `--ts-ui-focus-ring` theme token, matching the colour of the body cell's
+     * focus outline so the eye reads the header cue and the body cue as one
+     * affordance. Driven by `Body._updateFocusStyle` whenever the body's
+     * focused column changes.
+     */
+    setColumnFocused(focused: boolean): this {
+        this._columnFocused = focused;
+
+        if (focused) {
+            this.setShadow("inset 0 -2px 0 0 var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))");
+        } else {
+            this.clearShadow();
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether this header cell currently shows the column-focused indicator.
+     *
+     * @returns True when `setColumnFocused(true)` was the last call; false otherwise.
+     */
+    isColumnFocused(): boolean {
+        return this._columnFocused;
     }
 }
 

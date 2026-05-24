@@ -10,6 +10,8 @@ import { Event } from "~/core/Event.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
 import { ThemeManager } from "~/core/Theme.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
+import type { Header } from "~/component/table/Header.js";
+import type { HeaderCell } from "~/component/table/cell/Header.js";
 import { callable } from "~/core/Callable.js";
 
 const SCROLL_BUFFER = 2;
@@ -64,6 +66,7 @@ class Body extends Component {
     private _anchorRecord    : ModelRecord | null        = null;
     private _focusedColIndex: number                    = 0;
     private _editorPool      : CellEditorPool            = new CellEditorPool();
+    private _header          : Header | null             = null;
 
     constructor(store: AbstractStore) {
         super({ tag: "tbody" });
@@ -725,9 +728,29 @@ class Body extends Component {
     }
 
     /**
+     * Internal wiring called by [`Table`](/api/component/table/classes/Table) —
+     * not for consumer use. Hands the Body a reference to its sibling Header so
+     * `_updateFocusStyle` can mirror the focused column index onto the header
+     * cells. Consumers instantiating `Body` standalone may leave this unset; the
+     * header-side indicator is then simply skipped.
+     *
+     * @param header - The Header sibling owned by the same Table.
+     *
+     * @returns This component, for method chaining.
+     */
+    setHeader(header: Header): this {
+        this._header = header;
+
+        return this;
+    }
+
+    /**
      * Applies a focus ring to the cell at `_focusedColIndex` in the anchor row, clearing it from all other cells.
      *
      * @remarks Called after every navigation and after `renderWindow` re-binds pool slots.
+     * Also mirrors the focused column index onto the linked Header cells (when
+     * one has been wired in via `setHeader`) so the header shows the matching
+     * column indicator.
      */
     private _updateFocusStyle(): void {
         for (const row of this._rowPool) {
@@ -741,8 +764,24 @@ class Body extends Component {
             }
         }
 
+        const headerCells: HeaderCell[] | null = this._header !== null
+            ? this._header.getColumns() as HeaderCell[]
+            : null;
+
+        if (headerCells !== null) {
+            for (const cell of headerCells) {
+                cell.setColumnFocused(false);
+            }
+        }
+
         if (!this._anchorRecord) {
             return;
+        }
+
+        if (headerCells !== null) {
+            for (let i = 0; i < headerCells.length; i++) {
+                headerCells[i].setColumnFocused(i === this._focusedColIndex);
+            }
         }
 
         const anchorIdx = this._store.getRecords().indexOf(this._anchorRecord);

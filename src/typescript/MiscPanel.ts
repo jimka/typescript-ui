@@ -651,19 +651,25 @@ class MiscPanel extends Panel {
         rightColumn.addComponent(progressBarRow);
 
         const buttonProgressStart = new Button("Animate progress bar");
+        let progressAnimationHandle: ReturnType<typeof setInterval> | null = null;
         buttonProgressStart.addActionListener(() => {
+            if (progressAnimationHandle !== null) {
+                clearInterval(progressAnimationHandle);
+            }
+
             progressBar.setIndeterminate(false);
             let v = 0;
             progressBar.setValue(0);
             progressText.setText("Progress: 0%");
 
-            const handle = setInterval(() => {
+            progressAnimationHandle = setInterval(() => {
                 v += 5;
                 progressBar.setValue(v);
                 progressText.setText("Progress: " + v + "%");
 
-                if (v >= 100) {
-                    clearInterval(handle);
+                if (v >= 100 && progressAnimationHandle !== null) {
+                    clearInterval(progressAnimationHandle);
+                    progressAnimationHandle = null;
                 }
             }, 100);
         });
