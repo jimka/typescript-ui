@@ -10,14 +10,12 @@ A [`LayoutManager`](/api/layout/classes/LayoutManager) is attached to a containe
 | [`Accordion`](/api/layout/classes/Accordion) | Collapsible vertical sections, one or many open at a time |
 | [`Border`](/api/layout/classes/Border) | Five-region layout: north, south, east, west, center |
 | [`Card`](/api/layout/classes/Card) | Stacked layers — one visible at a time |
-| [`Column`](/api/layout/classes/Column) | Horizontal sequence with gap control |
 | [`Fit`](/api/layout/classes/Fit) | Places one child inside the container — stretch to fill (default) or centre at preferred size via `FillType.NONE` |
 | [`Grid`](/api/layout/classes/Grid) | Two-dimensional grid |
-| [`HBox`](/api/layout/classes/HBox) | Horizontal stack with configurable spacing |
-| [`Row`](/api/layout/classes/Row) | Vertical sequence with gap control |
+| [`HBox`](/api/layout/classes/HBox) | Horizontal stack; `mode: "preferred"` honours per-child widths, `mode: "equal"` divides the row into equal cells |
 | [`Split`](/api/layout/classes/Split) | Two panes with a draggable resize gutter |
 | [`Tab`](/api/layout/classes/Tab) | Tabbed interface with a button toolbar |
-| [`VBox`](/api/layout/classes/VBox) | Vertical stack with configurable spacing |
+| [`VBox`](/api/layout/classes/VBox) | Vertical stack; `mode: "preferred"` honours per-child heights, `mode: "equal"` divides the column into equal cells |
 
 ## Attach a layout
 

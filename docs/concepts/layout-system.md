@@ -57,7 +57,7 @@ When a layout assigns a child a cell larger than the child's preferred size, `fi
 - `fill: HORIZONTAL` → child stretches to the cell's width but keeps preferred height; `anchor` decides vertical placement.
 - `fill: BOTH` → child fills the cell entirely; `anchor` becomes irrelevant.
 
-This is the behaviour that drives [`HBox`](/layouts/HBox), [`VBox`](/layouts/VBox), [`Row`](/layouts/Row), [`Column`](/layouts/Column), and [`Grid`](/layouts/Grid).
+This is the behaviour that drives [`HBox`](/layouts/HBox), [`VBox`](/layouts/VBox), and [`Grid`](/layouts/Grid).
 
 ## Triggering layout
 

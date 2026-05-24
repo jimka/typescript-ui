@@ -1,6 +1,6 @@
 # HBox
 
-[`HBox`](/api/layout/classes/HBox) places children in a single horizontal row, using each child's preferred width. An optional stretching mode expands children vertically to fill the row's height.
+[`HBox`](/api/layout/classes/HBox) places children in a single horizontal row. A `mode` option selects between honouring each child's preferred width (the default) and dividing the container width equally among children.
 
 ```
 +--------------------------+
@@ -23,7 +23,33 @@ toolbar.addComponent(Button('Copy'));
 toolbar.addComponent(Button('Paste'));
 ```
 
-The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `spacing` and `stretching` declaratively. The legacy `setSpacing` / `setStretching` setters still work for runtime updates.
+The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `mode`, `spacing`, and `stretching` declaratively. The `setMode` / `setSpacing` / `setStretching` setters work for runtime updates.
+
+## Sizing modes
+
+`mode: "preferred"` (default) honours each child's preferred width. Non-weighted children take their preferred sizes; cells carrying a `weight` layout constraint share the remaining width. When the children's preferred widths sum past the container, non-weighted children shrink proportionally toward their min widths.
+
+`mode: "equal"` divides the container's inner width equally among children, clamped to the largest child's min width. `weight` constraints are silently ignored in this mode. The `stretching` default for `"equal"` mode is `true`, matching the historical `Column` behaviour.
+
+```typescript
+import { HBox } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
+// Equal-share row, no vertical stretching → baseline-aligned children.
+const tabs = Component();
+tabs.setLayoutManager(HBox({ mode: "equal", stretching: false, spacing: 2 }));
+
+tabs.addComponent(Button('Files'));
+tabs.addComponent(Button('Edit'));
+tabs.addComponent(Button('Help'));
+```
+
+```
++--------+--------+--------+
+|  [A]   |  [B]   |  [C]   |   ← 1/N width each (mode: "equal")
++--------+--------+--------+
+```
+
+Despite the name, equal-mode `HBox` is the horizontal-equal-share form: every child occupies the same width regardless of its preferred size.
 
 ## Per-child constraints
 
@@ -31,6 +57,7 @@ The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be pa
 
 - `fill` — [`FillType`](/api/layout/enumerations/FillType): `NONE` (preferred size), `HORIZONTAL`, `VERTICAL`, `BOTH`.
 - `anchor` — [`AnchorType`](/api/layout/enumerations/AnchorType): used when the cell is larger than the child.
+- `weight` — proportional share of the remaining width, honoured only when `mode === "preferred"`.
 
 ```typescript
 import { FillType, AnchorType } from '@jimka/typescript-ui/layout';
@@ -44,6 +71,7 @@ toolbar.addComponent(button, {
 
 | Method | Purpose |
 | --- | --- |
+| `setMode("preferred" | "equal")` | Switch the sizing strategy along the horizontal axis. |
 | `setSpacing(px)` | Gap between children. |
 | `setStretching(boolean)` | When `true`, all children fill the row's full height. |
 
@@ -60,9 +88,10 @@ Each component reports a baseline via `getBaseline()`:
 
 If no child reports a baseline, `HBox` falls back to the legacy top-aligned layout. Baseline alignment is also skipped when `setStretching(true)` is enabled, since stretching forces every child to fill the row vertically and there is no shared baseline to align.
 
+In `mode: "equal"` baseline alignment kicks in only when `stretching` is `false`; the default `true` stretches every child to the row's full height.
+
 ## See also
 
 - [API: HBox](/api/layout/classes/HBox)
-- [`Column`](/layouts/Column) — equal-width horizontal sequence
-- [`VBox`](/layouts/VBox) — vertical equivalent
+- [`VBox`](/layouts/VBox) — vertical equivalent, with the same `mode` option
 - [Layout constraints reference](/layouts/Constraints)
