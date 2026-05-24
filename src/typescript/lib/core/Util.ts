@@ -38,6 +38,7 @@ export namespace Util {
 
     let scrollBarWidth: number = -1;
     let inputBaseline: number = -1;
+    let labelBaseline: number = -1;
 
     /**
      * Measures the rendered size of a text string using an off-screen probe `<span>`.
@@ -190,6 +191,45 @@ export namespace Util {
      */
     export function invalidateInputBaselineCache(): void {
         inputBaseline = -1;
+    }
+
+    /**
+     * Measures the offset from the top of a bare text-bearing element (`<span>`,
+     * `<label>`) to its inner-text baseline at the active theme font.
+     *
+     * @returns The baseline offset in pixels.
+     *
+     * @remarks Mirrors `measureInputBaseline` but skips the `<input>` UA chrome
+     * probe — labels have no UA border or padding, so the baseline collapses to
+     * the typographic baseline reported by `measureTextMetrics`. Used by
+     * components that render a label (e.g. ComboBox) rather than a native input.
+     * The result is cached after the first measurement; call
+     * `invalidateLabelBaselineCache` after a theme change to force re-measurement.
+     */
+    export function measureLabelBaseline(): number {
+        if (labelBaseline >= 0) {
+            return labelBaseline;
+        }
+
+        labelBaseline = measureTextMetrics("X", {
+            fontFamily: "var(--ts-ui-font-family, sans-serif)",
+            fontSize  : "var(--ts-ui-font-size, 14px)",
+            lineHeight: "var(--ts-ui-line-height, 1.2)",
+        }).baseline;
+
+        return labelBaseline;
+    }
+
+    /**
+     * Discards the cached label baseline measurement so the next call to
+     * `measureLabelBaseline` re-measures against the active theme font.
+     *
+     * @remarks Call this whenever the active theme's font size or family changes,
+     * since the cached value reflects the font in use at the time of the first
+     * measurement and would otherwise mis-align labels against text after a theme swap.
+     */
+    export function invalidateLabelBaselineCache(): void {
+        labelBaseline = -1;
     }
 
     /**

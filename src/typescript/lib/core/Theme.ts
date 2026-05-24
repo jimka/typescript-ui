@@ -1044,6 +1044,7 @@ export class ThemeManager {
         document.body.style.color                  = theme.text.color;
 
         Util.invalidateInputBaselineCache();
+        Util.invalidateLabelBaselineCache();
 
         ThemeManager.themeListeners.forEach(l => l());
     }

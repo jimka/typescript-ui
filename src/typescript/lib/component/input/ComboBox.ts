@@ -698,7 +698,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @returns The baseline offset in pixels.
      */
     getBaseline(): number | null {
-        return this.wrapInnerBaseline(Util.measureInputBaseline());
+        return this.wrapInnerBaseline(Util.measureLabelBaseline());
     }
 
     /**
