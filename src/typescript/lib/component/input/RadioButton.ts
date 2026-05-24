@@ -218,7 +218,7 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
 
     /**
      * Returns the current value (alias for {@link isSelected}, satisfies
-     * {@link Bindable}).
+     * [`Bindable`](/api/core/interfaces/Bindable)).
      *
      * @returns `true` when selected.
      */
@@ -227,7 +227,7 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
     }
 
     /**
-     * Sets the value (alias for {@link setSelected}, satisfies {@link Bindable}).
+     * Sets the value (alias for {@link setSelected}, satisfies [`Bindable`](/api/core/interfaces/Bindable)).
      *
      * @param value - The new selected state.
      *
