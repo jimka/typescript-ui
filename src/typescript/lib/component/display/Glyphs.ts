@@ -30,6 +30,17 @@ export type NamedGlyphDef = GlyphDef & { name: string };
  */
 const _glyphs: Map<string, GlyphDef> = new Map();
 
+// Solid-triangle arrow glyphs registered eagerly. Char-mode entries are tiny
+// (no sprite, no path data) so the always-on cost is negligible, and built-in
+// chrome like Scrollbar's optional end-cap buttons needs them available without
+// an import-and-register dance at the call site. The Unicode triangles match
+// the visual idiom of tree disclosure arrows and inherit the surrounding text
+// colour via `currentColor`, so a single foreground-colour write themes them.
+_glyphs.set("arrow-up",    { kind: "char", char: "▲" });
+_glyphs.set("arrow-down",  { kind: "char", char: "▼" });
+_glyphs.set("arrow-left",  { kind: "char", char: "◀" });
+_glyphs.set("arrow-right", { kind: "char", char: "▶" });
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /**
