@@ -324,24 +324,24 @@ abstract class AbstractPickerField<
 
     /**
      * Viewport-level pointerdown handler: closes the dropdown when the click
-     * lands outside both the field and the dropdown panel. Ignores clicks
-     * landing inside any nested overlay spawned from within the dropdown
-     * (e.g. the ComboBox dropdowns in the DateTimePicker's time row).
+     * lands outside both the field and the dropdown's layer subtree. A click
+     * inside a descendant layer (e.g. a `ComboBoxDropdown` opened from inside
+     * the picker dropdown) counts as inside via
+     * {@link AnimatedDropdown.isTargetInsideLayer}, so the picker stays open.
      *
      * @param e - The pointerdown event from the viewport.
      */
     protected onViewportPointerDown(e: PointerEvent): void {
         const target = e.target as Node;
-        const dropEl = this._dropdown?.getElement();
-        if (dropEl?.contains(target)) {
+
+        if (this._dropdown && AnimatedDropdown.isTargetInsideLayer(this._dropdown, target)) {
             return;
         }
-        if (this._dropdown?.isClickOnTopmostOverlay(target)) {
-            return;
-        }
+
         if (this.getElement()?.contains(target)) {
             return;
         }
+
         this.closeDropdown();
     }
 

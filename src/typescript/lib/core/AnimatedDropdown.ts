@@ -19,6 +19,26 @@ const DEFAULT_TRANSLATE_PX: number = 4;
 const _dismissingByComponent: WeakMap<Component, boolean> = new WeakMap();
 
 /**
+ * Layer-stack registry of currently-open {@link AnimatedDropdown} instances.
+ *
+ * The stack is LIFO in open order; the `children` array on each entry tracks
+ * the layers that were opened while this layer was the topmost open one. Hosts
+ * that wire a viewport-pointerdown dismiss path (a picker field, a popover)
+ * consult {@link AnimatedDropdown.isTargetInsideLayer} to decide whether a
+ * click landed inside their own dropdown subtree or inside a descendant layer
+ * (e.g. a `ComboBoxDropdown` opened from inside a picker dropdown). The
+ * descendant case must count as "inside" so the host's dropdown stays open.
+ */
+interface LayerEntry {
+    layer:    AnimatedDropdown;
+    children: AnimatedDropdown[];
+}
+
+const _openLayers: LayerEntry[] = [];
+
+const _entryByLayer: WeakMap<AnimatedDropdown, LayerEntry> = new WeakMap();
+
+/**
  * Construction-time options for {@link AnimatedDropdown}.
  *
  * @category Core
@@ -86,17 +106,6 @@ const _defaultAnimatedDropdownOptions: Partial<AnimatedDropdownOptions> = {
  * @category Core
  */
 class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdownOptions> extends Component<TOptions> {
-
-    /**
-     * Stack of currently-open dropdowns in open-order. Used by
-     * {@link isClickOnTopmostOverlay} so a host can ignore viewport
-     * pointerdown events that land inside an overlay layered on top of its
-     * own panel — e.g. a ComboBox dropdown spawned from inside a
-     * DateTimePicker panel: the ComboBox row's click is outside the picker
-     * element but inside a popup that opened after the picker, so the picker
-     * must not treat it as an outside-click dismissal.
-     */
-    private static _openStack: AnimatedDropdown[] = [];
 
     // Set true while a fade-out is in flight; reset to false either when the
     // fade completes (so the deferred detach runs) or when a fresh `showAnimated`
@@ -209,13 +218,23 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * show mid-dismiss keeps the panel on screen.
      */
     showAnimated(): this {
+        // Push onto the layer stack on first open. `_dismissing`-cancelled
+        // mid-fade re-shows already have an entry, so the guard prevents a
+        // duplicate push.
+        if (!_entryByLayer.has(this)) {
+            const parent = _openLayers[_openLayers.length - 1];
+            const entry: LayerEntry = { layer: this, children: [] };
+
+            _openLayers.push(entry);
+            _entryByLayer.set(this, entry);
+
+            if (parent) {
+                parent.children.push(this);
+            }
+        }
+
         this._dismissing = false;
         this._open       = true;
-
-        const stack = AnimatedDropdown._openStack;
-        if (!stack.includes(this)) {
-            stack.push(this);
-        }
 
         const el = this.getElement(true);
 
@@ -255,16 +274,34 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     hideAnimated(): this {
         this._open = false;
 
-        const stack = AnimatedDropdown._openStack;
-        const idx   = stack.indexOf(this);
-        if (idx >= 0) {
-            stack.splice(idx, 1);
-        }
-
         const el = this.getElement();
         const finalize = (): void => {
             this.setVisible(false);
             this.removeElement();
+
+            // Pop from the layer stack. `onHideComplete` runs after this so a
+            // subclass override sees the layer as already-closed.
+            const entry = _entryByLayer.get(this);
+
+            if (entry) {
+                _entryByLayer.delete(this);
+
+                const idx = _openLayers.indexOf(entry);
+
+                if (idx > 0) {
+                    const parent = _openLayers[idx - 1];
+                    const ci     = parent.children.indexOf(this);
+
+                    if (ci >= 0) {
+                        parent.children.splice(ci, 1);
+                    }
+                }
+
+                if (idx >= 0) {
+                    _openLayers.splice(idx, 1);
+                }
+            }
+
             this.onHideComplete();
         };
 
@@ -349,34 +386,6 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     }
 
     /**
-     * Returns true when `target` is inside an overlay layered on top of this
-     * dropdown — i.e. a dropdown that opened *after* this one. Hosts that
-     * own a viewport-pointerdown dismiss handler call this to ignore clicks
-     * that land inside a child popover spawned from within their own panel
-     * (e.g. a `ComboBox` dropdown opened from within a `DateTimePicker`
-     * panel).
-     *
-     * @param target - The pointerdown target node.
-     * @returns `true` when `target` is inside any dropdown that opened after this one.
-     */
-    isClickOnTopmostOverlay(target: Node): boolean {
-        const stack = AnimatedDropdown._openStack;
-        const myIdx = stack.indexOf(this);
-        if (myIdx < 0) {
-            return false;
-        }
-
-        for (let i = myIdx + 1; i < stack.length; i++) {
-            const el = stack[i].getElement();
-            if (el && el.contains(target)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * Hook invoked after the entrance fade completes (or immediately when
      * animation is disabled). Override to wire post-show state.
      */
@@ -390,6 +399,51 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      */
     protected onHideComplete(): void {
         // default: no-op
+    }
+
+    /**
+     * Returns true when `target` is a descendant of `layer`'s element or any
+     * descendant layer's element. Hosts that wire a viewport-pointerdown
+     * dismiss path call this so a click inside a child layer (e.g. a
+     * `ComboBoxDropdown` opened from inside a picker dropdown) counts as
+     * inside the picker's layer and does not dismiss it.
+     *
+     * @param layer - The layer to test containment for.
+     * @param target - The DOM node receiving the click.
+     * @returns true when `target` is inside `layer` or any of its descendant layers.
+     */
+    static isTargetInsideLayer(layer: AnimatedDropdown, target: Node): boolean {
+        const el = layer.getElement();
+
+        if (el && el.contains(target)) {
+            return true;
+        }
+
+        const entry = _entryByLayer.get(layer);
+
+        if (!entry) {
+            return false;
+        }
+
+        for (const child of entry.children) {
+            if (AnimatedDropdown.isTargetInsideLayer(child, target)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Returns the topmost currently-open layer, or `null` when no layer is
+     * open. Exposed as a test seam — the bug fix does not consume it directly.
+     *
+     * @returns The topmost open layer, or null when none is open.
+     */
+    static getTopLayer(): AnimatedDropdown | null {
+        const top = _openLayers[_openLayers.length - 1];
+
+        return top ? top.layer : null;
     }
 }
 

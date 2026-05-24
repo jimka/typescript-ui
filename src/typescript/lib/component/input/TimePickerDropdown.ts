@@ -241,7 +241,12 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
         this._grid.setLayoutManager(new HBox({ spacing: 4, stretching: true }));
         this.addComponent(this._grid);
 
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
+        // Subtree listener so the preventDefault also fires for descendant
+        // targets. With plain `addListener` only events whose exact target is
+        // this dropdown's element would match, which would silently bypass
+        // the focus-loss guard for any future child component that doesn't
+        // wire its own pointerdown listener.
+        Event.addSubtreeListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
     }
 
     /**
