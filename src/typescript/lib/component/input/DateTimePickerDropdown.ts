@@ -319,7 +319,11 @@ class DateTimePickerDropdown extends AnimatedDropdown<DateTimePickerDropdownOpti
 
         this.addComponent(this._root);
 
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
+        // Subtree listener so the preventDefault also fires when the click
+        // lands on a descendant (e.g. the time-row ComboBox surface). With
+        // plain `addListener` it would match only the dropdown's own element,
+        // letting clicks on child ComboBoxes blur the host cell editor.
+        Event.addSubtreeListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
     }
 
     /**
@@ -360,16 +364,27 @@ class DateTimePickerDropdown extends AnimatedDropdown<DateTimePickerDropdownOpti
     }
 
     /**
-     * Sums the fixed-height rows + the panel's insets to produce the panel's
-     * outer height. Avoids forcing a DOM measurement.
+     * Sums the fixed-height rows + the time row's actual baseline-aligned
+     * height + the dropdown's chrome (insets + border) to produce the panel's
+     * outer height.
+     *
+     * Two non-obvious adjustments over the naïve sum:
+     *  - `getPerimiterSize` rather than `getInsets` so the 1-px border counts;
+     *  - the time row's true height comes from `getMinSize` (HBox computes its
+     *    minimum by baseline-aligning text-bearing children, which can exceed
+     *    the explicit `TIME_ROW_HEIGHT` when label and ComboBox text baselines
+     *    disagree — VBox then enforces that min). Hard-coding
+     *    `TIME_ROW_HEIGHT` here under-sizes the panel by 2 px and clips the
+     *    time selector ComboBoxes via the dropdown's `overflow: hidden`.
      */
     private computePanelHeight(): number {
-        const insets    = this.getInsets();
+        const perim     = this.getPerimiterSize();
         const rootGap   = 4;
         const dayGridH  = 6 * CELL_HEIGHT + 5 * 2;
-        const innerH    = MONTH_HEIGHT + rootGap + HEADER_HEIGHT + rootGap + dayGridH + rootGap + TIME_ROW_HEIGHT;
+        const timeRowH  = this._timeRow.getMinSize()?.height ?? TIME_ROW_HEIGHT;
+        const innerH    = MONTH_HEIGHT + rootGap + HEADER_HEIGHT + rootGap + dayGridH + rootGap + timeRowH;
 
-        return insets.getTop() + insets.getBottom() + innerH;
+        return perim.top + perim.bottom + innerH;
     }
 
     /**
