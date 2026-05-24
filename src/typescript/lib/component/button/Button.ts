@@ -46,6 +46,7 @@ export interface ButtonOptions extends ComponentOptions {
  * the super cascade and queue their writes until the rule materialises.
  */
 const _defaultButtonOptions: Partial<ButtonOptions> = {
+    tag:                    "button",
     cursor:                 "pointer",
     foregroundColor:        "var(--ts-ui-text-color, black)",
     border:                 { style: BorderStyle.RIDGE, width: 2, color: "var(--ts-ui-button-border, rgb(200, 200, 200))" },
@@ -123,9 +124,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * new Button('Save', { glyph: 'check-circle' });
      * ```
      */
-    constructor(text?: string, options?: ButtonOptions);
+    constructor(text?: string, options?: ButtonOptions, subclassDefaults?: Partial<ButtonOptions>);
     constructor(options: ButtonOptions);
-    constructor(textOrOptions?: string | ButtonOptions, options?: ButtonOptions) {
+    constructor(
+        textOrOptions?:    string | ButtonOptions,
+        options?:          ButtonOptions,
+        subclassDefaults?: Partial<ButtonOptions>,
+    ) {
         // Normalise the overload: a non-string first argument is the options bag.
         let text: string | undefined;
         if (typeof textOrOptions === "string") {
@@ -135,24 +140,23 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         }
 
         // Validate before `super` because the cascade dispatches setters with
-        // side effects.
-        const hasText  = text !== undefined || options?.text !== undefined;
-        const hasGlyph = options?.glyph !== undefined && options.glyph !== null;
-        if (!hasText && !hasGlyph) {
+        // side effects. The text/glyph can land on any of the three sources
+        // (positional, user options, subclass defaults from a class like
+        // `SpinButton` that bakes its glyph into the defaults bag).
+        const validateText  = text ?? options?.text ?? subclassDefaults?.text;
+        const validateGlyph = options?.glyph ?? subclassDefaults?.glyph;
+        if (validateText === undefined && (validateGlyph === undefined || validateGlyph === null)) {
             throw new Error("Button must be given a `text` label or a `glyph` option (or both).");
         }
 
-        // Merge defaults → consumer options → non-overridable structural keys.
-        // The cascade in `super` dispatches every cascade-safe setter once with
-        // the final value, including pressed* (the StyleRule getter is lazy)
-        // and inherited Component fields. Children-touching options (text,
-        // glyph) are written pure to `_options` by the leaf `applyOptions` and
-        // dispatched from the constructor body below once children exist.
-        super({
-            ..._defaultButtonOptions,
-            ...(options ?? {}),
-            tag: "button",
-        } as TOptions);
+        // Hand defaults to Component via the second super arg so they land in
+        // `_defaultOptions` and survive subsequent `applyOptions` re-merges.
+        // Subclass defaults (forwarded by callers via the third constructor
+        // arg) layer on top so the deepest class's overrides win.
+        super(
+            options as TOptions,
+            { ..._defaultButtonOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
 
         // Structural state — can't go through the bag because consumers must
         // not be able to override it.
@@ -202,23 +206,27 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.text                   !== undefined) this._options.text  = options.text;
-        if (options.glyph                  !== undefined) this._options.glyph = options.glyph;
+        // Read from defaults-merged opts so subclass defaults (e.g. SpinButton's
+        // symbol-derived glyph) dispatch alongside caller-supplied values.
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
 
-        if (options.enabled                !== undefined) this.setEnabled(options.enabled);
-        if (options.pressedForegroundColor !== undefined) this.setPressedForegroundColor(options.pressedForegroundColor);
-        if (options.pressedBackgroundColor !== undefined) this.setPressedBackgroundColor(options.pressedBackgroundColor);
-        if (options.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(options.pressedBackgroundImage);
-        if (options.pressedShadow          !== undefined) this.setPressedShadow(options.pressedShadow);
-        if (options.pressedBorder          !== undefined) this.setPressedBorder(options.pressedBorder);
-        if (options.pressedBorderRadius    !== undefined) this.setPressedBorderRadius(options.pressedBorderRadius);
+        if (opts.text                   !== undefined) this._options.text  = opts.text;
+        if (opts.glyph                  !== undefined) this._options.glyph = opts.glyph;
 
-        if (options.hoverForegroundColor   !== undefined) this.setHoverForegroundColor(options.hoverForegroundColor);
-        if (options.hoverBackgroundColor   !== undefined) this.setHoverBackgroundColor(options.hoverBackgroundColor);
-        if (options.hoverBackgroundImage   !== undefined) this.setHoverBackgroundImage(options.hoverBackgroundImage);
-        if (options.hoverShadow            !== undefined) this.setHoverShadow(options.hoverShadow);
-        if (options.hoverBorder            !== undefined) this.setHoverBorder(options.hoverBorder);
-        if (options.hoverBorderRadius      !== undefined) this.setHoverBorderRadius(options.hoverBorderRadius);
+        if (opts.enabled                !== undefined) this.setEnabled(opts.enabled);
+        if (opts.pressedForegroundColor !== undefined) this.setPressedForegroundColor(opts.pressedForegroundColor);
+        if (opts.pressedBackgroundColor !== undefined) this.setPressedBackgroundColor(opts.pressedBackgroundColor);
+        if (opts.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(opts.pressedBackgroundImage);
+        if (opts.pressedShadow          !== undefined) this.setPressedShadow(opts.pressedShadow);
+        if (opts.pressedBorder          !== undefined) this.setPressedBorder(opts.pressedBorder);
+        if (opts.pressedBorderRadius    !== undefined) this.setPressedBorderRadius(opts.pressedBorderRadius);
+
+        if (opts.hoverForegroundColor   !== undefined) this.setHoverForegroundColor(opts.hoverForegroundColor);
+        if (opts.hoverBackgroundColor   !== undefined) this.setHoverBackgroundColor(opts.hoverBackgroundColor);
+        if (opts.hoverBackgroundImage   !== undefined) this.setHoverBackgroundImage(opts.hoverBackgroundImage);
+        if (opts.hoverShadow            !== undefined) this.setHoverShadow(opts.hoverShadow);
+        if (opts.hoverBorder            !== undefined) this.setHoverBorder(opts.hoverBorder);
+        if (opts.hoverBorderRadius      !== undefined) this.setHoverBorderRadius(opts.hoverBorderRadius);
 
         return this;
     }

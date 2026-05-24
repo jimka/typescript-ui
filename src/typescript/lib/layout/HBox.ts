@@ -285,7 +285,8 @@ class HBox extends LayoutManager {
         }
 
         let totalWeight = 0;
-        let fixedWidth = spacing * (components.length - 1);
+        let fixedPreferredWidth = spacing * (components.length - 1);
+        let fixedMinWidth       = spacing * (components.length - 1);
 
         for (let idx in components) {
             let component = components[idx];
@@ -297,13 +298,46 @@ class HBox extends LayoutManager {
             } else {
                 let size = component.getPreferredSize();
                 let minSize = component.getMinSize();
-                fixedWidth += (size ? size.width : undefined)
-                    || (minSize ? minSize.width : undefined)
-                    || this._defaultComponentWidth;
+                // Nullish-coalesce, not `||`: a component with an explicit
+                // preferred width of 0 (e.g. an empty `Text` label) must
+                // contribute 0, not fall through to `_defaultComponentWidth`
+                // and inflate the row's fixed total past the container, which
+                // would force the shrink path to squeeze every non-weighted
+                // child (including glyphs) toward its min size. The
+                // `minSize.width > 0` guard prevents
+                // `LayoutManager._defaultMinSize = {0,0}` from short-circuiting
+                // the chain into a 0 width (would land a layout-managed Table
+                // on width 0 even though no preferred size was set).
+                const pref = (size ? size.width : undefined)
+                    ?? (minSize && minSize.width > 0 ? minSize.width : undefined)
+                    ?? this._defaultComponentWidth;
+                const min  = minSize ? minSize.width : 0;
+                fixedPreferredWidth += pref;
+                fixedMinWidth       += min;
             }
         }
 
-        let remainingWidth = Math.max(0, containerSize.width - fixedWidth);
+        // When non-weighted children's preferred widths sum past the
+        // container's inner width, shrink each non-weighted child toward its
+        // min size proportionally — preserves visual balance and ensures the
+        // last child's right edge lands inside the container (so a trailing
+        // child's own scrollbar isn't clipped by an `overflow: hidden`
+        // ancestor). Weighted children get whatever is left over. When the
+        // host has opted into horizontal overflow (`Panel.setAutoScroll`),
+        // the working `containerSize.width` was already inflated above;
+        // children should land at their preferred widths so the host's CSS
+        // `overflow: auto` engages — skip the shrink in that case.
+        let shrinkRatio = 0;
+        let remainingWidth: number;
+
+        if (fixedPreferredWidth <= containerSize.width || this.isOverflowingX()) {
+            remainingWidth = Math.max(0, containerSize.width - fixedPreferredWidth);
+        } else {
+            remainingWidth = 0;
+            const excess     = fixedPreferredWidth - containerSize.width;
+            const shrinkable = fixedPreferredWidth - fixedMinWidth;
+            shrinkRatio = shrinkable > 0 ? Math.min(1, excess / shrinkable) : 1;
+        }
 
         const widths: number[] = [];
         const heights: number[] = [];
@@ -323,9 +357,13 @@ class HBox extends LayoutManager {
             if (weight > 0 && totalWeight > 0) {
                 width = (weight / totalWeight) * remainingWidth;
             } else {
-                width = (size ? size.width : undefined)
-                    || (minSize ? minSize.width : undefined)
-                    || this._defaultComponentWidth;
+                // See the fixed-total loop above for why `??` and the
+                // `minSize.width > 0` guard.
+                const pref = (size ? size.width : undefined)
+                    ?? (minSize && minSize.width > 0 ? minSize.width : undefined)
+                    ?? this._defaultComponentWidth;
+                const min  = minSize ? minSize.width : 0;
+                width = pref - shrinkRatio * (pref - min);
             }
 
             if (minSize) width = Math.max(width, minSize.width);

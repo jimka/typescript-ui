@@ -306,7 +306,24 @@ class Column extends LayoutManager {
             containerSize = { width: w, height: h };
         }
 
-        let columnWidth = (containerSize.width - (this._gap * components.length) + this._gap) / components.length;
+        // Clamp the per-cell width to the largest child's minSize, mirroring
+        // HBox.doLayout's `width = Math.max(width, minSize.width)` invariant.
+        // When the equal-share is smaller than a child's min width, the row
+        // total exceeds the container — trailing cells spill past the right
+        // edge and the host's `overflow: hidden` (or `setAutoScroll`) takes
+        // over. Without the clamp, Column silently squeezes children with
+        // fixed-graphic minSizes (e.g. RadioButton rings) below their min
+        // width and clips them.
+        let maxChildMinWidth = 0;
+        for (const component of components) {
+            const min = component.getMinSize();
+            if (min) {
+                maxChildMinWidth = Math.max(maxChildMinWidth, min.width);
+            }
+        }
+
+        const equalShare = (containerSize.width - this._gap * (components.length - 1)) / components.length;
+        let columnWidth  = Math.max(equalShare, maxChildMinWidth);
 
         if (this._stretching) {
             let columnHeight = containerSize.height;
