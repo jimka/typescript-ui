@@ -9,7 +9,6 @@ Before producing any code or commits, read in full:
 
 - [`CODE_CONVENTIONS.md`](../../../CODE_CONVENTIONS.md) — Code style, JSDoc, Framework rules, deferred DOM writes.
 - [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — Documentation updates, JSDoc cross-bucket links, typedoc-callable plugin.
-- [`.claude/skills/_shared/codegraph.md`](../_shared/codegraph.md) — Use the CodeGraph MCP tools (not grep) to investigate the codebase.
 - [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
 
 These contain the project's authoritative conventions. Sections below assume you've read them.

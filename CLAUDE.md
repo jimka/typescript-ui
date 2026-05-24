@@ -1,26 +1,16 @@
 # Coding Guidelines
 
-## Skills
+- When producing implementation plans, **ALWAYS** use the plan skill.
+- When implementing implementation plans, **ALWAYS** use the implement skill.
+- When documenting code, **ALWAYS** use the document skill.
+- When debugging code, **ALWAYS** use the debug skill.
+- When writing code, editing code, or planning future code, **ALWAYS** follow the architectural guidelines defined in [ARCHITECTURE.md](ARCHITECTURE.md) and the code conventions defined in [CODE_CONVENTIONS.md](CODE_CONVENTIONS.md).
 
-Whenever a task matches a skill's description (see the available-skills list in your context), **invoke the named skill** instead of working freehand. The skill is the entry point; bypassing it loses the project-specific rules it enforces — and "freehand" includes the obvious traps: hand-writing plan markdown, editing source files straight from a plan, diving into a bug without the skill's heuristics, updating exported APIs without running the docs gate, or committing without the bucket/message rules. If a request even partially matches a skill description, invoke the skill first and let it decide scope.
-
-## Architecture
-
-Binding architectural rules live in [ARCHITECTURE.md](ARCHITECTURE.md). They are non-negotiable for every plan built and every code change written. Read the relevant section before producing a plan section or a code edit that touches that area; if a proposed change conflicts with a rule, raise it instead of silently working around it.
-
-## Code conventions
-
-Code style, formatting, and JSDoc rules live in [CODE_CONVENTIONS.md](CODE_CONVENTIONS.md). They are non-negotiable for every code change written. Read it (or recall it) **before writing or editing any TypeScript** — not just when explicitly asked about style. The most commonly tripped rule: every multi-line statement (braced `if`/`else`/`for`/`while`/`try`, multi-line initialisers, chained calls) is preceded **and** followed by a blank line, with exceptions for first/last/only statement in scope; back-to-back `if`-blocks without a blank between them is a violation. When unsure, cross-check against an adjacent method in the same file.
-
-## Searching the code
-
-For any code question, work down the priority list: **CodeGraph** first, **ast-grep** second, **`grep`** last. CodeGraph (`codegraph query`, or `mcp__codegraph__*` when surfaced) answers cross-module / graph questions ("what calls X", "what implements Y", "where is Z defined") accurately because it operates on the resolved symbol graph, not text — start here unless you already know the query is genuinely a string match. If CodeGraph doesn't fit (the query is about code *shape* — "every call matching `super($A, { ...$B })`", "every `setX(...)` followed by `setY(...)`"), reach for **ast-grep**, which matches the parsed AST and won't produce the false positives or whitespace-sensitive misses that an equivalent regex would. Fall back to **`grep`** only when the query is a literal-string lookup — a known identifier, error message, comment fragment, file pathname — where text matching is exactly what you want. The decision rule plus the concrete CLI cheat sheet live in [`.claude/skills/_shared/codegraph.md`](.claude/skills/_shared/codegraph.md).
-
-## Behavioral guidelines
+# Behavioral guidelines
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-### 1. Think Before Coding
+## 1. Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
 
@@ -30,7 +20,7 @@ Before implementing:
 - If a simpler approach exists, say so. Push back when warranted.
 - If something is unclear, stop. Name what's confusing. Ask.
 
-### 2. Simplicity First
+## 2. Simplicity First
 
 **Minimum code that solves the problem. Nothing speculative.**
 
@@ -42,7 +32,7 @@ Before implementing:
 
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
-### 3. Surgical Changes
+## 3. Surgical Changes
 
 **Touch only what you must. Clean up only your own mess.**
 
@@ -58,7 +48,7 @@ When your changes create orphans:
 
 The test: Every changed line should trace directly to the user's request.
 
-### 4. Goal-Driven Execution
+## 4. Goal-Driven Execution
 
 **Define success criteria. Loop until verified.**
 
@@ -74,7 +64,7 @@ For multi-step tasks, state a brief plan:
 3. [Step] → verify: [check]
 ```
 
-### 5. Steps to avoid post-change problems
+## 5. Steps to avoid post-change problems
 
 - When debugging, Perform a root-cause investigation (reading the actual call chain for example) before trying to fix problems.
 - Explicitly enumerate call sites and edge cases before editing, or verify with type-checks/tests after refactors, to prevent regressions.
