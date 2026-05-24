@@ -31,10 +31,27 @@ panel.addComponent(dueDate);
 | `setEnabled(boolean)` / `setReadOnly(boolean)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); both forward to the inner [`PickerInput`](/api/component/input/classes/PickerInput). |
 | `setDropdownAnimated(boolean)` | Toggle the fade animation on the calendar dropdown. |
 
+## Construction-time options
+
+| Option | Type | Purpose |
+| --- | --- | --- |
+| `minDate` | `Date \| null` | Earliest date the picker will allow selection of. Years outside the bound are hidden from the year scroller and out-of-range days render dim and ignore clicks. Optional. |
+| `maxDate` | `Date \| null` | Latest date the picker will allow selection of. Same semantics as `minDate`. Optional. |
+
+## Navigation
+
+The dropdown header carries three navigation affordances:
+
+- **Month chevrons** `<` and `>` step `±1` month at a time.
+- **Header label** ("May 2026") is a button: click it to swap the day grid for an in-place year-scroller. Click a year cell to return to the day grid for that year; press `Escape` to return without changing the year.
+- **Type-ahead** inside the year scroller: typing four digits (e.g. `1985`) jumps to that year. The buffer resets after a brief idle pause.
+
+Keyboard inside the day grid: arrow keys move the highlight (`±1` day / `±7` days), `PageUp`/`PageDown` advance by month, `Home`/`End` jump to the first / last in-range day, `Enter` or `Space` commits the highlighted day. Inside the year scroller the same arrow / Page / Home / End semantics walk the year list (`PageUp`/`PageDown` step `±10` years).
+
 ## Notes
 
-- The calendar dropdown is intentionally minimal (single month, no navigation) — extend [`DatePickerDropdown`](/api/component/input/classes/DatePickerDropdown) to add navigation, week numbers, or locale-aware behaviour.
 - The Date returned uses local-time semantics — interpret it accordingly when formatting for backend APIs.
+- Cell editors in tables (`Date` / `DateTime` editor) pick up navigation automatically because they spawn the same dropdown.
 
 ## See also
 
