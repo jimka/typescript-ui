@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Bindable } from "~/core/Bindable.js";
-import { Component, ComponentOptions } from "~/core/Component.js";
+import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
+import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { callable } from "~/core/Callable.js";
 
@@ -10,7 +10,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export interface SliderOptions extends ComponentOptions {
+export interface SliderOptions extends AbstractInputOptions {
     value?:       number;
     min?:         number;
     max?:         number;
@@ -18,8 +18,6 @@ export interface SliderOptions extends ComponentOptions {
     largeStep?:   number;
     orientation?: "horizontal" | "vertical";
     showTicks?:   boolean;
-    enabled?:     boolean;
-    readOnly?:    boolean;
 
     /** @deprecated use {@link SliderOptions.min} */
     minValue?:    number;
@@ -46,15 +44,12 @@ const DEFAULT_STEP    = 1;
  * @category Components
  */
 class Slider<TOptions extends SliderOptions = SliderOptions>
-    extends Component<TOptions>
-    implements Bindable<number>
+    extends AbstractInput<number, TOptions>
 {
-    private _track:            Component;
-    private _activeTrack:      Component;
-    private _thumb:            Component;
-    private _changeListeners:  Array<(value: number) => void> = [];
-    private _bindingListeners: Array<() => void> = [];
-    private _draggingPointer:  number | null = null;
+    private _track:           Component;
+    private _activeTrack:     Component;
+    private _thumb:           Component;
+    private _draggingPointer: number | null = null;
 
     /**
      * Constructs a Slider.
@@ -398,54 +393,6 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
     }
 
     /**
-     * Returns whether the slider is enabled.
-     *
-     * @returns `true` when enabled.
-     */
-    isEnabled(): boolean {
-        return this._options.enabled ?? true;
-    }
-
-    /**
-     * Enables or disables the slider. Disabled sliders ignore keyboard +
-     * pointer input.
-     *
-     * @param value - `true` to enable, `false` to disable.
-     *
-     * @returns This component, for method chaining.
-     */
-    setEnabled(value: boolean): this {
-        this._options.enabled = !!value;
-        this.applyEnabled(this._options.enabled);
-
-        return this;
-    }
-
-    /**
-     * Returns whether the slider is read-only.
-     *
-     * @returns `true` when read-only.
-     */
-    isReadOnly(): boolean {
-        return this._options.readOnly ?? false;
-    }
-
-    /**
-     * Marks the slider as read-only. Read-only sliders stay focusable but
-     * ignore user-driven value changes.
-     *
-     * @param value - `true` to mark read-only.
-     *
-     * @returns This component, for method chaining.
-     */
-    setReadOnly(value: boolean): this {
-        this._options.readOnly = !!value;
-        this.applyReadOnly(this._options.readOnly);
-
-        return this;
-    }
-
-    /**
      * Back-compat alias for the existing `input` event listener API. Existing
      * demos call `slider.addActionListener(fn)` and read `slider.getValue()`;
      * preserving the surface means migrating to the custom-drawn control is
@@ -457,51 +404,6 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
      */
     addActionListener(listener: Function): this {
         Event.addListener(this, "input", listener);
-
-        return this;
-    }
-
-    /**
-     * Registers a callback fired on every user-driven and programmatic value
-     * change.
-     *
-     * @param fn - Callback invoked with the new value.
-     *
-     * @returns This component, for method chaining.
-     */
-    addChangeListener(fn: (value: number) => void): this {
-        this._changeListeners.push(fn);
-
-        return this;
-    }
-
-    /**
-     * Removes a previously registered change listener.
-     *
-     * @param fn - The exact callback reference to remove.
-     *
-     * @returns This component, for method chaining.
-     */
-    removeChangeListener(fn: (value: number) => void): this {
-        const idx = this._changeListeners.indexOf(fn);
-
-        if (idx >= 0) {
-            this._changeListeners.splice(idx, 1);
-        }
-
-        return this;
-    }
-
-    /**
-     * Subscribes a callback invoked on every user-driven value change. Used
-     * by the {@link Bindable} interface.
-     *
-     * @param fn - Callback fired on each change.
-     *
-     * @returns This component, for method chaining.
-     */
-    addBindingListener(fn: () => void): this {
-        this._bindingListeners.push(fn);
 
         return this;
     }
@@ -761,7 +663,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
     /**
      * Reflects the enabled flag in the ARIA tree and tabindex.
      */
-    private applyEnabled(value: boolean): void {
+    protected applyEnabled(value: boolean): void {
         this.getAria().setDisabled(!value);
         this.getAria().setTabIndex(value ? 0 : -1);
         this.setCursor(value ? "pointer" : "default");
@@ -770,21 +672,8 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
     /**
      * Reflects the read-only flag in the ARIA tree.
      */
-    private applyReadOnly(value: boolean): void {
+    protected applyReadOnly(value: boolean): void {
         this.getAria().setReadOnly(value);
-    }
-
-    /**
-     * Fires change and binding listeners.
-     */
-    private notifyChange(value: number): void {
-        for (const fn of this._changeListeners) {
-            fn(value);
-        }
-
-        for (const fn of this._bindingListeners) {
-            fn();
-        }
     }
 }
 
