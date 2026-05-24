@@ -72,5 +72,5 @@ For variable column widths, use a [`Border`](/layouts/Border) at top level with 
 ## See also
 
 - [API: Grid](/api/layout/classes/Grid)
-- [`Column`](/layouts/Column), [`Row`](/layouts/Row) — single-axis equivalents
+- [`HBox`](/layouts/HBox), [`VBox`](/layouts/VBox) — single-axis equivalents (use `mode: "equal"` for the equal-share layout)
 - [Layout constraints reference](/layouts/Constraints)
