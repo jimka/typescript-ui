@@ -28,7 +28,7 @@ export { Popover } from '~/core/Popover.js';
 export type { PopoverOptions, PopoverPlacement, PopoverDismissMode } from '~/core/Popover.js';
 export { Notification } from '~/core/Notification.js';
 export type { NotificationType } from '~/core/Notification.js';
-export { Dialog, DialogTitleBar } from '~/core/Dialog.js';
+export { Dialog, DialogTitleBar, DialogButtons } from '~/core/Dialog.js';
 export type { DialogConfig, DialogButtonConfig, DialogResult } from '~/core/Dialog.js';
 
 export { ThemeManager, DefaultTheme, DarkTheme } from '~/core/Theme.js';

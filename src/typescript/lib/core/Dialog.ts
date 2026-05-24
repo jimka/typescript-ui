@@ -17,8 +17,9 @@ import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
 import { circle_check } from "~/glyphs/solid/circle_check.js";
+import { circle_info } from "~/glyphs/solid/circle_info.js";
 
-Glyph.register(xmark, circle_check);
+Glyph.register(xmark, circle_check, circle_info);
 
 /**
  * The result produced when a dialog is dismissed.
@@ -41,6 +42,15 @@ export interface DialogButtonConfig {
     primary?: boolean;
     /** Optional registry glyph name shown to the left of the button label. */
     glyph?  : string;
+    /**
+     * Optional foreground colour applied to the button's leading glyph. Accepts
+     * any CSS colour string — typically a theme variable reference such as
+     * `'var(--ts-ui-dialog-confirm-color)'`. When omitted the glyph inherits
+     * the button's `currentColor`. The {@link DialogButtons} presets supply
+     * the appropriate tint by default; reach for this field at the call site
+     * only when overriding a preset or building a one-off button.
+     */
+    tint?   : string;
 }
 
 /**
@@ -324,6 +334,15 @@ class DialogButtonRow extends Component {
                 btn.setBackgroundImage("var(--ts-ui-toggle-selected-bg, rgb(200, 200, 200))");
             }
 
+            if (cfg.glyph !== undefined) {
+                const glyph = btn.getGlyph();
+                const tint = cfg.tint;
+
+                if (glyph !== null && tint) {
+                    glyph.setForegroundColor(tint);
+                }
+            }
+
             btn.addActionListener(() => onButton(result));
             this._buttons.push(btn);
             this.addComponent(btn);
@@ -369,9 +388,46 @@ let instanceCounter: number = 0;
 /** Base z-index for the dialog panel. */
 const DIALOG_BASE_Z: number = 10101;
 
+/**
+ * Canonical dialog button presets. Spread into the `buttons` array of a
+ * {@link DialogConfig} to inherit the standard text / result / glyph mapping
+ * for the three universal dismiss-row affordances; override `primary` per
+ * call site since which button is default-focused is contextual (Cancel is
+ * primary when paired with Confirm; Confirm is primary when it stands alone).
+ *
+ * Centralising the `glyph` here is the rule that prevents drift — the
+ * checkmark/xmark mapping is bound to the button's identity, never re-typed
+ * at the call site. {@link Dialog} also inspects the resolved result set to
+ * pick the title-bar variant (only `confirm` → info header with leading
+ * `circle-info`; `confirm` + `cancel` → affirm header).
+ *
+ * @category Core
+ * @example
+ * ```typescript
+ * Dialog.show({
+ *     title:   'Delete record',
+ *     message: 'This cannot be undone.',
+ *     buttons: [
+ *         { ...DialogButtons.Cancel, primary: true },
+ *         DialogButtons.Confirm,
+ *     ],
+ * });
+ * ```
+ */
+export const DialogButtons = {
+    /** Affirm an action — emits `'confirm'`, carries the green-tinted `circle-check` glyph. Paired with {@link Cancel} for action prompts. */
+    Confirm: { text: 'Confirm', result: 'confirm', glyph: 'circle-check', tint: 'var(--ts-ui-dialog-confirm-color)' },
+    /** Acknowledge information — emits `'confirm'`, carries the green-tinted `circle-check` glyph. Stands alone on informational dialogs. */
+    Ok:      { text: 'Ok',      result: 'confirm', glyph: 'circle-check', tint: 'var(--ts-ui-dialog-confirm-color)' },
+    /** Reject an action — emits `'cancel'`, carries the red-tinted `xmark` glyph. Paired with {@link Confirm}. */
+    Cancel:  { text: 'Cancel',  result: 'cancel',  glyph: 'xmark',        tint: 'var(--ts-ui-dialog-cancel-color)'  },
+    /** Dismiss without choosing — emits `'close'`, carries the red-tinted `xmark` glyph (same icon family as cancel; the result value disambiguates). */
+    Close:   { text: 'Close',   result: 'close',   glyph: 'xmark',        tint: 'var(--ts-ui-dialog-cancel-color)'  },
+} as const satisfies Record<string, DialogButtonConfig>;
+
 /** Default button set when no buttons are supplied in config. */
 const DEFAULT_BUTTONS: DialogButtonConfig[] = [
-    { text: 'OK', result: 'confirm', primary: true, glyph: "circle-check" },
+    { ...DialogButtons.Ok, primary: true },
 ];
 
 /**
@@ -447,6 +503,8 @@ class Dialog extends Component {
         this._titleBar = new DialogTitleBar(config.title, () => this.hide('close'));
         this.addComponent(this._titleBar, { placement: Placement.NORTH });
 
+        this.applyHeaderVariant(this.computeHeaderVariant(buttons));
+
         this._contentContainer = new Component();
         this._contentContainer.setLayoutManager(new Fit());
         // Vertical scrolling only — a horizontal scrollbar would cover the
@@ -473,6 +531,61 @@ class Dialog extends Component {
 
         this._boundKeyHandler    = (e: KeyboardEvent) => this.onKeyDown(e);
         this._boundResizeHandler = () => this.onViewportResize();
+    }
+
+    /**
+     * Picks the title-bar tint variant for this dialog by inspecting the set
+     * of button results. The variant is derived from the buttons rather than
+     * a config flag so callers cannot signal one intent via buttons and a
+     * conflicting intent via a separate option.
+     *
+     * @param buttons - The resolved button configuration array.
+     * @returns `'info'` for a single confirm-result button (informational
+     *          dialog), `'affirm'` when both confirm and cancel are present
+     *          (affirmative-action dialog), `'plain'` otherwise.
+     */
+    private computeHeaderVariant(buttons: DialogButtonConfig[]): 'info' | 'affirm' | 'plain' {
+        const results = new Set(buttons.map(b => b.result ?? 'cancel'));
+
+        if (results.size === 1 && results.has('confirm')) {
+            return 'info';
+        }
+
+        if (results.has('confirm') && results.has('cancel')) {
+            return 'affirm';
+        }
+
+        return 'plain';
+    }
+
+    /**
+     * Applies the chosen header variant's background, title-text foreground,
+     * and (for the info variant only) a leading `circle-info` glyph. The
+     * close button inside the title bar is intentionally untouched — dismiss
+     * affordances stay on `currentColor` per the modal-glyph-theming rule.
+     *
+     * @param variant - One of `'info'`, `'affirm'`, or `'plain'`.
+     */
+    private applyHeaderVariant(variant: 'info' | 'affirm' | 'plain'): void {
+        if (variant === 'plain') {
+            return;
+        }
+
+        const bgVar = variant === 'info' ? 'var(--ts-ui-dialog-info-bg)' : 'var(--ts-ui-dialog-affirm-bg)';
+        const fgVar = variant === 'info' ? 'var(--ts-ui-dialog-info-fg)' : 'var(--ts-ui-dialog-affirm-fg)';
+
+        this._titleBar.setBackgroundColor(bgVar);
+        this._titleBar.getTitleText().setForegroundColor(fgVar);
+
+        if (variant === 'info') {
+            this._titleBar.setGlyph('circle-info');
+
+            const headerGlyph = this._titleBar.getGlyph();
+
+            if (headerGlyph !== null) {
+                headerGlyph.setForegroundColor(fgVar);
+            }
+        }
     }
 
     /**
@@ -769,8 +882,8 @@ class Dialog extends Component {
             title,
             message,
             buttons: [
-                { text: 'Cancel',  result: 'cancel',  primary: true, glyph: "xmark"        },
-                { text: 'Confirm', result: 'confirm',                glyph: "circle-check" },
+                { ...DialogButtons.Cancel, primary: true },
+                DialogButtons.Confirm,
             ],
         });
 
