@@ -28,8 +28,10 @@ The registry lives in `src/typescript/lib/component/display/Glyphs.ts`. Add a gl
 | Name | Kind | Notes |
 | --- | --- | --- |
 | `times` | SVG | Close / dismiss `×` |
-| `arrow-right` | Unicode `▶` | Collapsed tree node / disclosure |
-| `arrow-down` | Unicode `▼` | Expanded tree node / disclosure |
+| `arrow-up` | Unicode `▲` | Scrollbar vertical start arrow |
+| `arrow-down` | Unicode `▼` | Expanded tree node / scrollbar vertical end arrow |
+| `arrow-left` | Unicode `◀` | Scrollbar horizontal start arrow |
+| `arrow-right` | Unicode `▶` | Collapsed tree node / scrollbar horizontal end arrow |
 
 ## Where Glyph is used
 
@@ -39,6 +41,7 @@ The following components consume the registry by name:
 - [`Button`](/api/component/button/classes/Button) — optional leading glyph via `setGlyph(name)` or the `glyph` option. Inherited by [`ToggleButton`](/api/component/button/classes/ToggleButton) and pre-seeded with `times` on [`TabCloseButton`](/api/component/button/classes/TabCloseButton).
 - [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) — optional leading glyph via `setGlyph(name)` or the `glyph` option.
 - [`Tree`](/api/component/tree/classes/Tree) row toggles — `arrow-down` when expanded, `arrow-right` when collapsed. The row never sees the raw character; the registry decides the look.
+- [`Scrollbar`](/api/component/container/classes/Scrollbar) end-cap arrow buttons (opt-in via `arrowsEnabled`) — `arrow-up` / `arrow-down` on vertical bars; `arrow-left` / `arrow-right` on horizontal bars.
 - [`IconText`](/api/component/display/classes/IconText) / [`IconLabel`](/api/component/display/classes/IconLabel) — small composites pairing a glyph with a [`Text`](/api/component/input/classes/Text) or `<label>`.
 - Table cells via the `glyph` field type — see [`GlyphCell`](/api/component/table/classes/GlyphCell) and [`GlyphRenderer`](/api/component/table/classes/GlyphRenderer).
 

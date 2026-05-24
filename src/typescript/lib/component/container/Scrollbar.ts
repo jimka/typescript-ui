@@ -1,13 +1,38 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/core/Component.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { Glyph } from "~/component/display/Glyph.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 
 const TRACK_WIDTH    = 12;
 const THUMB_INSET    = 2;
 const THUMB_MIN_SIZE = 30;
+
+// Font size for the Unicode triangle character rendered in each arrow button.
+// The arrow box is TRACK_WIDTH (12) px square; the ambient 14 px theme font
+// produces a 16 px line-box that overflows the 12 px element and is clipped
+// at the bottom by `overflow: hidden`, leaving the visible triangle slid up
+// against the top edge. 10 px shrinks the line-box (= font-size × line-height
+// 1) below the element height so the character fits with even padding above
+// and below — matches the value [`AccordionIndicator`](./AccordionIndicator.ts)
+// uses for its `▶` chevron.
+const ARROW_GLYPH_FONT_SIZE = 10;
+
+// Initial hold-repeat delay and acceleration parameters for ScrollArrowButton.
+// Mirrors SpinButton's scheduler so a long press on either widget produces the
+// same accelerating tick cadence — 400 ms first interval, multiplied by 0.75
+// each tick, floored at 40 ms.
+const ARROW_REPEAT_INITIAL_MS = 400;
+const ARROW_REPEAT_DECAY      = 0.75;
+const ARROW_REPEAT_FLOOR_MS   = 40;
+
+// Default per-click scroll step in pixels for arrow buttons. Roughly two rows
+// at default font size in the Table; chosen as a fixed pixel value rather than
+// a derived fraction of viewport so the step size stays predictable as content
+// grows. Owners can override via `setArrowStep(px)`.
+const DEFAULT_ARROW_STEP_PX = 40;
 
 /**
  * Scrollbar orientation. `"vertical"` lays the track along the Y axis (default);
@@ -26,6 +51,216 @@ export type ScrollbarOrientation = "vertical" | "horizontal";
 export type ScrollbarListener = (position: number) => void;
 
 /**
+ * Construction-time options for {@link Scrollbar}.
+ *
+ * @category Components
+ */
+export interface ScrollbarOptions extends ComponentOptions {
+
+    /**
+     * When `true`, the scrollbar renders classic OS-style arrow buttons at
+     * each end of the track (up/down for vertical, left/right for horizontal).
+     * The buttons step the scroll position by {@link ScrollbarOptions.arrowStep}
+     * pixels per click and accelerate while held. The matching arrow shows a
+     * dimmed disabled-state colour when scroll is already at that edge.
+     * Defaults to `false` — the current minimalist look is preserved unless
+     * an owner opts in.
+     */
+    arrowsEnabled?: boolean;
+
+    /**
+     * Per-click scroll step in pixels for the arrow buttons. Ignored when
+     * `arrowsEnabled` is `false`. Defaults to `40`.
+     */
+    arrowStep?: number;
+}
+
+/**
+ * Direction for a `ScrollArrowButton`. `"up"` / `"down"` go on the ends
+ * of a vertical scrollbar; `"left"` / `"right"` on a horizontal one.
+ */
+type ArrowDirection = "up" | "down" | "left" | "right";
+
+/**
+ * A press-and-hold arrow button rendered at one end of a {@link Scrollbar}'s
+ * track when arrows are enabled. File-local — not exported from the container
+ * barrel because it is a Scrollbar implementation detail.
+ *
+ * Mirrors the [`SpinButton`](/api/component/input/classes/SpinButton)
+ * hold-repeat cadence: a click fires one tick, holding accelerates from a
+ * 400 ms initial interval to a 40 ms floor, and release cancels the schedule.
+ * When in the disabled state, mousedown is ignored and the glyph renders in
+ * the dim colour token.
+ */
+class ScrollArrowButton extends Component {
+
+    private _glyph:         Glyph;
+    private _disabled:      boolean                              = false;
+    private _tickListeners: Array<() => void>                    = [];
+    private _repeatHandle:  ReturnType<typeof setTimeout> | null = null;
+    private _repeatDelay:   number                               = ARROW_REPEAT_INITIAL_MS;
+
+    /**
+     * Constructs a square TRACK_WIDTH × TRACK_WIDTH arrow button pointing in
+     * the given direction.
+     *
+     * @param direction - One of `"up"`, `"down"`, `"left"`, `"right"`.
+     */
+    constructor(direction: ArrowDirection) {
+        super();
+
+        this.setWidth(TRACK_WIDTH);
+        this.setHeight(TRACK_WIDTH);
+        this.setCursor("default");
+        this.setBackgroundColor("var(--ts-ui-scrollbar-arrow-bg, transparent)");
+        this.setForegroundColor("var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))");
+
+        // Fill the full TRACK_WIDTH × TRACK_WIDTH button so `text-align: center`
+        // + `line-height: 1` (Glyph char-mode defaults) centre the character
+        // within that box. The explicit `fontSize` shrinks the inherited
+        // 14 px size so the Unicode triangle's line-box (which scales with
+        // font-size) fits inside the 12 px element box and isn't clipped at
+        // the bottom by `overflow: hidden` — mirrors the same fix
+        // AccordionIndicator applies to its `▶` chevron.
+        this._glyph = new Glyph("unicode-arrow-" + direction);
+        this._glyph.setPreferredSize(TRACK_WIDTH, TRACK_WIDTH);
+        this._glyph.setFontSize(ARROW_GLYPH_FONT_SIZE);
+
+        super.addComponent(this._glyph);
+
+        Event.addListener(this, "mousedown",  this._onMouseDown);
+        Event.addListener(this, "mouseover",  this._onMouseOver);
+        Event.addListener(this, "mouseout",   this._onMouseOut);
+        Event.addViewportListener(this, "mouseup",    this._onMouseUp);
+        Event.addViewportListener(this, "mouseleave", this._onMouseUp);
+    }
+
+    /**
+     * Registers a callback fired on each logical tick (initial mousedown plus
+     * every subsequent hold-repeat tick).
+     *
+     * @param listener - The callback invoked on every tick.
+     */
+    addTickListener(listener: () => void): void {
+        this._tickListeners.push(listener);
+    }
+
+    /**
+     * Returns whether this arrow is currently in the at-edge disabled state.
+     *
+     * @returns `true` when disabled, `false` otherwise.
+     */
+    isDisabledState(): boolean {
+        return this._disabled;
+    }
+
+    /**
+     * Toggles the disabled visual state and behaviour. Disabled arrows render
+     * the glyph in the dim colour token and ignore mousedown events; any
+     * in-flight hold-repeat schedule is cancelled.
+     *
+     * @param disabled - `true` to disable, `false` to enable.
+     */
+    setDisabledState(disabled: boolean): void {
+        if (this._disabled === disabled) {
+            return;
+        }
+
+        this._disabled = disabled;
+
+        if (disabled) {
+            this.cancelRepeat();
+            this.setForegroundColor("var(--ts-ui-scrollbar-arrow-disabled-color, rgba(0, 0, 0, 0.18))");
+        } else {
+            this.setForegroundColor("var(--ts-ui-scrollbar-arrow-color, rgba(0, 0, 0, 0.55))");
+        }
+    }
+
+    /**
+     * Cancels any in-progress hold-repeat schedule and resets the tick delay
+     * to its initial value.
+     */
+    private cancelRepeat(): void {
+        if (this._repeatHandle !== null) {
+            clearTimeout(this._repeatHandle);
+            this._repeatHandle = null;
+        }
+
+        this._repeatDelay = ARROW_REPEAT_INITIAL_MS;
+    }
+
+    /**
+     * Handles mousedown on the button. Stops propagation so the parent
+     * Scrollbar's track-click handler does not also fire, then (if not
+     * disabled) fires the first tick and schedules accelerating repeats.
+     *
+     * @param e - The mousedown event.
+     */
+    private _onMouseDown = (e: MouseEvent): void => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (this._disabled) {
+            return;
+        }
+
+        this.fireTicks();
+        this.scheduleNext();
+    };
+
+    /**
+     * Cancels the hold-repeat schedule on mouseup or when the pointer leaves
+     * the viewport.
+     */
+    private _onMouseUp = (): void => {
+        if (this._repeatHandle === null) {
+            return;
+        }
+
+        this.cancelRepeat();
+    };
+
+    /**
+     * Darkens the button background on hover, mirroring the thumb-hover idiom.
+     */
+    private _onMouseOver = (): void => {
+        if (this._disabled) {
+            return;
+        }
+
+        this.setBackgroundColor("var(--ts-ui-scrollbar-arrow-hover-bg, rgba(0, 0, 0, 0.06))");
+    };
+
+    /**
+     * Restores the resting background when the pointer leaves the button.
+     */
+    private _onMouseOut = (): void => {
+        this.setBackgroundColor("var(--ts-ui-scrollbar-arrow-bg, transparent)");
+    };
+
+    /**
+     * Schedules the next hold-repeat tick using the current `_repeatDelay`,
+     * then decays the delay (×0.75, floored at 40 ms) for the following tick.
+     */
+    private scheduleNext(): void {
+        this._repeatHandle = setTimeout((): void => {
+            this.fireTicks();
+            this._repeatDelay = Math.max(ARROW_REPEAT_FLOOR_MS, this._repeatDelay * ARROW_REPEAT_DECAY);
+            this.scheduleNext();
+        }, this._repeatDelay);
+    }
+
+    /**
+     * Invokes all registered tick listeners in registration order.
+     */
+    private fireTicks(): void {
+        for (const fn of this._tickListeners) {
+            fn();
+        }
+    }
+}
+
+/**
  * A custom virtual scrollbar overlay.
  *
  * Designed for components that own their own scroll state (e.g. transform-based
@@ -35,7 +270,9 @@ export type ScrollbarListener = (position: number) => void;
  *
  * The thumb is dragged with the mouse; clicking the track above/beside the
  * thumb pages by one viewport. The scrollbar hides itself when content fits in
- * the viewport.
+ * the viewport. Optional classic OS-style arrow buttons at each end of the
+ * track are available via {@link ScrollbarOptions.arrowsEnabled} — disabled by
+ * default to preserve the minimalist look.
  *
  * Available in vertical (default) and horizontal orientations; the owner is
  * responsible for sizing the primary axis (height for vertical, width for
@@ -43,28 +280,51 @@ export type ScrollbarListener = (position: number) => void;
  *
  * @category Components
  */
-class Scrollbar extends Component {
+class Scrollbar extends Component<ScrollbarOptions> {
 
     private _orientation     : ScrollbarOrientation     = "vertical";
     private _thumb           : Component;
     private _viewportSize    : number                   = 0;
     private _contentSize     : number                   = 0;
     private _scrollPosition  : number                   = 0;
-    private _thumbSize       : number                   = 0;
-    private _thumbPos        : number                   = 0;
+    // Sentinel `-1` rather than `0` so the first `setMetrics` call always
+    // writes the thumb's size/position through to the DOM, even when the
+    // computed values happen to be `0` (e.g. scroll position at top with
+    // arrows enabled, where the constructor-time `setY(0)` would otherwise
+    // never get corrected to the arrow-region origin offset).
+    private _thumbSize       : number                   = -1;
+    private _thumbPos        : number                   = -1;
     private _dragStartClient : number                   = 0;
     private _dragStartScroll : number                   = 0;
     private _scrollListeners : ScrollbarListener[]      = [];
+
+    private _arrowsEnabled   : boolean                  = true;
+    private _arrowStep       : number                   = DEFAULT_ARROW_STEP_PX;
+    private _arrowStart      : ScrollArrowButton | null = null;
+    private _arrowEnd        : ScrollArrowButton | null = null;
 
     /**
      * Constructs a Scrollbar.
      *
      * @param orientation - `"vertical"` (default) or `"horizontal"`.
+     * @param options - Optional configuration bag. ComponentOptions fields are
+     *   forwarded to `super` so the standard cascade applies; the
+     *   arrow-specific fields are read here ahead of any DOM construction.
      */
-    constructor(orientation: ScrollbarOrientation = "vertical") {
-        super();
+    constructor(orientation: ScrollbarOrientation = "vertical", options?: ScrollbarOptions) {
+        super(options);
 
         this._orientation = orientation;
+
+        // Pull arrow configuration out of options ahead of any DOM work so the
+        // thumb / arrow construction below sees the final flags. ComponentOptions
+        // fields (visible, backgroundColor, etc.) are already applied by super.
+        if (options?.arrowStep !== undefined) {
+            this._arrowStep = options.arrowStep;
+        }
+        if (options?.arrowsEnabled !== undefined) {
+            this._arrowsEnabled = options.arrowsEnabled;
+        }
 
         this.setBackgroundColor("var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))");
         this.setUserSelect("none");
@@ -91,12 +351,76 @@ class Scrollbar extends Component {
 
         super.addComponent(this._thumb);
 
+        if (this._arrowsEnabled) {
+            this.buildArrows();
+        }
+
         Event.addListener(this._thumb, "mousedown",  this._onDragStart);
         Event.addListener(this._thumb, "touchstart", this._onDragStart);
         Event.addListener(this._thumb, "mouseover",  this._onThumbMouseOver);
         Event.addListener(this._thumb, "mouseout",   this._onThumbMouseOut);
         Event.addListener(this, "mousedown",  this._onTrackClick);
         Event.addListener(this, "touchstart", this._onTrackClick);
+    }
+
+    /**
+     * Constructs and wires the two arrow buttons. Start arrow sits at the
+     * primary-axis origin; end arrow's primary-axis position is set lazily in
+     * `setMetrics` because the cross-axis extent changes with bar size.
+     * Disabled-state for the start arrow is pre-set since `_scrollPosition`
+     * defaults to 0 — without this the start arrow renders enabled for one
+     * frame before `setMetrics` corrects it.
+     */
+    private buildArrows(): void {
+        const startDirection: ArrowDirection = this.isVertical() ? "up"   : "left";
+        const endDirection:   ArrowDirection = this.isVertical() ? "down" : "right";
+
+        this._arrowStart = new ScrollArrowButton(startDirection);
+        this._arrowStart.setX(0);
+        this._arrowStart.setY(0);
+        this._arrowStart.addTickListener((): void => this.onArrowTick(-1));
+        this._arrowStart.setDisabledState(true);
+        super.addComponent(this._arrowStart);
+
+        this._arrowEnd = new ScrollArrowButton(endDirection);
+        // End arrow's primary-axis origin depends on the bar's outer size; we
+        // position it inside `setMetrics`. Cross-axis stays at 0.
+        this._arrowEnd.setX(0);
+        this._arrowEnd.setY(0);
+        this._arrowEnd.addTickListener((): void => this.onArrowTick(+1));
+        super.addComponent(this._arrowEnd);
+    }
+
+    /**
+     * Computes the next scroll position one `_arrowStep` away from the current
+     * one, clamps it to the valid range, and fires scroll listeners if it
+     * changed. The owner's listener call back into `setMetrics` next frame,
+     * which refreshes `atStart` / `atEnd` and updates the arrow disabled state.
+     *
+     * @param direction - `-1` for the start arrow, `+1` for the end arrow.
+     */
+    private onArrowTick(direction: -1 | 1): void {
+        const maxScroll   = Math.max(0, this._contentSize - this._viewportSize);
+        const newPosition = Math.max(0, Math.min(maxScroll, this._scrollPosition + direction * this._arrowStep));
+
+        if (newPosition !== this._scrollPosition) {
+            this.fireScrollListeners(newPosition);
+        }
+    }
+
+    /**
+     * Tears down both arrow buttons. Called when arrows are toggled off at
+     * runtime; safe when no arrows are currently mounted.
+     */
+    private disposeArrows(): void {
+        if (this._arrowStart) {
+            super.removeComponent(this._arrowStart);
+            this._arrowStart = null;
+        }
+        if (this._arrowEnd) {
+            super.removeComponent(this._arrowEnd);
+            this._arrowEnd = null;
+        }
     }
 
     /**
@@ -159,7 +483,9 @@ class Scrollbar extends Component {
     /**
      * Pushes viewport/content metrics and the current scroll position into the
      * scrollbar. Recomputes the thumb size and position and hides the scrollbar
-     * if the content fits in the viewport.
+     * if the content fits in the viewport. When arrows are enabled, repositions
+     * the end arrow against the current outer size and refreshes the
+     * disabled-at-edge state on both arrows.
      *
      * @param viewportSize - The visible window size in pixels along the scroll axis.
      * @param contentSize - The total scrollable content size in pixels along the scroll axis.
@@ -197,6 +523,21 @@ class Scrollbar extends Component {
             this.setThumbPos(newThumbPos);
         }
 
+        if (this._arrowsEnabled && this._arrowStart && this._arrowEnd) {
+            // Position the end arrow against the current outer size — its
+            // primary-axis origin sits at (outer - TRACK_WIDTH).
+            const outer  = this.isVertical() ? this.getHeight() : this.getWidth();
+            const endPos = Math.max(0, outer - TRACK_WIDTH);
+            if (this.isVertical()) {
+                this._arrowEnd.setY(endPos);
+            } else {
+                this._arrowEnd.setX(endPos);
+            }
+
+            this._arrowStart.setDisabledState(scrollPosition <= 0);
+            this._arrowEnd.setDisabledState(scrollPosition >= maxScroll);
+        }
+
         return this;
     }
 
@@ -219,6 +560,67 @@ class Scrollbar extends Component {
     }
 
     /**
+     * Returns whether the arrow buttons at each end of the track are enabled.
+     *
+     * @returns `true` when arrows are rendered, `false` otherwise.
+     */
+    isArrowsEnabled(): boolean {
+        return this._arrowsEnabled;
+    }
+
+    /**
+     * Enables or disables the end-cap arrow buttons. Intended for
+     * construction-time use via {@link ScrollbarOptions.arrowsEnabled};
+     * runtime toggles are supported but tear down or build the arrow
+     * components on the fly and re-run `setMetrics` against the cached
+     * viewport / content / scroll-position triple so the thumb size / position
+     * recompute against the new track length.
+     *
+     * @param enabled - `true` to render arrows, `false` to remove them.
+     * @returns This scrollbar, for method chaining.
+     */
+    setArrowsEnabled(enabled: boolean): this {
+        if (this._arrowsEnabled === enabled) {
+            return this;
+        }
+
+        this._arrowsEnabled = enabled;
+
+        if (enabled) {
+            this.buildArrows();
+        } else {
+            this.disposeArrows();
+        }
+
+        this.setMetrics(this._viewportSize, this._contentSize, this._scrollPosition);
+
+        return this;
+    }
+
+    /**
+     * Returns the per-click scroll step in pixels used by the arrow buttons.
+     *
+     * @returns The cached arrow step.
+     */
+    getArrowStep(): number {
+        return this._arrowStep;
+    }
+
+    /**
+     * Sets the per-click scroll step in pixels used by the arrow buttons.
+     * No-op when arrows are not enabled, except that the new value is cached
+     * and applies on a subsequent {@link Scrollbar.setArrowsEnabled}`(true)`.
+     *
+     * @param px - The new step size in pixels.
+     * @returns This scrollbar, for method chaining.
+     */
+    setArrowStep(px: number): this {
+        this._arrowStep = px;
+
+        return this;
+    }
+
+    /**
      * Returns true if this is a vertical scrollbar.
      *
      * @returns True for vertical, false for horizontal.
@@ -228,11 +630,24 @@ class Scrollbar extends Component {
     }
 
     /**
-     * Returns the length of the track along the scroll axis: height for
-     * vertical, width for horizontal.
+     * Returns the length of the track along the scroll axis available for the
+     * thumb to travel. Subtracts the two arrow regions when arrows are
+     * enabled so the thumb travel range stays inside the track between them.
      */
     private getTrackLength(): number {
-        return this.isVertical() ? this.getHeight() : this.getWidth();
+        const raw   = this.isVertical() ? this.getHeight() : this.getWidth();
+        const inset = this._arrowsEnabled ? 2 * TRACK_WIDTH : 0;
+
+        return Math.max(0, raw - inset);
+    }
+
+    /**
+     * Returns the primary-axis offset where the track region (thumb travel
+     * area) starts. `TRACK_WIDTH` when arrows are enabled (skipping the start
+     * arrow), `0` otherwise.
+     */
+    private getTrackOrigin(): number {
+        return this._arrowsEnabled ? TRACK_WIDTH : 0;
     }
 
     /**
@@ -249,15 +664,19 @@ class Scrollbar extends Component {
     }
 
     /**
-     * Sets the thumb's position along the scroll axis.
+     * Sets the thumb's position along the scroll axis, offset by the track
+     * origin so the thumb sits inside the track region between the arrows
+     * when those are enabled.
      *
-     * @param pos - The new thumb position in pixels.
+     * @param pos - The new thumb position in pixels, relative to the track region.
      */
     private setThumbPos(pos: number): void {
+        const origin = this.getTrackOrigin();
+
         if (this.isVertical()) {
-            this._thumb.setY(pos);
+            this._thumb.setY(origin + pos);
         } else {
-            this._thumb.setX(pos);
+            this._thumb.setX(origin + pos);
         }
     }
 
@@ -358,7 +777,9 @@ class Scrollbar extends Component {
     /**
      * Pages the scroll position by one viewport size when the user clicks or
      * taps the track outside the thumb. Events on the thumb itself are caught
-     * by a separate listener and don't reach here.
+     * by a separate listener and don't reach here. When arrows are enabled,
+     * clicks that land inside an arrow region are ignored so the arrow
+     * button's own handler is the sole authority on arrow-region clicks.
      *
      * @param e - The mousedown or touchstart event on the track.
      */
@@ -384,8 +805,21 @@ class Scrollbar extends Component {
             click = vertical ? mouse.offsetY : mouse.offsetX;
         }
 
+        // When arrows are enabled, ignore clicks that landed inside either
+        // arrow region — those are handled by the arrow's own mousedown
+        // listener (which also stops propagation, but the touchstart path
+        // does not, so we double-check here).
+        const origin = this.getTrackOrigin();
+        const outer  = vertical ? this.getHeight() : this.getWidth();
+        if (this._arrowsEnabled && (click < origin || click >= outer - TRACK_WIDTH)) {
+            return;
+        }
+
+        // Subtract origin so the thumb-position comparison stays in the
+        // track-relative coordinate space (matches `_thumbPos`).
+        const trackClick  = click - origin;
         const thumbCenter = this._thumbPos + this._thumbSize / 2;
-        const direction   = click < thumbCenter ? -1 : 1;
+        const direction   = trackClick < thumbCenter ? -1 : 1;
         const maxScroll   = Math.max(0, this._contentSize - this._viewportSize);
         const newPosition = Math.max(0, Math.min(maxScroll, this._scrollPosition + direction * this._viewportSize));
 

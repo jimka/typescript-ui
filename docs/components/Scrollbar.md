@@ -53,6 +53,8 @@ The track-width constant (12 px) is shared across orientations and exposed via `
 | `addScrollListener(fn)` / `removeScrollListener(fn)` | Subscribe to user-driven scroll changes (`fn(position)`). |
 | `getTrackWidth()` | The fixed cross-axis dimension in pixels (use it for owner-side layout reservation). |
 | `getOrientation()` | `"vertical"` or `"horizontal"`. |
+| `setArrowsEnabled(b)` / `isArrowsEnabled()` | Toggle end-cap arrow buttons (see below). |
+| `setArrowStep(px)` / `getArrowStep()` | Per-click scroll step in pixels for the arrow buttons. |
 
 ## Behavior
 
@@ -61,13 +63,33 @@ The track-width constant (12 px) is shared across orientations and exposed via `
 - **Hover** — the thumb darkens on `mouseover`, restores on `mouseout`.
 - **Auto-hide** — `setMetrics` toggles display based on whether content overflows the viewport.
 
+## Arrow buttons
+
+Optional classic OS-style arrow buttons at each end of the track. Disabled by default to preserve the minimalist look; opt in via the new [`ScrollbarOptions`](/api/component/container/interfaces/ScrollbarOptions) bag passed as the constructor's second argument:
+
+```typescript
+const bar = Scrollbar('vertical', { arrowsEnabled: true, arrowStep: 60 });
+```
+
+- **Step** — each click scrolls by `arrowStep` pixels (default `40`, roughly two rows at default font size).
+- **Hold-repeat** — press and hold an arrow to fire ticks at an accelerating cadence (400 ms initial interval, ×0.75 per tick, floored at 40 ms — the same cadence as [`SpinButton`](/api/component/input/classes/SpinButton)).
+- **Disabled at edges** — when scroll is already at the top / left, the start arrow dims to `--ts-ui-scrollbar-arrow-disabled-color` and ignores clicks; same for the end arrow at the bottom / right.
+- **Track-length** — when arrows are on, the thumb travel range and the track-click paging hit-test exclude the two `getTrackWidth()`-sized arrow regions. `setMetrics` keeps the thumb sized against the inner track length, not the outer bar.
+- **Runtime toggle** — `setArrowsEnabled(true|false)` is supported. The arrow components are built or torn down on the fly and `setMetrics` is re-run with the cached viewport / content / scroll-position triple so the thumb recomputes against the new track length.
+
 ## Theming
 
 | CSS variable | Default |
 | --- | --- |
-| `--ts-ui-scrollbar-track`       | `rgba(0, 0, 0, 0.04)` |
-| `--ts-ui-scrollbar-thumb`       | `rgba(0, 0, 0, 0.35)` |
-| `--ts-ui-scrollbar-thumb-hover` | `rgba(0, 0, 0, 0.55)` |
+| `--ts-ui-scrollbar-track`                 | `rgba(0, 0, 0, 0.04)` |
+| `--ts-ui-scrollbar-thumb`                 | `rgba(0, 0, 0, 0.35)` |
+| `--ts-ui-scrollbar-thumb-hover`           | `rgba(0, 0, 0, 0.55)` |
+| `--ts-ui-scrollbar-arrow-bg`              | `transparent` |
+| `--ts-ui-scrollbar-arrow-color`           | `rgba(0, 0, 0, 0.55)` |
+| `--ts-ui-scrollbar-arrow-disabled-color`  | `rgba(0, 0, 0, 0.18)` |
+| `--ts-ui-scrollbar-arrow-hover-bg`        | `rgba(0, 0, 0, 0.06)` |
+
+The arrow tokens are wired via inline `var(..., fallback)` writes on the arrow elements, not through the [`Theme`](/api/core/interfaces/Theme) interface — same pattern as the existing track / thumb tokens.
 
 ## See also
 

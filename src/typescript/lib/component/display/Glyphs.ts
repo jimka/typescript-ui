@@ -30,6 +30,18 @@ export type NamedGlyphDef = GlyphDef & { name: string };
  */
 const _glyphs: Map<string, GlyphDef> = new Map();
 
+// Built-in Unicode-triangle glyphs registered eagerly. Prefixed `unicode-` so
+// user code can register its own `arrow-up` / `arrow-down` SVG glyphs without
+// overwriting these — built-in chrome like Scrollbar's end-cap buttons
+// references the prefixed names directly and stays immune to user overrides.
+// Char-mode entries are tiny (no sprite, no path data) so the always-on cost
+// is negligible; the triangles inherit the surrounding text colour via
+// `currentColor`, so a single foreground-colour write themes them.
+_glyphs.set("unicode-arrow-up",    { kind: "char", char: "▲" });
+_glyphs.set("unicode-arrow-down",  { kind: "char", char: "▼" });
+_glyphs.set("unicode-arrow-left",  { kind: "char", char: "◀" });
+_glyphs.set("unicode-arrow-right", { kind: "char", char: "▶" });
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /**
