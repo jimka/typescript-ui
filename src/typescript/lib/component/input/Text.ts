@@ -426,7 +426,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         this._options.text = (text || "") as TOptions["text"];
 
         this._measurementDirty = true;
-        this.scheduleLayout();
+        (this.getParentComponent() ?? this).scheduleLayout();
 
         let element = this.getElement();
         if (!element) {
@@ -540,7 +540,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         this.setElementCSSRule("fontFamily", value);
 
         this._measurementDirty = true;
-        this.scheduleLayout();
+        (this.getParentComponent() ?? this).scheduleLayout();
 
         return this;
     }
@@ -607,7 +607,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         }
 
         this._measurementDirty = true;
-        this.scheduleLayout();
+        (this.getParentComponent() ?? this).scheduleLayout();
 
         return this;
     }
@@ -730,7 +730,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         this.setElementCSSRule("fontWeight", value);
 
         this._measurementDirty = true;
-        this.scheduleLayout();
+        (this.getParentComponent() ?? this).scheduleLayout();
 
         return this;
     }
@@ -769,7 +769,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         }
 
         this._measurementDirty = true;
-        this.scheduleLayout();
+        (this.getParentComponent() ?? this).scheduleLayout();
 
         return this;
     }
@@ -878,7 +878,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         // The auto-min cap depends on `_truncate`; re-measure so the parent
         // layout sees the new floor on the next layout pass.
         this._measurementDirty = true;
-        this.scheduleLayout();
+        (this.getParentComponent() ?? this).scheduleLayout();
 
         return this;
     }
