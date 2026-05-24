@@ -386,7 +386,7 @@ export const DefaultTheme: Theme = {
         color             : 'rgb(40, 40, 40)',
         disabledBackground: 'rgb(240, 240, 240)',
         disabledColor     : 'rgb(170, 170, 170)',
-        focusRing         : '2px solid rgb(30, 100, 200)',
+        focusRing         : 'rgb(30, 100, 200)',
         toggle  : {
             trackOffBackground: 'rgb(200, 200, 200)',
             trackOnBackground : 'rgb(30, 100, 200)',
@@ -624,7 +624,7 @@ export const DarkTheme: Theme = {
         color             : 'rgb(230, 230, 230)',
         disabledBackground: 'rgb(60, 60, 60)',
         disabledColor     : 'rgb(120, 120, 120)',
-        focusRing         : '2px solid rgb(120, 170, 240)',
+        focusRing         : 'rgb(120, 170, 240)',
         toggle  : {
             trackOffBackground: 'rgb(70, 70, 70)',
             trackOnBackground : 'rgb(120, 170, 240)',
