@@ -10,7 +10,7 @@ import { FieldSet } from '@jimka/typescript-ui/component/container';
 class LayoutTestPanel extends Panel {
 
     constructor() {
-        super();
+        super({ autoScroll: 'auto' });
 
         let button = new Button("Hello World button!");
         this.addComponent(button);
