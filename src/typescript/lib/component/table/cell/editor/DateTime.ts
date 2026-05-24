@@ -176,7 +176,10 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
     }
 
     /**
-     * Updates the cached value from a typed text edit.
+     * Updates the cached value from a typed text edit. The display format is
+     * "YYYY-MM-DD HH:MM[:SS]" with a space separator; `Date.parse` only
+     * accepts ISO-8601 reliably with a `T`, so we re-introduce it before
+     * parsing.
      */
     private onInput(): void {
         this.syncTextFromDom();
@@ -187,7 +190,7 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
             return;
         }
 
-        const d = new Date(raw);
+        const d = new Date(raw.replace(' ', 'T'));
         this._value = isNaN(d.getTime()) ? null : d;
     }
 
@@ -208,9 +211,9 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
         const mi = String(date.getMinutes()).padStart(2, '0');
         if (this._showSeconds) {
             const s = String(date.getSeconds()).padStart(2, '0');
-            return `${y}-${mo}-${d}T${h}:${mi}:${s}`;
+            return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
         }
-        return `${y}-${mo}-${d}T${h}:${mi}`;
+        return `${y}-${mo}-${d} ${h}:${mi}`;
     }
 }
 

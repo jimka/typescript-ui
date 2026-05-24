@@ -4,9 +4,17 @@
 
 When a `ComboBox` is hosted inside a `TimePickerDropdown`, `DatePickerDropdown`, or `DateTimePickerDropdown`, opening the combo dismisses **both** dropdowns: the picker's viewport-level `pointerdown` handler considers the click "outside" because the `ComboBoxDropdown` element is appended to `document.documentElement`, not to the picker's own DOM subtree. The picker hides, which destroys the combo with it, so the user never gets to pick a value.
 
-The bug lives in three identical handlers: [component/input/TimeField.ts:260](../src/typescript/lib/component/input/TimeField.ts#L260), [component/input/DateField.ts:254](../src/typescript/lib/component/input/DateField.ts#L254), and [component/input/DateTimeField.ts:258](../src/typescript/lib/component/input/DateTimeField.ts#L258). Each checks only two ancestors — the field's own root and `this._dropdown.getElement()` — and closes the dropdown otherwise. `Popover._onViewportMouseDown` at [core/Popover.ts:183](../src/typescript/lib/core/Popover.ts#L183) has the same shape and the same latent bug.
+The bug lives in the shared handler on [component/input/AbstractPickerField.ts](../src/typescript/lib/component/input/AbstractPickerField.ts) (`onViewportPointerDown` at line ~333). It checks only two ancestors — the field's own root and `this._dropdown.getElement()` — and closes the dropdown otherwise. `Popover._onViewportMouseDown` at [core/Popover.ts:183](../src/typescript/lib/core/Popover.ts#L183) has the same shape and the same latent bug.
 
-`ComboBoxDropdown` and the picker dropdowns both extend [core/AnimatedDropdown.ts:187](../src/typescript/lib/core/AnimatedDropdown.ts#L187), which mounts the panel via `document.documentElement.appendChild(el)` at line 193–195. Body-mounted floating panels are an architectural choice (z-index isolation, no overflow clipping) and won't change. The fix is to teach the picker's "outside" check that a body-mounted descendant dropdown counts as inside.
+`ComboBoxDropdown` and the picker dropdowns both extend [core/AnimatedDropdown.ts](../src/typescript/lib/core/AnimatedDropdown.ts), which mounts the panel via `document.documentElement.appendChild(el)`. Body-mounted floating panels are an architectural choice (z-index isolation, no overflow clipping) and won't change. The fix is to teach the picker's "outside" check that a body-mounted descendant dropdown counts as inside.
+
+## Starting-point drift (master `3edab385`)
+
+Master shipped a smaller, narrower carve-out for the same bug while this plan was queued: `AnimatedDropdown` now keeps a flat `private static _openStack: AnimatedDropdown[]` and exposes `isClickOnTopmostOverlay(target)` (instance method, walks the stack entries above `this`). `AbstractPickerField.onViewportPointerDown` already calls it. The behaviour for LIFO-nested dropdowns is equivalent to what this plan specifies; the difference is API shape — flat stack + instance method vs. layer registry (`LayerEntry` with `children: AnimatedDropdown[]`) + static helpers.
+
+This plan **replaces** the master mechanism with the layer-stack registry so the same module owns one canonical rule going forward: the registry models the parent/child relationship explicitly (`LayerEntry.children`), `isTargetInsideLayer` is recursive on that tree, and a future caller that needs an explicit `parent` override has the seam ready. Master's `_openStack` field, `isClickOnTopmostOverlay` method, and the corresponding call in `AbstractPickerField` are removed.
+
+The three picker fields ([TimeField](../src/typescript/lib/component/input/TimeField.ts), [DateField](../src/typescript/lib/component/input/DateField.ts), [DateTimeField](../src/typescript/lib/component/input/DateTimeField.ts)) were also refactored on a prior branch to share `AbstractPickerField` rather than each carry their own `onViewportPointerDown` copy, so the host edit is a single change instead of three.
 
 ---
 
@@ -175,27 +183,23 @@ Recursive on `children`; depth is bounded by nesting (in practice ≤ 2). No all
 
 ## Ordered Implementation Steps
 
-1. **Extend `core/AnimatedDropdown.ts` with the registry.**
-   - Add module-level `_openLayers` and `_entryByLayer` declarations next to the existing `_dismissingByComponent` `WeakMap` at [core/AnimatedDropdown.ts:19](../src/typescript/lib/core/AnimatedDropdown.ts#L19).
-   - Insert the push logic at the top of `showAnimated` (before `this._dismissing = false`).
-   - Insert the pop logic inside the existing `finalize` closure in `hideAnimated`, after `this.removeElement()`.
+1. **Replace master's `_openStack` / `isClickOnTopmostOverlay` with the layer registry in `core/AnimatedDropdown.ts`.**
+   - Delete the `private static _openStack: AnimatedDropdown[]` field and the `isClickOnTopmostOverlay` instance method.
+   - Add module-level `_openLayers` and `_entryByLayer` declarations next to the existing `_dismissingByComponent` `WeakMap`.
+   - Insert the push logic at the top of `showAnimated` (before `this._dismissing = false`); guard with `if (!_entryByLayer.has(this))` so a mid-fade re-show does not duplicate-push.
+   - Insert the pop logic inside the existing `finalize` closure in `hideAnimated`, after `this.removeElement()`. (Master pops eagerly at the top of `hideAnimated`; moving it into `finalize` makes the entry survive a `_dismissing`-cancelled re-show, which matches the guard above.)
    - Add the `static isTargetInsideLayer` and `static getTopLayer` methods on the class.
    - **Verify:** `npm run typecheck` passes; no other class depends on AnimatedDropdown's internal shape.
 
-2. **Update `component/input/TimeField.ts`'s `onViewportPointerDown` ([component/input/TimeField.ts:260](../src/typescript/lib/component/input/TimeField.ts#L260)).**
-   - Import `AnimatedDropdown` from `~/core/AnimatedDropdown.js`.
-   - Replace `if (dropEl?.contains(target)) { return; }` with `if (this._dropdown && AnimatedDropdown.isTargetInsideLayer(this._dropdown, target)) { return; }`.
-   - Keep the field-root check unchanged.
-   - **Verify:** open the time picker, click an in-picker control — picker stays open (regression check, since the layer helper subsumes the old self-contains check).
+2. **Update `component/input/AbstractPickerField.ts`'s `onViewportPointerDown` (~line 333).**
+   - Replace the `isClickOnTopmostOverlay` call with `AnimatedDropdown.isTargetInsideLayer(this._dropdown, target)`.
+   - That helper covers the picker dropdown's own element too, so the preceding `dropEl?.contains(target)` check can be removed (it is subsumed).
+   - Keep the field-root check (`this.getElement()?.contains(target)`) unchanged.
+   - **Verify:** open the time/date/date-time picker, click an in-picker control — picker stays open.
 
-3. **Update `component/input/DateField.ts`'s `onViewportPointerDown` ([component/input/DateField.ts:254](../src/typescript/lib/component/input/DateField.ts#L254)).** Same edit as step 2.
+3. **Run `npm run typecheck`** — 0 errors.
 
-4. **Update `component/input/DateTimeField.ts`'s `onViewportPointerDown` ([component/input/DateTimeField.ts:258](../src/typescript/lib/component/input/DateTimeField.ts#L258)).** Same edit as step 2.
-
-5. **Add a demo screen exercising the bug fix** to `src/typescript/MiscPanel.ts`, just after the existing AnimatedDropdown picker demo block at line 738. Place a `DateTimeField` next to a `ComboBox` that hosts a small set (e.g. `["UTC", "Europe/Stockholm", "America/New_York"]`), arranged so the ComboBox is reachable from inside the picker dropdown body. **Important:** the goal is to verify the *combination*, so the demo must put the ComboBox **inside the picker dropdown's content** — the cleanest path is to extend `DateTimePickerDropdown` with an optional trailing-row ComboBox slot wired through the demo only, or to construct a one-off subclass in the demo file. Pick the lighter option after reading the dropdown's constructor.
-   - **Verify:** open the picker, click the ComboBox surface — *the combo opens; the picker stays open*. Pick a combo option — combo closes, picker stays open. Click outside both — both close.
-
-6. **Run `npm run typecheck`** — 0 errors.
+Demo addition (the original plan's step 5) is dropped: extending `DateTimePickerDropdown` with a ComboBox slot purely for demonstration is invasive, and `AbstractPickerField`'s own coverage plus the registry's behaviour establish the fix without it. Recorded here as a deliberate deviation.
 
 ---
 
@@ -204,10 +208,7 @@ Recursive on `children`; depth is bounded by nesting (in practice ≤ 2). No all
 | Action | File |
 |---|---|
 | Modify | [core/AnimatedDropdown.ts](../src/typescript/lib/core/AnimatedDropdown.ts) |
-| Modify | [component/input/TimeField.ts](../src/typescript/lib/component/input/TimeField.ts) |
-| Modify | [component/input/DateField.ts](../src/typescript/lib/component/input/DateField.ts) |
-| Modify | [component/input/DateTimeField.ts](../src/typescript/lib/component/input/DateTimeField.ts) |
-| Modify | [MiscPanel.ts](../src/typescript/MiscPanel.ts) (demo screen) |
+| Modify | [component/input/AbstractPickerField.ts](../src/typescript/lib/component/input/AbstractPickerField.ts) |
 
 No new files, no deletions, no backwards-compat shims.
 
