@@ -9,7 +9,6 @@ Before drafting, read in full:
 
 - [`CODE_CONVENTIONS.md`](../../../CODE_CONVENTIONS.md) — Code style, JSDoc, Framework rules. Plans must not silently violate these; flag any unavoidable violation in `## Architecture Decisions`.
 - [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — What docs need to change when public API moves. Cited from `## Documentation Impact`.
-- [`.claude/skills/_shared/codegraph.md`](../_shared/codegraph.md) — Use the CodeGraph MCP tools (not grep) to investigate the codebase before drafting.
 - [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
 
 ## Purpose
