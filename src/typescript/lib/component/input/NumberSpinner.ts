@@ -178,7 +178,7 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
      *
      * @param n - The new value. It is clamped to [min, max] and snapped to the configured step.
      *
-     * @remarks Used by the {@link Bindable} interface; does not fire listeners so that
+     * @remarks Used by the [`Bindable`](/api/core/interfaces/Bindable) interface; does not fire listeners so that
      * binding write-backs do not trigger feedback loops.
      */
     setValue(n: number): this {

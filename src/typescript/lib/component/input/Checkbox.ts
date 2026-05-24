@@ -235,7 +235,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
 
     /**
      * Returns the current value (alias for {@link isSelected}, satisfies
-     * {@link Bindable}).
+     * [`Bindable`](/api/core/interfaces/Bindable)).
      *
      * @returns `true` when checked.
      */
@@ -244,7 +244,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     }
 
     /**
-     * Sets the value (alias for {@link setSelected}, satisfies {@link Bindable}).
+     * Sets the value (alias for {@link setSelected}, satisfies [`Bindable`](/api/core/interfaces/Bindable)).
      *
      * @param value - The new boolean state.
      *
