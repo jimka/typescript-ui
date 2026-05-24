@@ -5,46 +5,27 @@ import { Component } from "~/core/Component.js";
 import { CSS } from "~/core/CSS.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
-import { Position } from "~/primitive/Position.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
+import { Fit } from "~/layout/Fit.js";
+import { VBox } from "~/layout/VBox.js";
+import { Grid } from "~/layout/Grid.js";
 import { callable } from "~/core/Callable.js";
 
 /** Pixel width of the calendar grid. */
-const PANEL_WIDTH:  number = 240;
+const PANEL_WIDTH:    number = 240;
+/** Pixel height of the month-name + year row at the top. */
+const MONTH_HEIGHT:   number = 24;
+/** Pixel height of the weekday-name row. */
+const HEADER_HEIGHT:  number = 20;
+/** Pixel height of each day cell (and each empty leading cell). */
+const CELL_HEIGHT:    number = 24;
 
-// Static layout and typography defined once via class rules. Each cell
-// Component below auto-tags its element with its `this.constructor.name`,
-// so the rules apply by class name without inline style writes.
+// Static hover styling only. All layout (grid, row stacking) is driven by
+// the framework Grid / VBox managers — no display:flex/grid here.
 (() => {
-    const grid = CSS.createClassRule("DatePickerGrid");
-    if (grid) {
-        grid.style.setProperty("display", "grid");
-        grid.style.setProperty("grid-template-columns", "repeat(7, 1fr)");
-        grid.style.setProperty("gap", "2px");
-        grid.style.setProperty("width", "100%");
-    }
-
-    const monthLabel = CSS.createClassRule("DatePickerMonthLabel");
-    if (monthLabel) {
-        monthLabel.style.setProperty("grid-column", "1 / -1");
-        monthLabel.style.setProperty("text-align", "center");
-        monthLabel.style.setProperty("font-weight", "bold");
-        monthLabel.style.setProperty("padding", "4px 0");
-    }
-
-    const dayHeader = CSS.createClassRule("DatePickerDayHeader");
-    if (dayHeader) {
-        dayHeader.style.setProperty("text-align", "center");
-        dayHeader.style.setProperty("font-size", "0.85em");
-        dayHeader.style.setProperty("opacity", "0.7");
-        dayHeader.style.setProperty("padding", "2px 0");
-    }
-
     const day = CSS.createClassRule("DatePickerDay");
     if (day) {
-        day.style.setProperty("text-align", "center");
-        day.style.setProperty("padding", "4px 0");
         day.style.setProperty("cursor", "pointer");
         day.style.setProperty("border-radius", "3px");
     }
@@ -58,44 +39,37 @@ const PANEL_WIDTH:  number = 240;
     }
 })();
 
-/**
- * Outer grid container. Sets `position:static` so its children participate
- * in the CSS-grid flow instead of getting the framework's default absolute
- * positioning. Layout properties live on the `.DatePickerGrid` class rule.
- */
-class DatePickerGrid extends Component {
-    constructor() {
-        super({ tag: "div", position: Position.STATIC });
-        this.setDisplay("grid");
-    }
-}
-
-/**
- * Month name + year header. Spans all seven columns via the
- * `.DatePickerMonthLabel` class rule.
- */
+/** Month name + year label. Spans the full panel width above the grid. */
 class DatePickerMonthLabel extends Text {
     constructor(text: string) {
-        super(text, { position: Position.STATIC, textAlign: "center", fontWeight: "bold" });
+        super(text, {
+            textAlign:     "center",
+            fontWeight:    "bold",
+            preferredSize: { width: 0, height: MONTH_HEIGHT },
+        });
+        this.setLineHeight(MONTH_HEIGHT);
     }
 }
 
-/**
- * Weekday name header cell ("Sun", "Mon", …). Static row above the day grid.
- */
+/** Weekday name header cell ("Sun", "Mon", …). */
 class DatePickerDayHeader extends Text {
     constructor(text: string) {
-        super(text, { position: Position.STATIC, textAlign: "center", fontSize: 12, opacity: 0.7 });
+        super(text, {
+            textAlign:     "center",
+            fontSize:      12,
+            preferredSize: { width: 0, height: HEADER_HEIGHT },
+        });
+        this.setLineHeight(HEADER_HEIGHT);
     }
 }
 
 /**
- * Empty cell shown before the first day of the month so the first day
- * aligns under the correct weekday.
+ * Empty cell shown before the first day of the month (and trailing the last)
+ * so the day grid always renders as a full 6-row block.
  */
 class DatePickerBlankCell extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC });
+        super({ preferredSize: { width: 0, height: CELL_HEIGHT } });
     }
 }
 
@@ -111,9 +85,13 @@ class DatePickerDay extends Text {
     private readonly _onClick: (date: Date) => void;
 
     constructor(date: Date, onClick: (date: Date) => void) {
-        super(String(date.getDate()), { position: Position.STATIC, textAlign: "center" });
+        super(String(date.getDate()), {
+            textAlign:     "center",
+            preferredSize: { width: 0, height: CELL_HEIGHT },
+        });
         this._date    = date;
         this._onClick = onClick;
+        this.setLineHeight(CELL_HEIGHT);
 
         Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
         Event.addListener(this, "click",       ()                => this.onClick());
@@ -194,27 +172,53 @@ class DatePickerDropdown extends AnimatedDropdown<DatePickerDropdownOptions> {
 
     private readonly _onSelect: (value: Date) => void;
     private _monthAnchor: Date = new Date();
+    /** Outer VBox container holding month-label, header row, and day grid. */
+    private _root:        Component;
+    /** Inner Grid container holding the weekday header cells. */
+    private _headerRow:   Component;
+    /** Inner Grid container holding the day / blank cells. */
+    private _dayGrid:     Component;
+    /** The month label child of `_root`. Recycled across rebuilds. */
+    private _monthLabel:  DatePickerMonthLabel;
 
     /**
      * @param onSelect - Called with the chosen `Date` when the user picks a day.
      * @param options - Optional construction-time options.
      */
     constructor(onSelect: (value: Date) => void, options?: DatePickerDropdownOptions) {
-        super({
+        super(options, {
             zIndex:          10050,
-            position:        Position.FIXED,
+            layoutManager:   new Fit(),
             backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
             border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
             borderRadius:    "var(--ts-ui-border-radius, 4px)",
             shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
-            padding:         new Insets(6, 6, 6, 6),
-            ...(options ?? {}),
+            insets:          new Insets(6, 6, 6, 6),
         });
 
         this._onSelect = onSelect;
 
         this.getAria().setRole("group");
         this.setContain("layout");
+
+        this._root = new Component();
+        this._root.setLayoutManager(new VBox({ spacing: 4, stretching: true }));
+
+        this._monthLabel = new DatePickerMonthLabel("");
+        this._root.addComponent(this._monthLabel);
+
+        this._headerRow = new Component({ preferredSize: { width: 0, height: HEADER_HEIGHT } });
+        this._headerRow.setLayoutManager(new Grid({ columns: 7, spacing: 2, stretching: true }));
+        for (const dh of ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) {
+            this._headerRow.addComponent(new DatePickerDayHeader(dh));
+        }
+        this._root.addComponent(this._headerRow);
+
+        this._dayGrid = new Component({ preferredSize: { width: 0, height: 6 * CELL_HEIGHT + 5 * 2 } });
+        this._dayGrid.setLayoutManager(new Grid({ columns: 7, spacing: 2, stretching: true }));
+        this._root.addComponent(this._dayGrid);
+
+        this.addComponent(this._root);
 
         // Suppress focus loss anywhere inside the panel — protects pooled
         // cell editors whose blur listener would otherwise commit before
@@ -245,23 +249,13 @@ class DatePickerDropdown extends AnimatedDropdown<DatePickerDropdownOptions> {
         this.buildGrid(selected);
         this.resumeLayout();
 
+        const panelHeight = this.computePanelHeight();
         this.setWidth(PANEL_WIDTH);
-
-        const measuredHeight = this.measureNaturalHeight();
-        this.setHeight(measuredHeight);
+        this.setHeight(panelHeight);
 
         this.doLayout();
 
-        const rect      = anchorEl.getBoundingClientRect();
-        const vpHeight  = window.innerHeight;
-        let y           = rect.bottom;
-
-        if (y + measuredHeight > vpHeight && rect.top - measuredHeight > 0) {
-            y = rect.top - measuredHeight;
-        }
-
-        this.setX(rect.left);
-        this.setY(y);
+        this.placeAnchored(anchorEl.getBoundingClientRect());
 
         this.showAnimated();
 
@@ -269,59 +263,40 @@ class DatePickerDropdown extends AnimatedDropdown<DatePickerDropdownOptions> {
     }
 
     /**
-     * Measures the panel's natural rendered height for the freshly-built grid
-     * so {@link showAt} can size the panel to its content. The grid container
-     * uses static positioning, so the panel's `offsetHeight` already includes
-     * the grid plus the panel's own padding and border — no separate chrome
-     * accounting is needed.
-     *
-     * @returns The natural panel height in pixels.
+     * Sums the fixed-height rows + the panel's insets to produce the panel's
+     * outer height. Avoids forcing a DOM measurement.
      */
-    private measureNaturalHeight(): number {
-        const el = this.getElement(true);
-        const wasMounted = document.documentElement.contains(el);
+    private computePanelHeight(): number {
+        const insets    = this.getInsets();
+        const rootGap   = 4;
+        const dayGridH  = 6 * CELL_HEIGHT + 5 * 2;
+        const innerH    = MONTH_HEIGHT + rootGap + HEADER_HEIGHT + rootGap + dayGridH;
 
-        if (!wasMounted) {
-            this.setVisible(false);
-            document.documentElement.appendChild(el);
-        }
-
-        const measured = el.offsetHeight;
-
-        if (!wasMounted) {
-            document.documentElement.removeChild(el);
-            this.setVisible(true);
-        }
-
-        return measured;
+        return insets.getTop() + insets.getBottom() + innerH;
     }
 
     /**
-     * Rebuilds the month-grid children for `_monthAnchor`.
+     * Rebuilds the day-grid children for `_monthAnchor`. The header row and
+     * outer scaffolding are constructed once in the constructor and reused.
      *
      * @param selected - Currently-selected date, or null.
      */
     private buildGrid(selected: Date | null): void {
-        this.removeAllComponents();
+        this._dayGrid.removeAllComponents();
 
-        const grid  = new DatePickerGrid();
         const year  = this._monthAnchor.getFullYear();
         const month = this._monthAnchor.getMonth();
 
-        grid.addComponent(new DatePickerMonthLabel(
+        this._monthLabel.setText(
             this._monthAnchor.toLocaleDateString(undefined, { month: "long", year: "numeric" })
-        ));
-
-        for (const dh of ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) {
-            grid.addComponent(new DatePickerDayHeader(dh));
-        }
+        );
 
         const firstOfMonth = new Date(year, month, 1);
         const startWeekday = firstOfMonth.getDay();
         const daysInMonth  = new Date(year, month + 1, 0).getDate();
 
         for (let i = 0; i < startWeekday; i++) {
-            grid.addComponent(new DatePickerBlankCell());
+            this._dayGrid.addComponent(new DatePickerBlankCell());
         }
 
         for (let day = 1; day <= daysInMonth; day++) {
@@ -337,10 +312,14 @@ class DatePickerDropdown extends AnimatedDropdown<DatePickerDropdownOptions> {
                 cell.setSelected(true);
             }
 
-            grid.addComponent(cell);
+            this._dayGrid.addComponent(cell);
         }
 
-        this.addComponent(grid);
+        // Pad to 42 cells (6 rows × 7) so the Grid renders a uniform block.
+        const remaining = 42 - startWeekday - daysInMonth;
+        for (let i = 0; i < remaining; i++) {
+            this._dayGrid.addComponent(new DatePickerBlankCell());
+        }
     }
 }
 

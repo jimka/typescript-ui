@@ -54,8 +54,10 @@ class AccordionHeader extends Button<AccordionHeaderOptions> {
     protected applyOptions(options: AccordionHeaderOptions): this {
         super.applyOptions(options);
 
-        if (options.expanded !== undefined) {
-            this.setExpanded(options.expanded);
+        const opts = { ...this._defaultOptions, ...options } as AccordionHeaderOptions;
+
+        if (opts.expanded !== undefined) {
+            this.setExpanded(opts.expanded);
         }
 
         return this;

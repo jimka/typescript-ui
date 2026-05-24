@@ -26,6 +26,18 @@ export interface TextOptions extends ComponentOptions {
     lineHeight?:     number | string;
     textOverflow?:   string;
     whiteSpace?:     string;
+    /**
+     * When `true` (default), the text is single-line + clipped + ellipsised
+     * when its rendered width is below its natural width, and `minSize.width`
+     * is capped at `100` so parent layouts can shrink the text past its
+     * natural width.
+     *
+     * When `false`, no ellipsis is applied and `minSize.width` reports the
+     * full natural width — the text refuses to be squeezed, forcing the
+     * parent to widen (used by [`Button`](/api/component/button/classes/Button)
+     * for the label so the button grows to fit its text instead of clipping).
+     */
+    truncate?:       boolean;
 }
 
 /**
@@ -44,6 +56,7 @@ export interface TextOptions extends ComponentOptions {
  *   ARCHITECTURE.md "Defer DOM work to render time".
  */
 const _defaultTextOptions: Partial<TextOptions> = {
+    tag:            "span",
     textAlign:      "left",
     fontKerning:    "auto",
     fontSize:       14,
@@ -52,7 +65,14 @@ const _defaultTextOptions: Partial<TextOptions> = {
     fontStyle:      "normal",
     fontVariant:    "normal",
     fontWeight:     "normal",
+    truncate:       true,
 };
+
+// Upper bound for the auto-derived `minSize.width` from text measurement —
+// short labels report their full measured width (so they're never truncated
+// when the container has room), longer text caps here so the parent layout
+// always has room to shrink the Text below its natural width.
+const TEXT_AUTO_MIN_WIDTH_CAP_PX = 100;
 
 /**
  * A text-displaying component with comprehensive font and layout controls.
@@ -80,9 +100,13 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private _wordBreak: string | null = null;
     private _lineClamp: number | null = null;
     private _textOverflow: string | null = null;
+    private _truncate: boolean = true;
 
-    constructor(text?: String, options?: TOptions) {
-        super({ ..._defaultTextOptions, ...(options ?? {}), tag: options?.tag ?? "span" } as TOptions);
+    constructor(text?: String, options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(
+            options,
+            { ..._defaultTextOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
 
         // Carve-out fallbacks — see `_defaultTextOptions` for why these two
         // don't ride the merge-defaults cascade. Both are consulted by their
@@ -149,60 +173,68 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.text !== undefined) {
-            this.setText(options.text);
+        // Merge with `_defaultOptions` so the cascade dispatches subclass
+        // defaults (e.g. Header's bold weight) alongside caller values.
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.text !== undefined) {
+            this.setText(opts.text);
         }
 
-        if (options.textAlign !== undefined) {
-            this.setTextAlign(options.textAlign);
+        if (opts.textAlign !== undefined) {
+            this.setTextAlign(opts.textAlign);
         }
 
-        if (options.textShadow !== undefined) {
-            this.setTextShadow(options.textShadow);
+        if (opts.textShadow !== undefined) {
+            this.setTextShadow(opts.textShadow);
         }
 
-        if (options.fontFamily !== undefined) {
-            this.setFontFamily(options.fontFamily);
+        if (opts.fontFamily !== undefined) {
+            this.setFontFamily(opts.fontFamily);
         }
 
-        if (options.fontSize !== undefined) {
-            this.setFontSize(options.fontSize);
+        if (opts.fontSize !== undefined) {
+            this.setFontSize(opts.fontSize);
         }
 
-        if (options.fontWeight !== undefined) {
-            this.setFontWeight(options.fontWeight);
+        if (opts.fontWeight !== undefined) {
+            this.setFontWeight(opts.fontWeight);
         }
 
-        if (options.fontStyle !== undefined) {
-            this.setFontStyle(options.fontStyle);
+        if (opts.fontStyle !== undefined) {
+            this.setFontStyle(opts.fontStyle);
         }
 
-        if (options.fontVariant !== undefined) {
-            this.setFontVariant(options.fontVariant);
+        if (opts.fontVariant !== undefined) {
+            this.setFontVariant(opts.fontVariant);
         }
 
-        if (options.fontStretch !== undefined) {
-            this.setFontStretch(options.fontStretch);
+        if (opts.fontStretch !== undefined) {
+            this.setFontStretch(opts.fontStretch);
         }
 
-        if (options.fontKerning !== undefined) {
-            this.setFontKerning(options.fontKerning);
+        if (opts.fontKerning !== undefined) {
+            this.setFontKerning(opts.fontKerning);
         }
 
-        if (options.fontSizeAdjust !== undefined) {
-            this.setFontSizeAdjust(options.fontSizeAdjust);
+        if (opts.fontSizeAdjust !== undefined) {
+            this.setFontSizeAdjust(opts.fontSizeAdjust);
         }
 
-        if (options.lineHeight !== undefined) {
-            this.setLineHeight(options.lineHeight);
+        if (opts.lineHeight !== undefined) {
+            this.setLineHeight(opts.lineHeight);
         }
 
-        if (options.textOverflow !== undefined) {
-            this.setTextOverflow(options.textOverflow);
+        if (opts.textOverflow !== undefined) {
+            this.setTextOverflow(opts.textOverflow);
         }
 
-        if (options.whiteSpace !== undefined) {
-            this.setWhiteSpace(options.whiteSpace);
+        if (opts.whiteSpace !== undefined) {
+            this.setWhiteSpace(opts.whiteSpace);
+        }
+
+        if (opts.truncate !== undefined) {
+            this.setTruncate(opts.truncate);
         }
 
         return this;
@@ -303,11 +335,25 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
             this._measuredBaseline = baseline;
             this.setCalculatedSize(width, height);
+            // Write to `_defaultOptions` (not `_options`) so an explicit
+            // `setMinSize` from the caller still wins via `Component.getMinSize`'s
+            // `_options.minSize ?? _defaultOptions.minSize` fallback. When
+            // truncation is disabled, report the full natural width as
+            // `minSize.width` so the parent layout widens to fit instead of
+            // squeezing the text.
+            const autoMinWidth = this._truncate
+                ? Math.min(width, TEXT_AUTO_MIN_WIDTH_CAP_PX)
+                : width;
+            this._defaultOptions.minSize = {
+                width:  autoMinWidth,
+                height: height,
+            };
         } else {
             // No glyphs means no baseline — report null so HBox doesn't try
             // to baseline-align surrounding components against an empty box.
             this._measuredBaseline = null;
             this.setCalculatedSize(0, 0);
+            this._defaultOptions.minSize = { width: 0, height: 0 };
         }
     }
 
@@ -788,6 +834,51 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
         this._textOverflow = null;
         this.setElementCSSRule("textOverflow", null);
+
+        return this;
+    }
+
+    /**
+     * Returns whether single-line truncation + ellipsis is enabled (default `true`).
+     *
+     * @returns `true` when the text clips with "…" once narrower than its
+     *   natural width; `false` when the text refuses to shrink past its
+     *   natural width.
+     */
+    isTruncate(): boolean {
+        return this._truncate;
+    }
+
+    /**
+     * Toggles single-line truncation mode. When `true`, the text renders as
+     * single-line + `overflow: hidden` + `text-overflow: ellipsis` and reports
+     * `minSize.width = Math.min(natural, 100)`. When `false`, those CSS
+     * properties are cleared and the text reports its full natural width as
+     * `minSize.width` so parent layouts widen to fit instead of clipping.
+     *
+     * @param value - `true` to enable ellipsised truncation, `false` to
+     *   disable (the text expands to its natural width).
+     *
+     * @returns This component, for method chaining.
+     */
+    setTruncate(value: boolean): this {
+        this._truncate = value;
+
+        if (value) {
+            this.setWhiteSpace("nowrap");
+            this.setOverflow("hidden");
+            this.setTextOverflow("ellipsis");
+        } else {
+            this.setElementCSSRule("whiteSpace",   null);
+            this.setOverflow("visible");
+            this.setElementCSSRule("textOverflow", null);
+            this._textOverflow = null;
+        }
+
+        // The auto-min cap depends on `_truncate`; re-measure so the parent
+        // layout sees the new floor on the next layout pass.
+        this._measurementDirty = true;
+        this.scheduleLayout();
 
         return this;
     }

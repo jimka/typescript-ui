@@ -33,6 +33,12 @@ export abstract class LayoutManager extends BaseObject {
     private _defaultPreferredSize: Size | null = null;
     private _defaultMinSize: Size = { width: 0, height: 0 };
     private _defaultMaxSize: Size = { width: Number.MAX_VALUE, height: Number.MAX_VALUE };
+    // Per-axis "let children overflow the host" flag. Driven by the host
+    // `Panel.setAutoScroll`; consumed by each manager's `doLayout` to decide
+    // whether the working size can grow past the host's `innerSize` when the
+    // children's combined minSize exceeds it. Default `false` on both axes
+    // matches today's clamp-and-clip behaviour.
+    private _overflowing: { x: boolean; y: boolean } = { x: false, y: false };
 
     constructor() {
         super();
@@ -105,6 +111,49 @@ export abstract class LayoutManager extends BaseObject {
      */
     getMaxSize(): Size | null {
         return this._defaultMaxSize;
+    }
+
+    /**
+     * Returns whether this layout manager is in "let children overflow" mode
+     * on the X axis. Default `false`.
+     *
+     * @returns `true` when horizontal overflow is enabled.
+     */
+    protected isOverflowingX(): boolean {
+        return this._overflowing.x;
+    }
+
+    /**
+     * Returns whether this layout manager is in "let children overflow" mode
+     * on the Y axis. Default `false`.
+     *
+     * @returns `true` when vertical overflow is enabled.
+     */
+    protected isOverflowingY(): boolean {
+        return this._overflowing.y;
+    }
+
+    /**
+     * Sets the per-axis overflow flags. Called by the host `Panel` whenever
+     * its `autoScroll` mode changes; subclasses read the resulting state via
+     * `isOverflowingX` / `isOverflowingY` in their `doLayout`. Triggers a
+     * re-layout when either flag changes.
+     *
+     * Public so the host `Panel` can drive it; subclasses still consume the
+     * resulting state via the `protected` `isOverflowingX` / `isOverflowingY`
+     * getters.
+     *
+     * @param x - True to let children overflow horizontally.
+     * @param y - True to let children overflow vertically.
+     */
+    public setOverflowing(x: boolean, y: boolean): void {
+        if (this._overflowing.x === x && this._overflowing.y === y) {
+            return;
+        }
+
+        this._overflowing = { x, y };
+
+        this.getContainer()?.doLayout();
     }
 
     /**

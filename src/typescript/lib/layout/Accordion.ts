@@ -6,7 +6,6 @@ import { AccordionHeader } from "~/component/container/AccordionHeader.js";
 import { Animation } from "~/core/Animation.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
-import { Position } from "~/primitive/Position.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 
@@ -409,7 +408,6 @@ class Accordion extends LayoutManager {
 
         const header = new AccordionHeader(label);
 
-        header.setPosition(Position.ABSOLUTE);
         header.setAnimationTiming(this._animationDuration, ACCORDION_EASING);
 
         // Headers slide vertically with the panels opening or closing above them
@@ -423,7 +421,6 @@ class Accordion extends LayoutManager {
 
         const wrapper = new Component();
 
-        wrapper.setPosition(Position.ABSOLUTE);
         wrapper.setOverflow('hidden');
         // Animation wrapper clips content via overflow:hidden — layout+paint containment scopes
         // reflow during the height transition without affecting the rest of the document.
@@ -452,6 +449,34 @@ class Accordion extends LayoutManager {
     }
 
     /**
+     * Computes the children's combined minSize along this manager's geometry:
+     * width is `max(children.minWidth)` (sections stack vertically so width
+     * is shared); height is N/A because Accordion intentionally ignores the
+     * Y-axis overflow flag — the height animation conflicts with letting
+     * sections overflow vertically. Used by `doLayout` to inflate the
+     * working width when the host has opted into X-axis `setOverflowing`.
+     *
+     * @returns The total min-size; the height field is always `0` (unused).
+     */
+    protected computeTotalMinSize(): Size {
+        const container = this.getContainer();
+        if (!container) {
+            return { width: 0, height: 0 };
+        }
+
+        let maxWidth = 0;
+
+        for (const component of container.getComponents()) {
+            const min = component.getMinSize();
+            if (min) {
+                maxWidth = Math.max(maxWidth, min.width);
+            }
+        }
+
+        return { width: maxWidth, height: 0 };
+    }
+
+    /**
      * Creates sections for any new components, then positions all headers, panel
      * wrappers, and content components top-to-bottom within the container.
      */
@@ -470,7 +495,18 @@ class Accordion extends LayoutManager {
 
         const containerSize = container.getInnerSize();
         const insets = container.getInsets();
-        const containerWidth = containerSize ? containerSize.width : 0;
+        let containerWidth = containerSize ? containerSize.width : 0;
+
+        // Universal scroll, X-axis only: Accordion stacks sections vertically
+        // and animates each section's height, so honouring vertical overflow
+        // would conflict with the height animation (see plan's Architecture
+        // Decisions). Only inflate the working width when the host has marked
+        // X as overflowing.
+        if (this.isOverflowingX()) {
+            const totalMin = this.computeTotalMinSize();
+            containerWidth = Math.max(containerWidth, totalMin.width);
+        }
+
         let y = insets.getTop();
 
         for (let i = 0; i < components.length; i++) {

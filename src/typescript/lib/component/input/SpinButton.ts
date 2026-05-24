@@ -56,15 +56,13 @@ class SpinButton extends Button<SpinButtonOptions> {
      *                 framework's glyph registry.
      */
     constructor(symbol: "▲" | "▼", options?: SpinButtonOptions) {
-        // Merge defaults → seed glyph → consumer options. Button is a
-        // children-build class; its constructor forwards its own merged
-        // defaults plus this bag into Component's super cascade. The
-        // symbol-derived glyph sits between defaults and consumer options
-        // so a caller-supplied `glyph` still wins.
-        super({
+        // Hand defaults plus the symbol-derived glyph to Button via the
+        // subclass-defaults arg so they land in `_defaultOptions`. User
+        // options still win because Component merges `{...defaults, ...options}`
+        // at dispatch time.
+        super(undefined, options, {
             ..._defaultSpinButtonOptions,
             glyph: symbol === "▲" ? "chevron-up" : "chevron-down",
-            ...(options ?? {}),
         });
 
         this.updateSize();
@@ -105,9 +103,17 @@ class SpinButton extends Button<SpinButtonOptions> {
      */
     private updateSize(): void {
         const fullHeight = Util.measureInputHeight();
-        const halfHeight = Math.floor(fullHeight / 2);
+        // Subtract the host NumberSpinner's 1 px top + bottom border so two
+        // stacked buttons fit inside the spinner's inner rect — without this,
+        // an odd `fullHeight` produces `2 * floor(h/2) = h - 1` which exceeds
+        // the inner height `h - 2` and clips the bottom button.
+        const halfHeight = Math.floor((fullHeight - 2) / 2);
 
         this.setPreferredSize(18, halfHeight);
+        // Min = preferred = max so the parent's shrink-on-overallocation
+        // doesn't collapse the chevron away when the spinner cell is
+        // narrow.
+        this.setMinSize(18, halfHeight);
         this.setMaxSize(18, halfHeight);
     }
 

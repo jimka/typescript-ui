@@ -4,11 +4,8 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
-import { CSS } from "~/core/CSS.js";
-import { StyleRule } from "~/core/StyleTarget.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
-import { Position } from "~/primitive/Position.js";
 import { Bindable } from "~/core/Bindable.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -17,6 +14,12 @@ import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown
 import { callable } from "~/core/Callable.js";
 
 Glyph.register(calendar);
+
+// Width of the picker glyph button in pixels. Matches the prior `display: flex`
+// + 24px caret column the framework used before the per-field doLayout
+// override; sized to the calendar glyph's intrinsic 16px box plus 4px padding
+// on each side so the icon centres without crowding the input edge.
+const PICKER_BUTTON_WIDTH_PX = 24;
 
 /**
  * Construction-time options for {@link DateTimeField}.
@@ -38,7 +41,7 @@ export interface DateTimeFieldOptions extends ComponentOptions {
 class PickerInput extends TextInput<TextInputOptions> {
 
     constructor() {
-        super();
+        super({ cursor: "text" });
 
         Event.addListener(this, "input", () => this.syncTextFromDom());
     }
@@ -54,24 +57,11 @@ class PickerInput extends TextInput<TextInputOptions> {
     }
 }
 
-// `align-items` has no typed setter on Component, so the picker buttons' inline
-// flex-centering lives on a shared class rule registered once at module load.
-// `createClassRule` returns null on subsequent registrations from sibling
-// files; the factory's `getClassRule ?? createClassRule` handshake picks up
-// the existing rule in that case and re-flushes onto it, which is safe.
-(() => {
-    const rule = new StyleRule(() =>
-        (CSS.getClassRule("PickerButton")
-            ?? CSS.createClassRule("PickerButton")) as CSSStyleRule);
-    rule.set("alignItems", "center");
-    rule.ensure();
-})();
-
 /**
  * Internal `<button>` Component used by {@link DateTimeField},
  * {@link DateField}, and {@link TimeField} as the glyph-bearing trigger to
- * the right of the input. Defines the static styling via typed setters plus
- * the `.PickerButton` class rule for `align-items`.
+ * the right of the input. Centers a single glyph child via a `doLayout`
+ * override; no `display: flex` needed on the button element itself.
  */
 class PickerButton extends Component {
     constructor() {
@@ -81,7 +71,37 @@ class PickerButton extends Component {
         this.setBackgroundColor("transparent");
         this.setCursor("pointer");
         this.setPadding(new Insets(0, 4, 0, 4));
-        this.setDisplay("flex");
+    }
+
+    /**
+     * Centers the single glyph child within the button's inner rect at its
+     * preferred size; mirrors the same one-child centering pattern as
+     * `DateField`'s `PickerButton`.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        const inner = this.getInnerSize();
+        const child = this.getComponents()[0];
+        if (!inner || !child) {
+            return this;
+        }
+
+        const childSize = child.getPreferredSize();
+        if (!childSize) {
+            return this;
+        }
+
+        const insets = this.getInsets();
+        const x = insets.getLeft() + Math.max(0, (inner.width  - childSize.width)  / 2);
+        const y = insets.getTop()  + Math.max(0, (inner.height - childSize.height) / 2);
+
+        child.setX(x);
+        child.setY(y);
+        child.setWidth(childSize.width);
+        child.setHeight(childSize.height);
+
+        return this;
     }
 }
 
@@ -126,7 +146,7 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
     private readonly _onViewportPointerDown: (e: PointerEvent) => void;
 
     constructor(options?: DateTimeFieldOptions) {
-        super({ ..._defaultDateTimeFieldOptions, ...(options ?? {}) });
+        super(options, _defaultDateTimeFieldOptions);
 
         this._input = new PickerInput();
         this._input.setType("text");
@@ -136,11 +156,10 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
 
         this._button = new PickerButton();
 
-        // Glyph runs in static position so the button's `display: flex;
-        // align-items: center` actually centers it (flex skips abs-positioned
-        // children). `setPointerEvents("none")` lets clicks pass through to
-        // the button.
-        const glyph = new Glyph("calendar", { position: Position.STATIC });
+        // Glyph is placed by `PickerButton.doLayout` (framework-positioned,
+        // centered within the button's inner rect). `setPointerEvents("none")`
+        // lets clicks pass through to the button.
+        const glyph = new Glyph("calendar");
         glyph.setPointerEvents("none");
         this._button.addComponent(glyph);
 
@@ -158,8 +177,22 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
 
         this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
 
-        if (options) {
-            this.applyOptions(options);
+        // Dispatch late-built fields from `_options` (set by the super-time
+        // cascade through `applyOptions`). No second `applyOptions(options)`
+        // re-call — the cascade already merged `_defaultOptions` + `options`.
+        const opts = this._options;
+
+        if (opts.showSeconds !== undefined) {
+            this._showSeconds = opts.showSeconds;
+        }
+        if (opts.value !== undefined) {
+            this.setValue(opts.value);
+        }
+        if (opts.enabled !== undefined) {
+            this._input.setDisabledAttribute(!opts.enabled);
+        }
+        if (opts.dropdownAnimated !== undefined) {
+            this.setDropdownAnimated(opts.dropdownAnimated);
         }
     }
 
@@ -172,22 +205,24 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
     protected applyOptions(options: DateTimeFieldOptions): this {
         super.applyOptions(options);
 
+        const opts = { ...this._defaultOptions, ...options } as DateTimeFieldOptions;
+
         // Must precede `setValue` so the initial formatting reflects the
         // seconds setting.
-        if (options.showSeconds !== undefined) {
-            this._showSeconds = options.showSeconds;
+        if (opts.showSeconds !== undefined) {
+            this._showSeconds = opts.showSeconds;
         }
 
-        if (options.value !== undefined) {
-            this.setValue(options.value);
+        if (opts.value !== undefined) {
+            this.setValue(opts.value);
         }
 
-        if (options.enabled !== undefined) {
-            this._input.setDisabledAttribute(!options.enabled);
+        if (opts.enabled !== undefined) {
+            this._input.setDisabledAttribute(!opts.enabled);
         }
 
-        if (options.dropdownAnimated !== undefined) {
-            this.setDropdownAnimated(options.dropdownAnimated);
+        if (opts.dropdownAnimated !== undefined) {
+            this.setDropdownAnimated(opts.dropdownAnimated);
         }
 
         return this;
@@ -199,18 +234,17 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
     doLayout(): this {
         super.doLayout();
 
-        const w  = this.getWidth();
-        const h  = this.getHeight();
-        const bw = 24;
+        const w = this.getWidth();
+        const h = this.getHeight();
 
         this._input.setX(0);
         this._input.setY(0);
-        this._input.setWidth(Math.max(0, w - bw));
+        this._input.setWidth(Math.max(0, w - PICKER_BUTTON_WIDTH_PX));
         this._input.setHeight(h);
 
-        this._button.setX(w - bw);
+        this._button.setX(w - PICKER_BUTTON_WIDTH_PX);
         this._button.setY(0);
-        this._button.setWidth(bw);
+        this._button.setWidth(PICKER_BUTTON_WIDTH_PX);
         this._button.setHeight(h);
 
         return this;
@@ -259,6 +293,11 @@ class DateTimeField extends Component<DateTimeFieldOptions> implements Bindable<
         const target = e.target as Node;
         const dropEl = this._dropdown?.getElement();
         if (dropEl?.contains(target)) {
+            return;
+        }
+        // Ignore clicks landing inside a child popover spawned from within
+        // the picker panel (e.g. the ComboBox dropdowns in the time row).
+        if (this._dropdown?.isClickOnTopmostOverlay(target)) {
             return;
         }
         if (this.getElement()?.contains(target)) {

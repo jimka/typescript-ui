@@ -61,8 +61,10 @@ class ToggleButton extends Button<ToggleButtonOptions> {
     protected applyOptions(options: ToggleButtonOptions): this {
         super.applyOptions(options);
 
-        if (options.selected !== undefined) {
-            this.setSelected(options.selected);
+        const opts = { ...this._defaultOptions, ...options } as ToggleButtonOptions;
+
+        if (opts.selected !== undefined) {
+            this.setSelected(opts.selected);
         }
 
         return this;

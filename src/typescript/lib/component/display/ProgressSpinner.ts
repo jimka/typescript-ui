@@ -2,7 +2,6 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { CSS } from "~/core/CSS.js";
-import { Position } from "~/primitive/Position.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
@@ -79,7 +78,6 @@ class ProgressSpinner extends Component {
         this.clearInsets();
 
         this._arc = new Component();
-        this._arc.setPosition(Position.ABSOLUTE);
         this._arc.setBorderRadius("50%");
         this._arc.setBorder({
             style: BorderStyle.SOLID,
@@ -127,8 +125,10 @@ class ProgressSpinner extends Component {
     protected applyOptions(options: ProgressSpinnerOptions): this {
         super.applyOptions(options);
 
-        if (options.spinnerSize !== undefined) {
-            this.setSpinnerSize(options.spinnerSize);
+        const opts = { ...this._defaultOptions, ...options } as ProgressSpinnerOptions;
+
+        if (opts.spinnerSize !== undefined) {
+            this.setSpinnerSize(opts.spinnerSize);
         }
 
         return this;
@@ -188,7 +188,6 @@ class ProgressSpinner extends Component {
 
         this._overlayTarget = target;
 
-        this.setPosition(Position.ABSOLUTE);
         this.setBackgroundColor("var(--ts-ui-progress-spinner-backdrop, rgba(255, 255, 255, 0.6))");
         this.setZIndex(9999);
 

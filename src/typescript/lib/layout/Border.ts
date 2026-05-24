@@ -339,6 +339,61 @@ class Border extends LayoutManager {
     }
 
     /**
+     * Computes the children's combined minSize along this manager's
+     * 5-region geometry: width = west.minWidth + center.minWidth +
+     * east.minWidth + gaps; height = north.minHeight + center.minHeight +
+     * south.minHeight + gaps. Used by `doLayout` to inflate the working
+     * size when the host has opted into `setOverflowing`.
+     *
+     * @returns The total min-size; `{ width: 0, height: 0 }` when the
+     *   container is absent.
+     */
+    protected computeTotalMinSize(): Size {
+        const container = this.getContainer();
+        if (!container) {
+            return { width: 0, height: 0 };
+        }
+
+        const westMin   = this._westComponent  ?.getMinSize();
+        const centerMin = this._centerComponent?.getMinSize();
+        const eastMin   = this._eastComponent  ?.getMinSize();
+        const northMin  = this._northComponent ?.getMinSize();
+        const southMin  = this._southComponent ?.getMinSize();
+
+        // Horizontal regions contribute to width; vertical regions contribute
+        // to height. Each inter-region gap is added only when both adjacent
+        // regions exist so single-region layouts (only center, for instance)
+        // don't gain phantom gap pixels.
+        const hRegions = [westMin, centerMin, eastMin].filter(s => s != null);
+        const vRegions = [northMin, centerMin, southMin].filter(s => s != null);
+
+        let width  = 0;
+        let height = 0;
+
+        for (const r of hRegions) {
+            width += r!.width;
+        }
+        width += Math.max(0, hRegions.length - 1) * this._gap;
+
+        // For width we also need to ensure the height-region's own width is
+        // honoured: the center column may need at least the wider of
+        // north.minWidth / south.minWidth (which span the full row).
+        if (northMin) {
+            width = Math.max(width, northMin.width);
+        }
+        if (southMin) {
+            width = Math.max(width, southMin.width);
+        }
+
+        for (const r of vRegions) {
+            height += r!.height;
+        }
+        height += Math.max(0, vRegions.length - 1) * this._gap;
+
+        return { width, height };
+    }
+
+    /**
      * Positions north, south, east, west, and center children within the container's inner bounds.
      *
      * @remarks The north component may opt out of parent insets via `constraints.ignoreParentInsets`,
@@ -358,6 +413,17 @@ class Border extends LayoutManager {
         let containerInsets = container.getInsets();
         if (!containerInsets) {
             throw new Error("Unable to determine component insets.");
+        }
+
+        // Universal scroll: see HBox.doLayout for the rationale. Inflates the
+        // working size to the children's combined minSize on the axes the
+        // host has marked as overflowing.
+        if (this.isOverflowingX() || this.isOverflowingY()) {
+            const totalMin = this.computeTotalMinSize();
+            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
+            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
+
+            containerSize = { width: w, height: h };
         }
 
         let width = containerSize.width;

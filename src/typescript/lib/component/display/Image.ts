@@ -15,6 +15,11 @@ import { callable } from "~/core/Callable.js";
 export interface ImageOptions extends ComponentOptions {
 }
 
+// Upper bound for the auto-derived `minSize` per axis. Small images report
+// their intrinsic size (so a 16×16 favicon stays sharp at full natural size);
+// larger images cap here so their parent layout can always shrink them down.
+const IMAGE_AUTO_MIN_CAP_PX = 100;
+
 /**
  * An image component backed by an `<img>` element.
  *
@@ -31,7 +36,6 @@ class Image extends Component {
 
         this._src = src;
         this.clearInsets();
-        this.setMinSize(20, 20);
 
         if (options) {
             this.applyOptions(options);
@@ -60,6 +64,33 @@ class Image extends Component {
         return {
             width: element.naturalWidth,
             height: element.naturalHeight
+        };
+    }
+
+    /**
+     * Returns a minimum size derived from the image's intrinsic dimensions
+     * (mirrors the `Math.min(natural, 100)` cap that `Text` applies), so
+     * small images keep their full size while large images stay shrinkable
+     * by their parent layout. An explicit `setMinSize` from the caller
+     * wins via `Component.getMinSize`'s `_options.minSize` priority.
+     *
+     * @returns The minimum `{width, height}` from intrinsic dims, or a
+     *   `20×20` pre-load fallback before the image has decoded.
+     */
+    getMinSize(): Size | null {
+        const explicit = super.getMinSize();
+        if (this._options.minSize) {
+            return explicit;
+        }
+
+        const element = this.getElement();
+        if (!element || !element.naturalWidth) {
+            return { width: 20, height: 20 };
+        }
+
+        return {
+            width:  Math.min(element.naturalWidth,  IMAGE_AUTO_MIN_CAP_PX),
+            height: Math.min(element.naturalHeight, IMAGE_AUTO_MIN_CAP_PX),
         };
     }
 

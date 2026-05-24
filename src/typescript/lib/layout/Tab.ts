@@ -548,6 +548,37 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Computes the children's combined minSize along this manager's geometry:
+     * width is `max(toolbar.preferredWidth, visibleChild.minWidth)`; height
+     * is `toolbar.preferredHeight + visibleChild.minHeight`. Used by
+     * `doLayout` to inflate the content area's working size when the host
+     * has opted into `setOverflowing`; the toolbar's geometry is unaffected.
+     *
+     * @returns The total min-size; `{ width: 0, height: 0 }` when the
+     *   container is absent.
+     */
+    protected computeTotalMinSize(): Size {
+        const container = this.getContainer();
+        if (!container) {
+            return { width: 0, height: 0 };
+        }
+
+        const toolbarSize = this._toolbar.getPreferredSize();
+        const toolbarW = toolbarSize ? toolbarSize.width  : 0;
+        const toolbarH = toolbarSize ? toolbarSize.height : 0;
+
+        const visible = this.getVisibleComponent() ?? container.getComponents()[0];
+        const childMin = visible?.getMinSize();
+        const childMinW = childMin ? childMin.width  : 0;
+        const childMinH = childMin ? childMin.height : 0;
+
+        return {
+            width:  Math.max(toolbarW, childMinW),
+            height: toolbarH + childMinH,
+        };
+    }
+
+    /**
      * Creates tab buttons for new components, hides all but the selected child,
      * and positions the toolbar and the visible component.
      *
@@ -613,12 +644,31 @@ class Tab extends LayoutManager {
         component.setVisible(true);
         component.getAria().setHidden(false);
 
+        // Universal scroll: only the content area honours the overflow flags;
+        // the toolbar always renders at the container's original width so its
+        // own internal `ToolBar` overflow mechanism stays in charge of long
+        // tab lists (see plan's Non-Goals).
+        let contentWidth  = containerSize ? containerSize.width                 : 0;
+        let contentHeight = containerSize ? containerSize.height - toolbarHeight : 0;
+
+        if (containerSize && (this.isOverflowingX() || this.isOverflowingY())) {
+            const totalMin = this.computeTotalMinSize();
+            if (this.isOverflowingX()) {
+                contentWidth  = Math.max(contentWidth,  totalMin.width);
+            }
+            if (this.isOverflowingY()) {
+                // totalMin.height already includes toolbarH; subtract it to
+                // get the content-area's own minimum.
+                contentHeight = Math.max(contentHeight, totalMin.height - toolbarHeight);
+            }
+        }
+
         this.placeComponent(
             component,
             containerInsets.getLeft(),
             containerInsets.getTop() + toolbarHeight,
-            containerSize ? containerSize.width : 0,
-            containerSize ? containerSize.height - toolbarHeight : 0,
+            contentWidth,
+            contentHeight,
             FillType.BOTH
         );
 

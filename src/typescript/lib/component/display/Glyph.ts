@@ -228,12 +228,13 @@ class Glyph extends Component<GlyphOptions> {
             throw new Error("Unknown glyph: " + name);
         }
 
-        // Merge defaults → consumer options → non-overridable structural keys.
-        // `super` dispatches every present setter through the cascade once with
-        // the final value (e.g. `setPreferredSize(16, 16)` for the default).
-        super({
+        // Hand defaults plus the per-instance tag (chosen from the registry
+        // entry's `kind`) to Component via the subclass-defaults arg so they
+        // land in `_defaultOptions`. Component's super-time cascade applies
+        // them; user `options` win because `applyOptions` merges
+        // `{...defaults, ...options}` at dispatch time.
+        super(options, {
             ..._defaultGlyphOptions,
-            ...(options ?? {}),
             tag: def.kind === "svg" ? "svg" : "span",
         });
 
@@ -503,20 +504,22 @@ class Glyph extends Component<GlyphOptions> {
     protected applyOptions(options: GlyphOptions): this {
         super.applyOptions(options);
 
-        if (options.lineHeight !== undefined) {
-            this.setLineHeight(options.lineHeight);
+        const opts = { ...this._defaultOptions, ...options } as GlyphOptions;
+
+        if (opts.lineHeight !== undefined) {
+            this.setLineHeight(opts.lineHeight);
         }
 
-        if (options.textAlign !== undefined) {
-            this.setTextAlign(options.textAlign);
+        if (opts.textAlign !== undefined) {
+            this.setTextAlign(opts.textAlign);
         }
 
-        if (options.animationDuration !== undefined) {
-            this.setAnimationDuration(options.animationDuration);
+        if (opts.animationDuration !== undefined) {
+            this.setAnimationDuration(opts.animationDuration);
         }
 
-        if (options.animation !== undefined) {
-            this.setAnimated(options.animation);
+        if (opts.animation !== undefined) {
+            this.setAnimated(opts.animation);
         }
 
         return this;

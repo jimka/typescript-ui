@@ -3,12 +3,15 @@
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Component } from "~/core/Component.js";
 import { CSS } from "~/core/CSS.js";
-import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
-import { Position } from "~/primitive/Position.js";
+import { ComboBox } from "~/component/input/ComboBox.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
+import { Fit } from "~/layout/Fit.js";
+import { HBox } from "~/layout/HBox.js";
+import { VBox } from "~/layout/VBox.js";
+import { Grid } from "~/layout/Grid.js";
 import { callable } from "~/core/Callable.js";
 
 /** Pixel width of the combined date+time picker panel. */
@@ -17,125 +20,67 @@ const PANEL_WIDTH:          number = 240;
 /** Pixel width of the combined date+time picker panel when seconds are shown. */
 const PANEL_WIDTH_SECONDS:  number = 280;
 
-// Static layout and typography defined once via class rules. Each cell
-// Component below auto-tags its element with its `this.constructor.name`,
-// so the rules apply by class name without inline style writes.
+/** Pixel height of the month-name + year row at the top. */
+const MONTH_HEIGHT:         number = 24;
+/** Pixel height of the weekday-name row. */
+const HEADER_HEIGHT:        number = 20;
+/** Pixel height of each day cell. */
+const CELL_HEIGHT:          number = 24;
+/** Pixel height of the time row at the bottom. */
+const TIME_ROW_HEIGHT:      number = 28;
+/** Pixel width of each ComboBox in the time row. */
+const SELECT_WIDTH:         number = 56;
+/** Pixel width of the ":" separator between selects. */
+const SEPARATOR_WIDTH:      number = 8;
+/** Pixel width of the "Time" label. */
+const TIME_LABEL_WIDTH:     number = 36;
+
+// Static hover styling only. All layout (grid, row stacking, time row) is
+// driven by the framework Grid / VBox / HBox managers.
 (() => {
-    const root = new StyleRule(() =>
-        (CSS.getClassRule("DateTimePickerRoot")
-            ?? CSS.createClassRule("DateTimePickerRoot")) as CSSStyleRule);
-    root.setMany({
-        flexDirection: "column",
-        width:         "100%",
-        gap:           "6px",
-    });
-    root.ensure();
+    const day = CSS.createClassRule("DateTimePickerDay");
+    if (day) {
+        day.style.setProperty("cursor", "pointer");
+        day.style.setProperty("border-radius", "3px");
+    }
 
-    const grid = new StyleRule(() =>
-        (CSS.getClassRule("DateTimePickerGrid")
-            ?? CSS.createClassRule("DateTimePickerGrid")) as CSSStyleRule);
-    grid.setMany({
-        gridTemplateColumns: "repeat(7, 1fr)",
-        gap:                 "2px",
-    });
-    grid.ensure();
-
-    const monthLabel = new StyleRule(() =>
-        (CSS.getClassRule("DateTimePickerMonthLabel")
-            ?? CSS.createClassRule("DateTimePickerMonthLabel")) as CSSStyleRule);
-    monthLabel.setMany({
-        gridColumn: "1 / -1",
-        textAlign:  "center",
-        fontWeight: "bold",
-        padding:    "4px 0",
-    });
-    monthLabel.ensure();
-
-    const dayHeader = new StyleRule(() =>
-        (CSS.getClassRule("DateTimePickerDayHeader")
-            ?? CSS.createClassRule("DateTimePickerDayHeader")) as CSSStyleRule);
-    dayHeader.setMany({
-        textAlign: "center",
-        fontSize:  "0.85em",
-        opacity:   "0.7",
-    });
-    dayHeader.ensure();
-
-    const day = new StyleRule(() =>
-        (CSS.getClassRule("DateTimePickerDay")
-            ?? CSS.createClassRule("DateTimePickerDay")) as CSSStyleRule);
-    day.setMany({
-        textAlign:    "center",
-        padding:      "3px 0",
-        cursor:       "pointer",
-        borderRadius: "3px",
-    });
-    day.ensure();
-
-    const dayHover = new StyleRule(() =>
-        (CSS.getRule(".DateTimePickerDay:hover")
-            ?? CSS.createRule(".DateTimePickerDay:hover")) as CSSStyleRule);
-    dayHover.set("backgroundColor",
-        "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
-    dayHover.ensure();
-
-    const timeRow = new StyleRule(() =>
-        (CSS.getClassRule("DateTimePickerTimeRow")
-            ?? CSS.createClassRule("DateTimePickerTimeRow")) as CSSStyleRule);
-    timeRow.setMany({
-        alignItems: "center",
-        gap:        "4px",
-        padding:    "4px 6px 2px 6px",
-    });
-    timeRow.ensure();
-
-    const timeLabel = new StyleRule(() =>
-        (CSS.getClassRule("DateTimePickerTimeLabel")
-            ?? CSS.createClassRule("DateTimePickerTimeLabel")) as CSSStyleRule);
-    timeLabel.setMany({
-        fontSize: "0.85em",
-        opacity:  "0.7",
-    });
-    timeLabel.ensure();
+    const dayHover = CSS.createRule(".DateTimePickerDay:hover");
+    if (dayHover) {
+        dayHover.style.setProperty(
+            "background-color",
+            "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))"
+        );
+    }
 })();
 
-/**
- * Vertical container stacking the date grid above the time row. Layout
- * properties live on the `.DateTimePickerRoot` class rule.
- */
-class DateTimePickerRoot extends Component {
-    constructor() {
-        super({ tag: "div", position: Position.STATIC });
-        this.setDisplay("flex");
-    }
-}
-
-/** Calendar month grid. */
-class DateTimePickerGrid extends Component {
-    constructor() {
-        super({ tag: "div", position: Position.STATIC });
-        this.setDisplay("grid");
-    }
-}
-
-/** Month-name + year row spanning all seven columns of the grid. */
+/** Month-name + year row label. */
 class DateTimePickerMonthLabel extends Text {
     constructor(text: string) {
-        super(text, { position: Position.STATIC, textAlign: "center", fontWeight: "bold" });
+        super(text, {
+            textAlign:     "center",
+            fontWeight:    "bold",
+            preferredSize: { width: 0, height: MONTH_HEIGHT },
+        });
+        this.setLineHeight(MONTH_HEIGHT);
     }
 }
 
 /** Single weekday-name header. */
 class DateTimePickerDayHeader extends Text {
     constructor(text: string) {
-        super(text, { position: Position.STATIC, textAlign: "center", fontSize: 12, opacity: 0.7 });
+        super(text, {
+            textAlign:     "center",
+            fontSize:      12,
+            preferredSize: { width: 0, height: HEADER_HEIGHT },
+        });
+        this.setLineHeight(HEADER_HEIGHT);
     }
 }
 
-/** Empty cell shown before the first day of the month. */
+/** Empty cell shown before the first day of the month (or trailing the last). */
 class DateTimePickerBlankCell extends Component {
     constructor() {
-        super({ tag: "div", position: Position.STATIC });
+        super({ preferredSize: { width: 0, height: CELL_HEIGHT } });
     }
 }
 
@@ -149,9 +94,13 @@ class DateTimePickerDay extends Text {
     private readonly _onClick: (date: Date) => void;
 
     constructor(date: Date, onClick: (date: Date) => void) {
-        super(String(date.getDate()), { position: Position.STATIC, textAlign: "center" });
+        super(String(date.getDate()), {
+            textAlign:     "center",
+            preferredSize: { width: 0, height: CELL_HEIGHT },
+        });
         this._date    = date;
         this._onClick = onClick;
+        this.setLineHeight(CELL_HEIGHT);
 
         Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
         Event.addListener(this, "click",       ()                => this.onClick());
@@ -198,88 +147,98 @@ class DateTimePickerDay extends Text {
     }
 }
 
-/** Horizontal "Time hh : mm" row. */
-class DateTimePickerTimeRow extends Component {
-    constructor() {
-        super({ tag: "div", position: Position.STATIC });
-        this.setDisplay("flex");
-    }
-}
-
 /** The "Time" label sitting before the hour/minute selects. */
 class DateTimePickerTimeLabel extends Text {
     constructor() {
-        super("Time", { position: Position.STATIC, fontSize: 12, opacity: 0.7 });
+        super("Time", {
+            fontSize:      12,
+            preferredSize: { width: TIME_LABEL_WIDTH, height: TIME_ROW_HEIGHT },
+        });
+        this.setLineHeight(TIME_ROW_HEIGHT);
     }
 }
 
 /** The ":" separator between the hour and minute selects. */
 class DateTimePickerTimeSeparator extends Text {
     constructor() {
-        super(":", { position: Position.STATIC });
+        super(":", {
+            textAlign:     "center",
+            preferredSize: { width: SEPARATOR_WIDTH, height: TIME_ROW_HEIGHT },
+        });
+        this.setLineHeight(TIME_ROW_HEIGHT);
     }
 }
 
 /**
- * Native `<select>` Component used for the hour / minute / second pickers in
- * the time row. Owns its own listeners so they can be named methods rather
- * than inline closures over a `buildSelect` helper's locals.
+ * Framework ComboBox used for the hour / minute / second pickers in the
+ * time row. Sized to the fixed `SELECT_WIDTH × TIME_ROW_HEIGHT` so the row
+ * lays out predictably regardless of the input-height theme token.
+ *
+ * The ComboBox's spawned dropdown panel is layered on top of the picker
+ * via the shared {@link AnimatedDropdown} open-stack, so the picker's
+ * outside-click dismiss handler (`DateTimeField.onViewportPointerDown`)
+ * recognises clicks inside this ComboBox dropdown as in-panel and keeps
+ * the picker open.
  */
-class DateTimePickerSelect extends Component {
+class DateTimePickerSelect extends ComboBox {
+
     private readonly _onChange: (value: number) => void;
+    private readonly _step:     number;
 
     /**
-     * @param count - Number of options (24 hours, 60 minutes/seconds).
-     * @param active - Currently-selected value, or -1 to leave nothing selected.
+     * @param count - Number of options (24 for hours, 60 for minutes/seconds).
+     * @param active - Currently-selected value, or -1 for no selection.
      * @param onChange - Callback fired when the user picks a new value.
      * @param step - Step between options (1 for hours, 5 for minutes/seconds).
      */
     constructor(count: number, active: number, onChange: (value: number) => void, step: number = 1) {
-        super({ tag: "select", position: Position.STATIC });
+        super();
 
         this._onChange = onChange;
+        this._step     = step;
 
-        const el = this.getElement(true) as HTMLSelectElement;
-        const snappedActive = active < 0 ? -1 : Math.round(active / step) * step;
+        // ComboBox's base `updateHeight` (called from its constructor and on
+        // theme change) writes a 200 px-wide preferred size that would push
+        // the time row past the picker panel; lock the picker-specific size
+        // here after super has finished so the override survives subsequent
+        // updateHeight calls.
+        this.setPreferredSize(SELECT_WIDTH, TIME_ROW_HEIGHT);
+        this.setMinSize(SELECT_WIDTH, TIME_ROW_HEIGHT);
+        this.setMaxSize(SELECT_WIDTH, TIME_ROW_HEIGHT);
 
+        const labels: string[] = [];
         for (let v = 0; v < count; v += step) {
-            const opt = document.createElement("option");
-            opt.value       = String(v);
-            opt.textContent = String(v).padStart(2, "0");
+            labels.push(String(v).padStart(2, "0"));
+        }
+        this.setItems(labels);
 
-            if (v === snappedActive) {
-                opt.selected = true;
-            }
-
-            el.appendChild(opt);
+        const snappedActive = active < 0 ? -1 : Math.round(active / step) * step;
+        if (snappedActive >= 0) {
+            this.setSelectedIndex(snappedActive / step, false);
+        } else {
+            this.setSelectedIndex(-1, false);
         }
 
-        if (snappedActive < 0) {
-            el.selectedIndex = -1;
-        }
-
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
-        Event.addListener(this, "change",      ()                => this.onChange());
+        this.addActionListener(() => this.onChange());
     }
 
     /**
-     * Stops propagation so the surrounding panel's `pointerdown` (which
-     * `preventDefault`s to keep focus on the host input) doesn't suppress
-     * the native `<select>` popup from opening.
-     *
-     * @param e - The pointerdown event.
+     * Pins the picker-row size on theme change. The base `updateHeight` would
+     * otherwise reset the width to 200 px and break the time-row layout.
      */
-    private onPointerDown(e: PointerEvent): void {
-        e.stopPropagation();
+    protected updateHeight(): void {
+        this.setPreferredSize(SELECT_WIDTH, TIME_ROW_HEIGHT);
+        this.setMinSize(SELECT_WIDTH, TIME_ROW_HEIGHT);
+        this.setMaxSize(SELECT_WIDTH, TIME_ROW_HEIGHT);
     }
 
     /**
      * Forwards the selected numeric value to the owner-supplied change callback.
      */
     private onChange(): void {
-        const el = this.getElement() as HTMLSelectElement | null;
-        if (el) {
-            this._onChange(Number(el.value));
+        const idx = this.getSelectedIndex();
+        if (idx >= 0) {
+            this._onChange(idx * this._step);
         }
     }
 }
@@ -311,20 +270,26 @@ class DateTimePickerDropdown extends AnimatedDropdown<DateTimePickerDropdownOpti
     /** Null until the user picks a day or a time. */
     private _value: Date | null = null;
 
+    /** Outer VBox container holding (label, header row, day grid, time row). */
+    private _root:       Component;
+    private _monthLabel: DateTimePickerMonthLabel;
+    private _headerRow:  Component;
+    private _dayGrid:    Component;
+    private _timeRow:    Component;
+
     /**
      * @param onSelect - Called with the chosen `Date` when the user updates any field.
      * @param options - Optional construction-time options.
      */
     constructor(onSelect: (value: Date) => void, options?: DateTimePickerDropdownOptions) {
-        super({
+        super(options, {
             zIndex:          10050,
-            position:        Position.FIXED,
+            layoutManager:   new Fit(),
             backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
             border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
             borderRadius:    "var(--ts-ui-border-radius, 4px)",
             shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
-            padding:         new Insets(6, 6, 6, 6),
-            ...(options ?? {}),
+            insets:          new Insets(6, 6, 6, 6),
         });
 
         this._onSelect    = onSelect;
@@ -332,6 +297,29 @@ class DateTimePickerDropdown extends AnimatedDropdown<DateTimePickerDropdownOpti
 
         this.getAria().setRole("group");
         this.setContain("layout");
+
+        this._root = new Component();
+        this._root.setLayoutManager(new VBox({ spacing: 4, stretching: true }));
+
+        this._monthLabel = new DateTimePickerMonthLabel("");
+        this._root.addComponent(this._monthLabel);
+
+        this._headerRow = new Component({ preferredSize: { width: 0, height: HEADER_HEIGHT } });
+        this._headerRow.setLayoutManager(new Grid({ columns: 7, spacing: 2, stretching: true }));
+        for (const dh of ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) {
+            this._headerRow.addComponent(new DateTimePickerDayHeader(dh));
+        }
+        this._root.addComponent(this._headerRow);
+
+        this._dayGrid = new Component({ preferredSize: { width: 0, height: 6 * CELL_HEIGHT + 5 * 2 } });
+        this._dayGrid.setLayoutManager(new Grid({ columns: 7, spacing: 2, stretching: true }));
+        this._root.addComponent(this._dayGrid);
+
+        this._timeRow = new Component({ preferredSize: { width: 0, height: TIME_ROW_HEIGHT } });
+        this._timeRow.setLayoutManager(new HBox({ spacing: 4 }));
+        this._root.addComponent(this._timeRow);
+
+        this.addComponent(this._root);
 
         Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
     }
@@ -357,26 +345,16 @@ class DateTimePickerDropdown extends AnimatedDropdown<DateTimePickerDropdownOpti
         this._value = selected ? new Date(selected.getTime()) : null;
 
         this.pauseLayout();
-        this.buildGrid();
+        this.rebuild();
         this.resumeLayout();
 
+        const panelHeight = this.computePanelHeight();
         this.setWidth(this._showSeconds ? PANEL_WIDTH_SECONDS : PANEL_WIDTH);
-
-        const measuredHeight = this.measureNaturalHeight();
-        this.setHeight(measuredHeight);
+        this.setHeight(panelHeight);
 
         this.doLayout();
 
-        const rect      = anchorEl.getBoundingClientRect();
-        const vpHeight  = window.innerHeight;
-        let y           = rect.bottom;
-
-        if (y + measuredHeight > vpHeight && rect.top - measuredHeight > 0) {
-            y = rect.top - measuredHeight;
-        }
-
-        this.setX(rect.left);
-        this.setY(y);
+        this.placeAnchored(anchorEl.getBoundingClientRect());
 
         this.showAnimated();
 
@@ -384,73 +362,51 @@ class DateTimePickerDropdown extends AnimatedDropdown<DateTimePickerDropdownOpti
     }
 
     /**
-     * Measures the panel's natural rendered height for the freshly-built grid
-     * so {@link showAt} can size the panel to its content. The root container
-     * uses static positioning, so the panel's `offsetHeight` already includes
-     * everything inside.
-     *
-     * @returns The natural panel height in pixels.
+     * Sums the fixed-height rows + the panel's insets to produce the panel's
+     * outer height. Avoids forcing a DOM measurement.
      */
-    private measureNaturalHeight(): number {
-        const el = this.getElement(true);
-        const wasMounted = document.documentElement.contains(el);
+    private computePanelHeight(): number {
+        const insets    = this.getInsets();
+        const rootGap   = 4;
+        const dayGridH  = 6 * CELL_HEIGHT + 5 * 2;
+        const innerH    = MONTH_HEIGHT + rootGap + HEADER_HEIGHT + rootGap + dayGridH + rootGap + TIME_ROW_HEIGHT;
 
-        if (!wasMounted) {
-            this.setVisible(false);
-            document.documentElement.appendChild(el);
-        }
-
-        const measured = el.offsetHeight;
-
-        if (!wasMounted) {
-            document.documentElement.removeChild(el);
-            this.setVisible(true);
-        }
-
-        return measured;
+        return insets.getTop() + insets.getBottom() + innerH;
     }
 
     /**
-     * Rebuilds the combined month-grid + hour/minute selector for `_value`.
+     * Rebuilds the day-grid and time-row children for `_value`. The header
+     * row and outer scaffolding are constructed once in the constructor and
+     * reused.
      */
-    private buildGrid(): void {
-        this.removeAllComponents();
-
-        const root = new DateTimePickerRoot();
-        root.addComponent(this.buildDateGrid());
-        root.addComponent(this.buildTimeRow());
-
-        this.addComponent(root);
+    private rebuild(): void {
+        this._dayGrid.removeAllComponents();
+        this._timeRow.removeAllComponents();
+        this.buildDateGrid();
+        this.buildTimeRow();
     }
 
     /**
-     * Builds the month-view date grid.
-     *
-     * @returns The grid component.
+     * Fills the day grid for the month containing `_value` (or today when
+     * `_value` is null). Updates the month label.
      */
-    private buildDateGrid(): DateTimePickerGrid {
-        const grid = new DateTimePickerGrid();
-
+    private buildDateGrid(): void {
         // When no value is set, anchor the month view on today so the user
         // can navigate; nothing in this anchor is highlighted.
         const anchor = this._value ?? new Date();
         const year   = anchor.getFullYear();
         const month  = anchor.getMonth();
 
-        grid.addComponent(new DateTimePickerMonthLabel(
+        this._monthLabel.setText(
             anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" })
-        ));
-
-        for (const dh of ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) {
-            grid.addComponent(new DateTimePickerDayHeader(dh));
-        }
+        );
 
         const firstOfMonth = new Date(year, month, 1);
         const startWeekday = firstOfMonth.getDay();
         const daysInMonth  = new Date(year, month + 1, 0).getDate();
 
         for (let i = 0; i < startWeekday; i++) {
-            grid.addComponent(new DateTimePickerBlankCell());
+            this._dayGrid.addComponent(new DateTimePickerBlankCell());
         }
 
         for (let day = 1; day <= daysInMonth; day++) {
@@ -466,68 +422,49 @@ class DateTimePickerDropdown extends AnimatedDropdown<DateTimePickerDropdownOpti
                 cell.setSelected(true);
             }
 
-            grid.addComponent(cell);
+            this._dayGrid.addComponent(cell);
         }
 
-        return grid;
+        const remaining = 42 - startWeekday - daysInMonth;
+        for (let i = 0; i < remaining; i++) {
+            this._dayGrid.addComponent(new DateTimePickerBlankCell());
+        }
     }
 
     /**
-     * Builds the hour/minute selector row.
-     *
-     * @returns The row component.
+     * Builds the hour/minute (and optional second) selector row.
      */
-    private buildTimeRow(): DateTimePickerTimeRow {
-        const row = new DateTimePickerTimeRow();
-        row.addComponent(new DateTimePickerTimeLabel());
+    private buildTimeRow(): void {
+        this._timeRow.addComponent(new DateTimePickerTimeLabel());
 
-        const hourSelect = this.buildSelect(24, this._value?.getHours() ?? -1, value => {
+        const hourSelect = new DateTimePickerSelect(24, this._value?.getHours() ?? -1, value => {
             const v = this._value ?? this.todayMidnight();
             v.setHours(value, v.getMinutes(), 0, 0);
             this._value = v;
             this.emit();
         });
+        this._timeRow.addComponent(hourSelect);
+        this._timeRow.addComponent(new DateTimePickerTimeSeparator());
 
-        row.addComponent(hourSelect);
-        row.addComponent(new DateTimePickerTimeSeparator());
-
-        const minuteSelect = this.buildSelect(60, this._value?.getMinutes() ?? -1, value => {
+        const minuteSelect = new DateTimePickerSelect(60, this._value?.getMinutes() ?? -1, value => {
             const v = this._value ?? this.todayMidnight();
             v.setHours(v.getHours(), value, v.getSeconds(), 0);
             this._value = v;
             this.emit();
         }, 5);
-
-        row.addComponent(minuteSelect);
+        this._timeRow.addComponent(minuteSelect);
 
         if (this._showSeconds) {
-            row.addComponent(new DateTimePickerTimeSeparator());
+            this._timeRow.addComponent(new DateTimePickerTimeSeparator());
 
-            const secondSelect = this.buildSelect(60, this._value?.getSeconds() ?? -1, value => {
+            const secondSelect = new DateTimePickerSelect(60, this._value?.getSeconds() ?? -1, value => {
                 const v = this._value ?? this.todayMidnight();
                 v.setHours(v.getHours(), v.getMinutes(), value, 0);
                 this._value = v;
                 this.emit();
             }, 5);
-
-            row.addComponent(secondSelect);
+            this._timeRow.addComponent(secondSelect);
         }
-
-        return row;
-    }
-
-    /**
-     * Thin wrapper kept so the call sites in {@link buildTimeRow} stay
-     * concise. The actual `<select>` Component is {@link DateTimePickerSelect},
-     * which owns its own listeners.
-     *
-     * @param count - Number of options (24 hours, 60 minutes/seconds).
-     * @param active - Currently-selected value, or -1 to leave nothing selected.
-     * @param onChange - Callback when the user picks a new value.
-     * @param step - Step between options (1 for hours, 5 for minutes/seconds).
-     */
-    private buildSelect(count: number, active: number, onChange: (value: number) => void, step: number = 1): DateTimePickerSelect {
-        return new DateTimePickerSelect(count, active, onChange, step);
     }
 
     /**
@@ -542,8 +479,8 @@ class DateTimePickerDropdown extends AnimatedDropdown<DateTimePickerDropdownOpti
     }
 
     /**
-     * Handles a day-cell click. Updates `_value`, emits, and rebuilds the
-     * grid so the highlight follows.
+     * Handles a day-cell click. Updates `_value`, emits, and rebuilds so the
+     * highlight follows.
      *
      * @param date - The clicked day.
      */
@@ -554,7 +491,8 @@ class DateTimePickerDropdown extends AnimatedDropdown<DateTimePickerDropdownOpti
             this._value.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
         }
         this.emit();
-        this.buildGrid();
+        this.rebuild();
+        this.doLayout();
     }
 
     /**

@@ -2,12 +2,16 @@
 
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Component } from "~/core/Component.js";
+import { Panel } from "~/core/Panel.js";
 import { CSS } from "~/core/CSS.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
-import { Position } from "~/primitive/Position.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
+import { Fit } from "~/layout/Fit.js";
+import { HBox } from "~/layout/HBox.js";
+import { VBox } from "~/layout/VBox.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { callable } from "~/core/Callable.js";
 
 /** Pixel width of the time picker panel (Hour + Minute). */
@@ -19,59 +23,23 @@ const PANEL_WIDTH_SECONDS:  number = 200;
 /** Pixel height of the time picker panel. */
 const PANEL_HEIGHT:         number = 220;
 
-// Static layout and typography defined once via class rules. Each cell
-// Component below auto-tags its element with its `this.constructor.name`,
-// so the rules apply by class name without inline style writes.
+/** Pixel height of each clickable cell row. */
+const CELL_HEIGHT:          number = 22;
+
+/** Pixel height of the column header row. */
+const HEADER_HEIGHT:        number = 18;
+
+// Static typography and hover effect defined once via class rules. Layout
+// (column widths, cell stacking, scrolling) is driven by the framework
+// HBox / VBox managers and Panel.autoScroll — no display:flex/grid here.
 (() => {
-    const grid = CSS.createClassRule("TimePickerGrid");
-    if (grid) {
-        grid.style.setProperty("grid-template-columns", "1fr 1fr");
-        grid.style.setProperty("gap", "4px");
-        grid.style.setProperty("width", "100%");
-        grid.style.setProperty("height", "100%");
-    }
-
-    const gridSeconds = CSS.createClassRule("TimePickerGridSeconds");
-    if (gridSeconds) {
-        gridSeconds.style.setProperty("grid-template-columns", "1fr 1fr 1fr");
-        gridSeconds.style.setProperty("gap", "4px");
-        gridSeconds.style.setProperty("width", "100%");
-        gridSeconds.style.setProperty("height", "100%");
-    }
-
-    const column = CSS.createClassRule("TimePickerColumn");
-    if (column) {
-        column.style.setProperty("flex-direction", "column");
-        column.style.setProperty("min-height", "0");
-    }
-
     const header = CSS.createClassRule("TimePickerColumnHeader");
     if (header) {
         header.style.setProperty("opacity", "0.7");
-        header.style.setProperty("padding", "2px 0");
-        // `flex: 0 0 auto` prevents the list (flex: 1 1 auto) from squashing the
-        // header to a sliver when their parent column is shorter than its content.
-        header.style.setProperty("flex", "0 0 auto");
-    }
-
-    const list = CSS.createClassRule("TimePickerCellList");
-    if (list) {
-        list.style.setProperty("flex", "1 1 auto");
-        list.style.setProperty("min-height", "0");
-        // Hide the visual scrollbar so cells use the full column width and
-        // align with the header above. Mouse-wheel scrolling still works.
-        list.style.setProperty("scrollbar-width", "none");
-    }
-
-    const listScrollbar = CSS.createRule(".TimePickerCellList::-webkit-scrollbar");
-    if (listScrollbar) {
-        listScrollbar.style.setProperty("display", "none");
     }
 
     const cell = CSS.createClassRule("TimePickerCell");
     if (cell) {
-        cell.style.setProperty("text-align", "center");
-        cell.style.setProperty("padding", "3px 0");
         cell.style.setProperty("cursor", "pointer");
         cell.style.setProperty("border-radius", "3px");
     }
@@ -85,62 +53,32 @@ const PANEL_HEIGHT:         number = 220;
     }
 })();
 
-/**
- * Outer two-column grid container. Layout properties live on the
- * `.TimePickerGrid` class rule.
- */
-class TimePickerGrid extends Component {
-    constructor() {
-        super({ tag: "div", position: Position.STATIC });
-        this.setDisplay("grid");
-    }
-}
-
-/**
- * Outer three-column grid container used when the Seconds column is shown.
- * Layout properties live on the `.TimePickerGridSeconds` class rule.
- */
-class TimePickerGridSeconds extends Component {
-    constructor() {
-        super({ tag: "div", position: Position.STATIC });
-        this.setDisplay("grid");
-    }
-}
-
-/**
- * A single hour or minute column. Stacks a header above a scrollable cell
- * list via the `.TimePickerColumn` class rule.
- */
-class TimePickerColumn extends Component {
-    constructor() {
-        super({ tag: "div", position: Position.STATIC });
-        this.setDisplay("flex");
-    }
-}
-
-/** Column label ("Hour" / "Min"). */
+/** Column header label ("Hour" / "Min" / "Sec"). Centred within its row. */
 class TimePickerColumnHeader extends Text {
     constructor(text: string) {
-        super(text, { position: Position.STATIC, textAlign: "center", fontSize: 12 });
+        super(text, { textAlign: "center", fontSize: 12 });
     }
 }
 
 /**
- * Scrollable list of time cells. The `overflow: "hidden auto"` shorthand
- * routes through the typed setter so it wins over the framework's default
- * per-component `overflow: hidden`; the class rule supplies `flex` and
- * `min-height`.
+ * Scrollable list of time cells. A Panel with `autoScroll: 'y'` and a
+ * stretching VBox so cells render at the full column width — giving the
+ * mouse-hover region the full row, not just the digits' bounding box.
  */
-class TimePickerCellList extends Component {
+class TimePickerCellList extends Panel {
     constructor() {
-        super({ tag: "div", position: Position.STATIC, overflow: "hidden auto" });
+        super({
+            layoutManager: new VBox({ spacing: 0, stretching: true }),
+            autoScroll:    "y",
+            insets:        new Insets(0, 0, 0, 0),
+        });
     }
 }
 
 /**
- * A single hour or minute cell. Carries selection state through Component
- * setters; static styling and the hover effect live on the
- * `.TimePickerCell` / `.TimePickerCell:hover` class rules.
+ * A single hour/minute/second cell. Text-only leaf; the row width is set by
+ * the parent's stretching VBox so `text-align: center` actually centres
+ * across the column.
  */
 class TimePickerCell extends Text {
     private _value:    number;
@@ -148,9 +86,16 @@ class TimePickerCell extends Text {
     private readonly _onClick: (value: number) => void;
 
     constructor(value: number, onClick: (value: number) => void) {
-        super(String(value).padStart(2, "0"), { position: Position.STATIC, textAlign: "center" });
+        super(String(value).padStart(2, "0"), {
+            textAlign:     "center",
+            preferredSize: { width: 0, height: CELL_HEIGHT },
+        });
         this._value   = value;
         this._onClick = onClick;
+
+        // `lineHeight = CELL_HEIGHT` centres the single line of digits vertically
+        // within the row so the hover area looks consistent.
+        this.setLineHeight(CELL_HEIGHT);
 
         Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
         Event.addListener(this, "click",       ()                => this.onClick());
@@ -198,6 +143,48 @@ class TimePickerCell extends Text {
 }
 
 /**
+ * A single hour or minute column. Stacks its header above the scrollable cell
+ * list via a stretching VBox — no `display: flex` on the column element.
+ */
+class TimePickerColumn extends Component {
+    private _cellList: TimePickerCellList;
+
+    constructor(headerText: string) {
+        super();
+        this.setLayoutManager(new VBox({ spacing: 2, stretching: true }));
+
+        const header = new TimePickerColumnHeader(headerText);
+        header.setPreferredSize(0, HEADER_HEIGHT);
+        this.addComponent(header);
+
+        this._cellList = new TimePickerCellList();
+        // Weight=1 so the list takes all remaining vertical space after the
+        // fixed-height header.
+        const listConstraints = new LayoutConstraints();
+        listConstraints.weight = 1;
+        this.addComponent(this._cellList, listConstraints);
+    }
+
+    /**
+     * Adds a cell to this column's scrollable list.
+     */
+    addCell(cell: TimePickerCell): this {
+        this._cellList.addComponent(cell);
+
+        return this;
+    }
+
+    /**
+     * Clears all cells from this column's scrollable list.
+     */
+    clearCells(): this {
+        this._cellList.removeAllComponents();
+
+        return this;
+    }
+}
+
+/**
  * Construction-time options for {@link TimePickerDropdown}.
  *
  * @category Components
@@ -228,6 +215,8 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
     private _minutes: number = -1;
     /** -1 means the user has not yet picked a second. Always 0 when `_showSeconds` is false. */
     private _seconds: number = -1;
+    /** Outer HBox container holding the per-unit columns. */
+    private _grid:    Component;
 
     /**
      * @param onSelect - Called with `(hours, minutes, seconds)` whenever the user picks a value.
@@ -235,15 +224,14 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
      * @param options - Optional construction-time options.
      */
     constructor(onSelect: (hours: number, minutes: number, seconds: number) => void, options?: TimePickerDropdownOptions) {
-        super({
+        super(options, {
             zIndex:          10050,
-            position:        Position.FIXED,
+            layoutManager:   new Fit(),
             backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
             border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
             borderRadius:    "var(--ts-ui-border-radius, 4px)",
             shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
-            padding:         new Insets(4, 4, 4, 4),
-            ...(options ?? {}),
+            insets:          new Insets(4, 4, 4, 4),
         });
 
         this._onSelect    = onSelect;
@@ -251,6 +239,10 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
 
         this.getAria().setRole("group");
         this.setContain("layout");
+
+        this._grid = new Component();
+        this._grid.setLayoutManager(new HBox({ spacing: 4, stretching: true }));
+        this.addComponent(this._grid);
 
         Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
     }
@@ -292,16 +284,7 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
 
         this.doLayout();
 
-        const rect      = anchorEl.getBoundingClientRect();
-        const vpHeight  = window.innerHeight;
-        let y           = rect.bottom;
-
-        if (y + PANEL_HEIGHT > vpHeight && rect.top - PANEL_HEIGHT > 0) {
-            y = rect.top - PANEL_HEIGHT;
-        }
-
-        this.setX(rect.left);
-        this.setY(y);
+        this.placeAnchored(anchorEl.getBoundingClientRect());
 
         this.showAnimated();
 
@@ -309,22 +292,22 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
     }
 
     /**
-     * Builds the hour/minute grid (plus optional seconds). The active selection
-     * is highlighted; clicking a cell updates the active value and fires
-     * `onSelect`.
+     * Builds the hour/minute columns (plus optional seconds). The active
+     * selection is highlighted; clicking a cell updates the active value and
+     * fires `onSelect`.
      */
     private buildGrid(): void {
-        this.removeAllComponents();
+        this._grid.removeAllComponents();
 
-        const grid = this._showSeconds ? new TimePickerGridSeconds() : new TimePickerGrid();
-        grid.addComponent(this.buildColumn("Hour", 24, this._hours,   value => this.onHourSelected(value)));
-        grid.addComponent(this.buildColumn("Min",  60, this._minutes, value => this.onMinuteSelected(value), 5));
+        const weight = new LayoutConstraints();
+        weight.weight = 1;
+
+        this._grid.addComponent(this.buildColumn("Hour", 24, this._hours,   value => this.onHourSelected(value)),                  weight);
+        this._grid.addComponent(this.buildColumn("Min",  60, this._minutes, value => this.onMinuteSelected(value), 5),             weight);
 
         if (this._showSeconds) {
-            grid.addComponent(this.buildColumn("Sec", 60, this._seconds, value => this.onSecondSelected(value), 5));
+            this._grid.addComponent(this.buildColumn("Sec", 60, this._seconds, value => this.onSecondSelected(value), 5), weight);
         }
-
-        this.addComponent(grid);
     }
 
     /**
@@ -343,20 +326,15 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
         onSelect:    (value: number) => void,
         step:        number = 1,
     ): TimePickerColumn {
-        const column = new TimePickerColumn();
-        column.addComponent(new TimePickerColumnHeader(label));
-
-        const list = new TimePickerCellList();
+        const column = new TimePickerColumn(label);
 
         for (let v = 0; v < count; v += step) {
             const cell = new TimePickerCell(v, onSelect);
             if (v === activeValue) {
                 cell.setSelected(true);
             }
-            list.addComponent(cell);
+            column.addCell(cell);
         }
-
-        column.addComponent(list);
 
         return column;
     }

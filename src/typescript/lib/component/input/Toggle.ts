@@ -57,6 +57,10 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
         this._track.setBackgroundColor("var(--ts-ui-toggle-track-bg-off, rgb(200, 200, 200))");
         this._track.setBorderRadius("999px");
         this._track.setPreferredSize(36, 20);
+        // Min = preferred = max so the outer HBox shrink-on-overallocation
+        // can't collapse the pill when the Toggle is packed alongside
+        // flexible siblings.
+        this._track.setMinSize(36, 20);
         this._track.setMaxSize(36, 20);
         // The track owns the click + cursor surface so the pointer/click area
         // matches the visible pill exactly. The root stays inert (default
@@ -126,10 +130,12 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.value    !== undefined) this._options.value    = options.value;
-        if (options.label    !== undefined) this._options.label    = options.label;
-        if (options.enabled  !== undefined) this._options.enabled  = options.enabled;
-        if (options.readOnly !== undefined) this._options.readOnly = options.readOnly;
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.value    !== undefined) this._options.value    = opts.value;
+        if (opts.label    !== undefined) this._options.label    = opts.label;
+        if (opts.enabled  !== undefined) this._options.enabled  = opts.enabled;
+        if (opts.readOnly !== undefined) this._options.readOnly = opts.readOnly;
 
         return this;
     }

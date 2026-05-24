@@ -2,7 +2,6 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
-import { Position } from "~/primitive/Position.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 
@@ -67,7 +66,6 @@ class Scrollbar extends Component {
 
         this._orientation = orientation;
 
-        this.setPosition(Position.ABSOLUTE);
         this.setBackgroundColor("var(--ts-ui-scrollbar-track, rgba(0, 0, 0, 0.04))");
         this.setUserSelect("none");
 
@@ -78,7 +76,6 @@ class Scrollbar extends Component {
         }
 
         this._thumb = new Component();
-        this._thumb.setPosition(Position.ABSOLUTE);
         this._thumb.setBackgroundColor("var(--ts-ui-scrollbar-thumb, rgba(0, 0, 0, 0.35))");
         this._thumb.setCursor("default");
 

@@ -122,6 +122,10 @@ export default defineConfig({
                 { text: 'Tree', collapsed: false, items: [
                     { text: 'Tree', link: '/components/Tree' },
                 ] },
+                { text: 'Containers', collapsed: false, items: [
+                    { text: 'TabPanel',       link: '/components/TabPanel' },
+                    { text: 'AccordionPanel', link: '/components/AccordionPanel' },
+                ] },
                 { text: 'Table', collapsed: false, items: [
                     { text: 'Table',           link: '/components/Table' },
                     { text: 'TablePanel',      link: '/components/TablePanel' },

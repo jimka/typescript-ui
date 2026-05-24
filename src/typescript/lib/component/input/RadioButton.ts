@@ -64,6 +64,10 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
 
         this._ring = new Component();
         this._ring.setPreferredSize(16, 16);
+        // Min = preferred = max so the outer HBox shrink-on-overallocation
+        // can't collapse the ring graphic when the radio is packed into a
+        // tight container with siblings that have flexible widths.
+        this._ring.setMinSize(16, 16);
         this._ring.setMaxSize(16, 16);
         this._ring.setSize({ width: 16, height: 16 });
         this._ring.setBackgroundColor("var(--ts-ui-radio-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
@@ -143,13 +147,15 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.selected  !== undefined) this._options.selected  = options.selected;
-        if (options.value     !== undefined) this._options.value     = options.value;
-        if (options.label     !== undefined) this._options.label     = options.label;
-        if (options.text      !== undefined) this._options.text      = options.text;
-        if (options.radioName !== undefined) this._options.radioName = options.radioName;
-        if (options.enabled   !== undefined) this._options.enabled   = options.enabled;
-        if (options.readOnly  !== undefined) this._options.readOnly  = options.readOnly;
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.selected  !== undefined) this._options.selected  = opts.selected;
+        if (opts.value     !== undefined) this._options.value     = opts.value;
+        if (opts.label     !== undefined) this._options.label     = opts.label;
+        if (opts.text      !== undefined) this._options.text      = opts.text;
+        if (opts.radioName !== undefined) this._options.radioName = opts.radioName;
+        if (opts.enabled   !== undefined) this._options.enabled   = opts.enabled;
+        if (opts.readOnly  !== undefined) this._options.readOnly  = opts.readOnly;
 
         return this;
     }

@@ -45,12 +45,14 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
     protected applyOptions(options: AbstractListOptions<U>): this {
         super.applyOptions(options);
 
-        if (options.itemStyle !== undefined) {
-            this.setStyle(options.itemStyle);
+        const opts = { ...this._defaultOptions, ...options } as AbstractListOptions<U>;
+
+        if (opts.itemStyle !== undefined) {
+            this.setStyle(opts.itemStyle);
         }
 
-        if (options.selectedIndex !== undefined) {
-            this.setSelectedIndex(options.selectedIndex, false);
+        if (opts.selectedIndex !== undefined) {
+            this.setSelectedIndex(opts.selectedIndex, false);
         }
 
         return this;
