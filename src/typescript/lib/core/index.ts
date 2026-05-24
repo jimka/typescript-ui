@@ -35,6 +35,7 @@ export { ThemeManager, DefaultTheme, DarkTheme } from '~/core/Theme.js';
 export type { Theme } from '~/core/Theme.js';
 
 export { StyleTarget, StyleRule, InlineStyle } from '~/core/StyleTarget.js';
+export type { StyleRuleScope } from '~/core/StyleTarget.js';
 
 export { Binding } from '~/core/Binding.js';
 export type { BeforeRecordListener } from '~/core/Binding.js';

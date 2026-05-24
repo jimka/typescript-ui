@@ -3,7 +3,7 @@
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Component } from "~/core/Component.js";
 import { Panel } from "~/core/Panel.js";
-import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
@@ -33,24 +33,21 @@ const HEADER_HEIGHT:        number = 18;
 // (column widths, cell stacking, scrolling) is driven by the framework
 // HBox / VBox managers and Panel.autoScroll — no display:flex/grid here.
 (() => {
-    const header = CSS.createClassRule("TimePickerColumnHeader");
-    if (header) {
-        header.style.setProperty("opacity", "0.7");
-    }
+    const header = new StyleRule({ scope: "class", name: "TimePickerColumnHeader" });
+    header.set("opacity", "0.7");
+    header.ensure();
 
-    const cell = CSS.createClassRule("TimePickerCell");
-    if (cell) {
-        cell.style.setProperty("cursor", "pointer");
-        cell.style.setProperty("border-radius", "3px");
-    }
+    const cell = new StyleRule({ scope: "class", name: "TimePickerCell" });
+    cell.setMany({
+        cursor:       "pointer",
+        borderRadius: "3px",
+    });
+    cell.ensure();
 
-    const cellHover = CSS.createRule(".TimePickerCell:hover");
-    if (cellHover) {
-        cellHover.style.setProperty(
-            "background-color",
-            "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))"
-        );
-    }
+    const cellHover = new StyleRule({ scope: "selector", name: ".TimePickerCell:hover" });
+    cellHover.set("backgroundColor",
+        "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
+    cellHover.ensure();
 })();
 
 /** Column header label ("Hour" / "Min" / "Sec"). Centred within its row. */

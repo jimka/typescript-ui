@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
@@ -29,7 +29,7 @@ class AutoCompleteItem extends Component {
     static readonly HEIGHT: number = 24;
 
     private _textComponent: Text;
-    private _hoverCSSRule: CSSStyleRule;
+    private _hoverCSSRule: StyleRule;
     private _highlighted: boolean = false;
     private _clickListener: (value: string) => void;
     private readonly _onSelect: (value: string) => void;
@@ -45,11 +45,10 @@ class AutoCompleteItem extends Component {
         this._text     = text;
         this._onSelect = onSelect;
 
-        this._hoverCSSRule = CSS.createComponentRule(this.getId() + ":hover") as CSSStyleRule;
-        this._hoverCSSRule.style.setProperty(
-            "background-color",
-            "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))"
-        );
+        this._hoverCSSRule = new StyleRule({ scope: "component", name: this.getId() + ":hover" });
+        this._hoverCSSRule.set("backgroundColor",
+            "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
+        this._hoverCSSRule.ensure();
 
         this.setHeight(AutoCompleteItem.HEIGHT);
         this.setPreferredSize(0, AutoCompleteItem.HEIGHT);

@@ -95,26 +95,141 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
     }
 
     private write(style: CSSStyleDeclaration, key: string, value: string | null): void {
-        // Properties are stored camelCase. Assignment form (`style.X = value`)
-        // preserves the pre-existing Component behaviour which used
-        // `Object.assign(target.style, dirty)` on flush and direct
-        // `style.X = ...` writes elsewhere.
-        if (value === null) {
-            (style as any)[key] = "";
+        // CSS custom properties (`--foo`) cannot be set via the indexed
+        // accessor — `(style as any)["--foo"] = v` just stores a JS own-property
+        // on the wrapper and never reaches the underlying declaration. Custom
+        // properties must go through `style.setProperty` / `removeProperty`.
+        // Regular camelCase keys keep the existing assignment form which
+        // matches the pre-existing `Object.assign(target.style, dirty)` shape.
+        if (key.startsWith("--")) {
+            if (value === null) {
+                style.removeProperty(key);
+            } else {
+                style.setProperty(key, value);
+            }
         } else {
-            (style as any)[key] = value;
+            if (value === null) {
+                (style as any)[key] = "";
+            } else {
+                (style as any)[key] = value;
+            }
         }
     }
 }
 
 /**
- * Deferred-write buffer that materialises into a per-component
- * [`CSSStyleRule`](https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleRule)
- * the first time {@link StyleRule.ensure} is called.
+ * Scope discriminator for the {@link StyleRule} constructor.
  *
- * @remarks The rule factory is invoked lazily so detached construction
- * incurs no stylesheet insertion. Once materialised, the rule object is
- * stable for the lifetime of this `StyleRule`.
+ * - `class` — leading `.` is prepended; `name: "Foo"` selects `.Foo`.
+ * - `component` — leading `#` is prepended; `name: "id"` selects `#id`.
+ * - `selector` — verbatim selector text; the escape hatch for pseudo-classes
+ *   (`":hover"`), compound selectors (`".A.B"`), pseudo-elements
+ *   (`".X::-webkit-scrollbar"`), and any other shape outside the first two.
+ *
+ * @category Core
+ */
+export type StyleRuleScope =
+    | { scope: "class";     name: string }
+    | { scope: "component"; name: string }
+    | { scope: "selector";  name: string };
+
+// Module-level cache of materialised `CSSStyleRule`s keyed by selector text.
+// Two `StyleRule` instances constructed with the same scope+name share the
+// underlying `CSSStyleRule`. Survives across hot reloads because the module
+// reference is the single source of truth.
+const _ruleCache: Map<string, CSSStyleRule> = new Map();
+
+/**
+ * Returns the framework's shared `<style id="Base">` stylesheet, creating
+ * the `<style>` element on first call.
+ */
+function _getMainSheet(): CSSStyleSheet {
+    let head = document.getElementsByTagName("head")[0] as HTMLHeadElement;
+    if (!head) {
+        head = document.createElement("head");
+        document.appendChild(head);
+    }
+
+    let style: HTMLStyleElement | null = null;
+    const styles = head.getElementsByTagName("style");
+    for (let idx = 0; idx < styles.length; idx += 1) {
+        const s = styles[idx];
+        if (s.id === "Base") {
+            style = s;
+        }
+    }
+
+    if (!style) {
+        style = document.createElement("style");
+        style.id = "Base";
+        head.appendChild(style);
+    }
+
+    return style.sheet as CSSStyleSheet;
+}
+
+/**
+ * Translates a {@link StyleRuleScope} into its CSS selector string.
+ */
+function _selectorOf(spec: StyleRuleScope): string {
+    switch (spec.scope) {
+        case "class":     return "." + spec.name;
+        case "component": return "#" + spec.name;
+        case "selector":  return spec.name;
+    }
+}
+
+/**
+ * Returns a cached `CSSStyleRule` for the given selector, scanning the shared
+ * stylesheet on cache miss and warming the cache when a match is found.
+ * Returns `null` when no rule with the selector exists.
+ */
+function _getCSSRule(selector: string): CSSStyleRule | null {
+    const cached = _ruleCache.get(selector);
+    if (cached) {
+        return cached;
+    }
+
+    const sheet = _getMainSheet();
+
+    for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
+        const rule = sheet.cssRules[idx] as CSSStyleRule;
+
+        if (rule.selectorText === selector) {
+            _ruleCache.set(selector, rule);
+            return rule;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Inserts a new empty rule for the given selector into the shared stylesheet
+ * and caches it. Always returns a non-null rule because the constructor calls
+ * `_getCSSRule` first; this helper is only invoked on cache miss.
+ */
+function _createCSSRule(selector: string): CSSStyleRule {
+    const sheet = _getMainSheet();
+    const idx   = sheet.insertRule(selector + "{}", sheet.cssRules.length);
+    const rule  = sheet.cssRules[idx] as CSSStyleRule;
+
+    _ruleCache.set(selector, rule);
+
+    return rule;
+}
+
+/**
+ * Deferred-write buffer that materialises into a
+ * [`CSSStyleRule`](https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleRule)
+ * on the framework's shared `<style id="Base">` stylesheet the first time
+ * {@link StyleRule.ensure} is called.
+ *
+ * @remarks Construction is cheap — no stylesheet insertion happens until
+ * `ensure()` runs, so detached construction stays JS-only. Once materialised,
+ * the rule object is stable for the lifetime of this `StyleRule`. Two
+ * `StyleRule` instances constructed with the same scope+name share the
+ * underlying `CSSStyleRule` via the module-level cache.
  *
  * Inherited {@link StyleTarget.set} queues writes into a dirty bag while the
  * target is null and writes through once `ensure()` has materialised the rule.
@@ -128,9 +243,15 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
 class StyleRule extends StyleTarget<CSSStyleRule> {
     private _factory: () => CSSStyleRule;
 
-    constructor(factory: () => CSSStyleRule) {
+    /**
+     * Constructs a `StyleRule` for the given scoped selector.
+     *
+     * @param spec - The {@link StyleRuleScope} describing the rule's selector.
+     */
+    constructor(spec: StyleRuleScope) {
         super();
-        this._factory = factory;
+        const selector = _selectorOf(spec);
+        this._factory  = () => _getCSSRule(selector) ?? _createCSSRule(selector);
     }
 
     /**
@@ -142,6 +263,30 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
             this.materialize(this._factory());
         }
         return this._target!;
+    }
+
+    /**
+     * Inserts a `@keyframes` block into the framework's shared `<style id="Base">`
+     * stylesheet if no rule with the given name already exists.
+     *
+     * @param name - The keyframe animation name (no `@keyframes` prefix).
+     * @param body - The keyframe body, e.g. `"from { transform: rotate(0deg) } to { transform: rotate(360deg) }"`.
+     *
+     * @remarks Idempotent: safe to call from module-level initialisers across
+     * hot reloads. `@keyframes` rules are not selector-keyed `CSSStyleRule`s
+     * and so do not flow through the `StyleRule` instance cache.
+     */
+    static ensureKeyframes(name: string, body: string): void {
+        const sheet = _getMainSheet();
+
+        for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
+            const rule = sheet.cssRules[idx] as CSSKeyframesRule;
+            if (rule.type === CSSRule.KEYFRAMES_RULE && rule.name === name) {
+                return;
+            }
+        }
+
+        sheet.insertRule('@keyframes ' + name + ' { ' + body + ' }', sheet.cssRules.length);
     }
 }
 
