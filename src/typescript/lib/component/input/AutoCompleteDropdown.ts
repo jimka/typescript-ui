@@ -122,6 +122,12 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
      * @param suggestions - The list of suggestion strings to display.
      */
     show(anchorEl: HTMLElement, suggestions: string[]): this {
+        // Force the floating element into existence before any layout pass.
+        // showAnimated() below mounts it, but that runs after doLayout() —
+        // on first show getInnerSize() would otherwise return null and VBox
+        // would lay out nothing, leaving items at width 0 in the panel.
+        this.getElement(true);
+
         this.pauseLayout();
         this.updatePool(suggestions);
         this.resumeLayout();
