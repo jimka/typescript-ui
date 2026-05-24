@@ -270,6 +270,28 @@ export interface Theme {
         shadow:  string;
         confirm: string;
         cancel:  string;
+        /**
+         * Title-bar wash for an informational dialog (one `confirm`-result
+         * button). Background is a low-opacity tint of the same hue as
+         * `notification.info.border`; foreground is the saturated form,
+         * applied to both the title text and the leading `circle-info`
+         * glyph the dialog injects for this variant.
+         */
+        info: {
+            background: string;
+            foreground: string;
+        };
+        /**
+         * Title-bar wash for an affirmative-action dialog (both `confirm`
+         * and `cancel` buttons). Background mirrors the low-opacity tint of
+         * `notification.success.border`; foreground is the saturated form,
+         * applied to the title text only — this variant carries no leading
+         * glyph.
+         */
+        affirm: {
+            background: string;
+            foreground: string;
+        };
     };
 
     accordion: {
@@ -565,6 +587,8 @@ export const DefaultTheme: Theme = {
         shadow  : '4px 8px 24px rgba(0, 0, 0, 0.35)',
         confirm : 'rgb(30, 180, 80)',
         cancel  : 'rgb(200, 50, 50)',
+        info    : { background: 'rgba(30, 100, 200, 0.15)', foreground: 'rgb(30, 100, 200)' },
+        affirm  : { background: 'rgba(30, 180, 80, 0.15)',  foreground: 'rgb(30, 180, 80)'  },
     },
     spinner: {
         buttonWidth : '18px',
@@ -805,6 +829,8 @@ export const DarkTheme: Theme = {
         shadow  : '4px 8px 24px rgba(0, 0, 0, 0.6)',
         confirm : 'rgb(80, 200, 110)',
         cancel  : 'rgb(220, 90, 90)',
+        info    : { background: 'rgba(30, 100, 200, 0.25)', foreground: 'rgb(60, 130, 220)' },
+        affirm  : { background: 'rgba(80, 200, 110, 0.25)', foreground: 'rgb(80, 200, 110)' },
     },
     spinner: {
         buttonWidth : '18px',
@@ -978,6 +1004,10 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-dialog-shadow'                    : theme.dialog.shadow,
         '--ts-ui-dialog-confirm-color'             : theme.dialog.confirm,
         '--ts-ui-dialog-cancel-color'              : theme.dialog.cancel,
+        '--ts-ui-dialog-info-bg'                   : theme.dialog.info.background,
+        '--ts-ui-dialog-info-fg'                   : theme.dialog.info.foreground,
+        '--ts-ui-dialog-affirm-bg'                 : theme.dialog.affirm.background,
+        '--ts-ui-dialog-affirm-fg'                 : theme.dialog.affirm.foreground,
         '--ts-ui-spinner-btn-width'                : theme.spinner.buttonWidth,
         '--ts-ui-spinner-divider'                  : theme.spinner.dividerColor,
         '--ts-ui-progress-track-bg'                : theme.progressBar.track.background,

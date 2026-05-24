@@ -10,7 +10,7 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { Button } from "~/component/button/Button.js";
 import { Position } from "~/primitive/Position.js";
 import { Insets } from "~/primitive/Insets.js";
-import { _Dialog } from "~/core/Dialog.js";
+import { _Dialog, DialogButtons } from "~/core/Dialog.js";
 import { circle_info } from "~/glyphs/solid/circle_info.js";
 import { circle_check } from "~/glyphs/solid/circle_check.js";
 import { triangle_exclamation } from "~/glyphs/solid/triangle_exclamation.js";
@@ -404,7 +404,7 @@ export class Notification extends Component {
         const dialog = new _Dialog({
             title:            DETAIL_TITLE[this._type],
             contentComponent: content,
-            buttons:          [{ text: 'Close', result: 'close', primary: true, glyph: "xmark" }],
+            buttons:          [{ ...DialogButtons.Close, primary: true }],
             width:            420,
             height:           220,
         });
