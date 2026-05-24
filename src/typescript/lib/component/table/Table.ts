@@ -122,6 +122,7 @@ class Table extends Component<TableOptions> {
         this._header.setColumns(this._resolvedColumns);
 
         this._body = new Body(store);
+        this._body.setHeader(this._header);
         this.addComponent(this._body);
 
         this._footer = new FooterRow();
