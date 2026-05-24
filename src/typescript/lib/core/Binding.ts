@@ -64,6 +64,7 @@ export class Binding extends BaseObject {
     private _beforeRecordListeners: Array<BeforeRecordListener> = [];
     private _validationConfigs: Map<string, FieldValidationConfig> = new Map();
     private _globalValidateOnChange: boolean = false;
+    private _loading: boolean = false;
 
     // ── Registration ────────────────────────────────────────────────────────
 
@@ -99,6 +100,10 @@ export class Binding extends BaseObject {
         this._entries.set(fieldName, entry);
 
         acc.listen(() => {
+            if (this._loading) {
+                return;
+            }
+
             if (!entry.active || !this._record) {
                 return;
             }
@@ -165,8 +170,14 @@ export class Binding extends BaseObject {
             return this;
         }
 
-        for (const [fieldName, entry] of this._entries) {
-            entry.accessors.set(record.get(fieldName));
+        this._loading = true;
+
+        try {
+            for (const [fieldName, entry] of this._entries) {
+                entry.accessors.set(record.get(fieldName));
+            }
+        } finally {
+            this._loading = false;
         }
 
         for (const [fieldName] of this._validationConfigs) {
