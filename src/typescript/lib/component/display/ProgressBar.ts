@@ -164,7 +164,7 @@ class ProgressBar extends Component {
 
         this._indeterminate = value;
         this.applyIndeterminate(value);
-        this.scheduleLayout();
+        this.flushLayout();
 
         return this;
     }
