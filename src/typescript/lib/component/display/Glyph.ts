@@ -113,6 +113,14 @@ if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
 export interface GlyphOptions extends ComponentOptions {
 
     /**
+     * CSS `font-size` override in pixels. Only meaningful for char-mode
+     * glyphs (SVG glyphs paint via `<use>` and ignore font-size). Useful when
+     * the inherited font-size produces a line-box taller than the glyph's
+     * element box and the Unicode character overflows or gets clipped.
+     */
+    fontSize?: number;
+
+    /**
      * CSS `line-height` override. A number is interpreted as pixels (e.g.
      * `24` → `"24px"`); a string is used verbatim (e.g. `"1"` for the
      * unitless font-size multiplier used by char-mode glyphs).
@@ -255,6 +263,34 @@ class Glyph extends Component<GlyphOptions> {
      */
     getName(): string {
         return this._name;
+    }
+
+    /**
+     * Returns the explicit CSS `font-size` override (in pixels) written by
+     * this Glyph, or `null` when no override has been written (the element
+     * inherits the parent's font-size).
+     *
+     * @returns The cached font-size in pixels, or null.
+     */
+    getFontSize(): number | null {
+        return this._options.fontSize ?? null;
+    }
+
+    /**
+     * Overrides the CSS `font-size` of this Glyph's root element. Useful when
+     * the ambient inherited font-size produces a line-box taller than the
+     * glyph's `preferredSize`, causing the Unicode character to overflow or
+     * get clipped by the element's `overflow: hidden`. No-op visually for
+     * SVG glyphs (which size via `viewBox`), but the rule is written regardless.
+     *
+     * @param value - The new font-size in pixels.
+     * @returns This Glyph, for method chaining.
+     */
+    setFontSize(value: number): this {
+        this._options.fontSize = value;
+        this.setElementCSSRule("fontSize", value + "px");
+
+        return this;
     }
 
     /**
@@ -498,6 +534,10 @@ class Glyph extends Component<GlyphOptions> {
         super.applyOptions(options);
 
         const opts = { ...this._defaultOptions, ...options } as GlyphOptions;
+
+        if (opts.fontSize !== undefined) {
+            this.setFontSize(opts.fontSize);
+        }
 
         if (opts.lineHeight !== undefined) {
             this.setLineHeight(opts.lineHeight);
