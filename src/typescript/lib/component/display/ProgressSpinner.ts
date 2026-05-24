@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
@@ -15,7 +15,7 @@ export interface ProgressSpinnerOptions extends ComponentOptions {
     spinnerSize?: number;
 }
 
-CSS.ensureKeyframes(
+StyleRule.ensureKeyframes(
     'ts-ui-progress-spinner-rotate',
     'from { transform: rotate(0deg); } to { transform: rotate(360deg); }'
 );

@@ -2,7 +2,7 @@
 
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Component } from "~/core/Component.js";
-import { CSS } from "~/core/CSS.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
@@ -24,19 +24,17 @@ const CELL_HEIGHT:    number = 24;
 // Static hover styling only. All layout (grid, row stacking) is driven by
 // the framework Grid / VBox managers — no display:flex/grid here.
 (() => {
-    const day = CSS.createClassRule("DatePickerDay");
-    if (day) {
-        day.style.setProperty("cursor", "pointer");
-        day.style.setProperty("border-radius", "3px");
-    }
+    const day = new StyleRule({ scope: "class", name: "DatePickerDay" });
+    day.setMany({
+        cursor:       "pointer",
+        borderRadius: "3px",
+    });
+    day.ensure();
 
-    const dayHover = CSS.createRule(".DatePickerDay:hover");
-    if (dayHover) {
-        dayHover.style.setProperty(
-            "background-color",
-            "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))"
-        );
-    }
+    const dayHover = new StyleRule({ scope: "selector", name: ".DatePickerDay:hover" });
+    dayHover.set("backgroundColor",
+        "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
+    dayHover.ensure();
 })();
 
 /** Month name + year label. Spans the full panel width above the grid. */

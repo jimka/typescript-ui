@@ -2,7 +2,6 @@
 
 import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { CSS } from "~/core/CSS.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import {
@@ -56,10 +55,10 @@ function ensureGlyphKeyframes(): void {
 
     _keyframesInjected = true;
 
-    CSS.ensureKeyframes("ts-ui-glyph-spin",
+    StyleRule.ensureKeyframes("ts-ui-glyph-spin",
         "from { transform: rotate(0deg); } to { transform: rotate(360deg); }");
 
-    CSS.ensureKeyframes("ts-ui-glyph-pulse",
+    StyleRule.ensureKeyframes("ts-ui-glyph-pulse",
         "0%, 12.5%   { transform: rotate(0deg); }   " +
         "12.5%, 25%  { transform: rotate(45deg); }  " +
         "25%, 37.5%  { transform: rotate(90deg); }  " +
@@ -69,26 +68,20 @@ function ensureGlyphKeyframes(): void {
         "75%, 87.5%  { transform: rotate(270deg); } " +
         "87.5%, 100% { transform: rotate(315deg); }");
 
-    CSS.ensureKeyframes("ts-ui-glyph-beat",
+    StyleRule.ensureKeyframes("ts-ui-glyph-beat",
         "0%, 90% { transform: scale(1); } 45% { transform: scale(1.25); }");
 
-    const spinRule = new StyleRule(() =>
-        (CSS.getClassRule(CLASS_PREFIX + "spin")
-            ?? CSS.createClassRule(CLASS_PREFIX + "spin")) as CSSStyleRule);
+    const spinRule = new StyleRule({ scope: "class", name: CLASS_PREFIX + "spin" });
     spinRule.set("animation",
         "ts-ui-glyph-spin var(--ts-ui-glyph-spin-duration, 2000ms) linear infinite");
     spinRule.ensure();
 
-    const pulseRule = new StyleRule(() =>
-        (CSS.getClassRule(CLASS_PREFIX + "pulse")
-            ?? CSS.createClassRule(CLASS_PREFIX + "pulse")) as CSSStyleRule);
+    const pulseRule = new StyleRule({ scope: "class", name: CLASS_PREFIX + "pulse" });
     pulseRule.set("animation",
         "ts-ui-glyph-pulse var(--ts-ui-glyph-pulse-duration, 1000ms) steps(8) infinite");
     pulseRule.ensure();
 
-    const beatRule = new StyleRule(() =>
-        (CSS.getClassRule(CLASS_PREFIX + "beat")
-            ?? CSS.createClassRule(CLASS_PREFIX + "beat")) as CSSStyleRule);
+    const beatRule = new StyleRule({ scope: "class", name: CLASS_PREFIX + "beat" });
     beatRule.set("animation",
         "ts-ui-glyph-beat var(--ts-ui-glyph-beat-duration, 1000ms) ease-in-out infinite");
     beatRule.ensure();
