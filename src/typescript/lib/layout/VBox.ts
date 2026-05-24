@@ -3,21 +3,31 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size } from "~/primitive/Size.js";
+import { BoxMode } from "~/layout/HBox.js";
 import { callable } from "~/core/Callable.js";
 
 /**
  * Construction-time options for {@link VBox}.
+ *
+ * @remarks `mode` selects the sizing strategy along the vertical axis.
+ * `"preferred"` (the default) honours each child's preferred height and
+ * supports `weight` cells. `"equal"` divides the container height equally
+ * and ignores `weight`. The `stretching` default depends on `mode`:
+ * `false` for `"preferred"`, `true` for `"equal"`. An explicit
+ * `stretching` value in the options bag always wins.
  *
  * @category Layouts
  */
 export interface VBoxOptions extends LayoutManagerOptions {
     spacing?:    number;
     stretching?: boolean;
+    mode?:       BoxMode;
 }
 
 /**
- * A layout manager that places children in a single vertical column,
- * using each child's preferred height and an optional width-stretching mode.
+ * A layout manager that places children in a single vertical column. The
+ * `mode` option selects between preferred-height sequencing (with weight-cell
+ * support) and equal-height division of the container.
  *
  * @category Layouts
  */
@@ -25,30 +35,34 @@ class VBox extends LayoutManager {
 
     private _spacing: number = 5;
     private _stretching: boolean = false;
+    private _mode: BoxMode = "preferred";
     private _defaultComponentHeight: number = 100;
 
-    constructor(spacing: number | VBoxOptions = 5, options?: VBoxOptions) {
+    constructor(options?: VBoxOptions) {
         super();
 
-        if (typeof spacing === 'number') {
-            this._spacing = spacing;
-
-            if (options) {
-                this.applyOptions(options);
-            }
-        } else {
-            this.applyOptions(spacing);
+        if (options) {
+            this.applyOptions(options);
         }
     }
 
     /**
-     * Applies a {@link VBoxOptions} bag, dispatching spacing and stretching
-     * after the inherited LayoutManager defaults.
+     * Applies a {@link VBoxOptions} bag, dispatching mode, spacing, and
+     * stretching after the inherited LayoutManager defaults.
      *
      * @param options - The options bag carrying the values to apply.
+     *
+     * @remarks `mode` is dispatched before `stretching` so the
+     * mode-dependent stretching default (`true` for `"equal"`, `false` for
+     * `"preferred"`) can be resolved when the options bag does not pass
+     * an explicit `stretching` value.
      */
     protected applyOptions(options: VBoxOptions): void {
         super.applyOptions(options);
+
+        if (options.mode !== undefined) {
+            this.setMode(options.mode);
+        }
 
         if (options.spacing !== undefined) {
             this.setComponentSpacing(options.spacing);
@@ -56,6 +70,8 @@ class VBox extends LayoutManager {
 
         if (options.stretching !== undefined) {
             this.setStretching(options.stretching);
+        } else if (options.mode === "equal") {
+            this.setStretching(true);
         }
     }
 
@@ -100,7 +116,30 @@ class VBox extends LayoutManager {
     }
 
     /**
-     * Returns the preferred size: the widest child width and the sum of child heights plus spacing.
+     * Returns the current sizing mode along the vertical axis.
+     *
+     * @returns Either `"preferred"` or `"equal"`.
+     */
+    getMode(): BoxMode {
+        return this._mode;
+    }
+
+    /**
+     * Sets the sizing mode along the vertical axis.
+     *
+     * @param mode - `"preferred"` honours each child's preferred height;
+     *   `"equal"` divides the container height equally among children.
+     */
+    setMode(mode: BoxMode): this {
+        this._mode = mode;
+
+        return this;
+    }
+
+    /**
+     * Returns the preferred size. In `"preferred"` mode this is the widest
+     * child width and the sum of child heights plus spacing. In `"equal"`
+     * mode height is `count * (maxChildHeight + spacing) - spacing`.
      *
      * @returns The preferred `{width, height}`, or `null` if no container is attached.
      */
@@ -113,6 +152,28 @@ class VBox extends LayoutManager {
         let containerBorderSize = container.getBorderSize();
         let components = container.getComponents();
         let containerInsets = container.getInsets();
+
+        if (this._mode === "equal") {
+            let innerWidth = 0;
+            let innerHeight = 0;
+
+            for (let idx in components) {
+                let component = components[idx];
+                let size = component.getPreferredSize();
+
+                if (size) {
+                    innerWidth  = Math.max(innerWidth,  size.width);
+                    innerHeight = Math.max(innerHeight, size.height);
+                }
+            }
+
+            const width  = innerWidth + containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
+            const height = components.length * (innerHeight + this._spacing) - this._spacing
+                         + containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
+
+            return { width, height };
+        }
+
         let width = Number.MAX_SAFE_INTEGER;
         let height = containerInsets.getTop() + containerInsets.getBottom();
 
@@ -127,7 +188,7 @@ class VBox extends LayoutManager {
         }
 
         width += containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
-        height += this.getComponentSpacing() * (components.length - 1) + containerBorderSize.top + containerBorderSize.bottom;
+        height += this._spacing * (components.length - 1) + containerBorderSize.top + containerBorderSize.bottom;
 
         return {
             width: width,
@@ -136,7 +197,10 @@ class VBox extends LayoutManager {
     }
 
     /**
-     * Returns the minimum size: the widest child minimum width and the sum of child minimum heights plus spacing.
+     * Returns the minimum size. In `"preferred"` mode this is the widest
+     * child minimum width and the sum of child minimum heights plus
+     * spacing. In `"equal"` mode height is
+     * `count * (maxChildMinHeight + spacing) - spacing`.
      *
      * @returns The minimum `{width, height}`, or `null` if no container is attached.
      */
@@ -149,6 +213,28 @@ class VBox extends LayoutManager {
         let containerBorderSize = container.getBorderSize();
         let components = container.getComponents();
         let containerInsets = container.getInsets();
+
+        if (this._mode === "equal") {
+            let innerWidth = 0;
+            let innerHeight = 0;
+
+            for (let idx in components) {
+                let component = components[idx];
+                let size = component.getMinSize();
+
+                if (size) {
+                    innerWidth  = Math.max(innerWidth,  size.width);
+                    innerHeight = Math.max(innerHeight, size.height);
+                }
+            }
+
+            const width  = innerWidth + containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
+            const height = components.length * (innerHeight + this._spacing) - this._spacing
+                         + containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
+
+            return { width, height };
+        }
+
         let width = 0;
         let height = containerInsets.getTop() + containerInsets.getBottom();
 
@@ -163,7 +249,7 @@ class VBox extends LayoutManager {
         }
 
         width += containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
-        height += this.getComponentSpacing() * (components.length - 1) + containerBorderSize.top + containerBorderSize.bottom;
+        height += this._spacing * (components.length - 1) + containerBorderSize.top + containerBorderSize.bottom;
 
         return {
             width: width,
@@ -172,7 +258,10 @@ class VBox extends LayoutManager {
     }
 
     /**
-     * Returns the maximum size: the narrowest child maximum width and the sum of child maximum heights plus spacing.
+     * Returns the maximum size. In `"preferred"` mode width is the narrowest
+     * child maximum width and height is the sum of child maximum heights
+     * plus spacing. In `"equal"` mode height is
+     * `count * (minChildMaxHeight + spacing) - spacing`.
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
@@ -185,6 +274,28 @@ class VBox extends LayoutManager {
         let containerBorderSize = container.getBorderSize();
         let components = container.getComponents();
         let containerInsets = container.getInsets();
+
+        if (this._mode === "equal") {
+            let innerWidth = Number.MAX_SAFE_INTEGER;
+            let innerHeight = Number.MAX_SAFE_INTEGER;
+
+            for (let idx in components) {
+                let component = components[idx];
+                let size = component.getMaxSize();
+
+                if (size) {
+                    innerWidth  = Math.min(innerWidth,  size.width);
+                    innerHeight = Math.min(innerHeight, size.height);
+                }
+            }
+
+            const width  = innerWidth + containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
+            const height = components.length * (innerHeight + this._spacing) - this._spacing
+                         + containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
+
+            return { width, height };
+        }
+
         let width = Number.MAX_SAFE_INTEGER;
         let height = containerInsets.getTop() + containerInsets.getBottom();
 
@@ -199,7 +310,7 @@ class VBox extends LayoutManager {
         }
 
         width += containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
-        height += this.getComponentSpacing() * (components.length - 1) + containerBorderSize.top + containerBorderSize.bottom;
+        height += this._spacing * (components.length - 1) + containerBorderSize.top + containerBorderSize.bottom;
 
         return {
             width: width,
@@ -208,10 +319,13 @@ class VBox extends LayoutManager {
     }
 
     /**
-     * Computes the children's combined minSize along this manager's geometry:
-     * height is the sum of per-child `minSize.height` plus the inter-child
-     * spacing, width is the max per-child `minSize.width`. Used by `doLayout`
-     * to inflate the working size when the host has opted into
+     * Computes the children's combined minSize along this manager's geometry.
+     * In `"preferred"` mode height is the sum of per-child `minSize.height`
+     * plus spacing. In `"equal"` mode height is
+     * `count * maxChildMinHeight + spacing*(n-1)` (VBox distributes height
+     * equally so the per-cell floor is the max of every child's min height).
+     * Width in both modes is the max per-child `minSize.width`. Used by
+     * `doLayout` to inflate the working size when the host has opted into
      * `setOverflowing` on the corresponding axis.
      *
      * @returns The total min-size; `{ width: 0, height: 0 }` when the
@@ -229,7 +343,25 @@ class VBox extends LayoutManager {
         }
 
         let width = 0;
-        let height = this.getComponentSpacing() * (components.length - 1);
+
+        if (this._mode === "equal") {
+            let maxHeight = 0;
+
+            for (const component of components) {
+                const min = component.getMinSize();
+                if (min) {
+                    width     = Math.max(width,     min.width);
+                    maxHeight = Math.max(maxHeight, min.height);
+                }
+            }
+
+            return {
+                width,
+                height: components.length * (maxHeight + this._spacing) - this._spacing,
+            };
+        }
+
+        let height = this._spacing * (components.length - 1);
 
         for (const component of components) {
             const min = component.getMinSize();
@@ -243,12 +375,16 @@ class VBox extends LayoutManager {
     }
 
     /**
-     * Places children top-to-bottom using their preferred heights, with optional width stretching.
+     * Places children top-to-bottom. In `"preferred"` mode each child takes
+     * its preferred height (with `weight` cells dividing the remainder).
+     * In `"equal"` mode the container height is divided equally among
+     * children, clamped to the largest child's min height.
      *
-     * @remarks When `stretching` is enabled, each child's width is clamped to its max size rather
-     * than its preferred size. Children without a preferred size fall back to `defaultComponentHeight`.
-     * Children with a `weight` layout constraint share the remaining height (after unweighted children
-     * have taken their preferred heights) proportionally to their weight values.
+     * @remarks When `stretching` is enabled, each child's width is clamped
+     * to its max size rather than its preferred size. Children without a
+     * preferred size fall back to `defaultComponentHeight` (preferred mode
+     * only). `weight` constraints are honoured only in `"preferred"` mode;
+     * `"equal"` mode silently ignores them.
      */
     doLayout() {
         let container = this.getContainer();
@@ -277,6 +413,49 @@ class VBox extends LayoutManager {
             containerSize = { width: w, height: h };
         }
 
+        if (this._mode === "equal") {
+            // Equal-mode: divide the container height equally among children
+            // and clamp the per-cell height to the largest child's min
+            // height, mirroring HBox's equal-mode clamp. Without it, trailing
+            // cells silently squeeze below their min height when the
+            // equal-share is small.
+            let maxChildMinHeight = 0;
+
+            for (const component of components) {
+                const min = component.getMinSize();
+                if (min) {
+                    maxChildMinHeight = Math.max(maxChildMinHeight, min.height);
+                }
+            }
+
+            const equalShare = (containerSize.height - spacing * (components.length - 1)) / components.length;
+            const rowHeight  = Math.max(equalShare, maxChildMinHeight);
+            const rowWidth   = containerSize.width;
+
+            const x = containerInsets.getLeft();
+            let y = containerInsets.getTop();
+
+            for (let idx in components) {
+                let component = components[idx];
+
+                this.placeComponent(
+                    component,
+                    x,
+                    y,
+                    rowWidth,
+                    rowHeight,
+                    FillType.BOTH
+                );
+
+                y += rowHeight + spacing;
+            }
+
+            return;
+        }
+
+        // Preferred-mode: each child takes its preferred height; weight cells
+        // split the remainder; non-weighted children shrink proportionally
+        // toward their min sizes when the column overflows.
         let totalWeight = 0;
         let fixedPreferredHeight = spacing * (components.length - 1);
         let fixedMinHeight       = spacing * (components.length - 1);

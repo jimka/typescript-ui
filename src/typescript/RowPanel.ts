@@ -2,13 +2,13 @@
 
 import { LayoutTestPanel } from "./LayoutTestPanel.js";
 import { callable } from '@jimka/typescript-ui/core';
-import { Row } from '@jimka/typescript-ui/layout';
+import { VBox } from '@jimka/typescript-ui/layout';
 class RowPanel extends LayoutTestPanel {
 
     constructor() {
         super();
 
-        this.setLayoutManager(new Row());
+        this.setLayoutManager(new VBox({ mode: "equal" }));
     }
 }
 
