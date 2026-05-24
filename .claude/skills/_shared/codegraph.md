@@ -25,13 +25,24 @@ codegraph query 'setOverflow' -j | jq '.[].location'   # JSON for scripting
 
 # Task-oriented context bundle — markdown digest of relevant symbols + code
 codegraph context 'how does the layout shrink path handle minSize'
-
-# Index status / refresh
-codegraph status                                       # node/edge counts
-codegraph sync                                         # re-index after heavy edits
 ```
 
 `codegraph query` is the workhorse — file:line + kind for any symbol, faster and more precise than `grep` for "find the definition of X". The `-k` filter eliminates noise (e.g. excluding tests, examples).
+
+### Index freshness — important
+
+On this project's filesystem (WSL2), the watcher and `codegraph sync` are unreliable. Both `codegraph status` and `codegraph sync` can report "Index is up to date" while the index is in fact stale — they trust their own bookkeeping rather than re-scanning files. Verified case: edits + commits land in `src/`, `sync` says "Already up to date", and `query` returns no results for the new symbols.
+
+**Reliable refresh:**
+
+```bash
+codegraph index --force                # full re-index, works every time
+codegraph index --force -q             # quiet form, suitable for git hooks
+```
+
+Run `codegraph index --force` whenever your most recent code edits matter to the query. If a `codegraph query` for a recently added/renamed symbol returns no results, that's the staleness signal — re-index and re-run.
+
+Note: `codegraph serve --mcp` would normally watch and auto-sync, but the watcher relies on filesystem events that WSL2 delivers unreliably. Don't trust it on this machine.
 
 ## CodeGraph — MCP tools (when surfaced)
 
@@ -72,5 +83,5 @@ When ast-grep loses: comments, JSDoc text, plain strings, anything outside the A
 
 ## Notes
 
-- CodeGraph's watcher keeps the index fresh, but on heavy edits it can fall behind. `codegraph status` shows when it last synced; `codegraph sync` forces a refresh.
 - For plain string matches in non-code files (markdown, JSON, comments), grep is still the right tool — CodeGraph indexes structure, not byte content.
+- See the "Index freshness" subsection above for the WSL2 watcher caveat. Short version: trust `codegraph index --force`, not `codegraph sync` or `codegraph status`, when verifying that recent edits are queryable.
