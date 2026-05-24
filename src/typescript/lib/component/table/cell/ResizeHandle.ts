@@ -104,9 +104,11 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
     protected applyOptions(options: ResizeHandleOptions): this {
         super.applyOptions(options);
 
-        if (options.onDragStart !== undefined) this._onDragStart = options.onDragStart;
-        if (options.onDragMove  !== undefined) this._onDragMove  = options.onDragMove;
-        if (options.onDragEnd   !== undefined) this._onDragEnd   = options.onDragEnd;
+        const opts = { ...this._defaultOptions, ...options } as ResizeHandleOptions;
+
+        if (opts.onDragStart !== undefined) this._onDragStart = opts.onDragStart;
+        if (opts.onDragMove  !== undefined) this._onDragMove  = opts.onDragMove;
+        if (opts.onDragEnd   !== undefined) this._onDragEnd   = opts.onDragEnd;
 
         return this;
     }

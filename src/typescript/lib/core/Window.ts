@@ -199,12 +199,7 @@ class Window extends Panel<WindowOptions> {
     private readonly _boundOnSnapBlur:       () => void                = () => this.clearSnapState();
 
     constructor(headerText: string, options?: WindowOptions) {
-        // Merge defaults → consumer options. `headerText`, `glyph`,
-        // `contentFactory`, and `onReady` touch `this.header` or the
-        // `contentFactory` field (both initialised after `super`), so
-        // `applyOptions` writes them pure into `_options` and the constructor
-        // body dispatches them once the children/fields exist.
-        super({ ..._defaultWindowOptions, ...(options ?? {}) });
+        super(options, _defaultWindowOptions);
 
         this.setLayoutManager(new Border());
 
@@ -286,28 +281,30 @@ class Window extends Panel<WindowOptions> {
     protected applyOptions(options: WindowOptions): this {
         super.applyOptions(options);
 
-        if (options.headerText     !== undefined) this._options.headerText     = options.headerText;
-        if (options.glyph          !== undefined) this._options.glyph          = options.glyph;
-        if (options.contentFactory !== undefined) this._options.contentFactory = options.contentFactory;
-        if (options.onReady        !== undefined) this._options.onReady        = options.onReady;
+        const opts = { ...this._defaultOptions, ...options } as WindowOptions;
 
-        if (options.x      !== undefined) this.setX(options.x);
-        if (options.y      !== undefined) this.setY(options.y);
-        if (options.width  !== undefined) this.setWidth(options.width);
-        if (options.height !== undefined) this.setHeight(options.height);
+        if (opts.headerText     !== undefined) this._options.headerText     = opts.headerText;
+        if (opts.glyph          !== undefined) this._options.glyph          = opts.glyph;
+        if (opts.contentFactory !== undefined) this._options.contentFactory = opts.contentFactory;
+        if (opts.onReady        !== undefined) this._options.onReady        = opts.onReady;
+
+        if (opts.x      !== undefined) this.setX(opts.x);
+        if (opts.y      !== undefined) this.setY(opts.y);
+        if (opts.width  !== undefined) this.setWidth(opts.width);
+        if (opts.height !== undefined) this.setHeight(opts.height);
 
         // State-affecting flags are written pure into `_options` here and
         // dispatched late from the constructor body — the corresponding
         // setters need `this._header` (minimizable / maximizable) or geometry
         // (windowState) which only exist after super.
-        if (options.minimizable       !== undefined) this._options.minimizable       = options.minimizable;
-        if (options.maximizable       !== undefined) this._options.maximizable       = options.maximizable;
-        if (options.maximizeBounds    !== undefined) this._options.maximizeBounds    = options.maximizeBounds;
-        if (options.windowState       !== undefined) this._options.windowState       = options.windowState;
+        if (opts.minimizable       !== undefined) this._options.minimizable       = opts.minimizable;
+        if (opts.maximizable       !== undefined) this._options.maximizable       = opts.maximizable;
+        if (opts.maximizeBounds    !== undefined) this._options.maximizeBounds    = opts.maximizeBounds;
+        if (opts.windowState       !== undefined) this._options.windowState       = opts.windowState;
 
-        if (options.snapResizeEnabled !== undefined) this.setSnapResizeEnabled(options.snapResizeEnabled);
-        if (options.snapThreshold     !== undefined) this.setSnapThreshold(options.snapThreshold);
-        if (options.snapModifier      !== undefined) this.setSnapModifier(options.snapModifier);
+        if (opts.snapResizeEnabled !== undefined) this.setSnapResizeEnabled(opts.snapResizeEnabled);
+        if (opts.snapThreshold     !== undefined) this.setSnapThreshold(opts.snapThreshold);
+        if (opts.snapModifier      !== undefined) this.setSnapModifier(opts.snapModifier);
 
         return this;
     }

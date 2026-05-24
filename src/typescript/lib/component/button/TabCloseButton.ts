@@ -39,13 +39,11 @@ class TabCloseButton extends Button<TabCloseButtonOptions> {
      * Creates a TabCloseButton seeded with the `times` glyph and sized for use in a tab toolbar.
      */
     constructor(options?: TabCloseButtonOptions) {
-        // Merge defaults → consumer options → non-overridable structural keys.
-        // Button is a children-build class; its constructor forwards its own
-        // merged defaults plus this bag into Component's super cascade, where
-        // every cascade-safe setter is dispatched once with the final value.
-        super({
+        // The seed `glyph` is in the defaults bag — a caller-supplied
+        // `options.glyph` still wins because Component merges
+        // `{...defaults, ...options}` at dispatch time.
+        super(undefined, options, {
             ..._defaultTabCloseButtonOptions,
-            ...(options ?? {}),
             glyph: "xmark",
         });
     }

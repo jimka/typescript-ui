@@ -26,10 +26,11 @@ export interface ComboBoxItem {
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Bindable } from "~/core/Bindable.js";
+import { Panel } from "~/core/Panel.js";
 import { ThemeManager } from "~/core/Theme.js";
-import { Position } from "~/primitive/Position.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
+import { Fit } from "~/layout/Fit.js";
 import { VBox } from "~/layout/VBox.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
@@ -52,6 +53,15 @@ export interface ComboBoxOptions extends ComponentOptions {
     selectedItem?:      string;
     /** When false, the dropdown opens/closes instantly. Default: true. */
     dropdownAnimated?:  boolean;
+    /**
+     * Lower bound (in pixels) on the dropdown width. Defaults to `200`. The
+     * dropdown sizes to the widest label by default and is floored at the
+     * input's width; this floor additionally guarantees the panel is at
+     * least this wide even when both the input and the widest label are
+     * narrower. Long labels that exceed it still widen the dropdown further
+     * (capped at the viewport).
+     */
+    dropdownMinWidth?:  number;
 }
 
 /**
@@ -60,12 +70,13 @@ export interface ComboBoxOptions extends ComponentOptions {
  * the final value, so any field the caller supplied wins.
  */
 const _defaultComboBoxOptions: Partial<ComboBoxOptions> = {
+    tag:             "div",
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
     border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
     borderRadius:    "var(--ts-ui-border-radius, 4px)",
     cursor:          "pointer",
-    padding:         new Insets(3, 6, 3, 6),
+    insets:          new Insets(3, 6, 3, 6),
 };
 
 /**
@@ -74,18 +85,45 @@ const _defaultComboBoxOptions: Partial<ComboBoxOptions> = {
  *
  * @category Components
  */
+/** Maximum dropdown height in pixels. Long option lists scroll inside this cap. */
+const COMBOBOX_DROPDOWN_MAX_HEIGHT_PX = 200;
+
+/** Pixel height of a single row inside the dropdown. Matches `ComboBoxRow.preferredSize`. */
+const COMBOBOX_DROPDOWN_ROW_HEIGHT_PX = 22;
+
+/** Combined left + right padding inside a `ComboBoxRow` (Insets(0, 8, 0, 8)). */
+const COMBOBOX_DROPDOWN_ROW_PADDING_PX = 16;
+
+/**
+ * Default lower bound on dropdown width. Ensures the panel is always at least
+ * this wide even when both the input and the widest label are narrower;
+ * override per-instance via {@link ComboBox.setDropdownMinWidth} or
+ * `dropdownMinWidth` in the options bag.
+ */
+const COMBOBOX_DROPDOWN_MIN_WIDTH_PX = 200;
+
 class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 
     private readonly _rows: ComboBoxRow[] = [];
     private readonly _onSelect: (index: number) => void;
+    /**
+     * Inner scrollable list panel. Rows live here (not directly on the
+     * dropdown root) so a long option list can scroll inside the
+     * `COMBOBOX_DROPDOWN_MAX_HEIGHT_PX` cap instead of overflowing the
+     * viewport — the dropdown root holds the visual chrome and the panel
+     * holds the rows.
+     */
+    private readonly _list: Panel;
+    /** Lower bound on the dropdown width — see `COMBOBOX_DROPDOWN_MIN_WIDTH_PX`. */
+    private _minWidth: number = COMBOBOX_DROPDOWN_MIN_WIDTH_PX;
 
     /**
      * @param onSelect - Called with the index of the selected row.
      */
     constructor(onSelect: (index: number) => void) {
-        super({
+        super(undefined, {
             zIndex:          10050,
-            position:        Position.FIXED,
+            layoutManager:   new Fit(),
             backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
             border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
             borderRadius:    "var(--ts-ui-border-radius, 4px)",
@@ -97,15 +135,19 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         this.getAria().setRole("listbox");
         this.setContain("layout");
 
-        const vbox = new VBox();
-        vbox.setComponentSpacing(0);
-        vbox.setStretching(true);
-        this.setLayoutManager(vbox);
+        this._list = new Panel({
+            layoutManager: new VBox({ spacing: 0, stretching: true }),
+            autoScroll:    "y",
+            insets:        new Insets(0, 0, 0, 0),
+        });
+        this.addComponent(this._list);
     }
 
     /**
      * Replaces the rendered row list with one entry per label and lays out
-     * the panel anchored below `anchorEl`.
+     * the panel anchored below `anchorEl`. The dropdown height is capped at
+     * {@link COMBOBOX_DROPDOWN_MAX_HEIGHT_PX} so long option lists scroll
+     * inside the panel rather than overflowing the viewport.
      *
      * @param anchorEl - Element the dropdown is anchored to.
      * @param labels - Display labels, in order.
@@ -115,23 +157,36 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         this.syncRows(labels);
         this.resumeLayout();
 
-        const rowHeight = 22;
-        const insets    = 8;
-        const panelH    = labels.length * rowHeight + insets;
-        const rect      = anchorEl.getBoundingClientRect();
+        // Add the dropdown's border to the natural row stack so the inner Panel
+        // (which receives `outerHeight - border`) has room for the rows without
+        // overflowing by 2 px and triggering an unnecessary scrollbar.
+        const perim    = this.getPerimiterSize();
+        const chromeH  = perim.top + perim.bottom;
+        const chromeW  = perim.left + perim.right;
+        const naturalH = labels.length * COMBOBOX_DROPDOWN_ROW_HEIGHT_PX + chromeH;
+        const panelH   = Math.min(naturalH, COMBOBOX_DROPDOWN_MAX_HEIGHT_PX);
+        const rect     = anchorEl.getBoundingClientRect();
 
-        this.setWidth(rect.width);
+        // Dropdown lives outside the host's layout tree (overlay on
+        // documentElement), so it isn't bound to the anchor's width.
+        //
+        // Sizing model:
+        //   floor   = anchor.width                       (never narrower than input)
+        //   ceiling = max(anchor.width, _minWidth)       (configured floor widens it
+        //                                                 when the input is narrow,
+        //                                                 but a wide input is the cap
+        //                                                 — labels beyond it truncate)
+        //   width   = clamp(naturalLabelWidth, floor, ceiling), capped at viewport
+        const labelW       = this.measureWidestLabel(labels);
+        const naturalW     = labelW + COMBOBOX_DROPDOWN_ROW_PADDING_PX + chromeW;
+        const floorW       = rect.width;
+        const ceilingW     = Math.max(rect.width, this._minWidth);
+        const dropdownW    = Math.min(Math.max(naturalW, floorW), ceilingW, window.innerWidth);
+
+        this.setWidth(dropdownW);
         this.setHeight(panelH);
 
-        const vpHeight = window.innerHeight;
-        let y = rect.bottom;
-
-        if (y + panelH > vpHeight && rect.top - panelH > 0) {
-            y = rect.top - panelH;
-        }
-
-        this.setX(rect.left);
-        this.setY(y);
+        this.placeAnchored(rect);
 
         this.showAnimated();
 
@@ -162,15 +217,60 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         if (newLen > oldLen) {
             for (let i = oldLen; i < newLen; i++) {
                 const row = this.buildRow(labels[i], i);
-                this.addComponent(row);
+                this._list.addComponent(row);
                 this._rows.push(row);
             }
         } else if (newLen < oldLen) {
             for (let i = newLen; i < oldLen; i++) {
-                this.removeComponent(this._rows[i]);
+                this._list.removeComponent(this._rows[i]);
             }
             this._rows.splice(newLen);
         }
+    }
+
+    /**
+     * Sets the lower bound applied to the dropdown width. The dropdown is
+     * always rendered at least this wide; if the widest label or the input
+     * is wider, the dropdown grows beyond this floor.
+     *
+     * @param px - The minimum width in pixels.
+     *
+     * @returns This dropdown, for method chaining.
+     */
+    setMinWidth(px: number): this {
+        this._minWidth = px;
+
+        return this;
+    }
+
+    /**
+     * Returns the configured lower bound on the dropdown width.
+     *
+     * @returns The minimum width in pixels.
+     */
+    getMinWidth(): number {
+        return this._minWidth;
+    }
+
+    /**
+     * Returns the widest label measured at the row's font, in pixels. Used to
+     * size the dropdown wide enough to display the longest entry without
+     * truncation (capped at the viewport in `showAt`).
+     *
+     * @param labels - The labels to measure.
+     * @returns The maximum measured width across all labels, or `0` when empty.
+     */
+    private measureWidestLabel(labels: string[]): number {
+        let max = 0;
+
+        for (const label of labels) {
+            const w = Util.measureTextWidth(label);
+            if (w > max) {
+                max = w;
+            }
+        }
+
+        return max;
     }
 
     /**
@@ -191,46 +291,50 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
     }
 }
 
-// Static layout / typography for the ComboBox surface and its row pool.
-// Class rules below match by `this.constructor.name`, which Component
-// auto-tags on every element. Properties that have typed setters
-// (`display`, `padding`, `cursor`) live on the Components themselves;
-// the rules carry only the properties Component has no setter for.
+// Static typography for the ComboBox surface and its row pool. Layout
+// (label + caret placement, row text centering) is handled by the
+// framework's HBox manager and per-component `line-height` so no class
+// rule needs to write `display: flex` here. Class rules below match by
+// `this.constructor.name`, which Component auto-tags on every element.
 (() => {
     const surface = new StyleRule(() =>
         (CSS.getClassRule("ComboBox")
             ?? CSS.createClassRule("ComboBox")) as CSSStyleRule);
-    // `gap` separates the label and caret. The per-component CSS rule writes
-    // `margin: 0`, which would clobber a `margin-left` on the caret by
-    // ID-selector specificity; `gap` lives on the parent and sidesteps that.
     surface.setMany({
-        alignItems: "center",
         userSelect: "none",
         whiteSpace: "nowrap",
-        gap:        "6px",
     });
     surface.ensure();
 
     const label = new StyleRule(() =>
         (CSS.getClassRule("ComboBoxLabel")
             ?? CSS.createClassRule("ComboBoxLabel")) as CSSStyleRule);
+    // No `flex` here — `HBox` sizes the label component directly. `overflow`
+    // and `text-overflow` keep long labels truncating with an ellipsis when
+    // HBox clamps the label width to fit the row.
     label.setMany({
-        flex:         "1 1 auto",
         overflow:     "hidden",
         textOverflow: "ellipsis",
     });
     label.ensure();
 
-    const caret = new StyleRule(() =>
-        (CSS.getClassRule("ComboBoxCaret")
-            ?? CSS.createClassRule("ComboBoxCaret")) as CSSStyleRule);
-    caret.set("flex", "0 0 16px");
-    caret.ensure();
-
     const row = new StyleRule(() =>
         (CSS.getClassRule("ComboBoxRow")
             ?? CSS.createClassRule("ComboBoxRow")) as CSSStyleRule);
-    row.set("alignItems", "center");
+    // Row height matches the cached `preferredSize(0, 22)` from the
+    // ComboBoxRow constructor; `lineHeight` centers the single line of text
+    // vertically without `display: flex`. Keep these two values in sync if
+    // the row height changes.
+    // `whiteSpace`/`overflow`/`textOverflow` keep long labels on a single line
+    // and ellipsise them when the row is narrower than the label text — the
+    // row writes textContent directly (not via `Text`) so it doesn't inherit
+    // the Text-level truncation defaults.
+    row.setMany({
+        lineHeight:   "22px",
+        whiteSpace:   "nowrap",
+        overflow:     "hidden",
+        textOverflow: "ellipsis",
+    });
     row.ensure();
 
     const rowHover = new StyleRule(() =>
@@ -244,16 +348,17 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 /**
  * The visible label `<span>` inside a {@link ComboBox}. Holds a typed
  * `setLabel` setter so call sites never write `element.textContent` directly.
- * Lives at static position so the ComboBox's `display: flex` lays it out
- * alongside the caret.
+ * Positioned by the parent `ComboBox`'s `doLayout` (flush left, taking the
+ * row's remaining width after the fixed-size caret).
  */
 class ComboBoxLabel extends Component {
     // Cached so `setLabel` calls made before the element renders (e.g. from
     // the ComboBox constructor) survive to be applied at render time.
-    private _text: string = "";
+    private _text:       string = "";
+    private _lineHeight: string | null = null;
 
     constructor() {
-        super({ tag: "span", position: Position.STATIC });
+        super({ tag: "span" });
         this.setPointerEvents("none");
     }
 
@@ -273,6 +378,32 @@ class ComboBoxLabel extends Component {
         return this;
     }
 
+    /**
+     * Sets the CSS `line-height` so the single line of label text vertically
+     * centers within the label's allocated height. Numeric values are stored
+     * with a `"px"` suffix; string values pass through unchanged.
+     *
+     * @param value - A pixel count (number) or a CSS line-height string.
+     *
+     * @returns This component, for method chaining.
+     */
+    setLineHeight(value: number | string): this {
+        this._lineHeight = typeof value === "number" ? value + "px" : value;
+
+        this.setElementCSSRule("lineHeight", this._lineHeight);
+
+        return this;
+    }
+
+    /**
+     * Returns the cached CSS `line-height` value, or null when unset.
+     *
+     * @returns The line-height string (e.g. `"22px"`), or null.
+     */
+    getLineHeight(): string | null {
+        return this._lineHeight;
+    }
+
     protected render(): HTMLElement {
         const element = super.render();
         element.textContent = this._text;
@@ -282,13 +413,15 @@ class ComboBoxLabel extends Component {
 }
 
 /**
- * The fixed-size caret container inside a {@link ComboBox}. Uses relative
- * positioning so the framework-absolute chevron glyph it owns stays inside
- * the 16×16 box instead of escaping the right edge.
+ * The fixed-size caret container inside a {@link ComboBox}. Framework-absolute
+ * (the default) so the caret's own inline `left`/`top` from `ComboBox.doLayout`
+ * pins it relative to the ComboBox padding box, not its in-flow position
+ * (which would otherwise be offset by the parent's padding-left and push the
+ * caret past the right edge into `overflow: hidden`).
  */
 class ComboBoxCaret extends Component {
     constructor() {
-        super({ tag: "span", position: Position.RELATIVE });
+        super({ tag: "span" });
         // Lock the size at 16×16 via the typed min/max setters so the box
         // stays square regardless of content (the glyph child is
         // framework-absolute and contributes no intrinsic height).
@@ -326,7 +459,6 @@ class ComboBoxRow extends Component {
         this.setMaxSize(Number.MAX_SAFE_INTEGER, 22);
         this.setPadding(new Insets(0, 8, 0, 8));
         this.setCursor("pointer");
-        this.setDisplay("flex");
 
         Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
         Event.addListener(this, "click",       ()                => this.onClick());
@@ -420,22 +552,20 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
 
     /**
      * @param options - Optional construction-time options.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults; subclasses forward their `_defaultXxxOptions`
+     *   constant here.
      */
-    constructor(options?: ComboBoxOptions);
-    constructor(options?: TOptions) {
-        super({
-            ..._defaultComboBoxOptions,
-            ...(options ?? {}),
-            tag: options?.tag ?? "div",
-        } as TOptions);
+    constructor(options?: ComboBoxOptions, subclassDefaults?: Partial<ComboBoxOptions>);
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        super(
+            options,
+            { ..._defaultComboBoxOptions, ...(subclassDefaults ?? {}) } as Partial<TOptions>,
+        );
 
         this.getAria().setRole("combobox");
         this.getAria().setExpanded(false);
         this.getAria().setTabIndex(0);
-
-        // `display: flex` plus the static layout/typography on the
-        // `.ComboBox` class rule lay the label and caret out side by side.
-        this.setDisplay("flex");
 
         this._label = new ComboBoxLabel();
         this._caret = new ComboBoxCaret();
@@ -486,14 +616,17 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.items            !== undefined) this._options.items            = options.items;
-        if (options.store            !== undefined) this._options.store            = options.store;
-        if (options.displayField     !== undefined) this._options.displayField     = options.displayField;
-        if (options.valueField       !== undefined) this._options.valueField       = options.valueField;
-        if (options.selectedIndex    !== undefined) this._options.selectedIndex    = options.selectedIndex;
-        if (options.value            !== undefined) this._options.value            = options.value;
-        if (options.selectedItem     !== undefined) this._options.selectedItem     = options.selectedItem;
-        if (options.dropdownAnimated !== undefined) this._options.dropdownAnimated = options.dropdownAnimated;
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.items            !== undefined) this._options.items            = opts.items;
+        if (opts.store            !== undefined) this._options.store            = opts.store;
+        if (opts.displayField     !== undefined) this._options.displayField     = opts.displayField;
+        if (opts.valueField       !== undefined) this._options.valueField       = opts.valueField;
+        if (opts.selectedIndex    !== undefined) this._options.selectedIndex    = opts.selectedIndex;
+        if (opts.value            !== undefined) this._options.value            = opts.value;
+        if (opts.selectedItem     !== undefined) this._options.selectedItem     = opts.selectedItem;
+        if (opts.dropdownAnimated !== undefined) this._options.dropdownAnimated = opts.dropdownAnimated;
+        if (opts.dropdownMinWidth !== undefined) this.setDropdownMinWidth(opts.dropdownMinWidth);
 
         return this;
     }
@@ -509,6 +642,49 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
+    }
+
+    /**
+     * Places the label flush left and the caret flush right, both vertically
+     * centered within the inner height. Replaces the prior `display: flex`
+     * arrangement on the surface element so every child position is committed
+     * via framework setters.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        const inner = this.getInnerSize();
+        if (!inner) {
+            return this;
+        }
+
+        // Layout constants. `gap` matches the prior `gap: 6px` on the
+        // `.ComboBox` class rule; `caretSize` matches the 16×16 `ComboBoxCaret`
+        // min/max box. The label fills the remaining width.
+        const gap       = 6;
+        const caretSize = 16;
+        const insets    = this.getInsets();
+
+        const innerLeft = insets.getLeft();
+        const innerTop  = insets.getTop();
+        const labelW    = Math.max(0, inner.width - caretSize - gap);
+        const caretX    = innerLeft + labelW + gap;
+        const caretY    = innerTop + Math.max(0, (inner.height - caretSize) / 2);
+
+        this._label.setX(innerLeft);
+        this._label.setY(innerTop);
+        this._label.setWidth(labelW);
+        this._label.setHeight(inner.height);
+        // `lineHeight` equals the label's height so the single line of label
+        // text vertically centers without `display: flex` on the parent.
+        this._label.setLineHeight(inner.height);
+
+        this._caret.setX(caretX);
+        this._caret.setY(caretY);
+        this._caret.setWidth(caretSize);
+        this._caret.setHeight(caretSize);
+
+        return this;
     }
 
     /**
@@ -559,6 +735,10 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
             const animated = this._options.dropdownAnimated;
             if (animated !== undefined) {
                 this._dropdown.setAnimated(animated);
+            }
+            const maxW = this._options.dropdownMinWidth;
+            if (maxW !== undefined) {
+                this._dropdown.setMinWidth(maxW);
             }
         }
 
@@ -928,6 +1108,34 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Compo
      */
     isDropdownAnimated(): boolean {
         return this._options.dropdownAnimated ?? true;
+    }
+
+    /**
+     * Sets the lower bound on the dropdown width. The dropdown is always at
+     * least this wide; long labels exceeding the floor still widen it further
+     * (capped at the viewport).
+     *
+     * @param px - The minimum width in pixels. Defaults to `200`.
+     *
+     * @returns This component, for method chaining.
+     */
+    setDropdownMinWidth(px: number): this {
+        this._options.dropdownMinWidth = px;
+
+        if (this._dropdown) {
+            this._dropdown.setMinWidth(px);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the configured lower bound on the dropdown width.
+     *
+     * @returns The minimum width in pixels.
+     */
+    getDropdownMinWidth(): number {
+        return this._options.dropdownMinWidth ?? COMBOBOX_DROPDOWN_MIN_WIDTH_PX;
     }
 }
 

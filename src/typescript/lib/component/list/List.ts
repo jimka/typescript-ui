@@ -28,6 +28,7 @@ export interface ListOptions extends ComponentOptions {
  * User-overridable defaults forwarded to `super` via the options bag.
  */
 const _defaultListOptions: Partial<ListOptions> = {
+    tag:             "select",
     overflow:        "auto",
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
@@ -48,11 +49,7 @@ class List<TOptions extends ListOptions = ListOptions> extends Component<TOption
     private _storeRefresh: (() => void) | null = null;
 
     constructor(options?: TOptions) {
-        super({
-            ..._defaultListOptions,
-            ...(options ?? {}),
-            tag: options?.tag ?? "select",
-        } as TOptions);
+        super(options, _defaultListOptions as Partial<TOptions>);
 
         this.getAria().setRole("listbox");
         this.updateHeight();
@@ -87,13 +84,15 @@ class List<TOptions extends ListOptions = ListOptions> extends Component<TOption
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        if (options.items         !== undefined) this._options.items         = options.items;
-        if (options.store         !== undefined) this._options.store         = options.store;
-        if (options.displayField  !== undefined) this._options.displayField  = options.displayField;
-        if (options.valueField    !== undefined) this._options.valueField    = options.valueField;
-        if (options.selectedIndex !== undefined) this._options.selectedIndex = options.selectedIndex;
-        if (options.value         !== undefined) this._options.value         = options.value;
-        if (options.selectedItem  !== undefined) this._options.selectedItem  = options.selectedItem;
+        const opts = { ...this._defaultOptions, ...options } as TOptions;
+
+        if (opts.items         !== undefined) this._options.items         = opts.items;
+        if (opts.store         !== undefined) this._options.store         = opts.store;
+        if (opts.displayField  !== undefined) this._options.displayField  = opts.displayField;
+        if (opts.valueField    !== undefined) this._options.valueField    = opts.valueField;
+        if (opts.selectedIndex !== undefined) this._options.selectedIndex = opts.selectedIndex;
+        if (opts.value         !== undefined) this._options.value         = opts.value;
+        if (opts.selectedItem  !== undefined) this._options.selectedItem  = opts.selectedItem;
 
         return this;
     }

@@ -235,6 +235,44 @@ class Column extends LayoutManager {
     }
 
     /**
+     * Computes the children's combined minSize along this manager's geometry:
+     * width is `count * maxChildMinWidth + gaps` (Column distributes width
+     * equally so the per-cell floor is the max of every child's min width);
+     * height is `max(children.minHeight)`. Used by `doLayout` to inflate the
+     * working size when the host has opted into `setOverflowing`.
+     *
+     * @returns The total min-size; `{ width: 0, height: 0 }` when the
+     *   container is absent or has no children.
+     */
+    protected computeTotalMinSize(): Size {
+        const container = this.getContainer();
+        if (!container) {
+            return { width: 0, height: 0 };
+        }
+
+        const components = container.getComponents();
+        if (components.length === 0) {
+            return { width: 0, height: 0 };
+        }
+
+        let maxWidth = 0;
+        let maxHeight = 0;
+
+        for (const component of components) {
+            const min = component.getMinSize();
+            if (min) {
+                maxWidth  = Math.max(maxWidth,  min.width);
+                maxHeight = Math.max(maxHeight, min.height);
+            }
+        }
+
+        return {
+            width:  components.length * (maxWidth + this._gap) - this._gap,
+            height: maxHeight,
+        };
+    }
+
+    /**
      * Divides the container width equally among children and places them
      * left-to-right with gaps.
      *
@@ -257,7 +295,35 @@ class Column extends LayoutManager {
 
         let containerInsets = container.getInsets();
 
-        let columnWidth = (containerSize.width - (this._gap * components.length) + this._gap) / components.length;
+        // Universal scroll: see HBox.doLayout for the rationale. Inflates the
+        // working size to the children's combined minSize on the axes the
+        // host has marked as overflowing.
+        if (this.isOverflowingX() || this.isOverflowingY()) {
+            const totalMin = this.computeTotalMinSize();
+            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
+            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
+
+            containerSize = { width: w, height: h };
+        }
+
+        // Clamp the per-cell width to the largest child's minSize, mirroring
+        // HBox.doLayout's `width = Math.max(width, minSize.width)` invariant.
+        // When the equal-share is smaller than a child's min width, the row
+        // total exceeds the container — trailing cells spill past the right
+        // edge and the host's `overflow: hidden` (or `setAutoScroll`) takes
+        // over. Without the clamp, Column silently squeezes children with
+        // fixed-graphic minSizes (e.g. RadioButton rings) below their min
+        // width and clips them.
+        let maxChildMinWidth = 0;
+        for (const component of components) {
+            const min = component.getMinSize();
+            if (min) {
+                maxChildMinWidth = Math.max(maxChildMinWidth, min.width);
+            }
+        }
+
+        const equalShare = (containerSize.width - this._gap * (components.length - 1)) / components.length;
+        let columnWidth  = Math.max(equalShare, maxChildMinWidth);
 
         if (this._stretching) {
             let columnHeight = containerSize.height;

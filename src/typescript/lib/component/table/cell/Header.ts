@@ -11,7 +11,6 @@ import { Tooltip } from "~/core/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Insets } from "~/primitive/Insets.js";
-import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -228,7 +227,6 @@ class HeaderCell extends DefaultCell {
 
         const glyph = new Glyph(name);
 
-        glyph.setPosition(Position.ABSOLUTE);
         glyph.setTransform("translateY(-50%)");
         glyph.setSize({ width: GLYPH_W, height: GLYPH_H });
         glyph.setForegroundColor("var(--ts-ui-table-header-glyph-color, currentColor)");

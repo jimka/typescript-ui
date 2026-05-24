@@ -34,7 +34,7 @@ const _defaultPasswordFieldOptions: Partial<PasswordFieldOptions> = {
 class PasswordField extends TextInput<PasswordFieldOptions> {
 
     constructor(options?: PasswordFieldOptions) {
-        super({ ..._defaultPasswordFieldOptions, ...(options ?? {}) });
+        super(options, _defaultPasswordFieldOptions);
 
         this.updateHeight();
         ThemeManager.onThemeChange(() => this.updateHeight());

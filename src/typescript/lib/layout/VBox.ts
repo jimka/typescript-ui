@@ -208,6 +208,41 @@ class VBox extends LayoutManager {
     }
 
     /**
+     * Computes the children's combined minSize along this manager's geometry:
+     * height is the sum of per-child `minSize.height` plus the inter-child
+     * spacing, width is the max per-child `minSize.width`. Used by `doLayout`
+     * to inflate the working size when the host has opted into
+     * `setOverflowing` on the corresponding axis.
+     *
+     * @returns The total min-size; `{ width: 0, height: 0 }` when the
+     *   container is absent or has no children.
+     */
+    protected computeTotalMinSize(): Size {
+        const container = this.getContainer();
+        if (!container) {
+            return { width: 0, height: 0 };
+        }
+
+        const components = container.getComponents();
+        if (components.length === 0) {
+            return { width: 0, height: 0 };
+        }
+
+        let width = 0;
+        let height = this.getComponentSpacing() * (components.length - 1);
+
+        for (const component of components) {
+            const min = component.getMinSize();
+            if (min) {
+                width   = Math.max(width, min.width);
+                height += min.height;
+            }
+        }
+
+        return { width, height };
+    }
+
+    /**
      * Places children top-to-bottom using their preferred heights, with optional width stretching.
      *
      * @remarks When `stretching` is enabled, each child's width is clamped to its max size rather
@@ -230,8 +265,21 @@ class VBox extends LayoutManager {
         let components = container.getComponents();
         let spacing = this.getComponentSpacing();
 
+        // Universal scroll: see HBox.doLayout for the rationale. Inflates the
+        // working size to the children's combined minSize on the axes the host
+        // has marked as overflowing so trailing children can land past
+        // `innerSize` and trigger the host's CSS `overflow: auto`.
+        if (this.isOverflowingX() || this.isOverflowingY()) {
+            const totalMin = this.computeTotalMinSize();
+            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
+            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
+
+            containerSize = { width: w, height: h };
+        }
+
         let totalWeight = 0;
-        let fixedHeight = spacing * (components.length - 1);
+        let fixedPreferredHeight = spacing * (components.length - 1);
+        let fixedMinHeight       = spacing * (components.length - 1);
 
         for (let idx in components) {
             let component = components[idx];
@@ -243,13 +291,41 @@ class VBox extends LayoutManager {
             } else {
                 let size = component.getPreferredSize();
                 let minSize = component.getMinSize();
-                fixedHeight += (size ? size.height : undefined)
-                    || (minSize ? minSize.height : undefined)
-                    || this._defaultComponentHeight;
+                // See HBox for the `??` rationale: a component with an
+                // explicit preferred height of 0 must contribute 0, not fall
+                // through to `_defaultComponentHeight`. The minSize.height>0
+                // guard prevents `LayoutManager._defaultMinSize = {0,0}` from
+                // short-circuiting the fallback (which would land children
+                // like a layout-managed Table on a 0 height because the
+                // managers's default minSize technically satisfies `??`).
+                const pref = (size ? size.height : undefined)
+                    ?? (minSize && minSize.height > 0 ? minSize.height : undefined)
+                    ?? this._defaultComponentHeight;
+                const min  = minSize ? minSize.height : 0;
+                fixedPreferredHeight += pref;
+                fixedMinHeight       += min;
             }
         }
 
-        let remainingHeight = Math.max(0, containerSize.height - fixedHeight);
+        // See HBox.doLayout — when non-weighted children's preferred heights
+        // sum past the container's inner height, shrink each toward its
+        // min size proportionally so the last child's bottom lands inside
+        // the container. When the host has opted into vertical overflow
+        // (`Panel.setAutoScroll`), the working `containerSize.height` was
+        // already inflated above; children should land at their preferred
+        // heights so the host's CSS `overflow: auto` engages — skip the
+        // shrink in that case.
+        let shrinkRatio = 0;
+        let remainingHeight: number;
+
+        if (fixedPreferredHeight <= containerSize.height || this.isOverflowingY()) {
+            remainingHeight = Math.max(0, containerSize.height - fixedPreferredHeight);
+        } else {
+            remainingHeight = 0;
+            const excess     = fixedPreferredHeight - containerSize.height;
+            const shrinkable = fixedPreferredHeight - fixedMinHeight;
+            shrinkRatio = shrinkable > 0 ? Math.min(1, excess / shrinkable) : 1;
+        }
 
         let x = containerInsets.getLeft();
         let y = containerInsets.getTop();
@@ -269,9 +345,13 @@ class VBox extends LayoutManager {
             if (weight > 0 && totalWeight > 0) {
                 height = (weight / totalWeight) * remainingHeight;
             } else {
-                height = (size ? size.height : undefined)
-                    || (minSize ? minSize.height : undefined)
-                    || this._defaultComponentHeight;
+                // See the fixed-total loop above for why `??` and the
+                // `minSize.height > 0` guard.
+                const pref = (size ? size.height : undefined)
+                    ?? (minSize && minSize.height > 0 ? minSize.height : undefined)
+                    ?? this._defaultComponentHeight;
+                const min  = minSize ? minSize.height : 0;
+                height = pref - shrinkRatio * (pref - min);
             }
 
             if (minSize) height = Math.max(height, minSize.height);

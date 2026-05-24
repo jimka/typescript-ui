@@ -153,8 +153,9 @@ class Grid extends LayoutManager {
      *
      * @returns An object with `width` (row count) and `height` (column count), or `undefined` if no container is attached.
      *
-     * @remarks The property names `width` and `height` are repurposed here to carry row/column counts
-     * rather than pixel dimensions.
+     * @remarks The property names `width` and `height` are repurposed here to
+     * carry column and row counts rather than pixel dimensions —
+     * `result.width` is the column count, `result.height` is the row count.
      */
     getColRowCount() {
         let container = this.getContainer();
@@ -173,15 +174,18 @@ class Grid extends LayoutManager {
             rows = Math.ceil(componentCount / columns);
         } else if (this._rows && this._columns) {
             rows = this._rows;
-            columns = Math.floor(Math.sqrt(componentCount / rows));
+            columns = this._columns;
         } else if (this._columns) {
             columns = this._columns;
             rows = Math.ceil(componentCount / columns);
+        } else {
+            rows = this._rows;
+            columns = Math.ceil(componentCount / rows);
         }
 
         return {
-            width: rows,
-            height: columns
+            width: columns,
+            height: rows
         };
     }
 
@@ -321,6 +325,48 @@ class Grid extends LayoutManager {
     }
 
     /**
+     * Computes the children's combined minSize along this manager's geometry:
+     * width is `cols * maxChildMinWidth + (cols-1) * spacing`; height is
+     * `rows * maxChildMinHeight + (rows-1) * spacing`. Used by `doLayout` to
+     * inflate the working size when the host has opted into `setOverflowing`.
+     *
+     * @returns The total min-size; `{ width: 0, height: 0 }` when the
+     *   container is absent or has no children.
+     */
+    protected computeTotalMinSize(): Size {
+        const container = this.getContainer();
+        if (!container) {
+            return { width: 0, height: 0 };
+        }
+
+        const components = container.getComponents();
+        if (components.length === 0) {
+            return { width: 0, height: 0 };
+        }
+
+        const colRowCount = this.getColRowCount();
+        const cols = colRowCount ? colRowCount.width  : 1;
+        const rows = colRowCount ? colRowCount.height : 1;
+        const spacing = this.getComponentSpacing();
+
+        let maxCellWidth = 0;
+        let maxCellHeight = 0;
+
+        for (const component of components) {
+            const min = component.getMinSize();
+            if (min) {
+                maxCellWidth  = Math.max(maxCellWidth,  min.width);
+                maxCellHeight = Math.max(maxCellHeight, min.height);
+            }
+        }
+
+        return {
+            width:  cols * maxCellWidth  + Math.max(0, cols - 1) * spacing,
+            height: rows * maxCellHeight + Math.max(0, rows - 1) * spacing,
+        };
+    }
+
+    /**
      * Tiles all children in a grid of equal-sized cells, left-to-right then top-to-bottom.
      *
      * @remarks When stretching is enabled (default) cells are equal-sized and each
@@ -345,6 +391,17 @@ class Grid extends LayoutManager {
         let cols = colRowCount ? colRowCount.width  : 1;
         let rows = colRowCount ? colRowCount.height : 1;
         let spacing = this.getComponentSpacing();
+
+        // Universal scroll: see HBox.doLayout for the rationale. Inflates the
+        // working size to the children's combined minSize on the axes the
+        // host has marked as overflowing.
+        if (this.isOverflowingX() || this.isOverflowingY()) {
+            const totalMin = this.computeTotalMinSize();
+            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
+            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
+
+            containerSize = { width: w, height: h };
+        }
 
         let totalHSpacing = Math.max(0, cols - 1) * spacing;
         let totalVSpacing = Math.max(0, rows - 1) * spacing;

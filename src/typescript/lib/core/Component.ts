@@ -94,7 +94,6 @@ export interface ComponentOptions {
     transition?:      string;
     willChange?:      string | null;
     opacity?:         number;
-    position?:        Position;
     overflow?:        string;
     pointerEvents?:   string;
     touchAction?:     string;
@@ -179,6 +178,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _transition           : string | null           = null;
 
     // Derived / runtime-only fields that have no direct ComponentOptions counterpart.
+    // `_position` is intentionally NOT in `ComponentOptions` — the framework
+    // positions every component absolutely (see ARCHITECTURE.md). Subclasses
+    // that need `FIXED` for a floating overlay or `STATIC` for a semantic
+    // HTML carve-out (e.g. `Legend`) call the protected `setPosition` setter
+    // post-`super()`. Public callers cannot reach it.
+    private _position             : Position                = Position.ABSOLUTE;
     private _onPreferredSizeChange: (() => void) | null     = null;
     private _overflowX            : string | null           = null;
     private _overflowY            : string | null           = null;
@@ -232,7 +237,23 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     protected _options!:        TOptions;
     protected _defaultOptions!: TOptions;
 
-    constructor(options?: TOptions) {
+    /**
+     * @param options - Caller-supplied options bag.
+     * @param subclassDefaults - Per-subclass default bag merged on top of the
+     *   built-in Component defaults to produce `_defaultOptions`. Subclasses
+     *   that extend Component (or any further-derived class) pass their
+     *   `_default<Name>Options` constant here so its values flow through every
+     *   `{ ...this._defaultOptions, ...options }` merge in `applyOptions` and
+     *   its overrides. Replaces the older pattern of spreading defaults into
+     *   the options arg at the call site — that pattern populated `_options`
+     *   directly and broke whenever `applyOptions` was re-invoked, because
+     *   Component's own defaults would silently override values set in the
+     *   subclass constructor body. Subclasses-of-subclasses accept their own
+     *   `subclassDefaults` parameter and forward it as
+     *   `{ ..._myDefaults, ...(subclassDefaults ?? {}) }` so the deepest
+     *   class's defaults win.
+     */
+    constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
         super();
 
         // Structural setup that doesn't map to ComponentOptions.
@@ -251,13 +272,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._verticalAlign = "baseline";
 
         // Class-level defaults — fallback values consulted by getters when the
-        // caller (or a setter) hasn't written to `_options`. Subclasses may
-        // extend this bag in their own constructors (after `super()`) to add
-        // their per-class defaults — the parent default still flows through
-        // because subclass writes merge with what was already there.
+        // caller (or a setter) hasn't written to `_options`, and the source
+        // every `applyOptions` cascade merges over before dispatching setters.
+        // Subclass defaults are layered on top of the Component defaults here
+        // so deepest-class wins; `applyOptions` and its overrides then merge
+        // user `options` on top of this bag at dispatch time.
         this._defaultOptions = {
             layoutManager: new Absolute(),
-            position     : Position.ABSOLUTE,
             cursor       : "default",
             insets       : new Insets(0, 0, 0, 0),
             padding      : new Insets(0, 0, 0, 0),
@@ -266,6 +287,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             overflow     : "hidden",
             zIndex       : 0,
             displayed    : true,
+            ...(subclassDefaults ?? {}),
         } as TOptions;
 
         // Explicit state — starts empty. Only values the caller passed or that
@@ -277,6 +299,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // commonly forward this from `super({ tag: "..." })`.
         if (options?.tag !== undefined) {
             this._tag = options.tag;
+        } else if (this._defaultOptions.tag !== undefined) {
+            this._tag = this._defaultOptions.tag;
         }
 
         // Dispatch the caller-supplied options through virtual `applyOptions`.
@@ -330,14 +354,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.transition      !== undefined) this.setTransition(opts.transition);
         if (opts.willChange      !== undefined) this.setWillChange(opts.willChange);
         if (opts.opacity         !== undefined) this.setOpacity(opts.opacity);
-        if (opts.position        !== undefined) this.setPosition(opts.position);
         if (opts.overflow        !== undefined) this.setOverflow(opts.overflow);
         if (opts.pointerEvents   !== undefined) this.setPointerEvents(opts.pointerEvents);
         if (opts.touchAction     !== undefined) this.setTouchAction(opts.touchAction);
 
         if (opts.attributes !== undefined) {
-            for (const key of Object.keys(opts.attributes)) {
-                this.setAttribute(key, opts.attributes[key]);
+            // The options bag's `attributes` is a raw-HTML-attribute escape
+            // hatch — callers pass arbitrary attribute names (e.g.
+            // `placeholder`, `data-foo`, `aria-bar`) and expect a literal
+            // write. Stash on `_options.attributes` so `init()` can replay
+            // them when the element is created; write through immediately if
+            // the element already exists.
+            this._options.attributes = opts.attributes;
+
+            const element = this.getElement();
+            if (element) {
+                for (const key of Object.keys(opts.attributes)) {
+                    element.setAttribute(key, opts.attributes[key]);
+                }
             }
         }
 
@@ -503,19 +537,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param value - The attribute value. Passing null or undefined removes the attribute.
      *
      * @returns This component, for method chaining.
+     *
+     * @remarks Write-through to the element only — no internal cache. Setters
+     * that need their value to survive detached construction store it in
+     * their own specialized field (e.g. `_options.placeholder`,
+     * `_disabledAttribute`) and replay it from the subclass `init()` after
+     * the element is created.
      */
     protected setElementAttribute(key: string, value: Object | null | undefined): this {
+        if (value === null || value === undefined) {
+            return this.removeElementAttribute(key);
+        }
+
         let element = this.getElement();
         if (!element) {
-            //console.warn("Component #" + this.id + " is not yet in the DOM. Attribute '" + key + "' will not be set.");
             return this;
         }
 
-        if (value) {
-            element.setAttribute(key, String(value));
-        } else {
-            this.removeElementAttribute(key);
-        }
+        element.setAttribute(key, String(value));
 
         return this;
     }
@@ -530,7 +569,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     protected removeElementAttribute(key: string): this {
         let element = this.getElement();
         if (!element) {
-            //console.warn("Component #" + this.id + " is not yet in the DOM. Attribute '" + key + "' will not be removed.");
             return this;
         }
 
@@ -694,43 +732,69 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Returns a component-level attribute value from the internal attributes map.
+     * Returns a data attribute value from the component's cached `data-*`
+     * attribute map.
      *
-     * @param key - The attribute name.
+     * @param key - The attribute name (with or without the `data-` prefix).
      *
      * @returns The stored attribute value, or undefined if not set.
+     *
+     * @remarks Symmetric with {@link setDataAttribute}: the key is normalised
+     * with a leading `data-` (idempotent if already prefixed) before lookup.
      */
-    getAttribute(key: string) {
-        return this._attributes.get(key);
+    getDataAttribute(key: string) {
+        const dataKey = key.startsWith("data-") ? key : `data-${key}`;
+
+        return this._attributes.get(dataKey);
     }
 
     /**
-     * Stores a component-level attribute and mirrors it onto the DOM element.
+     * Stores a component-level data attribute and mirrors it as `data-<key>`
+     * on the DOM element.
      *
-     * @param key - The attribute name.
-     * @param value - The attribute value. Passing null delegates to delAttribute.
+     * @param key - The attribute name (with or without the `data-` prefix).
+     * @param value - The attribute value. Passing null delegates to {@link delDataAttribute}.
+     *
+     * @remarks `setDataAttribute` is for *data-carrying* attributes — debug
+     * markers, framework-internal identity reflection (`data-layout`), and
+     * other consumer-readable `data-*` tags. Behavioral HTML attributes the
+     * browser interprets (placeholder, readonly, inputmode, …) use the
+     * `setElementAttribute` low-level seam instead.
      */
-    setAttribute(key: string, value: string): this {
+    setDataAttribute(key: string, value: string): this {
         if (value === null) {
-            this.delAttribute(key);
+            this.delDataAttribute(key);
 
             return this;
         }
 
-        this._attributes.set(key, value);
-        this.setElementAttribute(key, value);
+        const dataKey = key.startsWith("data-") ? key : `data-${key}`;
+
+        this._attributes.set(dataKey, value);
+
+        let element = this.getElement();
+        if (element) {
+            element.setAttribute(dataKey, value);
+        }
 
         return this;
     }
 
     /**
-     * Removes a component-level attribute from both the internal map and the DOM element.
+     * Removes a component-level data attribute from both the internal map and
+     * the DOM element.
      *
-     * @param key - The attribute name to remove.
+     * @param key - The attribute name (with or without the `data-` prefix).
      */
-    delAttribute(key: string): this {
-        this._attributes.delete(key);
-        this.removeElementAttribute(key);
+    delDataAttribute(key: string): this {
+        const dataKey = key.startsWith("data-") ? key : `data-${key}`;
+
+        this._attributes.delete(dataKey);
+
+        let element = this.getElement();
+        if (element) {
+            element.removeAttribute(dataKey);
+        }
 
         return this;
     }
@@ -850,7 +914,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     setInsets(insets: Insets): this {
         this._options.insets = insets;
-        this.setAttribute("insets", insets.render());
+        this.setDataAttribute("insets", insets.render());
 
         return this;
     }
@@ -867,7 +931,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     clearInsets(): this {
         const insets = new Insets(0, 0, 0, 0);
         this._options.insets = insets;
-        this.setAttribute("insets", insets.render());
+        this.setDataAttribute("insets", insets.render());
 
         return this;
     }
@@ -1497,7 +1561,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const next: Size = { width, height };
         this._options.preferredSize = next;
-        this.setAttribute("preferredSize", next.width + " " + next.height);
+        this.setDataAttribute("preferredSize", next.width + " " + next.height);
         this._onPreferredSizeChange?.();
 
         return this;
@@ -1634,7 +1698,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             maxHeight: next.height === Number.MAX_VALUE ? "none" : next.height + "px"
         });
 
-        this.setAttribute("maxSize", next.width + " " + next.height);
+        this.setDataAttribute("maxSize", next.width + " " + next.height);
 
         return this;
     }
@@ -2082,26 +2146,38 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Returns the CSS position mode for this component.
      *
-     * @returns The current Position value (e.g. Position.ABSOLUTE).
+     * @returns The current Position value; defaults to `Position.ABSOLUTE`.
+     *
+     * @remarks Position is framework-internal — see [`setPosition`](/api/core/classes/Component#setposition).
+     * Application code never needs to read or set it.
      */
-    getPosition(): Position {
-        return (this._options.position ?? Position.ABSOLUTE) as Position;
+    protected getPosition(): Position {
+        return this._position;
     }
 
     /**
-     * Sets the CSS position mode and updates the component's CSS rule.
+     * Framework-internal CSS position setter. Application code should NOT
+     * call this — every framework component is positioned absolutely, and
+     * layout managers compute child coordinates against the parent's padding
+     * box on that assumption. See [ARCHITECTURE.md](../../../ARCHITECTURE.md)
+     * §Positioning for the rationale.
      *
-     * @param position - The CSS position mode to apply (e.g. Position.ABSOLUTE, Position.STATIC).
+     * Subclasses MAY call this with [`Position.FIXED`](/api/primitive/enums/Position#FIXED)
+     * when they are floating overlays anchored to the viewport
+     * ([`AnimatedDropdown`](/api/core/classes/AnimatedDropdown),
+     * [`Popover`](/api/core/classes/Popover), [`Notification`](/api/core/classes/Notification),
+     * [`Dialog`](/api/core/classes/Dialog), [`DialogBackdrop`](/api/core/classes/DialogBackdrop))
+     * or with [`Position.STATIC`](/api/primitive/enums/Position#STATIC) when
+     * the element's HTML semantics require in-flow rendering
+     * ([`Legend`](/api/component/container/classes/Legend) needs the notch in
+     * the parent fieldset border).
+     *
+     * @param position - The CSS position mode to apply.
      *
      * @returns This component, for method chaining.
      */
-    setPosition(position: Position): this {
-        this._options.position = position;
-
-        let element = this.getElement();
-        if (!element) {
-            return this;
-        }
+    protected setPosition(position: Position): this {
+        this._position = position;
 
         this.setElementCSSRule("position", position);
 
@@ -2139,21 +2215,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Removes the explicit position override from the component's CSS rule.
-     * The framework default (`Position.ABSOLUTE`) reported by {@link getPosition}
-     * remains in effect.
+     * Restores the framework default (`Position.ABSOLUTE`). Framework-internal
+     * companion to [`setPosition`](/api/core/classes/Component#setposition) —
+     * application code does not need this.
      *
      * @returns This component, for method chaining.
      */
-    clearPosition(): this {
-        if (this._options.position === undefined) {
-            return this;
-        }
-
-        this._options.position = undefined;
-        this.setElementCSSRule("position", null);
-
-        return this;
+    protected clearPosition(): this {
+        return this.setPosition(Position.ABSOLUTE);
     }
 
     /**
@@ -2436,9 +2505,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._disabledAttribute = value;
 
         if (value) {
-            this.setAttribute("disabled", "");
+            this.setElementAttribute("disabled", "");
         } else {
-            this.delAttribute("disabled");
+            this.removeElementAttribute("disabled");
         }
 
         return this;
@@ -2721,18 +2790,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.ensureCSSRule();
 
         // Read through the default-options fallback so class-level defaults
-        // (position, cursor, insets, padding, minSize/maxSize, overflow,
-        // displayed, zIndex) reach the DOM even when no setter has fired —
-        // `_options` is empty for any field the caller didn't supply.
+        // (cursor, insets, padding, minSize/maxSize, overflow, displayed,
+        // zIndex) reach the DOM even when no setter has fired — `_options`
+        // is empty for any field the caller didn't supply.
         const opts = { ...this._defaultOptions, ...this._options };
 
         if (this._boxSizing) {
             this._styleRule.set("boxSizing", this._boxSizing);
         }
 
-        if (opts.position) {
-            this._styleRule.set("position", opts.position);
-        }
+        this._styleRule.set("position", this._position);
 
         if (opts.visible != null) {
             this._styleRule.set("visibility", opts.visible ? "visible" : "hidden");
@@ -2788,7 +2855,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (maxSize) {
             this._styleRule.set("maxWidth",  maxSize.width  === Number.MAX_VALUE ? "none" : maxSize.width  + "px");
             this._styleRule.set("maxHeight", maxSize.height === Number.MAX_VALUE ? "none" : maxSize.height + "px");
-            this.setAttribute("maxSize", maxSize.width + " " + maxSize.height);
+            this.setDataAttribute("maxSize", maxSize.width + " " + maxSize.height);
         }
 
         if (this._overflowX !== null) {
@@ -2844,7 +2911,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (opts.insets) {
-            this.setAttribute("insets", opts.insets.render());
+            this.setDataAttribute("insets", opts.insets.render());
         }
 
         this._styleRule.set("margin", "0px 0px 0px 0px");
@@ -3145,7 +3212,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             layoutManager.attach(this);
         }
 
-        this.setAttribute("layout", layoutManager.getClassName());
+        // `callable()`-wrapped classes report their underscored alias
+        // (`_HBox`) through `constructor.name`; strip the leading underscore
+        // so DevTools shows `data-layout="HBox"` rather than `_HBox`.
+        this.setDataAttribute("layout", layoutManager.getClassName().replace(/^_/, ""));
 
         return this;
     }
@@ -3288,6 +3358,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         for (const [key, value] of this._attributes) {
             if (value != null) {
                 element.setAttribute(key.valueOf(), value.valueOf());
+            }
+        }
+
+        if (this._disabledAttribute) {
+            element.setAttribute("disabled", "");
+        }
+
+        if (this._options.attributes) {
+            for (const key of Object.keys(this._options.attributes)) {
+                element.setAttribute(key, this._options.attributes[key]);
             }
         }
 

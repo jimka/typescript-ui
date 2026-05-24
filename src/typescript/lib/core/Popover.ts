@@ -732,7 +732,6 @@ class Popover extends Panel<PopoverOptions> {
         const arrow = new Component();
         const size  = DEFAULT_ARROW_SIZE_PX;
 
-        arrow.setPosition(Position.ABSOLUTE);
         arrow.setBackgroundColor("var(--ts-ui-popover-bg, rgb(255, 255, 255))");
         arrow.setWidth(size);
         arrow.setHeight(size);

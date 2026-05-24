@@ -2,23 +2,22 @@
 
 import { callable, Component } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
-import { Fit, HBox, Tab, VBox } from '@jimka/typescript-ui/layout';
+import { Fit, HBox, VBox } from '@jimka/typescript-ui/layout';
 import { Text } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
-/**
- * Demonstrates the Tab layout manager with both normal and closeable tabs,
- * including programmatic tab addition and a close-event log.
- */
-class TabPanel extends Component {
+import { TabPanel } from '@jimka/typescript-ui/component/container';
 
-    private tabContainer: Component;
-    private tabLayout: Tab;
-    private logText: Text;
+/**
+ * Demonstrates the framework {@link TabPanel} (a Panel subclass that wraps
+ * the Tab layout manager) with both normal and closeable tabs, programmatic
+ * tab addition, and a close-event log.
+ */
+class TabDemoPanel extends Component {
+
+    private tabPanel:   TabPanel;
+    private logText:    Text;
     private tabCounter: number;
 
-    /**
-     * Creates the TabPanel demo with a control toolbar, a tabbed area, and a close-event log.
-     */
     constructor() {
         super();
 
@@ -39,21 +38,21 @@ class TabPanel extends Component {
 
         this.addComponent(toolbar);
 
-        // --- Tab container ---
-        this.tabContainer = new Component({ preferredSize: { width: 0, height: 300 } });
-        this.tabLayout = new Tab({
+        // --- TabPanel ---
+        this.tabPanel = new TabPanel({
+            preferredSize: { width: 0, height: 300 },
+            tabs: [
+                { label: "Alpha", component: this.buildContent("Alpha") },
+                { label: "Beta",  component: this.buildContent("Beta"),  closeable: true },
+                { label: "Gamma", component: this.buildContent("Gamma"), closeable: true },
+            ],
             onTabClose: (component: Component) => {
                 this.logText.setText(`Closed: ${component.getId()}`);
                 this.doLayout();
             },
         });
-        this.tabContainer.setLayoutManager(this.tabLayout);
 
-        this.tabContainer.addComponent(this.buildContent("Alpha"), { name: "Alpha" });
-        this.tabContainer.addComponent(this.buildContent("Beta"), { name: "Beta", closeable: true });
-        this.tabContainer.addComponent(this.buildContent("Gamma"), { name: "Gamma", closeable: true });
-
-        this.addComponent(this.tabContainer);
+        this.addComponent(this.tabPanel);
 
         // --- Log row ---
         const logRow = new Component({ preferredSize: { width: 0, height: 28 } });
@@ -70,14 +69,14 @@ class TabPanel extends Component {
         addNormalBtn.addActionListener(() => {
             this.tabCounter += 1;
             const label = `Tab ${this.tabCounter}`;
-            this.tabContainer.addComponent(this.buildContent(label), { name: label });
+            this.tabPanel.addTab(this.buildContent(label), label);
             this.doLayout();
         });
 
         addCloseableBtn.addActionListener(() => {
             this.tabCounter += 1;
             const label = `Tab ${this.tabCounter}`;
-            this.tabContainer.addComponent(this.buildContent(label), { name: label, closeable: true });
+            this.tabPanel.addTab(this.buildContent(label), label, { closeable: true });
             this.doLayout();
         });
     }
@@ -101,9 +100,9 @@ class TabPanel extends Component {
     }
 }
 
-const TabPanelCallable = callable(TabPanel);
-type TabPanelCallable = TabPanel;
+const TabDemoPanelCallable = callable(TabDemoPanel);
+type TabDemoPanelCallable = TabDemoPanel;
 export {
-    TabPanel         as _TabPanel,
-    TabPanelCallable as TabPanel
+    TabDemoPanel         as _TabDemoPanel,
+    TabDemoPanelCallable as TabDemoPanel
 };

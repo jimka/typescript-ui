@@ -2,25 +2,26 @@
 
 import { callable, Component, Panel } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
-import { Accordion, AccordionConstraints, Fit, HBox, VBox } from '@jimka/typescript-ui/layout';
+import { Fit, HBox, VBox } from '@jimka/typescript-ui/layout';
 import { Checkbox, Text, TextField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { List } from '@jimka/typescript-ui/component/list';
+import { AccordionPanel } from '@jimka/typescript-ui/component/container';
+
 /**
- * Demonstrates the Accordion layout manager with multiple collapsible sections,
+ * Demonstrates the framework {@link AccordionPanel} (a Panel subclass that
+ * wraps the Accordion layout manager) with multiple collapsible sections,
  * programmatic open/close controls, and single-open mode toggling.
  */
-class AccordionPanel extends Panel {
+class AccordionDemoPanel extends Panel {
 
-    private accordion: Accordion;
+    private accordion:        AccordionPanel;
     private singleOpenToggle: Button;
 
     constructor() {
         super();
 
         // VBox with stretching so children fill the full container width.
-        // Without stretching, VBox uses size.width from setPreferredSize, which
-        // would give 0 width when only the height is meaningful.
         this.setLayoutManager(new VBox({ stretching: true }));
 
         // --- Controls toolbar ---
@@ -38,23 +39,20 @@ class AccordionPanel extends Panel {
 
         this.addComponent(toolbar);
 
-        // --- Accordion ---
-        const accordionContainer = new Component();
-
-        // Re-layout the outer VBox whenever a section toggles so the accordion
-        // container resizes to match the new total preferred height.
-        this.accordion = new Accordion({
+        // --- AccordionPanel ---
+        this.accordion = new AccordionPanel({
+            sections: [
+                { label: "Personal Info", component: this.buildInfoSection(),        initiallyOpen: true },
+                { label: "Preferences",   component: this.buildPreferencesSection() },
+                { label: "Recent Items",  component: this.buildListSection()        },
+                { label: "About",         component: this.buildAboutSection()       },
+            ],
+            // Re-layout the outer VBox whenever a section toggles so the
+            // accordion resizes to match the new total preferred height.
             onSectionToggle: () => { this.doLayout(); },
         });
-        accordionContainer.setLayoutManager(this.accordion);
 
-        // Section 1: open by default
-        accordionContainer.addComponent(this.buildInfoSection(), new AccordionConstraints('Personal Info', true));
-        accordionContainer.addComponent(this.buildPreferencesSection(), new AccordionConstraints('Preferences'));
-        accordionContainer.addComponent(this.buildListSection(), new AccordionConstraints('Recent Items'));
-        accordionContainer.addComponent(this.buildAboutSection(), new AccordionConstraints('About'));
-
-        this.addComponent(accordionContainer);
+        this.addComponent(this.accordion);
 
         // --- Wire controls ---
         openAllBtn.addActionListener(() => {
@@ -197,9 +195,9 @@ class AccordionPanel extends Panel {
     }
 }
 
-const AccordionPanelCallable = callable(AccordionPanel);
-type AccordionPanelCallable = AccordionPanel;
+const AccordionDemoPanelCallable = callable(AccordionDemoPanel);
+type AccordionDemoPanelCallable = AccordionDemoPanel;
 export {
-    AccordionPanel         as _AccordionPanel,
-    AccordionPanelCallable as AccordionPanel
+    AccordionDemoPanel         as _AccordionDemoPanel,
+    AccordionDemoPanelCallable as AccordionDemoPanel
 };
