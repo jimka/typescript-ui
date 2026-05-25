@@ -71,25 +71,13 @@ When `touches-shared` is non-empty: edit each shared file last; one atomic commi
 
 In worktree mode, before declaring done: `git fetch origin && git rebase origin/master`. Resolve any conflicts in the worktree and re-run typecheck + `docs:build` + smoke. Don't return a branch that won't merge.
 
-## Expert review
+## Audit
 
-Before declaring done, spawn a sub-agent to review the implementation with a fresh context window. The review must be independent: the sub-agent gets only the plan path and branch name, not your reasoning or summary of what you did.
+Before declaring done, run the [`audit`](../audit/SKILL.md) skill to get an independent fresh-context review of the implementation. Pass the target as **implemented plan + branch**: plan path `plans/implemented/<slug>.md` and branch `feature/<slug>`. Follow the audit skill's spawn protocol and prompt template — do not inline your own.
 
-Invocation: `Agent({ subagent_type: "general-purpose", description: "Implementation review", prompt: <below> })`.
-
-Prompt template:
-
-> Review the implementation of plan `plans/implemented/<slug>.md` on branch `feature/<slug>`. Start by reading the plan in full, then read `CODE_CONVENTIONS.md` and `.claude/skills/_shared/docs-conventions.md` for the project's authoritative rules. Then run `git diff master...HEAD` and audit the diff against those rules. Verify every entry in the plan's Ordered Implementation Steps and Files to Create/Modify/Delete table is addressed.
->
-> Return two lists, citing file paths and line numbers:
-> - **BLOCKING:** correctness bugs, missing plan items, framework-rule violations, regressions, type errors, doc-build breakage.
-> - **ADVISORY:** style nits, refactor opportunities, future-work observations.
->
-> Do not fix anything. Report only.
-
-On return:
+Implementation-specific handling of the returned report:
 - BLOCKING empty → proceed to _Pre-termination checklist_.
-- BLOCKING non-empty → fix each issue in a follow-up commit (separate from the original three-commit structure), then re-spawn a fresh reviewer. Hard cap: 3 review cycles. If still not converging, stop and surface the remaining findings to the user.
+- BLOCKING non-empty → fix each issue in a follow-up commit (separate from the original three-commit structure), then re-run the audit. Hard cap: 3 audit cycles. If still not converging, stop and surface the remaining findings to the user.
 
 ## Post-edit verification
 
@@ -106,8 +94,8 @@ Walk this list before yielding control. Any unchecked item means you are not don
 - [ ] Plan file is at `plans/implemented/<slug>.md`
 - [ ] `npx tsc --noEmit` reports 0 errors
 - [ ] `npm run docs:build` reports 0 errors and 0 link warnings (typedoc's "unsupported TypeScript version" notice is acceptable)
-- [ ] Expert review returned no BLOCKING issues on the most recent cycle
-- [ ] Commits follow the `commit` skill's bucket structure (code / docs / tooling / bookkeeping), plus any review-fix commits
+- [ ] Audit returned no BLOCKING issues on the most recent cycle
+- [ ] Commits follow the `commit` skill's bucket structure (code / docs / tooling / bookkeeping), plus any audit-fix commits
 - [ ] If in worktree mode: rebase-clean checkpoint passed
 
 If any item is unchecked, resume at the appropriate step. Do not stop just because the last file write succeeded or the last command returned cleanly.
@@ -131,5 +119,5 @@ If any item is unchecked, resume at the appropriate step. Do not stop just becau
    10. Move plan from `plans/in-progress/` to `plans/implemented/`. Commit as bookkeeping.
    11. Update `docs/` per the rules in `_shared/docs-conventions.md`.
    12. Run _Rebase-clean checkpoint_.
-   13. Run _Expert review_. Fix any BLOCKING findings and re-review until clean.
+   13. Run _Audit_. Fix any BLOCKING findings and re-audit until clean.
    14. Walk _Pre-termination checklist_. Yield only when every item is checked.
