@@ -24,6 +24,7 @@ export { DatePickerDropdown } from '~/component/input/DatePickerDropdown.js';
 export type { DatePickerDropdownOptions } from '~/component/input/DatePickerDropdown.js';
 export { TimePickerDropdown } from '~/component/input/TimePickerDropdown.js';
 export type { TimePickerDropdownOptions } from '~/component/input/TimePickerDropdown.js';
+export { PickerCell, PickerCellList, PickerColumn } from '~/component/input/PickerColumn.js';
 export { DateTimePickerDropdown } from '~/component/input/DateTimePickerDropdown.js';
 export type { DateTimePickerDropdownOptions } from '~/component/input/DateTimePickerDropdown.js';
 export { PasswordField } from '~/component/input/PasswordField.js';

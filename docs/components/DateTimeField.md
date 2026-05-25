@@ -30,10 +30,27 @@ panel.addComponent(startsAt);
 | `setEnabled(boolean)` / `setReadOnly(boolean)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); both forward to the inner [`PickerInput`](/api/component/input/classes/PickerInput). |
 | `setDropdownAnimated(boolean)` | Toggle the fade animation on the dropdown. |
 
+## Construction-time options
+
+| Option | Type | Purpose |
+| --- | --- | --- |
+| `showSeconds` | `boolean` | When `true`, the field formats and the picker exposes seconds. Default: `false`. |
+| `minDate` | `Date \| null` | Earliest date the picker will allow selection of. Years outside the bound are hidden from the year scroller and out-of-range days render dim and ignore clicks. Optional. |
+| `maxDate` | `Date \| null` | Latest date the picker will allow selection of. Same semantics as `minDate`. Optional. |
+
+## Navigation
+
+The dropdown header carries three navigation affordances:
+
+- **Month chevrons** `<` and `>` step `±1` month at a time.
+- **Header label** ("May 2026") is a button: click it to swap the day grid for an in-place year scroller. The time row stays visible the entire time. Click a year to return; press `Escape` to return without changing the year.
+- **Type-ahead** inside the year scroller: typing four digits jumps to that year. The buffer resets after a brief idle pause.
+
+Keyboard inside the day grid: arrow keys move the highlight (`±1` day / `±7` days), `PageUp`/`PageDown` advance by month, `Home`/`End` jump to the first / last in-range day, `Enter` or `Space` commits the highlighted day. Inside the year scroller the same arrow / Page / Home / End semantics walk the year list (`PageUp`/`PageDown` step `±10` years).
+
 ## Notes
 
 - The dropdown stacks a month-view calendar over an hour/minute selector. Updates fire incrementally — every day/hour/minute click fires `input` with the latest aggregate value.
-- The dropdown is intentionally minimal — extend [`DateTimePickerDropdown`](/api/component/input/classes/DateTimePickerDropdown) for navigation, locale-aware grouping, or seconds support.
 
 ## See also
 

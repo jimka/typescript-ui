@@ -771,7 +771,12 @@ class MiscPanel extends Panel {
         });
         fieldsRow.addComponent(animatedCombo);
 
-        const animatedDate = new DateField();
+        const animatedDate = new DateField({
+            // Bounded range exercises the year-scroller and disabled-day rendering
+            // in the picker dropdown — see plans/implemented/datepicker-year-selection.md.
+            minDate: new Date(2000, 0, 1),
+            maxDate: new Date(2030, 11, 31),
+        });
         fieldsRow.addComponent(animatedDate);
 
         const animatedTime = new TimeField({ showSeconds: true });
