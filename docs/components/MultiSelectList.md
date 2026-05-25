@@ -1,48 +1,59 @@
 # MultiSelectList
 
-[`MultiSelectList`](/api/component/list/classes/MultiSelectList) is a multi-selection list box backed by `<select multiple>`. Extends [`List`](/components/List) with `getValues()` / `setValues()` for reading and writing the multi-selection state.
+[`MultiSelectList`](/api/component/list/classes/MultiSelectList) is a multi-selection list box rendered as a `<div role="listbox" aria-multiselectable="true">` populated with `<div role="option">` rows. It implements [`Bindable<string[]>`](/api/core/interfaces/Bindable) so it can be plugged into a [`Binding`](/api/core/classes/Binding) directly.
 
 ## Usage
 
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
-import { Option } from '@jimka/typescript-ui/component/input';
 import { MultiSelectList } from '@jimka/typescript-ui/component/list';
 const tags = MultiSelectList();
-tags.addItem(Option('urgent',     'Urgent'));
-tags.addItem(Option('blocked',    'Blocked'));
-tags.addItem(Option('reviewed',   'Reviewed'));
-tags.addItem(Option('inProgress', 'In progress'));
+tags.setItems(['Urgent', 'Blocked', 'Reviewed', 'In progress']);
 tags.setPreferredSize(180, 120);
 
 Event.addListener(tags, 'change', () => {
-    console.log('selected:', tags.getValues());
+    console.log('selected:', tags.getValue());
 });
 
 panel.addComponent(tags);
 ```
 
+## Selection model
+
+| Gesture | Behaviour |
+|---|---|
+| Plain click / `Enter` / `Space` | Replace the selection with the targeted row. |
+| `Ctrl`-click (or `Cmd` on macOS) | Toggle the targeted row's selection without affecting others. |
+| `Shift`-click | Extend the selection from the anchor row to the targeted row. |
+| `Shift`-`ArrowUp` / `Shift`-`ArrowDown` | Extend the selection by one row. |
+| `Ctrl`-`ArrowUp` / `Ctrl`-`ArrowDown` | Move focus without changing selection. |
+| `Ctrl`-`A` | Select every row. |
+
 ## Common methods
 
 | Method | Purpose |
 | --- | --- |
-| `getValues()` | Returns the selected option values as a string array. |
-| `setValues(values[])` | Programmatically select the given option values. |
+| `getValue()` | Returns the selected row keys as a string array. |
+| `setValues(values[])` | Programmatically select the rows whose keys appear in `values`. |
+| `getSelectedRecords()` | When a store is bound, returns the selected [`ModelRecord`](/api/data/classes/ModelRecord) instances. |
+| `setSelectedRecords(records)` | Programmatically select the rows whose backing records appear in `records`. |
 
 ## Binding
 
-Because `MultiSelectList` does not implement [`Bindable`](/api/core/interfaces/Bindable) directly (its value type is `string[]` rather than a single string), wire it via [explicit accessors](/data/binding#explicit-accessors):
+`MultiSelectList` implements [`Bindable<string[]>`](/api/core/interfaces/Bindable) directly, so a [`Binding`](/api/core/classes/Binding) can wire it without explicit accessors:
 
 ```typescript
-new Binding().bind('tags', tagsList, {
-    get:    () => tagsList.getValues(),
-    set:    (values) => tagsList.setValues(values ?? []),
-    listen: (fn) => tagsList.addBindingListener(fn),
-});
+new Binding().bind('tags', tagsList);
 ```
+
+The binding reads / writes `string[]` — the array of selected row keys, in row order.
+
+## Theme tokens
+
+`MultiSelectList` shares the [`Theme.list`](/api/core/interfaces/Theme) tokens with [`List`](/components/List); a theme that customises the row chrome of one component automatically gets the matching look on the other.
 
 ## See also
 
 - [API: MultiSelectList](/api/component/list/classes/MultiSelectList)
 - [`List`](/components/List) — single-selection variant
-- [Data binding › Explicit accessors](/data/binding#explicit-accessors)
+- [Data binding](/data/binding)
