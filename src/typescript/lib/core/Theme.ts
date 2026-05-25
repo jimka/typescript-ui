@@ -331,6 +331,19 @@ export interface Theme {
         };
     };
 
+    list: {
+        background: string;
+        border    : string;
+        row: {
+            hoverBackground   : string;
+            selectedBackground: string;
+            selectedColor     : string;
+            focusRing         : string;
+            disabledColor     : string;
+            separator         : string;
+        };
+    };
+
     dropdown: {
         fade: {
             duration : string;
@@ -578,6 +591,23 @@ export const DefaultTheme: Theme = {
             disabledColor      : 'rgb(170, 170, 170)',
         },
     },
+    // Defaults mirror `autoComplete` numerically because both surfaces present
+    // selectable rows; a theme that customises one gets the other matching
+    // automatically. `row.separator` defaults to `transparent` so the visual
+    // matches the prior native `<select>` (no row hairlines); themes can opt
+    // in to a denser look by overriding to a `1px solid rgba(...)` colour.
+    list: {
+        background: 'rgb(255, 255, 255)',
+        border    : 'rgb(200, 200, 200)',
+        row: {
+            hoverBackground   : 'rgba(30, 100, 200, 0.08)',
+            selectedBackground: 'rgba(30, 100, 200, 0.18)',
+            selectedColor     : 'inherit',
+            focusRing         : 'rgb(30, 100, 200)',
+            disabledColor     : 'rgb(170, 170, 170)',
+            separator         : 'transparent',
+        },
+    },
     dropdown: {
         fade: { duration: '120ms', translate: '4px' },
     },
@@ -820,6 +850,20 @@ export const DarkTheme: Theme = {
             disabledColor      : 'rgb(100, 100, 100)',
         },
     },
+    // Dark defaults track `autoComplete` for the same hover/selected hues so
+    // the row chrome stays consistent across the two popover surfaces.
+    list: {
+        background: 'rgb(40, 40, 40)',
+        border    : 'rgb(80, 80, 80)',
+        row: {
+            hoverBackground   : 'rgba(100, 140, 220, 0.12)',
+            selectedBackground: 'rgba(100, 140, 220, 0.28)',
+            selectedColor     : 'rgb(220, 220, 255)',
+            focusRing         : 'rgb(120, 170, 240)',
+            disabledColor     : 'rgb(100, 100, 100)',
+            separator         : 'transparent',
+        },
+    },
     dropdown: {
         fade: { duration: '120ms', translate: '4px' },
     },
@@ -974,6 +1018,14 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-autocomplete-item-highlight-bg'   : theme.autoComplete.item.highlightBackground,
         '--ts-ui-autocomplete-item-highlight-color': theme.autoComplete.item.highlightColor,
         '--ts-ui-autocomplete-item-disabled-color' : theme.autoComplete.item.disabledColor,
+        '--ts-ui-list-bg'                          : theme.list.background,
+        '--ts-ui-list-border'                      : theme.list.border,
+        '--ts-ui-list-row-hover-bg'                : theme.list.row.hoverBackground,
+        '--ts-ui-list-row-selected-bg'             : theme.list.row.selectedBackground,
+        '--ts-ui-list-row-selected-color'          : theme.list.row.selectedColor,
+        '--ts-ui-list-row-focus-ring'              : theme.list.row.focusRing,
+        '--ts-ui-list-row-disabled-color'          : theme.list.row.disabledColor,
+        '--ts-ui-list-row-separator'               : theme.list.row.separator,
         '--ts-ui-dropdown-fade-duration'           : theme.dropdown.fade.duration,
         '--ts-ui-dropdown-fade-translate'          : theme.dropdown.fade.translate,
         '--ts-ui-menu-bar-bg'                      : theme.menuBar.background,

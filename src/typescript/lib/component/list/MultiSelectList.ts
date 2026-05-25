@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { List, ListOptions } from "~/component/list/List.js";
+import { AbstractCustomList, AbstractCustomListOptions } from "~/component/list/AbstractCustomList.js";
+import { Bindable } from "~/core/Bindable.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { callable } from "~/core/Callable.js";
 
@@ -9,120 +10,155 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export interface MultiSelectListOptions extends ListOptions {
+export interface MultiSelectListOptions extends AbstractCustomListOptions {
     selectedIndices?: number[];
 }
 
 /**
- * A multi-selection list box backed by a `<select multiple>` element.
+ * A scrollable multi-selection list box.
  *
- * Extends [`List`](/api/component/list/classes/List) with `getValues()` / `setValues()` for reading and writing
- * multi-selection state. Use explicit [`BindingAccessors`](/api/core/interfaces/BindingAccessors) when wiring to a
- * [`Binding`](/api/core/classes/Binding) instance.
+ * Rendered as a `<div role="listbox" aria-multiselectable="true">`
+ * populated with `<div role="option">` rows. Implements
+ * [`Bindable<string[]>`](/api/core/interfaces/Bindable) so it can be
+ * plugged into a [`Binding`](/api/core/classes/Binding) directly — earlier
+ * versions required explicit `BindingAccessors` because the single-value
+ * `Bindable<string>` contract didn't fit. Selection follows the
+ * standard modifier-key model:
+ *
+ * - Plain click / Enter / Space replaces the selection with the
+ *   clicked row.
+ * - Ctrl-click (Cmd on macOS) / Ctrl+Space toggles the clicked row's
+ *   selection.
+ * - Shift-click / Shift+Arrow extends the selection from the anchor
+ *   row to the targeted row.
  *
  * @category Components
  */
-class MultiSelectList extends List<MultiSelectListOptions> {
+class MultiSelectList extends AbstractCustomList<string[], MultiSelectListOptions> implements Bindable<string[]> {
 
+    /**
+     * @param options - Optional. Construction-time options applied to
+     *   the list.
+     */
     constructor(options?: MultiSelectListOptions) {
         super(options);
 
-        // Late-built state: `selectedIndices` was written pure to `_options` by
-        // the super-time cascade. Dispatch it now that `ComboBox`'s constructor
-        // body has populated `this.items` from `items` / `store`.
-        if (this._options.selectedIndices !== undefined) {
-            const element = this.getElement();
-            if (element) {
-                const indexSet = new Set(this._options.selectedIndices);
+        this.getAria().setMultiselectable(true);
 
-                for (let i = 0; i < element.options.length; i++) {
-                    element.options[i].selected = indexSet.has(i);
-                }
-            }
+        // Late-built state: `selectedIndices` was written pure to
+        // `_options` by the super-time cascade. Dispatch it now that the
+        // row pool exists (`super()` already populated `_items` from
+        // `items` / `store`).
+        if (this._options.selectedIndices !== undefined) {
+            this.applyInitialSelection(this._options.selectedIndices);
+        }
+
+        if (this._options.enabled !== undefined) {
+            this.applyEnabled(this._options.enabled);
+        }
+
+        if (this._options.readOnly !== undefined) {
+            this.applyReadOnly(this._options.readOnly);
         }
     }
 
     /**
-     * Writes the multi-select `selectedIndices` field pure into `_options`; the
-     * constructor body dispatches it after items are populated.
+     * Applies a {@link MultiSelectListOptions} bag. Multi-select state
+     * fields are written pure into `_options` here and dispatched from the
+     * constructor body after the row pool is built.
      *
      * @param options - The options bag carrying the values to apply.
+     *
+     * @returns This component, for method chaining.
      */
     protected applyOptions(options: MultiSelectListOptions): this {
         super.applyOptions(options);
 
         const opts = { ...this._defaultOptions, ...options } as MultiSelectListOptions;
 
-        if (opts.selectedIndices !== undefined) {
-            this._options.selectedIndices = opts.selectedIndices;
-        }
+        if (opts.selectedIndices !== undefined) this._options.selectedIndices = opts.selectedIndices;
 
         return this;
     }
 
     /**
-     * Returns the currently selected option values.
+     * Replaces the selection with the rows whose keys appear in
+     * `values`. Programmatic — does not fire the `change` event; user-
+     * driven gestures route through the click / keyboard reducer
+     * instead.
      *
-     * @returns An array of selected option value strings, in DOM order.
-     */
-    getValues(): string[] {
-        const element = this.getElement();
-        if (!element) {
-            return [];
-        }
-
-        const result: string[] = [];
-
-        for (const option of Array.from(element.selectedOptions)) {
-            result.push(option.value);
-        }
-
-        return result;
-    }
-
-    /**
-     * Selects the options whose values appear in the given array, deselecting all others.
+     * @param values - The row keys to select.
      *
-     * @param values - The option values to select.
+     * @returns This component, for method chaining.
      */
     setValues(values: string[]): this {
-        const element = this.getElement();
-        if (!element) {
-            return this;
-        }
-
         const valueSet = new Set(values);
 
-        for (const option of Array.from(element.options)) {
-            option.selected = valueSet.has(option.value);
+        this._selectedSet.clear();
+
+        for (let i = 0; i < this._items.length; i++) {
+            if (valueSet.has(this._items[i].key)) {
+                this._selectedSet.add(i);
+            }
         }
+
+        // Park the anchor at the last selected index when there is one,
+        // so a follow-up Shift-arrow extends from a sensible position.
+        if (this._selectedSet.size > 0) {
+            this._anchorIndex = Math.max(...this._selectedSet);
+        } else {
+            this._anchorIndex = null;
+        }
+
+        this.refreshRowVisualState();
+        this.updateActiveDescendant();
 
         return this;
     }
 
     /**
-     * Returns the store records that correspond to the currently selected options.
+     * `Bindable<string[]>` write-side — alias of {@link setValues}.
      *
-     * Relies on `getItems()` and `store.getRecords()` being in the same order,
-     * which is guaranteed by `ComboBox.refreshFromStore()`.
+     * @param value - The row keys to select.
      *
-     * @returns An array of selected [`ModelRecord`](/api/data/classes/ModelRecord) instances, or an empty array if no store is bound.
+     * @returns This component, for method chaining.
+     */
+    setValue(value: string[]): this {
+        return this.setValues(value);
+    }
+
+    /**
+     * Returns the keys of every currently selected row, sorted by row
+     * order. Satisfies the `Bindable<string[]>` read-side.
+     *
+     * @returns The selected row keys.
+     */
+    getValue(): string[] {
+        const indices = [...this._selectedSet].sort((a, b) => a - b);
+
+        return indices.map(i => this._items[i].key);
+    }
+
+    /**
+     * Returns the store records that correspond to the currently
+     * selected rows.
+     *
+     * @returns The selected [`ModelRecord`](/api/data/classes/ModelRecord)
+     *   instances in row order, or an empty array when no store is bound.
      */
     getSelectedRecords(): ModelRecord[] {
         const store = this.getStore();
+
         if (!store) {
             return [];
         }
 
-        const selected = new Set(this.getValues());
-        const records  = store.getRecords();
-        const items    = this.getItems();
+        const records = store.getRecords();
+        const indices = [...this._selectedSet].sort((a, b) => a - b);
         const result: ModelRecord[] = [];
 
-        for (let i = 0; i < items.length && i < records.length; i++) {
-            const optionEl = items[i].getElement() as HTMLOptionElement | undefined;
-
-            if (optionEl && selected.has(optionEl.value)) {
+        for (const i of indices) {
+            if (i < records.length) {
                 result.push(records[i]);
             }
         }
@@ -131,49 +167,182 @@ class MultiSelectList extends List<MultiSelectListOptions> {
     }
 
     /**
-     * Selects the options that correspond to the given store records, deselecting all others.
-     *
-     * Relies on `getItems()` and `store.getRecords()` being in the same order,
-     * which is guaranteed by `ComboBox.refreshFromStore()`.
+     * Replaces the selection with the rows whose backing records appear
+     * in `records`. Relies on the parallel ordering of `_items` and
+     * `store.getRecords()` that the store-bound refresh guarantees — see
+     * [`setStore`](/api/component/list/classes/MultiSelectList#setstore).
      *
      * @param records - The store records to select.
+     *
+     * @returns This component, for method chaining.
      */
     setSelectedRecords(records: ModelRecord[]): this {
         const store = this.getStore();
+
         if (!store) {
             return this;
         }
 
         const recordSet    = new Set(records);
         const storeRecords = store.getRecords();
-        const items        = this.getItems();
         const values: string[] = [];
 
-        for (let i = 0; i < items.length && i < storeRecords.length; i++) {
+        for (let i = 0; i < this._items.length && i < storeRecords.length; i++) {
             if (recordSet.has(storeRecords[i])) {
-                const optionEl = items[i].getElement() as HTMLOptionElement | undefined;
-
-                if (optionEl) {
-                    values.push(optionEl.value);
-                }
+                values.push(this._items[i].key);
             }
         }
 
-        this.setValues(values);
-
-        return this;
+        return this.setValues(values);
     }
 
     /**
-     * Renders the underlying `<select>` element with the `multiple` attribute set.
+     * Reduces a click / keyboard gesture into the multi-select shape.
+     * Ported verbatim from [`Body.onRowClick`](/api/component/table/classes/Body) — the same modifier
+     * rules apply: plain replaces, `ctrl` toggles individual rows,
+     * `shift` extends the selection from the anchor row to `idx`.
      *
-     * @returns The created HTMLSelectElement configured for multi-selection.
+     * @param idx - The row index the gesture targeted.
+     * @param ev - The normalised modifier flags.
      */
-    render(): HTMLSelectElement {
-        const element = super.render() as HTMLSelectElement;
-        element.multiple = true;
+    protected reduceSelection(idx: number, ev: { ctrl: boolean, shift: boolean }): void {
+        if (ev.shift && this._anchorIndex !== null) {
+            const lo = Math.min(this._anchorIndex, idx);
+            const hi = Math.max(this._anchorIndex, idx);
 
-        return element;
+            if (!ev.ctrl) {
+                this._selectedSet.clear();
+            }
+
+            for (let i = lo; i <= hi; i++) {
+                this._selectedSet.add(i);
+            }
+        } else if (ev.ctrl) {
+            if (this._selectedSet.has(idx)) {
+                this._selectedSet.delete(idx);
+            } else {
+                this._selectedSet.add(idx);
+            }
+
+            this._anchorIndex = idx;
+        } else {
+            this._selectedSet.clear();
+            this._selectedSet.add(idx);
+            this._anchorIndex = idx;
+        }
+
+        this._focusedIndex = idx;
+    }
+
+    /**
+     * User-driven selection commit. Fires the `change` event the same
+     * way the prior native `<select multiple>` did — only user-driven
+     * gestures (click / keyboard reducer) route through it.
+     */
+    protected notifyUserChange(): void {
+        this.fireChange();
+    }
+
+    /**
+     * Reflects the enabled flag on the ARIA tree, the tabindex, and the
+     * inner panel. Disabling the list parks the focus index at -1 so a
+     * subsequent enable starts fresh, matching {@link List.applyEnabled}.
+     *
+     * @param value - The new enabled state.
+     */
+    protected applyEnabled(value: boolean): void {
+        this.getAria().setDisabled(!value);
+        this.getAria().setTabIndex(value ? 0 : -1);
+        this.setCursor(value ? "default" : "not-allowed");
+
+        if (!value) {
+            this._focusedIndex = -1;
+            this.refreshRowVisualState();
+            this.updateActiveDescendant();
+        }
+    }
+
+    /**
+     * Reflects the read-only flag on the ARIA tree. Read-only lists
+     * stay focusable and announce their state; the click / keyboard
+     * reducers are gated separately in
+     * {@link AbstractCustomList.handleRowClick} /
+     * {@link AbstractCustomList.handleKeyDown}.
+     *
+     * @param value - The new read-only state.
+     */
+    protected applyReadOnly(value: boolean): void {
+        this.getAria().setReadOnly(value);
+    }
+
+    /**
+     * Extends the base keyboard map with `Ctrl+A` (select-all) — every
+     * other key delegates to {@link AbstractCustomList.handleKeyDown}.
+     *
+     * @param e - The keyboard event.
+     */
+    protected handleKeyDown(e: KeyboardEvent): void {
+        if (!this.isEnabled() || this.isReadOnly()) {
+            return;
+        }
+
+        const ctrl = e.ctrlKey || e.metaKey;
+
+        if (ctrl && (e.key === "a" || e.key === "A")) {
+            e.preventDefault();
+            this.selectAll();
+
+            return;
+        }
+
+        super.handleKeyDown(e);
+    }
+
+    /**
+     * Selects every row in the list. Used by the Ctrl+A keyboard shortcut.
+     */
+    protected selectAll(): void {
+        if (this._items.length === 0) {
+            return;
+        }
+
+        this._selectedSet.clear();
+
+        for (let i = 0; i < this._items.length; i++) {
+            this._selectedSet.add(i);
+        }
+
+        this._anchorIndex  = 0;
+        this._focusedIndex = this._items.length - 1;
+
+        this.refreshRowVisualState();
+        this.updateActiveDescendant();
+        this.notifyUserChange();
+    }
+
+    /**
+     * Construction-tail dispatch of `selectedIndices`. Writes the
+     * indices directly into the selection set without firing `change`,
+     * matching the construct-time semantics of `setValues` (programmatic
+     * writes are silent; user gestures emit `change`).
+     *
+     * @param indices - Initial selection indices from the options bag.
+     */
+    private applyInitialSelection(indices: number[]): void {
+        this._selectedSet.clear();
+
+        for (const i of indices) {
+            if (i >= 0 && i < this._items.length) {
+                this._selectedSet.add(i);
+            }
+        }
+
+        if (this._selectedSet.size > 0) {
+            this._anchorIndex = Math.max(...this._selectedSet);
+        }
+
+        this.refreshRowVisualState();
+        this.updateActiveDescendant();
     }
 }
 
@@ -181,5 +350,5 @@ const MultiSelectListCallable = callable(MultiSelectList);
 type MultiSelectListCallable = MultiSelectList;
 export {
     MultiSelectList         as _MultiSelectList,
-    MultiSelectListCallable as MultiSelectList
+    MultiSelectListCallable as MultiSelectList,
 };
