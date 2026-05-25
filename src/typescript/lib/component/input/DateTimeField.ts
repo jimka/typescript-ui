@@ -21,6 +21,10 @@ export interface DateTimeFieldOptions extends AbstractPickerFieldOptions {
     value?:       Date | null;
     /** When true, the field formats and the picker exposes seconds. Default: false. */
     showSeconds?: boolean;
+    /** Earliest date the picker will allow selection of. Optional. */
+    minDate?:     Date | null;
+    /** Latest date the picker will allow selection of. Optional. */
+    maxDate?:     Date | null;
 }
 
 /**
@@ -106,6 +110,14 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
             this._options.value = opts.value;
         }
 
+        if (opts.minDate !== undefined) {
+            this._options.minDate = opts.minDate;
+        }
+
+        if (opts.maxDate !== undefined) {
+            this._options.maxDate = opts.maxDate;
+        }
+
         return this;
     }
 
@@ -145,13 +157,18 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
     }
 
     /**
-     * Builds the date-time dropdown with the field's selection callback and
-     * the cached `showSeconds` flag.
+     * Builds the date-time dropdown with the field's selection callback, the
+     * cached `showSeconds` flag, and any `minDate` / `maxDate` bounds forwarded
+     * into the dropdown's own options bag.
      */
     protected createDropdown(): DateTimePickerDropdown {
         return new DateTimePickerDropdown(
             date => this.onDropdownSelected(date),
-            { showSeconds: this._showSeconds },
+            {
+                showSeconds: this._showSeconds,
+                minDate:     this._options.minDate ?? null,
+                maxDate:     this._options.maxDate ?? null,
+            },
         );
     }
 
