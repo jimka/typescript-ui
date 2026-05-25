@@ -29,7 +29,7 @@ class MultiSelectListPanel extends Panel {
         const selectionText = new Text("Selected: (none)");
 
         staticList.addActionListener(() => {
-            const vals = staticList.getValues();
+            const vals = staticList.getValue();
             selectionText.setText(`Selected: ${vals.length === 0 ? "(none)" : vals.join(", ")}`);
         });
 
@@ -38,7 +38,7 @@ class MultiSelectListPanel extends Panel {
 
         selectAllBtn.addActionListener(() => {
             staticList.setValues(["0", "1", "2", "3", "4"]);
-            selectionText.setText(`Selected: ${staticList.getValues().join(", ")}`);
+            selectionText.setText(`Selected: ${staticList.getValue().join(", ")}`);
         });
 
         clearBtn.addActionListener(() => {
@@ -115,7 +115,7 @@ class MultiSelectListPanel extends Panel {
 
         const binding = new Binding()
             .bind('tags', tagList, {
-                get:    () => tagList.getValues(),
+                get:    () => tagList.getValue(),
                 set:    (v: unknown) => tagList.setValues(v ? String(v).split(",").filter(Boolean) : []),
                 listen: (fn) => tagList.addActionListener(fn),
             });
