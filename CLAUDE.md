@@ -4,6 +4,7 @@
 - When implementing implementation plans, **ALWAYS** use the implement skill.
 - When documenting code, **ALWAYS** use the document skill.
 - When debugging code, **ALWAYS** use the debug skill.
+- When reviewing, auditing, or critiquing a plan, code change, or any other target, **ALWAYS** use the audit skill.
 - When writing code, editing code, or planning future code, **ALWAYS** follow the architectural guidelines defined in [ARCHITECTURE.md](ARCHITECTURE.md) and the code conventions defined in [CODE_CONVENTIONS.md](CODE_CONVENTIONS.md).
 
 # Behavioral guidelines

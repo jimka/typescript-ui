@@ -25,7 +25,7 @@ Ordering rules:
 - Tooling commits stand alone and may appear anywhere in the sequence; they don't trigger a docs commit by themselves.
 - Bookkeeping commits may appear anywhere, except the plan-implemented move which always lands last.
 
-**Follow-up changes.** If new changes arrive on the branch after the initial cycle (a bug found in review, a demo tweak, a doc fix), re-run the cycle for that new functionality: code, then docs.
+**Follow-up changes.** If new changes arrive on the branch after the initial cycle (a bug found in audit, a demo tweak, a doc fix), re-run the cycle for that new functionality: code, then docs.
 
 ## What counts as "one functionality"
 
