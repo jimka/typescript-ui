@@ -23,11 +23,12 @@ const HEADER_HEIGHT: number = 18;
     header.set("opacity", "0.7");
     header.ensure();
 
+    // Visual properties only. `cursor` is set per-instance via `setCursor`
+    // because Component's per-element `#id { cursor: … }` CSS rule (emitted
+    // from `applyStyle` using the cached default `"default"`) wins on
+    // specificity over any class-level cursor declaration.
     const cell = new StyleRule({ scope: "class", name: "PickerCell" });
-    cell.setMany({
-        cursor:       "pointer",
-        borderRadius: "3px",
-    });
+    cell.set("borderRadius", "3px");
     cell.ensure();
 
     const cellHover = new StyleRule({ scope: "selector", name: ".PickerCell:hover" });
@@ -35,12 +36,13 @@ const HEADER_HEIGHT: number = 18;
         "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
     cellHover.ensure();
 
-    // Disabled cells: no pointer cursor, no hover effect, dim foreground, optional
-    // background shading from the theme token. The `:hover` selector above is
-    // overridden because the more specific `.PickerCell.disabled` selector wins.
+    // Disabled cells: no hover effect, dim foreground, optional background
+    // shading from the theme token. The `:hover` selector above is overridden
+    // because the more specific `.PickerCell.disabled` selector wins for
+    // properties declared here. Cursor is per-instance — see
+    // `PickerCell.setDisabled`.
     const cellDisabled = new StyleRule({ scope: "selector", name: ".PickerCell.disabled" });
     cellDisabled.setMany({
-        cursor:          "default",
         pointerEvents:   "none",
         color:           "var(--ts-ui-autocomplete-item-disabled-color, rgb(170, 170, 170))",
         backgroundColor: "var(--ts-ui-picker-cell-disabled-bg, transparent)",
@@ -108,6 +110,10 @@ class PickerCell extends Text {
         // `lineHeight = CELL_HEIGHT` centres the single line of digits vertically
         // within the row so the hover area looks consistent.
         this.setLineHeight(CELL_HEIGHT);
+        // Component's per-instance CSS rule emits the cached cursor at render
+        // time, which beats the `.PickerCell { cursor: pointer }` class rule
+        // on specificity. The cursor must be set on this instance.
+        this.setCursor("pointer");
 
         Event.addListener(this, "pointerdown", this.handlePointerDown);
         Event.addListener(this, "click",       this.handleClick);
@@ -184,6 +190,9 @@ class PickerCell extends Text {
         }
 
         this._disabled = disabled;
+        // Component's per-instance cursor rule wins over the `.PickerCell.disabled`
+        // class rule, so the cursor flip has to be mirrored on the instance.
+        this.setCursor(disabled ? "default" : "pointer");
 
         const element = this.getElement();
 
