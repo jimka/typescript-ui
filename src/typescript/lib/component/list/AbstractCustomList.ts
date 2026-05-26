@@ -90,48 +90,65 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
  * subclass extends `AbstractCustomList`.
  */
 (() => {
-    const surface = new StyleRule({ scope: "selector", name: ".List, .MultiSelectList" });
-    surface.setMany({
-        userSelect: "none",
-        outline:    "none",
+    new StyleRule({
+        scope:  "selector",
+        name:   ".List, .MultiSelectList",
+        styles: {
+            userSelect: "none",
+            outline:    "none",
+        },
     });
-    surface.ensure();
 
-    const surfaceFocus = new StyleRule({ scope: "selector", name: ".List:focus, .MultiSelectList:focus" });
-    surfaceFocus.set("boxShadow", "0 0 0 2px var(--ts-ui-list-row-focus-ring, rgb(30, 100, 200))");
-    surfaceFocus.ensure();
+    new StyleRule({
+        scope:  "selector",
+        name:   ".List:focus, .MultiSelectList:focus",
+        styles: {
+            boxShadow: "0 0 0 2px var(--ts-ui-list-row-focus-ring, rgb(30, 100, 200))",
+        },
+    });
 
-    const row = new StyleRule({ scope: "class", name: "CustomListRow" });
     // `lineHeight: 22px` centers the single line of label text vertically
     // without `display: flex` — matches `ROW_HEIGHT_PX` and the row's
     // cached `preferredSize(0, 22)`. The whiteSpace/overflow/textOverflow
     // trio truncates long labels with an ellipsis when the row is narrower
     // than the label text.
-    row.setMany({
-        lineHeight:   "22px",
-        whiteSpace:   "nowrap",
-        overflow:     "hidden",
-        textOverflow: "ellipsis",
-        borderBottom: "1px solid var(--ts-ui-list-row-separator, transparent)",
-        cursor:       "default",
+    new StyleRule({
+        scope:  "class",
+        name:   "CustomListRow",
+        styles: {
+            lineHeight:   "22px",
+            whiteSpace:   "nowrap",
+            overflow:     "hidden",
+            textOverflow: "ellipsis",
+            borderBottom: "1px solid var(--ts-ui-list-row-separator, transparent)",
+            cursor:       "default",
+        },
     });
-    row.ensure();
 
-    const rowHover = new StyleRule({ scope: "selector", name: ".CustomListRow:hover" });
-    rowHover.set("backgroundColor",
-        "var(--ts-ui-list-row-hover-bg, rgba(30, 100, 200, 0.08))");
-    rowHover.ensure();
-
-    const rowSelected = new StyleRule({ scope: "selector", name: ".CustomListRow.selected" });
-    rowSelected.setMany({
-        backgroundColor: "var(--ts-ui-list-row-selected-bg, rgba(30, 100, 200, 0.18))",
-        color:           "var(--ts-ui-list-row-selected-color, inherit)",
+    new StyleRule({
+        scope:  "selector",
+        name:   ".CustomListRow:hover",
+        styles: {
+            backgroundColor: "var(--ts-ui-list-row-hover-bg, rgba(30, 100, 200, 0.08))",
+        },
     });
-    rowSelected.ensure();
 
-    const rowFocused = new StyleRule({ scope: "selector", name: ".CustomListRow.focused" });
-    rowFocused.set("outline", "1px dashed var(--ts-ui-list-row-focus-ring, rgb(30, 100, 200))");
-    rowFocused.ensure();
+    new StyleRule({
+        scope:  "selector",
+        name:   ".CustomListRow.selected",
+        styles: {
+            backgroundColor: "var(--ts-ui-list-row-selected-bg, rgba(30, 100, 200, 0.18))",
+            color:           "var(--ts-ui-list-row-selected-color, inherit)",
+        },
+    });
+
+    new StyleRule({
+        scope:  "selector",
+        name:   ".CustomListRow.focused",
+        styles: {
+            outline: "1px dashed var(--ts-ui-list-row-focus-ring, rgb(30, 100, 200))",
+        },
+    });
 })();
 
 /**

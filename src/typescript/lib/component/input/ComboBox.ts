@@ -296,24 +296,27 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 // rule needs to write `display: flex` here. Class rules below match by
 // `this.constructor.name`, which Component auto-tags on every element.
 (() => {
-    const surface = new StyleRule({ scope: "class", name: "ComboBox" });
-    surface.setMany({
-        userSelect: "none",
-        whiteSpace: "nowrap",
+    new StyleRule({
+        scope:  "class",
+        name:   "ComboBox",
+        styles: {
+            userSelect: "none",
+            whiteSpace: "nowrap",
+        },
     });
-    surface.ensure();
 
-    const label = new StyleRule({ scope: "class", name: "ComboBoxLabel" });
     // No `flex` here — `HBox` sizes the label component directly. `overflow`
     // and `text-overflow` keep long labels truncating with an ellipsis when
     // HBox clamps the label width to fit the row.
-    label.setMany({
-        overflow:     "hidden",
-        textOverflow: "ellipsis",
+    new StyleRule({
+        scope:  "class",
+        name:   "ComboBoxLabel",
+        styles: {
+            overflow:     "hidden",
+            textOverflow: "ellipsis",
+        },
     });
-    label.ensure();
 
-    const row = new StyleRule({ scope: "class", name: "ComboBoxRow" });
     // Row height matches the cached `preferredSize(0, 22)` from the
     // ComboBoxRow constructor; `lineHeight` centers the single line of text
     // vertically without `display: flex`. Keep these two values in sync if
@@ -322,18 +325,24 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
     // and ellipsise them when the row is narrower than the label text — the
     // row writes textContent directly (not via `Text`) so it doesn't inherit
     // the Text-level truncation defaults.
-    row.setMany({
-        lineHeight:   "22px",
-        whiteSpace:   "nowrap",
-        overflow:     "hidden",
-        textOverflow: "ellipsis",
+    new StyleRule({
+        scope:  "class",
+        name:   "ComboBoxRow",
+        styles: {
+            lineHeight:   "22px",
+            whiteSpace:   "nowrap",
+            overflow:     "hidden",
+            textOverflow: "ellipsis",
+        },
     });
-    row.ensure();
 
-    const rowHover = new StyleRule({ scope: "selector", name: ".ComboBoxRow:hover" });
-    rowHover.set("backgroundColor",
-        "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
-    rowHover.ensure();
+    new StyleRule({
+        scope:  "selector",
+        name:   ".ComboBoxRow:hover",
+        styles: {
+            backgroundColor: "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))",
+        },
+    });
 })();
 
 /**

@@ -29,21 +29,20 @@ function ensureSortBadgeClassRule(): void {
         return;
     }
 
-    const rule = new StyleRule({ scope: "class", name: "SortPriorityBadge" });
-
-    rule.setMany({
-        position:      "absolute",
-        top:           "2px",
-        right:         "8px",
-        fontSize:      "var(--ts-ui-sort-badge-font-size,10px)",
-        lineHeight:    "1",
-        borderRadius:  "3px",
-        padding:       "1px 3px",
-        pointerEvents: "none",
+    _classRule = new StyleRule({
+        scope:  "class",
+        name:   "SortPriorityBadge",
+        styles: {
+            position:      "absolute",
+            top:           "2px",
+            right:         "8px",
+            fontSize:      "var(--ts-ui-sort-badge-font-size,10px)",
+            lineHeight:    "1",
+            borderRadius:  "3px",
+            padding:       "1px 3px",
+            pointerEvents: "none",
+        },
     });
-    rule.ensure();
-
-    _classRule = rule;
 }
 
 /**

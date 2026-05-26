@@ -28,22 +28,21 @@ function ensureAccordionIndicatorClassRule(): void {
         return;
     }
 
-    const rule = new StyleRule({ scope: "class", name: "AccordionIndicator" });
-
-    rule.setMany({
-        position:      "absolute",
-        right:         "10px",
-        top:           "50%",
-        transform:     "translateY(-50%)",
-        pointerEvents: "none",
-        fontSize:      "10px",
-        lineHeight:    "1",
-        color:         "var(--ts-ui-accordion-indicator-color, rgb(100,100,100))",
-        transition:    "transform 200ms ease",
+    _classRule = new StyleRule({
+        scope:  "class",
+        name:   "AccordionIndicator",
+        styles: {
+            position:      "absolute",
+            right:         "10px",
+            top:           "50%",
+            transform:     "translateY(-50%)",
+            pointerEvents: "none",
+            fontSize:      "10px",
+            lineHeight:    "1",
+            color:         "var(--ts-ui-accordion-indicator-color, rgb(100,100,100))",
+            transition:    "transform 200ms ease",
+        },
     });
-    rule.ensure();
-
-    _classRule = rule;
 }
 
 /**

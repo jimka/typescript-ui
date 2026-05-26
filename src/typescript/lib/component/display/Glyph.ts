@@ -71,20 +71,29 @@ function ensureGlyphKeyframes(): void {
     StyleRule.ensureKeyframes("ts-ui-glyph-beat",
         "0%, 90% { transform: scale(1); } 45% { transform: scale(1.25); }");
 
-    const spinRule = new StyleRule({ scope: "class", name: CLASS_PREFIX + "spin" });
-    spinRule.set("animation",
-        "ts-ui-glyph-spin var(--ts-ui-glyph-spin-duration, 2000ms) linear infinite");
-    spinRule.ensure();
+    new StyleRule({
+        scope:  "class",
+        name:   CLASS_PREFIX + "spin",
+        styles: {
+            animation: "ts-ui-glyph-spin var(--ts-ui-glyph-spin-duration, 2000ms) linear infinite",
+        },
+    });
 
-    const pulseRule = new StyleRule({ scope: "class", name: CLASS_PREFIX + "pulse" });
-    pulseRule.set("animation",
-        "ts-ui-glyph-pulse var(--ts-ui-glyph-pulse-duration, 1000ms) steps(8) infinite");
-    pulseRule.ensure();
+    new StyleRule({
+        scope:  "class",
+        name:   CLASS_PREFIX + "pulse",
+        styles: {
+            animation: "ts-ui-glyph-pulse var(--ts-ui-glyph-pulse-duration, 1000ms) steps(8) infinite",
+        },
+    });
 
-    const beatRule = new StyleRule({ scope: "class", name: CLASS_PREFIX + "beat" });
-    beatRule.set("animation",
-        "ts-ui-glyph-beat var(--ts-ui-glyph-beat-duration, 1000ms) ease-in-out infinite");
-    beatRule.ensure();
+    new StyleRule({
+        scope:  "class",
+        name:   CLASS_PREFIX + "beat",
+        styles: {
+            animation: "ts-ui-glyph-beat var(--ts-ui-glyph-beat-duration, 1000ms) ease-in-out infinite",
+        },
+    });
 }
 
 /**

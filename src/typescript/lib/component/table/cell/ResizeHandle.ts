@@ -30,19 +30,18 @@ function ensureResizeHandleClassRule(): void {
         return;
     }
 
-    const rule = new StyleRule({ scope: "class", name: "ResizeHandle" });
-
-    rule.setMany({
-        position: "absolute",
-        top:      "0",
-        right:    "0",
-        width:    "var(--ts-ui-table-resize-handle-width,5px)",
-        height:   "100%",
-        zIndex:   "1",
+    _classRule = new StyleRule({
+        scope:  "class",
+        name:   "ResizeHandle",
+        styles: {
+            position: "absolute",
+            top:      "0",
+            right:    "0",
+            width:    "var(--ts-ui-table-resize-handle-width,5px)",
+            height:   "100%",
+            zIndex:   "1",
+        },
     });
-    rule.ensure();
-
-    _classRule = rule;
 }
 
 /**

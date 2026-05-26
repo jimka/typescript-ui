@@ -78,41 +78,55 @@ const YEAR_TYPE_IDLE_MS:         number = 800;
     // because Component's per-element `#id { cursor: … }` CSS rule (emitted
     // from `applyStyle` using the cached default `"default"`) wins on
     // specificity over any class-level cursor declaration.
-    const day = new StyleRule({ scope: "class", name: "PickerDay" });
-    day.set("borderRadius", "3px");
-    day.ensure();
+    new StyleRule({
+        scope:  "class",
+        name:   "PickerDay",
+        styles: {
+            borderRadius: "3px",
+        },
+    });
 
-    const dayHover = new StyleRule({ scope: "selector", name: ".PickerDay:hover" });
-    dayHover.set("backgroundColor",
-        "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
-    dayHover.ensure();
+    new StyleRule({
+        scope:  "selector",
+        name:   ".PickerDay:hover",
+        styles: {
+            backgroundColor: "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))",
+        },
+    });
 
     // Out-of-range day cells dim and ignore pointer events. Mirrors
     // `.PickerCell.disabled` so the year-scroller and day-grid look identical
     // when the user is at the bound's edge. Cursor is per-instance — see
     // `PickerDay.setDisabled`.
-    const dayDisabled = new StyleRule({ scope: "selector", name: ".PickerDay.disabled" });
-    dayDisabled.setMany({
-        pointerEvents:   "none",
-        color:           "var(--ts-ui-autocomplete-item-disabled-color, rgb(170, 170, 170))",
-        backgroundColor: "var(--ts-ui-picker-cell-disabled-bg, transparent)",
+    new StyleRule({
+        scope:  "selector",
+        name:   ".PickerDay.disabled",
+        styles: {
+            pointerEvents:   "none",
+            color:           "var(--ts-ui-autocomplete-item-disabled-color, rgb(170, 170, 170))",
+            backgroundColor: "var(--ts-ui-picker-cell-disabled-bg, transparent)",
+        },
     });
-    dayDisabled.ensure();
 
     // Header chevron + month-label-as-button styling — single hover background
     // shared by the chevrons and the label. Cursor is per-instance — see
     // `PickerNavButton` / `PickerMonthLabel`.
-    const navBtn = new StyleRule({ scope: "class", name: "PickerNavButton" });
-    navBtn.setMany({
-        borderRadius: "3px",
-        color:        "var(--ts-ui-picker-nav-fg, var(--ts-ui-text-color))",
+    new StyleRule({
+        scope:  "class",
+        name:   "PickerNavButton",
+        styles: {
+            borderRadius: "3px",
+            color:        "var(--ts-ui-picker-nav-fg, var(--ts-ui-text-color))",
+        },
     });
-    navBtn.ensure();
 
-    const navBtnHover = new StyleRule({ scope: "selector", name: ".PickerNavButton:hover" });
-    navBtnHover.set("backgroundColor",
-        "var(--ts-ui-picker-nav-hover-bg, rgba(30, 100, 200, 0.08))");
-    navBtnHover.ensure();
+    new StyleRule({
+        scope:  "selector",
+        name:   ".PickerNavButton:hover",
+        styles: {
+            backgroundColor: "var(--ts-ui-picker-nav-hover-bg, rgba(30, 100, 200, 0.08))",
+        },
+    });
 })();
 
 /** Single weekday-name header (`"Sun"`, `"Mon"`, …). */
