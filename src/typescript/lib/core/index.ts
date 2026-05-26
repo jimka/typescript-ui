@@ -8,7 +8,7 @@ export type { TextMeasureOptions, TextMetrics } from '~/core/Util.js';
 export { callable } from '~/core/Callable.js';
 export type { Callable } from '~/core/Callable.js';
 export { Component } from '~/core/Component.js';
-export type { Comparator, Style, ComponentOptions, ConstrainedComponent, PerimeterSize } from '~/core/Component.js';
+export type { Comparator, Style, ComponentOptions, ComponentStyleRuleSpec, ConstrainedComponent, PerimeterSize } from '~/core/Component.js';
 export { Panel } from '~/core/Panel.js';
 export type { AutoScrollMode, PanelOptions } from '~/core/Panel.js';
 export { Aria } from '~/core/Aria.js';
@@ -35,7 +35,7 @@ export { ThemeManager, DefaultTheme, DarkTheme } from '~/core/Theme.js';
 export type { Theme } from '~/core/Theme.js';
 
 export { StyleTarget, StyleRule, InlineStyle } from '~/core/StyleTarget.js';
-export type { StyleRuleScope } from '~/core/StyleTarget.js';
+export type { StyleRuleScope, StyleRuleSpec } from '~/core/StyleTarget.js';
 
 export { Binding } from '~/core/Binding.js';
 export type { BeforeRecordListener } from '~/core/Binding.js';
