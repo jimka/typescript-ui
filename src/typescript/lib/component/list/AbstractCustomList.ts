@@ -99,11 +99,22 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
         },
     });
 
+    // Pseudo-element overlay rather than a plain `outline:` rule so an
+    // ancestor with `overflow: hidden` (the framework's Component default)
+    // can't clip the focus indicator. `z-index: 1` lifts the ring above the
+    // absolutely-positioned rows.
     new StyleRule({
         scope:  "selector",
-        name:   ".List:focus, .MultiSelectList:focus",
+        name:   ".List:focus::after, .MultiSelectList:focus::after",
         styles: {
-            boxShadow: "0 0 0 2px var(--ts-ui-list-row-focus-ring, rgb(30, 100, 200))",
+            content:       "''",
+            position:      "absolute",
+            inset:         "0",
+            border:        "2px solid var(--ts-ui-indicator-focus, rgb(30, 100, 200))",
+            borderRadius:  "inherit",
+            boxSizing:     "border-box",
+            pointerEvents: "none",
+            zIndex:        "1",
         },
     });
 
@@ -142,11 +153,17 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
         },
     });
 
+    // The keyboard-focused row is part of the *selection* indicator family
+    // (a light per-row mark, distinct from the heavier focus border around
+    // the focusable list root itself). Uses the dashed `indicator.selection`
+    // shorthand so future themes can re-skin every "selection mark" in one
+    // place. Rows have no positioned descendants, so the outline draws on
+    // top of the row's text without any covering issue.
     new StyleRule({
         scope:  "selector",
         name:   ".CustomListRow.focused",
         styles: {
-            outline: "1px dashed var(--ts-ui-list-row-focus-ring, rgb(30, 100, 200))",
+            outline: "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))",
         },
     });
 })();

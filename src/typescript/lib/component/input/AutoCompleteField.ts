@@ -6,7 +6,34 @@ import { ThemeManager } from "~/core/Theme.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { TextField } from "~/component/input/TextField.js";
 import { AutoCompleteDropdown } from "~/component/input/AutoCompleteDropdown.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * `:focus-within ::after` overlay highlights the composite root whenever
+ * the inner TextField is focused. A pseudo-element drawn at
+ * `inset: 0` carries the focus border so the ring sits *inside* the
+ * outer's padding box and isn't clipped by an ancestor's `overflow:
+ * hidden` (the framework's default). The `z-index: 1` lifts the
+ * pseudo above the absolutely-positioned inner TextField so the ring
+ * is never painted over.
+ */
+(() => {
+    new StyleRule({
+        scope:  "selector",
+        name:   ".AutoCompleteField:focus-within::after",
+        styles: {
+            content:       "''",
+            position:      "absolute",
+            inset:         "0",
+            border:        "2px solid var(--ts-ui-indicator-focus, rgb(30, 100, 200))",
+            borderRadius:  "inherit",
+            boxSizing:     "border-box",
+            pointerEvents: "none",
+            zIndex:        "1",
+        },
+    });
+})();
 
 /**
  * Controls how typed input is matched against suggestion strings.
@@ -87,7 +114,17 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
         // through super(). Apply them manually at the end of the constructor.
         super();
 
+        // The composite owns the visible chrome — gray edge from the shared
+        // `--ts-ui-input-border` token, matching `:focus-within` outline
+        // wired up at module top. The inner TextField then strips its own
+        // border + browser focus outline so the two never paint over.
+        this.setBorder("var(--ts-ui-input-border)");
+        this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
+
         this._textField = new TextField();
+        this._textField.setBorder("none");
+        this._textField.setBorderRadius("0");
+        this._textField.setOutline("none");
 
         this.addComponent(this._textField);
 

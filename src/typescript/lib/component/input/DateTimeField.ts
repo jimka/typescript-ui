@@ -2,8 +2,6 @@
 
 import { AbstractPickerField, AbstractPickerFieldOptions } from "~/component/input/AbstractPickerField.js";
 import { Insets } from "~/primitive/Insets.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
-import { BorderOptions } from "~/primitive/Border.js";
 import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
@@ -35,7 +33,7 @@ const _defaultDateTimeFieldOptions: Partial<DateTimeFieldOptions> = {
     padding:         new Insets(3, 3, 3, 3),
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
-    border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
+    border:          "var(--ts-ui-input-border)",
     borderRadius:    "var(--ts-ui-border-radius, 4px)",
 };
 
@@ -205,8 +203,8 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
     /**
      * The default border restored when the invalid-border state clears.
      */
-    protected getDefaultBorder(): BorderOptions {
-        return _defaultDateTimeFieldOptions.border as BorderOptions;
+    protected getDefaultBorder(): string {
+        return _defaultDateTimeFieldOptions.border as string;
     }
 }
 

@@ -8,7 +8,6 @@ import { Text } from "~/component/input/Text.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { chevron_left } from "~/glyphs/solid/chevron_left.js";
 import { chevron_right } from "~/glyphs/solid/chevron_right.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
@@ -517,7 +516,7 @@ abstract class AbstractCalendarDropdown<
                 zIndex:          10050,
                 layoutManager:   new Fit(),
                 backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
-                border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
+                border:          "var(--ts-ui-input-border)",
                 borderRadius:    "var(--ts-ui-border-radius, 4px)",
                 shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
                 insets:          new Insets(6, 6, 6, 6),

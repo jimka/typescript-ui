@@ -2,7 +2,6 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Legend } from "~/component/container/Legend.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
@@ -24,7 +23,8 @@ export interface FieldSetOptions extends ComponentOptions {
  */
 const _defaultFieldSetOptions: Partial<FieldSetOptions> = {
     tag:           "fieldset",
-    border:        { style: BorderStyle.GROOVE, width: 1, color: "var(--ts-ui-border-color, black)" },
+    border:        "var(--ts-ui-input-border)",
+    borderRadius:  "var(--ts-ui-border-radius, 4px)",
     padding:       new Insets(15, 3, 3, 3),
     insets:        new Insets(5, 5, 15, 5),
     preferredSize: { width: 200, height: 200 },

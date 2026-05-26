@@ -27,7 +27,6 @@ import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Panel } from "~/core/Panel.js";
 import { ThemeManager } from "~/core/Theme.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
 import { VBox } from "~/layout/VBox.js";
@@ -72,7 +71,7 @@ const _defaultComboBoxOptions: Partial<ComboBoxOptions> = {
     tag:             "div",
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
-    border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
+    border:          "var(--ts-ui-input-border)",
     borderRadius:    "var(--ts-ui-border-radius, 4px)",
     cursor:          "pointer",
     insets:          new Insets(3, 6, 3, 6),
@@ -124,7 +123,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
             zIndex:          10050,
             layoutManager:   new Fit(),
             backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
-            border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
+            border:          "var(--ts-ui-input-border)",
             borderRadius:    "var(--ts-ui-border-radius, 4px)",
             shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
         });
