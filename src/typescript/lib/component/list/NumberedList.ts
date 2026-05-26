@@ -22,11 +22,7 @@ export interface NumberedListOptions extends AbstractListOptions<NumberedListIte
 class NumberedList extends AbstractListComponent<NumberedListItemStyle> {
 
     constructor(options?: NumberedListOptions) {
-        super("ol", NumberedListItemStyle.DECIMAL);
-
-        if (options) {
-            this.applyOptions(options);
-        }
+        super("ol", NumberedListItemStyle.DECIMAL, options);
     }
 }
 
