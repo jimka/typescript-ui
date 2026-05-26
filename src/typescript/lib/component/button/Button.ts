@@ -438,8 +438,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField))
      * route through the component rather than reaching for
      * `Event.addListener(button, "pointerdown", ...)` directly, preserving
-     * the named-listener contract from
-     * [ARCHITECTURE.md](../../../ARCHITECTURE.md).
+     * the framework's named-listener contract.
      *
      * @param listener - Called with the originating PointerEvent.
      *
