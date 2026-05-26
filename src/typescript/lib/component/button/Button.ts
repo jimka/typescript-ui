@@ -149,7 +149,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * check at the top of `recomputePreferredSize` treats `undefined` as
      * falsy, so the no-cascade-write case still auto-sizes correctly.
      */
-    private declare _consumerSetPreferredSize: boolean;
+    private declare _consumerSetPreferredSize?: boolean;
 
     /**
      * Bound theme-change handler. The auto-sizing pipeline reads font-size
