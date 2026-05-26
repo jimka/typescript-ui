@@ -2,7 +2,6 @@
 
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Event } from "~/core/Event.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { VBox } from "~/layout/VBox.js";
 import { AutoCompleteItem } from "~/component/input/AutoCompleteItem.js";
 import { callable } from "~/core/Callable.js";
@@ -25,7 +24,7 @@ const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> 
     zIndex:          10050,
     durationMs:      100,
     backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
-    border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-autocomplete-border, rgb(200, 200, 200))" },
+    border:          "var(--ts-ui-input-border)",
     borderRadius:    "var(--ts-ui-border-radius, 4px)",
     shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
 };

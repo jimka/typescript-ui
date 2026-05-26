@@ -48,6 +48,10 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `toggle.selected.background` | `--ts-ui-toggle-selected-bg` | Background of a selected [`ToggleButton`](/api/component/button/classes/ToggleButton) or [`RadioButton`](/api/component/input/classes/RadioButton) |
 | `toggle.selected.shadow` | `--ts-ui-toggle-selected-shadow` | Inset shadow on a selected toggle / radio |
 | `input.background` | `--ts-ui-input-bg` | Background of text inputs, password fields, text areas, checkboxes, and the table body |
+| `input.border` | `--ts-ui-input-border` | Complete CSS border shorthand applied to [`TextInput`](/api/component/input/classes/TextInput), [`ComboBox`](/api/component/input/classes/ComboBox), the three picker fields ([`DateField`](/api/component/input/classes/DateField), [`TimeField`](/api/component/input/classes/TimeField), [`DateTimeField`](/api/component/input/classes/DateTimeField)), their dropdown panels, the autocomplete dropdown, and [`FieldSet`](/api/component/container/classes/FieldSet) |
+| `input.borderHover` | `--ts-ui-input-border-hover` | Hover-state border shorthand for the same surfaces — provisioned but not yet wired |
+| `indicator.focus` | `--ts-ui-indicator-focus` | Colour for the keyboard-focus indicator. Used through both `border: 2px solid var(...)` on pseudo-element overlays (composites + list) and `box-shadow: inset 0 0 0 2px var(...)` on `<input>` elements (which don't render pseudo-elements). Same visual placement across both code paths |
+| `indicator.selection` | `--ts-ui-indicator-selection` | Complete CSS outline shorthand reserved for outline-shaped selection marks distinct from background-tint selection. Provisioned; no current consumers |
 | `gutter.background` | `--ts-ui-gutter-bg` | Background of the [`Split`](/api/layout/classes/Split) drag gutter; also used as the scrollbar track color |
 | `tab.toolbar.background` | `--ts-ui-tab-toolbar-bg` | Background of the tab button toolbar in the [`Tab`](/api/layout/classes/Tab) layout |
 | `tab.toolbar.border` | `--ts-ui-tab-toolbar-border` | Bottom border of the tab button toolbar |
