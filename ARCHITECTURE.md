@@ -10,6 +10,14 @@ All event registration goes through the `Event` class — `Event.addListener(thi
 
 The `handler` (or `listener`) argument must always be a reference to a named function — a method on the component (`this.handleClick`) or a module-level function. Never pass an inline arrow function or function expression. A named reference is removable via `removeListener`, surfaces by name in stack traces, and is grep-able for audits; an inline closure is none of those. The rule applies equally to the raw `addEventListener` escape hatches above.
 
+### A component must not listen to another component's events through `Event`
+
+`Event.addListener(otherComponent, type, handler)` (and every other `Event` API call) is reserved for listening on **self** — `Event.addListener(this, …)` from inside a component, registering a listener on its own element. Calling any `Event` API against *another* `Component` instance is a bypass: it reaches past that component's named-method surface, couples the caller to the target's internal DOM and event routing, and prevents the target from changing how it dispatches events without silently breaking callers.
+
+Every `Component` owns the event surface its consumers can subscribe to and exposes it through named methods on the class itself — `Button.addActionListener` for click, `Tab.addCloseListener` for tab close, `WindowHeader.addHeaderDoubleClickListener` for header dblclick, and so on. The consumer routes through those methods; the named method owns the internal `Event.addListener(this, …)` call. When a consumer needs to listen to an event a component doesn't yet expose, add the named-method route on the component — never reach for the raw `Event` API from outside.
+
+The rule holds even when the bypass looks local (e.g. a parent component writing `Event.addListener(this._button, "click", …)` against a child it just constructed). The named-method surface is the contract; the raw call is not.
+
 ## One DOM element per class
 
 A class owns exactly one DOM element. If a sub-element needs independent behaviour (event routing, its own CSS rule, layout), extract it into a `Component` subclass. Trivial non-interactive helpers (e.g. a resize-handle div) can stay as raw children.
@@ -163,6 +171,21 @@ Every literal numeric value in code — pixel sizes, durations, timeouts, retry 
 2. **Why it's hardcoded.** A comment explaining the constraint that produced the number — the spec it tracks, the related theme token it mirrors, the empirical tuning behind it, or why a derived value isn't possible here. "Why this number and not another, and why isn't it computed."
 
 The name covers the "what"; the comment covers the "why," which is the part that rots silently when the constraint shifts. If you can't articulate the "why," the number is probably wrong — find the constraint first.
+
+## Decompose large or complex functions
+
+A function that grows long or branches deeply must be split into named sub-functions. The caller becomes a short summary of its work; each callee owns one nameable step. Reviewers should grasp the top-level flow without reading every line of every branch.
+
+Split when any of these hold:
+
+- The body spans more than ~30 lines of substantive code (excluding JSDoc and braces-only lines).
+- The body contains multiple distinct phases that each summarise to a noun or verb phrase (`collectVisibleRows`, `validateInput`, `flushPendingMeasurements`).
+- A `switch` or `if`/`else` ladder has branches exceeding a few lines each — each branch becomes its own function.
+- The function mixes abstraction levels — high-level orchestration interleaved with low-level DOM/string fiddling.
+
+The name is the test. A sub-function called `handleX`, `doStep1`, or `processIt` defeats the purpose — names must read like a phrase a reviewer would write in the margin. If you can't name the piece, it isn't a piece; keep refactoring until each extracted function has an obvious noun- or verb-phrase name.
+
+**Don't split for its own sake.** A 20-line function with one clear phase stays as one function. Extraction is for *readability*, not for hitting a line count. Sub-functions used by one caller in one file stay `private` — don't widen the API surface just because they exist.
 
 ## Components are exported through `callable()`
 
