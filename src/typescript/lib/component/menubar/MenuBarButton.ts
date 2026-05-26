@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
-import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -56,7 +55,6 @@ export const MENU_BAR_BUTTON_HEIGHT: number = 28;
 class MenuBarButton extends Component<MenuBarButtonOptions> {
 
     private readonly _text: Text;
-    private readonly _hoverRule: StyleRule;
     private readonly _onClickHandler: () => void;
     private readonly _onMouseOverHandler: () => void;
     private readonly _label: string;
@@ -71,16 +69,25 @@ class MenuBarButton extends Component<MenuBarButtonOptions> {
      * @param options - Optional configuration bag (e.g. leading glyph).
      */
     constructor(text: string, onClick: () => void, onHover: () => void, options?: MenuBarButtonOptions) {
-        super(options, _defaultMenuBarButtonOptions);
+        super(
+            {
+                ...options,
+                styleRules: [
+                    ...(options?.styleRules ?? []),
+                    {
+                        suffix: ":hover",
+                        styles: {
+                            backgroundColor: "var(--ts-ui-menu-bar-btn-hover-bg, rgba(30, 100, 200, 0.10))",
+                        },
+                    },
+                ],
+            },
+            _defaultMenuBarButtonOptions,
+        );
 
         this._label = text;
 
         this.setElementCSSRule("fontSize", "var(--ts-ui-button-font-size, 12px)");
-
-        this._hoverRule = new StyleRule({ scope: "component", name: this.getId() + ":hover" });
-        this._hoverRule.set("backgroundColor",
-            "var(--ts-ui-menu-bar-btn-hover-bg, rgba(30, 100, 200, 0.10))");
-        this._hoverRule.ensure();
 
         this._text = new Text(text);
         this._text.setPointerEvents("none");
