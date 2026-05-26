@@ -81,6 +81,18 @@ export interface PopoverOptions extends PanelOptions {
 }
 
 /**
+ * User-overridable visual defaults forwarded to `super` via the options bag.
+ * The cascade in `Component`'s constructor dispatches each present setter once
+ * with the final value, so any field the caller supplied wins.
+ */
+const _defaultPopoverOptions: Partial<PopoverOptions> = {
+    insets:    new Insets(5, 5, 5, 5),
+    placement: "auto",
+    dismissOn: "click-outside",
+    showArrow: true,
+};
+
+/**
  * An anchored, non-modal floating bubble with a directional arrow tail. Use
  * `Popover` for click-triggered, interactive content (title, body, action
  * buttons, or any arbitrary subtree) — for ephemeral hover hints reach for
@@ -119,13 +131,19 @@ export interface PopoverOptions extends PanelOptions {
  */
 class Popover extends Panel<PopoverOptions> {
 
-    private _placement:         PopoverPlacement = "auto";
-    private _resolvedPlacement: PopoverPlacement = "bottom";
-    private _dismissOn:         PopoverDismissMode = "click-outside";
-    private _showArrow:         boolean = true;
-    private _title:             string | null = null;
-    private _titleComponent:    Text | null = null;
-    private _bodyComponent:     Component | null = null;
+    // Option-backed fields use `declare` rather than initializers to dodge the
+    // class-field super-cascade trap: an initializer runs *after* super()
+    // returns, overwriting whatever the cascade-dispatched setter wrote
+    // during the super-time `applyOptions` call. The applyOptions override
+    // below always dispatches each setter with a fallback so the field is
+    // seeded even when no caller option was supplied.
+    declare private _placement:         PopoverPlacement;
+    private _resolvedPlacement:         PopoverPlacement = "bottom";
+    declare private _dismissOn:         PopoverDismissMode;
+    declare private _showArrow:         boolean;
+    declare private _title:             string | null;
+    declare private _titleComponent:    Text | null;
+    private _bodyComponent:             Component | null = null;
     private _actionsRow:        Component | null = null;
     private _anchorElement:     HTMLElement | null = null;
     private _arrowComponent:    Component | null = null;
@@ -145,10 +163,7 @@ class Popover extends Panel<PopoverOptions> {
      * @param options - Optional construction-time options.
      */
     constructor(options?: PopoverOptions) {
-        super({
-            insets: new Insets(5, 5, 5, 5),
-            ...(options ?? {}),
-        } as PopoverOptions);
+        super(options as PopoverOptions, _defaultPopoverOptions);
 
         const vbox = new VBox();
 
@@ -218,9 +233,12 @@ class Popover extends Panel<PopoverOptions> {
         this._onWindowResize = () => this._reposition();
         this._onScroll       = () => this._reposition();
 
-        if (options) {
-            this.applyPopoverOptions(options);
-        }
+        // Seed the `declare`-d title fields after the cascade has had its
+        // chance to write them via setTitle. Without a `title` option the
+        // cascade dispatch above skips setTitle entirely, so the fields
+        // would otherwise remain undefined (declare allocates no default).
+        this._title          ??= null;
+        this._titleComponent ??= null;
     }
 
     /**
@@ -230,22 +248,15 @@ class Popover extends Panel<PopoverOptions> {
      * @param options - The options bag carrying the values to apply.
      * @returns This popover, for method chaining.
      */
-    private applyPopoverOptions(options: PopoverOptions): this {
-        if (options.placement !== undefined) {
-            this.setPlacement(options.placement);
-        }
+    protected applyOptions(options: PopoverOptions): this {
+        super.applyOptions(options);
 
-        if (options.dismissOn !== undefined) {
-            this.setDismissOn(options.dismissOn);
-        }
+        const opts = { ...this._defaultOptions, ...options } as PopoverOptions;
 
-        if (options.showArrow !== undefined) {
-            this.setShowArrow(options.showArrow);
-        }
-
-        if (options.title !== undefined) {
-            this.setTitle(options.title);
-        }
+        if (opts.placement !== undefined) this.setPlacement(opts.placement);
+        if (opts.dismissOn !== undefined) this.setDismissOn(opts.dismissOn);
+        if (opts.showArrow !== undefined) this.setShowArrow(opts.showArrow);
+        if (opts.title     !== undefined) this.setTitle(opts.title);
 
         return this;
     }

@@ -41,6 +41,14 @@ export interface WindowBorderOptions extends ComponentOptions {
 const SNAP_TARGET_CLASS = "snap-target";
 
 /**
+ * Class-level defaults forwarded to `super` so the cascade hits Component's
+ * applyOptions with `{ tag: "div" }` already merged into `_defaultOptions`.
+ */
+const _defaultWindowBorderOptions: Partial<WindowBorderOptions> = {
+    tag: "div",
+};
+
+/**
  * A resizable window border strip component.
  *
  * Each instance represents one edge or corner of a resizable window. It listens for
@@ -49,7 +57,7 @@ const SNAP_TARGET_CLASS = "snap-target";
  *
  * @category Components
  */
-class WindowBorder extends Component {
+class WindowBorder extends Component<WindowBorderOptions> {
 
     private _direction: Direction = Direction.NORTH;
     private _dragListeners: Function[] = [];
@@ -68,7 +76,7 @@ class WindowBorder extends Component {
     }
 
     constructor(direction: Direction, options?: WindowBorderOptions) {
-        super({ tag: "div" });
+        super(options, _defaultWindowBorderOptions);
 
         if (direction) {
             this._direction = direction;
@@ -83,10 +91,6 @@ class WindowBorder extends Component {
         // Queue the snap-target highlight into the lazy state rule. Materialises
         // at render time through Component's batched style channel.
         this.snapTargetStyleRule.set("boxShadow", "var(--ts-ui-window-snap-glow, 0 0 0 2px rgba(30, 100, 200, 0.7))");
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**

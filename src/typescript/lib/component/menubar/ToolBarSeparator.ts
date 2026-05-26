@@ -22,6 +22,12 @@ export interface ToolBarSeparatorOptions extends ComponentOptions {
 }
 
 /**
+ * Empty subclass-default const so the super call follows the framework's
+ * `(options, defaults)` shape uniformly.
+ */
+const _defaultToolBarSeparatorOptions: Partial<ToolBarSeparatorOptions> = {};
+
+/**
  * A thin divider rule used inside a [`ToolBar`](/api/component/menubar/classes/ToolBar) to visually group
  * related controls. Defaults to a vertical rule (for horizontal toolbars);
  * pass `orientation: "horizontal"` for a vertical toolbar.
@@ -59,7 +65,7 @@ class ToolBarSeparator extends Component<ToolBarSeparatorOptions> {
      *   selects the rule direction; defaults to `"vertical"`.
      */
     constructor(options?: ToolBarSeparatorOptions) {
-        super();
+        super(options, _defaultToolBarSeparatorOptions);
 
         this._orientation = options?.orientation ?? "vertical";
 
@@ -82,10 +88,6 @@ class ToolBarSeparator extends Component<ToolBarSeparatorOptions> {
         this.getAria().setRole("separator");
         this.getAria().setOrientation(this._orientation);
         this.getAria().setTabIndex(-1);
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
