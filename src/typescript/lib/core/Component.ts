@@ -62,6 +62,36 @@ export interface ConstrainedComponent {
 }
 
 /**
+ * Declarative spec for a per-component state rule installed at construction
+ * time via {@link ComponentOptions.styleRules}.
+ *
+ * Each entry produces (or fetches) a `StyleRule` whose selector is
+ * `#<id><suffix>` (e.g. `#cmp-12:hover`, `#cmp-12.selected`) and applies the
+ * given style body. The `suffix` is the dedupe key inside the component's
+ * `_deferredStyleRules` map — repeated entries with the same suffix write
+ * into the same wrapper.
+ *
+ * Subclasses that want to layer rules on top of caller-supplied entries
+ * use the standard array-merge idiom on the bag:
+ *
+ * ```typescript
+ * super({
+ *     ...options,
+ *     styleRules: [
+ *         ...(options?.styleRules ?? []),
+ *         { suffix: ":hover", styles: { backgroundColor: "var(--…)" } },
+ *     ],
+ * }, _defaultXOptions);
+ * ```
+ *
+ * @category Core
+ */
+export interface ComponentStyleRuleSpec {
+    suffix: string;
+    styles: Record<string, string | null>;
+}
+
+/**
  * Construction-time options for {@link Component}.
  *
  * Every field is optional and maps to an existing setter on `Component`. Pass
@@ -100,6 +130,7 @@ export interface ComponentOptions {
     id?:              string;
     attributes?:      Record<string, string>;
     components?:      Array<Component | ConstrainedComponent>;
+    styleRules?:      ComponentStyleRuleSpec[];
 }
 
 // Module-level state for the rAF-coalesced layout queue. Setters and event handlers call
@@ -206,7 +237,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // Deferred-write style buffers. `styleRule` lazily materialises the
     // component's per-id `CSSStyleRule` on first `ensure()` call; `inlineStyle`
     // queues `element.style.X = ...` writes until `init()` attaches it.
-    private _styleRule            : StyleRule    = new StyleRule({ scope: "component", name: this.getId() });
+    private _styleRule            : StyleRule    = new StyleRule({ scope: "component", name: this.getId(), materialize: false });
     private _inlineStyle          : InlineStyle  = new InlineStyle();
     // Subclass-owned state rules (e.g. Button's `:active` / `:hover`,
     // ToggleButton's `.selected`) keyed by selector suffix and materialised
@@ -374,6 +405,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             }
         }
 
+        if (opts.styleRules !== undefined) {
+            // Route every entry through `createStyleRule` so the wrapper is
+            // registered in `_deferredStyleRules` and materialised at render
+            // time, matching how the lazy state-rule getters in Button /
+            // ToggleButton / WindowBorder allocate. Bare `new StyleRule(...)`
+            // would skip the deferral and force-insert the stylesheet rule
+            // before the element exists.
+            for (const spec of opts.styleRules) {
+                this.createStyleRule(spec.suffix).setMany(spec.styles);
+            }
+        }
+
         if (opts.components !== undefined) this.addComponents(opts.components);
 
         return this;
@@ -454,7 +497,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     protected createStyleRule(selectorSuffix: string): StyleRule {
         let rule = this._deferredStyleRules.get(selectorSuffix);
         if (!rule) {
-            rule = new StyleRule({ scope: "component", name: this.getId() + selectorSuffix });
+            rule = new StyleRule({ scope: "component", name: this.getId() + selectorSuffix, materialize: false });
             this._deferredStyleRules.set(selectorSuffix, rule);
         }
 
