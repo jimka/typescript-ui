@@ -14,18 +14,24 @@ export interface DialogBackdropOptions extends ComponentOptions {
 }
 
 /**
+ * Empty subclass-default const so the super call follows the framework's
+ * `(options, defaults)` shape uniformly.
+ */
+const _defaultDialogBackdropOptions: Partial<DialogBackdropOptions> = {};
+
+/**
  * A full-viewport fixed overlay that visually blocks content behind a modal dialog.
  *
  * Appended to `document.documentElement` as a sibling of the dialog panel at a lower
  * z-index, mirroring the pattern used by [`Notification`](/api/core/classes/Notification) and [`Menu`](/api/core/classes/Menu).
  */
-class DialogBackdrop extends Component {
+class DialogBackdrop extends Component<DialogBackdropOptions> {
 
     /**
      * Creates the backdrop and applies viewport-filling fixed positioning.
      */
     constructor(options?: DialogBackdropOptions) {
-        super();
+        super(options, _defaultDialogBackdropOptions);
 
         this.setPosition(Position.FIXED);
         this.setX(0);
@@ -34,10 +40,6 @@ class DialogBackdrop extends Component {
         this.setHeight(window.innerHeight);
         this.setZIndex(10100);
         this.setBackgroundColor("var(--ts-ui-dialog-backdrop-bg)");
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**

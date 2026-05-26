@@ -15,6 +15,15 @@ export interface SplitGutterOptions extends ComponentOptions {
 }
 
 /**
+ * Class-level defaults. `orientation` rides the cascade so the `declare`-d
+ * `_direction` backing field is seeded by `setDirection` during super(),
+ * dodging the class-field super-cascade trap.
+ */
+const _defaultSplitGutterOptions: Partial<SplitGutterOptions> = {
+    orientation: "horizontal",
+};
+
+/**
  * A draggable gutter component used to resize split panels.
  *
  * Listens for mouse/touch drag events on the viewport and notifies registered drag
@@ -23,25 +32,26 @@ export interface SplitGutterOptions extends ComponentOptions {
  *
  * @category Components
  */
-class SplitGutter extends Component {
+class SplitGutter extends Component<SplitGutterOptions> {
 
-    private _direction: String = "horizontal";
+    declare private _direction: String;
     private _dragListeners: Array<Function> = [];
 
     constructor(direction: String, options?: SplitGutterOptions) {
-        super();
+        super(options, _defaultSplitGutterOptions);
 
         this.setBackgroundColor("var(--ts-ui-gutter-bg, #AAAAAA)");
 
-        if (direction) {
+        // Pre-migration the trailing applyOptions(options) ran *after* the
+        // body's positional assignment, so a caller-supplied `orientation`
+        // option won. Apply the positional only when the caller did not
+        // supply orientation, preserving the option-wins-over-positional
+        // contract.
+        if (direction && options?.orientation === undefined) {
             this._direction = direction;
         }
 
         Event.addListener(this, 'mousedown', this.onDragStart);
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**

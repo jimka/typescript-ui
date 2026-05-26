@@ -22,11 +22,7 @@ export interface BulletedListOptions extends AbstractListOptions<BulletedListIte
 class BulletedList extends AbstractListComponent<BulletedListItemStyle> {
 
     constructor(options?: BulletedListOptions) {
-        super("ul", BulletedListItemStyle.DISC);
-
-        if (options) {
-            this.applyOptions(options);
-        }
+        super("ul", BulletedListItemStyle.DISC, options);
     }
 }
 
