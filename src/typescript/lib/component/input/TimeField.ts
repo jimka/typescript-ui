@@ -60,12 +60,10 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
     constructor(options?: TimeFieldOptions) {
         super(options, _defaultTimeFieldOptions);
 
-        // Glyph is placed by `PickerButton.doLayout` (framework-positioned,
-        // centered within the button's inner rect). `setPointerEvents("none")`
-        // lets clicks pass through to the button.
-        const glyph = new Glyph("clock");
-        glyph.setPointerEvents("none");
-        this._button.addComponent(glyph);
+        // Button.setGlyph adds the glyph as the leading child of the
+        // content row (with pointer-events: none) so the outer Fit centres
+        // it within the button's inner rect.
+        this._button.setGlyph("clock");
 
         // Late-built state: `applyOptions` dispatched these through `_options`
         // at super-time. Re-apply now that `_input` exists. `showSeconds` is

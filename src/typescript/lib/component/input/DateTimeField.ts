@@ -62,12 +62,10 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
     constructor(options?: DateTimeFieldOptions) {
         super(options, _defaultDateTimeFieldOptions);
 
-        // Glyph is placed by `PickerButton.doLayout` (framework-positioned,
-        // centered within the button's inner rect). `setPointerEvents("none")`
-        // lets clicks pass through to the button.
-        const glyph = new Glyph("calendar");
-        glyph.setPointerEvents("none");
-        this._button.addComponent(glyph);
+        // Button.setGlyph adds the glyph as the leading child of the
+        // content row (with pointer-events: none) so the outer Fit centres
+        // it within the button's inner rect.
+        this._button.setGlyph("calendar");
 
         // Late-built state: `applyOptions` dispatched these through `_options`
         // at super-time. Re-apply now that `_input` exists. `showSeconds` is
