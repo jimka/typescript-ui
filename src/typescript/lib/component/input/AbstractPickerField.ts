@@ -7,9 +7,35 @@ import { PickerButton } from "~/component/input/PickerButton.js";
 import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
-import { BorderOptions } from "~/primitive/Border.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Util } from "~/core/Util.js";
+
+/**
+ * `:focus-within ::after` overlay highlights the picker root whenever
+ * the inner {@link PickerInput} is focused. A pseudo-element drawn at
+ * `inset: 0` carries the focus border so the ring sits *inside* the
+ * outer's padding box and isn't clipped by an ancestor's `overflow:
+ * hidden` (the framework's default). `z-index: 1` lifts the pseudo
+ * above the absolutely-positioned PickerInput so the ring is never
+ * painted over.
+ */
+(() => {
+    new StyleRule({
+        scope:  "selector",
+        name:   ".DateField:focus-within::after, .TimeField:focus-within::after, .DateTimeField:focus-within::after",
+        styles: {
+            content:       "''",
+            position:      "absolute",
+            inset:         "0",
+            border:        "2px solid var(--ts-ui-indicator-focus, rgb(30, 100, 200))",
+            borderRadius:  "inherit",
+            boxSizing:     "border-box",
+            pointerEvents: "none",
+            zIndex:        "1",
+        },
+    });
+})();
 
 // Width of the picker glyph button in pixels. Matches the prior `display: flex`
 // + 24px caret column the framework used before the per-field doLayout
@@ -162,11 +188,14 @@ abstract class AbstractPickerField<
 
     /**
      * Subclass hook: returns the default border restored when the
-     * invalid-border state clears.
+     * invalid-border state clears. The return value is a complete CSS
+     * border shorthand string (typically a `var(...)` reference to the
+     * shared `--ts-ui-input-border` token) passed straight to
+     * {@link Component.setBorder}.
      *
-     * @returns The default border options.
+     * @returns The default border shorthand string.
      */
-    protected abstract getDefaultBorder(): BorderOptions;
+    protected abstract getDefaultBorder(): string;
 
     /**
      * Applies an {@link AbstractPickerFieldOptions} bag. The inherited
