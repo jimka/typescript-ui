@@ -42,7 +42,12 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
         this.setBackgroundColor("var(--ts-ui-gutter-bg, #AAAAAA)");
 
-        if (direction) {
+        // Pre-migration the trailing applyOptions(options) ran *after* the
+        // body's positional assignment, so a caller-supplied `orientation`
+        // option won. Apply the positional only when the caller did not
+        // supply orientation, preserving the option-wins-over-positional
+        // contract.
+        if (direction && options?.orientation === undefined) {
             this._direction = direction;
         }
 
