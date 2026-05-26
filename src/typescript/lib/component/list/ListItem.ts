@@ -13,6 +13,17 @@ export interface ListItemOptions extends ComponentOptions {
 }
 
 /**
+ * Class-level defaults. The constructor merges the positional `value` in
+ * as the bag's `text` default so the cascade-time `applyOptions` seeds
+ * `_value` for both the positional and option paths (a caller-supplied
+ * `text` overrides the positional via the standard options-over-defaults
+ * merge).
+ */
+const _defaultListItemOptions: Partial<ListItemOptions> = {
+    tag: "li",
+};
+
+/**
  * A single list item component backed by a `<li>` element.
  *
  * Stores a key/value pair and suppresses framework positioning styles so
@@ -20,20 +31,19 @@ export interface ListItemOptions extends ComponentOptions {
  *
  * @category Components
  */
-class ListItem extends Component {
+class ListItem extends Component<ListItemOptions> {
 
     private _key: string;
-    private _value: string;
+    // `declare` rather than initializer-and-body-assign so the cascade-time
+    // `applyOptions` write (sourced from the merged bag's `text`) survives.
+    // The cascade always writes `_value` because the defaults bag carries
+    // `text: value` (positional) — see the constructor's defaults merge.
+    declare private _value: string;
 
     constructor(key: string, value: string, options?: ListItemOptions) {
-        super({ tag: "li" });
+        super(options, { ..._defaultListItemOptions, text: value });
 
         this._key = key;
-        this._value = value;
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
