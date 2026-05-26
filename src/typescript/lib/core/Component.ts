@@ -369,12 +369,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.insets          !== undefined) this.setInsets(opts.insets);
         if (opts.padding         !== undefined) this.setPadding(opts.padding);
         if (opts.backgroundColor !== undefined) this.setBackgroundColor(opts.backgroundColor);
-        if (opts.backgroundImage !== undefined) this.setBackgroundImage(opts.backgroundImage);
         if (opts.foregroundColor !== undefined) this.setForegroundColor(opts.foregroundColor);
         if (opts.colorScheme     !== undefined) this.setColorScheme(opts.colorScheme);
-        if (opts.border          !== undefined) this.setBorder(opts.border);
-        if (opts.borderRadius    !== undefined) this.setBorderRadius(opts.borderRadius);
-        if (opts.shadow          !== undefined) this.setShadow(opts.shadow);
+        this.applyChromeOptions(opts);
         if (opts.outline         !== undefined) this.setOutline(opts.outline);
         if (opts.cursor          !== undefined) this.setCursor(opts.cursor);
         if (opts.preferredSize   !== undefined) this.setPreferredSize(opts.preferredSize.width, opts.preferredSize.height);
@@ -420,6 +417,31 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.components !== undefined) this.addComponents(opts.components);
 
         return this;
+    }
+
+    /**
+     * Dispatches the visual-chrome subset of a {@link ComponentOptions} bag —
+     * `border`, `borderRadius`, `shadow`, and `backgroundImage`. Called from
+     * {@link applyOptions} at the same point those four lines used to live
+     * inline.
+     *
+     * @param opts - The merged options bag (defaults + caller options) being
+     *   applied. Same shape `applyOptions` produces; the hook does not re-merge.
+     *
+     * @remarks
+     * Subclasses override this hook when they need to gate or extend the
+     * chrome dispatch — e.g. [`Button`](/api/component/button/classes/Button)
+     * gates on its `chromeless` option and appends its pressed/hover chrome
+     * fields after the base call. The default implementation is
+     * byte-equivalent to the four lines this hook replaces in
+     * `applyOptions`, so existing Component subclasses see no behavioural
+     * change.
+     */
+    protected applyChromeOptions(opts: TOptions): void {
+        if (opts.border          !== undefined) this.setBorder(opts.border);
+        if (opts.borderRadius    !== undefined) this.setBorderRadius(opts.borderRadius);
+        if (opts.shadow          !== undefined) this.setShadow(opts.shadow);
+        if (opts.backgroundImage !== undefined) this.setBackgroundImage(opts.backgroundImage);
     }
 
     /**
