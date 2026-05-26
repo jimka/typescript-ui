@@ -798,8 +798,8 @@ class Body extends Component {
             const el = cell.getElement() as HTMLElement | null;
 
             if (el) {
-                el.style.setProperty("outline", "2px solid var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))");
-                el.style.setProperty("outline-offset", "-2px");
+                el.style.setProperty("outline", "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))");
+                el.style.setProperty("outline-offset", "-1px");
             }
         }
     }

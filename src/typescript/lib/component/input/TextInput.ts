@@ -4,7 +4,32 @@ import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractI
 import { ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * Unified focus mark for every standalone TextInput subclass — `TextField`,
+ * `TextArea`, `PasswordField`. Uses `box-shadow: inset` rather than the
+ * pseudo-element overlay the composite inputs (`AutoCompleteField`, the
+ * picker fields, `NumberSpinner`) rely on, because `<input>` is a CSS
+ * replaced element and doesn't render `::before` / `::after` reliably.
+ * The inset 2-px shadow paints at the same visual position as those
+ * pseudo borders — just inside the element's own border edge — so the
+ * two recipes are interchangeable visually. `PickerInput` and any inner
+ * input that opts out via `setOutline("none")` (AutoCompleteField,
+ * NumberSpinner) keep the focus indicator on the outer composite
+ * instead.
+ */
+(() => {
+    new StyleRule({
+        scope:  "selector",
+        name:   ".TextField:focus, .TextArea:focus, .PasswordField:focus",
+        styles: {
+            outline:   "none",
+            boxShadow: "inset 0 0 0 2px var(--ts-ui-indicator-focus, rgb(30, 100, 200))",
+        },
+    });
+})();
 
 /**
  * Construction-time options for {@link TextInput}.
@@ -34,6 +59,7 @@ export interface TextInputOptions extends AbstractInputOptions {
 const _defaultTextInputOptions: Partial<TextInputOptions> = {
     tag:             "input",
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
+    border:          "var(--ts-ui-input-border)",
     borderRadius:    "var(--ts-ui-border-radius, 4px)",
 };
 

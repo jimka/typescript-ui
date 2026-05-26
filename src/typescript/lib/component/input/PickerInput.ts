@@ -8,9 +8,17 @@ import { callable } from "~/core/Callable.js";
  * User-overridable visual defaults forwarded to `super` via the options bag.
  * `cursor: "text"` matches the caret hover on the field root so the inner
  * `<input>` doesn't switch to the default arrow on its own surface.
+ *
+ * `border: "none"` and `outline: "none"` suppress the inherited TextInput
+ * border + the browser-default focus ring; the outer
+ * {@link AbstractPickerField} root carries the visible chrome (and its
+ * `:focus-within` rule shows the focus indicator) so the two don't draw
+ * over each other.
  */
 const _defaultPickerInputOptions: Partial<TextInputOptions> = {
-    cursor: "text",
+    cursor:  "text",
+    border:  "none",
+    outline: "none",
 };
 
 /**

@@ -71,6 +71,46 @@ export interface Theme {
 
     input: {
         background: string;
+        /**
+         * Complete CSS border shorthand string consumed via `setBorder(string)`.
+         * Applied to `TextInput`, the three picker fields, `ComboBox`, the
+         * picker dropdown panels, the autocomplete dropdown, and `FieldSet`.
+         */
+        border: string;
+        /**
+         * Complete CSS border shorthand string for the hover state. Provisioned
+         * for follow-up work that adds `:hover` rules to the listed inputs; not
+         * consumed at present.
+         */
+        borderHover: string;
+    };
+
+    /**
+     * Cross-cutting affordance tokens — surfaces that mark a focused / selected
+     * cell or row use this bucket rather than per-component colour-only tokens.
+     */
+    indicator: {
+        /**
+         * Colour-only token for the keyboard-focus indicator. Consumed by
+         * every `:focus` / `:focus-within` rule the framework exposes —
+         * `TextField` / `TextArea` / `PasswordField`, the composite inputs
+         * (`AutoCompleteField`, the picker fields, `NumberSpinner`), the
+         * list root, the row focus mark, and the table cell focus mark.
+         * The width / style is fixed at `2px solid` framework-side so the
+         * same colour works through both the `border:` shorthand (on
+         * pseudo-element overlays) and the `box-shadow: inset 0 0 0 2px`
+         * recipe (used on `<input>` elements, which don't render
+         * pseudo-elements).
+         */
+        focus: string;
+        /**
+         * Complete CSS outline shorthand string for the "selection mark"
+         * affordance — reserved for callers that need an outline-shaped
+         * selection cue distinct from background-tint selection. Currently
+         * unconsumed; provisioned so a future plan can wire it without
+         * re-touching `Theme.ts`.
+         */
+        selection: string;
     };
 
     form: {
@@ -437,7 +477,11 @@ export const DefaultTheme: Theme = {
             shadow    : '2px 2px 1px inset grey',
         },
     },
-    input : { background: 'rgb(255, 255, 255)' },
+    input : {
+        background : 'rgb(255, 255, 255)',
+        border     : '1px solid rgb(160, 160, 160)',
+        borderHover: '1px solid rgb(120, 120, 120)',
+    },
     form  : {
         background        : 'rgb(255, 255, 255)',
         border            : 'rgb(160, 160, 160)',
@@ -632,6 +676,10 @@ export const DefaultTheme: Theme = {
     dropdown: {
         fade: { duration: '120ms', translate: '4px' },
     },
+    indicator: {
+        focus    : 'rgb(30, 100, 200)',
+        selection: '1px dashed rgb(120, 170, 240)',
+    },
     // Picker tokens stay numerically in step with `autoComplete.item.*` — they
     // share the {@link PickerCell} class — so a theme that customises one
     // gets the other matching automatically.
@@ -704,7 +752,11 @@ export const DarkTheme: Theme = {
             shadow    : '2px 2px 1px inset #333',
         },
     },
-    input : { background: 'rgb(40, 40, 40)' },
+    input : {
+        background : 'rgb(40, 40, 40)',
+        border     : '1px solid rgb(110, 110, 110)',
+        borderHover: '1px solid rgb(150, 150, 150)',
+    },
     form  : {
         background        : 'rgb(40, 40, 40)',
         border            : 'rgb(110, 110, 110)',
@@ -896,6 +948,10 @@ export const DarkTheme: Theme = {
     dropdown: {
         fade: { duration: '120ms', translate: '4px' },
     },
+    indicator: {
+        focus    : 'rgb(120, 170, 240)',
+        selection: '1px dashed rgb(120, 170, 240)',
+    },
     // Dark picker tokens follow the dark `autoComplete.item.*` hue family for
     // chevron-hover consistency with cell hover.
     picker: {
@@ -959,6 +1015,8 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-toggle-selected-bg'               : theme.toggle.selected.background,
         '--ts-ui-toggle-selected-shadow'           : theme.toggle.selected.shadow,
         '--ts-ui-input-bg'                         : theme.input.background,
+        '--ts-ui-input-border'                     : theme.input.border,
+        '--ts-ui-input-border-hover'               : theme.input.borderHover,
         '--ts-ui-form-bg'                          : theme.form.background,
         '--ts-ui-form-border'                      : theme.form.border,
         '--ts-ui-form-color'                       : theme.form.color,
@@ -1062,6 +1120,8 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-list-row-focus-ring'              : theme.list.row.focusRing,
         '--ts-ui-list-row-disabled-color'          : theme.list.row.disabledColor,
         '--ts-ui-list-row-separator'               : theme.list.row.separator,
+        '--ts-ui-indicator-focus'                  : theme.indicator.focus,
+        '--ts-ui-indicator-selection'              : theme.indicator.selection,
         '--ts-ui-dropdown-fade-duration'           : theme.dropdown.fade.duration,
         '--ts-ui-dropdown-fade-translate'          : theme.dropdown.fade.translate,
         '--ts-ui-picker-nav-fg'                    : theme.picker.navForeground,

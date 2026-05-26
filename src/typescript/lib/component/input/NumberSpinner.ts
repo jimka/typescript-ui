@@ -11,7 +11,44 @@ import { Insets } from "~/primitive/Insets.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Util } from "~/core/Util.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * `:focus-within ::after` overlay draws the focus indicator around the
+ * outer NumberSpinner so the ring sits at the composite's chrome edge
+ * rather than around just the inner text column. The inner `TextField`'s
+ * own `.TextField:focus` box-shadow is suppressed by the second rule
+ * below — without that override, the inner shadow's right edge would
+ * paint a blue vertical stripe between the text and the spin-button
+ * column (inside the NumberSpinner). The outer pseudo is drawn at
+ * `inset: 0` with `z-index: 1` so an ancestor's `overflow: hidden`
+ * (the framework default) can't clip the ring.
+ */
+(() => {
+    new StyleRule({
+        scope:  "selector",
+        name:   ".NumberSpinner:focus-within::after",
+        styles: {
+            content:       "''",
+            position:      "absolute",
+            inset:         "0",
+            border:        "2px solid var(--ts-ui-indicator-focus, rgb(30, 100, 200))",
+            borderRadius:  "inherit",
+            boxSizing:     "border-box",
+            pointerEvents: "none",
+            zIndex:        "1",
+        },
+    });
+
+    new StyleRule({
+        scope:  "selector",
+        name:   ".NumberSpinner .TextField:focus",
+        styles: {
+            boxShadow: "none",
+        },
+    });
+})();
 
 /**
  * Construction-time options for {@link NumberSpinner}.
@@ -72,6 +109,12 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
         this._input.setTextAlign("right");
         this._input.setBorder({ style: BorderStyle.NONE });
         this._input.setBorderRadius("0");
+        // Suppress the browser-default focus ring; the outer NumberSpinner's
+        // `:focus-within::after` rule shows the framework focus indicator
+        // instead. The matching `.NumberSpinner .TextField:focus` rule at
+        // module top suppresses the inner box-shadow that would otherwise
+        // paint a stripe between the text and the spin-button column.
+        this._input.setOutline("none");
         this._input.setText(this.formatValue(0));
 
         this._upBtn   = new SpinButton("▲");
