@@ -13,13 +13,21 @@ export interface MenuSeparatorOptions extends ComponentOptions {
 }
 
 /**
+ * Empty subclass-default const so the super call follows the framework's
+ * `(options, defaults)` shape uniformly. MenuSeparator owns no class-level
+ * option overrides today; the const exists so a future field has a place to
+ * land without reshuffling the super call.
+ */
+const _defaultMenuSeparatorOptions: Partial<MenuSeparatorOptions> = {};
+
+/**
  * A horizontal separator rule used inside a [`Menu`](/api/core/classes/Menu) panel to visually group menu items.
  *
  * Renders as a thin border line. Width is set externally by `Menu.doLayout()`.
  *
  * @category Components
  */
-class MenuSeparator extends Component {
+class MenuSeparator extends Component<MenuSeparatorOptions> {
 
     /** Fixed pixel height of every separator. */
     static readonly HEIGHT: number = 9;
@@ -30,7 +38,7 @@ class MenuSeparator extends Component {
      * @param cssVarPrefix - Selects which CSS-variable family supplies the border colour. Defaults to `'menu-bar'`.
      */
     constructor(cssVarPrefix: MenuItemCSSVarPrefix = "menu-bar", options?: MenuSeparatorOptions) {
-        super();
+        super(options, _defaultMenuSeparatorOptions);
 
         this.setHeight(MenuSeparator.HEIGHT);
         this.setPreferredSize(0, MenuSeparator.HEIGHT);
@@ -41,10 +49,6 @@ class MenuSeparator extends Component {
         );
         this.setElementCSSRule("margin", "4px 0");
         this.getAria().setRole("separator");
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 }
 
