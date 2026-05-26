@@ -39,7 +39,9 @@ class AutoCompleteItem extends Component {
      */
     constructor(text: string, onSelect: (value: string) => void, options?: AutoCompleteItemOptions) {
         super({
+            ...options,
             styleRules: [
+                ...(options?.styleRules ?? []),
                 {
                     suffix: ":hover",
                     styles: {

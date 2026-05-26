@@ -107,18 +107,17 @@ class HeaderCell extends DefaultCell {
         renderer.getText().setFontWeight("bold");
         renderer.getText().setText(text);
 
-        // DefaultCell's `(tag?: string)` constructor cannot carry a
-        // `styleRules` options bag, so the per-id `:active` rule stays a
-        // direct `new StyleRule(...)` call here. The constructor-fold half
-        // of the options-bag simplification still applies — `styles` lands
-        // in the constructor and the auto-`ensure()` flushes it.
-        new StyleRule({
-            scope:  "component",
-            name:   this.getId() + ":active",
-            styles: {
-                boxShadow: "var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0,0,0,0.2) inset)",
-            },
-        });
+        // DefaultCell's `(tag?: string)` super-signature cannot carry the
+        // `styleRules` options bag, so the rule is allocated here via the
+        // protected `createStyleRule` builder — same dedupe-and-defer path
+        // the options-bag dispatch uses, just spelled imperatively. The
+        // render-time `applyStyle` flushes the queued `boxShadow` onto the
+        // stylesheet, matching ARCHITECTURE.md's "construction stays
+        // JS-only" rule.
+        this.createStyleRule(":active").set(
+            "boxShadow",
+            "var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0,0,0,0.2) inset)",
+        );
 
         // Wire the resize-handle drag lifecycle: mousedown installs viewport
         // mousemove/mouseup listeners that forward through the handle's
