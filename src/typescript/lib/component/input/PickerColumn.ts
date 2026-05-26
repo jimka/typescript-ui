@@ -19,35 +19,48 @@ const HEADER_HEIGHT: number = 18;
 // class rules. Layout (column widths, cell stacking, scrolling) is driven by
 // the framework HBox / VBox managers and Panel.autoScroll — no display:flex/grid here.
 (() => {
-    const header = new StyleRule({ scope: "class", name: "PickerColumnHeader" });
-    header.set("opacity", "0.7");
-    header.ensure();
+    new StyleRule({
+        scope:  "class",
+        name:   "PickerColumnHeader",
+        styles: {
+            opacity: "0.7",
+        },
+    });
 
     // Visual properties only. `cursor` is set per-instance via `setCursor`
     // because Component's per-element `#id { cursor: … }` CSS rule (emitted
     // from `applyStyle` using the cached default `"default"`) wins on
     // specificity over any class-level cursor declaration.
-    const cell = new StyleRule({ scope: "class", name: "PickerCell" });
-    cell.set("borderRadius", "3px");
-    cell.ensure();
+    new StyleRule({
+        scope:  "class",
+        name:   "PickerCell",
+        styles: {
+            borderRadius: "3px",
+        },
+    });
 
-    const cellHover = new StyleRule({ scope: "selector", name: ".PickerCell:hover" });
-    cellHover.set("backgroundColor",
-        "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))");
-    cellHover.ensure();
+    new StyleRule({
+        scope:  "selector",
+        name:   ".PickerCell:hover",
+        styles: {
+            backgroundColor: "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))",
+        },
+    });
 
     // Disabled cells: no hover effect, dim foreground, optional background
     // shading from the theme token. The `:hover` selector above is overridden
     // because the more specific `.PickerCell.disabled` selector wins for
     // properties declared here. Cursor is per-instance — see
     // `PickerCell.setDisabled`.
-    const cellDisabled = new StyleRule({ scope: "selector", name: ".PickerCell.disabled" });
-    cellDisabled.setMany({
-        pointerEvents:   "none",
-        color:           "var(--ts-ui-autocomplete-item-disabled-color, rgb(170, 170, 170))",
-        backgroundColor: "var(--ts-ui-picker-cell-disabled-bg, transparent)",
+    new StyleRule({
+        scope:  "selector",
+        name:   ".PickerCell.disabled",
+        styles: {
+            pointerEvents:   "none",
+            color:           "var(--ts-ui-autocomplete-item-disabled-color, rgb(170, 170, 170))",
+            backgroundColor: "var(--ts-ui-picker-cell-disabled-bg, transparent)",
+        },
     });
-    cellDisabled.ensure();
 })();
 
 /** Column header label ("Hour" / "Min" / "Sec" / …). Centred within its row. */
