@@ -12,6 +12,7 @@ import { AnchorType } from "~/layout/AnchorType.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Border, BorderOptions } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
+import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -35,6 +36,38 @@ export interface ButtonOptions extends ComponentOptions {
     hoverBorder?:            BorderOptions;
     hoverBorderRadius?:      string;
     hoverShadow?:            string;
+
+    /**
+     * Suppresses the framework's visual-chrome defaults — `border`,
+     * `borderRadius`, `shadow`, `backgroundImage`, the twelve `pressedX` /
+     * `hoverX` fields, and the UA `<button>` background. Use for buttons
+     * that want only the cursor, color, and inset behaviour of `Button`
+     * without the ridge border, drop shadow, and gradient background.
+     * Runtime-toggle counterpart is `setChromeless`; read with
+     * `isChromeless`. Used by [`PickerButton`](/api/component/input/classes/PickerButton)
+     * and [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton).
+     *
+     * `applyOptions({ chromeless: true })` on a previously-chromeful button
+     * writes the flag pure into `_options` and gates future chrome
+     * dispatches, but does not clear the chrome already on the element —
+     * callers wanting a runtime flip should call `setChromeless(true)`
+     * directly.
+     */
+    chromeless?:             boolean;
+
+    /**
+     * Anchor for the inner content row (glyph + label) within Button's outer
+     * `Fit` layout. Defaults to {@link AnchorType.CENTER}. Pass
+     * {@link AnchorType.WEST} for left-anchored menubar-style buttons.
+     */
+    anchor?:                 AnchorType;
+
+    /**
+     * Fill mode for the inner content row within Button's outer `Fit`
+     * layout. Defaults to {@link FillType.NONE} (content sits at preferred
+     * size, anchor decides displacement). `BOTH` stretches it to fill.
+     */
+    fill?:                   FillType;
 }
 
 /**
@@ -54,6 +87,8 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
     shadow:                 "var(--ts-ui-button-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2))",
     backgroundImage:        "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))",
     insets:                 new Insets(4, 4, 4, 4),
+    anchor:                 AnchorType.CENTER,
+    fill:                   FillType.NONE,
     pressedForegroundColor: "var(--ts-ui-button-pressed-fg, rgb(150, 150, 150))",
     pressedBackgroundColor: "var(--ts-ui-button-pressed-bg, rgb(200, 200, 200))",
     pressedBackgroundImage: "var(--ts-ui-button-pressed-bg, none)",
@@ -84,8 +119,45 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
 class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<TOptions> {
 
     private _text!:    Text;
-    private _content!: Component;
+    /**
+     * The button's content-row container. Holds the optional leading
+     * [`Glyph`](/api/component/display/classes/Glyph) plus the `_text` label,
+     * laid out by an `HBox`. Exposed as `protected` so subclasses can
+     * re-anchor (`removeComponent` + `addComponent`) or rebuild the row
+     * without having to opt into `customLayout: true`. Treat as part of the
+     * subclass contract — future restructuring of Button's content row
+     * needs to keep this field's identity and shape stable.
+     */
+    protected _content!: Component;
     private _glyph: Glyph | null = null;
+
+    /**
+     * Flipped to `true` the first time a consumer calls `setPreferredSize`
+     * (directly or via the options bag). When set, the native auto-sizing
+     * pipeline (see `recomputePreferredSize`) no-ops so the consumer's
+     * explicit intent wins permanently. There's no public surface to
+     * re-enable auto-sizing — a future plan can add a `clearPreferredSize`
+     * method that resets this flag and re-fires the recompute.
+     *
+     * `declare` rather than `= false` so the class-field super-cascade trap
+     * doesn't clobber the value when `Component.applyOptions` dispatches
+     * `setPreferredSize` during the super-time cascade (an `= false`
+     * initializer runs *after* super returns and would silently revert the
+     * setter's `_consumerSetPreferredSize = true` write — letting the
+     * end-of-constructor `recomputePreferredSize` overwrite the consumer's
+     * preferred size with the content-derived value). The early-return
+     * check at the top of `recomputePreferredSize` treats `undefined` as
+     * falsy, so the no-cascade-write case still auto-sizes correctly.
+     */
+    private declare _consumerSetPreferredSize?: boolean;
+
+    /**
+     * Bound theme-change handler. The auto-sizing pipeline reads font-size
+     * and glyph metrics that can shift with the active theme, so the
+     * recompute re-fires whenever the theme cascade flips. Held on the
+     * instance so a future `dispose` path can unregister it.
+     */
+    private readonly _onThemeChange: () => void = () => this.recomputePreferredSize();
 
     // Lazy `:active` rule. The slot is just a fast-path cache — the
     // `createStyleRule` builder on Component dedupes by selector suffix, so
@@ -113,9 +185,9 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     private _enabledCursor: string = "pointer";
 
     /**
-     * Constructs a Button. At least one of `text` (positional or via options)
-     * or `options.glyph` must be supplied; a button with neither is rejected
-     * at runtime.
+     * Constructs a Button. `text` (positional or via options) and `glyph` are
+     * both optional — an empty Button renders as a chrome-shaped placeholder
+     * whose label / glyph can be filled in later via `setText` / `setGlyph`.
      *
      * @example
      * ```typescript
@@ -139,16 +211,6 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             options = textOrOptions;
         }
 
-        // Validate before `super` because the cascade dispatches setters with
-        // side effects. The text/glyph can land on any of the three sources
-        // (positional, user options, subclass defaults from a class like
-        // `SpinButton` that bakes its glyph into the defaults bag).
-        const validateText  = text ?? options?.text ?? subclassDefaults?.text;
-        const validateGlyph = options?.glyph ?? subclassDefaults?.glyph;
-        if (validateText === undefined && (validateGlyph === undefined || validateGlyph === null)) {
-            throw new Error("Button must be given a `text` label or a `glyph` option (or both).");
-        }
-
         // Hand defaults to Component via the second super arg so they land in
         // `_defaultOptions` and survive subsequent `applyOptions` re-merges.
         // Subclass defaults (forwarded by callers via the third constructor
@@ -163,7 +225,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this.setLayoutManager(new Fit());
 
         // Build the text/glyph content row.
-        this._text     = new Text();
+        this._text    = new Text();
         this._content = new Component();
         this._content.setLayoutManager(new HBox({ spacing: 2 }));
         this._content.setInsets(new Insets(0, 0, 0, 0));
@@ -176,8 +238,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this._text.setFontSize("--ts-ui-button-font-size");
 
         this.addComponent(this._content, {
-            fill: FillType.NONE,
-            anchor: AnchorType.CENTER
+            fill:   (this._options.fill   ?? this._defaultOptions.fill)   as FillType,
+            anchor: (this._options.anchor ?? this._defaultOptions.anchor) as AnchorType,
         });
 
         // Late-built state: applyOptions wrote `text`/`glyph` into `_options`
@@ -190,6 +252,16 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (this._options.glyph !== undefined) {
             this.setGlyph(this._options.glyph);
         }
+
+        // Initial auto-sized preferred-size pass. No-ops when the consumer
+        // already supplied `preferredSize` (the override of `setPreferredSize`
+        // below flips `_consumerSetPreferredSize`).
+        this.recomputePreferredSize();
+
+        // Re-fire the auto-sized recompute on theme changes so any
+        // font-size / glyph-metric shifts cascade into the button's preferred
+        // size without explicit consumer prodding.
+        ThemeManager.onThemeChange(this._onThemeChange);
     }
 
     /**
@@ -210,25 +282,74 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // symbol-derived glyph) dispatch alongside caller-supplied values.
         const opts = { ...this._defaultOptions, ...options } as TOptions;
 
-        if (opts.text                   !== undefined) this._options.text  = opts.text;
-        if (opts.glyph                  !== undefined) this._options.glyph = opts.glyph;
+        if (opts.text         !== undefined) this._options.text         = opts.text;
+        if (opts.glyph        !== undefined) this._options.glyph        = opts.glyph;
 
-        if (opts.enabled                !== undefined) this.setEnabled(opts.enabled);
+        if (opts.enabled      !== undefined) this.setEnabled(opts.enabled);
+
+        // chromeless / anchor / fill are pure writes — no setter dispatch.
+        // Runtime flag flips for chromeless go through setChromeless(), which
+        // also reconciles the DOM via clearChrome / restoreChrome. anchor and
+        // fill are consumed by the constructor body when adding `_content` to
+        // the outer Fit layout; later applyOptions calls don't reanchor.
+        if (opts.chromeless   !== undefined) this._options.chromeless   = opts.chromeless;
+        if (opts.anchor       !== undefined) this._options.anchor       = opts.anchor;
+        if (opts.fill         !== undefined) this._options.fill         = opts.fill;
+
+        return this;
+    }
+
+    /**
+     * Gates Component's chrome dispatch on the `chromeless` flag and, when
+     * the flag is off, extends it with Button's twelve `pressedX` / `hoverX`
+     * chrome fields. Reads the flag from the runtime cache first so a flag
+     * previously written (by an earlier `applyOptions` or `setChromeless`)
+     * keeps gating future re-applies that omit `chromeless`.
+     *
+     * @param opts - The merged options bag passed by {@link applyOptions}.
+     */
+    protected override applyChromeOptions(opts: TOptions): void {
+        const chromeless = (this._options.chromeless ?? opts.chromeless) === true;
+        if (chromeless) {
+            // `Component.applyStyle` reads `borderRadius`, `shadow`, and
+            // `backgroundImage` from `{...defaults, ...options}` directly, so
+            // chromeful defaults baked into `_defaultOptions` would otherwise
+            // leak through at render time. Write `undefined` into `_options`
+            // so the spread merge masks the defaults and `applyStyle`'s
+            // `if (opts.X)` falsy gates skip the property.
+            //
+            // Border goes through private `_border` / `_borderCSS` fields, so
+            // `clearBorder` resets those to a 0-width none-style border that
+            // overrides the UA `<button>` ridge.
+            //
+            // Finally, the UA `<button>` element has a non-transparent
+            // background-color; set transparent unless the caller specified
+            // their own backgroundColor.
+            this.clearBorder();
+            this._options.borderRadius    = undefined;
+            this._options.shadow          = undefined;
+            this._options.backgroundImage = undefined;
+            if ((this._options.backgroundColor ?? this._defaultOptions.backgroundColor) === undefined) {
+                this._options.backgroundColor = "transparent";
+            }
+            return;
+        }
+
+        super.applyChromeOptions(opts);
+
         if (opts.pressedForegroundColor !== undefined) this.setPressedForegroundColor(opts.pressedForegroundColor);
         if (opts.pressedBackgroundColor !== undefined) this.setPressedBackgroundColor(opts.pressedBackgroundColor);
         if (opts.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(opts.pressedBackgroundImage);
-        if (opts.pressedShadow          !== undefined) this.setPressedShadow(opts.pressedShadow);
-        if (opts.pressedBorder          !== undefined) this.setPressedBorder(opts.pressedBorder);
-        if (opts.pressedBorderRadius    !== undefined) this.setPressedBorderRadius(opts.pressedBorderRadius);
+        if (opts.pressedShadow          !== undefined) this.setPressedShadow         (opts.pressedShadow);
+        if (opts.pressedBorder          !== undefined) this.setPressedBorder         (opts.pressedBorder);
+        if (opts.pressedBorderRadius    !== undefined) this.setPressedBorderRadius   (opts.pressedBorderRadius);
 
-        if (opts.hoverForegroundColor   !== undefined) this.setHoverForegroundColor(opts.hoverForegroundColor);
-        if (opts.hoverBackgroundColor   !== undefined) this.setHoverBackgroundColor(opts.hoverBackgroundColor);
-        if (opts.hoverBackgroundImage   !== undefined) this.setHoverBackgroundImage(opts.hoverBackgroundImage);
-        if (opts.hoverShadow            !== undefined) this.setHoverShadow(opts.hoverShadow);
-        if (opts.hoverBorder            !== undefined) this.setHoverBorder(opts.hoverBorder);
-        if (opts.hoverBorderRadius      !== undefined) this.setHoverBorderRadius(opts.hoverBorderRadius);
-
-        return this;
+        if (opts.hoverForegroundColor   !== undefined) this.setHoverForegroundColor  (opts.hoverForegroundColor);
+        if (opts.hoverBackgroundColor   !== undefined) this.setHoverBackgroundColor  (opts.hoverBackgroundColor);
+        if (opts.hoverBackgroundImage   !== undefined) this.setHoverBackgroundImage  (opts.hoverBackgroundImage);
+        if (opts.hoverShadow            !== undefined) this.setHoverShadow           (opts.hoverShadow);
+        if (opts.hoverBorder            !== undefined) this.setHoverBorder           (opts.hoverBorder);
+        if (opts.hoverBorderRadius      !== undefined) this.setHoverBorderRadius     (opts.hoverBorderRadius);
     }
 
     /**
@@ -249,7 +370,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      *
      * @remarks
      * The button's text always lives inside an [`HBox`](/api/layout/classes/HBox)-laid-out
-     * content row centred by the outer [`Fit`](/api/layout/classes/Fit) layout. This setter
+     * content row anchored by the outer [`Fit`](/api/layout/classes/Fit) layout. This setter
      * just swaps the leading glyph child of that row in or out — adding the glyph as the
      * first child and re-appending the text after it to preserve the `[glyph, text]` order.
      * Empty text combined with `setGlyph(name)` therefore renders as a glyph-only button
@@ -267,6 +388,10 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
         this._content.insertComponent(glyph, 0);
 
+        // The content row's preferred size shifted — re-sync the button's
+        // auto-derived preferred size unless the consumer has pinned it.
+        this.recomputePreferredSize();
+
         return this;
     }
 
@@ -280,6 +405,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this._content.removeComponent(this._glyph);
             this._glyph = null;
         }
+
+        this.recomputePreferredSize();
 
         return this;
     }
@@ -313,6 +440,215 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         Event.addListener(this, "click", listener);
 
         return this;
+    }
+
+    /**
+     * Registers a `pointerdown` event listener on this button. The named
+     * surface lets external consumers (e.g.
+     * [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField))
+     * route through the component rather than reaching for
+     * `Event.addListener(button, "pointerdown", ...)` directly, preserving
+     * the framework's named-listener contract.
+     *
+     * @param listener - Called with the originating PointerEvent.
+     *
+     * @returns This component, for method chaining.
+     */
+    addPointerDownListener(listener: Function): this {
+        Event.addListener(this, "pointerdown", listener);
+
+        return this;
+    }
+
+    /**
+     * Returns whether this button is currently in `chromeless` mode (no
+     * border / shadow / gradient / pressed-hover treatments).
+     *
+     * @returns True when chrome dispatches are gated off.
+     */
+    isChromeless(): boolean {
+        return this._options.chromeless ?? false;
+    }
+
+    /**
+     * Toggles the `chromeless` flag and reconciles the DOM. When flipping
+     * to `true`, clears every chrome property currently on the element
+     * before recording the flag. When flipping to `false`, restores the
+     * chromeful defaults from `_defaultOptions` (which retains both
+     * Button's base defaults and any subclass chrome layered in at
+     * construction, so the round-trip is loss-free for both sources).
+     *
+     * @param value - The new chromeless state.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks Consumer-supplied chrome that came in via the caller's
+     * `options` bag (rather than the subclass's `_defaultOptions`) is not
+     * recovered by `setChromeless(false)` — only the defaults round-trip.
+     */
+    setChromeless(value: boolean): this {
+        if ((this._options.chromeless ?? false) === value) {
+            return this;
+        }
+
+        if (value) {
+            // Clear the DOM before flipping the flag. The clear* setters
+            // are not gated today, but the ordering keeps the intent
+            // self-evident if a future change does gate them.
+            this._clearChrome();
+            this._options.chromeless = true;
+        } else {
+            // Flip the flag first so the clear/set side-effects on the
+            // restore path are not intercepted by anything that might
+            // later gate them.
+            this._options.chromeless = false;
+            this._restoreChrome();
+        }
+
+        return this;
+    }
+
+    /**
+     * Clears every chrome property the framework defaults touch. Pressed
+     * and hover rules are only touched when their lazy backing slots have
+     * already been allocated — calling the `clearX` setters when nothing
+     * was ever installed would touch the lazy getters and acquire empty
+     * orphan rules.
+     */
+    private _clearChrome(): void {
+        this.clearBorder();
+        this.clearBorderRadius();
+        this.clearShadow();
+        this.clearBackgroundImage();
+
+        if (this._pressedStyleRule !== undefined) {
+            this.clearPressedBackgroundColor();
+            this.clearPressedBackgroundImage();
+            this.clearPressedForegroundColor();
+            this.clearPressedShadow();
+            this.clearPressedBorderRadius();
+            // `clearPressedBorder` doesn't exist today; consumers that set
+            // a pressed border live with it across a chromeless toggle.
+        }
+
+        if (this._hoverStyleRule !== undefined) {
+            this.clearHoverBackgroundColor();
+            this.clearHoverBackgroundImage();
+            this.clearHoverForegroundColor();
+            this.clearHoverShadow();
+            this.clearHoverBorderRadius();
+            // `clearHoverBorder` doesn't exist today — same story as
+            // `clearPressedBorder`.
+        }
+    }
+
+    /**
+     * Re-applies chrome from `_defaultOptions`, which carries both Button's
+     * base defaults and any subclass chrome layered in at construction via
+     * the third constructor arg. Consumer-supplied chrome (from the
+     * caller's options bag, not `_defaultOptions`) is not recovered here.
+     */
+    private _restoreChrome(): void {
+        const d = this._defaultOptions as ButtonOptions;
+
+        if (d.border                 !== undefined) this.setBorder(d.border);
+        if (d.borderRadius           !== undefined) this.setBorderRadius(d.borderRadius);
+        if (d.shadow                 !== undefined) this.setShadow(d.shadow);
+        if (d.backgroundImage        !== undefined) this.setBackgroundImage(d.backgroundImage);
+
+        if (d.pressedForegroundColor !== undefined) this.setPressedForegroundColor(d.pressedForegroundColor);
+        if (d.pressedBackgroundColor !== undefined) this.setPressedBackgroundColor(d.pressedBackgroundColor);
+        if (d.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(d.pressedBackgroundImage);
+        if (d.pressedShadow          !== undefined) this.setPressedShadow         (d.pressedShadow);
+        if (d.pressedBorder          !== undefined) this.setPressedBorder         (d.pressedBorder);
+        if (d.pressedBorderRadius    !== undefined) this.setPressedBorderRadius   (d.pressedBorderRadius);
+
+        if (d.hoverForegroundColor   !== undefined) this.setHoverForegroundColor  (d.hoverForegroundColor);
+        if (d.hoverBackgroundColor   !== undefined) this.setHoverBackgroundColor  (d.hoverBackgroundColor);
+        if (d.hoverBackgroundImage   !== undefined) this.setHoverBackgroundImage  (d.hoverBackgroundImage);
+        if (d.hoverShadow            !== undefined) this.setHoverShadow           (d.hoverShadow);
+        if (d.hoverBorder            !== undefined) this.setHoverBorder           (d.hoverBorder);
+        if (d.hoverBorderRadius      !== undefined) this.setHoverBorderRadius     (d.hoverBorderRadius);
+    }
+
+    /**
+     * Updates the button's insets. Overrides Component's setter so the
+     * auto-sized preferred size re-syncs to the new inset perimeter
+     * without explicit consumer prodding (subclasses like `MenuBarButton`
+     * change insets in their constructor body).
+     *
+     * @param insets - The new perimeter insets.
+     * @returns This component, for method chaining.
+     */
+    setInsets(insets: Insets): this {
+        super.setInsets(insets);
+        this.recomputePreferredSize();
+
+        return this;
+    }
+
+    /**
+     * Records a consumer-supplied preferred size. Flips
+     * `_consumerSetPreferredSize` so future auto-fires from
+     * `recomputePreferredSize` no-op — the consumer's explicit intent
+     * wins permanently for the lifetime of this instance.
+     *
+     * @param width - The preferred width in pixels.
+     * @param height - The preferred height in pixels.
+     * @returns This component, for method chaining.
+     */
+    setPreferredSize(width: number, height: number): this {
+        this._consumerSetPreferredSize = true;
+        super.setPreferredSize(width, height);
+
+        return this;
+    }
+
+    /**
+     * Re-derives this button's preferred size from its content row +
+     * perimeter and pushes the result through Component's setter (bypassing
+     * the consumer-flag flip). Auto-fires from the end of the constructor,
+     * `setGlyph`, `clearGlyph`, `setInsets`, and the registered
+     * `ThemeManager.onThemeChange` handler.
+     *
+     * No-ops when the consumer has supplied an explicit `preferredSize`
+     * (Button's `setPreferredSize` override records that intent).
+     *
+     * Subclasses customise the size by overriding {@link computePreferredSize}
+     * rather than touching this method — the consumer-flag and auto-fire
+     * wiring stays here.
+     */
+    protected recomputePreferredSize(): void {
+        if (this._consumerSetPreferredSize) {
+            return;
+        }
+
+        const size = this.computePreferredSize();
+
+        // Bypass our own override of setPreferredSize so the consumer flag
+        // doesn't flip on an auto-fire. `super` is `Component`.
+        super.setPreferredSize(size.width, size.height);
+    }
+
+    /**
+     * Computes the auto-sized preferred size from the content row's
+     * preferred size plus this button's perimeter (insets + border).
+     * Mirrors `Fit.getPreferredSize`'s use of `getPerimiterSize` so the
+     * border width isn't truncated off the text. Subclasses override to
+     * alter — the typical case is replacing the derived height with a
+     * fixed token (see `MenuBarButton`).
+     *
+     * @returns The `{ width, height }` Button reports as its preferred size
+     *   while the consumer hasn't pinned one.
+     */
+    protected computePreferredSize(): { width: number; height: number } {
+        const content = this._content?.getPreferredSize() ?? { width: 0, height: 0 };
+        const perim   = this.getPerimiterSize();
+
+        return {
+            width:  content.width  + perim.left + perim.right,
+            height: content.height + perim.top  + perim.bottom,
+        };
     }
 
     /**

@@ -95,9 +95,13 @@ abstract class AbstractPickerField<
         Event.addListener(this._input,  "input",       ()                 => this.onInput());
         Event.addListener(this._input,  "blur",        ()                 => this.onBlur());
         Event.addListener(this._input,  "keydown",     (e: KeyboardEvent) => this.onKeyDown(e));
-        Event.addListener(this._button, "click",       ()                 => this.onButtonClick());
+
+        // Route button events through the named-method surface — never raw
+        // `Event.addListener(button, …)` per ARCHITECTURE.md's "component
+        // owns its event surface" rule.
+        this._button.addActionListener(()                => this.onButtonClick());
         // Suppress focus loss when clicking the button (it would blur the input).
-        Event.addListener(this._button, "pointerdown", (e: PointerEvent)  => this.onButtonPointerDown(e));
+        this._button.addPointerDownListener((e: PointerEvent) => this.onButtonPointerDown(e));
 
         this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
     }
@@ -203,6 +207,13 @@ abstract class AbstractPickerField<
         this._button.setY(0);
         this._button.setWidth(PICKER_BUTTON_WIDTH_PX);
         this._button.setHeight(h);
+
+        // The button was already laid out by `super.doLayout()` against its
+        // construction-time preferred size; the manual setWidth/setHeight
+        // calls above don't auto-relayout, so the inner glyph would stay
+        // anchored to the smaller pre-resize inner rect. Re-fire the button's
+        // own layout so the Fit-centred content row tracks the new height.
+        this._button.doLayout();
 
         return this;
     }
