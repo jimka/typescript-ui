@@ -33,12 +33,18 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
     // `itemStyle: style` into the defaults bag below.
     declare private _style: U | undefined;
 
-    constructor(tag: string, style: U, options?: AbstractListOptions<U>) {
+    constructor(
+        tag:              string,
+        style:            U,
+        options?:         AbstractListOptions<U>,
+        subclassDefaults?: Partial<AbstractListOptions<U>>,
+    ) {
         super(options, {
             tag,
             preferredSize: { width: 200, height: 200 },
             padding:       new Insets(0, 0, 0, 25),
             itemStyle:     style,
+            ...(subclassDefaults ?? {}),
         } as Partial<AbstractListOptions<U>>);
     }
 

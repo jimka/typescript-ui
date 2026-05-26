@@ -232,6 +232,13 @@ class Popover extends Panel<PopoverOptions> {
 
         this._onWindowResize = () => this._reposition();
         this._onScroll       = () => this._reposition();
+
+        // Seed the `declare`-d title fields after the cascade has had its
+        // chance to write them via setTitle. Without a `title` option the
+        // cascade dispatch above skips setTitle entirely, so the fields
+        // would otherwise remain undefined (declare allocates no default).
+        this._title          ??= null;
+        this._titleComponent ??= null;
     }
 
     /**
@@ -249,13 +256,7 @@ class Popover extends Panel<PopoverOptions> {
         if (opts.placement !== undefined) this.setPlacement(opts.placement);
         if (opts.dismissOn !== undefined) this.setDismissOn(opts.dismissOn);
         if (opts.showArrow !== undefined) this.setShowArrow(opts.showArrow);
-
-        // `title` has no default in `_defaultPopoverOptions`, so the merged
-        // bag's `title` is undefined unless the caller supplied one. Always
-        // dispatch with a null fallback to seed the `declare`-d `_title` and
-        // `_titleComponent` fields (setTitle(null) routes through clearTitle,
-        // a no-op when no title was previously installed).
-        this.setTitle(opts.title ?? null);
+        if (opts.title     !== undefined) this.setTitle(opts.title);
 
         return this;
     }
@@ -371,13 +372,10 @@ class Popover extends Panel<PopoverOptions> {
     clearTitle(): this {
         if (this._titleComponent) {
             this.removeComponent(this._titleComponent);
+            this._titleComponent = null;
         }
 
-        // Assign outside the `if` so the `declare`-d `_titleComponent` field
-        // gets a definite null when the cascade-time setTitle(null) fires
-        // on a popover that never had a title installed.
-        this._titleComponent = null;
-        this._title          = null;
+        this._title = null;
 
         return this;
     }
