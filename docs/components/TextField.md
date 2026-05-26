@@ -37,6 +37,10 @@ const binding = new Binding().bind('name', nameField);
 binding.setRecord(store.getAt(0));
 ```
 
+## Theming
+
+The thin gray border shared with every other text input is driven by the `input.border` token — see [Theming › Theme keys](/concepts/theming#theme-keys).
+
 ## See also
 
 - [API: TextField](/api/component/input/classes/TextField)
