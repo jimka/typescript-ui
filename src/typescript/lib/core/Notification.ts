@@ -167,8 +167,11 @@ export class Notification extends Component {
         // look cleaner on paper but proved unreliable here in practice —
         // mouseleave didn't always fire on a root carrying a non-empty
         // `transition` CSS rule left over from the entrance animation.
-        Event.addSubtreeListener(this, "mouseover", (e: MouseEvent) => Notification.acquireHoverHold(e));
-        Event.addSubtreeListener(this, "mouseout",  (e: MouseEvent) => Notification.releaseHoverHold(e));
+        // Subtree listeners route through `Event`'s window-level base
+        // listener, so `e.currentTarget` resolves to `window` (which has no
+        // `.contains` method) — pass the toast root explicitly instead.
+        Event.addSubtreeListener(this, "mouseover", (e: MouseEvent) => Notification.acquireHoverHold(e, this.getElement()));
+        Event.addSubtreeListener(this, "mouseout",  (e: MouseEvent) => Notification.releaseHoverHold(e, this.getElement()));
     }
 
     /**
@@ -268,9 +271,10 @@ export class Notification extends Component {
      * notifications mid-glance.
      *
      * @param e - The native `mouseover` event from the toast's root element.
+     * @param el - The toast root element (the `Event`-routed listener can't
+     *             rely on `e.currentTarget` — that's `window` here).
      */
-    private static acquireHoverHold(e: MouseEvent): void {
-        const el = e.currentTarget as HTMLElement | null;
+    private static acquireHoverHold(e: MouseEvent, el: HTMLElement | undefined): void {
         if (el && e.relatedTarget instanceof Node && el.contains(e.relatedTarget)) {
             return;
         }
@@ -291,9 +295,10 @@ export class Notification extends Component {
      * pause time (no minimum clamp on the hover-only path).
      *
      * @param e - The native `mouseout` event from the toast's root element.
+     * @param el - The toast root element (the `Event`-routed listener can't
+     *             rely on `e.currentTarget` — that's `window` here).
      */
-    private static releaseHoverHold(e: MouseEvent): void {
-        const el = e.currentTarget as HTMLElement | null;
+    private static releaseHoverHold(e: MouseEvent, el: HTMLElement | undefined): void {
         if (el && e.relatedTarget instanceof Node && el.contains(e.relatedTarget)) {
             return;
         }

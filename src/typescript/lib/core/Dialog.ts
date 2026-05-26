@@ -180,6 +180,16 @@ class DialogTitleBar extends Component {
         this._closeButton.setBackgroundColor("transparent");
         this._closeButton.clearShadow();
         this._closeButton.clearPressedShadow();
+        this._closeButton.clearHoverShadow();
+        // Hover and pressed background swap out the framework's gray
+        // var(--ts-ui-button-hover-bg, …) for a translucent overlay that
+        // darkens whatever tinted header sits underneath without
+        // imposing its own colour. Also drop the hover gradient so it
+        // doesn't double up over the overlay.
+        this._closeButton.setHoverBackgroundColor("var(--ts-ui-titlebar-btn-hover-bg, rgba(0, 0, 0, 0.08))");
+        this._closeButton.setPressedBackgroundColor("var(--ts-ui-titlebar-btn-active-bg, rgba(0, 0, 0, 0.16))");
+        this._closeButton.clearHoverBackgroundImage();
+        this._closeButton.clearPressedBackgroundImage();
         this._closeButton.setPreferredSize(CLOSE_SIZE, CLOSE_SIZE);
         this.addComponent(this._closeButton);
 
