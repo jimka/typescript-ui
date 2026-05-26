@@ -45,16 +45,15 @@ function ensureHeaderCellGlyphClassRule(): void {
         return;
     }
 
-    const rule = new StyleRule({ scope: "class", name: "HeaderCellGlyph" });
-
-    rule.setMany({
-        position: "absolute",
-        left:     "var(--ts-ui-table-header-glyph-gap, 4px)",
-        top:      "50%",
+    _glyphClassRule = new StyleRule({
+        scope:  "class",
+        name:   "HeaderCellGlyph",
+        styles: {
+            position: "absolute",
+            left:     "var(--ts-ui-table-header-glyph-gap, 4px)",
+            top:      "50%",
+        },
     });
-    rule.ensure();
-
-    _glyphClassRule = rule;
 }
 
 /**
@@ -108,10 +107,17 @@ class HeaderCell extends DefaultCell {
         renderer.getText().setFontWeight("bold");
         renderer.getText().setText(text);
 
-        const activeRule = new StyleRule({ scope: "component", name: this.getId() + ":active" });
-        activeRule.set("boxShadow",
-            "var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0,0,0,0.2) inset)");
-        activeRule.ensure();
+        // DefaultCell's `(tag?: string)` super-signature cannot carry the
+        // `styleRules` options bag, so the rule is allocated here via the
+        // protected `createStyleRule` builder — same dedupe-and-defer path
+        // the options-bag dispatch uses, just spelled imperatively. The
+        // render-time `applyStyle` flushes the queued `boxShadow` onto the
+        // stylesheet, matching ARCHITECTURE.md's "construction stays
+        // JS-only" rule.
+        this.createStyleRule(":active").set(
+            "boxShadow",
+            "var(--ts-ui-button-pressed-shadow, 1px 2px 5px 0 rgba(0,0,0,0.2) inset)",
+        );
 
         // Wire the resize-handle drag lifecycle: mousedown installs viewport
         // mousemove/mouseup listeners that forward through the handle's

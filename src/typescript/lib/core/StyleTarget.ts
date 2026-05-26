@@ -133,6 +133,25 @@ export type StyleRuleScope =
     | { scope: "component"; name: string }
     | { scope: "selector";  name: string };
 
+/**
+ * Construction config for a {@link StyleRule}. Combines a {@link StyleRuleScope}
+ * (selector shape) with optional initial CSS body and an optional defer-flush
+ * flag.
+ *
+ * - `styles` — initial style body, applied via `setMany` from the constructor.
+ *   Omit for imperative builders that write later via `set`.
+ * - `materialize` — defaults to `true`. Set to `false` to skip the auto
+ *   `ensure()` call. Used by `Component`'s internal `_styleRule` and
+ *   `createStyleRule` allocations to keep construction JS-only and let the
+ *   render pipeline materialise the stylesheet entry on first `applyStyle`.
+ *
+ * @category Core
+ */
+export type StyleRuleSpec = StyleRuleScope & {
+    styles?:      Record<string, string | null>;
+    materialize?: boolean;
+};
+
 // Module-level cache of materialised `CSSStyleRule`s keyed by selector text.
 // Two `StyleRule` instances constructed with the same scope+name share the
 // underlying `CSSStyleRule`. Survives across hot reloads because the module
@@ -244,14 +263,34 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
     private _factory: () => CSSStyleRule;
 
     /**
-     * Constructs a `StyleRule` for the given scoped selector.
+     * Constructs a `StyleRule` for the given scoped selector and, optionally,
+     * an initial style body.
      *
-     * @param spec - The {@link StyleRuleScope} describing the rule's selector.
+     * @param spec - The {@link StyleRuleSpec} describing the rule's selector,
+     *   optional initial styles, and optional `materialize` flag.
+     *
+     * @remarks When `spec.styles` is present, the styles are queued via
+     * `setMany` before any materialisation runs (the target is still null at
+     * that point, so the writes land in `_dirty`). When `spec.materialize`
+     * is not explicitly `false`, the constructor calls `ensure()` so the
+     * underlying `CSSStyleRule` is created and the queued styles flush onto
+     * it in one step. Internal callers that need to keep construction
+     * JS-only — e.g. `Component`'s per-id `_styleRule` and `createStyleRule`
+     * allocations — pass `materialize: false` and rely on the render
+     * pipeline to call `ensure()` later.
      */
-    constructor(spec: StyleRuleScope) {
+    constructor(spec: StyleRuleSpec) {
         super();
         const selector = _selectorOf(spec);
         this._factory  = () => _getCSSRule(selector) ?? _createCSSRule(selector);
+
+        if (spec.styles) {
+            this.setMany(spec.styles);
+        }
+
+        if (spec.materialize !== false) {
+            this.ensure();
+        }
     }
 
     /**
