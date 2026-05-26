@@ -21,25 +21,29 @@ export interface ImageOptions extends ComponentOptions {
 const IMAGE_AUTO_MIN_CAP_PX = 100;
 
 /**
+ * Class-level defaults forwarded to `super` so the cascade hits Component's
+ * applyOptions with `{ tag: "img" }` already merged into `_defaultOptions`.
+ */
+const _defaultImageOptions: Partial<ImageOptions> = {
+    tag: "img",
+};
+
+/**
  * An image component backed by an `<img>` element.
  *
  * Reports its preferred size from the image's natural intrinsic dimensions once loaded.
  *
  * @category Components
  */
-class Image extends Component {
+class Image extends Component<ImageOptions> {
 
     private _src: String;
 
     constructor(src: String, options?: ImageOptions) {
-        super({ tag: "img" });
+        super(options, _defaultImageOptions);
 
         this._src = src;
         this.clearInsets();
-
-        if (options) {
-            this.applyOptions(options);
-        }
     }
 
     /**
