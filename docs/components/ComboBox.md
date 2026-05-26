@@ -56,6 +56,10 @@ The combo refreshes automatically on store `datachanged` events.
 | `setStore(store)` / `setDisplayField(name)` / `setValueField(name)` | Bind to a data store. |
 | `getSelectedRecord()` | When backed by a store, returns the currently selected `ModelRecord`. |
 
+## Theming
+
+The combo's thin gray border (and its dropdown panel's matching border) is driven by the `input.border` token — see [Theming › Theme keys](/concepts/theming#theme-keys).
+
 ## See also
 
 - [API: ComboBox](/api/component/input/classes/ComboBox)

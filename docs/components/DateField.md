@@ -53,6 +53,10 @@ Keyboard inside the day grid: arrow keys move the highlight (`±1` day / `±7` d
 - The Date returned uses local-time semantics — interpret it accordingly when formatting for backend APIs.
 - Cell editors in tables (`Date` / `DateTime` editor) pick up navigation automatically because they spawn the same dropdown.
 
+## Theming
+
+The field's thin gray border (and its calendar dropdown's matching border) is driven by the `input.border` token — see [Theming › Theme keys](/concepts/theming#theme-keys).
+
 ## See also
 
 - [API: DateField](/api/component/input/classes/DateField)
