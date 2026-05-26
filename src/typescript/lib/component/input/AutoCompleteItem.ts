@@ -38,10 +38,17 @@ class AutoCompleteItem extends Component {
      * @param onSelect - Called with the item text when the user clicks or selects this item.
      */
     constructor(text: string, onSelect: (value: string) => void, options?: AutoCompleteItemOptions) {
+        // The caller's `options` bag is *not* spread into super — the
+        // trailing `applyOptions(options)` below dispatches it after the
+        // body has built `_textComponent`. Spreading at super would call
+        // `update(opts.text)` during the cascade, which dereferences
+        // `_textComponent` before it exists (children-built-first class).
+        // The :hover entry rides super because `createStyleRule` dedupes
+        // by suffix, so a caller-supplied `:hover` entry in
+        // `options.styleRules` still merges into the same wrapper via the
+        // trailing dispatch.
         super({
-            ...options,
             styleRules: [
-                ...(options?.styleRules ?? []),
                 {
                     suffix: ":hover",
                     styles: {
