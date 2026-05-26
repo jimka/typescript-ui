@@ -76,17 +76,18 @@ class WindowHeader extends Header {
             fill:      FillType.HORIZONTAL
         });
 
-        this._minimizeButton = new Button({ glyph: "window-minimize" });
-        this._minimizeButton.setBackgroundImage(this._activeBackgroundImage);
-        this._minimizeButton.clearBorder();
+        // Translucent overlay :hover / :active rules — darken whatever
+        // header tint is underneath without imposing a colour. Picked over
+        // a solid `var(--ts-ui-button-hover-bg)` because that gray looks
+        // odd against the active-window gradient title bar.
+        const trailingButtonStyleRules = [
+            { suffix: ":hover:not(:active)", styles: { backgroundColor: "var(--ts-ui-titlebar-btn-hover-bg, rgba(0, 0, 0, 0.08))" } },
+            { suffix: ":active",             styles: { backgroundColor: "var(--ts-ui-titlebar-btn-active-bg, rgba(0, 0, 0, 0.16))" } },
+        ];
 
-        this._maximizeButton = new Button({ glyph: "window-maximize" });
-        this._maximizeButton.setBackgroundImage(this._activeBackgroundImage);
-        this._maximizeButton.clearBorder();
-
-        this._exitButton = new Button({ glyph: "xmark" });
-        this._exitButton.setBackgroundImage(this._activeBackgroundImage);
-        this._exitButton.clearBorder();
+        this._minimizeButton = new Button({ glyph: "window-minimize", chromeless: true, styleRules: trailingButtonStyleRules });
+        this._maximizeButton = new Button({ glyph: "window-maximize", chromeless: true, styleRules: trailingButtonStyleRules });
+        this._exitButton     = new Button({ glyph: "xmark",           chromeless: true, styleRules: trailingButtonStyleRules });
 
         this._trailingRow = new Component();
         this._trailingRow.setLayoutManager(new HBox({ spacing: 2 }));
