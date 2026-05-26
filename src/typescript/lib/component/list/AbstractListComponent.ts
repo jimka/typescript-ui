@@ -24,16 +24,22 @@ export interface AbstractListOptions<U extends BulletedListItemStyle | NumberedL
  * Manages the CSS list-style-type, selection state, and restricts child components to
  * ListItem instances. Concrete subclasses supply the HTML tag and default style.
  */
-export abstract class AbstractListComponent<U extends BulletedListItemStyle | NumberedListItemStyle> extends Component {
+export abstract class AbstractListComponent<U extends BulletedListItemStyle | NumberedListItemStyle> extends Component<AbstractListOptions<U>> {
 
-    private _style: U | undefined;
+    // `declare` rather than initializer to dodge the class-field
+    // super-cascade trap: the cascade-time setStyle write would otherwise
+    // be clobbered by a `= undefined` initializer running after super().
+    // The cascade always dispatches setStyle because the constructor seeds
+    // `itemStyle: style` into the defaults bag below.
+    declare private _style: U | undefined;
 
-    constructor(tag: string, style: U) {
-        super({ tag });
-
-        this.setStyle(style);
-        this.setPreferredSize(200, 200);
-        this.setPadding(new Insets(0, 0, 0, 25));
+    constructor(tag: string, style: U, options?: AbstractListOptions<U>) {
+        super(options, {
+            tag,
+            preferredSize: { width: 200, height: 200 },
+            padding:       new Insets(0, 0, 0, 25),
+            itemStyle:     style,
+        } as Partial<AbstractListOptions<U>>);
     }
 
     /**
