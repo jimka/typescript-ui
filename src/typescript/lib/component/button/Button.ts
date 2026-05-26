@@ -138,8 +138,18 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * explicit intent wins permanently. There's no public surface to
      * re-enable auto-sizing — a future plan can add a `clearPreferredSize`
      * method that resets this flag and re-fires the recompute.
+     *
+     * `declare` rather than `= false` so the class-field super-cascade trap
+     * doesn't clobber the value when `Component.applyOptions` dispatches
+     * `setPreferredSize` during the super-time cascade (an `= false`
+     * initializer runs *after* super returns and would silently revert the
+     * setter's `_consumerSetPreferredSize = true` write — letting the
+     * end-of-constructor `recomputePreferredSize` overwrite the consumer's
+     * preferred size with the content-derived value). The early-return
+     * check at the top of `recomputePreferredSize` treats `undefined` as
+     * falsy, so the no-cascade-write case still auto-sizes correctly.
      */
-    private _consumerSetPreferredSize: boolean = false;
+    private declare _consumerSetPreferredSize: boolean;
 
     /**
      * Bound theme-change handler. The auto-sizing pipeline reads font-size
