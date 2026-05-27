@@ -333,12 +333,28 @@ class Header extends Component {
             return;
         }
 
-        let runStart   = 0;
-        let runKey     = visibleCols[0].getGroup();
-        let runColor   = visibleCols[0].getGroupColor();
+        let runStart = 0;
+        let runKey   = visibleCols[0].getGroup();
+        let runColor = visibleCols[0].getGroupColor();
 
-        const flush = (endExclusive: number, isLast: boolean): void => {
-            const cell: ParentHeaderCell = new ParentHeaderCell(runKey ?? "", runColor, isLast);
+        const flush = (endExclusive: number): void => {
+            const cell = new ParentHeaderCell(runKey ?? "", runColor);
+
+            // Field names spanned by this cell — drives the tooltip
+            // and is also useful context if a future column-toggle
+            // menu wants to operate on a whole group.
+            const fieldNames = visibleCols
+                .slice(runStart, endExclusive)
+                .map(c => c.getField().getName());
+
+            if (runKey !== null && fieldNames.length > 0) {
+                cell.setTooltip(`${runKey}: ${fieldNames.join(", ")}`);
+            }
+
+            cell.setOnContextMenu((x, y) => {
+                this._onColumnContextMenuCallback?.("", x, y);
+            });
+
             row.addComponent(cell, { data: { spanFrom: runStart, spanTo: endExclusive - 1 } });
         };
 
@@ -351,7 +367,7 @@ class Header extends Component {
             const runContinues = runKey !== null && nextKey === runKey;
 
             if (!runContinues) {
-                flush(i, false);
+                flush(i);
 
                 runStart = i;
                 runKey   = nextKey;
@@ -364,7 +380,7 @@ class Header extends Component {
             }
         }
 
-        flush(visibleCols.length, true);
+        flush(visibleCols.length);
     }
 
     /**
