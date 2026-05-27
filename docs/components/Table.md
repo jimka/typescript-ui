@@ -47,12 +47,17 @@ const table = Table(store, {
 | `hidden` | Initial hidden state. |
 | `unhideable` | When `true`, the user cannot hide this column from the context menu. Takes precedence over `hidden`. |
 | `readOnly` | When `true`, every cell in this column is display-only — double-click does not start an editor, and the cell renders with a subtle grey tint sourced from `--ts-ui-table-cell-readonly-bg`. Selection, keyboard navigation, sort, resize, and export still work. |
+| `cellReadOnly` | Optional predicate `(record) => boolean`. When it returns `true` for a record, this column's cell on that record's row renders read-only. Composes with `readOnly` and `ColumnSpec.rowReadOnly` (cell is read-only when ANY of the three says so). |
 | `showSeconds` | For `time` / `datetime` columns: include seconds. |
 | `headerGlyph` | Registry glyph name shown to the left of the header text. |
 | `group` | Parent-header group name. See [Parent headers](#parent-headers). |
 | `groupColor` | Optional background color for the parent-header cell. |
 
 `appendUnlisted` (default `true`) controls whether fields not in the `columns` array are auto-generated after the listed ones.
+
+`ColumnSpec.rowReadOnly` is an optional predicate `(record) => boolean`. When it returns `true` for a record, every cell in that record's row renders read-only with the grey tint, regardless of the column's own `readOnly` flag. The predicate runs on every row rebind; it must be O(1) and pure. Call [`store.notifyRecordChanged(record)`](/api/data/classes/AbstractStore#notifyRecordChanged) after mutating the record out-of-band to update the table.
+
+A cell is read-only when its column's `readOnly` flag is `true`, OR the spec's `rowReadOnly(record)` returns `true`, OR the column's `cellReadOnly(record)` returns `true`. The grey tint is the same in all three cases.
 
 ## Parent headers
 
