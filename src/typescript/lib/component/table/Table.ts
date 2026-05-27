@@ -577,6 +577,13 @@ class Table extends Component<TableOptions> {
         // preceding header. Field-list order matches the parent
         // header band above, so the menu reads as a vertical
         // restatement of what the user sees on screen.
+        //
+        // The indent uses non-breaking spaces (` `) because the
+        // menu item renders text with the default `white-space: nowrap`
+        // setting, which still collapses runs of ASCII spaces — regular
+        // `'    '` would render as a single space.
+        const GROUP_INDENT = "    ";
+
         columns.forEach(col => {
             const fieldName = col.getField().getName();
             const visible   = !this._hiddenColumns.has(fieldName);
@@ -586,7 +593,7 @@ class Table extends Component<TableOptions> {
                 items.push({ text: group, enabled: false });
             }
 
-            const indent = group !== null ? '    ' : '';
+            const indent = group !== null ? GROUP_INDENT : "";
 
             items.push({
                 text: indent + (visible ? '✓ ' : '  ') + fieldName,

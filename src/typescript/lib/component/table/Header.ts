@@ -12,19 +12,6 @@ import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { callable } from "~/core/Callable.js";
 
 /**
- * A contiguous run of visible columns sharing a non-null group name (or a
- * single ungrouped column when {@link Column.getGroup} returns `null`).
- * Produced by walking the visible column list left-to-right; consumed by
- * the layout manager to position each {@link ParentHeaderCell}.
- */
-export interface ParentSpan {
-    /** Inclusive start index into the column-row's component list. */
-    spanFrom: number;
-    /** Inclusive end index into the column-row's component list. */
-    spanTo:   number;
-}
-
-/**
  * The header section of a table, rendered as a `<thead>` element.
  *
  * Builds one {@link HeaderCell} per visible field from the supplied model. Each cell is
@@ -66,6 +53,7 @@ class Header extends Component {
         this.addRow(row);
 
         this.rebuildCells();
+        this.rebuildParentCells();
     }
 
     /**
@@ -297,10 +285,22 @@ class Header extends Component {
 
         for (let i = 0; i < fields.length; i++) {
             const field = fields[i];
-            const glyph = columnMap.get(field.getName())?.getHeaderGlyph() ?? null;
+            const col   = columnMap.get(field.getName());
+            const glyph = col?.getHeaderGlyph() ?? null;
             const cell  = new HeaderCell(field.getName(), field.getName(), glyph);
 
             cell.setTooltip(field.getDescription());
+
+            // Tint the column header with the group's `groupColor` so the
+            // header band reads as one visual group above the matching
+            // body-cell tint applied in Row.ts. `Cell`'s theme-change
+            // listener only re-applies the border, so this background
+            // survives a theme swap.
+            const groupColor = col?.getGroupColor();
+            if (groupColor) {
+                cell.setBackgroundColor(groupColor);
+            }
+
             row.addComponent(cell, { data: field });
             this.wireCell(cell, i);
         }
