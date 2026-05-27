@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import type { ModelRecord } from "~/data/ModelRecord.js";
+
 /**
  * Presentation configuration for a single table column.
  *
@@ -46,6 +48,28 @@ export interface ColumnConfig {
      * Defaults to `false`.
      */
     readOnly    ?: boolean;
+    /**
+     * Per-cell read-only predicate, evaluated per record on every
+     * rebind. Returns `true` to mark this column's cell read-only for
+     * the given record. Composes with {@link ColumnConfig.readOnly} and
+     * {@link ColumnSpec.rowReadOnly} via OR — a cell is read-only when
+     * ANY of the three signals says so.
+     *
+     * The predicate fires on every row rebind: when scrolling pulls
+     * new records into the visible window, when the store emits
+     * `'datachanged'` (which
+     * [`notifyRecordChanged`](/api/data/classes/AbstractStore#notifyRecordChanged)
+     * does), or when columns are hidden / shown. It MUST be O(1) and
+     * pure — read fields off `record`, return a boolean, do not call
+     * back into the store, do not allocate, do not perform DOM work.
+     * Memoise inside the predicate if your computation is non-trivial;
+     * the table does not cache results.
+     *
+     * To update a cell's read-only state after mutating the underlying
+     * record, call `store.notifyRecordChanged(record)` — the table
+     * re-renders and the predicate fires again on the next paint.
+     */
+    cellReadOnly ?: (record: ModelRecord) => boolean;
     /**
      * For `time` and `datetime` columns: when `true` the editor and renderer include seconds.
      * Defaults to `false` (hours and minutes only).
@@ -100,4 +124,28 @@ export interface ColumnSpec {
      * When `false` only the explicitly listed fields appear in the table.
      */
     appendUnlisted ?: boolean;
+    /**
+     * Per-row read-only predicate. Receives each visible record on every
+     * rebind and returns `true` to mark every cell in that row read-only
+     * for the next render pass.
+     *
+     * Composes with {@link ColumnConfig.readOnly} (column-level static
+     * flag) and {@link ColumnConfig.cellReadOnly} (per-cell predicate):
+     * a cell is read-only when ANY of the three signals says so.
+     *
+     * The predicate fires on every row rebind — when scrolling pulls
+     * new records into the visible window, when the store emits
+     * `'datachanged'` (which
+     * [`notifyRecordChanged`](/api/data/classes/AbstractStore#notifyRecordChanged)
+     * does), or when columns are hidden / shown. It MUST be O(1) and
+     * pure: read fields off `record`, return a boolean, do not call
+     * back into the store, do not allocate, do not touch the DOM.
+     * Memoise inside your predicate if the computation is non-trivial;
+     * the framework does not cache results.
+     *
+     * To update a row's read-only state after mutating the underlying
+     * record, call `store.notifyRecordChanged(record)` — the table
+     * re-renders and the predicate fires again on the next paint.
+     */
+    rowReadOnly    ?: (record: ModelRecord) => boolean;
 }
