@@ -371,6 +371,17 @@ class TreeBody extends _Body {
     }
 
     /**
+     * Returns the tree column's field name so an in-place column-toggle
+     * sync preserves the {@link TreeCellRenderer} on the tree-column
+     * cell. Overrides the base, which returns `undefined`.
+     *
+     * @returns The tree column's field name.
+     */
+    protected getTreeFieldName(): string {
+        return this._treeColumn;
+    }
+
+    /**
      * Writes the standard `aria-rowindex` from the base class, then
      * adds the tree-specific ARIA properties read from the flat record
      * at the same index.

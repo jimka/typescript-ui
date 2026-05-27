@@ -185,6 +185,23 @@ class Body extends Component {
     }
 
     /**
+     * Returns the field name of the column carrying a
+     * {@link TreeCellRenderer}, or `undefined` when no column is the
+     * tree column. The base returns `undefined`; `TreeBody` overrides
+     * to return its `_treeColumn`.
+     *
+     * @returns The tree column's field name, or `undefined`.
+     *
+     * @remarks Subclassing seam — forwarded into {@link Row.syncCells}
+     * from {@link setHiddenColumns} / {@link setColumnConfigs} so an
+     * incremental column-toggle preserves the tree renderer on the
+     * surviving cell. Not for consumer use.
+     */
+    protected getTreeFieldName(): string | undefined {
+        return undefined;
+    }
+
+    /**
      * Updates the ARIA attributes that depend on a row's current data
      * index. Default behaviour writes only `aria-rowindex` (the +2
      * accounts for the 1-based ARIA spec plus the header band).
@@ -301,12 +318,20 @@ class Body extends Component {
     }
 
     /**
-     * Updates the set of hidden column field names, clears the row pool, and re-renders.
+     * Updates the set of hidden column field names, syncs each pooled
+     * row's cells in place to match the new visible-field list, and
+     * re-renders.
      *
      * Field names belonging to {@link Column.isUnhideable} columns are stripped
      * from the set so a direct caller cannot bypass the unhideable contract.
      *
      * @param hidden - The new set of field names to hide.
+     *
+     * @remarks The previous implementation dropped the entire row pool
+     * and rebuilt it via `growRowPool`. The in-place sync preserves
+     * each row's existing cells (and their renderer / editor / theme
+     * listener / sort state / group tint), constructing or removing
+     * only the cells whose visibility actually changed.
      */
     setHiddenColumns(hidden: Set<string>): this {
         const filtered = new Set<string>();
@@ -320,7 +345,7 @@ class Body extends Component {
         }
 
         this._hiddenColumns = filtered;
-        this.clearRowPool();
+        this.syncPoolCells();
         this.renderWindow();
 
         return this;
@@ -336,45 +361,58 @@ class Body extends Component {
      */
     setColumns(columns: Column[]): this {
         this._columns = columns;
-        this.clearRowPool();
-        this.renderWindow();
-
-        return this;
-    }
-
-    setColumnConfigs(configs: Map<string, ColumnConfig>): this {
-        this._columnConfigs = configs;
-        this.clearRowPool();
+        this.syncPoolCells();
         this.renderWindow();
 
         return this;
     }
 
     /**
-     * Removes all pooled row elements from the DOM and resets the pool arrays.
+     * Updates the per-field column-config map and re-syncs each pooled
+     * row's cells in place so any field-type-driven cell options
+     * (e.g. `showSeconds`) and group tints take effect immediately.
+     *
+     * @param configs - The new column-config map keyed by field name.
      */
-    private clearRowPool(): void {
-        const container = this._scroller ? this._scroller.getRowsContainer() : null;
+    setColumnConfigs(configs: Map<string, ColumnConfig>): this {
+        this._columnConfigs = configs;
+        this.syncPoolCells();
+        this.renderWindow();
 
-        for (const row of this._rowPool) {
-            // Release the compositor layer hint while the element is still attached
-            // so the DOM write commits — once detached, the queued style flush is
-            // moot because the row is about to be discarded.
-            row.setWillChange(null);
+        return this;
+    }
 
-            const rowEl = row.getElement();
+    /**
+     * Walks every pool row and asks it to reconcile its cell set
+     * against the current `_hiddenColumns` + `_columnConfigs`, then
+     * invalidates the per-slot geometry caches so the next
+     * `renderWindow` re-positions cells against the new column count.
+     */
+    private syncPoolCells(): void {
+        const treeFieldName = this.getTreeFieldName();
 
-            if (container && rowEl?.parentNode === container) {
-                container.removeChild(rowEl);
+        for (let i = 0; i < this._rowPool.length; i++) {
+            const row = this._rowPool[i];
+
+            row.syncCells(
+                this._store.model,
+                this._hiddenColumns,
+                this._columnConfigs,
+                treeFieldName,
+            );
+
+            // Newly-shown cells need the editor pool wired so in-place
+            // editing keeps working. `setEditorPool` is idempotent for
+            // surviving cells.
+            for (const cell of row.getComponents() as Cell<any>[]) {
+                cell.setEditorPool(this._editorPool);
             }
-        }
 
-        this._rowPool = [];
-        this._boundIndices = [];
-        this._rowGeom = [];
-        this._cellGeom = [];
-        this._rowDisplayed = [];
-        this._lastAriaRowCount = -1;
+            // Per-slot geometry is keyed by cell position; both the
+            // column count and per-cell (x, w, h) have changed.
+            this._rowGeom[i]  = null;
+            this._cellGeom[i] = [];
+        }
     }
 
     /**
@@ -633,8 +671,9 @@ class Body extends Component {
             row.setY(0);
 
             // Pre-promote pooled rows to their own compositor layer so the first
-            // scroll-driven translate doesn't pay a layer-creation cost. Cleared
-            // in clearRowPool when the row leaves the pool.
+            // scroll-driven translate doesn't pay a layer-creation cost. Pool
+            // rows now survive column-toggle and config swaps via in-place
+            // cell sync, so the hint stays live for the body's lifetime.
             row.setWillChange("transform");
 
             this._rowPool.push(row);
