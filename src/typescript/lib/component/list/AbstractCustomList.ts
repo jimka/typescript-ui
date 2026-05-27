@@ -132,7 +132,7 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
             overflow:     "hidden",
             textOverflow: "ellipsis",
             borderBottom: "1px solid var(--ts-ui-list-row-separator, transparent)",
-            cursor:       "default",
+            cursor:       "pointer",
         },
     });
 
@@ -204,6 +204,11 @@ class CustomListRow extends Component {
         this.setPreferredSize(0, ROW_HEIGHT_PX);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, ROW_HEIGHT_PX);
         this.setPadding(new Insets(0, 8, 0, 8));
+        // Component's framework default writes `cursor: default` as an
+        // inline style, which would beat the `.CustomListRow` class rule
+        // — set the inline cursor explicitly so rows show the hand
+        // cursor on hover.
+        this.setCursor("pointer");
 
         Event.addListener(this, "pointerdown", this.onPointerDown);
         Event.addListener(this, "click",       this.onClick);
@@ -444,9 +449,9 @@ abstract class AbstractCustomList<
 
         Event.addListener(this, "keydown", this.handleKeyDown);
 
-        // Late-built state: `store` and `items` were written pure to
-        // `_options` by the super-time cascade. Dispatch them now that
-        // `_innerPanel` and `_rowPool` exist.
+        // Late-built state: `store` / `items` / `enabled` / `readOnly`
+        // were written pure to `_options` by the super-time cascade.
+        // Dispatch them now that `_innerPanel` and `_rowPool` exist.
         if (this._options.store !== undefined && this._options.displayField !== undefined) {
             this.setStore(this._options.store, this._options.displayField, this._options.valueField);
         }
@@ -454,6 +459,47 @@ abstract class AbstractCustomList<
         if (this._options.items !== undefined) {
             this.setItems(this._options.items);
         }
+
+        if (this._options.enabled !== undefined) {
+            this.applyEnabled(this._options.enabled);
+        }
+
+        if (this._options.readOnly !== undefined) {
+            this.applyReadOnly(this._options.readOnly);
+        }
+    }
+
+    /**
+     * Reflects the enabled flag on the ARIA tree, the tabindex, and the
+     * cursor. Disabling the list parks the focus index at -1 so a
+     * subsequent enable starts fresh, mirroring the native `<select>`
+     * the framework replaces. Concrete subclasses can still override
+     * for additional behaviour.
+     *
+     * @param value - The new enabled state.
+     */
+    protected applyEnabled(value: boolean): void {
+        this.getAria().setDisabled(!value);
+        this.getAria().setTabIndex(value ? 0 : -1);
+        this.setCursor(value ? "default" : "not-allowed");
+
+        if (!value) {
+            this._focusedIndex = -1;
+            this.refreshRowVisualState();
+            this.updateActiveDescendant();
+        }
+    }
+
+    /**
+     * Reflects the read-only flag on the ARIA tree. Read-only lists
+     * stay focusable and announce their state; the click / keyboard
+     * reducers are gated separately in {@link handleRowClick} /
+     * {@link handleKeyDown}.
+     *
+     * @param value - The new read-only state.
+     */
+    protected applyReadOnly(value: boolean): void {
+        this.getAria().setReadOnly(value);
     }
 
     /**
@@ -535,9 +581,8 @@ abstract class AbstractCustomList<
      * Replaces all items with the given pre-formed `{key, label}` pairs.
      * Mirrors {@link setItems} but skips the auto-keying step so a host
      * that already owns typed items (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
-     * dropdown pushing a [`ComboBoxItem`](/api/component/input/interfaces/ComboBoxItem)
-     * array) can hand them over without the keys being clobbered to
-     * stringified indices. Selection and focus are reset; the row pool
+     * dropdown pushing a `CustomListItem` array) can hand them over
+     * without the keys being clobbered to stringified indices. Selection and focus are reset; the row pool
      * is reconciled against the new length.
      *
      * Protected on the abstract base so each concrete subclass decides
@@ -769,7 +814,11 @@ abstract class AbstractCustomList<
             : null;
 
         this._items = [];
+        this._selectedSet.clear();
+        this._anchorIndex  = null;
+
         const records = store.getRecords();
+        let restoredAnchor = -1;
 
         for (let i = 0; i < records.length; i++) {
             const record = records[i];
@@ -779,20 +828,18 @@ abstract class AbstractCustomList<
                                : String(record.getId());
 
             this._items.push({ key, label });
+
+            if (previousAnchorKey !== null && key === previousAnchorKey) {
+                restoredAnchor = i;
+            }
         }
 
-        this._selectedSet.clear();
-        this._anchorIndex  = null;
-        this._focusedIndex = this._items.length > 0 ? 0 : -1;
-
-        if (previousAnchorKey !== null) {
-            const idx = this._items.findIndex(item => item.key === previousAnchorKey);
-
-            if (idx >= 0) {
-                this._selectedSet.add(idx);
-                this._anchorIndex  = idx;
-                this._focusedIndex = idx;
-            }
+        if (restoredAnchor >= 0) {
+            this._selectedSet.add(restoredAnchor);
+            this._anchorIndex  = restoredAnchor;
+            this._focusedIndex = restoredAnchor;
+        } else {
+            this._focusedIndex = this._items.length > 0 ? 0 : -1;
         }
 
         this.pauseLayout();
@@ -911,6 +958,56 @@ abstract class AbstractCustomList<
         // focusable, only the listbox surface is.
         this.focus();
         this.notifyUserChange();
+    }
+
+    /**
+     * Public entry point used by hosts that keep DOM focus on their own
+     * surface while embedding this list (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
+     * dropdown forwarding keystrokes from the ComboBox surface).
+     * Returns `true` when the list consumed the key — the caller
+     * should then `e.preventDefault()` and stop further processing.
+     * Escape is intentionally NOT consumed here so the host can use
+     * it to close the wrapping overlay; the list-focused entry point
+     * (the protected `handleKeyDown` registered as the list's own
+     * `keydown` listener) still handles Escape inline.
+     *
+     * @param e - The keyboard event captured by the host.
+     *
+     * @returns `true` when the list consumed the key.
+     */
+    handleKey(e: KeyboardEvent): boolean {
+        if (!this.isEnabled() || this.isReadOnly()) {
+            return false;
+        }
+
+        if (this._items.length === 0) {
+            return false;
+        }
+
+        if (e.key === "Escape") {
+            return false;
+        }
+
+        const ctrl = e.ctrlKey || e.metaKey;
+
+        if (this.handleNavigationKey(e, ctrl)) {
+            return true;
+        }
+
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            this.commitFocusedRow(ctrl, e.shiftKey);
+
+            return true;
+        }
+
+        if (!ctrl && !e.altKey && e.key.length === 1) {
+            this.handleTypeAhead(e.key);
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
