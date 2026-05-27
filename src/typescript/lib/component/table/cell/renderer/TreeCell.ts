@@ -260,9 +260,14 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
         this._delegate.setHeight(height);
         this._delegate.setAutoCommitStyle(true);
 
+        // The inherited `super.doLayout` (CellRenderer → Component →
+        // Absolute layout manager) commits each child's bounds via
+        // `LayoutManager.commitBounds`, which already calls
+        // `component.doLayout()` on every placed child. The delegate
+        // and the toggle therefore receive their own `doLayout` once
+        // during this call — no need to call `_delegate.doLayout()`
+        // again here.
         super.doLayout();
-
-        this._delegate.doLayout();
 
         return this;
     }

@@ -447,11 +447,19 @@ class TreeBody extends _Body {
     }
 
     /**
-     * Adds tree-specific keys (ArrowRight / ArrowLeft) on top of the
-     * inherited row + column navigation. ArrowRight expands a
-     * collapsed branch or moves focus into the first child of an
-     * expanded one; ArrowLeft collapses an expanded branch or moves
-     * focus to the parent record.
+     * Intercepts `ArrowRight` / `ArrowLeft` for tree navigation,
+     * delegating every other key to the base `Body` handler. When
+     * there is a selected anchor record:
+     *
+     * - `ArrowRight` expands a collapsed branch, or moves focus to the
+     *   first child of an already-expanded branch (no-op on leaves).
+     * - `ArrowLeft` collapses an expanded branch, or moves focus to the
+     *   parent record (no-op at depth 0 with no children).
+     *
+     * Replaces the base body's `ArrowRight` / `ArrowLeft` column-focus
+     * navigation while the user is interacting with the tree. Other
+     * keys (`ArrowUp`/`Down`, `Home`/`End`, `Enter`/`Space`,
+     * `PageUp`/`PageDown`) keep their inherited behaviour.
      *
      * @param e - The keyboard event fired on the body element.
      */
@@ -472,7 +480,12 @@ class TreeBody extends _Body {
 
         const idx = this._flatRows.findIndex(f => f.record === anchor);
 
+        // Anchor exists but isn't in the flat view (e.g. a filter
+        // dropped its subtree mid-key-press). Treat as no-op for tree
+        // navigation rather than silently swallowing the keystroke.
         if (idx < 0) {
+            e.preventDefault();
+
             return;
         }
 
@@ -506,8 +519,7 @@ class TreeBody extends _Body {
         const next = this._flatRows[idx + 1];
 
         if (next && next.depth === flat.depth + 1) {
-            this.selectRecord(next.record);
-            this.renderWindow();
+            this.moveFocusTo(next.record);
         }
     }
 
@@ -531,12 +543,27 @@ class TreeBody extends _Body {
         // ancestor row with depth = current - 1).
         for (let i = idx - 1; i >= 0; i--) {
             if (this._flatRows[i].depth === flat.depth - 1) {
-                this.selectRecord(this._flatRows[i].record);
-                this.renderWindow();
+                this.moveFocusTo(this._flatRows[i].record);
 
                 return;
             }
         }
+    }
+
+    /**
+     * Programmatic equivalent of an arrow-key navigation: selects the
+     * record, scrolls it into view, re-renders, and refreshes the
+     * focus + active-descendant indicators. Mirrors the trailing
+     * `selectRecord + scrollRecordIntoView + renderWindow +
+     * _updateActiveDescendant + _updateFocusStyle` sequence the base
+     * `Body.onKeyDown` runs after row-nav keys.
+     */
+    private moveFocusTo(record: ModelRecord): void {
+        this.selectRecord(record);
+        this.scrollRecordIntoView(record);
+        this.renderWindow();
+        this._updateActiveDescendant();
+        this._updateFocusStyle();
     }
 
     /**

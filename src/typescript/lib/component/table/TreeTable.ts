@@ -100,6 +100,12 @@ class TreeTable extends Table {
         this._treeBody = this.getBody() as TreeBody;
 
         this.getAria().setRole("treegrid");
+
+        // Force the tree column visible even if the spec marked it
+        // `hidden: true`. Hiding it would leave the body with no
+        // tree-cell renderer and no toggle UI; `setColumnVisible`
+        // routes through Table so the header band rebuilds correctly.
+        super.setColumnVisible(spec.treeColumn, true);
     }
 
     /**
@@ -201,6 +207,27 @@ class TreeTable extends Table {
             : defaults;
 
         return super.addRow(payload);
+    }
+
+    /**
+     * Show or hide a column. Hiding the tree column is rejected — the
+     * indent + toggle UI would have nowhere to render and `TreeBody`
+     * would silently lose its expand/collapse affordance. Hiding any
+     * other column delegates to {@link Table.setColumnVisible}.
+     *
+     * @param fieldName - The model field name of the column to toggle.
+     * @param visible   - `true` to show, `false` to hide.
+     *
+     * @returns This table, for method chaining.
+     */
+    setColumnVisible(fieldName: string, visible: boolean): this {
+        if (!visible && fieldName === this._treeSpec.treeColumn) {
+            return this;
+        }
+
+        super.setColumnVisible(fieldName, visible);
+
+        return this;
     }
 
     /**
