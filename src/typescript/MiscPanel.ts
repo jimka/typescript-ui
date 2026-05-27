@@ -289,16 +289,17 @@ class MiscPanel extends Panel {
                     { name: "Meeting"   , type: "time"    , description: "col6", order: 4 },
                     { name: "LastSeen"  , type: "datetime", description: "col7", order: 5 },
                     { name: "Notes"     , type: "string"  , description: "col4", order: 6 },
+                    { name: "locked"    , type: "boolean" , description: "col8", order: 7 },
                 ]);
 
                 let specStore = new MemoryStore(specModel);
 
                 specStore.add([
-                    { Name: "Alice", Active: true , Score: 95, Joined: new Date(2021,  2, 15), Meeting: new Date(1970, 0, 1,  9, 30, 20), LastSeen: new Date(2024,  0, 10, 14, 25), Notes: "Top performer"   },
-                    { Name: "Bob"  , Active: false, Score: 72, Joined: new Date(2022,  7,  3), Meeting: new Date(1970, 0, 1, 14,  0, 30), LastSeen: new Date(2024,  3, 22,  8, 10), Notes: "Needs follow-up" },
-                    { Name: "Carol", Active: true , Score: 88, Joined: new Date(2020, 11, 20), Meeting: null                        , LastSeen: new Date(2023, 11,  5, 17, 45)    , Notes: "On track"        },
-                    { Name: "David", Active: true , Score: 61, Joined: null                  , Meeting: new Date(1970, 0, 1, 11, 15, 40), LastSeen: null                          , Notes: "Check in soon"   },
-                    { Name: "Eve"  , Active: false, Score: 45, Joined: new Date(2023,  4,  9), Meeting: new Date(1970, 0, 1, 16, 45, 50), LastSeen: new Date(2024,  5,  1,  9,  0), Notes: "At risk"         },
+                    { Name: "Alice", Active: true , Score: 95, Joined: new Date(2021,  2, 15), Meeting: new Date(1970, 0, 1,  9, 30, 20), LastSeen: new Date(2024,  0, 10, 14, 25), Notes: "Top performer"  , locked: false },
+                    { Name: "Bob"  , Active: false, Score: 72, Joined: new Date(2022,  7,  3), Meeting: new Date(1970, 0, 1, 14,  0, 30), LastSeen: new Date(2024,  3, 22,  8, 10), Notes: "Needs follow-up", locked: true  },
+                    { Name: "Carol", Active: true , Score: 88, Joined: new Date(2020, 11, 20), Meeting: null                        , LastSeen: new Date(2023, 11,  5, 17, 45)    , Notes: "On track"       , locked: false },
+                    { Name: "David", Active: true , Score: 61, Joined: null                  , Meeting: new Date(1970, 0, 1, 11, 15, 40), LastSeen: null                          , Notes: "Check in soon"  , locked: false },
+                    { Name: "Eve"  , Active: false, Score: 45, Joined: new Date(2023,  4,  9), Meeting: new Date(1970, 0, 1, 16, 45, 50), LastSeen: new Date(2024,  5,  1,  9,  0), Notes: "At risk"        , locked: false },
                 ]);
 
                 // TODO: Will this lead to a race condition if we don't 'await'?
@@ -313,14 +314,21 @@ class MiscPanel extends Panel {
                 // Name + Active are grouped under "Identity"; Joined + Meeting
                 // + LastSeen are grouped under "Activity" with a faint tint so
                 // the parent-row affordance is visible.
+                // rowReadOnly demos the spec-level predicate (Bob is locked so
+                // every cell on his row is read-only); Score's cellReadOnly
+                // demos the per-cell predicate (Score is read-only on any
+                // record whose Active flag is false).
                 const spec: ColumnSpec = {
+                    rowReadOnly: (r) => r.get('locked') === true,
                     columns: [
                         { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark', group: 'Identity', unhideable: true                                     },
                         { field: 'Active'  , maxWidth: 100,                       group: 'Identity'                                                       },
+                        { field: 'Score'   , maxWidth: 100, cellReadOnly: (r) => r.get('Active') === false                                                 },
                         { field: 'Joined'  , minWidth: 120, readOnly: true,       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'Meeting' , minWidth: 100, showSeconds: true,    group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'LastSeen', minWidth: 160,                       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'Notes'   , hidden  : true                                                                                                },
+                        { field: 'locked'  , hidden  : true                                                                                                },
                     ],
                 };
 

@@ -147,6 +147,8 @@ class Table extends Component<TableOptions> {
             this._body.setColumnConfigs(this._columnConfigs);
         }
 
+        this._body.setRowReadOnly(spec?.rowReadOnly ?? null);
+
         this.getAria().setColCount(this.getColumns().length);
 
         // Sync header horizontal scroll with body. The body uses
