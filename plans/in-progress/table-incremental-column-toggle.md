@@ -413,7 +413,7 @@ No file is created or deleted. Public surface is one new protected hook on `Body
 
 - `npm run typecheck` — zero errors.
 - `npm run docs:build` — zero errors, zero link warnings (typedoc's "unsupported TypeScript version" notice is the lone acceptable warning).
-- **`grep -n 'clearRowPool' src/typescript/lib/component/table/Body.ts`** — `clearRowPool` remains as a private method (the theme-change listener at [Body.ts:84-89](../src/typescript/lib/component/table/Body.ts#L84-L89) still drops the pool for a font-driven rebuild, and `setStore` should keep dropping the pool because the model itself may be different). Confirm exactly two call sites remain — the theme-change listener and `setStore` indirectly via `onStoreChange`'s caller chain (verify by reading the diff). `setHiddenColumns` and `setColumnConfigs` must not call it.
+- **`grep -n 'clearRowPool' src/typescript/lib/component/table/Body.ts`** — after this change `setHiddenColumns` and `setColumnConfigs` no longer call `clearRowPool`, and the existing theme-change listener / `setStore` path already invalidates geometry + bound indices without dropping the pool (see [Body.ts:84-89](../src/typescript/lib/component/table/Body.ts#L84-L89) and `onStoreChange`). That leaves `clearRowPool` with **zero callers** — remove the method along with the rewrite.
 - **Manual smoke (Table)** — open the table demo panel; right-click the header → toggle each column off then back on; confirm:
   - The selected row stays highlighted and the focus ring stays on its column (`_focusedColIndex` clamps via the existing `ArrowLeft/Right` handler if needed but does not need explicit reset).
   - Cell text re-appears correctly (no blank cells after show).
