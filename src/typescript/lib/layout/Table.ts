@@ -134,9 +134,11 @@ class Table extends LayoutManager {
 
             // Parent row is sized + positioned first so its `spanFrom`
             // / `spanTo` constraints translate to x/width sums over the
-            // column-width array beneath. When `parentRowHeight` is 0
-            // the cells still get a width / height assignment but
-            // collapse visually.
+            // column-width array beneath. When `hasParentRow` is false
+            // the parent row stays collapsed at zero height and we
+            // skip the per-cell layout pass entirely — no visible
+            // column declares a group, so the parent-cell pool is
+            // empty anyway.
             const parentRow = header.getParentRow();
             parentRow.setAutoCommitStyle(false);
             parentRow.setX(0);
@@ -145,32 +147,34 @@ class Table extends LayoutManager {
             parentRow.setHeight(parentRowHeight);
             parentRow.setAutoCommitStyle(true);
 
-            const parentCells = parentRow.getComponents();
+            if (hasParentRow) {
+                const parentCells = parentRow.getComponents();
 
-            parentCells.forEach(cell => {
-                const lc       = parentRow.getLayoutConstraints(cell);
-                const span     = lc?.data as { spanFrom: number, spanTo: number } | undefined;
-                const spanFrom = span?.spanFrom ?? 0;
-                const spanTo   = span?.spanTo ?? 0;
+                parentCells.forEach(cell => {
+                    const lc       = parentRow.getLayoutConstraints(cell);
+                    const span     = lc?.data as { spanFrom: number, spanTo: number } | undefined;
+                    const spanFrom = span?.spanFrom ?? 0;
+                    const spanTo   = span?.spanTo ?? 0;
 
-                let cellX = 0;
-                for (let i = 0; i < spanFrom; i++) {
-                    cellX += columnWidths[i];
-                }
+                    let cellX = 0;
+                    for (let i = 0; i < spanFrom; i++) {
+                        cellX += columnWidths[i];
+                    }
 
-                let cellW = 0;
-                for (let i = spanFrom; i <= spanTo; i++) {
-                    cellW += columnWidths[i];
-                }
+                    let cellW = 0;
+                    for (let i = spanFrom; i <= spanTo; i++) {
+                        cellW += columnWidths[i];
+                    }
 
-                cell.setAutoCommitStyle(false);
-                cell.setX(cellX);
-                cell.setY(0);
-                cell.setWidth(cellW);
-                cell.setHeight(parentRowHeight);
-                cell.setAutoCommitStyle(true);
-                cell.doLayout();
-            });
+                    cell.setAutoCommitStyle(false);
+                    cell.setX(cellX);
+                    cell.setY(0);
+                    cell.setWidth(cellW);
+                    cell.setHeight(parentRowHeight);
+                    cell.setAutoCommitStyle(true);
+                    cell.doLayout();
+                });
+            }
 
             // Column row sits beneath the parent row. The cell y-coords
             // are relative to the column row's element, so they stay at

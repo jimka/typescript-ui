@@ -65,15 +65,17 @@ class ParentHeaderCell extends DefaultCell {
         // background, so this write survives a theme swap.
         this.setBackgroundColor(color ?? "transparent");
 
-        // Inter-group divider: an inset right-edge shadow in the same
-        // resize-handle gray that paints the standard cell separators in
-        // the column row beneath. Using `setShadow` instead of `setBorder`
+        // Inter-group divider (right edge) and parent-row separator
+        // (bottom edge) — two inset shadows in the same resize-handle
+        // gray that paints the standard cell separators in the column
+        // row beneath. Composing both into a single `setShadow` call
         // sidesteps `Cell`'s theme-change listener (which re-runs
         // `setBorder('var(--ts-ui-table-cell-border, none)')` and would
         // otherwise wipe a border-based divider on every theme toggle).
-        this.setShadow(
+        this.setShadow([
             "inset -1px 0 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))",
-        );
+            "inset 0 -1px 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))",
+        ].join(", "));
     }
 
     /**
@@ -81,6 +83,12 @@ class ParentHeaderCell extends DefaultCell {
      * header cell. Mirrors {@link HeaderCell.setOnContextMenu} but elides
      * the per-column `fieldName` — parent cells span multiple columns, so
      * the host only needs the viewport coordinates to anchor the menu.
+     *
+     * Wiring: the subtree `contextmenu` listener is installed once at
+     * `init` time and reads `_onContextMenuCallback` at fire time —
+     * calling this setter after `init` runs is supported (the next
+     * right-click picks up the new callback), but the listener itself
+     * is not re-installed.
      *
      * @param fn - Receives the viewport x and y coordinates of the event.
      */
