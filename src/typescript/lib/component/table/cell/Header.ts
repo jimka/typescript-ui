@@ -321,9 +321,9 @@ class HeaderCell extends DefaultCell {
      * Sets the tooltip text shown when hovering this header cell.
      *
      * Safe to call before or after the cell has rendered: pre-init calls are
-     * picked up by {@link init} when it wires the tooltip attachment;
-     * post-init calls re-attach against the live element so the visible
-     * tooltip updates immediately.
+     * picked up by `init` when it wires the tooltip attachment; post-init
+     * calls re-attach against the live element so the visible tooltip
+     * updates immediately.
      *
      * @param text - The text to display in the tooltip.
      */
