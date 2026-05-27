@@ -84,9 +84,14 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
         this._onDragEnd   ??= null;
 
         this.setCursor("var(--ts-ui-table-resize-handle-cursor, ew-resize)");
+        // 5 px-wide drag target with a 1 px colored stripe at the right
+        // edge — `80%` of `5 px = 4 px` transparent, the remaining `20%`
+        // is `1 px` of the resize-handle colour. Pairs with the 1 px
+        // dividers on ParentHeaderCell so every visible cell separator
+        // in the header band reads at the same thickness.
         this.setBackgroundImage(
-            "linear-gradient(to right,transparent 60%," +
-            "var(--ts-ui-table-resize-handle-color,rgba(0,0,0,0.2)) 60%)");
+            "linear-gradient(to right,transparent 80%," +
+            "var(--ts-ui-table-resize-handle-color,rgba(0,0,0,0.2)) 80%)");
         this.setZIndex(1);
     }
 
