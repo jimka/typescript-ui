@@ -48,6 +48,24 @@ export abstract class CellRenderer<T> extends Component {
     abstract setValue(t: T): void;
 
     /**
+     * Returns the x offset (in this renderer's local space) at which
+     * the cell's actual content begins. Defaults to `0` — the typed
+     * renderer fills its box from the left.
+     *
+     * Overridden by [`TreeCellRenderer`](/api/component/table/classes/TreeCellRenderer)
+     * to reserve space for the indent + toggle column. The owning
+     * {@link Cell} consults this on every `doLayout` so the editor
+     * stays visually aligned with where the renderer's content sat,
+     * instead of snapping to the left cell edge on edit.
+     *
+     * @returns The pixels reserved at the left of the renderer's box
+     *   before its content begins.
+     */
+    getContentX(): number {
+        return 0;
+    }
+
+    /**
      * Runs the Fit layout, then synchronises the Text child's `line-height`
      * to its own element height. A single-line `<span>` whose `line-height`
      * matches its block height renders the text glyphs vertically centered;

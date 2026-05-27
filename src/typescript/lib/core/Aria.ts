@@ -9,6 +9,7 @@ import { Component } from "~/core/Component.js";
  */
 export type AriaRole =
     | 'grid'
+    | 'treegrid'
     | 'rowgroup'
     | 'row'
     | 'gridcell'

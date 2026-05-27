@@ -12,6 +12,8 @@ import { DateCell } from "~/component/table/cell/Date.js";
 import { TimeCell } from "~/component/table/cell/Time.js";
 import { DateTimeCell } from "~/component/table/cell/DateTime.js";
 import { GlyphCell } from "~/component/table/cell/Glyph.js";
+import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
+import { TreeCellRenderer } from "~/component/table/cell/renderer/TreeCell.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { callable } from "~/core/Callable.js";
@@ -33,6 +35,7 @@ class Row extends Component {
     private _data?: ModelRecord;
     private _onCellCommit?: (record: ModelRecord) => void;
     private _fieldNames: string[] = [];
+    private _treeCell: Cell<any> | null = null;
 
     constructor(
         model?: AbstractModel,
@@ -40,6 +43,7 @@ class Row extends Component {
         hiddenColumns: Set<string> = new Set(),
         columnConfigs: Map<string, ColumnConfig> = new Map(),
         onCellCommit?: (record: ModelRecord) => void,
+        treeFieldName?: string,
     ) {
         super({ tag: "tr" });
 
@@ -106,11 +110,34 @@ class Row extends Component {
                     cell.setBackgroundColor(groupColor);
                 }
 
+                // For the tree column, wrap the typed renderer in a
+                // `TreeCellRenderer` so the cell draws an indent + an
+                // expand/collapse toggle to the left of the value. The
+                // host `TreeBody` keeps a reference via `getTreeCell()`
+                // and pushes per-row depth + expansion state through
+                // `setTreeState` on each bind.
+                if (treeFieldName !== undefined && field.getName() === treeFieldName) {
+                    cell.wrapRenderer((delegate: CellRenderer<any>) => new TreeCellRenderer(delegate));
+                    this._treeCell = cell;
+                }
+
                 this.addComponent(cell, {
                     data: field
                 });
             }
         }
+    }
+
+    /**
+     * Returns the cell on the row's tree column, or `null` when the row
+     * was constructed without a `treeFieldName`. The host `TreeBody`
+     * reads this to find each row's `TreeCellRenderer` for depth /
+     * toggle updates and toggle-click routing.
+     *
+     * @returns The tree-column {@link Cell}, or `null`.
+     */
+    getTreeCell(): Cell<any> | null {
+        return this._treeCell;
     }
 
     /**
