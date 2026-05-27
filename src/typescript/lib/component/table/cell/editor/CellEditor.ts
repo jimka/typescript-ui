@@ -46,4 +46,19 @@ export abstract class CellEditor<T> extends Component {
      * @param t - The value to populate the editor with.
      */
     abstract setValue(t: T): void;
+
+    /**
+     * Mirrors {@link CellRenderer.getContentX} so a `CellEditor` and a
+     * `CellRenderer` stay structurally compatible — {@link BooleanCell}
+     * uses a [`BooleanEditor`](/api/component/table/classes/BooleanEditor)
+     * as both renderer and editor, and TS would reject that pass if
+     * either base class declared a member the other didn't. Default
+     * returns `0`; editors do not currently report indent offsets of
+     * their own.
+     *
+     * @returns Always `0`.
+     */
+    getContentX(): number {
+        return 0;
+    }
 }

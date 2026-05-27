@@ -16,6 +16,8 @@ import { callable } from "~/core/Callable.js";
  */
 class BooleanCell extends Cell<Boolean> {
 
+    private _checkbox: BooleanEditor;
+
     constructor() {
         let editor = new BooleanEditor();
 
@@ -27,6 +29,8 @@ class BooleanCell extends Cell<Boolean> {
             },
             undefined
         );
+
+        this._checkbox = editor;
     }
 
     /**
@@ -36,16 +40,19 @@ class BooleanCell extends Cell<Boolean> {
      *
      * @remarks Overrides the base class implementation because BooleanCell has no separate
      * edit/commit cycle; changes are committed immediately on each checkbox interaction.
+     * Routed through the cached editor reference rather than `getRenderer()` so the
+     * wiring survives a [`TreeCellRenderer`](/api/component/table/classes/TreeCellRenderer)
+     * wrap when the column is the tree column.
      */
     setOnCommit(fn: (value: Boolean) => void): void {
-        (this.getRenderer() as BooleanEditor).setOnChange(fn);
+        this._checkbox.setOnChange(fn);
     }
 
     /**
      * Toggles the checkbox value and fires the commit callback.
      */
     startEdit() {
-        (this.getRenderer() as BooleanEditor).toggle();
+        this._checkbox.toggle();
     }
 
     /**

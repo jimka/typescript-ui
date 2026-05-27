@@ -51,15 +51,21 @@ class Table extends LayoutManager {
     }
 
     /**
-     * Attaches to a container, throwing if it is not a [`Table`](/api/component/table/classes/Table) component.
+     * Attaches to a container, throwing if it is not a [`Table`](/api/component/table/classes/Table)
+     * or a [`TreeTable`](/api/component/table/classes/TreeTable) component.
      *
      * @param container - The container component to attach to.
      *
-     * @remarks This layout manager is only valid for containers whose class name is `"Table"`.
+     * @remarks This layout manager is valid for containers whose class
+     * name is `"Table"` or `"TreeTable"`. `TreeTable` extends `Table`
+     * and reuses the entire header / body / footer geometry pipeline,
+     * so it shares the same layout manager.
      */
     attach(container: Component) : this {
-        if (container.getClassName() != "Table") {
-            throw new Error("Container must be a Table.");
+        const name = container.getClassName();
+
+        if (name != "Table" && name != "TreeTable") {
+            throw new Error("Container must be a Table or TreeTable.");
         }
 
         super.attach(container);

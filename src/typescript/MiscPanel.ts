@@ -57,7 +57,9 @@ import { FieldSet, Spacer, StatusBar } from '@jimka/typescript-ui/component/cont
 import {
     ColumnSpec,
     Table,
-    TablePanel
+    TablePanel,
+    TreeTablePanel,
+    TreeTableSpec
 } from '@jimka/typescript-ui/component/table';
 import {
     IconLabelTreeNodeRenderer,
@@ -341,6 +343,67 @@ class MiscPanel extends Panel {
             win3.show();
         });
         leftColumn.addComponent(buttonWindowTableSpec);
+
+        let buttonTreeTable = new Button("Show window with tree table!");
+        buttonTreeTable.addActionListener(function () {
+            const win4 = new Window("TreeTable — file-system layout");
+
+            win4.setX(150);
+            win4.setY(200);
+            win4.setWidth(600);
+            win4.setHeight(450);
+
+            win4.setContentFactory(() => {
+                const fsModel = new Model([
+                    { name: "id"      , type: "number" , description: "id"      , order: 0 },
+                    { name: "parentId", type: "number" , description: "parentId", order: 1 },
+                    { name: "name"    , type: "string" , description: "name"    , order: 2 },
+                    { name: "disabled", type: "boolean", description: "disabled", order: 3 },
+                    { name: "size"    , type: "number" , description: "size"    , order: 4 },
+                    { name: "modified", type: "date"   , description: "modified", order: 5 },
+                ]);
+
+                const fsStore = new MemoryStore(fsModel);
+
+                // Three-level hierarchy: src/lib/{Component,Event}, src/main, docs/{guide,api}, package.json.
+                fsStore.add([
+                    { id:  1, parentId: null, name: "src"         , modified: new Date(2024, 0, 10) },
+                    { id:  2, parentId:    1, name: "lib"         , modified: new Date(2024, 0, 10) },
+                    { id:  3, parentId:    2, name: "Component.ts", size: 4200, modified: new Date(2024, 1, 22) },
+                    { id:  4, parentId:    2, name: "Event.ts"    , size: 1850, modified: new Date(2024, 1, 18) },
+                    { id:  5, parentId:    1, name: "main.ts"     , size: 320 , modified: new Date(2024, 0, 14) },
+                    { id:  6, parentId: null, name: "docs"        , modified: new Date(2024, 2,  5) },
+                    { id:  7, parentId:    6, name: "guide.md"    , size: 5800, modified: new Date(2024, 2,  5) },
+                    { id:  8, parentId:    6, name: "api.md"      , size: 9100, modified: new Date(2024, 2, 12) },
+                    { id:  9, parentId: null, name: "package.json", size: 1100, modified: new Date(2024, 0,  4) },
+                ]);
+
+                fsStore.sync();
+
+                const spec: TreeTableSpec = {
+                    idField:     "id",
+                    parentField: "parentId",
+                    treeColumn:  "name",
+                    columns: [
+                        { field: "name"    , minWidth: 240 },
+                        { field: "size"    , maxWidth: 100 },
+                        { field: "modified", minWidth: 130 },
+                        { field: "id"      , hidden:  true },
+                        { field: "parentId", hidden:  true },
+                    ],
+                };
+
+                const treePanel = new TreeTablePanel(fsStore, spec);
+
+                treePanel.setExportMenuEnabled(true);
+                treePanel.getTreeTable().expandToDepth(0);
+
+                return treePanel;
+            });
+
+            win4.show();
+        });
+        leftColumn.addComponent(buttonTreeTable);
 
         let isDark = false;
         let buttonTheme = new Button("Switch to dark theme");
