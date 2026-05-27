@@ -36,12 +36,17 @@ class NumberRenderer extends CellRenderer<Number> {
     }
 
     /**
-     * Sets the label text from the number value, defaulting to empty string for falsy values.
+     * Sets the label text from the number value. `null` and `undefined`
+     * render as the empty string; every other value (including `0`,
+     * `-1`, `NaN`, `Infinity`) goes through `String(value)` so the
+     * cell shows the actual literal — never the words `"undefined"` or
+     * `"null"`.
      *
-     * @param value - The numeric value to display.
+     * @param value - The numeric value to display, or `null`/`undefined`
+     *   to clear the cell.
      */
     setValue(value: Number) : this {
-        this._text.setText(String(value) || "");
+        this._text.setText(value == null ? "" : String(value));
 
         return this;
     }
