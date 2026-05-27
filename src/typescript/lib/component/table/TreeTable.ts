@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { Event } from "~/core/Event.js";
 import { Table } from "~/component/table/Table.js";
 import { TreeBody } from "~/component/table/TreeBody.js";
 import { TreeTableSpec } from "~/component/table/TreeTableSpec.js";
@@ -9,6 +10,22 @@ import { callable } from "~/core/Callable.js";
 
 /** Default pixels of indentation per depth level when the spec omits `indentPx`. */
 const DEFAULT_INDENT_PX = 16;
+
+/**
+ * Payload delivered to listeners registered through
+ * {@link TreeTable.addRowReparentListener}. Fired after a successful
+ * {@link TreeTable.reparentRow} call.
+ *
+ * @category Components
+ */
+export interface RowReparentDetail {
+    /** The record whose `parentField` value changed. */
+    record:    ModelRecord;
+    /** The new parent record, or `null` when reparented to root. */
+    newParent: ModelRecord | null;
+    /** The previous parent record, or `null` when the row was previously at root. */
+    oldParent: ModelRecord | null;
+}
 
 /**
  * A data-bound table whose rows form a parent/child hierarchy.
@@ -73,6 +90,19 @@ class TreeTable extends Table {
     private _treeBody: TreeBody;
 
     /**
+     * Maps each consumer-supplied `rowreparent` listener to the
+     * CustomEvent-unwrapping wrapper actually registered with
+     * `Event.addListener`. The wrapper is the removable reference;
+     * the original listener is the lookup key. Inline arrows can't be
+     * removed by reference, so the wrapper is built once at add-time
+     * and stored.
+     */
+    private _rowReparentWrappers = new Map<
+        (detail: RowReparentDetail) => void,
+        (e: CustomEvent<RowReparentDetail>) => void
+    >();
+
+    /**
      * Constructs a TreeTable bound to the given store.
      *
      * @param store - The data store carrying the records. Each record
@@ -101,6 +131,16 @@ class TreeTable extends Table {
         this._treeBody = this.getBody() as TreeBody;
 
         this.getAria().setRole("treegrid");
+
+        // Inject the reparent callbacks so `TreeBody` can install
+        // per-row drag sources / drop targets once each pool row is
+        // bound. The validator path lets the per-row drop targets
+        // surface the cycle / no-op rejection through the green/red
+        // feedback tint without committing the move.
+        this._treeBody.setReparentHandlers(
+            (dragged, newParent) => this.canReparent(dragged, newParent),
+            (dragged, newParent) => this.reparentRow(dragged, newParent),
+        );
     }
 
     /**
@@ -224,6 +264,145 @@ class TreeTable extends Table {
         return super.addRow(payload);
     }
 
+    /**
+     * Resolves a record by its `idField` value. Delegates to
+     * [`TreeBody.getRecordById`](/api/component/table/classes/TreeBody#getrecordbyid).
+     *
+     * @param id - The id-field value to look up.
+     *
+     * @returns The matching record, or `undefined` when the id is not
+     *   present in the current store view.
+     */
+    getRecordById(id: any): ModelRecord | undefined {
+        return this._treeBody.getRecordById(id);
+    }
+
+    /**
+     * Returns whether the given record currently has at least one
+     * child — i.e. behaves as a directory in the rendered tree.
+     *
+     * @param record - The record to test.
+     *
+     * @returns `true` when the record has children; `false` for leaves.
+     */
+    isDirectoryRecord(record: ModelRecord): boolean {
+        return this._treeBody.isDirectoryRecord(record);
+    }
+
+    /**
+     * Reparents the given record under `newParent` (or root when
+     * `newParent` is `null`). Rejects cycles and no-ops, fires a
+     * `rowreparent` event on success.
+     *
+     * @param record - The record to move.
+     * @param newParent - The new parent record, or `null` for root.
+     *
+     * @returns `true` when the reparent succeeded; `false` when it was
+     *   rejected (cycle, no-op, or unknown record).
+     */
+    reparentRow(record: ModelRecord, newParent: ModelRecord | null): boolean {
+        if (!this.canReparent(record, newParent)) {
+            return false;
+        }
+
+        const parentField = this._treeSpec.parentField;
+        const idField     = this._treeSpec.idField;
+
+        const oldParentId = record.get(parentField);
+        const oldParent   = oldParentId != null ? this._treeBody.getRecordById(oldParentId) ?? null : null;
+
+        record.set(parentField, newParent !== null ? newParent.get(idField) : null);
+        this.getStore().notifyRecordChanged(record);
+
+        const detail: RowReparentDetail = {
+            record,
+            newParent,
+            oldParent,
+        };
+
+        Event.fireEvent(this, "rowreparent", { detail });
+
+        return true;
+    }
+
+    /**
+     * Returns whether `record` may legally be reparented under
+     * `newParent`. Used both by {@link reparentRow} for the commit-
+     * time guard and by `TreeBody`'s per-row drop targets for the
+     * visual feedback tint.
+     *
+     * @param record - The candidate record.
+     * @param newParent - The candidate new parent, or `null` for root.
+     *
+     * @returns `true` when the move is a real change and would not
+     *   create a cycle; `false` otherwise.
+     */
+    private canReparent(record: ModelRecord, newParent: ModelRecord | null): boolean {
+        if (!this._treeBody.getRecordById(record.get(this._treeSpec.idField))) {
+            return false;
+        }
+
+        // No-op: dropping a record back into the same parent (or onto
+        // itself) is rejected so the visual feedback tint reads "no
+        // valid move" rather than flashing green and silently doing
+        // nothing.
+        const currentParentId = record.get(this._treeSpec.parentField);
+        const newParentId     = newParent !== null ? newParent.get(this._treeSpec.idField) : null;
+
+        if (currentParentId === newParentId) {
+            return false;
+        }
+
+        if (newParent !== null && this._treeBody.isAncestorOf(record, newParent)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Registers a listener fired after every successful
+     * {@link reparentRow} call. Use to react to drag-and-drop row
+     * moves originating from
+     * [`DragManager`](/api/core/variables/DragManager).
+     *
+     * @param listener - Receives the {@link RowReparentDetail} payload.
+     *
+     * @returns This table, for method chaining.
+     */
+    addRowReparentListener(listener: (detail: RowReparentDetail) => void): this {
+        if (this._rowReparentWrappers.has(listener)) {
+            return this;
+        }
+
+        const wrapper = (e: CustomEvent<RowReparentDetail>): void => listener(e.detail);
+
+        this._rowReparentWrappers.set(listener, wrapper);
+        Event.addListener(this, "rowreparent", wrapper);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered `rowreparent` listener.
+     *
+     * @param listener - The exact callback reference passed to
+     *   {@link addRowReparentListener}.
+     *
+     * @returns This table, for method chaining.
+     */
+    removeRowReparentListener(listener: (detail: RowReparentDetail) => void): this {
+        const wrapper = this._rowReparentWrappers.get(listener);
+
+        if (!wrapper) {
+            return this;
+        }
+
+        Event.removeListener(this, "rowreparent", wrapper);
+        this._rowReparentWrappers.delete(listener);
+
+        return this;
+    }
 }
 
 const TreeTableCallable = callable(TreeTable);
