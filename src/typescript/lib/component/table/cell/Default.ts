@@ -12,7 +12,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-class DefaultCell extends Cell<String> {
+class DefaultCell extends Cell<String | null> {
 
     constructor(tag?: string) {
         let renderer = new StringRenderer();
@@ -30,11 +30,13 @@ class DefaultCell extends Cell<String> {
     }
 
     /**
-     * Sets the displayed text value on the string renderer.
+     * Sets the displayed text value on the string renderer. `null` and
+     * `undefined` render the cell as blank.
      *
-     * @param value - The string value to display.
+     * @param value - The string value to display, or `null`/`undefined`
+     *   to clear the cell.
      */
-    setValue(value: String) : this {
+    setValue(value: String | null): this {
         this.getRenderer().setValue(value);
 
         return this;

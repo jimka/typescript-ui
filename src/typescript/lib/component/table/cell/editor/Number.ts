@@ -12,12 +12,16 @@ import { callable } from "~/core/Callable.js";
  *
  * Wraps a right-aligned {@link TextField} and proxies blur and keydown events
  * up to the parent cell so the standard commit/cancel lifecycle works.
+ * Caches the parsed numeric value on each input event so an empty or
+ * unparseable field commits as `null` rather than silently coercing to
+ * `0` or `NaN`.
  *
  * @category Components
  */
-class NumberEditor extends CellEditor<Number> {
+class NumberEditor extends CellEditor<Number | null> {
 
-    private _textField: TextField = new TextField();
+    private _textField: TextField     = new TextField();
+    private _value:     Number | null = null;
 
     constructor() {
         super();
@@ -33,6 +37,7 @@ class NumberEditor extends CellEditor<Number> {
                 bubbles : true         , cancelable: true
             }));
         });
+        Event.addListener(this._textField, "input", () => this.onInput());
 
         this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
         this._textField.clearPadding();
@@ -49,25 +54,30 @@ class NumberEditor extends CellEditor<Number> {
     }
 
     /**
-     * Returns the text field value parsed as a number.
+     * Returns the cached numeric value, or `null` when the field is
+     * empty or contains unparseable text. Reads the private cache
+     * rather than re-parsing the text on demand so an empty field
+     * commits as `null` instead of `0`, and unparseable text commits
+     * as `null` instead of `NaN`.
      *
-     * @returns The current numeric value from the text field.
+     * @returns The parsed numeric value, or `null`.
      */
-    getValue() {
-        return Number(this._textField.getText());
+    getValue(): Number | null {
+        return this._value;
     }
 
     /**
-     * Populates the text field with the number as a string. `null`
-     * and `undefined` populate an empty field so the user sees a
-     * blank input on first edit instead of the literal text
-     * `"undefined"` / `"null"`.
+     * Populates the text field with the number as a string and caches
+     * the value. `null` and `undefined` populate an empty field so the
+     * user sees a blank input on first edit instead of the literal
+     * text `"undefined"` / `"null"`.
      *
      * @param value - The numeric value to set in the text field, or
      *   `null`/`undefined` to leave the field empty.
      */
-    setValue(value: Number) : this {
-        this._textField.setText(value == null ? "" : String(value));
+    setValue(value: Number | null): this {
+        this._value = value ?? null;
+        this._textField.setText(this._value === null ? "" : String(this._value));
 
         return this;
     }
@@ -82,6 +92,24 @@ class NumberEditor extends CellEditor<Number> {
         this._textField.select();
 
         return this;
+    }
+
+    /**
+     * Parses the live text field content into the cached value. An
+     * empty string or unparseable text becomes `null`; otherwise the
+     * cached value is the numeric `Number(raw)`.
+     */
+    private onInput(): void {
+        const raw = this._textField.getText();
+
+        if (!raw) {
+            this._value = null;
+
+            return;
+        }
+
+        const n = Number(raw);
+        this._value = isNaN(n) ? null : n;
     }
 }
 

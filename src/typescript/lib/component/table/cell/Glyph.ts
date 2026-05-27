@@ -12,7 +12,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-class GlyphCell extends Cell<String> {
+class GlyphCell extends Cell<String | null> {
 
     constructor() {
         let renderer = new GlyphRenderer();
@@ -21,11 +21,14 @@ class GlyphCell extends Cell<String> {
     }
 
     /**
-     * Sets the displayed glyph name on the renderer.
+     * Sets the displayed glyph name on the renderer. `null`, `undefined`,
+     * and any falsy value remove the glyph child so the cell renders
+     * blank.
      *
-     * @param value - The registry glyph name to display.
+     * @param value - The registry glyph name to display, or
+     *   `null`/`undefined`/falsy to clear the cell.
      */
-    setValue(value: String): this {
+    setValue(value: String | null): this {
         this.getRenderer().setValue(value);
 
         return this;

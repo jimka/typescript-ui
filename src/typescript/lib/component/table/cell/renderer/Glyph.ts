@@ -9,34 +9,40 @@ import { callable } from "~/core/Callable.js";
  *
  * Displays the value via a [`Glyph`](/api/component/display/classes/Glyph) instance.
  * The glyph follows `currentColor`, so the icon inherits the surrounding cell's
- * foreground colour for free.
+ * foreground colour for free. Caches the last value passed to
+ * {@link setValue} so {@link getValue} returns `null` for an empty cell
+ * instead of an empty string.
  *
  * @category Components
  */
-class GlyphRenderer extends CellRenderer<String> {
+class GlyphRenderer extends CellRenderer<String | null> {
 
-    private _name: String = "";
+    private _value: String | null         = null;
     private _glyph: GlyphComponent | null = null;
 
     /**
-     * Returns the current displayed glyph name.
+     * Returns the cached glyph name, or `null` when the cell is empty.
      *
-     * @returns The registry name passed to the most recent {@link setValue} call.
+     * @returns The registry name passed to the most recent {@link setValue} call,
+     *   or `null` if the cell has no glyph.
      */
-    getValue(): String {
-        return this._name;
+    getValue(): String | null {
+        return this._value;
     }
 
     /**
      * Replaces the displayed glyph with one for the given registry name.
+     * `null`, `undefined`, and any other falsy value remove the glyph
+     * child entirely so the cell renders blank.
      *
-     * @param value - Registry glyph name, or a falsy value to clear the cell.
+     * @param value - Registry glyph name, or `null`/`undefined`/falsy to
+     *   clear the cell.
      *
      * @returns This renderer, for method chaining.
      */
-    setValue(value: String): this {
-        const next = value || "";
-        if (next === this._name && this._glyph) {
+    setValue(value: String | null): this {
+        const next = value ? value : null;
+        if (next === this._value && (next === null || this._glyph)) {
             return this;
         }
 
@@ -45,9 +51,9 @@ class GlyphRenderer extends CellRenderer<String> {
             this._glyph = null;
         }
 
-        this._name = next;
+        this._value = next;
 
-        if (next) {
+        if (next !== null) {
             this._glyph = new GlyphComponent(next as string);
             this._glyph.setPointerEvents("none");
             this.addComponent(this._glyph);

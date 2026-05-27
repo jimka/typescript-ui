@@ -13,7 +13,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-class StringCell extends Cell<String> {
+class StringCell extends Cell<String | null> {
 
     constructor() {
         let renderer = new StringRenderer();
@@ -31,11 +31,13 @@ class StringCell extends Cell<String> {
     }
 
     /**
-     * Sets the displayed text value on the renderer.
+     * Sets the displayed text value on the renderer. `null` and
+     * `undefined` render the cell as blank.
      *
-     * @param value - The string value to display.
+     * @param value - The string value to display, or `null`/`undefined`
+     *   to clear the cell.
      */
-    setValue(value: String): this {
+    setValue(value: String | null): this {
         this.getRenderer().setValue(value);
 
         return this;
