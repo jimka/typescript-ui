@@ -10,13 +10,16 @@ import { callable } from "~/core/Callable.js";
  * An in-place editor for string cell values.
  *
  * Wraps a {@link TextField} and proxies blur and keydown events up to the parent
- * cell so the standard commit/cancel lifecycle works.
+ * cell so the standard commit/cancel lifecycle works. Caches the typed
+ * text on each input event; an empty field commits as `null`, mirroring
+ * the cell-stack convention that "no value" is `null` and not `""`.
  *
  * @category Components
  */
-class StringEditor extends CellEditor<String> {
+class StringEditor extends CellEditor<String | null> {
 
-    private _textField: TextField = new TextField();
+    private _textField: TextField     = new TextField();
+    private _value:     String | null = null;
 
     constructor() {
         super();
@@ -32,6 +35,7 @@ class StringEditor extends CellEditor<String> {
                 bubbles : true         , cancelable: true
             }));
         });
+        Event.addListener(this._textField, "input", () => this.onInput());
 
         this._textField.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
         this._textField.clearPadding();
@@ -44,21 +48,26 @@ class StringEditor extends CellEditor<String> {
     }
 
     /**
-     * Returns the current text field value.
+     * Returns the cached string value, or `null` when the field is
+     * empty. The distinction between a typed `""` and `null` is
+     * intentionally dropped — empty input is empty input.
      *
-     * @returns The current string from the text field.
+     * @returns The current string value, or `null`.
      */
-    getValue() {
-        return this._textField.getText();
+    getValue(): String | null {
+        return this._value;
     }
 
     /**
-     * Populates the text field with the given value.
+     * Populates the text field and caches the value. `null` and
+     * `undefined` populate an empty field.
      *
-     * @param value - The string value to set in the text field.
+     * @param value - The string value to set in the text field, or
+     *   `null`/`undefined` to leave the field empty.
      */
-    setValue(value: string) : this {
-        this._textField.setText(value || "");
+    setValue(value: String | null): this {
+        this._value = value ?? null;
+        this._textField.setText(this._value === null ? "" : String(this._value));
 
         return this;
     }
@@ -73,6 +82,15 @@ class StringEditor extends CellEditor<String> {
         this._textField.select();
 
         return this;
+    }
+
+    /**
+     * Reads the live text field content into the cached value. An
+     * empty string becomes `null`.
+     */
+    private onInput(): void {
+        const raw = this._textField.getText();
+        this._value = raw ? raw : null;
     }
 }
 

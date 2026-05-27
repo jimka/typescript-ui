@@ -7,13 +7,17 @@ import { callable } from "~/core/Callable.js";
 /**
  * A read-only renderer for numeric cell values.
  *
- * Displays the value right-aligned via a {@link Text}.
+ * Displays the value right-aligned via a {@link Text}. Caches the last
+ * value passed to {@link setValue} so {@link getValue} returns the exact
+ * `Number | null` that was rendered — never the result of re-parsing the
+ * DOM text, which silently coerces an empty cell back to `0`.
  *
  * @category Components
  */
-class NumberRenderer extends CellRenderer<Number> {
+class NumberRenderer extends CellRenderer<Number | null> {
 
-    private _text: Text = new Text();
+    private _text:  Text          = new Text();
+    private _value: Number | null = null;
 
     constructor() {
         super();
@@ -27,26 +31,29 @@ class NumberRenderer extends CellRenderer<Number> {
     }
 
     /**
-     * Returns the label text parsed as a number.
+     * Returns the cached numeric value, or `null` when the cell is
+     * empty. Reads the private cache rather than re-parsing the DOM
+     * text so an empty cell round-trips as `null` instead of `0`.
      *
-     * @returns The current numeric value.
+     * @returns The current numeric value, or `null`.
      */
-    getValue() {
-        return Number(this._text.getText());
+    getValue(): Number | null {
+        return this._value;
     }
 
     /**
-     * Sets the label text from the number value. `null` and `undefined`
-     * render as the empty string; every other value (including `0`,
-     * `-1`, `NaN`, `Infinity`) goes through `String(value)` so the
-     * cell shows the actual literal — never the words `"undefined"` or
-     * `"null"`.
+     * Caches the value and renders it as text. `null` and `undefined`
+     * are both normalised to `null` and render as the empty string;
+     * every other value (including `0`, `-1`, `NaN`, `Infinity`) goes
+     * through `String(value)` so the cell shows the actual literal —
+     * never the words `"undefined"` or `"null"`.
      *
      * @param value - The numeric value to display, or `null`/`undefined`
      *   to clear the cell.
      */
-    setValue(value: Number) : this {
-        this._text.setText(value == null ? "" : String(value));
+    setValue(value: Number | null): this {
+        this._value = value ?? null;
+        this._text.setText(this._value === null ? "" : String(this._value));
 
         return this;
     }
