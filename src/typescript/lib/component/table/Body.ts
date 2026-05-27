@@ -10,6 +10,7 @@ import { Event } from "~/core/Event.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
 import { ThemeManager } from "~/core/Theme.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
+import { Column } from "~/component/table/Column.js";
 import type { Header } from "~/component/table/Header.js";
 import type { HeaderCell } from "~/component/table/cell/Header.js";
 import { callable } from "~/core/Callable.js";
@@ -50,6 +51,7 @@ class Body extends Component {
 
     private _store           : AbstractStore;
     private _hiddenColumns   : Set<string>               = new Set();
+    private _columns         : Column[]                  = [];
     private _columnConfigs   : Map<string, ColumnConfig> = new Map();
     private _rowPool         : Row[]                     = [];
     private _boundIndices    : number[]                  = [];
@@ -301,10 +303,39 @@ class Body extends Component {
     /**
      * Updates the set of hidden column field names, clears the row pool, and re-renders.
      *
+     * Field names belonging to {@link Column.isUnhideable} columns are stripped
+     * from the set so a direct caller cannot bypass the unhideable contract.
+     *
      * @param hidden - The new set of field names to hide.
      */
     setHiddenColumns(hidden: Set<string>): this {
-        this._hiddenColumns = new Set(hidden);
+        const filtered = new Set<string>();
+
+        for (const name of hidden) {
+            const col = this._columns.find(c => c.getField().getName() === name);
+
+            if (!col || !col.isUnhideable()) {
+                filtered.add(name);
+            }
+        }
+
+        this._hiddenColumns = filtered;
+        this.clearRowPool();
+        this.renderWindow();
+
+        return this;
+    }
+
+    /**
+     * Supplies the resolved {@link Column} list so the body can read per-column
+     * metadata (e.g. `isUnhideable()`) when filtering hidden-column sets.
+     *
+     * @param columns - The resolved columns in display order.
+     *
+     * @returns This body, for method chaining.
+     */
+    setColumns(columns: Column[]): this {
+        this._columns = columns;
         this.clearRowPool();
         this.renderWindow();
 
