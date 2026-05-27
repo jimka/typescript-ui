@@ -466,8 +466,26 @@ function onMouseMove(e: MouseEvent): void {
         return;
     }
 
-    // Same target as last frame — re-run onDragOver so callers can
-    // update the reorder hint as the cursor traverses the target body.
+    // Same target as last frame — re-check accepts so the feedback
+    // tint stays accurate (the validity of a drop can change as the
+    // cursor moves within the same target, e.g. crossing into a
+    // descendant region the source isn't allowed to land on). Skip
+    // onDragOver / reorder indicator entirely while the drop is
+    // rejected.
+    const accepted = target.options.accepts(detail);
+
+    if (session.feedback) {
+        session.feedback.setValid(accepted);
+    }
+
+    if (!accepted) {
+        if (session.indicator) {
+            session.indicator.detach();
+        }
+
+        return;
+    }
+
     const hint = target.options.onDragOver?.(detail);
 
     if (typeof hint === "number" && session.indicator) {
