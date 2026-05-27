@@ -21,6 +21,8 @@ export class Column {
     private _maxWidth    : number | undefined;
     private _hidden      : boolean;
     private _headerGlyph : string | null;
+    private _group       : string | null;
+    private _groupColor  : string | null;
 
     /**
      * Constructs a Column from a field and an optional presentation config.
@@ -34,6 +36,8 @@ export class Column {
         this._maxWidth    = config?.maxWidth;
         this._hidden      = config?.hidden ?? false;
         this._headerGlyph = config?.headerGlyph ?? null;
+        this._group       = config?.group ?? null;
+        this._groupColor  = config?.groupColor ?? null;
     }
 
     /**
@@ -102,6 +106,28 @@ export class Column {
      */
     clearHeaderGlyph(): this {
         return this.setHeaderGlyph(null);
+    }
+
+    /**
+     * Returns the parent-header group name this column belongs to, fixed at
+     * construction. Columns sharing a group name and appearing contiguously
+     * render under a single spanning {@link ParentHeaderCell}.
+     *
+     * @returns The group name, or `null` when the column is ungrouped.
+     */
+    getGroup(): string | null {
+        return this._group;
+    }
+
+    /**
+     * Returns the optional background color advertised by this column's
+     * `ColumnConfig.groupColor`. The first non-null value in a contiguous
+     * group run wins; later mismatched values are ignored.
+     *
+     * @returns The CSS color string, or `null` when none was declared.
+     */
+    getGroupColor(): string | null {
+        return this._groupColor;
     }
 
     /**
