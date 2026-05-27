@@ -566,14 +566,34 @@ class Table extends Component<TableOptions> {
             .slice()
             .sort((a, b) => a.getField().getOrder() - b.getField().getOrder());
 
-        const items: MenuItemConfig[] = columns.map(col => {
-            const fieldName = col.getField().getName();
-            const visible = !this._hiddenColumns.has(fieldName);
+        const items: MenuItemConfig[] = [];
+        let lastGroup: string | null | undefined = undefined;
 
-            return {
-                text: (visible ? '✓ ' : '  ') + col.getField().getName(),
-                action: () => this.setColumnVisible(fieldName, !visible)
-            };
+        // Walk in display order, emitting a disabled section header
+        // each time the group changes. Ungrouped columns sit flush
+        // (no section header above them); transitioning back to an
+        // ungrouped column from a grouped run is treated as "end of
+        // group" — the next ungrouped item just appears with no
+        // preceding header. Field-list order matches the parent
+        // header band above, so the menu reads as a vertical
+        // restatement of what the user sees on screen.
+        columns.forEach(col => {
+            const fieldName = col.getField().getName();
+            const visible   = !this._hiddenColumns.has(fieldName);
+            const group     = col.getGroup();
+
+            if (group !== null && group !== lastGroup) {
+                items.push({ text: group, enabled: false });
+            }
+
+            const indent = group !== null ? '    ' : '';
+
+            items.push({
+                text: indent + (visible ? '✓ ' : '  ') + fieldName,
+                action: () => this.setColumnVisible(fieldName, !visible),
+            });
+
+            lastGroup = group;
         });
 
         items.push(

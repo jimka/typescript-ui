@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DefaultCell } from "~/component/table/cell/Default.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
+import { Event } from "~/core/Event.js";
+import { Tooltip } from "~/core/Tooltip.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -13,12 +14,15 @@ import { callable } from "~/core/Callable.js";
  * cell visually spans its children.
  *
  * Empty-text instances render as blank spanning cells over ungrouped
- * columns; they exist so the parent header band has a continuous surface
- * with no gaps where the body background would otherwise leak through.
+ * columns; they exist so the parent header band has a continuous
+ * surface with no gaps where the body background would otherwise leak
+ * through.
  *
- * Click / sort wiring is intentionally absent — parent cells do not
- * participate in the per-column sort cycle. Reordering and resizing remain
- * per-column gestures on the column-header row beneath.
+ * Sort / resize wiring is intentionally absent — parent cells do not
+ * participate in the per-column sort cycle or carry resize handles.
+ * They do support a right-click context menu (forwarded through the
+ * same callback the column cells use, so the column-toggle menu opens
+ * on either row), and a tooltip.
  *
  * @category Components
  */
@@ -26,50 +30,86 @@ class ParentHeaderCell extends DefaultCell {
 
     private _text: string;
     private _color: string | null;
-    private _isLast: boolean;
+    private _tooltipText: string = "";
+    private _onContextMenuCallback: ((x: number, y: number) => void) | null = null;
 
     /**
-     * @param text - The group label to display. Empty string renders a blank
-     *   spanning cell over ungrouped columns.
+     * Constructs a parent header cell over a contiguous run of grouped
+     * columns.
+     *
+     * @param text - The group label to display. Empty string renders a
+     *   blank spanning cell over ungrouped columns.
      * @param color - Optional CSS color string for the cell's background;
-     *   `null` falls through to the header-band gradient inherited from the
-     *   `Header` parent.
-     * @param isLast - When false, paints the right-edge inter-group divider
-     *   matching the existing header bottom border token.
+     *   `null` falls through to the header-band gradient inherited from
+     *   the `Header` parent.
      */
-    constructor(text: string, color: string | null, isLast: boolean) {
+    constructor(text: string, color: string | null) {
         super("th");
 
-        this._text   = text;
-        this._color  = color;
-        this._isLast = isLast;
+        this._text  = text;
+        this._color = color;
+
+        this.getAria().setRole("columnheader");
 
         const renderer = this.getRenderer();
         renderer.getText().setFontSize("--ts-ui-table-header-font-size");
         renderer.getText().setFontWeight("bold");
+        renderer.getText().setTextAlign("center");
         renderer.getText().setText(text);
 
         // The cell's `Cell` base writes `var(--ts-ui-table-cell-bg, …)` into
         // backgroundColor; override to either the consumer-supplied
         // `groupColor` or `transparent` so the `Header` band's gradient
-        // shows through unaltered.
+        // shows through unaltered when no color is set. The base class only
+        // re-applies the *border* on theme changes (Cell.ts:51), not the
+        // background, so this write survives a theme swap.
         this.setBackgroundColor(color ?? "transparent");
 
-        // Right-edge inter-group divider on every non-final parent cell.
-        // The bottom border lives on the `Header` itself; this rule only
-        // paints the vertical separator between adjacent runs so the eye
-        // reads one continuous boundary between groups.
-        if (!isLast) {
-            this.setBorder({
-                right: {
-                    style: BorderStyle.SOLID,
-                    width: 1,
-                    color: "var(--ts-ui-table-header-border, black)",
-                },
-            });
-        } else {
-            this.setBorder({ style: BorderStyle.NONE });
-        }
+        // Inter-group divider: an inset right-edge shadow in the same
+        // resize-handle gray that paints the standard cell separators in
+        // the column row beneath. Using `setShadow` instead of `setBorder`
+        // sidesteps `Cell`'s theme-change listener (which re-runs
+        // `setBorder('var(--ts-ui-table-cell-border, none)')` and would
+        // otherwise wipe a border-based divider on every theme toggle).
+        this.setShadow(
+            "inset -1px 0 0 0 var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))",
+        );
+    }
+
+    /**
+     * Registers a callback invoked when the user right-clicks this parent
+     * header cell. Mirrors {@link HeaderCell.setOnContextMenu} but elides
+     * the per-column `fieldName` — parent cells span multiple columns, so
+     * the host only needs the viewport coordinates to anchor the menu.
+     *
+     * @param fn - Receives the viewport x and y coordinates of the event.
+     */
+    setOnContextMenu(fn: (x: number, y: number) => void): this {
+        this._onContextMenuCallback = fn;
+
+        return this;
+    }
+
+    /**
+     * Sets the tooltip shown when hovering this parent header cell.
+     * Wired through the framework's shared {@link Tooltip} attach path,
+     * same as `HeaderCell.setTooltip`.
+     *
+     * @param text - The text to display in the tooltip.
+     */
+    setTooltip(text: string): this {
+        this._tooltipText = text;
+
+        return this;
+    }
+
+    /**
+     * Returns the tooltip text shown when hovering this cell.
+     *
+     * @returns The current tooltip string (empty when no tooltip has been set).
+     */
+    getTooltip(): string {
+        return this._tooltipText;
     }
 
     /**
@@ -82,8 +122,8 @@ class ParentHeaderCell extends DefaultCell {
     }
 
     /**
-     * Returns the optional background color this cell adopts, or `null` when
-     * the header-band gradient shows through unaltered.
+     * Returns the optional background color this cell adopts, or `null`
+     * when the header-band gradient shows through unaltered.
      *
      * @returns The CSS color string, or `null`.
      */
@@ -92,14 +132,31 @@ class ParentHeaderCell extends DefaultCell {
     }
 
     /**
-     * Returns whether this cell is the last in the parent row. The last
-     * cell has no right-edge divider so the parent band's right boundary
-     * stays clean.
+     * Wires the host-supplied context-menu listener and attaches the
+     * tooltip after the framework has mounted the element. Sub-tree
+     * listener so right-clicks on the rendered label bubble up here.
      *
-     * @returns `true` when this is the right-most parent cell.
+     * @param element - Optional element forwarded by the framework init chain.
      */
-    isLastInRow(): boolean {
-        return this._isLast;
+    protected init(element?: HTMLElement): this {
+        super.init(element);
+
+        const el = element || this.getElement();
+
+        if (!el) {
+            return this;
+        }
+
+        Event.addSubtreeListener(this, "contextmenu", (e: MouseEvent) => {
+            e.preventDefault();
+            this._onContextMenuCallback?.(e.clientX, e.clientY);
+        });
+
+        if (this._tooltipText) {
+            Tooltip.attachToElement(el, this._tooltipText);
+        }
+
+        return this;
     }
 }
 
