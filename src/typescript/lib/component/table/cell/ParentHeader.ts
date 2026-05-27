@@ -6,10 +6,11 @@ import { callable } from "~/core/Callable.js";
 
 /**
  * A non-interactive header cell that labels a contiguous run of columns in
- * the parent-header row. Constructed once per visible group by
- * {@link Header.rebuildParentCells} and laid out via the table layout
- * manager: x and width are summed from the underlying column widths so the
- * parent cell visually spans its children.
+ * the parent-header row. Constructed once per visible group by the
+ * [`Header`](/api/component/table/classes/Header) host (private
+ * `rebuildParentCells`) and laid out via the table layout manager: x
+ * and width are summed from the underlying column widths so the parent
+ * cell visually spans its children.
  *
  * Empty-text instances render as blank spanning cells over ungrouped
  * columns; they exist so the parent header band has a continuous surface
