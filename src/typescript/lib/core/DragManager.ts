@@ -82,7 +82,6 @@ export interface DropTargetOptions {
 interface DragSourceRecord {
     component: Component;
     options:   DragSourceOptions;
-    listener:  Function;
 }
 
 interface DropTargetRecord {
@@ -101,8 +100,6 @@ interface DragSession {
     feedback:         DragFeedback | null;
     indicator:        ReorderIndicator | null;
     currentTarget:    Component | null;
-    moveListener:     Function;
-    upListener:       Function;
     previousBodyCursor: string;
 }
 
@@ -166,15 +163,10 @@ export namespace DragManager {
      *   and the mousedown listener.
      */
     export function makeDragSource(component: Component, options: DragSourceOptions): () => void {
-        const listener = (e: MouseEvent): void => onSourceMouseDown(component, options, e);
+        dragSources.set(component.getId(), { component, options });
+        component.addMouseDownSubtreeListener(onSourceMouseDown);
 
-        dragSources.set(component.getId(), { component, options, listener });
-        component.addMouseDownListener(listener);
-
-        return () => {
-            component.removeMouseDownListener(listener);
-            dragSources.delete(component.getId());
-        };
+        return tearDownDragSource.bind(null, component);
     }
 
     /**
@@ -190,9 +182,7 @@ export namespace DragManager {
     export function makeDropTarget(component: Component, options: DropTargetOptions): () => void {
         dropTargets.set(component.getId(), { component, options });
 
-        return () => {
-            dropTargets.delete(component.getId());
-        };
+        return tearDownDropTarget.bind(null, component);
     }
 
     /**
@@ -228,11 +218,36 @@ function resolveDragData(options: DragSourceOptions): DragData {
 }
 
 /**
+ * Removes the per-component mousedown listener and drops the source
+ * record. Bound to `(component)` by `makeDragSource` so the returned
+ * teardown closure stays a stable named-function reference.
+ */
+function tearDownDragSource(component: Component): void {
+    component.removeMouseDownSubtreeListener(onSourceMouseDown);
+    dragSources.delete(component.getId());
+}
+
+/**
+ * Drops the target record. Bound to `(component)` by
+ * `makeDropTarget` so the returned teardown closure stays a stable
+ * named-function reference.
+ */
+function tearDownDropTarget(component: Component): void {
+    dropTargets.delete(component.getId());
+}
+
+/**
  * Records the pending press and arms the viewport-level move / up
  * listeners. Nothing visual happens until the cursor crosses the
  * threshold.
+ *
+ * Registered as a subtree mousedown listener on every drag source, so
+ * a press on any descendant of the source bubbles up the subtree
+ * walker and the framework's Event router applies `component` as
+ * `this` for the matching source — the lookup that identifies which
+ * source was pressed.
  */
-function onSourceMouseDown(source: Component, options: DragSourceOptions, e: MouseEvent): void {
+function onSourceMouseDown(this: Component, e: MouseEvent): void {
     if (activeSession !== null) {
         return;
     }
@@ -241,8 +256,14 @@ function onSourceMouseDown(source: Component, options: DragSourceOptions, e: Mou
         return;
     }
 
-    const moveListener = (ev: MouseEvent): void => onMouseMove(ev);
-    const upListener   = (ev: MouseEvent): void => onMouseUp(ev);
+    const record = dragSources.get(this.getId());
+
+    if (!record) {
+        return;
+    }
+
+    const source  = record.component;
+    const options = record.options;
 
     activeSession = {
         source,
@@ -255,8 +276,6 @@ function onSourceMouseDown(source: Component, options: DragSourceOptions, e: Mou
         feedback:      null,
         indicator:     null,
         currentTarget: null,
-        moveListener,
-        upListener,
         previousBodyCursor: document.body.style.cursor,
     };
 
@@ -265,8 +284,8 @@ function onSourceMouseDown(source: Component, options: DragSourceOptions, e: Mou
     // listener for the type exists. A raw document-level mouseup binding would
     // race SpinButton-class registrants that already pre-empt mouseup at
     // capture and never fire.
-    Event.addViewportListener(source, "mousemove", moveListener);
-    Event.addViewportListener(source, "mouseup",   upListener);
+    Event.addViewportListener(source, "mousemove", onMouseMove);
+    Event.addViewportListener(source, "mouseup",   onMouseUp);
 }
 
 /**
@@ -499,8 +518,8 @@ function endSession(_dropped: boolean, clientX: number, clientY: number): void {
 
     const session = activeSession;
 
-    Event.removeViewportListener(session.source, "mousemove", session.moveListener);
-    Event.removeViewportListener(session.source, "mouseup",   session.upListener);
+    Event.removeViewportListener(session.source, "mousemove", onMouseMove);
+    Event.removeViewportListener(session.source, "mouseup",   onMouseUp);
 
     if (session.feedback) {
         session.feedback.detach();
