@@ -92,6 +92,33 @@ if (parent) {
 }
 ```
 
+## Drag-and-drop reparenting
+
+`TreeTable` ships with built-in row drag-and-drop powered by the [`DragManager`](/api/core/variables/DragManager) subsystem. A user can pick up any row by mousing down on its body and drag it onto another row to move it within the hierarchy:
+
+| Drop target | Effect |
+|---|---|
+| Directory row (the record has children) | The dragged record's `parentField` is set to the directory record's id. |
+| Leaf row | The dragged record reparents to the leaf's parent — so dropping `report.pdf` onto `notes.pdf` moves it next to it under the same directory. |
+| The body's empty area below the last row | The dragged record reparents to root (`parentId = null`). |
+| The dragged row itself, or any descendant of it | Rejected — would create a cycle. The feedback tint turns red. |
+
+Drag commits past a 4 px movement threshold to suppress accidental drags fired from plain clicks. The validity check runs continuously while the cursor moves so the feedback tint always reflects whether the drop *would* succeed.
+
+```typescript
+import { RowReparentDetail } from '@jimka/typescript-ui/component/table';
+
+tree.addRowReparentListener((detail: RowReparentDetail) => {
+    console.log(detail.record.get('name'), 'now under', detail.newParent?.get('name') ?? 'root');
+});
+```
+
+Programmatic moves go through [`reparentRow`](/api/component/table/classes/TreeTable#reparentrow), which also rejects cycles and no-ops and fires the same `rowreparent` event:
+
+```typescript
+const ok = tree.reparentRow(file, folder);
+```
+
 ## Sort interaction
 
 `TreeBody._flatten()` walks the parent/child index every time the visible-row list rebuilds, which happens after any store event including `'sortchanged'`. Children render immediately under their parent at the current sort point — but if the active sort interleaves records across hierarchy levels (e.g. by name), the parent-child grouping in the flat view follows that order. There is no "freeze parent order under sort" mode; consumers that need stable hierarchy under sort should sort the records by a path-aware key.
@@ -105,7 +132,7 @@ A filter that drops a parent record drops its entire subtree from the flat view 
 - **Pinned columns.** Not yet supported on `TreeTable`.
 - **Async lazy-load.** The store must already hold every record the user can expand into. A future plan can layer an "on-expand fetch" mode.
 - **Animation.** Expand / collapse is instant, matching [`Tree`](/components/Tree).
-- **Drag-reorder.** No drag handle on the toggle column.
+- **Sibling reorder inside a directory.** The drag-and-drop integration reparents only; the store has no per-record order field, so dropping a sibling next to another sibling under the same directory is a no-op (rejected as "no change"). Adding an order field is a future plan.
 
 ## Related
 
