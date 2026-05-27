@@ -125,10 +125,15 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         // `Fit` makes the inner list fill the dropdown's content box. The
         // list's own border is stripped — the dropdown root carries the
         // visible chrome (border + radius + shadow) so the two never
-        // double-stack.
+        // double-stack. Focus-on-row-click is disabled because the host
+        // ComboBox keeps DOM focus throughout the dropdown's lifetime;
+        // letting the list grab focus on a row click would blur a
+        // wrapping cell-editor / picker input and tear down the parent
+        // overlay before `onRowSelected` runs `closeDropdown`.
         this._list = new List();
         this._list.setBorder("none");
         this._list.setBorderRadius("0");
+        this._list.setFocusOnRowClick(false);
         this.addComponent(this._list);
 
         // Click and keyboard commits both arrive through the list's

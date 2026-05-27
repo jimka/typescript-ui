@@ -404,6 +404,16 @@ abstract class AbstractCustomList<
     protected _typeAheadBuf: string                = "";
     /** Timestamp (ms) of the last printable keypress; used to time out the buffer. */
     protected _typeAheadAt:  number                = 0;
+    /**
+     * When true, {@link handleRowClick} pulls DOM focus to the list root
+     * after the gesture commits so subsequent keystrokes route through
+     * `handleKeyDown`. Hosts that own their own focus surface and forward
+     * keystrokes (e.g. the ComboBox dropdown, which calls
+     * {@link handleKey} from the ComboBox's own `keydown`) set this to
+     * `false` so the embedded list never steals focus from the wrapping
+     * input.
+     */
+    protected _focusOnRowClick: boolean = true;
     protected _innerPanel:   Panel;
     private _storeRefresh:   (() => void) | null   = null;
 
@@ -953,11 +963,35 @@ abstract class AbstractCustomList<
         this.reduceSelection(idx, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
         this.refreshRowVisualState();
         this.updateActiveDescendant();
-        // Pull DOM focus back to the list root so subsequent keystrokes
-        // route through `handleKeyDown` — rows themselves are not
-        // focusable, only the listbox surface is.
-        this.focus();
+
+        if (this._focusOnRowClick) {
+            // Pull DOM focus back to the list root so subsequent keystrokes
+            // route through `handleKeyDown` — rows themselves are not
+            // focusable, only the listbox surface is. Suppressed when the
+            // list is hosted by a focus-managing parent (e.g. the
+            // ComboBox dropdown) so a programmatic focus shift can't
+            // tear down a wrapping cell editor's input.
+            this.focus();
+        }
+
         this.notifyUserChange();
+    }
+
+    /**
+     * Toggles whether a row-click gesture pulls DOM focus to the list
+     * root after the commit. Hosts that own their own focus surface
+     * (the ComboBox dropdown is the canonical example) call
+     * `setFocusOnRowClick(false)` so the embedded list never steals
+     * focus from a wrapping input or cell editor.
+     *
+     * @param value - `false` to suppress the focus call.
+     *
+     * @returns This component, for method chaining.
+     */
+    setFocusOnRowClick(value: boolean): this {
+        this._focusOnRowClick = value;
+
+        return this;
     }
 
     /**
