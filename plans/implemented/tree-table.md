@@ -16,15 +16,18 @@ The parent-column-header grouping work in [plans/table-parent-headers.md](./tabl
 
 ## Architecture Decisions
 
-### New `TreeTable` component, not a Table mode flag
+### `TreeTable extends Table`, swapping the body through a constructor factory
 
-A new top-level class — `TreeTable extends Component` — composes `Header`, a tree-aware `TreeBody`, and `FooterRow`. Reasons:
+**Drift from original plan, recorded during implementation.** The plan first drafted `TreeTable extends Component` and re-implemented Table's surface as a "thin set of forwarders." When that path was started the forwarder set turned out to be the whole of `Table` (CRUD, sync, column visibility/resize, sort cycling, context menu, exporter, header scroll mirroring, hidden-column / column-spec resolution) — duplicating ~600 lines of genuinely shared logic. The implementation pivots to `TreeTable extends Table`, with `Table`'s constructor gaining a third optional parameter `bodyFactory?: (store) => Body`. `TreeTable` passes a closure that constructs `TreeBody` with the tree spec captured from the constructor parameter, side-stepping the class-field super-trap that a subclass-overridable `createBody()` would hit (instance fields are still `undefined` while the base constructor runs).
 
-- The existing [`Table.Body`](../src/typescript/lib/component/table/Body.ts:49) renders `_store.getRecords()` as a flat list, indexed by data position. Tree mode needs a flattened *visible-subtree* list (rebuilt on every expand/collapse), plus per-row depth/expansion bookkeeping. Branching that inside `Body.renderWindow()` would dump ~150 lines of conditional state onto a hot path that's already at the limit of `## Decompose large or complex functions` in [ARCHITECTURE.md](../ARCHITECTURE.md). A sibling `TreeBody` is cleaner.
-- `Table`'s public API (`addRow`, `removeSelectedRow`, `sync`, `reject`, column visibility, column resize, sort cycling, exporter, context menu) is identical for the tree case. Re-housing it under `TreeTable` is one constructor and a thin set of forwarders — far less code than threading a `treeMode` flag through `Table`, `Header`, `Body`, `Row`, `Column`, `ColumnConfig` and every cell.
-- The framework already follows this composition pattern for non-trivial variants — see [TablePanel](../src/typescript/lib/component/table/TablePanel.ts) and the planned `TableWithPinning` in [plans/table-column-pinning.md](./table-column-pinning.md).
+This keeps the architectural intent the original plan called out — variant `Body` lives in its own class, `Header` / `Row` / cell renderers stay flat-list-agnostic — while reusing the full `Table` API surface instead of paraphrasing it.
 
-Rejected alternative — *extend Table with a hierarchical mode flag*: every section component (`Body`, `Row`, `Header`, the cell renderers) would need to know whether they're operating on a flat or hierarchical view. The body in particular would inherit two flatten/render paths with overlapping caches. A new class costs less code and keeps the existing `Table` semantics intact.
+Reasons the variant body still belongs in its own class:
+
+- The existing [`Body`](../src/typescript/lib/component/table/Body.ts:49) renders `_store.getRecords()` as a flat list, indexed by data position. Tree mode needs a flattened *visible-subtree* list (rebuilt on every expand/collapse), plus per-row depth/expansion bookkeeping. Branching that inside `Body.renderWindow()` would dump ~150 lines of conditional state onto a hot path that's already at the limit of `## Decompose large or complex functions` in [ARCHITECTURE.md](../ARCHITECTURE.md). A sibling `TreeBody` is cleaner.
+- The framework already follows the variant-body pattern via the protected hooks promoted on `Body` (see _Implement TreeBody_ in the steps below).
+
+Rejected alternative — *extend Table with a hierarchical mode flag*: every section component (`Body`, `Row`, `Header`, the cell renderers) would need to know whether they're operating on a flat or hierarchical view. The body in particular would inherit two flatten/render paths with overlapping caches. The subclass-with-body-factory keeps existing `Table` semantics intact while letting the body specialise.
 
 ### Hierarchy via `parentField` on the model — no `TreeStore`
 
@@ -357,10 +360,13 @@ ARIA: `TreeBody.bindAndPositionRows` adds `getAria().setLevel(depth + 1)`, `setE
 | Create | `src/typescript/lib/component/table/TreeTablePanel.ts` |
 | Create | `src/typescript/lib/component/table/cell/renderer/TreeCell.ts` |
 | Modify | `src/typescript/lib/component/table/Row.ts` — add `treeFieldName` parameter + `getTreeCell()` |
-| Modify | `src/typescript/lib/component/table/Body.ts` — promote `getVisibleRecords`, `computeRowAria`, and the `new Row(...)` site to `protected` hooks (no behavioural change) |
-| Modify | `src/typescript/lib/component/table/index.ts` — export the five new symbols |
+| Modify | `src/typescript/lib/component/table/Body.ts` — promote subclass seams (`getVisibleRecords`, `createRow`, `computeRowAria`, `afterRowBound`, `onSubtreeClick`, `onKeyDown`, `onStoreChange`, `invalidateRowBindings`, `bindAndPositionRows`, `scrollRecordIntoView`, `_updateFocusStyle`, `_updateActiveDescendant`) plus protected getters (`getStore`, `getHiddenColumns`, `getColumnConfigs`, `getRowPool`); route `setStore` through `onStoreChange` so subclasses can rebuild indexes |
+| Modify | `src/typescript/lib/component/table/Table.ts` — add optional `bodyFactory` constructor parameter so `TreeTable` can supply a `TreeBody` |
+| Modify | `src/typescript/lib/component/table/cell/Cell.ts` — add `wrapRenderer(factory)` so `Row` can wrap the tree column's typed renderer with a `TreeCellRenderer` |
+| Modify | `src/typescript/lib/core/Aria.ts` — add `'treegrid'` to the `AriaRole` union |
+| Modify | `src/typescript/lib/component/table/index.ts` — export the new symbols |
 | Modify | `src/typescript/MiscPanel.ts` — add TreeTable demo |
-| Modify | `docs/.vitepress/config.mts` — sidebar entry for `TreeTable` |
+| Modify | `docs/.vitepress/config.mts` — sidebar entries for `TreeTable` and `TreeTablePanel` |
 | Create | `docs/components/TreeTable.md` — curated component page |
 | Create | `docs/components/TreeTablePanel.md` — curated component page |
 | Modify | `docs/components/index.md` — list new components in the catalog |
