@@ -3,6 +3,7 @@
 export { Table } from '~/component/table/Table.js';
 export { TablePanel } from '~/component/table/TablePanel.js';
 export { TreeTable } from '~/component/table/TreeTable.js';
+export type { RowReparentDetail } from '~/component/table/TreeTable.js';
 export { TreeTablePanel } from '~/component/table/TreeTablePanel.js';
 export type { TreeTableSpec } from '~/component/table/TreeTableSpec.js';
 export { Column } from '~/component/table/Column.js';
