@@ -104,8 +104,12 @@ A [`Table`](/api/component/table/classes/Table) ties columns to a [`Store`](/api
 | Component | Purpose |
 | --- | --- |
 | [`Table`](/api/component/table/classes/Table) | Top-level container; wires header, body, footer |
+| [`TablePanel`](/api/component/table/classes/TablePanel) | Table + add/remove/sync toolbar |
+| [`TreeTable`](/components/TreeTable) | Table whose rows form a parent/child hierarchy via a `parentField` on the model |
+| [`TreeTablePanel`](/components/TreeTablePanel) | `TreeTable` + add/remove/sync toolbar |
 | [`Header`](/api/component/table/classes/Header) | Column-header strip (import as `TableHeader` to avoid collision with `component/display`) |
 | [`Body`](/api/component/table/classes/Body) | Virtual-scrolling row container (import as `TableBody`) |
+| [`TreeBody`](/api/component/table/classes/TreeBody) | Tree-aware body that virtual-scrolls a depth-flattened record list |
 | [`FooterRow`](/api/component/table/classes/FooterRow) | Optional summary / footer strip (often aliased to `TableFooter`) |
 | [`Row`](/api/component/table/classes/Row) | Row component, recycled by `Body` (import as `TableRow` to avoid collision with `layout`) |
 | [`Column`](/api/component/table/classes/Column) | Per-column metadata (import as `TableColumn` to avoid collision with `layout`) |
@@ -114,6 +118,7 @@ A [`Table`](/api/component/table/classes/Table) ties columns to a [`Store`](/api
 | [`CellEditor`](/api/component/table/classes/CellEditor), [`BooleanEditor`](/api/component/table/classes/BooleanEditor), [`NumberEditor`](/api/component/table/classes/NumberEditor), [`StringEditor`](/api/component/table/classes/StringEditor) | Inline editors per cell type |
 | [`CellEditorPool`](/api/component/table/classes/CellEditorPool) | Body-owned registry that shares one editor instance per variant across cells |
 | [`CellRenderer`](/api/component/table/classes/CellRenderer), [`NumberRenderer`](/api/component/table/classes/NumberRenderer), [`StringRenderer`](/api/component/table/classes/StringRenderer) | Display renderers per cell type |
+| [`TreeCellRenderer`](/api/component/table/classes/TreeCellRenderer) | Wraps a typed renderer with indent + expand/collapse toggle for the tree column |
 
 ## Tree
 
