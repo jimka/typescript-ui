@@ -328,15 +328,22 @@ export class Tooltip extends Component {
      * @param text - The tooltip text to display.
      */
     static attachToElement(element: HTMLElement, text: string): void {
+        const previous  = Tooltip.elementAttachments.get(element);
         const wasActive = Tooltip.activeElement === element;
+
+        // Carry the previous binding's last cursor coords so the mid-hover
+        // repaint below has real values instead of (0, 0) — detachElement
+        // deletes the WeakMap entry, so the read has to happen first.
+        const carryX = previous ? previous.lastX : 0;
+        const carryY = previous ? previous.lastY : 0;
 
         Tooltip.detachElement(element);
 
         const att: ElementTooltipAttachment = {
             text,
             showTimer  : null,
-            lastX      : 0,
-            lastY      : 0,
+            lastX      : carryX,
+            lastY      : carryY,
             mouseoverFn: function onTooltipMouseOver(e: MouseEvent): void {
                 if (att.showTimer !== null) {
                     return;
