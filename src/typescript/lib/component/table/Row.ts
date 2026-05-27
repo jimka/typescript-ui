@@ -97,6 +97,15 @@ class Row extends Component {
                     this.updateVisualState();
                 });
 
+                // Tint the cell with the column's `groupColor` so a body
+                // cell visually belongs to the same group as the parent
+                // header above it. `Cell` base only re-applies the
+                // border on theme change, so this background sticks.
+                const groupColor = columnConfigs.get(field.getName())?.groupColor;
+                if (groupColor) {
+                    cell.setBackgroundColor(groupColor);
+                }
+
                 this.addComponent(cell, {
                     data: field
                 });

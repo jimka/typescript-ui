@@ -116,12 +116,76 @@ class Table extends LayoutManager {
             const padding      = theme.table.cell.padding                 ?? 2;
             const columnHeight = Math.ceil(headerFont * lineHeight) + 2 * padding;
 
+            // Parent header row uses the same arithmetic — same font, same
+            // padding — so a theme swap re-runs `doLayout` and the two
+            // rows stay aligned. Collapses to zero when no visible
+            // column declares a `group`, so no-group tables are
+            // byte-identical at runtime.
+            const hasParentRow    = header.hasParentRow();
+            const parentRowHeight = hasParentRow ? columnHeight : 0;
+            const headerBandHeight = parentRowHeight + columnHeight;
+
             header.setAutoCommitStyle(false);
             header.setX(containerInsets.getLeft());
             header.setY(containerInsets.getTop());
             header.setWidth(containerSize.width);
-            header.setHeight(columnHeight);
+            header.setHeight(headerBandHeight);
             header.setAutoCommitStyle(true);
+
+            // Parent row is sized + positioned first so its `spanFrom`
+            // / `spanTo` constraints translate to x/width sums over the
+            // column-width array beneath. When `hasParentRow` is false
+            // the parent row stays collapsed at zero height and we
+            // skip the per-cell layout pass entirely — no visible
+            // column declares a group, so the parent-cell pool is
+            // empty anyway.
+            const parentRow = header.getParentRow();
+            parentRow.setAutoCommitStyle(false);
+            parentRow.setX(0);
+            parentRow.setY(0);
+            parentRow.setWidth(containerSize.width);
+            parentRow.setHeight(parentRowHeight);
+            parentRow.setAutoCommitStyle(true);
+
+            if (hasParentRow) {
+                const parentCells = parentRow.getComponents();
+
+                parentCells.forEach(cell => {
+                    const lc       = parentRow.getLayoutConstraints(cell);
+                    const span     = lc?.data as { spanFrom: number, spanTo: number } | undefined;
+                    const spanFrom = span?.spanFrom ?? 0;
+                    const spanTo   = span?.spanTo ?? 0;
+
+                    let cellX = 0;
+                    for (let i = 0; i < spanFrom; i++) {
+                        cellX += columnWidths[i];
+                    }
+
+                    let cellW = 0;
+                    for (let i = spanFrom; i <= spanTo; i++) {
+                        cellW += columnWidths[i];
+                    }
+
+                    cell.setAutoCommitStyle(false);
+                    cell.setX(cellX);
+                    cell.setY(0);
+                    cell.setWidth(cellW);
+                    cell.setHeight(parentRowHeight);
+                    cell.setAutoCommitStyle(true);
+                    cell.doLayout();
+                });
+            }
+
+            // Column row sits beneath the parent row. The cell y-coords
+            // are relative to the column row's element, so they stay at
+            // y=0 — only the row itself shifts down by `parentRowHeight`.
+            const columnRow     = header.getComponents()[1];
+            columnRow.setAutoCommitStyle(false);
+            columnRow.setX(0);
+            columnRow.setY(parentRowHeight);
+            columnRow.setWidth(containerSize.width);
+            columnRow.setHeight(columnHeight);
+            columnRow.setAutoCommitStyle(true);
 
             const headerColumns = header.getColumns();
             let x = 0;
