@@ -132,7 +132,7 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
             overflow:     "hidden",
             textOverflow: "ellipsis",
             borderBottom: "1px solid var(--ts-ui-list-row-separator, transparent)",
-            cursor:       "default",
+            cursor:       "pointer",
         },
     });
 
@@ -204,6 +204,11 @@ class CustomListRow extends Component {
         this.setPreferredSize(0, ROW_HEIGHT_PX);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, ROW_HEIGHT_PX);
         this.setPadding(new Insets(0, 8, 0, 8));
+        // Component's framework default writes `cursor: default` as an
+        // inline style, which would beat the `.CustomListRow` class rule
+        // — set the inline cursor explicitly so rows show the hand
+        // cursor on hover.
+        this.setCursor("pointer");
 
         Event.addListener(this, "pointerdown", this.onPointerDown);
         Event.addListener(this, "click",       this.onClick);
@@ -343,10 +348,11 @@ class CustomListRow extends Component {
     }
 
     /**
-     * Suppresses focus loss when the row is pointed at — same trick as
-     * `ComboBoxRow.onPointerDown`. Without this, clicking a row while the
-     * list root has focus would blur the list, and the keyboard model
-     * would lose its focus position before the click handler runs.
+     * Suppresses focus loss when the row is pointed at. Without this,
+     * clicking a row while the list root has focus would blur the list,
+     * and the keyboard model would lose its focus position before the
+     * click handler runs. The same pattern guards the AutoComplete row
+     * pool against blurring the host input on click.
      *
      * @param e - The pointerdown event.
      */
@@ -398,6 +404,16 @@ abstract class AbstractCustomList<
     protected _typeAheadBuf: string                = "";
     /** Timestamp (ms) of the last printable keypress; used to time out the buffer. */
     protected _typeAheadAt:  number                = 0;
+    /**
+     * When true, {@link handleRowClick} pulls DOM focus to the list root
+     * after the gesture commits so subsequent keystrokes route through
+     * `handleKeyDown`. Hosts that own their own focus surface and forward
+     * keystrokes (e.g. the ComboBox dropdown, which calls
+     * {@link handleKey} from the ComboBox's own `keydown`) set this to
+     * `false` so the embedded list never steals focus from the wrapping
+     * input.
+     */
+    protected _focusOnRowClick: boolean = true;
     protected _innerPanel:   Panel;
     private _storeRefresh:   (() => void) | null   = null;
 
@@ -443,9 +459,9 @@ abstract class AbstractCustomList<
 
         Event.addListener(this, "keydown", this.handleKeyDown);
 
-        // Late-built state: `store` and `items` were written pure to
-        // `_options` by the super-time cascade. Dispatch them now that
-        // `_innerPanel` and `_rowPool` exist.
+        // Late-built state: `store` / `items` / `enabled` / `readOnly`
+        // were written pure to `_options` by the super-time cascade.
+        // Dispatch them now that `_innerPanel` and `_rowPool` exist.
         if (this._options.store !== undefined && this._options.displayField !== undefined) {
             this.setStore(this._options.store, this._options.displayField, this._options.valueField);
         }
@@ -453,6 +469,47 @@ abstract class AbstractCustomList<
         if (this._options.items !== undefined) {
             this.setItems(this._options.items);
         }
+
+        if (this._options.enabled !== undefined) {
+            this.applyEnabled(this._options.enabled);
+        }
+
+        if (this._options.readOnly !== undefined) {
+            this.applyReadOnly(this._options.readOnly);
+        }
+    }
+
+    /**
+     * Reflects the enabled flag on the ARIA tree, the tabindex, and the
+     * cursor. Disabling the list parks the focus index at -1 so a
+     * subsequent enable starts fresh, mirroring the native `<select>`
+     * the framework replaces. Concrete subclasses can still override
+     * for additional behaviour.
+     *
+     * @param value - The new enabled state.
+     */
+    protected applyEnabled(value: boolean): void {
+        this.getAria().setDisabled(!value);
+        this.getAria().setTabIndex(value ? 0 : -1);
+        this.setCursor(value ? "default" : "not-allowed");
+
+        if (!value) {
+            this._focusedIndex = -1;
+            this.refreshRowVisualState();
+            this.updateActiveDescendant();
+        }
+    }
+
+    /**
+     * Reflects the read-only flag on the ARIA tree. Read-only lists
+     * stay focusable and announce their state; the click / keyboard
+     * reducers are gated separately in {@link handleRowClick} /
+     * {@link handleKeyDown}.
+     *
+     * @param value - The new read-only state.
+     */
+    protected applyReadOnly(value: boolean): void {
+        this.getAria().setReadOnly(value);
     }
 
     /**
@@ -517,6 +574,38 @@ abstract class AbstractCustomList<
         for (let i = 0; i < list.length; i++) {
             this._items.push({ key: String(i), label: list[i] as string });
         }
+
+        this._selectedSet.clear();
+        this._anchorIndex  = null;
+        this._focusedIndex = -1;
+
+        this.pauseLayout();
+        this.syncRows();
+        this.resumeLayout();
+        this.updateActiveDescendant();
+
+        return this;
+    }
+
+    /**
+     * Replaces all items with the given pre-formed `{key, label}` pairs.
+     * Mirrors {@link setItems} but skips the auto-keying step so a host
+     * that already owns typed items (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
+     * dropdown pushing a `CustomListItem` array) can hand them over
+     * without the keys being clobbered to stringified indices. Selection and focus are reset; the row pool
+     * is reconciled against the new length.
+     *
+     * Protected on the abstract base so each concrete subclass decides
+     * whether to widen it into the public surface — {@link List} does;
+     * `MultiSelectList` does not (the multi-select consumers haven't
+     * needed the typed-array entry point so far).
+     *
+     * @param items - The pre-formed item pairs, in display order.
+     *
+     * @returns This component, for method chaining.
+     */
+    protected setItemsArray(items: Array<CustomListItem>): this {
+        this._items = items.slice();
 
         this._selectedSet.clear();
         this._anchorIndex  = null;
@@ -735,7 +824,11 @@ abstract class AbstractCustomList<
             : null;
 
         this._items = [];
+        this._selectedSet.clear();
+        this._anchorIndex  = null;
+
         const records = store.getRecords();
+        let restoredAnchor = -1;
 
         for (let i = 0; i < records.length; i++) {
             const record = records[i];
@@ -745,20 +838,18 @@ abstract class AbstractCustomList<
                                : String(record.getId());
 
             this._items.push({ key, label });
+
+            if (previousAnchorKey !== null && key === previousAnchorKey) {
+                restoredAnchor = i;
+            }
         }
 
-        this._selectedSet.clear();
-        this._anchorIndex  = null;
-        this._focusedIndex = this._items.length > 0 ? 0 : -1;
-
-        if (previousAnchorKey !== null) {
-            const idx = this._items.findIndex(item => item.key === previousAnchorKey);
-
-            if (idx >= 0) {
-                this._selectedSet.add(idx);
-                this._anchorIndex  = idx;
-                this._focusedIndex = idx;
-            }
+        if (restoredAnchor >= 0) {
+            this._selectedSet.add(restoredAnchor);
+            this._anchorIndex  = restoredAnchor;
+            this._focusedIndex = restoredAnchor;
+        } else {
+            this._focusedIndex = this._items.length > 0 ? 0 : -1;
         }
 
         this.pauseLayout();
@@ -770,8 +861,7 @@ abstract class AbstractCustomList<
     /**
      * Reconciles the row pool with `_items`. Overlapping rows have their
      * label, index, selected, and focused state updated; surplus items
-     * spawn new rows; surplus rows are removed. Verbatim copy of the
-     * pattern in `ComboBoxDropdown.syncRows`.
+     * spawn new rows; surplus rows are removed.
      */
     protected syncRows(): void {
         const newLen  = this._items.length;
@@ -873,11 +963,85 @@ abstract class AbstractCustomList<
         this.reduceSelection(idx, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
         this.refreshRowVisualState();
         this.updateActiveDescendant();
-        // Pull DOM focus back to the list root so subsequent keystrokes
-        // route through `handleKeyDown` — rows themselves are not
-        // focusable, only the listbox surface is.
-        this.focus();
+
+        if (this._focusOnRowClick) {
+            // Pull DOM focus back to the list root so subsequent keystrokes
+            // route through `handleKeyDown` — rows themselves are not
+            // focusable, only the listbox surface is. Suppressed when the
+            // list is hosted by a focus-managing parent (e.g. the
+            // ComboBox dropdown) so a programmatic focus shift can't
+            // tear down a wrapping cell editor's input.
+            this.focus();
+        }
+
         this.notifyUserChange();
+    }
+
+    /**
+     * Toggles whether a row-click gesture pulls DOM focus to the list
+     * root after the commit. Hosts that own their own focus surface
+     * (the ComboBox dropdown is the canonical example) call
+     * `setFocusOnRowClick(false)` so the embedded list never steals
+     * focus from a wrapping input or cell editor.
+     *
+     * @param value - `false` to suppress the focus call.
+     *
+     * @returns This component, for method chaining.
+     */
+    setFocusOnRowClick(value: boolean): this {
+        this._focusOnRowClick = value;
+
+        return this;
+    }
+
+    /**
+     * Public entry point used by hosts that keep DOM focus on their own
+     * surface while embedding this list (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
+     * dropdown forwarding keystrokes from the ComboBox surface).
+     * Returns `true` when the list consumed the key — the caller
+     * should then `e.preventDefault()` and stop further processing.
+     * Escape is intentionally NOT consumed here so the host can use
+     * it to close the wrapping overlay; the list-focused entry point
+     * (the protected `handleKeyDown` registered as the list's own
+     * `keydown` listener) still handles Escape inline.
+     *
+     * @param e - The keyboard event captured by the host.
+     *
+     * @returns `true` when the list consumed the key.
+     */
+    handleKey(e: KeyboardEvent): boolean {
+        if (!this.isEnabled() || this.isReadOnly()) {
+            return false;
+        }
+
+        if (this._items.length === 0) {
+            return false;
+        }
+
+        if (e.key === "Escape") {
+            return false;
+        }
+
+        const ctrl = e.ctrlKey || e.metaKey;
+
+        if (this.handleNavigationKey(e, ctrl)) {
+            return true;
+        }
+
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            this.commitFocusedRow(ctrl, e.shiftKey);
+
+            return true;
+        }
+
+        if (!ctrl && !e.altKey && e.key.length === 1) {
+            this.handleTypeAhead(e.key);
+
+            return true;
+        }
+
+        return false;
     }
 
     /**

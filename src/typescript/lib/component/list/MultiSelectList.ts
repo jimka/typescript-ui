@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AbstractCustomList, AbstractCustomListOptions } from "~/component/list/AbstractCustomList.js";
-import { Bindable } from "~/core/Bindable.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { callable } from "~/core/Callable.js";
 
@@ -34,7 +33,7 @@ export interface MultiSelectListOptions extends AbstractCustomListOptions {
  *
  * @category Components
  */
-class MultiSelectList extends AbstractCustomList<string[], MultiSelectListOptions> implements Bindable<string[]> {
+class MultiSelectList extends AbstractCustomList<string[], MultiSelectListOptions> {
 
     /**
      * @param options - Optional. Construction-time options applied to
@@ -48,17 +47,9 @@ class MultiSelectList extends AbstractCustomList<string[], MultiSelectListOption
         // Late-built state: `selectedIndices` was written pure to
         // `_options` by the super-time cascade. Dispatch it now that the
         // row pool exists (`super()` already populated `_items` from
-        // `items` / `store`).
+        // `items` / `store`, and applied `enabled` / `readOnly`).
         if (this._options.selectedIndices !== undefined) {
             this.applyInitialSelection(this._options.selectedIndices);
-        }
-
-        if (this._options.enabled !== undefined) {
-            this.applyEnabled(this._options.enabled);
-        }
-
-        if (this._options.readOnly !== undefined) {
-            this.applyReadOnly(this._options.readOnly);
         }
     }
 
@@ -241,38 +232,6 @@ class MultiSelectList extends AbstractCustomList<string[], MultiSelectListOption
      */
     protected notifyUserChange(): void {
         this.fireChange();
-    }
-
-    /**
-     * Reflects the enabled flag on the ARIA tree, the tabindex, and the
-     * inner panel. Disabling the list parks the focus index at -1 so a
-     * subsequent enable starts fresh, matching {@link List.applyEnabled}.
-     *
-     * @param value - The new enabled state.
-     */
-    protected applyEnabled(value: boolean): void {
-        this.getAria().setDisabled(!value);
-        this.getAria().setTabIndex(value ? 0 : -1);
-        this.setCursor(value ? "default" : "not-allowed");
-
-        if (!value) {
-            this._focusedIndex = -1;
-            this.refreshRowVisualState();
-            this.updateActiveDescendant();
-        }
-    }
-
-    /**
-     * Reflects the read-only flag on the ARIA tree. Read-only lists
-     * stay focusable and announce their state; the click / keyboard
-     * reducers are gated separately in
-     * {@link AbstractCustomList.handleRowClick} /
-     * {@link AbstractCustomList.handleKeyDown}.
-     *
-     * @param value - The new read-only state.
-     */
-    protected applyReadOnly(value: boolean): void {
-        this.getAria().setReadOnly(value);
     }
 
     /**
