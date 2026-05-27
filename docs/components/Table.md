@@ -45,6 +45,7 @@ const table = Table(store, {
 | `field` | Model field name presented in this column. |
 | `minWidth` / `maxWidth` | Width constraints in pixels. |
 | `hidden` | Initial hidden state. |
+| `unhideable` | When `true`, the user cannot hide this column from the context menu. Takes precedence over `hidden`. |
 | `showSeconds` | For `time` / `datetime` columns: include seconds. |
 | `headerGlyph` | Registry glyph name shown to the left of the header text. |
 | `group` | Parent-header group name. See [Parent headers](#parent-headers). |
