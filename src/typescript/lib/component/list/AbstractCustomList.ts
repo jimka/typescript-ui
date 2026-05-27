@@ -414,6 +414,18 @@ abstract class AbstractCustomList<
      * input.
      */
     protected _focusOnRowClick: boolean = true;
+    /**
+     * When true (default), keyboard navigation
+     * (ArrowUp/Down/Home/End/PageUp/Down) commits the focused row as the
+     * selection — the "selection follows focus" pattern most listbox
+     * controls use. Hosts that want a navigable highlight without
+     * committing the row as the selected value (the WAI-ARIA
+     * combobox-with-list-autocomplete pattern, exercised by
+     * [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField))
+     * call `setSelectFollowsFocus(false)` so ArrowUp/Down moves only the
+     * focus highlight; Enter / Space / click still commit.
+     */
+    protected _selectFollowsFocus: boolean = true;
     protected _innerPanel:   Panel;
     private _storeRefresh:   (() => void) | null   = null;
 
@@ -995,6 +1007,53 @@ abstract class AbstractCustomList<
     }
 
     /**
+     * Toggles whether keyboard navigation (ArrowUp/Down/Home/End/PageUp/Down)
+     * commits the focused row as the selection. When `false`, the focus
+     * highlight moves but the selection set is untouched and the `change`
+     * event does not fire. Enter / Space / click still commit. The
+     * [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField)
+     * dropdown sets this to `false` so ArrowUp/Down previews a row
+     * without writing it into the host TextField.
+     *
+     * @param value - `false` to disable the selection-follows-focus
+     *   coupling on keyboard navigation.
+     *
+     * @returns This component, for method chaining.
+     */
+    setSelectFollowsFocus(value: boolean): this {
+        this._selectFollowsFocus = value;
+
+        return this;
+    }
+
+    /**
+     * Returns the current keyboard-focus index, or `-1` when no row
+     * holds focus.
+     *
+     * @returns The zero-based focus index, or `-1`.
+     */
+    getFocusedIndex(): number {
+        return this._focusedIndex;
+    }
+
+    /**
+     * Returns the framework-generated DOM element id of the keyboard-focus
+     * row, suitable for writing into a host input's `aria-activedescendant`.
+     * Returns `null` when no row holds focus or the focused row hasn't
+     * been instantiated in the pool yet (rows materialise lazily as the
+     * pool reconciles against the item array).
+     *
+     * @returns The focused row's element id, or `null`.
+     */
+    getFocusedRowId(): string | null {
+        if (this._focusedIndex < 0 || this._focusedIndex >= this._rowPool.length) {
+            return null;
+        }
+
+        return this._rowPool[this._focusedIndex].getId();
+    }
+
+    /**
      * Public entry point used by hosts that keep DOM focus on their own
      * surface while embedding this list (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
      * dropdown forwarding keystrokes from the ComboBox surface).
@@ -1141,7 +1200,10 @@ abstract class AbstractCustomList<
      * the focus highlight; pass `ctrl: true` to move the focus without
      * touching the selection (the standard "browse without committing"
      * gesture). `shift: true` forwards the range-extend hint to the
-     * reducer.
+     * reducer. When the list-wide {@link setSelectFollowsFocus} flag is
+     * `false`, the commit branch is suppressed entirely — the focus
+     * highlight moves but the selection set is untouched and
+     * `notifyUserChange` does not fire.
      *
      * @param idx - The new focus index.
      * @param ctrl - When `true`, skip the selection update.
@@ -1151,7 +1213,9 @@ abstract class AbstractCustomList<
     protected moveFocus(idx: number, ctrl: boolean, shift: boolean): void {
         this._focusedIndex = idx;
 
-        if (!ctrl) {
+        const commit = !ctrl && this._selectFollowsFocus;
+
+        if (commit) {
             this.reduceSelection(idx, { ctrl: false, shift });
         }
 
@@ -1159,7 +1223,7 @@ abstract class AbstractCustomList<
         this.updateActiveDescendant();
         this.scrollIndexIntoView(idx);
 
-        if (!ctrl) {
+        if (commit) {
             this.notifyUserChange();
         }
     }
