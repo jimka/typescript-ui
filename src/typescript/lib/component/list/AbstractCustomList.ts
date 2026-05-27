@@ -343,10 +343,11 @@ class CustomListRow extends Component {
     }
 
     /**
-     * Suppresses focus loss when the row is pointed at — same trick as
-     * `ComboBoxRow.onPointerDown`. Without this, clicking a row while the
-     * list root has focus would blur the list, and the keyboard model
-     * would lose its focus position before the click handler runs.
+     * Suppresses focus loss when the row is pointed at. Without this,
+     * clicking a row while the list root has focus would blur the list,
+     * and the keyboard model would lose its focus position before the
+     * click handler runs. The same pattern guards the AutoComplete row
+     * pool against blurring the host input on click.
      *
      * @param e - The pointerdown event.
      */
@@ -517,6 +518,39 @@ abstract class AbstractCustomList<
         for (let i = 0; i < list.length; i++) {
             this._items.push({ key: String(i), label: list[i] as string });
         }
+
+        this._selectedSet.clear();
+        this._anchorIndex  = null;
+        this._focusedIndex = -1;
+
+        this.pauseLayout();
+        this.syncRows();
+        this.resumeLayout();
+        this.updateActiveDescendant();
+
+        return this;
+    }
+
+    /**
+     * Replaces all items with the given pre-formed `{key, label}` pairs.
+     * Mirrors {@link setItems} but skips the auto-keying step so a host
+     * that already owns typed items (e.g. a [`ComboBoxDropdown`](/api/component/input/classes/ComboBox)
+     * pushing a [`ComboBoxItem`](/api/component/input/interfaces/ComboBoxItem)
+     * array) can hand them over without the keys being clobbered to
+     * stringified indices. Selection and focus are reset; the row pool
+     * is reconciled against the new length.
+     *
+     * Protected on the abstract base so each concrete subclass decides
+     * whether to widen it into the public surface — {@link List} does;
+     * `MultiSelectList` does not (the multi-select consumers haven't
+     * needed the typed-array entry point so far).
+     *
+     * @param items - The pre-formed item pairs, in display order.
+     *
+     * @returns This component, for method chaining.
+     */
+    protected setItemsArray(items: Array<CustomListItem>): this {
+        this._items = items.slice();
 
         this._selectedSet.clear();
         this._anchorIndex  = null;
@@ -770,8 +804,7 @@ abstract class AbstractCustomList<
     /**
      * Reconciles the row pool with `_items`. Overlapping rows have their
      * label, index, selected, and focused state updated; surplus items
-     * spawn new rows; surplus rows are removed. Verbatim copy of the
-     * pattern in `ComboBoxDropdown.syncRows`.
+     * spawn new rows; surplus rows are removed.
      */
     protected syncRows(): void {
         const newLen  = this._items.length;
