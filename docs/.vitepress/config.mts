@@ -129,6 +129,8 @@ export default defineConfig({
                 { text: 'Table', collapsed: false, items: [
                     { text: 'Table',           link: '/components/Table' },
                     { text: 'TablePanel',      link: '/components/TablePanel' },
+                    { text: 'TreeTable',       link: '/components/TreeTable' },
+                    { text: 'TreeTablePanel',  link: '/components/TreeTablePanel' },
                     { text: 'Table internals', link: '/components/TableInternals' },
                 ] },
                 { text: 'Scrolling', collapsed: false, items: [

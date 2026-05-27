@@ -2,12 +2,17 @@
 
 export { Table } from '~/component/table/Table.js';
 export { TablePanel } from '~/component/table/TablePanel.js';
+export { TreeTable } from '~/component/table/TreeTable.js';
+export { TreeTablePanel } from '~/component/table/TreeTablePanel.js';
+export type { TreeTableSpec } from '~/component/table/TreeTableSpec.js';
 export { Column } from '~/component/table/Column.js';
 export type { ColumnConfig, ColumnSpec } from '~/component/table/ColumnConfig.js';
 export { TableExporter } from '~/component/table/TableExporter.js';
 export type { ExportOptions } from '~/component/table/TableExporter.js';
 export { Header } from '~/component/table/Header.js';
 export { Body } from '~/component/table/Body.js';
+export { TreeBody } from '~/component/table/TreeBody.js';
+export type { FlatRecord, TreeBodySpec } from '~/component/table/TreeBody.js';
 export { FooterRow } from '~/component/table/Footer.js';
 export { Row } from '~/component/table/Row.js';
 
@@ -40,3 +45,4 @@ export { DateRenderer } from '~/component/table/cell/renderer/Date.js';
 export { TimeRenderer } from '~/component/table/cell/renderer/Time.js';
 export { DateTimeRenderer } from '~/component/table/cell/renderer/DateTime.js';
 export { GlyphRenderer } from '~/component/table/cell/renderer/Glyph.js';
+export { TreeCellRenderer } from '~/component/table/cell/renderer/TreeCell.js';

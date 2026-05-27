@@ -58,12 +58,16 @@ class NumberEditor extends CellEditor<Number> {
     }
 
     /**
-     * Populates the text field with the number as a string.
+     * Populates the text field with the number as a string. `null`
+     * and `undefined` populate an empty field so the user sees a
+     * blank input on first edit instead of the literal text
+     * `"undefined"` / `"null"`.
      *
-     * @param value - The numeric value to set in the text field.
+     * @param value - The numeric value to set in the text field, or
+     *   `null`/`undefined` to leave the field empty.
      */
     setValue(value: Number) : this {
-        this._textField.setText(String(value) || "");
+        this._textField.setText(value == null ? "" : String(value));
 
         return this;
     }

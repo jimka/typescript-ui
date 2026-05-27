@@ -269,6 +269,86 @@ export class Cell<T> extends Component {
     }
 
     /**
+     * Runs the inherited (Card) layout, then re-indents the active
+     * editor so it lines up with the renderer's content offset
+     * (`renderer.getContentX()`). For a plain renderer the offset is
+     * `0` and this is a no-op; for a
+     * [`TreeCellRenderer`](/api/component/table/classes/TreeCellRenderer)
+     * the editor shifts right by `depth * indentPx + TOGGLE_WIDTH` so
+     * it stays aligned with the value the user double-clicked instead
+     * of snapping to the cell's left edge.
+     *
+     * @returns This cell, for method chaining.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        this.alignEditorWithContent();
+
+        return this;
+    }
+
+    /**
+     * If an editor is currently active and the renderer reports a
+     * non-zero content offset, override the Card layout's
+     * fill-the-cell editor placement so the editor starts at that
+     * offset and shrinks its width accordingly. Idempotent — when no
+     * offset is reserved this is a single comparison and an early
+     * return.
+     */
+    private alignEditorWithContent(): void {
+        const editor = this._activeEditor;
+
+        if (!editor) {
+            return;
+        }
+
+        const contentX = this._renderer.getContentX();
+
+        if (contentX <= 0) {
+            return;
+        }
+
+        const cellWidth = this.getWidth() ?? 0;
+        const editorWidth = Math.max(0, cellWidth - contentX);
+
+        editor.setAutoCommitStyle(false);
+        editor.setX(contentX);
+        editor.setWidth(editorWidth);
+        editor.setAutoCommitStyle(true);
+    }
+
+    /**
+     * Replaces the cell's renderer with one returned by `factory`, after
+     * passing the existing renderer to the factory so it can be adopted as
+     * a delegate. The wrapping renderer becomes this cell's new
+     * {@link CellRenderer.getValue} / {@link CellRenderer.setValue} target;
+     * the Card layout's renderer-visible state is restored automatically.
+     *
+     * Used by tree-table rows to install a `TreeCellRenderer` that
+     * prepends an indent + expand/collapse toggle in front of the typed
+     * renderer appropriate for the column's field type.
+     *
+     * @param factory - Receives the detached old renderer; returns the
+     *   new wrapping renderer that must adopt it as a child.
+     *
+     * @returns This cell, for method chaining.
+     */
+    wrapRenderer(factory: (delegate: CellRenderer<T>) => CellRenderer<T>): this {
+        const oldRenderer = this._renderer;
+
+        this.removeComponent(oldRenderer);
+
+        const newRenderer = factory(oldRenderer);
+
+        this._renderer = newRenderer;
+        this.addComponent(newRenderer);
+        this.getLayoutManager().setVisibleComponentId(newRenderer.getId());
+
+        return this;
+    }
+
+    /**
      * Returns the cell's editor component, or undefined if the cell is display-only.
      *
      * @returns The {@link CellEditor} for this cell, or undefined.

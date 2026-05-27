@@ -111,9 +111,14 @@ class Body extends Component {
      * Subscribes to all relevant store events to trigger a renderWindow refresh.
      *
      * @param store - The store whose events to subscribe to.
+     *
+     * @remarks The single store-event refresh callback is routed through
+     * {@link onStoreChange}, a protected hook that subclasses (e.g.
+     * `TreeBody`) override to rebuild per-row indexes before the
+     * inherited rebind + render runs.
      */
     private bindStore(store: AbstractStore): void {
-        const refresh = () => { this._boundIndices.fill(-1); this.renderWindow(); };
+        const refresh = () => this.onStoreChange();
 
         this._storeRefresh = refresh;
 
@@ -123,6 +128,161 @@ class Body extends Component {
         store.on('datachanged', refresh);
         store.on('beforesync', refresh);
         store.on('sync', refresh);
+    }
+
+    /**
+     * Hook invoked from {@link bindStore}'s store-event callbacks before
+     * the row pool is rebound and rendered. Default behaviour clears the
+     * bound-index cache and re-renders.
+     *
+     * @remarks Subclassing seam — `TreeBody` overrides this to rebuild
+     * its parent/child index and flatten the visible subtree before
+     * delegating to `super.onStoreChange()`. Not for consumer use.
+     */
+    protected onStoreChange(): void {
+        this._boundIndices.fill(-1);
+        this.renderWindow();
+    }
+
+    /**
+     * Returns the records visible in the current scroll window. Default
+     * behaviour delegates to the store's view (filtered + sorted master
+     * collection).
+     *
+     * @returns The records the row pool should bind to, in display order.
+     *
+     * @remarks Subclassing seam — `TreeBody` overrides this to return its
+     * depth-flattened, expansion-aware visible subtree. Every internal
+     * site that needs the visible records — virtual-window math, click
+     * dispatch, focus + active-descendant tracking, keyboard nav,
+     * scroll-into-view — goes through this method. Not for consumer use.
+     */
+    protected getVisibleRecords(): ModelRecord[] {
+        return this._store.getRecords();
+    }
+
+    /**
+     * Constructs one pool row. Default behaviour returns a plain `Row`
+     * bound to the store's model with the current hidden-column and
+     * column-config maps.
+     *
+     * @returns A new `Row` instance.
+     *
+     * @remarks Subclassing seam — `TreeBody` overrides this to pass the
+     * `treeFieldName` so the tree column's cell gets a
+     * `TreeCellRenderer`. Not for consumer use.
+     */
+    protected createRow(): Row {
+        return new Row(
+            this._store.model,
+            undefined,
+            this._hiddenColumns,
+            this._columnConfigs,
+            (record) => this._store.notifyRecordChanged(record),
+        );
+    }
+
+    /**
+     * Updates the ARIA attributes that depend on a row's current data
+     * index. Default behaviour writes only `aria-rowindex` (the +2
+     * accounts for the 1-based ARIA spec plus the header band).
+     *
+     * @param row - The pool row whose ARIA attributes to update.
+     * @param dataIndex - The row's index into the visible-records list.
+     *
+     * @remarks Subclassing seam — `TreeBody` overrides this to additionally
+     * set `aria-level`, `aria-expanded`, `aria-setsize`, and
+     * `aria-posinset` from the flat record entry. Not for consumer use.
+     */
+    protected computeRowAria(row: Row, dataIndex: number): void {
+        row.getAria().setRowIndex(dataIndex + 2);
+    }
+
+    /**
+     * Hook invoked once per pool slot inside the bind loop, after the
+     * row has been rebound (when needed) but before the geometry-driven
+     * cell layout runs. Default behaviour is a no-op.
+     *
+     * @param row - The pool row being processed.
+     * @param dataIndex - The row's index into the visible-records list.
+     * @param wasRebound - `true` when the row was just rebound to a new
+     *   record on this pass; `false` for a pure scroll where the slot's
+     *   data index is unchanged.
+     *
+     * @remarks Subclassing seam — `TreeBody` overrides this to push
+     * depth + expansion state through {@link TreeCellRenderer.setTreeState}
+     * on the row's tree cell. Not for consumer use.
+     */
+    protected afterRowBound(_row: Row, _dataIndex: number, _wasRebound: boolean): void {
+        // Default implementation is a no-op; subclasses provide behaviour.
+    }
+
+    /**
+     * Resets every pool slot's data-index cache so the next render pass
+     * forces a full rebind. Use after the visible-records list has
+     * changed shape (sort, expand/collapse, etc.) but the store itself
+     * hasn't fired one of the events {@link bindStore} subscribes to.
+     *
+     * @remarks Subclassing seam — `TreeBody` calls this from
+     * {@link TreeBody.setExpanded} before triggering a re-render.
+     * Not for consumer use.
+     */
+    protected invalidateRowBindings(): void {
+        this._boundIndices.fill(-1);
+    }
+
+    /**
+     * Returns the data store this body is bound to.
+     *
+     * @returns The current {@link AbstractStore}.
+     *
+     * @remarks Exposed at protected scope for subclasses (e.g. `TreeBody`)
+     * that need to read model fields when reconstructing pool rows or
+     * walking records to rebuild a depth index.
+     */
+    protected getStore(): AbstractStore {
+        return this._store;
+    }
+
+    /**
+     * Returns the set of column field names currently hidden from
+     * render.
+     *
+     * @returns The hidden-column set (do not mutate).
+     *
+     * @remarks Exposed at protected scope so subclasses can pass the
+     * same set into custom pool-row construction.
+     */
+    protected getHiddenColumns(): Set<string> {
+        return this._hiddenColumns;
+    }
+
+    /**
+     * Returns the column-config map keyed by field name.
+     *
+     * @returns The column-config map (do not mutate).
+     *
+     * @remarks Exposed at protected scope so subclasses can pass the
+     * same map into custom pool-row construction.
+     */
+    protected getColumnConfigs(): Map<string, ColumnConfig> {
+        return this._columnConfigs;
+    }
+
+    /**
+     * Returns the row pool used by the virtual scroll. Each entry is a
+     * `Row` whose `data` may be bound to a record or `undefined` when
+     * the slot is hidden.
+     *
+     * @returns The row-pool array (do not mutate the array; mutating
+     *   individual rows is the caller's responsibility).
+     *
+     * @remarks Exposed at protected scope so subclasses can walk the
+     * pool — e.g. `TreeBody` does this from its `onSubtreeClick`
+     * override to find the row whose tree-cell toggle was clicked.
+     */
+    protected getRowPool(): Row[] {
+        return this._rowPool;
     }
 
     /**
@@ -202,11 +362,15 @@ class Body extends Component {
 
         this._store = store;
         this.bindStore(store);
-        this._boundIndices.fill(-1);
         this.invalidateGeom();
 
         if (this.getElement()) {
-            this.renderWindow();
+            // Route through `onStoreChange` so subclasses (e.g. `TreeBody`)
+            // can rebuild their per-row index against the new store before
+            // the inherited rebind + render runs. The base implementation
+            // is equivalent to the previous `_boundIndices.fill(-1) +
+            // renderWindow()` inline pair.
+            this.onStoreChange();
         }
 
         return this;
@@ -238,21 +402,10 @@ class Body extends Component {
         // One subtree click listener replaces the per-row listener that
         // growRowPool used to install. Walk up from the event target to find
         // the matching pool row; identical complexity per click, one window
-        // registration regardless of pool size.
-        Event.addSubtreeListener(this, "click", (e: MouseEvent) => {
-            let node: HTMLElement | null = e.target as HTMLElement | null;
-
-            while (node) {
-                const row = this._rowPool.find(r => r.getElement() === node);
-
-                if (row) {
-                    this.onRowClick(row, e);
-                    return;
-                }
-
-                node = node.parentElement;
-            }
-        });
+        // registration regardless of pool size. Routed through
+        // `onSubtreeClick` so subclasses (e.g. `TreeBody`) can intercept
+        // clicks on subtree-owned widgets like the expand/collapse toggle.
+        Event.addSubtreeListener(this, "click", (e: MouseEvent) => this.onSubtreeClick(e));
 
         this.renderWindow();
 
@@ -308,7 +461,7 @@ class Body extends Component {
         }
 
         const scroller = this._scroller;
-        const records   = this._store.getRecords();
+        const records   = this.getVisibleRecords();
         const totalRows = records.length;
 
         this.updateColumnWidthCache(bodyWidth, columnWidths);
@@ -431,13 +584,7 @@ class Body extends Component {
         const growFragment  = document.createDocumentFragment();
 
         while (this._rowPool.length < poolTarget) {
-            const row = new Row(
-                this._store.model,
-                undefined,
-                this._hiddenColumns,
-                this._columnConfigs,
-                (record) => this._store.notifyRecordChanged(record),
-            );
+            const row = this.createRow();
 
             for (const cell of row.getComponents() as Cell<any>[]) {
                 cell.setEditorPool(this._editorPool);
@@ -480,8 +627,12 @@ class Body extends Component {
      * @param rowWidth - The horizontal extent of each row in pixels.
      * @param fallback - Fallback column width for fields without an explicit width.
      * @param records - The current store records (passed in so this helper doesn't re-query).
+     *
+     * @remarks `protected` so subclasses (e.g. `TreeBody`) can wrap the
+     * standard bind + position pass with their own post-bind work
+     * (depth / toggle updates). Not for consumer use.
      */
-    private bindAndPositionRows(firstRow: number, windowSize: number, rowWidth: number, fallback: number, records: ModelRecord[]): void {
+    protected bindAndPositionRows(firstRow: number, windowSize: number, rowWidth: number, fallback: number, records: ModelRecord[]): void {
         const rowHeight = this._rowHeight;
 
         for (let i = 0; i < windowSize; i++) {
@@ -494,8 +645,10 @@ class Body extends Component {
 
                 this._boundIndices[i] = dataIndex;
                 this.updateRowVisualState(i);
-                row.getAria().setRowIndex(dataIndex + 2);
+                this.computeRowAria(row, dataIndex);
             }
+
+            this.afterRowBound(row, dataIndex, wasRebound);
 
             const targetY = dataIndex * rowHeight;
             const prev = this._rowGeom[i];
@@ -564,6 +717,32 @@ class Body extends Component {
     }
 
     /**
+     * Default subtree-click handler — walks up from the event target to
+     * find the pool row that owns the click, then dispatches to
+     * {@link onRowClick}. Subclasses (e.g. `TreeBody`) override this to
+     * intercept clicks on subtree-owned widgets such as the
+     * expand/collapse toggle.
+     *
+     * @param e - The bubbled click event.
+     *
+     * @remarks Subclassing seam — not for consumer use.
+     */
+    protected onSubtreeClick(e: MouseEvent): void {
+        let node: HTMLElement | null = e.target as HTMLElement | null;
+
+        while (node) {
+            const row = this._rowPool.find(r => r.getElement() === node);
+
+            if (row) {
+                this.onRowClick(row, e);
+                return;
+            }
+
+            node = node.parentElement;
+        }
+    }
+
+    /**
      * Handles a row click, updating selection with support for ctrl/cmd and shift modifiers.
      *
      * @param row - The pool row that was clicked.
@@ -573,7 +752,7 @@ class Body extends Component {
         const record = row.getData() ?? null;
         if (!record) return;
 
-        const records = this._store.getRecords();
+        const records = this.getVisibleRecords();
 
         if (e.shiftKey && this._anchorRecord) {
             // Range select from anchor to clicked record
@@ -674,7 +853,7 @@ class Body extends Component {
      * @param record - The record to scroll into view.
      */
     scrollToRecord(record: ModelRecord): void {
-        const idx = this._store.getRecords().indexOf(record);
+        const idx = this.getVisibleRecords().indexOf(record);
         if (idx === -1) {
             return;
         }
@@ -693,7 +872,7 @@ class Body extends Component {
             return;
         }
 
-        const record = this._store.getRecords()[dataIdx];
+        const record = this.getVisibleRecords()[dataIdx];
         if (!record) {
             return;
         }
@@ -750,9 +929,11 @@ class Body extends Component {
      * @remarks Called after every navigation and after `renderWindow` re-binds pool slots.
      * Also mirrors the focused column index onto the linked Header cells (when
      * one has been wired in via `setHeader`) so the header shows the matching
-     * column indicator.
+     * column indicator. `protected` so subclasses (e.g. `TreeBody`) can
+     * refresh the focus indicator after a programmatic navigation. Not
+     * for consumer use.
      */
-    private _updateFocusStyle(): void {
+    protected _updateFocusStyle(): void {
         for (const row of this._rowPool) {
             for (const cell of row.getComponents()) {
                 const el = cell.getElement() as HTMLElement | null;
@@ -784,7 +965,7 @@ class Body extends Component {
             }
         }
 
-        const anchorIdx = this._store.getRecords().indexOf(this._anchorRecord);
+        const anchorIdx = this.getVisibleRecords().indexOf(this._anchorRecord);
         const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
 
         if (poolSlotIdx < 0) {
@@ -807,16 +988,19 @@ class Body extends Component {
     /**
      * Sets `aria-activedescendant` on the body container to point at the focused cell (or row).
      *
-     * @remarks Must be called after `renderWindow()` so the pool slot for the anchor record is guaranteed in the DOM.
+     * @remarks Must be called after `renderWindow()` so the pool slot
+     * for the anchor record is guaranteed in the DOM. `protected` so
+     * subclasses (e.g. `TreeBody`) can refresh the active-descendant
+     * pointer after a programmatic navigation. Not for consumer use.
      */
-    private _updateActiveDescendant(): void {
+    protected _updateActiveDescendant(): void {
         if (!this._anchorRecord) {
             this.getAria().setActiveDescendant("");
 
             return;
         }
 
-        const anchorIdx = this._store.getRecords().indexOf(this._anchorRecord);
+        const anchorIdx = this.getVisibleRecords().indexOf(this._anchorRecord);
         const poolSlotIdx = this._boundIndices.indexOf(anchorIdx);
 
         if (poolSlotIdx < 0) {
@@ -840,9 +1024,13 @@ class Body extends Component {
      * move column focus; PageUp/Down move by a viewport-height page; Enter starts cell edit.
      *
      * @param e - The keyboard event fired on the body element.
+     *
+     * @remarks `protected` so subclasses (e.g. `TreeBody`) can intercept
+     * additional keys (ArrowRight/Left for expand/collapse) and delegate
+     * the rest to `super.onKeyDown`. Not for consumer use.
      */
-    private onKeyDown(e: KeyboardEvent): void {
-        const records = this._store.getRecords();
+    protected onKeyDown(e: KeyboardEvent): void {
+        const records = this.getVisibleRecords();
 
         if (records.length === 0) {
             return;
@@ -937,9 +1125,13 @@ class Body extends Component {
      * Scrolls the body so the given record is visible, without moving the viewport unless necessary.
      *
      * @param record - The record to scroll into view.
+     *
+     * @remarks `protected` so subclasses (e.g. `TreeBody`) can keep
+     * keyboard-driven navigation inside the scroll viewport. Not for
+     * consumer use.
      */
-    private scrollRecordIntoView(record: ModelRecord): void {
-        const idx = this._store.getRecords().indexOf(record);
+    protected scrollRecordIntoView(record: ModelRecord): void {
+        const idx = this.getVisibleRecords().indexOf(record);
 
         if (idx === -1 || !this._scroller) {
             return;
