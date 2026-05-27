@@ -6,7 +6,6 @@ import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdo
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
-import { Type } from "~/core/Type.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { CustomListItem } from "~/component/list/AbstractCustomList.js";
@@ -448,13 +447,16 @@ class ComboBoxCaret extends Component {
  */
 class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends AbstractInput<string, TOptions> {
 
-    private _items:         Array<CustomListItem> = [];
-    private _selectedIndex: number = -1;
-    private _value:         string = "";
-    private _dropdown:      ComboBoxDropdown | null = null;
-    private _label:         ComboBoxLabel;
-    private _caret:         ComboBoxCaret;
-    private _storeRefresh:  (() => void) | null = null;
+    private readonly _dropdown:    ComboBoxDropdown;
+    private _label:                ComboBoxLabel;
+    private _caret:                ComboBoxCaret;
+    /**
+     * Cached value passed to {@link setValue} before items / store are
+     * available. The inner list silently drops unknown keys (its
+     * `findIndex` returns -1 and clears the selection), so this field
+     * holds the pending key until an items-load resolves it.
+     */
+    private _pendingValue:         string | null = null;
     private readonly _onViewportPointerDown: (e: PointerEvent) => void;
 
     /**
@@ -478,6 +480,26 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         this._caret = new ComboBoxCaret();
         this.addComponent(this._label);
         this.addComponent(this._caret);
+
+        // Eager dropdown construction: the inner List now owns every items /
+        // selection / store-binding state and must exist before the
+        // late-dispatch block below routes `setItems` / `setValue` /
+        // `setStore` / `setSelectedIndex` into it. The dropdown's outer
+        // `<div>` is still lazy (built by `getElement(true)` on first show),
+        // and the list's row DOM only mounts when the dropdown root mounts,
+        // so the net cost is three JS instances and one `Fit` layout.
+        this._dropdown = new ComboBoxDropdown(idx => this.onRowSelected(idx));
+
+        // Forward the dropdown-specific options that were captured pure by
+        // `applyOptions`. These run unconditionally now that the dropdown
+        // is always present.
+        if (this._options.dropdownAnimated !== undefined) {
+            this._dropdown.setAnimated(this._options.dropdownAnimated);
+        }
+        if (this._options.dropdownMinWidth !== undefined) {
+            this._dropdown.setMinWidth(this._options.dropdownMinWidth);
+        }
+
         this._label.setLabel(this.computeLabel());
 
         this.updateHeight();
@@ -498,7 +520,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
 
         // Late-built state: store / items / selection were written pure to
         // `_options` by the super-time cascade. Dispatch them now that the
-        // internal state is initialised.
+        // dropdown's inner list is initialised.
         if (this._options.store !== undefined && this._options.displayField !== undefined) {
             this.setStore(this._options.store, this._options.displayField, this._options.valueField);
         }
@@ -623,14 +645,16 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * Toggles the dropdown's open state.
      */
     private toggleDropdown(): void {
-        const dropdown = this.ensureDropdown();
-
-        if (dropdown.isOpen()) {
+        if (this._dropdown.isOpen()) {
             this.closeDropdown();
             return;
         }
 
-        dropdown.showAt(this.getElement(true), this._items, this._selectedIndex);
+        const list = this._dropdown.getList();
+        // `showAt` re-applies the items / selectedIndex onto its own inner
+        // list. Passing the list's current state round-trips harmlessly and
+        // keeps the public `showAt` signature unchanged.
+        this._dropdown.showAt(this.getElement(true), list.getItems(), list.getSelectedIndex());
         this.getAria().setExpanded(true);
         Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
     }
@@ -644,46 +668,11 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * stolen by a child ComboBox dismissing.
      */
     private closeDropdown(): void {
-        if (this._dropdown && this._dropdown.isOpen()) {
+        if (this._dropdown.isOpen()) {
             Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
             this._dropdown.hideAnimated();
             this.getAria().setExpanded(false);
         }
-    }
-
-    /**
-     * Lazily builds the dropdown instance on first open. The ComboBox
-     * surface keeps DOM focus while the dropdown is open; keystrokes
-     * are forwarded into the inner list via {@link onKeyDown} →
-     * `dropdown.handleKey`, mirroring the `AbstractPickerField`
-     * pattern. Escape stays on the ComboBox handler.
-     *
-     * @returns The owned dropdown instance.
-     */
-    private ensureDropdown(): ComboBoxDropdown {
-        if (!this._dropdown) {
-            this._dropdown = new ComboBoxDropdown(idx => this.onRowSelected(idx));
-            const animated = this._options.dropdownAnimated;
-            if (animated !== undefined) {
-                this._dropdown.setAnimated(animated);
-            }
-            const maxW = this._options.dropdownMinWidth;
-            if (maxW !== undefined) {
-                this._dropdown.setMinWidth(maxW);
-            }
-
-            // Mirror the active store onto the inner list so its rows
-            // refresh from `load`/`add`/`remove`/`datachanged`/`sync`
-            // while the dropdown is open. `setStore` may have run before
-            // the dropdown existed; this replays it once at first build.
-            const store        = this._options.store;
-            const displayField = this._options.displayField;
-            if (store && displayField) {
-                this._dropdown.getList().setStore(store, displayField, this._options.valueField);
-            }
-        }
-
-        return this._dropdown;
     }
 
     /**
@@ -694,7 +683,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      */
     private onViewportPointerDown(e: PointerEvent): void {
         const target = e.target as Node;
-        const dropEl = this._dropdown?.getElement();
+        const dropEl = this._dropdown.getElement();
         if (dropEl?.contains(target)) {
             return;
         }
@@ -716,7 +705,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @param e - The keyboard event.
      */
     private onKeyDown(e: KeyboardEvent): void {
-        if (this._dropdown?.isOpen()) {
+        if (this._dropdown.isOpen()) {
             if (this._dropdown.handleKey(e)) {
                 e.preventDefault();
 
@@ -763,8 +752,12 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @returns The label to render, or an empty string when nothing is selected.
      */
     private computeLabel(): string {
-        if (this._selectedIndex >= 0 && this._selectedIndex < this._items.length) {
-            return this._items[this._selectedIndex].label;
+        const list  = this._dropdown.getList();
+        const idx   = list.getSelectedIndex();
+        const items = list.getItems();
+
+        if (idx >= 0 && idx < items.length) {
+            return items[idx].label;
         }
 
         return "";
@@ -789,35 +782,35 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Sets the field value by matching the option's key.
+     * Sets the field value by matching the option's key. The key is also
+     * cached in `_pendingValue` so a pre-items {@link setValue} survives a
+     * later items / store load (the inner list silently drops unknown keys
+     * by clearing its selection, which would otherwise lose the write).
      *
      * @param value - The option key to select. Falls back to no-op when unmatched.
      */
     setValue(value: string): this {
-        this._value = value;
-
-        const idx = this._items.findIndex(item => item.key === value);
-
-        if (idx >= 0) {
-            this._selectedIndex = idx;
-        }
-
+        this._pendingValue = value;
+        this._dropdown.getList().setValue(value);
         this.refreshLabel();
 
         return this;
     }
 
     /**
-     * Returns the current value (the key of the selected option).
+     * Returns the current value (the key of the selected option). Falls back
+     * to the cached pending value when no items have landed yet, so the
+     * pre-items {@link setValue} contract survives store / items refreshes.
      *
      * @returns The selected option's key, or the last value passed to {@link setValue}.
      */
     getValue(): string {
-        if (this._selectedIndex >= 0 && this._selectedIndex < this._items.length) {
-            return this._items[this._selectedIndex].key;
-        }
+        const v = this._dropdown.getList().getValue();
 
-        return this._value;
+        // The list returns "" for "nothing selected". Surface the cached
+        // pending value so the pre-items setValue contract survives until
+        // items arrive and the key resolves to a real selection.
+        return v || (this._pendingValue ?? "");
     }
 
     /**
@@ -826,7 +819,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @returns The selected index, or -1 when nothing is selected.
      */
     getSelectedIndex(): number {
-        return this._selectedIndex;
+        return this._dropdown.getList().getSelectedIndex();
     }
 
     /**
@@ -836,12 +829,11 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @param fireEvent - Optional. When true (default), fires the 'change' event after updating.
      */
     setSelectedIndex(idx: number, fireEvent: boolean = true): this {
-        this._selectedIndex = idx;
-
-        if (idx >= 0 && idx < this._items.length) {
-            this._value = this._items[idx].key;
-        }
-
+        // Pass `false` to the inner list so its own `change` doesn't fire on
+        // `this._dropdown.getList()` — ComboBox's "change" event is fired
+        // directly on `this` below to preserve the historical fire-target.
+        this._dropdown.getList().setSelectedIndex(idx, false);
+        this._pendingValue = null;
         this.refreshLabel();
 
         if (fireEvent) {
@@ -857,7 +849,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @returns A shallow copy of the internal item array.
      */
     getItems(): Array<CustomListItem> {
-        return this._items.slice();
+        return this._dropdown.getList().getItems();
     }
 
     /**
@@ -866,23 +858,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @param items - A single string or an array of strings to use as option labels.
      */
     setItems(items: String | Array<String>): this {
-        if (!Type.isArray(items)) {
-            items = [items as String];
-        }
-
-        this._items = [];
-
-        const list = items as Array<String>;
-        for (let i = 0; i < list.length; i++) {
-            this._items.push({ key: String(i), label: list[i] as string });
-        }
-
-        if (this._selectedIndex < 0 && this._items.length > 0) {
-            this._selectedIndex = 0;
-        } else if (this._selectedIndex >= this._items.length) {
-            this._selectedIndex = this._items.length - 1;
-        }
-
+        this._dropdown.getList().setItems(items);
+        this.reapplyPendingValue();
         this.refreshLabel();
 
         return this;
@@ -894,12 +871,9 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @param item - The string label for the new option.
      */
     addItem(item: String): this {
-        this._items.push({ key: String(this._items.length), label: item as string });
-
-        if (this._selectedIndex < 0) {
-            this._selectedIndex = 0;
-            this.refreshLabel();
-        }
+        this._dropdown.getList().addItem(item);
+        this.reapplyPendingValue();
+        this.refreshLabel();
 
         return this;
     }
@@ -912,35 +886,18 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @param valueField - Optional. The record field used as the option value; defaults to the record's primary key.
      */
     setStore(store: AbstractStore, displayField: string, valueField?: string): this {
-        const oldStore = this._options.store;
-
-        if (this._storeRefresh && oldStore) {
-            (['load', 'add', 'remove', 'datachanged', 'sync'] as const)
-                .forEach(e => oldStore.off(e, this._storeRefresh!));
-        }
-
+        // Keep `_options.store` / `displayField` / `valueField` in sync so
+        // anything still inspecting them (constructor-time dispatch on
+        // re-entry, future option-bag introspection) reads the current
+        // binding. The store-event subscription itself lives on the inner
+        // list; its `setStore` de-registers any previous handlers.
         this._options.store        = store;
         this._options.displayField = displayField;
         this._options.valueField   = valueField;
 
-        const refresh = (): void => this.refreshFromStore();
-        this._storeRefresh = refresh;
-
-        store.on('load',        refresh);
-        store.on('add',         refresh);
-        store.on('remove',      refresh);
-        store.on('datachanged', refresh);
-        store.on('sync',        refresh);
-
-        this.refreshFromStore();
-
-        // Replay the store onto the inner list when it already exists so a
-        // mid-session re-bind is reflected in the dropdown. First-build
-        // replay lives in `ensureDropdown` for the case where `setStore`
-        // ran before the dropdown was lazy-built.
-        if (this._dropdown) {
-            this._dropdown.getList().setStore(store, displayField, valueField);
-        }
+        this._dropdown.getList().setStore(store, displayField, valueField);
+        this.reapplyPendingValue();
+        this.refreshLabel();
 
         return this;
     }
@@ -951,7 +908,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @returns The bound store, or null.
      */
     getStore(): AbstractStore | null {
-        return this._options.store ?? null;
+        return this._dropdown.getList().getStore();
     }
 
     /**
@@ -960,50 +917,26 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @returns The selected ModelRecord, or undefined if no store is bound or no item is selected.
      */
     getSelectedRecord(): ModelRecord | undefined {
-        const store = this._options.store;
-
-        if (!store) {
-            return undefined;
-        }
-
-        return store.getRecords()[this._selectedIndex];
+        return this._dropdown.getList().getSelectedRecord();
     }
 
     /**
-     * Rebuilds the option list from the bound store's current records.
+     * Re-attempts the pending {@link setValue} write after an items / store
+     * load. The inner list rejects unknown keys by clearing its selection;
+     * `_pendingValue` survives until a write resolves to a real index, at
+     * which point it's cleared so later reads pick up the live selection.
      */
-    protected refreshFromStore(): void {
-        const store        = this._options.store;
-        const displayField = this._options.displayField;
-        const valueField   = this._options.valueField;
-
-        if (!store || !displayField) {
+    private reapplyPendingValue(): void {
+        if (this._pendingValue === null) {
             return;
         }
 
-        this._items = [];
-        const records = store.getRecords();
+        const list = this._dropdown.getList();
+        list.setValue(this._pendingValue);
 
-        for (let i = 0; i < records.length; i++) {
-            const record = records[i];
-            const label  = String(record.get(displayField));
-            const key    = valueField
-                               ? String(record.get(valueField))
-                               : String(record.getId());
-
-            this._items.push({ key, label });
+        if (list.getSelectedIndex() >= 0) {
+            this._pendingValue = null;
         }
-
-        if (this._value) {
-            const idx = this._items.findIndex(item => item.key === this._value);
-            if (idx >= 0) {
-                this._selectedIndex = idx;
-            }
-        } else if (this._selectedIndex < 0 && this._items.length > 0) {
-            this._selectedIndex = 0;
-        }
-
-        this.refreshLabel();
     }
 
     /**
@@ -1013,10 +946,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      */
     setDropdownAnimated(value: boolean): this {
         this._options.dropdownAnimated = value;
-
-        if (this._dropdown) {
-            this._dropdown.setAnimated(value);
-        }
+        this._dropdown.setAnimated(value);
 
         return this;
     }
@@ -1041,10 +971,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      */
     setDropdownMinWidth(px: number): this {
         this._options.dropdownMinWidth = px;
-
-        if (this._dropdown) {
-            this._dropdown.setMinWidth(px);
-        }
+        this._dropdown.setMinWidth(px);
 
         return this;
     }
