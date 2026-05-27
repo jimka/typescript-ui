@@ -150,11 +150,26 @@ export class Cell<T> extends Component {
             return this;
         }
 
-        if (value && this.isEditing()) {
-            this.commitEdit();
-        }
-
+        // Flip the flag BEFORE running the mid-edit commit. The
+        // commit's onCommit callback synchronously calls
+        // `store.notifyRecordChanged`, which cascades back into
+        // `Body.applyReadOnlyState` and re-invokes this same setter on
+        // this same cell. Flipping first lets the re-entrant call
+        // short-circuit on the idempotence guard above; otherwise it
+        // would observe `_readOnly === false`, see `isEditing() ===
+        // true`, and recurse into `commitEdit` indefinitely.
+        // `commitEdit` itself checks `isReadOnly()` and would
+        // short-circuit now that the flag is set, so we inline its
+        // value/renderer/onCommit/detach sequence here instead.
         this._readOnly = value;
+
+        if (value && this._activeEditor) {
+            const committedValue = this._activeEditor.getValue();
+
+            this._renderer.setValue(committedValue);
+            this._onCommit?.(committedValue as T);
+            this.detachEditor();
+        }
 
         if (value) {
             this.setBackgroundColor('var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))');
