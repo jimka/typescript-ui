@@ -17,24 +17,30 @@ Produce a written Markdown plan matching `{workspace}/plans/` conventions. Plans
 
 ## Work Instructions
 
-1. **Understand the request.** Ask if scope, intended API, or integration points are unclear.
-2. **Investigate.** Read relevant files. Cite real paths/lines — no invented files or APIs.
-3. **Match style.** Skim a recent plan in `plans/` and an entry under `plans/implemented/` for tone.
-4. **Draft** following the format below.
-5. **Filename**: kebab-case, descriptive (e.g. `tab-reordering.md`).
-6. **Save** to `{workspace}/plans/<name>.md`. Never `plans/implemented/` — that folder is for shipped plans.
-7. **Report** the path and a one-sentence summary. Do not auto-implement.
+**Every plan is drafted by a spawned sub-agent — never by the parent context.** Investigation (reading files, grepping, walking the codebase) pollutes the parent's working memory with details that are no longer needed once the plan is on disk. Pushing the work into a sub-agent keeps the parent context lean for the user's next request and forces a self-contained, file-only artefact.
+
+1. **Understand the request.** Ask if scope, intended API, or integration points are unclear. Do this in the parent context, before spawning.
+2. **Pick the filename(s).** Kebab-case, descriptive (e.g. `tab-reordering.md`). For a single plan, derive one name; for multiple independent plans, derive each before dispatch and confirm they differ.
+3. **Spawn one sub-agent per plan.** Use the `Agent` tool with `subagent_type: "general-purpose"`. Send each invocation in a single message — when there are multiple, they run in parallel (see _Parallel Plans_ below for the relatedness check). The parent does no file reading on behalf of the plan after this point; the sub-agent does it.
+4. **Brief each sub-agent** per _Spawned-agent prompt rules_ below.
+5. **Report all paths together** when the agents return. Do not auto-implement.
+
+## Spawned-agent prompt rules
+
+Every spawned plan agent gets a self-contained prompt because sub-agents don't inherit this skill. Each prompt must:
+
+- Start with: `Read /home/jika/typescript/typescript/.claude/skills/plan/SKILL.md first and follow it exactly. Do not modify source code — produce a Markdown plan only.` This pulls the skill in fresh on the sub-agent side, so the **Plan Format**, **Style**, and **What Not To Do** sections below apply to the sub-agent's output without you needing to paste them.
+- **Name the output filename up front** (kebab-case, derived from the feature) as the absolute path `{workspace}/plans/<name>.md`. Tell it to confirm via `ls plans/` that it doesn't collide.
+- **Scope narrowly:** one feature, the files it should investigate, the success criteria, and any architecture decisions you've already made for it. Hand over the **question**, not a script of steps — the sub-agent's job is to read code and form judgements, not to follow your prescriptions.
+- **Tell it to report back only the final path and a one-sentence summary.** Do not ask it to dump the plan body into the response — the file on disk is the artefact.
 
 ## Parallel Plans
 
-When the user asks for **multiple independent plans in one request**, fan out via the `Agent` tool — one call per plan, all in a single message so they run in parallel. Skip this for a single plan, or for related plans that should cross-reference each other's decisions (those stay sequential).
+When the user asks for **multiple independent plans in one request**, every plan still goes through its own sub-agent (per Work Instructions step 3). The parallelism is just sending the multiple `Agent` calls in a single message so they run concurrently. Skip the parallel send for related plans that should cross-reference each other's decisions — spawn them sequentially so each can read what the previous wrote.
 
-Rules for each spawned agent:
+Additional rules when fanning out:
 
-- **subagent_type:** `general-purpose` (it can `Write` the file directly; the built-in `Plan` agent is read-only).
-- **Self-contained prompt.** Sub-agents don't inherit this skill. Either paste the **Plan Format**, **Style**, and **What Not To Do** sections verbatim into each prompt, or include the line: `Read /home/jika/typescript/typescript/.claude/skills/plan/SKILL.md first and follow it exactly.`
-- **Name the output filename up front** in the prompt (kebab-case, derived from the feature) so parallel agents can't collide on the same file. Confirm before dispatch that the filenames differ.
-- **Scope each agent narrowly:** one feature, the files it should investigate, and the absolute path `{workspace}/plans/<name>.md` to write to. Tell it to report back only the final path and a one-sentence summary.
+- **Confirm filenames differ before dispatch** so two agents don't race on the same path.
 - After all agents return, **report all paths together** in one message. Do not auto-implement any of them.
 
 If the features turn out to share architecture or touch the same files, abort the fan-out and plan them sequentially instead — coherence beats throughput.
