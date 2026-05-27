@@ -860,6 +860,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     setItems(items: String | Array<String>): this {
         this._dropdown.getList().setItems(items);
         this.reapplyPendingValue();
+        this.autoSelectFirstIfEmpty();
         this.refreshLabel();
 
         return this;
@@ -873,6 +874,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     addItem(item: String): this {
         this._dropdown.getList().addItem(item);
         this.reapplyPendingValue();
+        this.autoSelectFirstIfEmpty();
         this.refreshLabel();
 
         return this;
@@ -897,6 +899,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
 
         this._dropdown.getList().setStore(store, displayField, valueField);
         this.reapplyPendingValue();
+        this.autoSelectFirstIfEmpty();
         this.refreshLabel();
 
         return this;
@@ -936,6 +939,22 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
 
         if (list.getSelectedIndex() >= 0) {
             this._pendingValue = null;
+        }
+    }
+
+    /**
+     * Selects the first row when none is selected and the list has at least
+     * one item. Mirrors the prior ComboBox behaviour where `setItems` /
+     * `addItem` / `setStore` would land on index 0 by default — the inner
+     * List leaves nothing selected, so the auto-select happens here to keep
+     * the surface's `getValue` non-empty for the typical "fill items, render
+     * the first label" flow.
+     */
+    private autoSelectFirstIfEmpty(): void {
+        const list = this._dropdown.getList();
+
+        if (list.getSelectedIndex() < 0 && list.getItems().length > 0) {
+            list.setSelectedIndex(0, false);
         }
     }
 
