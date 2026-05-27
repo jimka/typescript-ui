@@ -101,14 +101,22 @@ class ParentHeaderCell extends DefaultCell {
     /**
      * Sets the tooltip shown when hovering this parent header cell.
      * Wired through the framework's shared [`Tooltip`](/api/core/classes/Tooltip)
-     * attach path, same as `HeaderCell.setTooltip`. Construction-time
-     * only — calling after `init` runs does not update the live
-     * tooltip.
+     * attach path, same as `HeaderCell.setTooltip`. Safe to call before or
+     * after the cell has rendered: pre-init calls are picked up by
+     * {@link init} when it wires the tooltip attachment; post-init calls
+     * re-attach against the live element so the visible tooltip updates
+     * immediately.
      *
      * @param text - The text to display in the tooltip.
      */
     setTooltip(text: string): this {
         this._tooltipText = text;
+
+        const el = this.getElement();
+
+        if (el) {
+            Tooltip.attachToElement(el, text);
+        }
 
         return this;
     }

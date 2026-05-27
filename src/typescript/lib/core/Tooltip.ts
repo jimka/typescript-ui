@@ -35,6 +35,17 @@ interface TooltipAttachment {
     mouseoutFn : Function;
 }
 
+/** Internal record of a raw-element tooltip attachment. */
+interface ElementTooltipAttachment {
+    text       : string;
+    mouseoverFn: (e: MouseEvent) => void;
+    mousemoveFn: (e: MouseEvent) => void;
+    mouseoutFn : () => void;
+    showTimer  : ReturnType<typeof setTimeout> | null;
+    lastX      : number;
+    lastY      : number;
+}
+
 /**
  * A singleton floating tooltip that appears near the cursor after a short delay.
  *
@@ -53,6 +64,8 @@ export class Tooltip extends Component {
     private static instance: Tooltip | null = null;
     private static showTimer: ReturnType<typeof setTimeout> | null = null;
     private static attachments: Map<string, TooltipAttachment> = new Map();
+    private static elementAttachments: WeakMap<HTMLElement, ElementTooltipAttachment> = new WeakMap();
+    private static activeElement: HTMLElement | null = null;
 
     // Set true while a fade-out is in flight; reset to false when the fade-out
     // completes (so the deferred removeElement fires) or when a fresh `show()`
@@ -304,41 +317,103 @@ export class Tooltip extends Component {
      * that would receive the event as `evnt.target` — the Event system's component
      * listener only matches the exact target id, so `attach` would miss those cases.
      *
+     * Calling `attachToElement` on an element that already has an attachment
+     * replaces it — the previous listeners are removed and a fresh set is
+     * installed against the new text. If the tooltip is currently visible for
+     * this element when the call happens, it re-renders immediately at the
+     * last known cursor position so the visible text updates without a
+     * re-hover.
+     *
      * @param element - The raw DOM element to attach hover behaviour to.
      * @param text - The tooltip text to display.
      */
     static attachToElement(element: HTMLElement, text: string): void {
-        let cursorX = 0;
-        let cursorY = 0;
-        let showTimer: ReturnType<typeof setTimeout> | null = null;
+        const wasActive = Tooltip.activeElement === element;
 
-        element.addEventListener('mouseover', (e: MouseEvent) => {
-            if (showTimer !== null) {
-                return;
-            }
+        Tooltip.detachElement(element);
 
-            cursorX = e.clientX;
-            cursorY = e.clientY;
+        const att: ElementTooltipAttachment = {
+            text,
+            showTimer  : null,
+            lastX      : 0,
+            lastY      : 0,
+            mouseoverFn: function onTooltipMouseOver(e: MouseEvent): void {
+                if (att.showTimer !== null) {
+                    return;
+                }
 
-            showTimer = setTimeout(() => {
-                Tooltip.show(text, cursorX, cursorY);
-                showTimer = null;
-            }, 500);
-        });
+                att.lastX = e.clientX;
+                att.lastY = e.clientY;
 
-        element.addEventListener('mousemove', (e: MouseEvent) => {
-            cursorX = e.clientX;
-            cursorY = e.clientY;
-        });
+                att.showTimer = setTimeout(function onTooltipShowTimer(): void {
+                    Tooltip.activeElement = element;
+                    Tooltip.show(att.text, att.lastX, att.lastY);
+                    att.showTimer = null;
+                }, 500);
+            },
+            mousemoveFn: function onTooltipMouseMove(e: MouseEvent): void {
+                att.lastX = e.clientX;
+                att.lastY = e.clientY;
+            },
+            mouseoutFn: function onTooltipMouseOut(): void {
+                if (att.showTimer !== null) {
+                    clearTimeout(att.showTimer);
+                    att.showTimer = null;
+                }
 
-        element.addEventListener('mouseout', () => {
-            if (showTimer !== null) {
-                clearTimeout(showTimer);
-                showTimer = null;
-            }
+                if (Tooltip.activeElement === element) {
+                    Tooltip.activeElement = null;
+                }
 
-            Tooltip.hide();
-        });
+                Tooltip.hide();
+            },
+        };
+
+        element.addEventListener("mouseover", att.mouseoverFn);
+        element.addEventListener("mousemove", att.mousemoveFn);
+        element.addEventListener("mouseout",  att.mouseoutFn);
+
+        Tooltip.elementAttachments.set(element, att);
+
+        // Mid-hover update: if the previous attachment was the active tooltip
+        // target, repaint the visible tooltip with the new text at the last
+        // known cursor coords so the swap is seen without a re-hover.
+        if (wasActive) {
+            Tooltip.activeElement = element;
+            Tooltip.show(text, att.lastX, att.lastY);
+        }
+    }
+
+    /**
+     * Removes an `attachToElement` binding installed on a raw HTMLElement.
+     *
+     * Detaches the three hover listeners, cancels any pending show timer, and
+     * clears the active-element tracker if it pointed at this element.
+     * Idempotent — calling on an unattached element is a no-op.
+     *
+     * @param element - The raw DOM element whose attachment should be removed.
+     */
+    static detachElement(element: HTMLElement): void {
+        const att = Tooltip.elementAttachments.get(element);
+
+        if (!att) {
+            return;
+        }
+
+        element.removeEventListener("mouseover", att.mouseoverFn);
+        element.removeEventListener("mousemove", att.mousemoveFn);
+        element.removeEventListener("mouseout",  att.mouseoutFn);
+
+        if (att.showTimer !== null) {
+            clearTimeout(att.showTimer);
+            att.showTimer = null;
+        }
+
+        Tooltip.elementAttachments.delete(element);
+
+        if (Tooltip.activeElement === element) {
+            Tooltip.activeElement = null;
+        }
     }
 
     /**
