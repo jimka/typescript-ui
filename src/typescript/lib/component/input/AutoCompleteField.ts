@@ -414,34 +414,36 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     /**
      * Handles `keydown` events on the internal text field for dropdown navigation.
      *
+     * While the dropdown is open, navigation / commit keys are forwarded
+     * into the inner list's keyboard reducer via `dropdown.handleKey`.
+     * The forward is gated by an allow-list (ArrowDown / ArrowUp / Enter)
+     * so printable characters fall through to the TextField's `input`
+     * handler without entering the list's type-ahead buffer — otherwise
+     * every keystroke would double-fire (type-ahead + `querySuggestions`).
+     * Escape and Tab stay on this handler so the dropdown can close
+     * without the list consuming them.
+     *
      * @param e - The keyboard event from the text field.
      */
     private onKeyDown(e: KeyboardEvent): void {
+        if (this._dropdown.isOpen()) {
+            const forward = e.key === "ArrowDown"
+                         || e.key === "ArrowUp"
+                         || e.key === "Enter";
+
+            if (forward && this._dropdown.handleKey(e)) {
+                e.preventDefault();
+                this.updateActiveDescendant();
+
+                return;
+            }
+        }
+
         switch (e.key) {
             case "ArrowDown":
+                // Dropdown was closed — fire the query.
                 e.preventDefault();
-
-                if (!this._dropdown.isOpen()) {
-                    this.querySuggestions(this.getValue());
-                } else {
-                    this._dropdown.highlightNext();
-                    this.updateActiveDescendant();
-                }
-
-                break;
-
-            case "ArrowUp":
-                e.preventDefault();
-                this._dropdown.highlightPrev();
-                this.updateActiveDescendant();
-                break;
-
-            case "Enter":
-                if (this._dropdown.isOpen() && this._dropdown.getHighlightedValue() !== null) {
-                    e.preventDefault();
-                    this._dropdown.selectHighlighted();
-                }
-
+                this.querySuggestions(this.getValue());
                 break;
 
             case "Escape":
@@ -585,10 +587,11 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     }
 
     /**
-     * Syncs `aria-activedescendant` on the input with the currently highlighted item.
+     * Syncs `aria-activedescendant` on the input with the currently focused
+     * row in the dropdown's inner list.
      */
     private updateActiveDescendant(): void {
-        this._textField.getAria().setActiveDescendant(this._dropdown.getHighlightedId() ?? "");
+        this._textField.getAria().setActiveDescendant(this._dropdown.getFocusedRowId() ?? "");
     }
 
     /**
