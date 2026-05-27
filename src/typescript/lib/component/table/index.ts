@@ -14,6 +14,7 @@ export { Row } from '~/component/table/Row.js';
 export { Cell } from '~/component/table/cell/Cell.js';
 export { DefaultCell } from '~/component/table/cell/Default.js';
 export { HeaderCell } from '~/component/table/cell/Header.js';
+export { ParentHeaderCell } from '~/component/table/cell/ParentHeader.js';
 export { BooleanCell } from '~/component/table/cell/Boolean.js';
 export { NumberCell } from '~/component/table/cell/Number.js';
 export { StringCell } from '~/component/table/cell/String.js';

@@ -28,6 +28,20 @@ export interface ColumnConfig {
      * Omit for no glyph; no left-side gap is reserved when absent.
      */
     headerGlyph ?: string;
+    /**
+     * Name of the parent-header group this column belongs to. Adjacent columns
+     * sharing the same group name render under a single spanning parent header
+     * cell. Non-adjacent same-named columns render as two separate parent cells.
+     * Omit to leave the column ungrouped; the parent row then renders an empty
+     * spanning cell above it.
+     */
+    group       ?: string;
+    /**
+     * Optional background color (CSS color string) for the parent header cell.
+     * All columns in a contiguous group should agree on this value; the first
+     * encountered value in the run wins.
+     */
+    groupColor  ?: string;
 }
 
 /**
