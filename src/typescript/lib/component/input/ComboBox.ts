@@ -114,14 +114,20 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
     private readonly _list: List;
     /** Lower bound on the dropdown width — see `COMBOBOX_DROPDOWN_MIN_WIDTH_PX`. */
     private _minWidth: number = COMBOBOX_DROPDOWN_MIN_WIDTH_PX;
+    /** Notified when the user presses Escape inside the dropdown. */
+    private readonly _onEscape: () => void;
 
     /**
      * @param onSelect - Called with the index of the row the user picked.
      *   Fired on click (`CustomListRow.onClick`) and on Enter / Space
      *   (`AbstractCustomList.commitFocusedRow`) — both paths route
      *   through the inner list's `change` event.
+     * @param onEscape - Called when the user presses Escape while the
+     *   inner list (or any other dropdown descendant) holds focus. The
+     *   host is responsible for closing the dropdown and restoring its
+     *   own focus state.
      */
-    constructor(onSelect: (index: number) => void) {
+    constructor(onSelect: (index: number) => void, onEscape: () => void) {
         super(undefined, {
             zIndex:          10050,
             layoutManager:   new Fit(),
@@ -131,7 +137,13 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
             shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
         });
 
-        this.getAria().setRole("listbox");
+        this._onEscape = onEscape;
+
+        // The inner List already exposes `role="listbox"` from
+        // `AbstractCustomList`; the dropdown wrapper just provides the
+        // overlay chrome and must not duplicate the listbox role
+        // (nested listboxes break assistive-tech enumeration of the
+        // `option` rows).
         this.setContain("layout");
 
         // `Fit` makes the inner list fill the dropdown's content box. The
@@ -150,6 +162,29 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         // by `showAt`) bypass this path, so re-opening the dropdown
         // doesn't trigger a spurious commit.
         this._list.addActionListener(() => onSelect(this._list.getSelectedIndex()));
+
+        // Subtree-listen for Escape on this dropdown's element. The
+        // inner list's own `handleKeyDown` only clears the type-ahead
+        // buffer on Escape; the keystroke then bubbles through the
+        // list element up to the dropdown root. Subtree listeners on
+        // `this` are the framework's documented mechanism for catching
+        // descendant events without reaching into another component's
+        // event surface.
+        Event.addSubtreeListener(this, "keydown", this.onSubtreeKeyDown);
+    }
+
+    /**
+     * Subtree keydown handler. Routes Escape to the host's `onEscape`
+     * callback; all other keys fall through to the inner list's own
+     * `handleKeyDown` reducer.
+     *
+     * @param e - The keyboard event captured from a descendant element.
+     */
+    private onSubtreeKeyDown(e: KeyboardEvent): void {
+        if (e.key === "Escape") {
+            e.preventDefault();
+            this._onEscape();
+        }
     }
 
     /**
@@ -458,8 +493,10 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         // Bridge the existing "change" event into AbstractInput's change /
         // binding listener fan-out so addChangeListener fires on every
         // user-driven selection. The "change" event is dispatched by
-        // setSelectedIndex(idx, true) — the path both onRowSelected (mouse)
-        // and cycleSelection (keyboard arrow) take.
+        // `setSelectedIndex(idx, true)` from `onRowSelected`, which is
+        // the single user-commit path — mouse click and keyboard
+        // commit both route through the inner list's `change` event
+        // and into `onRowSelected`.
         Event.addListener(this, "change", () => this.notifyChange(this.getValue()));
 
         this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
@@ -604,33 +641,44 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Closes the dropdown if open and returns DOM focus to the ComboBox
-     * surface so subsequent keystrokes route through {@link onKeyDown}
-     * (the inner list, which had focus while the dropdown was open, is
-     * detached on hide and no longer receives input).
+     * Closes the dropdown if open. When `refocus` is true (the default,
+     * for keyboard / row-click dismissal paths), returns DOM focus to
+     * the ComboBox surface so subsequent keystrokes route through
+     * {@link onKeyDown} — the inner list, which had focus while the
+     * dropdown was open, is detached on hide and no longer receives
+     * input. Pass `false` from viewport-pointerdown dismissal so a
+     * click that lands on another focusable element doesn't have its
+     * focus stolen back to the ComboBox.
+     *
+     * @param refocus - When true, re-focus the ComboBox surface on close.
      */
-    private closeDropdown(): void {
+    private closeDropdown(refocus: boolean = true): void {
         if (this._dropdown && this._dropdown.isOpen()) {
             Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
             this._dropdown.hideAnimated();
             this.getAria().setExpanded(false);
-            this.focus();
+
+            if (refocus) {
+                this.focus();
+            }
         }
     }
 
     /**
-     * Lazily builds the dropdown instance on first open. Wires the inner
-     * list's `keydown` so Escape pressed while the list holds focus
-     * closes the dropdown — the list itself only clears the type-ahead
-     * buffer on Escape, and the event doesn't bubble back to the
-     * ComboBox surface because the dropdown overlay is parented to
-     * `documentElement`.
+     * Lazily builds the dropdown instance on first open. The dropdown
+     * owns its own subtree keydown listener for Escape (see
+     * `ComboBoxDropdown.onSubtreeKeyDown`); the host's `onEscape`
+     * callback routes that back through `closeDropdown(true)` so the
+     * viewport listener / aria / focus cleanup all run.
      *
      * @returns The owned dropdown instance.
      */
     private ensureDropdown(): ComboBoxDropdown {
         if (!this._dropdown) {
-            this._dropdown = new ComboBoxDropdown(idx => this.onRowSelected(idx));
+            this._dropdown = new ComboBoxDropdown(
+                idx => this.onRowSelected(idx),
+                ()  => this.closeDropdown(true),
+            );
             const animated = this._options.dropdownAnimated;
             if (animated !== undefined) {
                 this._dropdown.setAnimated(animated);
@@ -649,13 +697,6 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
             if (store && displayField) {
                 this._dropdown.getList().setStore(store, displayField, this._options.valueField);
             }
-
-            Event.addListener(this._dropdown.getList(), "keydown", (e: KeyboardEvent) => {
-                if (e.key === "Escape") {
-                    e.preventDefault();
-                    this.closeDropdown();
-                }
-            });
         }
 
         return this._dropdown;
@@ -676,7 +717,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         if (this.getElement()?.contains(target)) {
             return;
         }
-        this.closeDropdown();
+        // Don't steal focus back from whatever the user just clicked.
+        this.closeDropdown(false);
     }
 
     /**
@@ -1043,7 +1085,8 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         this.getAria().setTabIndex(value ? 0 : -1);
         this.setCursor(value ? "pointer" : "default");
         if (!value) {
-            this.closeDropdown();
+            // Programmatic disable; don't grab focus on cleanup.
+            this.closeDropdown(false);
         }
     }
 

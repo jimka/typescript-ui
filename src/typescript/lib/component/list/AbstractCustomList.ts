@@ -534,8 +534,8 @@ abstract class AbstractCustomList<
     /**
      * Replaces all items with the given pre-formed `{key, label}` pairs.
      * Mirrors {@link setItems} but skips the auto-keying step so a host
-     * that already owns typed items (e.g. a [`ComboBoxDropdown`](/api/component/input/classes/ComboBox)
-     * pushing a [`ComboBoxItem`](/api/component/input/interfaces/ComboBoxItem)
+     * that already owns typed items (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
+     * dropdown pushing a [`ComboBoxItem`](/api/component/input/interfaces/ComboBoxItem)
      * array) can hand them over without the keys being clobbered to
      * stringified indices. Selection and focus are reset; the row pool
      * is reconciled against the new length.
