@@ -46,8 +46,35 @@ const table = Table(store, {
 | `minWidth` / `maxWidth` | Width constraints in pixels. |
 | `hidden` | Initial hidden state. |
 | `showSeconds` | For `time` / `datetime` columns: include seconds. |
+| `headerGlyph` | Registry glyph name shown to the left of the header text. |
+| `group` | Parent-header group name. See [Parent headers](#parent-headers). |
+| `groupColor` | Optional background color for the parent-header cell. |
 
 `appendUnlisted` (default `true`) controls whether fields not in the `columns` array are auto-generated after the listed ones.
+
+## Parent headers
+
+Tag adjacent columns with a `group` name and the table renders a second header row above the column-header row, with one cell spanning each contiguous group:
+
+```typescript
+import { Table } from '@jimka/typescript-ui/component/table';
+const table = Table(store, {
+    columns: [
+        { field: 'street', group: 'Address' },
+        { field: 'city',   group: 'Address' },
+        { field: 'zip',    group: 'Address' },
+        { field: 'cost',   group: 'Pricing', groupColor: 'rgba(30, 100, 200, 0.06)' },
+        { field: 'margin', group: 'Pricing', groupColor: 'rgba(30, 100, 200, 0.06)' },
+        { field: 'total',  group: 'Pricing', groupColor: 'rgba(30, 100, 200, 0.06)' },
+    ],
+});
+```
+
+- Only **adjacent** columns sharing the same `group` name merge into one parent cell. Reordering can split a group visually — that is intentional; the parent row reflects the current column layout, not the spec's logical groups.
+- Columns without a `group` value render under an empty spanning cell so the band stays continuous; the body background never leaks through.
+- Hiding all columns in a group collapses the parent cell automatically. When no visible column declares a `group` at all, the parent row collapses to zero height and the body fills the saved space.
+- Parent cells are non-interactive — no sort cycle, no resize handle. Click and resize gestures stay on the column-header row beneath.
+- `groupColor` is a plain CSS color string; the first non-null value in a contiguous run wins, so a partial annotation propagates across the whole run.
 
 ## Sorting and selection
 
