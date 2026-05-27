@@ -3431,6 +3431,38 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Registers a subtree `mousedown` listener — the handler fires
+     * whenever a mousedown lands on this component **or any of its
+     * descendants**. Used by
+     * [`DragManager`](/api/core/variables/DragManager) so a press
+     * anywhere on a complex source (e.g. a `Row` whose cells receive
+     * the actual mousedown) starts the drag.
+     *
+     * @param listener - The callback invoked with the originating MouseEvent.
+     *
+     * @returns This component, for method chaining.
+     */
+    addMouseDownSubtreeListener(listener: Function): this {
+        Event.addSubtreeListener(this, "mousedown", listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered subtree mousedown listener.
+     *
+     * @param listener - The exact callback reference passed to
+     *   {@link addMouseDownSubtreeListener}.
+     *
+     * @returns This component, for method chaining.
+     */
+    removeMouseDownSubtreeListener(listener: Function): this {
+        Event.removeSubtreeListener(this, "mousedown", listener);
+
+        return this;
+    }
+
+    /**
      * Sets the element ID, adds the class name, mirrors attributes, applies style, and appends child elements.
      *
      * @param element - Optional. The element to initialise. Falls back to getElement() if omitted.
