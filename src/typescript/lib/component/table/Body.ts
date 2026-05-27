@@ -362,11 +362,15 @@ class Body extends Component {
 
         this._store = store;
         this.bindStore(store);
-        this._boundIndices.fill(-1);
         this.invalidateGeom();
 
         if (this.getElement()) {
-            this.renderWindow();
+            // Route through `onStoreChange` so subclasses (e.g. `TreeBody`)
+            // can rebuild their per-row index against the new store before
+            // the inherited rebind + render runs. The base implementation
+            // is equivalent to the previous `_boundIndices.fill(-1) +
+            // renderWindow()` inline pair.
+            this.onStoreChange();
         }
 
         return this;
@@ -925,9 +929,11 @@ class Body extends Component {
      * @remarks Called after every navigation and after `renderWindow` re-binds pool slots.
      * Also mirrors the focused column index onto the linked Header cells (when
      * one has been wired in via `setHeader`) so the header shows the matching
-     * column indicator.
+     * column indicator. `protected` so subclasses (e.g. `TreeBody`) can
+     * refresh the focus indicator after a programmatic navigation. Not
+     * for consumer use.
      */
-    private _updateFocusStyle(): void {
+    protected _updateFocusStyle(): void {
         for (const row of this._rowPool) {
             for (const cell of row.getComponents()) {
                 const el = cell.getElement() as HTMLElement | null;
@@ -982,9 +988,12 @@ class Body extends Component {
     /**
      * Sets `aria-activedescendant` on the body container to point at the focused cell (or row).
      *
-     * @remarks Must be called after `renderWindow()` so the pool slot for the anchor record is guaranteed in the DOM.
+     * @remarks Must be called after `renderWindow()` so the pool slot
+     * for the anchor record is guaranteed in the DOM. `protected` so
+     * subclasses (e.g. `TreeBody`) can refresh the active-descendant
+     * pointer after a programmatic navigation. Not for consumer use.
      */
-    private _updateActiveDescendant(): void {
+    protected _updateActiveDescendant(): void {
         if (!this._anchorRecord) {
             this.getAria().setActiveDescendant("");
 
@@ -1116,8 +1125,12 @@ class Body extends Component {
      * Scrolls the body so the given record is visible, without moving the viewport unless necessary.
      *
      * @param record - The record to scroll into view.
+     *
+     * @remarks `protected` so subclasses (e.g. `TreeBody`) can keep
+     * keyboard-driven navigation inside the scroll viewport. Not for
+     * consumer use.
      */
-    private scrollRecordIntoView(record: ModelRecord): void {
+    protected scrollRecordIntoView(record: ModelRecord): void {
         const idx = this.getVisibleRecords().indexOf(record);
 
         if (idx === -1 || !this._scroller) {
