@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AbstractCustomList, AbstractCustomListOptions, CustomListItem } from "~/component/list/AbstractCustomList.js";
-import { Bindable } from "~/core/Bindable.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -28,7 +27,7 @@ export interface ListOptions extends AbstractCustomListOptions {
  *
  * @category Components
  */
-class List extends AbstractCustomList<string, ListOptions> implements Bindable<string> {
+class List extends AbstractCustomList<string, ListOptions> {
 
     /**
      * @param options - Optional. Construction-time options applied to
@@ -40,7 +39,8 @@ class List extends AbstractCustomList<string, ListOptions> implements Bindable<s
         // Late-built state: `selectedIndex` / `value` / `selectedItem`
         // were written pure to `_options` by the super-time cascade.
         // Dispatch them now that the row pool and selection set exist
-        // (`super()` already populated `_items` from `items` / `store`).
+        // (`super()` already populated `_items` from `items` / `store`,
+        // and applied `enabled` / `readOnly`).
         if (this._options.selectedIndex !== undefined) {
             this.setSelectedIndex(this._options.selectedIndex, false);
         }
@@ -51,14 +51,6 @@ class List extends AbstractCustomList<string, ListOptions> implements Bindable<s
 
         if (this._options.selectedItem !== undefined) {
             this.setValue(this._options.selectedItem);
-        }
-
-        if (this._options.enabled !== undefined) {
-            this.applyEnabled(this._options.enabled);
-        }
-
-        if (this._options.readOnly !== undefined) {
-            this.applyReadOnly(this._options.readOnly);
         }
     }
 
@@ -84,13 +76,12 @@ class List extends AbstractCustomList<string, ListOptions> implements Bindable<s
     }
 
     /**
-     * Pushes pre-formed [`CustomListItem`](/api/component/list/interfaces/CustomListItem)
-     * pairs into the list, bypassing the auto-keying that {@link setItems}
-     * applies to a label-only array. Intended for hosts that already
-     * own typed `{key, label}` data (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
-     * dropdown forwarding its [`ComboBoxItem`](/api/component/input/interfaces/ComboBoxItem)
-     * array). Selection and focus are reset; the row pool is reconciled
-     * against the new length.
+     * Pushes pre-formed {@link CustomListItem} pairs into the list,
+     * bypassing the auto-keying that {@link setItems} applies to a
+     * label-only array. Intended for hosts that already own typed
+     * `{key, label}` data (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
+     * dropdown forwarding its item array). Selection and focus are
+     * reset; the row pool is reconciled against the new length.
      *
      * @param items - The pre-formed item pairs, in display order.
      *
@@ -134,21 +125,6 @@ class List extends AbstractCustomList<string, ListOptions> implements Bindable<s
     }
 
     /**
-     * Returns the display label of the currently selected row.
-     *
-     * @returns The selected row's label, or `null` when nothing is selected.
-     */
-    getSelectedItem(): string | null {
-        const idx = this.getSelectedIndex();
-
-        if (idx < 0 || idx >= this._items.length) {
-            return null;
-        }
-
-        return this._items[idx].label;
-    }
-
-    /**
      * Reduces a click / keyboard gesture into the single-select shape:
      * the modifier keys are ignored, the selection becomes exactly
      * `{idx}`, and the anchor / focus collapse to the clicked row.
@@ -173,37 +149,6 @@ class List extends AbstractCustomList<string, ListOptions> implements Bindable<s
         this.fireChange();
     }
 
-    /**
-     * Reflects the enabled flag on the ARIA tree, the tabindex, and the
-     * inner panel. Disabling the list parks the focus index at -1 so a
-     * subsequent enable starts fresh, mirroring the native `<select>` it
-     * replaces.
-     *
-     * @param value - The new enabled state.
-     */
-    protected applyEnabled(value: boolean): void {
-        this.getAria().setDisabled(!value);
-        this.getAria().setTabIndex(value ? 0 : -1);
-        this.setCursor(value ? "default" : "not-allowed");
-
-        if (!value) {
-            this._focusedIndex = -1;
-            this.refreshRowVisualState();
-            this.updateActiveDescendant();
-        }
-    }
-
-    /**
-     * Reflects the read-only flag on the ARIA tree. Read-only lists stay
-     * focusable and announce their state; the click / keyboard reducers
-     * are gated separately in {@link AbstractCustomList.handleRowClick} /
-     * `handleKeyDown` so an interaction can't mutate state.
-     *
-     * @param value - The new read-only state.
-     */
-    protected applyReadOnly(value: boolean): void {
-        this.getAria().setReadOnly(value);
-    }
 }
 
 const ListCallable = callable(List);
