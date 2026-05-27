@@ -92,8 +92,10 @@ class ParentHeaderCell extends DefaultCell {
 
     /**
      * Sets the tooltip shown when hovering this parent header cell.
-     * Wired through the framework's shared {@link Tooltip} attach path,
-     * same as `HeaderCell.setTooltip`.
+     * Wired through the framework's shared [`Tooltip`](/api/core/classes/Tooltip)
+     * attach path, same as `HeaderCell.setTooltip`. Construction-time
+     * only — calling after `init` runs does not update the live
+     * tooltip.
      *
      * @param text - The text to display in the tooltip.
      */
@@ -147,16 +149,26 @@ class ParentHeaderCell extends DefaultCell {
             return this;
         }
 
-        Event.addSubtreeListener(this, "contextmenu", (e: MouseEvent) => {
-            e.preventDefault();
-            this._onContextMenuCallback?.(e.clientX, e.clientY);
-        });
+        Event.addSubtreeListener(this, "contextmenu", this.onContextMenu);
 
         if (this._tooltipText) {
             Tooltip.attachToElement(el, this._tooltipText);
         }
 
         return this;
+    }
+
+    /**
+     * Subtree contextmenu handler. Suppresses the browser's native menu
+     * and forwards the viewport coordinates to the host's context-menu
+     * callback (typically the table's column-toggle menu).
+     *
+     * @param e - The contextmenu event captured from a descendant.
+     */
+    private onContextMenu(e: MouseEvent): void {
+        e.preventDefault();
+
+        this._onContextMenuCallback?.(e.clientX, e.clientY);
     }
 }
 

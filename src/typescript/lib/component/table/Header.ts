@@ -102,6 +102,7 @@ class Header extends Component {
         if (!same) {
             this._model = model;
             this.rebuildCells();
+            this.rebuildParentCells();
         }
 
         this.syncSortIndicators();
