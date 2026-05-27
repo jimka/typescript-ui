@@ -306,14 +306,17 @@ class MiscPanel extends Panel {
                 // Notes is hidden initially. col2 (Active) is not listed but is
                 // auto-appended because appendUnlisted defaults to true.
                 // Name carries a headerGlyph to demo the leading-glyph slot.
+                // Name + Active are grouped under "Identity"; Joined + Meeting
+                // + LastSeen are grouped under "Activity" with a faint tint so
+                // the parent-row affordance is visible.
                 const spec: ColumnSpec = {
                     columns: [
-                        { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark' },
-                        { field: 'Active'  , maxWidth: 100                       },
-                        { field: 'Joined'  , minWidth: 120                       },
-                        { field: 'Meeting' , minWidth: 100, showSeconds: true    },
-                        { field: 'LastSeen', minWidth: 160                       },
-                        { field: 'Notes'   , hidden  : true                      },
+                        { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark', group: 'Identity'                                                       },
+                        { field: 'Active'  , maxWidth: 100,                       group: 'Identity'                                                       },
+                        { field: 'Joined'  , minWidth: 120,                       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
+                        { field: 'Meeting' , minWidth: 100, showSeconds: true,    group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
+                        { field: 'LastSeen', minWidth: 160,                       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
+                        { field: 'Notes'   , hidden  : true                                                                                                },
                     ],
                 };
 

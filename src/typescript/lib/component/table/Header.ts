@@ -7,8 +7,22 @@ import { AbstractStore, SortDescriptor } from "~/data/AbstractStore.js";
 import { Field } from "~/data/Field.js";
 import { Column } from "~/component/table/Column.js";
 import { HeaderCell } from "~/component/table/cell/Header.js";
+import { ParentHeaderCell } from "~/component/table/cell/ParentHeader.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * A contiguous run of visible columns sharing a non-null group name (or a
+ * single ungrouped column when {@link Column.getGroup} returns `null`).
+ * Produced by walking the visible column list left-to-right; consumed by
+ * the layout manager to position each {@link ParentHeaderCell}.
+ */
+export interface ParentSpan {
+    /** Inclusive start index into the column-row's component list. */
+    spanFrom: number;
+    /** Inclusive end index into the column-row's component list. */
+    spanTo:   number;
+}
 
 /**
  * The header section of a table, rendered as a `<thead>` element.
@@ -41,7 +55,14 @@ class Header extends Component {
         this._model = model;
         this._store = store;
 
-        const row = new Row();
+        // Two `Row` children — parent row at index 0, column row at index 1.
+        // The parent row collapses to zero height when no visible column
+        // declares a group; existing no-group tables remain byte-identical
+        // at runtime because `rebuildParentCells` produces no cells in
+        // that case and the layout manager zeroes the parent-row height.
+        const parentRow = new Row();
+        const row       = new Row();
+        this.addRow(parentRow);
         this.addRow(row);
 
         this.rebuildCells();
@@ -89,7 +110,8 @@ class Header extends Component {
     }
 
     /**
-     * Updates the set of hidden column field names and rebuilds header cells immediately.
+     * Updates the set of hidden column field names and rebuilds both header
+     * rows immediately.
      *
      * @param hidden - The new set of field names to hide.
      */
@@ -97,13 +119,14 @@ class Header extends Component {
         this._hiddenColumns = new Set(hidden);
 
         this.rebuildCells();
+        this.rebuildParentCells();
 
         return this;
     }
 
     /**
      * Supplies the resolved {@link Column} list so that per-column header metadata
-     * (e.g. `headerGlyph`) is available when cells are rebuilt.
+     * (e.g. `headerGlyph`, `group`) is available when cells are rebuilt.
      *
      * @param columns - The resolved columns in display order.
      * @returns This header, for method chaining.
@@ -112,6 +135,7 @@ class Header extends Component {
         this._columns = columns;
 
         this.rebuildCells();
+        this.rebuildParentCells();
 
         return this;
     }
@@ -135,19 +159,47 @@ class Header extends Component {
     }
 
     /**
-     * Returns the header cell components in column order.
+     * Returns the header cell components in column order. The column row
+     * lives at child index 1 — the parent-header row sits at index 0.
      *
-     * @returns An array of cell components from the header's inner row.
+     * @returns An array of cell components from the column-header row.
      */
     getColumns() {
-        return this.getComponents()[0].getComponents();
+        return this.getComponents()[1].getComponents();
+    }
+
+    /**
+     * Returns the parent-header row hosting the {@link ParentHeaderCell}
+     * instances. Always present, even when no visible column declares a
+     * group — in that case the row has zero cells and the layout manager
+     * collapses it to zero height.
+     *
+     * @returns The parent row.
+     */
+    getParentRow(): Row {
+        return this.getComponents()[0] as Row;
+    }
+
+    /**
+     * Returns `true` when at least one visible column declares a group —
+     * i.e. the parent-header row is rendered with non-zero height.
+     * Driven by {@link Column.getGroup} across the resolved visible
+     * column list.
+     *
+     * @returns `true` when the parent row should be laid out, `false`
+     *   when it should collapse.
+     */
+    hasParentRow(): boolean {
+        return this._columns
+            .filter(c => !this._hiddenColumns.has(c.getField().getName()))
+            .some(c => c.getGroup() !== null);
     }
 
     /**
      * Reorders header cells by field order using their layout constraints.
      */
     sortColumns() {
-        const row = this.getComponents()[0];
+        const row = this.getComponents()[1];
 
         row.sortComponents((c1, c2) => {
             const lc1 = row.getLayoutConstraints(c1);
@@ -190,7 +242,8 @@ class Header extends Component {
     }
 
     /**
-     * Sets the header width and propagates it to the inner row.
+     * Sets the header width and propagates it to both the parent and
+     * column rows so the full header band shares the same width.
      *
      * @param width - The width in pixels.
      *
@@ -199,32 +252,38 @@ class Header extends Component {
     setWidth(width: number): this {
         super.setWidth(width);
 
-        this.getComponents()[0].setWidth(width);
+        const rows = this.getComponents();
+        rows[0].setWidth(width);
+        rows[1].setWidth(width);
 
         return this;
     }
 
     /**
-     * Sets the header height and propagates it to the inner row.
+     * Sets the header height. Row-level heights (parent row + column row)
+     * are set independently by the table layout manager — `Header` itself
+     * just stores the total band height. The per-row height assignments
+     * live in `layout/Table.doLayout` because the split depends on
+     * {@link hasParentRow}.
      *
-     * @param height - The height in pixels.
+     * @param height - The total header band height in pixels.
      *
      * @returns This component, for method chaining.
      */
     setHeight(height: number): this {
         super.setHeight(height);
 
-        this.getComponents()[0].setHeight(height);
-
         return this;
     }
 
     /**
-     * Removes all existing header cells and recreates them from the visible fields of
-     * the current model, then re-syncs sort indicators.
+     * Removes all existing column-header cells and recreates them from the
+     * visible fields of the current model, then re-syncs sort indicators.
+     * Operates on the column row at child index 1; the parent row at
+     * index 0 is rebuilt separately in {@link rebuildParentCells}.
      */
     private rebuildCells(): void {
-        const row = this.getComponents()[0] as Row;
+        const row = this.getComponents()[1] as Row;
 
         row.removeAllComponents();
 
@@ -246,6 +305,66 @@ class Header extends Component {
         }
 
         this.syncSortIndicators();
+    }
+
+    /**
+     * Removes all existing parent-header cells and recreates one
+     * {@link ParentHeaderCell} per contiguous run of visible columns
+     * sharing the same group key. Ungrouped columns each produce a
+     * blank spanning cell so the parent row's surface stays continuous.
+     *
+     * The visible-column order is read from `_columns` filtered by
+     * `_hiddenColumns` and sorted by {@link Field.getOrder} — same
+     * resolution path used by {@link rebuildCells}. Each cell's
+     * `spanFrom` / `spanTo` indices are stored in its layout constraints'
+     * `data` slot; the table layout manager reads them to position the
+     * cell as the sum of underlying column widths.
+     */
+    private rebuildParentCells(): void {
+        const row = this.getParentRow();
+
+        row.removeAllComponents();
+
+        const visibleCols = this._columns
+            .filter(c => !this._hiddenColumns.has(c.getField().getName()))
+            .sort((a, b) => a.getField().getOrder() - b.getField().getOrder());
+
+        if (visibleCols.length === 0) {
+            return;
+        }
+
+        let runStart   = 0;
+        let runKey     = visibleCols[0].getGroup();
+        let runColor   = visibleCols[0].getGroupColor();
+
+        const flush = (endExclusive: number, isLast: boolean): void => {
+            const cell: ParentHeaderCell = new ParentHeaderCell(runKey ?? "", runColor, isLast);
+            row.addComponent(cell, { data: { spanFrom: runStart, spanTo: endExclusive - 1 } });
+        };
+
+        for (let i = 1; i < visibleCols.length; i++) {
+            const nextKey = visibleCols[i].getGroup();
+            // Ungrouped columns (group === null) each get their own blank
+            // span — they never merge with adjacent ungrouped columns.
+            // A run continues only when both sides share the same
+            // non-null group key.
+            const runContinues = runKey !== null && nextKey === runKey;
+
+            if (!runContinues) {
+                flush(i, false);
+
+                runStart = i;
+                runKey   = nextKey;
+                runColor = visibleCols[i].getGroupColor();
+            } else if (runColor === null && visibleCols[i].getGroupColor() !== null) {
+                // First non-null `groupColor` in a run wins; pick it up
+                // when an earlier column omitted the field and a later
+                // one supplied it.
+                runColor = visibleCols[i].getGroupColor();
+            }
+        }
+
+        flush(visibleCols.length, true);
     }
 
     /**
