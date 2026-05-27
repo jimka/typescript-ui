@@ -114,7 +114,7 @@ If any item is unchecked, resume at the appropriate step. Do not stop just becau
    7. Implement. On resume, pick up at the step identified by _Resume detection_.
 
       **Definition of done for this step:** every file in the plan's "Files to Create/Modify/Delete" table has been written, every entry in "Ordered Implementation Steps" is addressed, and `npx tsc --noEmit` is clean. Do not advance to step 8 until this clears. Running `git status` / `ls` and seeing reasonable output is not the same as verifying this list.
-   8. Extend demo panel(s) where applicable.
+   8. Add a demo of the new feature to one of the demo panels, if applicable.
    9. Edit any `touches-shared` files last, one commit per file (_Shared-file etiquette_).
    10. Move plan from `plans/in-progress/` to `plans/implemented/`. Commit as bookkeeping.
    11. Update `docs/` per the rules in `_shared/docs-conventions.md`.

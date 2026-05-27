@@ -92,8 +92,15 @@ class Table extends Component<TableOptions> {
      *
      * @param store - The data store to bind to this table.
      * @param spec  - Optional column spec; omit to auto-generate all columns.
+     * @param bodyFactory - Optional. Closure that constructs the body
+     *   component. Used by [`TreeTable`](/api/component/table/classes/TreeTable)
+     *   to install a [`TreeBody`](/api/component/table/classes/TreeBody)
+     *   in place of the default flat-list body. A closure (not a
+     *   subclass-overridable method) avoids the class-field super-trap
+     *   that would otherwise read tree-spec fields before they are
+     *   initialised.
      */
-    constructor(store: AbstractStore, spec?: ColumnSpec) {
+    constructor(store: AbstractStore, spec?: ColumnSpec, bodyFactory?: (store: AbstractStore) => Body) {
         super({ tag: "table" });
 
         this.setLayoutManager(new TableLayout());
@@ -121,7 +128,7 @@ class Table extends Component<TableOptions> {
         this.addComponent(this._header);
         this._header.setColumns(this._resolvedColumns);
 
-        this._body = new Body(store);
+        this._body = bodyFactory ? bodyFactory(store) : new Body(store);
         this._body.setHeader(this._header);
         this.addComponent(this._body);
 
@@ -555,6 +562,25 @@ class Table extends Component<TableOptions> {
     }
 
     /**
+     * Reports whether the given column may be hidden from the column
+     * context menu. Default implementation returns `true` for every
+     * column.
+     *
+     * @param fieldName - The model field name to query.
+     *
+     * @returns `true` when the column may be toggled hidden; `false`
+     *   when it must stay visible (the context-menu entry renders
+     *   disabled, and `setColumnVisible` rejects a hide attempt).
+     *
+     * @remarks Subclassing seam — `TreeTable` overrides this to return
+     * `false` for the tree column (hiding it would erase the toggle
+     * UI). Not for consumer use.
+     */
+    protected isColumnHideable(_fieldName: string): boolean {
+        return true;
+    }
+
+    /**
      * Displays the column visibility context menu, listing only columns present in
      * the resolved column list (excluded columns do not appear).
      *
@@ -595,9 +621,16 @@ class Table extends Component<TableOptions> {
 
             const indent = group !== null ? GROUP_INDENT : "";
 
+            // A column reported unhideable by `isColumnHideable` is
+            // currently visible (since it cannot be hidden) — the menu
+            // entry stays in the list so the user sees the column's
+            // identity but is disabled to signal it can't be toggled.
+            const hideable = this.isColumnHideable(fieldName);
+
             items.push({
-                text: indent + (visible ? '✓ ' : '  ') + fieldName,
-                action: () => this.setColumnVisible(fieldName, !visible),
+                text:    indent + (visible ? '✓ ' : '  ') + fieldName,
+                action:  () => this.setColumnVisible(fieldName, !visible),
+                enabled: hideable,
             });
 
             lastGroup = group;
