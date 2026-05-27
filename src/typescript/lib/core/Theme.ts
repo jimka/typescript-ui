@@ -198,12 +198,13 @@ export interface Theme {
             dirty         : string;
         };
         cell: {
-            height           : string;
-            padding          : number;
-            background       : string;
-            color            : string;
-            border           : string;
-            editorBorderColor: string;
+            height            : string;
+            padding           : number;
+            background        : string;
+            readonlyBackground: string;
+            color             : string;
+            border            : string;
+            editorBorderColor : string;
         };
         resizeHandle: {
             width : string;
@@ -550,12 +551,13 @@ export const DefaultTheme: Theme = {
             dirty         : 'rgba(255, 165, 0, 0.15)',
         },
         cell  : {
-            height           : '22px',
-            padding          : 2,
-            background       : 'transparent',
-            color            : 'inherit',
-            border           : 'none',
-            editorBorderColor: 'rgba(30, 100, 200, 0.6)',
+            height            : '22px',
+            padding           : 2,
+            background        : 'transparent',
+            readonlyBackground: 'rgba(0, 0, 0, 0.04)',
+            color             : 'inherit',
+            border            : 'none',
+            editorBorderColor : 'rgba(30, 100, 200, 0.6)',
         },
         resizeHandle: {
             width : '5px',
@@ -825,12 +827,13 @@ export const DarkTheme: Theme = {
             dirty         : 'rgba(255, 165, 0, 0.2)',
         },
         cell  : {
-            height           : '22px',
-            padding          : 2,
-            background       : 'transparent',
-            color            : 'inherit',
-            border           : 'none',
-            editorBorderColor: 'rgba(30, 100, 200, 0.8)',
+            height            : '22px',
+            padding           : 2,
+            background        : 'transparent',
+            readonlyBackground: 'rgba(255, 255, 255, 0.04)',
+            color             : 'inherit',
+            border            : 'none',
+            editorBorderColor : 'rgba(30, 100, 200, 0.8)',
         },
         resizeHandle: {
             width : '5px',
@@ -1065,6 +1068,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-table-row-dirty'                  : theme.table.row.dirty,
         '--ts-ui-table-cell-height'                : theme.table.cell.height,
         '--ts-ui-table-cell-bg'                    : theme.table.cell.background,
+        '--ts-ui-table-cell-readonly-bg'           : theme.table.cell.readonlyBackground,
         '--ts-ui-table-cell-color'                 : theme.table.cell.color,
         '--ts-ui-table-cell-border'                : theme.table.cell.border,
         '--ts-ui-table-cell-editor-border'         : theme.table.cell.editorBorderColor,

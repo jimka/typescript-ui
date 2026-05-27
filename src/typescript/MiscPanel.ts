@@ -317,7 +317,7 @@ class MiscPanel extends Panel {
                     columns: [
                         { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark', group: 'Identity', unhideable: true                                     },
                         { field: 'Active'  , maxWidth: 100,                       group: 'Identity'                                                       },
-                        { field: 'Joined'  , minWidth: 120,                       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
+                        { field: 'Joined'  , minWidth: 120, readOnly: true,       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'Meeting' , minWidth: 100, showSeconds: true,    group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'LastSeen', minWidth: 160,                       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'Notes'   , hidden  : true                                                                                                },
