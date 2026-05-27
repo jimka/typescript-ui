@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractCustomList, AbstractCustomListOptions } from "~/component/list/AbstractCustomList.js";
+import { AbstractCustomList, AbstractCustomListOptions, CustomListItem } from "~/component/list/AbstractCustomList.js";
 import { Bindable } from "~/core/Bindable.js";
 import { callable } from "~/core/Callable.js";
 
@@ -81,6 +81,23 @@ class List extends AbstractCustomList<string, ListOptions> implements Bindable<s
         if (opts.selectedItem  !== undefined) this._options.selectedItem  = opts.selectedItem;
 
         return this;
+    }
+
+    /**
+     * Pushes pre-formed [`CustomListItem`](/api/component/list/interfaces/CustomListItem)
+     * pairs into the list, bypassing the auto-keying that {@link setItems}
+     * applies to a label-only array. Intended for hosts that already
+     * own typed `{key, label}` data (e.g. the [`ComboBox`](/api/component/input/classes/ComboBox)
+     * dropdown forwarding its [`ComboBoxItem`](/api/component/input/interfaces/ComboBoxItem)
+     * array). Selection and focus are reset; the row pool is reconciled
+     * against the new length.
+     *
+     * @param items - The pre-formed item pairs, in display order.
+     *
+     * @returns This component, for method chaining.
+     */
+    setItemsArray(items: Array<CustomListItem>): this {
+        return super.setItemsArray(items);
     }
 
     /**

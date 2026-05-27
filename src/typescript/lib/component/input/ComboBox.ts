@@ -9,11 +9,12 @@ import { Util } from "~/core/Util.js";
 import { Type } from "~/core/Type.js";
 /**
  * One entry in a {@link ComboBox}'s internal item list. Plain data — the
- * dropdown's `ComboBoxRow` instances are the view layer. The `Option`
- * Component (backed by a native `<option>` element) was used here before
- * the move off the native `<select>` dropdown, which created unused DOM
- * nodes and dragged in form-submission semantics that don't apply to a
- * `<div>`-based combobox.
+ * inner [`List`](/api/component/list/classes/List)'s row pool is the
+ * view layer. The `Option` Component (backed by a native `<option>`
+ * element) was used here before the move off the native `<select>`
+ * dropdown, which created unused DOM nodes and dragged in
+ * form-submission semantics that don't apply to a `<div>`-based
+ * combobox.
  *
  * @category Components
  */
@@ -25,11 +26,10 @@ export interface ComboBoxItem {
 }
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
-import { Panel } from "~/core/Panel.js";
+import { List } from "~/component/list/List.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
-import { VBox } from "~/layout/VBox.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
 import { callable } from "~/core/Callable.js";
@@ -86,10 +86,10 @@ const _defaultComboBoxOptions: Partial<ComboBoxOptions> = {
 /** Maximum dropdown height in pixels. Long option lists scroll inside this cap. */
 const COMBOBOX_DROPDOWN_MAX_HEIGHT_PX = 200;
 
-/** Pixel height of a single row inside the dropdown. Matches `ComboBoxRow.preferredSize`. */
+/** Pixel height of a single row inside the dropdown. Matches `CustomListRow`'s cached `preferredSize(0, 22)`. */
 const COMBOBOX_DROPDOWN_ROW_HEIGHT_PX = 22;
 
-/** Combined left + right padding inside a `ComboBoxRow` (Insets(0, 8, 0, 8)). */
+/** Combined left + right padding inside a `CustomListRow` (Insets(0, 8, 0, 8)). */
 const COMBOBOX_DROPDOWN_ROW_PADDING_PX = 16;
 
 /**
@@ -102,21 +102,24 @@ const COMBOBOX_DROPDOWN_MIN_WIDTH_PX = 200;
 
 class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 
-    private readonly _rows: ComboBoxRow[] = [];
-    private readonly _onSelect: (index: number) => void;
     /**
-     * Inner scrollable list panel. Rows live here (not directly on the
-     * dropdown root) so a long option list can scroll inside the
-     * `COMBOBOX_DROPDOWN_MAX_HEIGHT_PX` cap instead of overflowing the
-     * viewport — the dropdown root holds the visual chrome and the panel
-     * holds the rows.
+     * Inner [`List`](/api/component/list/classes/List) hosting the option rows.
+     * The list owns the row pool, the keyboard model (ArrowUp/Down /
+     * Home/End / PageUp/Down / Enter / Space / type-ahead), the ARIA
+     * `option`-role wiring, and the per-row hover / selected / focused
+     * chrome. The dropdown wrapper handles only the overlay lifecycle
+     * (fade, anchored positioning, viewport clamp) and the
+     * dropdown-specific width math.
      */
-    private readonly _list: Panel;
+    private readonly _list: List;
     /** Lower bound on the dropdown width — see `COMBOBOX_DROPDOWN_MIN_WIDTH_PX`. */
     private _minWidth: number = COMBOBOX_DROPDOWN_MIN_WIDTH_PX;
 
     /**
-     * @param onSelect - Called with the index of the selected row.
+     * @param onSelect - Called with the index of the row the user picked.
+     *   Fired on click (`CustomListRow.onClick`) and on Enter / Space
+     *   (`AbstractCustomList.commitFocusedRow`) — both paths route
+     *   through the inner list's `change` event.
      */
     constructor(onSelect: (index: number) => void) {
         super(undefined, {
@@ -128,40 +131,52 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
             shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
         });
 
-        this._onSelect = onSelect;
-
         this.getAria().setRole("listbox");
         this.setContain("layout");
 
-        this._list = new Panel({
-            layoutManager: new VBox({ spacing: 0, stretching: true }),
-            autoScroll:    "y",
-            insets:        new Insets(0, 0, 0, 0),
-        });
+        // `Fit` makes the inner list fill the dropdown's content box. The
+        // list's own border is stripped — the dropdown root carries the
+        // visible chrome (border + radius + shadow) so the two never
+        // double-stack.
+        this._list = new List();
+        this._list.setBorder("none");
+        this._list.setBorderRadius("0");
         this.addComponent(this._list);
+
+        // Click and keyboard commits both arrive through the list's
+        // `change` event (fired by `notifyUserChange` after the click /
+        // keyboard reducer mutates the selection set). Programmatic
+        // writes (`setItemsArray`, `setSelectedIndex(idx, false)` used
+        // by `showAt`) bypass this path, so re-opening the dropdown
+        // doesn't trigger a spurious commit.
+        this._list.addActionListener(() => onSelect(this._list.getSelectedIndex()));
     }
 
     /**
-     * Replaces the rendered row list with one entry per label and lays out
-     * the panel anchored below `anchorEl`. The dropdown height is capped at
-     * {@link COMBOBOX_DROPDOWN_MAX_HEIGHT_PX} so long option lists scroll
-     * inside the panel rather than overflowing the viewport.
+     * Replaces the rendered row list with one entry per item, seeds the
+     * inner list's selection from `selectedIndex`, and lays out the panel
+     * anchored below `anchorEl`. The dropdown height is capped at
+     * {@link COMBOBOX_DROPDOWN_MAX_HEIGHT_PX} so long option lists
+     * scroll inside the panel rather than overflowing the viewport.
      *
      * @param anchorEl - Element the dropdown is anchored to.
-     * @param labels - Display labels, in order.
+     * @param items - The option pairs to display.
+     * @param selectedIndex - The row to seed as currently selected, or
+     *   `-1` for no initial selection.
      */
-    showAt(anchorEl: HTMLElement, labels: string[]): this {
+    showAt(anchorEl: HTMLElement, items: Array<ComboBoxItem>, selectedIndex: number): this {
         this.pauseLayout();
-        this.syncRows(labels);
+        this._list.setItemsArray(items);
+        this._list.setSelectedIndex(selectedIndex, false);
         this.resumeLayout();
 
-        // Add the dropdown's border to the natural row stack so the inner Panel
+        // Add the dropdown's border to the natural row stack so the inner List
         // (which receives `outerHeight - border`) has room for the rows without
         // overflowing by 2 px and triggering an unnecessary scrollbar.
         const perim    = this.getPerimiterSize();
         const chromeH  = perim.top + perim.bottom;
         const chromeW  = perim.left + perim.right;
-        const naturalH = labels.length * COMBOBOX_DROPDOWN_ROW_HEIGHT_PX + chromeH;
+        const naturalH = items.length * COMBOBOX_DROPDOWN_ROW_HEIGHT_PX + chromeH;
         const panelH   = Math.min(naturalH, COMBOBOX_DROPDOWN_MAX_HEIGHT_PX);
         const rect     = anchorEl.getBoundingClientRect();
 
@@ -175,7 +190,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         //                                                 but a wide input is the cap
         //                                                 — labels beyond it truncate)
         //   width   = clamp(naturalLabelWidth, floor, ceiling), capped at viewport
-        const labelW       = this.measureWidestLabel(labels);
+        const labelW       = this.measureWidestLabel(items);
         const naturalW     = labelW + COMBOBOX_DROPDOWN_ROW_PADDING_PX + chromeW;
         const floorW       = rect.width;
         const ceilingW     = Math.max(rect.width, this._minWidth);
@@ -188,42 +203,19 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 
         this.showAnimated();
 
-        // VBox positions rows via framework setters that no-op while the
-        // panel's element is detached. Run the layout pass after showAnimated
-        // mounts the panel so rows land at the correct y offsets on first
-        // open.
+        // VBox-backed list positions rows via framework setters that no-op
+        // while the dropdown element is detached. Run the layout pass
+        // after `showAnimated` mounts the panel so rows land at the
+        // correct y offsets on first open.
         this.doLayout();
 
+        // Pull DOM focus to the inner list so its keyboard reducer
+        // (ArrowUp/Down/Home/End/PageUp/Down/Enter/Space/type-ahead)
+        // handles input while the dropdown is open. The host re-focuses
+        // itself on close.
+        this._list.focus();
+
         return this;
-    }
-
-    /**
-     * Reconciles the rendered row pool with `labels`. New rows are added,
-     * surplus rows removed, overlapping rows have their text updated.
-     *
-     * @param labels - The display labels to render.
-     */
-    private syncRows(labels: string[]): void {
-        const newLen = labels.length;
-        const oldLen = this._rows.length;
-        const overlap = Math.min(newLen, oldLen);
-
-        for (let i = 0; i < overlap; i++) {
-            this._rows[i].setLabel(labels[i]);
-        }
-
-        if (newLen > oldLen) {
-            for (let i = oldLen; i < newLen; i++) {
-                const row = this.buildRow(labels[i], i);
-                this._list.addComponent(row);
-                this._rows.push(row);
-            }
-        } else if (newLen < oldLen) {
-            for (let i = newLen; i < oldLen; i++) {
-                this._list.removeComponent(this._rows[i]);
-            }
-            this._rows.splice(newLen);
-        }
     }
 
     /**
@@ -251,18 +243,31 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
     }
 
     /**
+     * Returns the inner [`List`](/api/component/list/classes/List) so the
+     * host can forward store binding, value writes, and other list-side
+     * operations directly. Used by [`ComboBox.setStore`](/api/component/input/classes/ComboBox#setstore)
+     * to mirror its store onto the embedded list.
+     *
+     * @returns The hosted list instance.
+     */
+    getList(): List {
+        return this._list;
+    }
+
+    /**
      * Returns the widest label measured at the row's font, in pixels. Used to
      * size the dropdown wide enough to display the longest entry without
      * truncation (capped at the viewport in `showAt`).
      *
-     * @param labels - The labels to measure.
+     * @param items - The items to measure (only `label` is read).
+     *
      * @returns The maximum measured width across all labels, or `0` when empty.
      */
-    private measureWidestLabel(labels: string[]): number {
+    private measureWidestLabel(items: Array<ComboBoxItem>): number {
         let max = 0;
 
-        for (const label of labels) {
-            const w = Util.measureTextWidth(label);
+        for (const item of items) {
+            const w = Util.measureTextWidth(item.label);
             if (w > max) {
                 max = w;
             }
@@ -270,30 +275,14 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
 
         return max;
     }
-
-    /**
-     * Builds a single dropdown row. The row owns its own listeners (see
-     * {@link ComboBoxRow}) — they suppress focus loss on `pointerdown` and
-     * forward `click` to the dropdown's select callback with this row's
-     * index.
-     *
-     * @param label - Display text.
-     * @param index - Zero-based row index passed to the select callback.
-     * @returns The constructed row component.
-     */
-    private buildRow(label: string, index: number): ComboBoxRow {
-        const row = new ComboBoxRow(this._onSelect, index);
-        row.setLabel(label);
-
-        return row;
-    }
 }
 
-// Static typography for the ComboBox surface and its row pool. Layout
-// (label + caret placement, row text centering) is handled by the
-// framework's HBox manager and per-component `line-height` so no class
-// rule needs to write `display: flex` here. Class rules below match by
-// `this.constructor.name`, which Component auto-tags on every element.
+// Static typography for the ComboBox surface. Layout (label + caret
+// placement) is handled by the framework's HBox manager so no class
+// rule needs to write `display: flex` here. The dropdown's row chrome
+// comes from the shared `.CustomListRow` / `.CustomListRow:hover` /
+// `.CustomListRow.selected` / `.CustomListRow.focused` rules in
+// AbstractCustomList — no ComboBox-side row styling is required.
 (() => {
     new StyleRule({
         scope:  "class",
@@ -313,33 +302,6 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         styles: {
             overflow:     "hidden",
             textOverflow: "ellipsis",
-        },
-    });
-
-    // Row height matches the cached `preferredSize(0, 22)` from the
-    // ComboBoxRow constructor; `lineHeight` centers the single line of text
-    // vertically without `display: flex`. Keep these two values in sync if
-    // the row height changes.
-    // `whiteSpace`/`overflow`/`textOverflow` keep long labels on a single line
-    // and ellipsise them when the row is narrower than the label text — the
-    // row writes textContent directly (not via `Text`) so it doesn't inherit
-    // the Text-level truncation defaults.
-    new StyleRule({
-        scope:  "class",
-        name:   "ComboBoxRow",
-        styles: {
-            lineHeight:   "22px",
-            whiteSpace:   "nowrap",
-            overflow:     "hidden",
-            textOverflow: "ellipsis",
-        },
-    });
-
-    new StyleRule({
-        scope:  "selector",
-        name:   ".ComboBoxRow:hover",
-        styles: {
-            backgroundColor: "var(--ts-ui-autocomplete-item-hover-bg, rgba(30, 100, 200, 0.08))",
         },
     });
 })();
@@ -431,90 +393,6 @@ class ComboBoxCaret extends Component {
         const glyph = new Glyph("chevron-down");
         glyph.setPointerEvents("none");
         this.addComponent(glyph);
-    }
-}
-
-/**
- * A single row inside the dropdown panel. Holds the static row styling via
- * the `.ComboBoxRow` / `.ComboBoxRow:hover` class rules and exposes
- * {@link setLabel} so callers never touch `element.textContent` directly.
- */
-class ComboBoxRow extends Component {
-    // Cached so `setLabel` calls made before the element renders survive to
-    // be applied at render time.
-    private _text: string = "";
-    /** Owner-supplied click handler invoked with this row's `_index`. */
-    private readonly _onSelect: (index: number) => void;
-    /** Zero-based index in the row pool; passed to `_onSelect` on click. */
-    private _index: number;
-
-    constructor(onSelect: (index: number) => void, index: number) {
-        super({ tag: "div" });
-
-        this._onSelect = onSelect;
-        this._index    = index;
-
-        this.setPreferredSize(0, 22);
-        this.setMaxSize(Number.MAX_SAFE_INTEGER, 22);
-        this.setPadding(new Insets(0, 8, 0, 8));
-        this.setCursor("pointer");
-
-        Event.addListener(this, "pointerdown", (e: PointerEvent) => this.onPointerDown(e));
-        Event.addListener(this, "click",       ()                => this.onClick());
-    }
-
-    /**
-     * Updates the rendered row label.
-     *
-     * @param text - The text to display.
-     */
-    setLabel(text: string): this {
-        this._text = text;
-
-        const el = this.getElement();
-        if (el) {
-            el.textContent = text;
-        }
-
-        return this;
-    }
-
-    /**
-     * Updates the index that this row reports through its select callback.
-     * Used when reconciling the pool against a new label list of different
-     * length, so an existing row can be reused at a new position.
-     *
-     * @param index - The new zero-based row index.
-     */
-    setIndex(index: number): this {
-        this._index = index;
-
-        return this;
-    }
-
-    protected render(): HTMLElement {
-        const element = super.render();
-        element.textContent = this._text;
-
-        return element;
-    }
-
-    /**
-     * Suppresses focus loss when the row is pointed at so any host whose blur
-     * commits state (e.g. a pooled cell editor) does not commit before the
-     * row's `click` callback runs.
-     *
-     * @param e - The pointerdown event.
-     */
-    private onPointerDown(e: PointerEvent): void {
-        e.preventDefault();
-    }
-
-    /**
-     * Forwards the row's index to the owner-supplied select callback.
-     */
-    private onClick(): void {
-        this._onSelect(this._index);
     }
 }
 
@@ -720,25 +598,33 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
             return;
         }
 
-        const labels = this._items.map(item => item.label);
-        dropdown.showAt(this.getElement(true), labels);
+        dropdown.showAt(this.getElement(true), this._items, this._selectedIndex);
         this.getAria().setExpanded(true);
         Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
     }
 
     /**
-     * Closes the dropdown if open.
+     * Closes the dropdown if open and returns DOM focus to the ComboBox
+     * surface so subsequent keystrokes route through {@link onKeyDown}
+     * (the inner list, which had focus while the dropdown was open, is
+     * detached on hide and no longer receives input).
      */
     private closeDropdown(): void {
         if (this._dropdown && this._dropdown.isOpen()) {
             Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
             this._dropdown.hideAnimated();
             this.getAria().setExpanded(false);
+            this.focus();
         }
     }
 
     /**
-     * Lazily builds the dropdown instance on first open.
+     * Lazily builds the dropdown instance on first open. Wires the inner
+     * list's `keydown` so Escape pressed while the list holds focus
+     * closes the dropdown — the list itself only clears the type-ahead
+     * buffer on Escape, and the event doesn't bubble back to the
+     * ComboBox surface because the dropdown overlay is parented to
+     * `documentElement`.
      *
      * @returns The owned dropdown instance.
      */
@@ -753,6 +639,23 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
             if (maxW !== undefined) {
                 this._dropdown.setMinWidth(maxW);
             }
+
+            // Mirror the active store onto the inner list so its rows
+            // refresh from `load`/`add`/`remove`/`datachanged`/`sync`
+            // while the dropdown is open. `setStore` may have run before
+            // the dropdown existed; this replays it once at first build.
+            const store        = this._options.store;
+            const displayField = this._options.displayField;
+            if (store && displayField) {
+                this._dropdown.getList().setStore(store, displayField, this._options.valueField);
+            }
+
+            Event.addListener(this._dropdown.getList(), "keydown", (e: KeyboardEvent) => {
+                if (e.key === "Escape") {
+                    e.preventDefault();
+                    this.closeDropdown();
+                }
+            });
         }
 
         return this._dropdown;
@@ -777,28 +680,25 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Handles keydown for keyboard-driven open / navigation.
+     * Handles keydown on the ComboBox surface. Only fires while the
+     * ComboBox itself holds focus — once the dropdown is open the inner
+     * list takes focus and runs its own keyboard reducer
+     * (ArrowUp/Down/Home/End/PageUp/Down/Enter/Space/type-ahead). Escape
+     * pressed while the list holds focus is bridged separately in
+     * {@link ensureDropdown}.
      *
      * @param e - The keyboard event.
      */
     private onKeyDown(e: KeyboardEvent): void {
         switch (e.key) {
             case "ArrowDown":
+            case "ArrowUp":
             case "Enter":
             case " ":
                 e.preventDefault();
+
                 if (!this.ensureDropdown().isOpen()) {
                     this.toggleDropdown();
-                } else {
-                    this.cycleSelection(1);
-                }
-                break;
-            case "ArrowUp":
-                e.preventDefault();
-                if (!this.ensureDropdown().isOpen()) {
-                    this.toggleDropdown();
-                } else {
-                    this.cycleSelection(-1);
                 }
                 break;
             case "Escape":
@@ -807,23 +707,6 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
             default:
                 break;
         }
-    }
-
-    /**
-     * Moves the active selection by `delta` rows, wrapping at both ends.
-     *
-     * @param delta - +1 to advance, -1 to go back.
-     */
-    private cycleSelection(delta: number): void {
-        if (this._items.length === 0) {
-            return;
-        }
-
-        const len = this._items.length;
-        const cur = this._selectedIndex < 0 ? 0 : this._selectedIndex;
-        const next = ((cur + delta) % len + len) % len;
-
-        this.setSelectedIndex(next, true);
     }
 
     /**
@@ -1025,6 +908,14 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         store.on('sync',        refresh);
 
         this.refreshFromStore();
+
+        // Replay the store onto the inner list when it already exists so a
+        // mid-session re-bind is reflected in the dropdown. First-build
+        // replay lives in `ensureDropdown` for the case where `setStore`
+        // ran before the dropdown was lazy-built.
+        if (this._dropdown) {
+            this._dropdown.getList().setStore(store, displayField, valueField);
+        }
 
         return this;
     }
