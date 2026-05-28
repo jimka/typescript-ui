@@ -33,6 +33,16 @@ Tooltip.attach(myButton, 'Danger zone', {
 });
 ```
 
+## Attach to a raw element
+
+Use [`Tooltip.attachToElement`](/api/core/classes/Tooltip#attachToElement) when the target is a raw `HTMLElement` whose child nodes would otherwise capture the hover event — the component-keyed `Tooltip.attach` only matches its host's own element id.
+
+```typescript
+Tooltip.attachToElement(myHeaderCell.getElement()!, 'Field description');
+```
+
+Calling `attachToElement` against an element that already has a binding replaces it: the previous listeners are removed and a fresh set is installed with the new text. When the swap lands on the currently hovered element the visible tooltip repaints immediately at the last known cursor position. Call [`Tooltip.detachElement`](/api/core/classes/Tooltip#detachElement) to remove the binding explicitly.
+
 ## Notes
 
 - Singleton — there is only ever one tooltip on screen.
