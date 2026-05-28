@@ -307,13 +307,15 @@ class MiscPanel extends Panel {
                 // Partial spec: Name gets a minWidth; Score gets a maxWidth.
                 // Notes is hidden initially. col2 (Active) is not listed but is
                 // auto-appended because appendUnlisted defaults to true.
-                // Name carries a headerGlyph to demo the leading-glyph slot.
+                // Name carries a headerGlyph to demo the leading-glyph slot
+                // and `unhideable: true` so its context-menu entry renders
+                // greyed-out with the visible checkmark.
                 // Name + Active are grouped under "Identity"; Joined + Meeting
                 // + LastSeen are grouped under "Activity" with a faint tint so
                 // the parent-row affordance is visible.
                 const spec: ColumnSpec = {
                     columns: [
-                        { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark', group: 'Identity'                                                       },
+                        { field: 'Name'    , minWidth: 150, headerGlyph: 'xmark', group: 'Identity', unhideable: true                                     },
                         { field: 'Active'  , maxWidth: 100,                       group: 'Identity'                                                       },
                         { field: 'Joined'  , minWidth: 120,                       group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },
                         { field: 'Meeting' , minWidth: 100, showSeconds: true,    group: 'Activity', groupColor: 'rgba(30, 100, 200, 0.06)'                },

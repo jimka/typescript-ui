@@ -20,6 +20,7 @@ export class Column {
     private _minWidth    : number | undefined;
     private _maxWidth    : number | undefined;
     private _hidden      : boolean;
+    private _unhideable  : boolean;
     private _headerGlyph : string | null;
     private _group       : string | null;
     private _groupColor  : string | null;
@@ -35,6 +36,7 @@ export class Column {
         this._minWidth    = config?.minWidth;
         this._maxWidth    = config?.maxWidth;
         this._hidden      = config?.hidden ?? false;
+        this._unhideable  = config?.unhideable ?? false;
         this._headerGlyph = config?.headerGlyph ?? null;
         this._group       = config?.group ?? null;
         this._groupColor  = config?.groupColor ?? null;
@@ -74,6 +76,17 @@ export class Column {
      */
     isInitiallyHidden(): boolean {
         return this._hidden;
+    }
+
+    /**
+     * Returns whether this column is marked unhideable in the spec.
+     * Unhideable columns always render and cannot be toggled off via
+     * the column context menu or {@link Table.setColumnVisible}.
+     *
+     * @returns `true` when the spec declared `unhideable: true`.
+     */
+    isUnhideable(): boolean {
+        return this._unhideable;
     }
 
     /**

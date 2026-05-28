@@ -81,7 +81,8 @@ class TreeTable extends Table {
      * @param spec - Tree presentation + hierarchy configuration.
      */
     constructor(store: AbstractStore, spec: TreeTableSpec) {
-        const indentPx = spec.indentPx ?? DEFAULT_INDENT_PX;
+        const indentPx     = spec.indentPx ?? DEFAULT_INDENT_PX;
+        const adjustedSpec = TreeTable.markTreeColumnUnhideable(spec);
 
         // Body factory is a closure capturing `spec` from the constructor
         // parameter, so super() can construct the TreeBody before any
@@ -89,7 +90,7 @@ class TreeTable extends Table {
         // overridable `createBody` method would hit the class-field
         // super-trap here (the field carrying the spec would still be
         // `undefined` when the override ran).
-        super(store, spec, (s) => new TreeBody(s, {
+        super(store, adjustedSpec, (s) => new TreeBody(s, {
             idField:     spec.idField,
             parentField: spec.parentField,
             treeColumn:  spec.treeColumn,
@@ -100,12 +101,26 @@ class TreeTable extends Table {
         this._treeBody = this.getBody() as TreeBody;
 
         this.getAria().setRole("treegrid");
+    }
 
-        // Force the tree column visible even if the spec marked it
-        // `hidden: true`. Hiding it would leave the body with no
-        // tree-cell renderer and no toggle UI; `setColumnVisible`
-        // routes through Table so the header band rebuilds correctly.
-        super.setColumnVisible(spec.treeColumn, true);
+    /**
+     * Returns a clone of `spec` with `unhideable: true` set on the column
+     * matching `spec.treeColumn`. Synthesises a new `ColumnConfig` entry
+     * if the tree column is not listed in `spec.columns`, so that
+     * `appendUnlisted: false` cannot drop the tree column.
+     *
+     * @param spec - The consumer-supplied tree-table spec.
+     *
+     * @returns A new spec object whose `columns` entry for the tree
+     *   column carries `unhideable: true`.
+     */
+    private static markTreeColumnUnhideable(spec: TreeTableSpec): TreeTableSpec {
+        const existing = spec.columns.find(c => c.field === spec.treeColumn);
+        const updated  = existing
+            ? spec.columns.map(c => c.field === spec.treeColumn ? { ...c, unhideable: true } : c)
+            : [...spec.columns, { field: spec.treeColumn, unhideable: true }];
+
+        return { ...spec, columns: updated };
     }
 
     /**
@@ -209,40 +224,6 @@ class TreeTable extends Table {
         return super.addRow(payload);
     }
 
-    /**
-     * Show or hide a column. Hiding the tree column is rejected — the
-     * indent + toggle UI would have nowhere to render and `TreeBody`
-     * would silently lose its expand/collapse affordance. Hiding any
-     * other column delegates to {@link Table.setColumnVisible}.
-     *
-     * @param fieldName - The model field name of the column to toggle.
-     * @param visible   - `true` to show, `false` to hide.
-     *
-     * @returns This table, for method chaining.
-     */
-    setColumnVisible(fieldName: string, visible: boolean): this {
-        if (!visible && fieldName === this._treeSpec.treeColumn) {
-            return this;
-        }
-
-        super.setColumnVisible(fieldName, visible);
-
-        return this;
-    }
-
-    /**
-     * The tree column is unhideable — the indent + toggle UI has
-     * nowhere to render without it. The column-context menu reads
-     * this hook to grey out the corresponding entry.
-     *
-     * @param fieldName - The model field name to query.
-     *
-     * @returns `false` when `fieldName` is the tree column, `true`
-     *   otherwise.
-     */
-    protected isColumnHideable(fieldName: string): boolean {
-        return fieldName !== this._treeSpec.treeColumn;
-    }
 }
 
 const TreeTableCallable = callable(TreeTable);

@@ -19,6 +19,17 @@ export interface ColumnConfig {
     /** When `true` the column starts hidden; the user can still reveal it via the context menu. */
     hidden      ?: boolean;
     /**
+     * When `true` the user cannot hide this column via the context menu;
+     * the entry renders disabled with the visible checkmark, and
+     * `Table.setColumnVisible(field, false)` is a no-op. Takes precedence
+     * over `hidden: true` — an unhideable column never starts hidden.
+     *
+     * Defaults to `false`. The flag does not auto-include the column when
+     * `appendUnlisted: false` excludes unlisted fields; list the column
+     * explicitly in `spec.columns` to mark it unhideable.
+     */
+    unhideable  ?: boolean;
+    /**
      * For `time` and `datetime` columns: when `true` the editor and renderer include seconds.
      * Defaults to `false` (hours and minutes only).
      */
