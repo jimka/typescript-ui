@@ -97,7 +97,7 @@
     "clean": "rimraf dist/*",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
-    "test:lint": "node scripts/eslint/forward-super-options.test.mjs"
+    "test:lint": "node scripts/eslint/forward-super-options.test.mjs && node scripts/eslint/no-element-style.test.mjs"
   },
   "devDependencies": {
     "concurrently": "^6.3.0",
