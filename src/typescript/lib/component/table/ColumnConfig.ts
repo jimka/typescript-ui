@@ -29,6 +29,23 @@ export interface ColumnConfig {
      * explicitly in `spec.columns` to mark it unhideable.
      */
     unhideable  ?: boolean;
+
+    /**
+     * When `true`, every cell in this column is read-only — the value
+     * is displayed but the user cannot edit it. Read-only cells refuse
+     * inline editing (double-click is a no-op), render with a subtle
+     * grey tint sourced from `--ts-ui-table-cell-readonly-bg`, and
+     * present a default cursor on hover instead of the edit affordance.
+     *
+     * Selection, keyboard navigation, sorting, resizing, drag-reorder,
+     * and CSV / JSON export are unaffected — read-only means "value is
+     * fixed," not "row is inert." In a {@link TreeTable}, toggling
+     * expand / collapse on the tree column still works when that column
+     * is read-only (expansion is not editing).
+     *
+     * Defaults to `false`.
+     */
+    readOnly    ?: boolean;
     /**
      * For `time` and `datetime` columns: when `true` the editor and renderer include seconds.
      * Defaults to `false` (hours and minutes only).

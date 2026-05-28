@@ -24,7 +24,7 @@ import { ThemeManager } from "~/core/Theme.js";
  */
 export class Cell<T> extends Component {
 
-    private _readOnly: Boolean;
+    private _readOnly: boolean;
     private _renderer: CellRenderer<T>;
     private _editor: CellEditor<T> | undefined;
     private _editorPool: CellEditorPool | null = null;
@@ -116,6 +116,36 @@ export class Cell<T> extends Component {
      */
     isReadOnly() {
         return !!this._readOnly;
+    }
+
+    /**
+     * Sets whether this cell is read-only. Read-only cells refuse
+     * {@link Cell.startEdit}, render with the
+     * `--ts-ui-table-cell-readonly-bg` tint, and present a default
+     * cursor instead of any renderer-supplied edit affordance.
+     * Idempotent.
+     *
+     * Body rows call this from their cell-construction loop based on
+     * the column's `ColumnConfig.readOnly` flag — application code
+     * should declare read-only at the column level rather than calling
+     * this setter directly on a cell.
+     *
+     * @param value - `true` to mark read-only, `false` to restore the
+     *   default editable appearance.
+     * @returns This cell, for method chaining.
+     */
+    setReadOnly(value: boolean): this {
+        this._readOnly = value;
+
+        if (value) {
+            this.setBackgroundColor('var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))');
+            this.setCursor('default');
+        } else {
+            this.setBackgroundColor('var(--ts-ui-table-cell-bg, transparent)');
+            this.clearCursor();
+        }
+
+        return this;
     }
 
     /**

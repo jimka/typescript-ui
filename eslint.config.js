@@ -1,5 +1,6 @@
 import tseslint from "typescript-eslint";
 import forwardSuperOptions from "./scripts/eslint/forward-super-options.js";
+import noElementStyle from "./scripts/eslint/no-element-style.js";
 
 // typescript-eslint's `recommended` config surfaces ~860 pre-existing
 // stylistic issues (prefer-const, no-explicit-any, …) across the 172-file
@@ -13,10 +14,26 @@ export default tseslint.config(
             parser: tseslint.parser,
         },
         plugins: {
-            local: { rules: { "forward-super-options": forwardSuperOptions } },
+            local: {
+                rules: {
+                    "forward-super-options": forwardSuperOptions,
+                    "no-element-style"     : noElementStyle,
+                },
+            },
         },
         rules: {
             "local/forward-super-options": "error",
+        },
+    },
+    {
+        // Component code must route style writes through Component setters.
+        // Scoped to the component tree only: core/Component.ts and the
+        // applyStyle plumbing legitimately touch element.style. Starts at
+        // "warn" — there are ~38 pre-existing call sites under component/
+        // that a follow-up pass will convert.
+        files: ["src/typescript/lib/component/**/*.ts"],
+        rules: {
+            "local/no-element-style": "warn",
         },
     },
     {

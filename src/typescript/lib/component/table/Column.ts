@@ -21,6 +21,7 @@ export class Column {
     private _maxWidth    : number | undefined;
     private _hidden      : boolean;
     private _unhideable  : boolean;
+    private _readOnly    : boolean;
     private _headerGlyph : string | null;
     private _group       : string | null;
     private _groupColor  : string | null;
@@ -37,6 +38,7 @@ export class Column {
         this._maxWidth    = config?.maxWidth;
         this._hidden      = config?.hidden ?? false;
         this._unhideable  = config?.unhideable ?? false;
+        this._readOnly    = config?.readOnly ?? false;
         this._headerGlyph = config?.headerGlyph ?? null;
         this._group       = config?.group ?? null;
         this._groupColor  = config?.groupColor ?? null;
@@ -87,6 +89,17 @@ export class Column {
      */
     isUnhideable(): boolean {
         return this._unhideable;
+    }
+
+    /**
+     * Returns whether this column is marked read-only in the spec.
+     * Every cell in a read-only column refuses inline editing and
+     * renders with a grey tint.
+     *
+     * @returns `true` when the spec declared `readOnly: true`.
+     */
+    isReadOnly(): boolean {
+        return this._readOnly;
     }
 
     /**

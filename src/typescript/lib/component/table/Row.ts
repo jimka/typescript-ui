@@ -110,6 +110,15 @@ class Row extends Component {
                     cell.setBackgroundColor(groupColor);
                 }
 
+                // Read-only wins over groupColor: this write lands
+                // after the groupColor block so the read-only tint
+                // overrides any group tint and the cell refuses inline
+                // editing.
+                const readOnly = columnConfigs.get(field.getName())?.readOnly;
+                if (readOnly) {
+                    cell.setReadOnly(true);
+                }
+
                 // For the tree column, wrap the typed renderer in a
                 // `TreeCellRenderer` so the cell draws an indent + an
                 // expand/collapse toggle to the left of the value. The
