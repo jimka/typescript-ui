@@ -31,6 +31,7 @@ class Header extends Component {
     private _columns: Column[] = [];
     private _onResizeCallback: ((colIndex: number, delta: number) => void) | null = null;
     private _onColumnContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
+    private _scrollbarCover: HTMLDivElement | null = null;
 
     constructor(model: AbstractModel, store: AbstractStore) {
         super({ tag: "thead" });
@@ -38,6 +39,9 @@ class Header extends Component {
         this.getAria().setRole("rowgroup");
         this.setBorder({ bottom: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-table-header-border, black)" } });
         this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
+        // Clip cells that would otherwise extend past the header's right
+        // edge when the inner rows are translated horizontally.
+        this.setOverflow("hidden");
 
         this._model = model;
         this._store = store;
@@ -195,6 +199,42 @@ class Header extends Component {
         return this._columns
             .filter(c => !this._hiddenColumns.has(c.getField().getName()))
             .some(c => c.getGroup() !== null);
+    }
+
+    /**
+     * Returns the cover element that masks the vertical-scrollbar reservation
+     * band at the header's right edge. Created lazily on first access; sized
+     * and positioned by the table layout. Carries the same gradient as the
+     * header so cells translated horizontally appear to clip at the trackW
+     * boundary while the reservation band stays visually continuous with
+     * the rest of the header.
+     */
+    getScrollbarCover(): HTMLDivElement {
+        if (this._scrollbarCover === null) {
+            const cover = document.createElement("div");
+            cover.style.position        = "absolute";
+            cover.style.top             = "0";
+            cover.style.boxSizing       = "border-box";
+            // Inner rows are Components with `z-index: 0`, which creates a
+            // stacking context that paints AFTER positioned siblings with
+            // `z-index: auto`. Without an explicit z-index here the cover
+            // would be painted beneath the rows and cells could be seen
+            // bleeding into the scrollbar-reservation band.
+            cover.style.zIndex          = "1";
+            // Presentational only; don't intercept pointer events so column
+            // resize handles whose cells happen to be horizontally scrolled
+            // under the cover still receive clicks.
+            cover.style.pointerEvents   = "none";
+            cover.style.backgroundImage = "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))";
+            // Left border matches the column-cell right border so the cover
+            // reads as a visual continuation of the column separators
+            // rather than a seam in the gradient.
+            cover.style.borderLeft      = "1px solid var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))";
+            this.getElement(true).appendChild(cover);
+            this._scrollbarCover = cover;
+        }
+
+        return this._scrollbarCover;
     }
 
     /**

@@ -69,6 +69,9 @@ class Body extends Component {
     private _focusedColIndex: number                    = 0;
     private _editorPool      : CellEditorPool            = new CellEditorPool();
     private _header          : Header | null             = null;
+    private _onSelectionChange : ((records: ModelRecord[]) => void) | null = null;
+    private _onVerticalScroll  : ((scrollTop: number)     => void) | null = null;
+    private _onHorizontalScroll: ((scrollLeft: number)    => void) | null = null;
 
     constructor(store: AbstractStore) {
         super({ tag: "tbody" });
@@ -459,7 +462,17 @@ class Body extends Component {
             return this;
         }
 
-        this._scroller = new VirtualScroller(this, el, () => this.renderWindow());
+        this._scroller = new VirtualScroller(this, el, () => {
+            this.renderWindow();
+            if (this._scroller) {
+                if (this._onVerticalScroll) {
+                    this._onVerticalScroll(this._scroller.getScrollY());
+                }
+                if (this._onHorizontalScroll) {
+                    this._onHorizontalScroll(this._scroller.getScrollX());
+                }
+            }
+        });
 
         Event.addListener(this, "focus", () => {
             this._updateActiveDescendant();
@@ -533,6 +546,15 @@ class Body extends Component {
         const records   = this.getVisibleRecords();
         const totalRows = records.length;
 
+        // Capture scroll positions before clampToContent / layoutScrollbars
+        // (called below) potentially shrink them in place. Those calls don't
+        // go through setScrollX/Y, so the VirtualScroller's onScroll hook
+        // never fires — without an explicit notification here the header's
+        // horizontal translate would stay stuck at the pre-clamp value when
+        // a widen-to-fit layout drops scrollX back toward 0.
+        const prevScrollX = scroller.getScrollX();
+        const prevScrollY = scroller.getScrollY();
+
         this.updateColumnWidthCache(bodyWidth, columnWidths);
 
         // Loose-clamp scroll positions against the new content sizes before
@@ -564,6 +586,15 @@ class Body extends Component {
         }
 
         scroller.layoutScrollbars(totalContentWidth, totalHeight);
+
+        const newScrollX = scroller.getScrollX();
+        const newScrollY = scroller.getScrollY();
+        if (newScrollX !== prevScrollX && this._onHorizontalScroll) {
+            this._onHorizontalScroll(newScrollX);
+        }
+        if (newScrollY !== prevScrollY && this._onVerticalScroll) {
+            this._onVerticalScroll(newScrollY);
+        }
 
         this._updateFocusStyle();
     }
@@ -927,6 +958,83 @@ class Body extends Component {
      */
     getSelectedRecords(): ModelRecord[] {
         return [...this._selectedRecords];
+    }
+
+    /**
+     * Replaces the selected-record set with exactly the given records.
+     * Mirrors {@link selectRecord} but accepts a multi-record list.
+     *
+     * Does not invoke the callback registered via
+     * {@link setOnSelectionChange} — the asymmetry between this setter
+     * and the user-driven click/keyboard paths is what lets
+     * [`PinnedTable`](/api/component/table/classes/PinnedTable) mirror
+     * selection between two bodies without an infinite loop.
+     *
+     * @param records - The records that should appear selected. The
+     *   first record (if any) becomes the new anchor.
+     */
+    setSelectedRecords(records: ModelRecord[]): void {
+        this._selectedRecords.clear();
+        this._anchorRecord = records.length > 0 ? records[0] : null;
+
+        for (const record of records) {
+            this._selectedRecords.add(record);
+        }
+
+        this._boundIndices.forEach((dataIdx, i) => {
+            if (dataIdx !== -1) this.updateRowVisualState(i);
+        });
+    }
+
+    /**
+     * Registers a callback fired after a user-driven selection change
+     * mutates this body's selected-record set. Single callback;
+     * calling again replaces the previous registration. Pass `null`
+     * to clear.
+     *
+     * @param fn - Receives the new selected-record array, or `null`
+     *   to remove the previous callback.
+     *
+     * @remarks Fires from `onRowClick` and the row-navigation branch
+     * of `onKeyDown`, never from programmatic {@link selectRecord} /
+     * {@link setSelectedRecords} calls — that asymmetry lets
+     * [`PinnedTable`](/api/component/table/classes/PinnedTable) mirror
+     * selection between two bodies without an infinite loop.
+     */
+    setOnSelectionChange(fn: ((records: ModelRecord[]) => void) | null): void {
+        this._onSelectionChange = fn;
+    }
+
+    /**
+     * Registers a callback fired after the body scrolls vertically.
+     * Single callback; calling again replaces the previous registration.
+     * Pass `null` to clear.
+     *
+     * @param fn - Receives the new `scrollY` in pixels, or `null` to
+     *   remove the previous callback.
+     *
+     * @remarks Used by
+     * [`PinnedTable`](/api/component/table/classes/PinnedTable) to mirror
+     * `scrollY` from the scroll-side body into the pinned-side body. The
+     * callback is invoked from the {@link VirtualScroller}'s onScroll
+     * hook (see `init`) — the body uses transform-based virtual scroll,
+     * so the native DOM `scroll` event never fires.
+     */
+    setOnVerticalScroll(fn: ((scrollTop: number) => void) | null): void {
+        this._onVerticalScroll = fn;
+    }
+
+    /**
+     * Registers a callback fired after the body scrolls horizontally.
+     * Same shape as {@link setOnVerticalScroll}; used by `Table` to mirror
+     * `scrollX` into the header's transform so column headers stay aligned
+     * with the body cells they label.
+     *
+     * @param fn - Receives the new `scrollX` in pixels, or `null` to
+     *   remove the previous callback.
+     */
+    setOnHorizontalScroll(fn: ((scrollLeft: number) => void) | null): void {
+        this._onHorizontalScroll = fn;
     }
 
     /**
