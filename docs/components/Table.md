@@ -46,6 +46,7 @@ const table = Table(store, {
 | `minWidth` / `maxWidth` | Width constraints in pixels. |
 | `hidden` | Initial hidden state. |
 | `unhideable` | When `true`, the user cannot hide this column from the context menu. Takes precedence over `hidden`. |
+| `readOnly` | When `true`, every cell in this column is display-only — double-click does not start an editor, and the cell renders with a subtle grey tint sourced from `--ts-ui-table-cell-readonly-bg`. Selection, keyboard navigation, sort, resize, and export still work. |
 | `showSeconds` | For `time` / `datetime` columns: include seconds. |
 | `headerGlyph` | Registry glyph name shown to the left of the header text. |
 | `group` | Parent-header group name. See [Parent headers](#parent-headers). |

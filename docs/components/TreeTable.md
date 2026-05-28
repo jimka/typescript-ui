@@ -49,7 +49,9 @@ panel.addComponent(tree);
 | `treeColumn` | Field name of the column whose cell carries the indent + toggle. |
 | `indentPx` | Pixels of indentation per depth level. Defaults to `16`. |
 
-Every other `ColumnSpec` field (`columns`, `appendUnlisted`, plus the per-column knobs `minWidth`, `maxWidth`, `hidden`, `showSeconds`, `headerGlyph`, `group`, `groupColor`) works unchanged.
+Every other `ColumnSpec` field (`columns`, `appendUnlisted`, plus the per-column knobs `minWidth`, `maxWidth`, `hidden`, `readOnly`, `showSeconds`, `headerGlyph`, `group`, `groupColor`) works unchanged.
+
+A read-only tree column still expands and collapses — toggling expansion is not editing. Mark non-tree columns `readOnly: true` to make them display-only without affecting the tree's structural interactions.
 
 The tree column is automatically marked `unhideable: true` so the indent and expand/collapse toggle always have a place to render. You may also declare `unhideable: true` on any other column in `spec.columns`.
 
