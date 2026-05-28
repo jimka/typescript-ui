@@ -276,7 +276,6 @@ class Row extends Component {
 
             if (!cell) {
                 cell = Row.createCellForField(field, columnConfigs);
-                cell.setValue(this._data ? this._data.get(fieldName) : undefined);
             }
 
             cell.setOnCommit((newValue) => {
@@ -307,6 +306,7 @@ class Row extends Component {
 
             if (isNew) {
                 this.addComponent(cell, { data: field });
+                cell.setValue(this._data ? this._data.get(fieldName) : undefined);
             }
         }
 
