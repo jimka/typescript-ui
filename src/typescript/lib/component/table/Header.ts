@@ -279,44 +279,90 @@ class Header extends Component {
     }
 
     /**
-     * Removes all existing column-header cells and recreates them from the
-     * visible fields of the current model, then re-syncs sort indicators.
+     * Reconciles the column-row's header cells against the current
+     * model's visible fields. Surviving cells (whose field is still
+     * visible) keep their sort indicator, resize-handle wiring,
+     * tooltip, theme listener, and `setColumnFocused` state; cells for
+     * newly-visible fields are constructed and wired; cells for
+     * now-hidden fields are removed.
+     *
      * Operates on the column row at child index 1; the parent row at
      * index 0 is rebuilt separately in {@link rebuildParentCells}.
      */
     private rebuildCells(): void {
         const row = this.getComponents()[1] as Row;
 
-        row.removeAllComponents();
-
-        const fields = this._model.getFields()
-                                 .slice()
-                                 .filter(f => !this._hiddenColumns.has(f.getName()))
-                                 .sort((a, b) => a.getOrder() - b.getOrder());
+        const targetFields = this._model.getFields()
+                                       .slice()
+                                       .filter(f => !this._hiddenColumns.has(f.getName()))
+                                       .sort((a, b) => a.getOrder() - b.getOrder());
 
         const columnMap = new Map(this._columns.map(c => [c.getField().getName(), c]));
+        const existing  = row.getComponents().slice() as HeaderCell[];
+        const byName    = new Map<string, HeaderCell>();
 
-        for (let i = 0; i < fields.length; i++) {
-            const field = fields[i];
+        for (const cell of existing) {
+            const lc    = row.getLayoutConstraints(cell);
+            const field = lc?.data as Field | undefined;
+
+            if (field) {
+                byName.set(field.getName(), cell);
+            }
+        }
+
+        const targetNames = new Set(targetFields.map(f => f.getName()));
+
+        for (const cell of existing) {
+            const lc    = row.getLayoutConstraints(cell);
+            const field = lc?.data as Field | undefined;
+
+            if (!field || !targetNames.has(field.getName())) {
+                row.removeComponent(cell);
+            }
+        }
+
+        for (let i = 0; i < targetFields.length; i++) {
+            const field = targetFields[i];
             const col   = columnMap.get(field.getName());
-            const glyph = col?.getHeaderGlyph() ?? null;
-            const cell  = new HeaderCell(field.getName(), field.getName(), glyph);
+            let   cell  = byName.get(field.getName());
 
-            cell.setTooltip(field.getDescription());
+            if (!cell) {
+                const glyph = col?.getHeaderGlyph() ?? null;
 
-            // Tint the column header with the group's `groupColor` so the
-            // header band reads as one visual group above the matching
-            // body-cell tint applied in Row.ts. `Cell`'s theme-change
-            // listener only re-applies the border, so this background
-            // survives a theme swap.
+                cell = new HeaderCell(field.getName(), field.getName(), glyph);
+                cell.setTooltip(field.getDescription());
+
+                row.addComponent(cell, { data: field });
+            }
+
+            // Tint the column header with the group's `groupColor` so
+            // the header band reads as one visual group above the
+            // matching body-cell tint applied in Row.ts. `Cell`'s
+            // theme-change listener only re-applies the border, so
+            // this background survives a theme swap. Re-applied on
+            // every sync so a config swap that changed the tint also
+            // takes effect.
             const groupColor = col?.getGroupColor();
+
             if (groupColor) {
                 cell.setBackgroundColor(groupColor);
             }
 
-            row.addComponent(cell, { data: field });
+            // Re-wire on every sync so the resize-callback closure
+            // captures the new visible-column index when an earlier
+            // column was hidden/shown.
             this.wireCell(cell, i);
         }
+
+        // Re-order children to the new visible-field display order so
+        // sibling iteration (e.g. `syncSortIndicators`) matches the
+        // visible-field list index.
+        row.sortComponents((c1, c2) => {
+            const f1 = (row.getLayoutConstraints(c1)?.data as Field).getOrder();
+            const f2 = (row.getLayoutConstraints(c2)?.data as Field).getOrder();
+
+            return f1 - f2;
+        });
 
         this.syncSortIndicators();
     }
