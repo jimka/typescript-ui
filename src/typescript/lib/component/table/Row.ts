@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { AbstractModel } from "~/data/AbstractModel.js";
+import { Field } from "~/data/Field.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Cell } from "~/component/table/cell/Cell.js";
 import { DefaultCell } from "~/component/table/cell/Default.js";
@@ -63,34 +64,7 @@ class Row extends Component {
             for (let idx in fields) {
                 let field = fields[idx];
                 let value = this._data ? this._data.get(field.getName()) : undefined;
-                let cell;
-
-                switch (field.getType()) {
-                    case "string":
-                        cell = new StringCell();
-                        break;
-                    case "number":
-                        cell = new NumberCell();
-                        break;
-                    case "boolean":
-                        cell = new BooleanCell();
-                        break;
-                    case "date":
-                        cell = new DateCell();
-                        break;
-                    case "time":
-                        cell = new TimeCell(columnConfigs.get(field.getName())?.showSeconds ?? false);
-                        break;
-                    case "datetime":
-                        cell = new DateTimeCell(columnConfigs.get(field.getName())?.showSeconds ?? false);
-                        break;
-                    case "glyph":
-                        cell = new GlyphCell();
-                        break;
-                    default:
-                        cell = new DefaultCell();
-                        break;
-                }
+                let cell  = Row.createCellForField(field, columnConfigs);
 
                 cell.setValue(value);
                 cell.setOnCommit((newValue) => {
@@ -222,6 +196,163 @@ class Row extends Component {
         super.addComponent(cell, constraints);
 
         return this;
+    }
+
+    /**
+     * Rebuilds this row's cell set in place to match `model`'s currently-
+     * visible fields. Cells whose field is still visible are preserved
+     * (along with their renderer, editor, theme listener, sort state,
+     * group tint, etc.); cells whose field is now hidden are committed
+     * (if editing) and removed; cells for newly-visible fields are
+     * constructed via the same typed switch as the constructor.
+     *
+     * The child order is re-sorted to match the visible-field display
+     * order. The tree column's cell, if any, is wrapped in a
+     * {@link TreeCellRenderer} only on first creation — surviving tree
+     * cells keep the renderer they already have.
+     *
+     * @param model - The model whose visible fields drive the cell list.
+     * @param hiddenColumns - The set of field names to exclude.
+     * @param columnConfigs - Per-field configs (carries `showSeconds`,
+     *   `groupColor`, etc.).
+     * @param treeFieldName - Optional. Field name of the column that
+     *   carries the tree-cell renderer; matches the constructor's
+     *   parameter of the same name.
+     *
+     * @returns This row, for method chaining.
+     */
+    syncCells(
+        model: AbstractModel,
+        hiddenColumns: Set<string>,
+        columnConfigs: Map<string, ColumnConfig>,
+        treeFieldName?: string,
+    ): this {
+        this._model = model;
+
+        const targetFields = model.getFields()
+                                  .filter(f => !hiddenColumns.has(f.getName()))
+                                  .sort((f1, f2) => f1.getOrder() - f2.getOrder());
+
+        const existing = this.getComponents().slice() as Cell<any>[];
+        const byName   = new Map<string, Cell<any>>();
+
+        for (const cell of existing) {
+            const lc    = this.getLayoutConstraints(cell);
+            const field = lc?.data as Field | undefined;
+
+            if (field) {
+                byName.set(field.getName(), cell);
+            }
+        }
+
+        // Remove cells whose field is no longer visible. Commit any
+        // in-flight edit before discarding so user keystrokes land on
+        // the record (mirrors the blur-commits-edit contract).
+        const targetNames = new Set(targetFields.map(f => f.getName()));
+
+        for (const cell of existing) {
+            const lc    = this.getLayoutConstraints(cell);
+            const field = lc?.data as Field | undefined;
+
+            if (!field || !targetNames.has(field.getName())) {
+                if (cell.isEditing()) {
+                    cell.commitEdit();
+                }
+
+                this.removeComponent(cell);
+            }
+        }
+
+        // Walk target fields in display order. Build any missing cell;
+        // re-apply the commit wire and group tint on every (new and
+        // surviving) cell so a config swap that changed the tint also
+        // takes effect.
+        this._treeCell = null;
+
+        for (const field of targetFields) {
+            let cell        = byName.get(field.getName());
+            const isNew     = !cell;
+            const fieldName = field.getName();
+
+            if (!cell) {
+                cell = Row.createCellForField(field, columnConfigs);
+            }
+
+            cell.setOnCommit((newValue) => {
+                if (this._data) {
+                    this._data.set(fieldName, newValue);
+                    this._onCellCommit?.(this._data);
+                }
+                this.updateVisualState();
+            });
+
+            const groupColor = columnConfigs.get(fieldName)?.groupColor;
+
+            if (groupColor) {
+                cell.setBackgroundColor(groupColor);
+            }
+
+            // Wrap the tree-column cell only when it's newly created —
+            // a surviving tree cell already has its `TreeCellRenderer`,
+            // and re-wrapping would chain renderers and double-register
+            // a theme listener per toggle.
+            if (isNew && treeFieldName !== undefined && fieldName === treeFieldName) {
+                cell.wrapRenderer((delegate: CellRenderer<any>) => new TreeCellRenderer(delegate));
+            }
+
+            if (treeFieldName !== undefined && fieldName === treeFieldName) {
+                this._treeCell = cell;
+            }
+
+            if (isNew) {
+                this.addComponent(cell, { data: field });
+                cell.setValue(this._data ? this._data.get(fieldName) : undefined);
+            }
+        }
+
+        // Re-order children to the new visible-field order. Mirrors
+        // `Header.sortColumns` — same `Field` payload from the layout
+        // constraints drives both.
+        this.sortComponents((c1, c2) => {
+            const f1 = (this.getLayoutConstraints(c1)?.data as Field).getOrder();
+            const f2 = (this.getLayoutConstraints(c2)?.data as Field).getOrder();
+
+            return f1 - f2;
+        });
+
+        this._fieldNames = targetFields.map(f => f.getName());
+
+        return this;
+    }
+
+    /**
+     * Builds the typed `Cell` for `field`, applying any field-specific
+     * options from `columnConfigs` (e.g. `showSeconds` on time cells).
+     *
+     * @param field - The field whose typed cell to construct.
+     * @param columnConfigs - Per-field configs keyed by field name.
+     *
+     * @returns A new typed cell matching `field.getType()`.
+     */
+    private static createCellForField(field: Field, columnConfigs: Map<string, ColumnConfig>): Cell<any> {
+        switch (field.getType()) {
+            case "string":
+                return new StringCell();
+            case "number":
+                return new NumberCell();
+            case "boolean":
+                return new BooleanCell();
+            case "date":
+                return new DateCell();
+            case "time":
+                return new TimeCell(columnConfigs.get(field.getName())?.showSeconds ?? false);
+            case "datetime":
+                return new DateTimeCell(columnConfigs.get(field.getName())?.showSeconds ?? false);
+            case "glyph":
+                return new GlyphCell();
+            default:
+                return new DefaultCell();
+        }
     }
 
     /**

@@ -227,8 +227,13 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         // so synthesize a "click" on the root so a programmatic state flip
         // continues to fire it. The user-toggle handler lives on `_box`, not
         // the root, so this synthetic event no longer races back into the
-        // toggle path.
-        Event.fireEvent(this, "click");
+        // toggle path. Skip the synthetic click pre-mount — listeners haven't
+        // attached yet and `fireEvent` would throw on the missing element.
+        if (this.getElement()) {
+            Event.fireEvent(this, "click");
+        } else {
+            console.warn("Checkbox '" + this.getId() + "' setSelected before mount; synthetic 'click' skipped.");
+        }
 
         return this;
     }
