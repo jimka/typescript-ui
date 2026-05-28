@@ -14,7 +14,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-class BooleanCell extends Cell<Boolean> {
+class BooleanCell extends Cell<Boolean | null> {
 
     private _checkbox: BooleanEditor;
 
@@ -42,9 +42,12 @@ class BooleanCell extends Cell<Boolean> {
      * edit/commit cycle; changes are committed immediately on each checkbox interaction.
      * Routed through the cached editor reference rather than `getRenderer()` so the
      * wiring survives a [`TreeCellRenderer`](/api/component/table/classes/TreeCellRenderer)
-     * wrap when the column is the tree column.
+     * wrap when the column is the tree column. The callback only fires
+     * for user interaction, which always lands on a concrete `true`/`false`;
+     * the `null` branch of the parameter type is included for consistency
+     * with the editor's signature but is never emitted by the editor.
      */
-    setOnCommit(fn: (value: Boolean) => void): void {
+    setOnCommit(fn: (value: Boolean | null) => void): void {
         this._checkbox.setOnChange(fn);
     }
 
@@ -56,11 +59,13 @@ class BooleanCell extends Cell<Boolean> {
     }
 
     /**
-     * Sets the checkbox checked state.
+     * Sets the checkbox checked state. `null` and `undefined` put the
+     * checkbox into the indeterminate (mixed) state.
      *
-     * @param value - The boolean value to reflect on the checkbox.
+     * @param value - The boolean value to reflect on the checkbox, or
+     *   `null`/`undefined` to render the indeterminate state.
      */
-    setValue(value: Boolean) : this {
+    setValue(value: Boolean | null): this {
         this.getRenderer().setValue(value);
 
         return this;

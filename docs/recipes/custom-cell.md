@@ -14,8 +14,9 @@ A [`CellRenderer<T>`](/api/component/table/classes/CellRenderer) is responsible 
 import { AnchorType, FillType } from '@jimka/typescript-ui/layout';
 import { Text } from '@jimka/typescript-ui/component/input';
 import { CellRenderer } from '@jimka/typescript-ui/component/table';
-class CurrencyRenderer extends CellRenderer<number> {
-    private text: Text = Text();
+class CurrencyRenderer extends CellRenderer<number | null> {
+    private text:  Text          = Text();
+    private value: number | null = null;
 
     constructor() {
         super();
@@ -26,15 +27,28 @@ class CurrencyRenderer extends CellRenderer<number> {
         });
     }
 
-    setValue(value: number): void {
+    getValue(): number | null {
+        return this.value;
+    }
+
+    setValue(value: number | null): void {
+        this.value = value ?? null;
+        if (this.value === null) {
+            this.text.setText('');
+            return;
+        }
         const formatted = new Intl.NumberFormat('en-US', {
             style:    'currency',
             currency: 'USD',
-        }).format(value);
+        }).format(this.value);
         this.text.setText(formatted);
     }
 }
 ```
+
+Widen the generic to `number | null` and cache the value in a private
+field. Reading it back from the formatted DOM text would silently coerce
+an empty cell into `0` — caching keeps the round-trip honest.
 
 ## Build the editor
 
@@ -44,25 +58,35 @@ A [`CellEditor<T>`](/api/component/table/classes/CellEditor) takes over on doubl
 import { Event } from '@jimka/typescript-ui/core';
 import { TextField } from '@jimka/typescript-ui/component/input';
 import { CellEditor } from '@jimka/typescript-ui/component/table';
-class CurrencyEditor extends CellEditor<number> {
-    private input: TextField = TextField();
+class CurrencyEditor extends CellEditor<number | null> {
+    private input: TextField     = TextField();
+    private value: number | null = null;
 
     constructor() {
         super();
         this.addComponent(this.input);
+        Event.addListener(this.input, 'input', () => {
+            const raw    = this.input.getValue();
+            const parsed = parseFloat(raw);
+            this.value   = raw && !Number.isNaN(parsed) ? parsed : null;
+        });
     }
 
-    setValue(value: number): void {
-        this.input.setValue(value.toFixed(2));
+    setValue(value: number | null): void {
+        this.value = value ?? null;
+        this.input.setValue(this.value === null ? '' : this.value.toFixed(2));
         this.input.select();
     }
 
-    getValue(): number {
-        const parsed = parseFloat(this.input.getValue());
-        return Number.isNaN(parsed) ? 0 : parsed;
+    getValue(): number | null {
+        return this.value;
     }
 }
 ```
+
+Match the renderer's `number | null` generic and cache the parsed value
+on every `input` event. Empty input and unparseable text both commit as
+`null` rather than silently falling back to `0` or `NaN`.
 
 ## Compose the cell
 
@@ -74,7 +98,7 @@ Pass the editor straight to the base-class constructor. Each cell instance alloc
 
 ```typescript
 import { Cell } from '@jimka/typescript-ui/component/table';
-class CurrencyCell extends Cell<number> {
+class CurrencyCell extends Cell<number | null> {
     constructor() {
         super('td', new CurrencyRenderer(), new CurrencyEditor());
     }
@@ -89,7 +113,7 @@ A [`CellEditorPool`](/api/component/table/classes/CellEditorPool) lives on every
 
 ```typescript
 import { Cell } from '@jimka/typescript-ui/component/table';
-class CurrencyCell extends Cell<number> {
+class CurrencyCell extends Cell<number | null> {
     constructor() {
         super('td', new CurrencyRenderer());
     }
@@ -131,6 +155,8 @@ A custom cell automatically gets the standard edit lifecycle:
 - The editor's `setValue` is called with the current cell value.
 - Blur or **Enter** commits — `editor.getValue()` is called and the result is written back to the bound [`ModelRecord`](/data/record) field.
 - **Escape** cancels and reverts.
+
+Empty input commits `null`; consumers must read the bound field as `T | null`.
 
 ## See also
 

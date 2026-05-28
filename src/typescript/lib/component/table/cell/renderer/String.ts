@@ -7,13 +7,16 @@ import { callable } from "~/core/Callable.js";
 /**
  * A read-only renderer for string cell values.
  *
- * Displays the value via a {@link Text}.
+ * Displays the value via a {@link Text}. Caches the last value passed
+ * to {@link setValue} so {@link getValue} returns `null` for an empty
+ * cell, distinct from the empty-string render the user sees.
  *
  * @category Components
  */
-class StringRenderer extends CellRenderer<String> {
+class StringRenderer extends CellRenderer<String | null> {
 
-    private _text: Text = new Text();
+    private _text:  Text          = new Text();
+    private _value: String | null = null;
 
     constructor() {
         super();
@@ -29,26 +32,29 @@ class StringRenderer extends CellRenderer<String> {
      *
      * @returns The underlying {@link Text}.
      */
-    getText() {
+    getText(): Text {
         return this._text;
     }
 
     /**
-     * Returns the current displayed text.
+     * Returns the cached string value, or `null` when the cell is empty.
      *
-     * @returns The displayed string value.
+     * @returns The displayed string value, or `null`.
      */
-    getValue() {
-        return this._text.getText();
+    getValue(): String | null {
+        return this._value;
     }
 
     /**
-     * Sets the displayed text, defaulting to an empty string for falsy values.
+     * Caches the value and renders it as text. `null` and `undefined`
+     * are both normalised to `null` and render as the empty string.
      *
-     * @param value - The string value to display.
+     * @param value - The string value to display, or `null`/`undefined`
+     *   to clear the cell.
      */
-    setValue(value: String) : this {
-        this._text.setText(value || "");
+    setValue(value: String | null): this {
+        this._value = value ?? null;
+        this._text.setText(this._value === null ? "" : String(this._value));
 
         return this;
     }
