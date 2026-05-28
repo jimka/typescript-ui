@@ -13,7 +13,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-class NumberCell extends Cell<Number> {
+class NumberCell extends Cell<Number | null> {
 
     constructor() {
         let renderer = new NumberRenderer();
@@ -31,11 +31,13 @@ class NumberCell extends Cell<Number> {
     }
 
     /**
-     * Sets the displayed numeric value on the renderer.
+     * Sets the displayed numeric value on the renderer. `null` and
+     * `undefined` render the cell as blank.
      *
-     * @param value - The numeric value to display.
+     * @param value - The numeric value to display, or `null`/`undefined`
+     *   to clear the cell.
      */
-    setValue(value: Number): this {
+    setValue(value: Number | null): this {
         this.getRenderer().setValue(value);
 
         return this;

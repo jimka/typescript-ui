@@ -2966,6 +2966,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._inlineStyle.set("transition", this._transition);
         }
 
+        if (this._opacity !== null) {
+            this._inlineStyle.set("opacity", String(this._opacity));
+        }
+
         if (this._userSelect) {
             this._styleRule.set("userSelect", this._userSelect);
         }
