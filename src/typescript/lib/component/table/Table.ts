@@ -131,6 +131,7 @@ class Table extends Component<TableOptions> {
         this._body = bodyFactory ? bodyFactory(store) : new Body(store);
         this._body.setHeader(this._header);
         this.addComponent(this._body);
+        this._body.setColumns(this._resolvedColumns);
 
         this._footer = new FooterRow();
         this.addComponent(this._footer);
@@ -210,6 +211,7 @@ class Table extends Component<TableOptions> {
         this._body.setStore(store);
         this._header.setModel(store.model);
         this._header.setColumns(this._resolvedColumns);
+        this._body.setColumns(this._resolvedColumns);
         this._header.setHiddenColumns(this.getEffectiveHiddenSet());
         this.getAria().setColCount(this.getColumns().length);
 
@@ -254,6 +256,9 @@ class Table extends Component<TableOptions> {
      * Only columns present in the resolved column list can be toggled; columns
      * excluded by a strict spec (`appendUnlisted: false`) are unaffected.
      *
+     * Calls to hide a column marked `unhideable: true` in the spec are a no-op —
+     * the column always remains visible. Calls to show any column run normally.
+     *
      * Manually resized widths are preserved across visibility toggles. When showing
      * a column introduces extra width that would overflow the container, existing
      * columns are proportionally trimmed via `trimToTarget` to make room before
@@ -263,6 +268,14 @@ class Table extends Component<TableOptions> {
      * @param visible   - `true` to show the column, `false` to hide it.
      */
     setColumnVisible(fieldName: string, visible: boolean): this {
+        if (!visible) {
+            const col = this._resolvedColumns.find(c => c.getField().getName() === fieldName);
+
+            if (col && col.isUnhideable()) {
+                return this;
+            }
+        }
+
         if (visible) {
             this._hiddenColumns.delete(fieldName);
         } else {
@@ -536,7 +549,7 @@ class Table extends Component<TableOptions> {
 
     private initHiddenFromSpec(): void {
         for (const col of this._resolvedColumns) {
-            if (col.isInitiallyHidden()) {
+            if (col.isInitiallyHidden() && !col.isUnhideable()) {
                 this._hiddenColumns.add(col.getField().getName());
             }
         }
@@ -559,25 +572,6 @@ class Table extends Component<TableOptions> {
         }
 
         return result;
-    }
-
-    /**
-     * Reports whether the given column may be hidden from the column
-     * context menu. Default implementation returns `true` for every
-     * column.
-     *
-     * @param fieldName - The model field name to query.
-     *
-     * @returns `true` when the column may be toggled hidden; `false`
-     *   when it must stay visible (the context-menu entry renders
-     *   disabled, and `setColumnVisible` rejects a hide attempt).
-     *
-     * @remarks Subclassing seam — `TreeTable` overrides this to return
-     * `false` for the tree column (hiding it would erase the toggle
-     * UI). Not for consumer use.
-     */
-    protected isColumnHideable(_fieldName: string): boolean {
-        return true;
     }
 
     /**
@@ -621,11 +615,11 @@ class Table extends Component<TableOptions> {
 
             const indent = group !== null ? GROUP_INDENT : "";
 
-            // A column reported unhideable by `isColumnHideable` is
-            // currently visible (since it cannot be hidden) — the menu
-            // entry stays in the list so the user sees the column's
-            // identity but is disabled to signal it can't be toggled.
-            const hideable = this.isColumnHideable(fieldName);
+            // An unhideable column is currently visible (since it
+            // cannot be hidden) — the menu entry stays in the list so
+            // the user sees the column's identity but is disabled to
+            // signal it can't be toggled.
+            const hideable = !col.isUnhideable();
 
             items.push({
                 text:    indent + (visible ? '✓ ' : '  ') + fieldName,

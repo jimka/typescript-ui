@@ -51,6 +51,8 @@ panel.addComponent(tree);
 
 Every other `ColumnSpec` field (`columns`, `appendUnlisted`, plus the per-column knobs `minWidth`, `maxWidth`, `hidden`, `showSeconds`, `headerGlyph`, `group`, `groupColor`) works unchanged.
 
+The tree column is automatically marked `unhideable: true` so the indent and expand/collapse toggle always have a place to render. You may also declare `unhideable: true` on any other column in `spec.columns`.
+
 ## Expand / collapse
 
 | Method | Purpose |

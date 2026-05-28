@@ -102,10 +102,23 @@ class Header extends Component {
      * Updates the set of hidden column field names and rebuilds both header
      * rows immediately.
      *
+     * Field names belonging to {@link Column.isUnhideable} columns are stripped
+     * from the set so a direct caller cannot bypass the unhideable contract.
+     *
      * @param hidden - The new set of field names to hide.
      */
     setHiddenColumns(hidden: Set<string>): this {
-        this._hiddenColumns = new Set(hidden);
+        const filtered = new Set<string>();
+
+        for (const name of hidden) {
+            const col = this._columns.find(c => c.getField().getName() === name);
+
+            if (!col || !col.isUnhideable()) {
+                filtered.add(name);
+            }
+        }
+
+        this._hiddenColumns = filtered;
 
         this.rebuildCells();
         this.rebuildParentCells();
