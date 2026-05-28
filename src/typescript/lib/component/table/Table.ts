@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Event } from "~/core/Event.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Table as TableLayout } from "~/layout/Table.js";
 import { Header } from "~/component/table/Header.js";
@@ -150,17 +149,18 @@ class Table extends Component<TableOptions> {
 
         this.getAria().setColCount(this.getColumns().length);
 
-        // Sync header horizontal scroll with body. The body has overflow:auto so the browser
-        // scrolls it natively; the header is outside that scroll container, so we mirror the
-        // body's scrollLeft into the header via transform on every scroll event.
-        Event.addListener(this._body, "scroll", () => {
-            const el = this._body.getElement();
-
-            if (!el) {
-                return;
-            }
-
-            this._header.setTranslate(-el.scrollLeft, 0);
+        // Sync header horizontal scroll with body. The body uses
+        // transform-based virtual scroll (via `VirtualScroller`), so the
+        // native DOM `scroll` event never fires; hook the body's
+        // `setOnHorizontalScroll` callback instead. Translate the header's
+        // two inner rows (parent row + column row) rather than the header
+        // element itself — the header band stays pinned to the viewport
+        // width so its background covers the vertical-scrollbar reserve
+        // band on the right edge, and only the cells inside scroll with
+        // the body.
+        this._body.setOnHorizontalScroll(scrollLeft => {
+            this._header.getParentRow().setTranslate(-scrollLeft, 0);
+            this._header.getComponents()[1].setTranslate(-scrollLeft, 0);
         });
     }
 

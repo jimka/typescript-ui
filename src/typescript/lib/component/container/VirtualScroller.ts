@@ -36,6 +36,7 @@ export class VirtualScroller {
 
     private _owner          : Component;
     private _onScroll       : VirtualScrollerOnScroll;
+    private _clipBox        : HTMLElement;
     private _rowsContainer  : HTMLElement;
     private _scrollbarV     : Scrollbar;
     private _scrollbarH     : Scrollbar;
@@ -57,6 +58,26 @@ export class VirtualScroller {
         this._owner    = owner;
         this._onScroll = onScroll;
 
+        // Two-element wrapper: the outer `clipBox` carries `overflow:hidden`
+        // sized to the effective viewport so the Scrollbar widgets — positioned
+        // by `layoutScrollbars` at `(outerW - trackW, outerH - trackW)` — sit
+        // in their own reserved band rather than overlaying the rightmost
+        // column / bottom row. The inner `rowsContainer` carries the scroll
+        // transform; the transform cannot sit on the same element as
+        // `overflow:hidden` because CSS clipping happens in the element's own
+        // LOCAL coordinate system before its transform applies — splitting
+        // the two roles lets the transform shift the rows around inside a
+        // stable clip.
+        const clipBox = document.createElement("div");
+        clipBox.style.position = "absolute";
+        clipBox.style.top      = "0";
+        clipBox.style.left     = "0";
+        clipBox.style.width    = "100%";
+        clipBox.style.height   = "100%";
+        clipBox.style.overflow = "hidden";
+        element.appendChild(clipBox);
+        this._clipBox = clipBox;
+
         const container = document.createElement("div");
         container.style.position   = "absolute";
         container.style.top        = "0";
@@ -64,7 +85,7 @@ export class VirtualScroller {
         container.style.width      = "100%";
         container.style.transform  = "translate3d(0, 0, 0)";
         container.style.willChange = "transform";
-        element.appendChild(container);
+        clipBox.appendChild(container);
         this._rowsContainer = container;
 
         this._scrollbarV = new Scrollbar("vertical");
@@ -169,31 +190,47 @@ export class VirtualScroller {
     }
 
     /**
-     * Effective vertical viewport — the owner height minus the horizontal
-     * scrollbar's track-width reservation when that bar would be visible
-     * (matches the criterion in {@link layoutScrollbars}). Single source of
-     * truth so the clamps in `setScrollY` agree with what the vertical
-     * scrollbar's `setMetrics` is fed.
+     * Decides whether each scrollbar should be visible given the current
+     * content size, accounting for the mutual dependency between the two
+     * axes — if one bar is visible, its track-width reservation shrinks
+     * the cross-axis viewport, which can in turn force the other bar to
+     * become visible. Two iterations are sufficient: each pass can only
+     * promote one flag from false to true.
      */
-    private effectiveViewportH(): number {
+    private computeScrollbarVisibility(contentWidth: number, contentHeight: number): { vVisible: boolean, hVisible: boolean, effW: number, effH: number } {
         const outerH = this._owner.getHeight() || 0;
         const outerW = this._owner.getWidth()  || 0;
         const trackW = this._scrollbarV.getTrackWidth();
-        const hVisible = this._contentWidth > outerW;
 
-        return outerH - (hVisible ? trackW : 0);
+        let vVisible = false;
+        let hVisible = false;
+        for (let i = 0; i < 2; i++) {
+            const effH = outerH - (hVisible ? trackW : 0);
+            const effW = outerW - (vVisible ? trackW : 0);
+            vVisible = contentHeight > effH;
+            hVisible = contentWidth  > effW;
+        }
+        const effH = outerH - (hVisible ? trackW : 0);
+        const effW = outerW - (vVisible ? trackW : 0);
+
+        return { vVisible, hVisible, effW, effH };
+    }
+
+    /**
+     * Effective vertical viewport — the owner height minus the horizontal
+     * scrollbar's track-width reservation when that bar would be visible.
+     * Single source of truth so the clamps in `setScrollY` agree with what
+     * the vertical scrollbar's `setMetrics` is fed.
+     */
+    private effectiveViewportH(): number {
+        return this.computeScrollbarVisibility(this._contentWidth, this._contentHeight).effH;
     }
 
     /**
      * Effective horizontal viewport — see {@link effectiveViewportH}.
      */
     private effectiveViewportW(): number {
-        const outerH = this._owner.getHeight() || 0;
-        const outerW = this._owner.getWidth()  || 0;
-        const trackW = this._scrollbarV.getTrackWidth();
-        const vVisible = this._contentHeight > outerH;
-
-        return outerW - (vVisible ? trackW : 0);
+        return this.computeScrollbarVisibility(this._contentWidth, this._contentHeight).effW;
     }
 
     /**
@@ -248,11 +285,7 @@ export class VirtualScroller {
         const outerW = this._owner.getWidth();
         const outerH = this._owner.getHeight();
 
-        const vNeeded = contentHeight > outerH;
-        const hNeeded = contentWidth  > outerW;
-
-        const effH = outerH - (hNeeded ? trackW : 0);
-        const effW = outerW - (vNeeded ? trackW : 0);
+        const { effW, effH } = this.computeScrollbarVisibility(contentWidth, contentHeight);
 
         const maxY = Math.max(0, contentHeight - effH);
         const maxX = Math.max(0, contentWidth  - effW);
@@ -269,6 +302,15 @@ export class VirtualScroller {
         this._scrollbarH.setY(Math.max(0, outerH - trackW));
         this._scrollbarH.setWidth(effW);
         this._scrollbarH.setMetrics(effW, contentWidth, this._scrollX);
+
+        // Resize the clip box to the effective viewport so cells translated
+        // by the horizontal scroll can't bleed under the vertical scrollbar
+        // (and rows beyond the bottom can't bleed under the horizontal
+        // scrollbar). When neither bar is visible this collapses to the
+        // full owner size, matching the previous `width/height: 100%`
+        // behaviour.
+        this._clipBox.style.width  = effW + "px";
+        this._clipBox.style.height = effH + "px";
     }
 
     /**

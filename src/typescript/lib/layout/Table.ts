@@ -131,6 +131,17 @@ class Table extends LayoutManager {
             const parentRowHeight = hasParentRow ? columnHeight : 0;
             const headerBandHeight = parentRowHeight + columnHeight;
 
+            // The header element stays pinned to the viewport width so the
+            // gradient (and the scrollbar-cover band) covers the full
+            // band, but the inner rows are sized to fit all cells —
+            // including ones that overflow the viewport horizontally —
+            // because `Row`'s default `overflow: hidden` would otherwise
+            // clip cells at the row's right edge and prevent them from
+            // coming into view when the inner rows translate left during
+            // a horizontal scroll.
+            const columnSum    = columnWidths.reduce((s, w) => s + w, 0);
+            const innerRowW    = Math.max(containerSize.width, columnSum);
+
             header.setAutoCommitStyle(false);
             header.setX(containerInsets.getLeft());
             header.setY(containerInsets.getTop());
@@ -149,7 +160,7 @@ class Table extends LayoutManager {
             parentRow.setAutoCommitStyle(false);
             parentRow.setX(0);
             parentRow.setY(0);
-            parentRow.setWidth(containerSize.width);
+            parentRow.setWidth(innerRowW);
             parentRow.setHeight(parentRowHeight);
             parentRow.setAutoCommitStyle(true);
 
@@ -189,7 +200,7 @@ class Table extends LayoutManager {
             columnRow.setAutoCommitStyle(false);
             columnRow.setX(0);
             columnRow.setY(parentRowHeight);
-            columnRow.setWidth(containerSize.width);
+            columnRow.setWidth(innerRowW);
             columnRow.setHeight(columnHeight);
             columnRow.setAutoCommitStyle(true);
 
@@ -207,6 +218,18 @@ class Table extends LayoutManager {
 
                 x += columnWidths[i];
             });
+
+            // Cover the vertical-scrollbar reservation at the header's
+            // right edge so cells scrolled horizontally appear to clip at
+            // the trackW boundary while the band stays continuous with the
+            // rest of the header's gradient. Sits on top of the inner rows
+            // by DOM order, beneath the scrollbar widget which lives in
+            // the body.
+            const trackW = Util.getScrollBarWidth();
+            const cover  = header.getScrollbarCover();
+            cover.style.left   = (containerSize.width - trackW) + "px";
+            cover.style.width  = trackW + "px";
+            cover.style.height = headerBandHeight + "px";
         }
 
         if (container.isFooterVisible() && footer) {
