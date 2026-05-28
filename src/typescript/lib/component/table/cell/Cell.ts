@@ -139,10 +139,10 @@ export class Cell<T> extends Component {
 
         if (value) {
             this.setBackgroundColor('var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))');
-            this.getElement()?.style.setProperty('cursor', 'default');
+            this.setCursor('default');
         } else {
             this.setBackgroundColor('var(--ts-ui-table-cell-bg, transparent)');
-            this.getElement()?.style.removeProperty('cursor');
+            this.clearCursor();
         }
 
         return this;
