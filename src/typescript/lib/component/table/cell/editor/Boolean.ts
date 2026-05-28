@@ -18,17 +18,34 @@ import { callable } from "~/core/Callable.js";
  */
 class BooleanEditor extends CellEditor<Boolean | null> {
 
-    private _checkBox: Checkbox                                       = new Checkbox();
-    private _value:    Boolean | null                                 = null;
-    private _onChange: ((value: Boolean | null) => void) | undefined;
+    private _checkBox:        Checkbox                                       = new Checkbox();
+    private _value:           Boolean | null                                 = null;
+    private _onChange:        ((value: Boolean | null) => void) | undefined;
+    private _suppressCommit:  boolean                                        = false;
 
     constructor() {
         super();
 
         this._checkBox.setIndeterminate(true);
+        // Suppress the 120 ms fill/check transition — a virtualized table
+        // can call `setValue` on dozens of pool slots per scroll frame, and
+        // each transition would otherwise leave the checkbox visibly
+        // animating mid-scroll.
+        this._checkBox.setAnimated(false);
         this.addComponent(this._checkBox);
 
         this._checkBox.addActionListener(() => {
+            // `Checkbox.setSelected` dispatches a synthetic
+            // `CustomEvent("click")` on the root for backward-compat with
+            // `addActionListener` consumers, which fires for BOTH real user
+            // toggles AND programmatic `setValue` calls. Without the
+            // `_suppressCommit` guard, every scroll-driven `setValue` would
+            // commit the bound record back to the store, fire
+            // `'datachanged'`, and re-render both bodies in a loop.
+            if (this._suppressCommit) {
+                return;
+            }
+
             this._value = this._checkBox.isSelected();
             this._onChange?.(this._value);
         });
@@ -67,11 +84,20 @@ class BooleanEditor extends CellEditor<Boolean | null> {
     setValue(value: Boolean | null): this {
         this._value = value ?? null;
 
-        if (this._value === null) {
-            this._checkBox.setIndeterminate(true);
-        } else {
-            this._checkBox.setIndeterminate(false);
-            this._checkBox.setSelected(this._value as boolean);
+        // Wrap the programmatic state updates in the suppress-commit guard
+        // so the synthetic `click` events dispatched by `setIndeterminate`
+        // and `setSelected` don't fire the cell's commit callback. The
+        // guard is checked by the constructor's action listener.
+        this._suppressCommit = true;
+        try {
+            if (this._value === null) {
+                this._checkBox.setIndeterminate(true);
+            } else {
+                this._checkBox.setIndeterminate(false);
+                this._checkBox.setSelected(this._value as boolean);
+            }
+        } finally {
+            this._suppressCommit = false;
         }
 
         return this;

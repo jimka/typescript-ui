@@ -289,6 +289,24 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     }
 
     /**
+     * Enables or disables the 120 ms check/fill CSS transition. Disabled
+     * checkboxes still update their visual state instantly. Used by
+     * `BooleanCell` to suppress the per-rebind transition flash when a
+     * virtualized table re-binds many cells per scroll frame.
+     *
+     * @param value - `true` to keep the transition (default), `false` to remove it.
+     */
+    setAnimated(value: boolean): this {
+        const t = value && !Animation.isReducedMotion();
+
+        this._check.setTransition(t ? "opacity 120ms ease-out" : "none");
+        this._dash .setTransition(t ? "opacity 120ms ease-out" : "none");
+        this._box  .setTransition(t ? "background-color 120ms ease-out, border-color 120ms ease-out" : "none");
+
+        return this;
+    }
+
+    /**
      * Returns the label text, or `null` when none was set.
      *
      * @returns The label string, or `null`.

@@ -798,6 +798,18 @@ class Body extends Component {
      * @remarks Subclassing seam — not for consumer use.
      */
     protected onSubtreeClick(e: MouseEvent): void {
+        // Filter synthetic "click" events. `Checkbox.setSelected` dispatches
+        // a `CustomEvent("click")` on its root for backward-compat with
+        // `addActionListener` consumers; during a scroll rebind, the Active
+        // column's cell receives a programmatic `setValue` for every pool
+        // slot, so a flurry of synthetic clicks bubbles up here and would
+        // each fire `onRowClick` — selecting whichever record happens to be
+        // bound to that slot at the moment, effectively dragging the
+        // selection downward with the scroll.
+        if (!(e instanceof MouseEvent)) {
+            return;
+        }
+
         let node: HTMLElement | null = e.target as HTMLElement | null;
 
         while (node) {
