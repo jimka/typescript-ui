@@ -2,18 +2,20 @@
 
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Event } from "~/core/Event.js";
-import { VBox } from "~/layout/VBox.js";
-import { AutoCompleteItem } from "~/component/input/AutoCompleteItem.js";
+import { StyleRule } from "~/core/StyleTarget.js";
+import { Fit } from "~/layout/Fit.js";
+import { List } from "~/component/list/List.js";
 import { callable } from "~/core/Callable.js";
+
+/** Pixel height of a single row inside the dropdown. Matches `CustomListRow`'s cached `preferredSize(0, 22)`. */
+const AUTOCOMPLETE_DROPDOWN_ROW_HEIGHT_PX = 22;
 
 /**
  * Construction-time options for {@link AutoCompleteDropdown}.
  *
  * @category Components
  */
-export interface AutoCompleteDropdownOptions extends AnimatedDropdownOptions {
-    maxItems?: number;
-}
+export interface AutoCompleteDropdownOptions extends AnimatedDropdownOptions {}
 
 /**
  * User-overridable visual defaults forwarded to `super` via the options bag.
@@ -29,17 +31,39 @@ const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> 
     shadow:          "var(--ts-ui-autocomplete-shadow, 2px 4px 8px rgba(0,0,0,0.15))",
 };
 
+// The dropdown wrapper carries the visible chrome (border / radius /
+// shadow); the embedded List inherits a `:focus::after` ring from
+// `AbstractCustomList`, which would paint a second ring inside the
+// dropdown if any code path programmatically focused the list. The
+// host-forwarded keystroke pattern keeps DOM focus on the TextField
+// throughout the dropdown's lifetime, but the suppression is
+// belt-and-braces — a future code path that does focus the list won't
+// double-stack the chrome.
+(() => {
+    new StyleRule({
+        scope:  "selector",
+        name:   ".AutoCompleteDropdown .List:focus::after",
+        styles: {
+            content: "none",
+        },
+    });
+})();
+
 /**
  * Floating dropdown panel for [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField).
  *
- * Maintains a reusable pool of `AutoCompleteItem` rows — items are updated
- * in place rather than destroyed and recreated on each keystroke. Inherits the
- * fade-in / fade-out lifecycle from [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown).
+ * Hosts a single [`List`](/api/component/list/classes/List) instance that
+ * owns the row pool, the click-commit gesture, the keyboard reducer, the
+ * type-ahead buffer, and the ARIA `option`-role wiring. The dropdown
+ * wrapper handles only the overlay lifecycle (fade, anchored positioning,
+ * viewport click-outside dismiss). Selection-follows-focus is disabled on
+ * the inner list so ArrowUp/Down moves the focus highlight without
+ * committing the row as the TextField's value; Enter / click still commit
+ * through the list's `change` event.
  */
 class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions> {
 
-    private _pool: AutoCompleteItem[] = [];
-    private _highlightedIndex: number = -1;
+    private readonly _list: List;
     private readonly _onSelect: (value: string) => void;
     private readonly _onHide: () => void;
     private readonly _onViewportMouseDown: (e: MouseEvent) => void;
@@ -55,15 +79,43 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
         this._onSelect = onSelect;
         this._onHide   = onHide;
 
-        this.getAria().setRole("listbox");
-        // Dynamic dimensions from anchor + suggestion count — layout containment is safe.
+        // The inner List already exposes `role="listbox"` from
+        // `AbstractCustomList`; the dropdown wrapper just provides the
+        // overlay chrome and must not duplicate the listbox role
+        // (nested listboxes break assistive-tech enumeration of the
+        // `option` rows).
         this.setContain("layout");
+        this.setLayoutManager(new Fit());
 
-        const vbox = new VBox();
+        // `Fit` makes the inner list fill the dropdown's content box. The
+        // list's own border is stripped — the dropdown root carries the
+        // visible chrome (border + radius + shadow) so the two never
+        // double-stack. Focus-on-row-click is disabled because the host
+        // TextField keeps DOM focus throughout the dropdown's lifetime;
+        // letting the list grab focus on a row click would blur the
+        // TextField and tear down the autocomplete session before
+        // `_onSelect` runs. Selection-follows-focus is disabled so
+        // ArrowUp/Down previews a row without writing it into the
+        // TextField — Enter / click still commit through `change`.
+        this._list = new List();
+        this._list.setBorder("none");
+        this._list.setBorderRadius("0");
+        this._list.setFocusOnRowClick(false);
+        this._list.setSelectFollowsFocus(false);
+        this.addComponent(this._list);
 
-        vbox.setComponentSpacing(0);
-        vbox.setStretching(true);
-        this.setLayoutManager(vbox);
+        // Click and keyboard commits both arrive through the list's
+        // `change` event (fired by `notifyUserChange` after the click /
+        // keyboard reducer mutates the selection set). Programmatic
+        // writes (`setItemsArray`) bypass this path, so re-opening the
+        // dropdown doesn't trigger a spurious commit.
+        this._list.addActionListener(() => {
+            const value = this._list.getValue();
+
+            if (value) {
+                this._onSelect(value);
+            }
+        });
 
         this._onViewportMouseDown = (e: MouseEvent) => {
             if (!this.getElement()?.contains(e.target as Node)) {
@@ -73,88 +125,42 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
     }
 
     /**
-     * Applies an {@link AutoCompleteDropdownOptions} bag, dispatching `maxItems`
-     * after inherited Component fields.
-     *
-     * @param options - The options bag carrying the values to apply.
-     */
-    protected applyOptions(options: AutoCompleteDropdownOptions): this {
-        super.applyOptions(options);
-
-        const opts = { ...this._defaultOptions, ...options } as AutoCompleteDropdownOptions;
-
-        if (opts.maxItems !== undefined) {
-            this.setMaxItems(opts.maxItems);
-        }
-
-        return this;
-    }
-
-    /**
-     * Sets the maximum number of items to display in the dropdown.
-     *
-     * @param maxItems - The cap on visible suggestions.
-     *
-     * @returns This component, for method chaining.
-     */
-    setMaxItems(maxItems: number): this {
-        this._options.maxItems = maxItems;
-
-        return this;
-    }
-
-    /**
-     * Returns the maximum number of items to display, or null if unlimited.
-     *
-     * @returns The configured maxItems cap, or null.
-     */
-    getMaxItems(): number | null {
-        return this._options.maxItems ?? null;
-    }
-
-    /**
-     * Shows the dropdown anchored below `anchorEl`, rendering the given suggestions.
-     *
-     * Reuses existing item rows where possible; adds or removes rows only as needed.
+     * Shows the dropdown anchored relative to `anchorEl`, rendering the
+     * given suggestions. Key + label are identical so the list's
+     * `getValue()` returns the picked suggestion text directly.
      *
      * @param anchorEl - The input element to anchor the dropdown to.
      * @param suggestions - The list of suggestion strings to display.
+     *
+     * @returns This dropdown, for method chaining.
      */
     show(anchorEl: HTMLElement, suggestions: string[]): this {
         // Force the floating element into existence before any layout pass.
         // showAnimated() below mounts it, but that runs after doLayout() —
-        // on first show getInnerSize() would otherwise return null and VBox
-        // would lay out nothing, leaving items at width 0 in the panel.
+        // on first show getInnerSize() would otherwise return null and the
+        // inner list's Fit layout would have nothing to fill.
         this.getElement(true);
 
         this.pauseLayout();
-        this.updatePool(suggestions);
+        this._list.setItemsArray(suggestions.map(s => ({ key: s, label: s })));
         this.resumeLayout();
 
-        this._highlightedIndex = -1;
-
-        const HEIGHT = AutoCompleteItem.HEIGHT;
-        const insets = 8;
-        const itemCount = suggestions.length;
-        const rect = anchorEl.getBoundingClientRect();
+        const perim   = this.getPerimiterSize();
+        const chromeH = perim.top + perim.bottom;
+        const rect    = anchorEl.getBoundingClientRect();
 
         this.setWidth(rect.width);
-        this.setHeight(itemCount * HEIGHT + insets);
+        this.setHeight(suggestions.length * AUTOCOMPLETE_DROPDOWN_ROW_HEIGHT_PX + chromeH);
 
-        this.doLayout();
-
-        const panelHeight = itemCount * HEIGHT + insets;
-        const vpHeight = window.innerHeight;
-        let y = rect.bottom;
-
-        if (y + panelHeight > vpHeight && rect.top - panelHeight > 0) {
-            y = rect.top - panelHeight;
-        }
-
-        this.setX(rect.left);
-        this.setY(y);
+        this.placeAnchored(rect);
 
         this.showAnimated();
+
+        // VBox-backed list positions rows via framework setters that no-op
+        // while the dropdown element is detached. Run the layout pass
+        // after `showAnimated` mounts the panel so rows land at the
+        // correct y offsets on first open.
+        this.doLayout();
 
         Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
 
@@ -173,119 +179,50 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
     }
 
     /**
+     * Forwards a keystroke from the host
+     * [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField)
+     * (which keeps DOM focus on its TextField while the dropdown is
+     * open) into the inner list's keyboard reducer. Mirrors
+     * [`AnimatedDropdown.handleKey`](/api/core/classes/AnimatedDropdown#handlekey).
+     * Returns `true` when the list consumed the key so the host can
+     * `preventDefault` and stop further processing.
+     *
+     * @param e - The keyboard event captured by the host.
+     *
+     * @returns `true` when the list consumed the key.
+     */
+    handleKey(e: KeyboardEvent): boolean {
+        return this._list.handleKey(e);
+    }
+
+    /**
+     * Returns the framework-generated DOM element id of the inner list's
+     * keyboard-focus row, suitable for writing into the host TextField's
+     * `aria-activedescendant`. Returns `null` when no row holds focus.
+     *
+     * @returns The focused row's element id, or `null`.
+     */
+    getFocusedRowId(): string | null {
+        return this._list.getFocusedRowId();
+    }
+
+    /**
+     * Returns the inner [`List`](/api/component/list/classes/List). Test
+     * seam — production code should not reach past the dropdown's
+     * documented surface.
+     *
+     * @returns The hosted list instance.
+     */
+    getList(): List {
+        return this._list;
+    }
+
+    /**
      * Fires the `onHide` callback once the exit fade has completed and the
      * panel is detached from the DOM.
      */
     protected onHideComplete(): void {
         this._onHide();
-    }
-
-    /**
-     * Moves keyboard highlight to the next item, wrapping to the first if at the end.
-     */
-    highlightNext(): void {
-        const next = this._highlightedIndex + 1;
-
-        this.moveTo(next < this._pool.length ? next : 0);
-    }
-
-    /**
-     * Moves keyboard highlight to the previous item, wrapping to the last if at the start.
-     */
-    highlightPrev(): void {
-        const prev = this._highlightedIndex - 1;
-
-        this.moveTo(prev >= 0 ? prev : this._pool.length - 1);
-    }
-
-    /**
-     * Returns the text of the currently highlighted item, or null if nothing is highlighted.
-     *
-     * @returns The highlighted suggestion string, or null.
-     */
-    getHighlightedValue(): string | null {
-        if (this._highlightedIndex < 0 || this._highlightedIndex >= this._pool.length) {
-            return null;
-        }
-
-        return this._pool[this._highlightedIndex].getText();
-    }
-
-    /**
-     * Returns the element ID of the currently highlighted item, or null if none is highlighted.
-     *
-     * Used to populate `aria-activedescendant` on the combobox input.
-     *
-     * @returns The highlighted item's HTML element ID, or null.
-     */
-    getHighlightedId(): string | null {
-        if (this._highlightedIndex < 0 || this._highlightedIndex >= this._pool.length) {
-            return null;
-        }
-
-        return this._pool[this._highlightedIndex].getId();
-    }
-
-    /**
-     * Fires the select callback for the currently highlighted item, if any.
-     */
-    selectHighlighted(): void {
-        const value = this.getHighlightedValue();
-
-        if (value !== null) {
-            this._onSelect(value);
-        }
-    }
-
-    /**
-     * Moves highlight to a specific pool index, clearing the previous highlight.
-     *
-     * @param index - The pool index to highlight.
-     */
-    private moveTo(index: number): void {
-        if (this._highlightedIndex >= 0 && this._highlightedIndex < this._pool.length) {
-            this._pool[this._highlightedIndex].setHighlighted(false);
-        }
-
-        this._highlightedIndex = index;
-
-        if (index >= 0 && index < this._pool.length) {
-            this._pool[index].setHighlighted(true);
-        }
-    }
-
-    /**
-     * Reconciles the item pool with a new list of suggestions.
-     *
-     * Overlapping items are updated in place; excess items are removed;
-     * new items are appended. This is O(n) in visible items.
-     *
-     * @param suggestions - The new suggestion strings.
-     */
-    private updatePool(suggestions: string[]): void {
-        const newLen = suggestions.length;
-        const oldLen = this._pool.length;
-        const overlap = Math.min(newLen, oldLen);
-
-        for (let i = 0; i < overlap; i++) {
-            this._pool[i].update(suggestions[i]);
-            this._pool[i].setHighlighted(false);
-        }
-
-        if (newLen > oldLen) {
-            for (let i = oldLen; i < newLen; i++) {
-                const item = new AutoCompleteItem(suggestions[i], this._onSelect);
-
-                this.addComponent(item);
-                this._pool.push(item);
-            }
-        } else if (newLen < oldLen) {
-            for (let i = newLen; i < oldLen; i++) {
-                this.removeComponent(this._pool[i]);
-            }
-
-            this._pool.splice(newLen);
-        }
     }
 }
 
