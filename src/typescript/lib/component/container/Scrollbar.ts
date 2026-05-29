@@ -266,7 +266,7 @@ class ScrollArrowButton extends Component {
             return;
         }
 
-        this.fireTicks();
+        this.emit("tick");
         this.scheduleNext();
     };
 
@@ -306,18 +306,12 @@ class ScrollArrowButton extends Component {
      */
     private scheduleNext(): void {
         this._repeatHandle = setTimeout((): void => {
-            this.fireTicks();
+            this.emit("tick");
             this._repeatDelay = Math.max(ARROW_REPEAT_FLOOR_MS, this._repeatDelay * ARROW_REPEAT_DECAY);
             this.scheduleNext();
         }, this._repeatDelay);
     }
 
-    /**
-     * Invokes all registered tick listeners in registration order.
-     */
-    private fireTicks(): void {
-        this.emit("tick");
-    }
 }
 
 /**
@@ -479,7 +473,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         const newPosition = Math.max(0, Math.min(maxScroll, this._scrollPosition + direction * this._arrowStep));
 
         if (newPosition !== this._scrollPosition) {
-            this.fireScrollListeners(newPosition);
+            this.emit("scroll", newPosition);
         }
     }
 
@@ -795,14 +789,6 @@ class Scrollbar extends Component<ScrollbarOptions> {
         }
     }
 
-    /**
-     * Fires all registered scroll listeners with the new position.
-     *
-     * @param position - The new scroll position in pixels.
-     */
-    private fireScrollListeners(position: number): void {
-        this.emit("scroll", position);
-    }
 
     /**
      * Reads the client coordinate along the scroll axis from a mouse or touch
@@ -871,7 +857,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         const scrollDelta = (delta / maxThumb) * maxScroll;
         const newPosition = Math.max(0, Math.min(maxScroll, this._dragStartScroll + scrollDelta));
 
-        this.fireScrollListeners(newPosition);
+        this.emit("scroll", newPosition);
     };
 
     /**
@@ -936,7 +922,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         const maxScroll   = Math.max(0, this._contentSize - this._viewportSize);
         const newPosition = Math.max(0, Math.min(maxScroll, this._scrollPosition + direction * this._viewportSize));
 
-        this.fireScrollListeners(newPosition);
+        this.emit("scroll", newPosition);
     };
 }
 

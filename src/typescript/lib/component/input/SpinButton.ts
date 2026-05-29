@@ -217,7 +217,7 @@ class SpinButton extends Button<SpinButtonOptions> {
      * Fires the first tick immediately and schedules subsequent accelerating ticks.
      */
     private onMouseDown(): void {
-        this.fireTicks();
+        this.emit("tick");
         this.scheduleNext();
     }
 
@@ -238,17 +238,10 @@ class SpinButton extends Button<SpinButtonOptions> {
      */
     private scheduleNext(): void {
         this._repeatHandle = setTimeout(() => {
-            this.fireTicks();
+            this.emit("tick");
             this._repeatDelay = Math.max(40, this._repeatDelay * 0.75);
             this.scheduleNext();
         }, this._repeatDelay);
-    }
-
-    /**
-     * Invokes all registered tick listeners in registration order.
-     */
-    private fireTicks(): void {
-        this.emit("tick");
     }
 }
 

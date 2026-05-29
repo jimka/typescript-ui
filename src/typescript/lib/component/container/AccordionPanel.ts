@@ -2,7 +2,7 @@
 
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
-import { Accordion, SectionToggleCallback } from "~/layout/Accordion.js";
+import { Accordion, AccordionEvent, SectionToggleCallback } from "~/layout/Accordion.js";
 import { AccordionConstraints } from "~/layout/AccordionConstraints.js";
 import { callable } from "~/core/Callable.js";
 
@@ -168,6 +168,37 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
      */
     isSingleOpen(): boolean {
         return this.getAccordionManager().isSingleOpen();
+    }
+
+    /**
+     * Registers a listener on the wrapped {@link Accordion} manager. Public
+     * forwarder so consumers can wire `sectiontoggle` listeners through the
+     * panel surface without reaching the protected manager accessor.
+     *
+     * @param event - The {@link Accordion} event name.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This panel, for method chaining.
+     */
+    on(event: "sectiontoggle", listener: SectionToggleCallback): this;
+    on(event: AccordionEvent,  listener: Function): this {
+        this.getAccordionManager().on(event, listener as SectionToggleCallback);
+
+        return this;
+    }
+
+    /**
+     * Removes a listener previously registered via {@link on}.
+     *
+     * @param event - The {@link Accordion} event the listener was registered for.
+     * @param listener - The exact callback reference to remove.
+     *
+     * @returns This panel, for method chaining.
+     */
+    off(event: AccordionEvent, listener: Function): this {
+        this.getAccordionManager().off(event, listener as SectionToggleCallback);
+
+        return this;
     }
 
     /**

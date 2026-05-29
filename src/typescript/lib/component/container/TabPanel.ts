@@ -3,7 +3,7 @@
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
-import { Tab } from "~/layout/Tab.js";
+import { Tab, TabEvent } from "~/layout/Tab.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -126,19 +126,45 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
     }
 
     /**
-     * Registers a callback fired when the user closes a tab via its close
-     * button. Forwards to the wrapped {@link Tab.on}.
+     * Registers a listener on the wrapped {@link Tab} manager. Public
+     * forwarder so consumers can wire `tabclose` listeners through the
+     * panel surface without reaching the protected manager accessor.
+     *
+     * @param event - The {@link Tab} event name.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This panel, for method chaining.
+     */
+    on(event: "tabclose", listener: (component: Component) => void): this;
+    on(event: TabEvent,   listener: Function): this {
+        this.getTabManager().on(event, listener as (component: Component) => void);
+
+        return this;
+    }
+
+    /**
+     * Removes a listener previously registered via {@link on}.
+     *
+     * @param event - The {@link Tab} event the listener was registered for.
+     * @param listener - The exact callback reference to remove.
+     *
+     * @returns This panel, for method chaining.
+     */
+    off(event: TabEvent, listener: Function): this {
+        this.getTabManager().off(event, listener as (component: Component) => void);
+
+        return this;
+    }
+
+    /**
+     * @deprecated Use `on("tabclose", fn)`.
      *
      * @param callback - Called with the closed tab's content component.
      *
      * @returns This panel, for method chaining.
-     *
-     * @deprecated Use `getTabManager().on("tabclose", fn)`.
      */
     setOnTabClose(callback: (component: Component) => void): this {
-        this.getTabManager().on("tabclose", callback);
-
-        return this;
+        return this.on("tabclose", callback);
     }
 
     /**

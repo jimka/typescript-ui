@@ -48,4 +48,4 @@ export type { AutoCompleteFieldOptions, AutoCompleteFieldConfig, AutoCompleteMat
 export { NumberSpinner } from '~/component/input/NumberSpinner.js';
 export type { NumberSpinnerOptions } from '~/component/input/NumberSpinner.js';
 export { SpinButton } from '~/component/input/SpinButton.js';
-export type { SpinButtonOptions } from '~/component/input/SpinButton.js';
+export type { SpinButtonOptions, SpinButtonEvent } from '~/component/input/SpinButton.js';

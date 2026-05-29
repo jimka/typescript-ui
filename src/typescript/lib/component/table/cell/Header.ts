@@ -5,7 +5,6 @@ import { ResizeHandle } from "~/component/table/cell/ResizeHandle.js";
 import { SortPriorityBadge } from "~/component/table/cell/SortPriorityBadge.js";
 import { CellEvent } from "~/component/table/cell/Cell.js";
 import { Event } from "~/core/Event.js";
-import { ListenerBag } from "~/core/ListenerBag.js";
 import { Util } from "~/core/Util.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Tooltip } from "~/core/Tooltip.js";
@@ -83,7 +82,6 @@ class HeaderCell extends DefaultCell {
 
     private _text: String;
     private _fieldName: string;
-    private _headerListeners: ListenerBag<HeaderCellEvent> = new ListenerBag<HeaderCellEvent>();
     private _isDragging: boolean = false;
     private _tooltipText: string = '';
     declare private _resizeHandle: ResizeHandle;
@@ -324,7 +322,7 @@ class HeaderCell extends DefaultCell {
     on(event: "contextmenu", listener: (fieldName: string, x: number, y: number) => void): this;
     on(event: "resizedrag",  listener: (delta: number) => void): this;
     on(event: HeaderCellEvent, listener: Function): this {
-        this._headerListeners.add(event, listener);
+        this._listeners.add(event, listener);
 
         return this;
     }
@@ -339,7 +337,7 @@ class HeaderCell extends DefaultCell {
      * @returns This cell, for method chaining.
      */
     off(event: HeaderCellEvent, listener: Function): this {
-        this._headerListeners.remove(event, listener);
+        this._listeners.remove(event, listener);
 
         return this;
     }
@@ -357,7 +355,7 @@ class HeaderCell extends DefaultCell {
     protected emit(event: "contextmenu",     fieldName: string, x: number, y: number): void;
     protected emit(event: "resizedrag",      delta: number): void;
     protected emit(event: HeaderCellEvent,   ...payload: unknown[]): void {
-        this._headerListeners.fire(event, ...payload);
+        this._listeners.fire(event, ...payload);
     }
 
     /**

@@ -17,7 +17,7 @@ export type { AriaRole, AriaSort, AriaLive, AriaOrientation } from '~/core/Aria.
 export { RovingTabIndex } from '~/core/RovingTabIndex.js';
 export { Body } from '~/core/Body.js';
 export { ButtonGroup } from '~/core/ButtonGroup.js';
-export type { ButtonGroupOptions } from '~/core/ButtonGroup.js';
+export type { ButtonGroupOptions, ButtonGroupEvent } from '~/core/ButtonGroup.js';
 export { Window } from '~/core/Window.js';
 export type { WindowOptions, WindowState, WindowMaximizeBounds, WindowSnapModifier } from '~/core/Window.js';
 export { Menu } from '~/core/Menu.js';
