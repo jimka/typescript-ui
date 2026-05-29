@@ -266,6 +266,26 @@ class Glyph extends Component<GlyphOptions> {
     }
 
     /**
+     * Sets the preferred size and pins minSize/maxSize to the same value so
+     * the glyph stays rigid in flexible layouts — HBox's shrink-on-overflow
+     * logic and any grow path see equal min/pref/max and leave the glyph at
+     * its configured size. Callers can still override the lock by calling
+     * `setMinSize` / `setMaxSize` explicitly after this method.
+     *
+     * @param width - The preferred width in pixels.
+     * @param height - The preferred height in pixels.
+     *
+     * @returns This component, for method chaining.
+     */
+    setPreferredSize(width: number, height: number): this {
+        super.setPreferredSize(width, height);
+        super.setMinSize(width, height);
+        super.setMaxSize(width, height);
+
+        return this;
+    }
+
+    /**
      * Returns the registry name this Glyph was constructed with.
      *
      * @returns The registry key supplied to the constructor.
@@ -558,6 +578,22 @@ class Glyph extends Component<GlyphOptions> {
 
         if (opts.animationDuration !== undefined) {
             this.setAnimationDuration(opts.animationDuration);
+        }
+
+        // Re-pin minSize / maxSize to the current preferred size so the glyph
+        // stays rigid in flexible layouts. The inherited cascade has just
+        // overwritten the pin from `setPreferredSize` with Component's `{0,0}`
+        // minSize / `{MAX,MAX}` maxSize defaults; restore it here, but honour
+        // an explicit `options.minSize` / `options.maxSize` from the caller.
+        const pref = this._options.preferredSize ?? this._defaultOptions.preferredSize;
+        if (pref) {
+            if (options.minSize === undefined) {
+                this.setMinSize(pref.width, pref.height);
+            }
+
+            if (options.maxSize === undefined) {
+                this.setMaxSize(pref.width, pref.height);
+            }
         }
 
         if (opts.animation !== undefined) {
