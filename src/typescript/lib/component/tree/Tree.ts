@@ -2,12 +2,20 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
 import { TreeRow } from "~/component/tree/TreeRow.js";
 import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
 import { LabelTreeNodeRenderer } from "~/component/tree/renderer/Label.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * String-literal union of the events emitted by {@link Tree}.
+ *
+ * @category Components
+ */
+export type TreeEvent = "selection";
 
 /** Pixels of indentation added per depth level. */
 const INDENT_PX = 16;
@@ -32,15 +40,21 @@ interface FlatRow {
 }
 
 /**
- * Construction-time options for {@link Tree}.
- *
- * Tree currently has no own configurable options — root nodes are set via
- * `setNodes()` and the renderer factory via `setRendererFactory()`. This
- * minimal extension exists so `this._options` is typed at the leaf class.
+ * Construction-time options for {@link Tree}. Root nodes are set via
+ * `setNodes()` and the renderer factory via `setRendererFactory()`; this
+ * interface only carries the event-listener bag and the inherited
+ * {@link ComponentOptions}.
  *
  * @category Components
  */
 export interface TreeOptions extends ComponentOptions {
+    /**
+     * Multi-event listener bag dispatched to {@link Tree.on} at
+     * construction time.
+     */
+    listeners?: {
+        selection?: (nodes: TreeNode[]) => void;
+    };
 }
 
 /**
@@ -84,11 +98,11 @@ class Tree extends Component<TreeOptions> {
     private _selectedNodes      : Set<TreeNode>                                           = new Set();
     private _anchorNode         : TreeNode | null                                         = null;
     private _focusNode          : TreeNode | null                                         = null;
-    private _selectionListeners : Function[]                                              = [];
+    private _listeners          : ListenerBag<TreeEvent>                                  = new ListenerBag<TreeEvent>();
     private _rendererFactory    : () => TreeNodeRenderer                                  = () => new LabelTreeNodeRenderer();
 
-    constructor() {
-        super();
+    constructor(options?: TreeOptions) {
+        super(options);
 
         this.setOverflow("hidden");
         this.setBackgroundColor("var(--ts-ui-input-bg, rgb(255, 255, 255))");
@@ -98,6 +112,10 @@ class Tree extends Component<TreeOptions> {
         this.getAria().setRole("tree");
         this.getAria().setTabIndex(0);
         this.getAria().setMultiselectable(true);
+
+        if (options?.listeners?.selection !== undefined) {
+            this.on("selection", options.listeners.selection);
+        }
     }
 
     /**
@@ -157,12 +175,55 @@ class Tree extends Component<TreeOptions> {
     }
 
     /**
-     * Registers a callback that fires whenever the selection changes.
+     * Registers a listener for one of this tree's events.
+     *
+     * @param event - `"selection"` fires whenever the selection changes,
+     *   receiving the full array of selected {@link TreeNode} instances.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This tree, for method chaining.
+     */
+    on(event: "selection", listener: (nodes: TreeNode[]) => void): this;
+    on(event: TreeEvent,   listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This tree, for method chaining.
+     */
+    off(event: TreeEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "selection", nodes: TreeNode[]): void;
+    protected emit(event: TreeEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("selection", fn)`.
      *
      * @param listener - Called with the full array of selected {@link TreeNode} instances.
      */
     addSelectionListener(listener: (nodes: TreeNode[]) => void): void {
-        this._selectionListeners.push(listener);
+        this.on("selection", listener);
     }
 
     /**
@@ -253,11 +314,7 @@ class Tree extends Component<TreeOptions> {
      * Fires all selection listeners with the current selected-node array.
      */
     private _fireSelectionListeners(): void {
-        const nodes = this.getSelectedNodes();
-
-        for (const listener of this._selectionListeners) {
-            listener(nodes);
-        }
+        this.emit("selection", this.getSelectedNodes());
     }
 
     /**

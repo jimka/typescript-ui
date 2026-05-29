@@ -4,7 +4,15 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * String-literal union of the events emitted by {@link WindowBorder}.
+ *
+ * @category Components
+ */
+export type WindowBorderEvent = "drag";
 
 /**
  * The eight edge / corner positions used by {@link WindowBorder} to identify
@@ -29,6 +37,13 @@ export enum Direction {
  * @category Components
  */
 export interface WindowBorderOptions extends ComponentOptions {
+    /**
+     * Multi-event listener bag dispatched to {@link WindowBorder.on} at
+     * construction time.
+     */
+    listeners?: {
+        drag?: (border: WindowBorder, e: MouseEvent) => void;
+    };
 }
 
 /**
@@ -60,7 +75,7 @@ const _defaultWindowBorderOptions: Partial<WindowBorderOptions> = {
 class WindowBorder extends Component<WindowBorderOptions> {
 
     private _direction: Direction = Direction.NORTH;
-    private _dragListeners: Function[] = [];
+    private _listeners: ListenerBag<WindowBorderEvent> = new ListenerBag<WindowBorderEvent>();
     private _dragStartListener: Function;
     private _dragStopListener: Function;
     private _fireDragListener: Function;
@@ -87,6 +102,10 @@ class WindowBorder extends Component<WindowBorderOptions> {
         this._fireDragListener = this.fireDragListeners.bind(this);
 
         Event.addListener(this, 'mousedown', this._dragStartListener);
+
+        if (options?.listeners?.drag !== undefined) {
+            this.on("drag", options.listeners.drag);
+        }
 
         // Queue the snap-target highlight into the lazy state rule. Materialises
         // at render time through Component's batched style channel.
@@ -118,30 +137,68 @@ class WindowBorder extends Component<WindowBorderOptions> {
     }
 
     /**
-     * Registers a listener to receive drag events with (border, mouseEvent) arguments.
+     * Registers a listener for one of this border's events.
      *
-     * @param listener - The callback invoked with this WindowBorder and the MouseEvent on each drag.
+     * @param event - `"drag"` fires on each mousemove/touchmove during a
+     *   drag, receiving this border and the originating event.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This border, for method chaining.
      */
-    addDragListener(listener: Function) : this {
-        this._dragListeners.push(listener);
+    on(event: "drag",             listener: (border: WindowBorder, e: MouseEvent) => void): this;
+    on(event: WindowBorderEvent,  listener: Function): this {
+        this._listeners.add(event, listener);
 
         return this;
     }
 
     /**
-     * Removes a previously registered drag listener.
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
      *
+     * @param event - The event the listener was registered for.
      * @param listener - The callback to remove.
+     *
+     * @returns This border, for method chaining.
      */
-    removeDragListener(listener: Function) : this {
-        let idx = this._dragListeners.indexOf(listener);
-        if (idx < 0) {
-            return this;
-        }
-
-        this._dragListeners.push(listener);
+    off(event: WindowBorderEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
 
         return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "drag",            border: WindowBorder, e: MouseEvent): void;
+    protected emit(event: WindowBorderEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("drag", fn)`.
+     *
+     * @param listener - The callback invoked with this WindowBorder and the MouseEvent on each drag.
+     *
+     * @returns This border, for method chaining.
+     */
+    addDragListener(listener: Function) : this {
+        return this.on("drag", listener as (b: WindowBorder, e: MouseEvent) => void);
+    }
+
+    /**
+     * @deprecated Use `off("drag", fn)`.
+     *
+     * @param listener - The callback to remove.
+     *
+     * @returns This border, for method chaining.
+     */
+    removeDragListener(listener: Function) : this {
+        return this.off("drag", listener);
     }
 
     /**
@@ -150,13 +207,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
      * @param e - The MouseEvent to pass to each listener.
      */
     fireDragListeners(e: MouseEvent) {
-        let me = this;
-
-        for (let idx in this._dragListeners) {
-            let dragListener = this._dragListeners[idx];
-
-            dragListener(me, e);
-        }
+        this.emit("drag", this, e);
     }
 
     /**

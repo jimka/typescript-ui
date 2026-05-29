@@ -2,7 +2,15 @@
 
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
 import { Checkbox } from "~/component/input/Checkbox.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * String-literal union of the events emitted by {@link BooleanEditor}.
+ *
+ * @category Components
+ */
+export type BooleanEditorEvent = "change";
 
 /**
  * An always-visible checkbox editor for boolean cell values.
@@ -20,7 +28,7 @@ class BooleanEditor extends CellEditor<Boolean | null> {
 
     private _checkBox:        Checkbox                                       = new Checkbox();
     private _value:           Boolean | null                                 = null;
-    private _onChange:        ((value: Boolean | null) => void) | undefined;
+    private _listeners:       ListenerBag<BooleanEditorEvent>                = new ListenerBag<BooleanEditorEvent>();
     private _suppressCommit:  boolean                                        = false;
 
     constructor() {
@@ -47,19 +55,61 @@ class BooleanEditor extends CellEditor<Boolean | null> {
             }
 
             this._value = this._checkBox.isSelected();
-            this._onChange?.(this._value);
+            this.emit("change", this._value);
         });
     }
 
     /**
-     * Registers a callback to fire when the checkbox value changes.
-     * The callback receives the concrete `true`/`false` produced by the
-     * click; the editor never emits `null` from user interaction.
+     * Registers a listener for one of this editor's events.
+     *
+     * @param event - `"change"` fires when the checkbox value changes,
+     *   receiving the concrete `true`/`false` produced by the click. The
+     *   editor never emits `null` from user interaction.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This editor, for method chaining.
+     */
+    on(event: "change",             listener: (value: Boolean | null) => void): this;
+    on(event: BooleanEditorEvent,   listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This editor, for method chaining.
+     */
+    off(event: BooleanEditorEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "change",            value: Boolean | null): void;
+    protected emit(event: BooleanEditorEvent,  ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("change", fn)`.
      *
      * @param fn - The callback to invoke with the new boolean value on each change.
      */
     setOnChange(fn: (value: Boolean | null) => void): void {
-        this._onChange = fn;
+        this.on("change", fn);
     }
 
     /**
@@ -114,7 +164,7 @@ class BooleanEditor extends CellEditor<Boolean | null> {
         this._checkBox.setIndeterminate(false);
         this._checkBox.setSelected(next);
         this._value = next;
-        this._onChange?.(this._value);
+        this.emit("change", this._value);
 
         return this;
     }

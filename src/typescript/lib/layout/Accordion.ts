@@ -6,8 +6,16 @@ import { AccordionHeader } from "~/component/container/AccordionHeader.js";
 import { Animation } from "~/core/Animation.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * String-literal union of the events emitted by {@link Accordion}.
+ *
+ * @category Layouts
+ */
+export type AccordionEvent = "sectiontoggle";
 
 /**
  * Symmetric easing curve, shared between the panel wrapper height transition,
@@ -49,7 +57,15 @@ export interface AccordionOptions extends LayoutManagerOptions {
     singleOpen?:        boolean;
     headerHeight?:      number;
     animationDuration?: number;
+    /** @deprecated Use `listeners.sectiontoggle`. */
     onSectionToggle?:   SectionToggleCallback;
+    /**
+     * Multi-event listener bag dispatched to {@link Accordion.on} at
+     * construction time.
+     */
+    listeners?: {
+        sectiontoggle?: SectionToggleCallback;
+    };
 }
 
 /**
@@ -91,7 +107,7 @@ class Accordion extends LayoutManager {
     private _singleOpen: boolean = false;
     private _headerHeight: number = 28;
     private _animationDuration: number = 200;
-    private _onSectionToggleCallback: SectionToggleCallback | null = null;
+    private _listeners: ListenerBag<AccordionEvent> = new ListenerBag<AccordionEvent>();
 
     constructor(options?: AccordionOptions) {
         super();
@@ -117,6 +133,10 @@ class Accordion extends LayoutManager {
 
         if (options.animationDuration !== undefined) {
             this.setAnimationDuration(options.animationDuration);
+        }
+
+        if (options.listeners?.sectiontoggle !== undefined) {
+            this.on("sectiontoggle", options.listeners.sectiontoggle);
         }
 
         if (options.onSectionToggle !== undefined) {
@@ -162,7 +182,7 @@ class Accordion extends LayoutManager {
                 this._openState[i] = false;
                 this._headers[i].setExpanded(false);
                 this._headers[i].getAria().setExpanded(false);
-                this._onSectionToggleCallback?.(i, false);
+                this.emit("sectiontoggle", i, false);
             } else {
                 foundOpen = true;
             }
@@ -230,7 +250,7 @@ class Accordion extends LayoutManager {
                     this._openState[i] = false;
                     this._headers[i].setExpanded(false);
                     this._headers[i].getAria().setExpanded(false);
-                    this._onSectionToggleCallback?.(i, false);
+                    this.emit("sectiontoggle", i, false);
                 }
             }
         }
@@ -239,7 +259,7 @@ class Accordion extends LayoutManager {
         this._openState[index] = true;
         this._headers[index].setExpanded(true);
         this._headers[index].getAria().setExpanded(true);
-        this._onSectionToggleCallback?.(index, true);
+        this.emit("sectiontoggle", index, true);
         this.getContainer()?.scheduleLayout();
 
         return this;
@@ -259,7 +279,7 @@ class Accordion extends LayoutManager {
         this._openState[index] = false;
         this._headers[index].setExpanded(false);
         this._headers[index].getAria().setExpanded(false);
-        this._onSectionToggleCallback?.(index, false);
+        this.emit("sectiontoggle", index, false);
         this.getContainer()?.scheduleLayout();
 
         return this;
@@ -276,12 +296,60 @@ class Accordion extends LayoutManager {
     }
 
     /**
-     * Registers a callback invoked whenever a section is opened or closed.
+     * Registers a listener for one of this accordion's events.
      *
-     * @param callback - The callback, or null to remove it.
+     * @param event - `"sectiontoggle"` fires whenever a section is opened or
+     *   closed, receiving the zero-based section index and whether it is
+     *   now open.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This accordion, for method chaining.
+     */
+    on(event: "sectiontoggle", listener: SectionToggleCallback): this;
+    on(event: AccordionEvent,  listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This accordion, for method chaining.
+     */
+    off(event: AccordionEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "sectiontoggle", index: number, open: boolean): void;
+    protected emit(event: AccordionEvent,  ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("sectiontoggle", fn)`. `null` is silently
+     *   dropped; use `off("sectiontoggle", fn)` to detach a specific
+     *   listener.
+     *
+     * @param callback - The callback, or null to drop the call.
      */
     setOnSectionToggle(callback: SectionToggleCallback | null): this {
-        this._onSectionToggleCallback = callback;
+        if (callback) {
+            this.on("sectiontoggle", callback);
+        }
 
         return this;
     }
@@ -591,7 +659,7 @@ class Accordion extends LayoutManager {
                     this._openState[i] = false;
                     this._headers[i].setExpanded(false);
                     this._headers[i].getAria().setExpanded(false);
-                    this._onSectionToggleCallback?.(i, false);
+                    this.emit("sectiontoggle", i, false);
                 }
             }
         }
@@ -602,7 +670,7 @@ class Accordion extends LayoutManager {
         this._openState[index] = nowOpen;
         this._headers[index].setExpanded(nowOpen);
         this._headers[index].getAria().setExpanded(nowOpen);
-        this._onSectionToggleCallback?.(index, nowOpen);
+        this.emit("sectiontoggle", index, nowOpen);
         this.getContainer()?.scheduleLayout();
     }
 

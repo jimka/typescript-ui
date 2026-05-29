@@ -16,7 +16,15 @@ import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * String-literal union of the events emitted by {@link Tab}.
+ *
+ * @category Layouts
+ */
+export type TabEvent = "tabclose";
 
 /** Duration (ms) of the cross-tab fade-in transition. */
 const TAB_FADE_DURATION_MS = 120;
@@ -27,7 +35,15 @@ const TAB_FADE_DURATION_MS = 120;
  * @category Layouts
  */
 export interface TabOptions extends LayoutManagerOptions {
+    /** @deprecated Use `listeners.tabclose`. */
     onTabClose?: (component: Component) => void;
+    /**
+     * Multi-event listener bag dispatched to {@link Tab.on} at construction
+     * time.
+     */
+    listeners?: {
+        tabclose?: (component: Component) => void;
+    };
 }
 
 /**
@@ -90,7 +106,7 @@ class Tab extends LayoutManager {
     // against `selectedTabIndex` so the cross-tab fade fires only on actual
     // selection changes (not on every relayout, e.g. window resize).
     private _lastFadedTabIndex: number = -1;
-    private _onTabClose: ((component: Component) => void) | null = null;
+    private _listeners: ListenerBag<TabEvent> = new ListenerBag<TabEvent>();
 
     /**
      * Creates a Tab layout manager with an empty toolbar.
@@ -119,6 +135,10 @@ class Tab extends LayoutManager {
      */
     protected applyOptions(options: TabOptions): void {
         super.applyOptions(options);
+
+        if (options.listeners?.tabclose !== undefined) {
+            this.on("tabclose", options.listeners.tabclose);
+        }
 
         if (options.onTabClose !== undefined) {
             this.setOnTabClose(options.onTabClose);
@@ -692,12 +712,55 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Registers a callback invoked after a tab is closed.
+     * Registers a listener for one of this tab layout's events.
+     *
+     * @param event - `"tabclose"` fires after a tab is closed, receiving
+     *   the content component that was removed.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This tab layout, for method chaining.
+     */
+    on(event: "tabclose", listener: (component: Component) => void): this;
+    on(event: TabEvent,   listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This tab layout, for method chaining.
+     */
+    off(event: TabEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "tabclose", component: Component): void;
+    protected emit(event: TabEvent,   ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("tabclose", fn)`.
      *
      * @param callback - Receives the content component that was removed.
      */
     setOnTabClose(callback: (component: Component) => void): void {
-        this._onTabClose = callback;
+        this.on("tabclose", callback);
     }
 
     /**
@@ -727,8 +790,8 @@ class Tab extends LayoutManager {
             container.removeComponent(contentComponent);
         }
 
-        if (this._onTabClose && contentComponent) {
-            this._onTabClose(contentComponent);
+        if (contentComponent) {
+            this.emit("tabclose", contentComponent);
         }
 
         this.selectNextTab(entryIndex);

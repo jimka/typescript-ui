@@ -16,6 +16,24 @@ import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 
 /**
+ * String-literal union of the events emitted by {@link Button}. A typed
+ * shorthand over [`Event.addListener`](/api/core/classes/Component) /
+ * [`Event.removeListener`](/api/core/classes/Component) — Button does not
+ * own a [`ListenerBag`](/api/core/classes/ListenerBag); the DOM `"click"`
+ * event is dispatched through the framework's window-level capture handler.
+ *
+ * @category Components
+ */
+export type ButtonEvent = "click";
+
+/**
+ * The handler shape consumers register for the `"click"` button event.
+ *
+ * @category Components
+ */
+export type ClickListener = (event: MouseEvent) => void;
+
+/**
  * Construction-time options for {@link Button}.
  *
  * @category Components
@@ -430,16 +448,48 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Registers a click event listener on this button.
+     * Registers a listener for one of this button's events. A typed
+     * shorthand over {@link Event.addListener} — `"click"` is currently the
+     * only allowed event name. Future DOM events Button wants to expose are
+     * added by widening `ButtonEvent`.
+     *
+     * @param event - The event name. Only `"click"` is accepted.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This button, for method chaining.
+     */
+    on(event: "click",     listener: ClickListener): this;
+    on(event: ButtonEvent, listener: ClickListener): this {
+        Event.addListener(this, event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. A typed shorthand over
+     * {@link Event.removeListener}; the exact callback reference must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This button, for method chaining.
+     */
+    off(event: "click",     listener: ClickListener): this;
+    off(event: ButtonEvent, listener: ClickListener): this {
+        Event.removeListener(this, event, listener);
+
+        return this;
+    }
+
+    /**
+     * @deprecated Use `on("click", fn)`.
      *
      * @param listener - The callback to invoke when the button is clicked.
      *
-     * @returns This component, for method chaining.
+     * @returns This button, for method chaining.
      */
     addActionListener(listener: Function): this {
-        Event.addListener(this, "click", listener);
-
-        return this;
+        return this.on("click", listener as ClickListener);
     }
 
     /**
