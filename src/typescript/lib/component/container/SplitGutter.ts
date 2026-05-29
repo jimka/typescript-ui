@@ -67,6 +67,14 @@ class SplitGutter extends Component<SplitGutterOptions> {
         }
 
         Event.addListener(this, 'mousedown', this.onDragStart);
+
+        // Listener wiring runs here — NOT inside `applyOptions` — because
+        // Component's constructor calls `applyOptions` from inside super(),
+        // before the class-field `_listeners` initializer has run. Wiring
+        // after super() guarantees `_listeners` exists.
+        if (options?.listeners?.drag !== undefined) {
+            this.on("drag", options.listeners.drag);
+        }
     }
 
     /**
@@ -82,10 +90,6 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
         if (opts.orientation !== undefined) {
             this.setDirection(opts.orientation);
-        }
-
-        if (opts.listeners?.drag !== undefined) {
-            this.on("drag", opts.listeners.drag);
         }
 
         return this;

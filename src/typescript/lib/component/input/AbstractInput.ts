@@ -65,6 +65,13 @@ abstract class AbstractInput<
      */
     constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
         super(options, subclassDefaults);
+
+        // Listener wiring runs here — NOT inside `applyOptions` — because
+        // Component's constructor calls `applyOptions` from inside super(),
+        // before the class-field `_listeners` initializer has run. Wiring
+        // after super() guarantees `_listeners` exists.
+        if (options?.listeners?.change  !== undefined) this.on("change",  options.listeners.change);
+        if (options?.listeners?.binding !== undefined) this.on("binding", options.listeners.binding);
     }
 
     /**
@@ -262,9 +269,6 @@ abstract class AbstractInput<
 
         if (opts.enabled  !== undefined) this._options.enabled  = opts.enabled;
         if (opts.readOnly !== undefined) this._options.readOnly = opts.readOnly;
-
-        if (opts.listeners?.change  !== undefined) this.on("change",  opts.listeners.change);
-        if (opts.listeners?.binding !== undefined) this.on("binding", opts.listeners.binding);
 
         return this;
     }

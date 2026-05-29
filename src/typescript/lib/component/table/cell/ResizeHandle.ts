@@ -107,31 +107,21 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
             "linear-gradient(to right,transparent 80%," +
             "var(--ts-ui-table-resize-handle-color,rgba(0,0,0,0.2)) 80%)");
         this.setZIndex(1);
-    }
 
-    /**
-     * Applies a {@link ResizeHandleOptions} bag. Drag listeners are routed
-     * into the listener bag; inherited Component fields cascade through
-     * `super.applyOptions`.
-     *
-     * @param options - The options bag carrying the values to apply.
-     */
-    protected applyOptions(options: ResizeHandleOptions): this {
-        super.applyOptions(options);
+        // Listener wiring must happen here, NOT inside `applyOptions` —
+        // Component's constructor invokes `applyOptions` synchronously
+        // from inside super(), at which point the class-field
+        // `_listeners` initializer has not yet run (class-field
+        // initialisers fire between super() returning and the next
+        // statement here). Wiring after super() guarantees `_listeners`
+        // is the live `ListenerBag` instance.
+        if (options?.listeners?.dragstart !== undefined) this.on("dragstart", options.listeners.dragstart);
+        if (options?.listeners?.dragmove  !== undefined) this.on("dragmove",  options.listeners.dragmove);
+        if (options?.listeners?.dragend   !== undefined) this.on("dragend",   options.listeners.dragend);
 
-        const opts = { ...this._defaultOptions, ...options } as ResizeHandleOptions;
-
-        if (opts.listeners !== undefined) {
-            if (opts.listeners.dragstart !== undefined) this.on("dragstart", opts.listeners.dragstart);
-            if (opts.listeners.dragmove  !== undefined) this.on("dragmove",  opts.listeners.dragmove);
-            if (opts.listeners.dragend   !== undefined) this.on("dragend",   opts.listeners.dragend);
-        }
-
-        if (opts.onDragStart !== undefined) this.on("dragstart", opts.onDragStart);
-        if (opts.onDragMove  !== undefined) this.on("dragmove",  opts.onDragMove);
-        if (opts.onDragEnd   !== undefined) this.on("dragend",   opts.onDragEnd);
-
-        return this;
+        if (options?.onDragStart !== undefined) this.on("dragstart", options.onDragStart);
+        if (options?.onDragMove  !== undefined) this.on("dragmove",  options.onDragMove);
+        if (options?.onDragEnd   !== undefined) this.on("dragend",   options.onDragEnd);
     }
 
     /**
