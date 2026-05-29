@@ -482,19 +482,34 @@ class Border extends LayoutManager {
             );
         }
 
+        // Reserve east's preferred width up front so west can be clamped
+        // to avoid overlapping east when west.preferred + east.preferred
+        // exceeds the container width (e.g. a Window header where the
+        // title is wider than the available space between the icon and
+        // the trailing buttons).
+        let eastPreferredWidth = 0;
+        if (this._eastComponent) {
+            let eastPreferred = this._eastComponent.getPreferredSize();
+            if (!eastPreferred) {
+                throw new Error("Unable to determine preferred size for east component.");
+            }
+            eastPreferredWidth = eastPreferred.width;
+        }
+
         if (this._westComponent) {
             let preferredSize = this._westComponent.getPreferredSize();
             if (!preferredSize) {
                 throw new Error("Unable to determine preferred size for west component.");
             }
 
-            centerX = preferredSize.width;
+            let westWidth = Math.max(0, Math.min(preferredSize.width, width - eastPreferredWidth));
+            centerX = westWidth;
 
             this.placeComponent(
                 this._westComponent,
                 containerInsets.getLeft(),
                 containerInsets.getTop() + middleY,
-                preferredSize.width,
+                westWidth,
                 middleHeight,
                 FillType.BOTH
             );
@@ -509,19 +524,14 @@ class Border extends LayoutManager {
         centerWidth = width - centerX;
 
         if (this._eastComponent) {
-            let preferredSize = this._eastComponent.getPreferredSize();
-            if (!preferredSize) {
-                throw new Error("Unable to determine preferred size for east component.");
-            }
-
             centerWidth -= this._gap;
-            centerWidth -= preferredSize.width;
+            centerWidth -= eastPreferredWidth;
 
             this.placeComponent(
                 this._eastComponent,
-                containerInsets.getLeft() + width - preferredSize.width,
+                containerInsets.getLeft() + width - eastPreferredWidth,
                 containerInsets.getTop() + middleY,
-                preferredSize.width,
+                eastPreferredWidth,
                 middleHeight,
                 FillType.BOTH
             );
