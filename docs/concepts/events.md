@@ -1,8 +1,33 @@
 # Events
 
-The framework's [`Event`](/api/core/classes/Component) namespace centralises DOM event delegation. Instead of attaching one native listener per component, the framework attaches one listener per event type to a shared root and routes each fired event to the relevant component callback.
+The framework has **two listener surfaces**, with a hard rule for picking
+between them:
 
-This page covers the three listener flavours, when to use each, and the hover-event quirk that bites everyone at least once.
+- **DOM events** (`click`, `mousedown`, `keydown`, `resize`, …) route
+  through the [`Event`](/api/core/classes/Component) namespace's
+  `Event.addListener` / `Event.addSubtreeListener` /
+  `Event.addViewportListener` triple. One window-level handler per type;
+  per-id dispatch in O(1).
+- **Framework custom events** (`change`, `selection`, `scroll`, `tick`,
+  `drag`, `commit`, `tabclose`, `sectiontoggle`, …) route through the
+  emitting class's `on(event, listener)` / `off(event, listener)` pair.
+  Each emitter owns a private [`ListenerBag`](/api/core/classes/ListenerBag)
+  delegate; `protected emit(...)` fan-outs to its registered listeners.
+
+The split is principled: **`Event.X` is the surface for anything that
+originates as a real DOM event** (the window-level handler and subtree
+bubbling depend on the event existing in the DOM). **`on`/`off` is the
+surface for in-process custom events** that the framework defines on
+top of, or independently of, the DOM.
+
+A handful of classes expose a typed `on("dom-event", fn)` shorthand over
+`Event.addListener` — currently just [`Button.on("click", fn)`](/api/component/button/classes/Button#on).
+The dispatcher and the multi-listener bucket stay inside the `Event`
+class; the shorthand is a per-class typed convenience.
+
+This page covers the three DOM listener flavours, the `on`/`off`/`emit`
+surface, when to use each, and the hover-event quirk that bites everyone
+at least once.
 
 ## addListener
 
@@ -43,7 +68,55 @@ Fires for events anywhere in the document, regardless of their target. Used inte
 
 Use this only when you genuinely need global event capture — for everything else, `addListener` or `addSubtreeListener` is more focused and easier to reason about.
 
-## Removal
+## on / off / emit — framework custom events
+
+For events the framework defines (not the DOM), use the emitter's `on`
+method directly:
+
+```typescript
+import { Tree } from '@jimka/typescript-ui/component/tree';
+
+const tree = new Tree();
+
+tree.on("selection", (nodes) => {
+    console.log(`selected ${nodes.length} node(s)`);
+});
+
+// Construction-time wiring via the options bag:
+const tree2 = new Tree({
+    listeners: {
+        selection: (nodes) => console.log(nodes),
+    },
+});
+```
+
+Symmetric removal:
+
+```typescript
+const onSelect = (nodes) => console.log(nodes);
+tree.on("selection",  onSelect);
+tree.off("selection", onSelect);
+```
+
+Every emitter declares a string-literal union of its supported event
+names — `tree.on("typo", fn)` is a compile error. Listeners fire in
+registration order. The same shape applies to
+[`AbstractStore`](/api/data/classes/AbstractStore),
+[`Binding`](/api/core/classes/Binding),
+[`AbstractInput`](/api/component/input/classes/AbstractInput),
+[`Scrollbar`](/api/component/container/classes/Scrollbar),
+[`SpinButton`](/api/component/input/classes/SpinButton),
+[`SplitGutter`](/api/component/container/classes/SplitGutter),
+[`WindowBorder`](/api/component/container/classes/WindowBorder),
+[`ButtonGroup`](/api/core/classes/ButtonGroup),
+[`ResizeHandle`](/api/component/table/classes/ResizeHandle),
+[`Cell`](/api/component/table/classes/Cell),
+[`HeaderCell`](/api/component/table/classes/HeaderCell), the table
+[`Header`](/api/component/table/classes/Header), the
+[`Accordion`](/api/layout/classes/Accordion) layout, and the
+[`Tab`](/api/layout/classes/Tab) layout.
+
+## DOM event removal
 
 Each `addX` has a matching `removeX` that takes the same `(component, type, listener)` triple. Pass the **same function reference** that you passed to the `add` call:
 
@@ -108,11 +181,13 @@ The framework installs one window-level handler per event type, so the first reg
 
 ## When to use which
 
-| Listener | Use for |
-| --- | --- |
-| `addListener` | Direct interaction with a leaf component (click, change, input). |
-| `addSubtreeListener` | Delegated handlers on a container. Hover detection (`mouseover` / `mouseout`). |
-| `addViewportListener` | Drag-track gestures, global keyboard hooks. |
+| Listener                                    | Use for                                                                                 |
+| ------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `Event.addListener`                         | Direct interaction with a leaf component (click, change, input).                        |
+| `Event.addSubtreeListener`                  | Delegated handlers on a container. Hover detection (`mouseover` / `mouseout`).          |
+| `Event.addViewportListener`                 | Drag-track gestures, global keyboard hooks.                                             |
+| `emitter.on(event, listener)`               | Framework custom events: store/binding/selection/scroll/tick/drag/commit, tab/section.  |
+| `button.on("click", listener)` (and `off`)  | Typed shorthand over `Event.addListener` exposed on classes that own a small DOM-event set. |
 
 ## See also
 
