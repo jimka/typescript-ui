@@ -1,8 +1,10 @@
 # Listener Shape Consistency — Implementation Plan
 
+> **Status:** Refreshed 2026-05-29 — no steps shipped yet. `AbstractStore.on/off` still return `void`; `AbstractInput`, `Binding`, `Tree`, `ButtonGroup`, `Scrollbar`, `SpinButton`, `WindowBorder`, `SplitGutter`, `ResizeHandle`, `Cell`, `HeaderCell`, `Header` (table), `Accordion`, `Tab` / `TabPanel`, `BooleanEditor`, and `Button.addActionListener` all match the pre-migration shapes described below. Sibling [`rectify-inline-event-listeners.md`](rectify-inline-event-listeners.md) has *not* yet shipped its `Body.ts` migration, so `Event.addViewportResizeListener` is still present at [Event.ts:454](../src/typescript/lib/core/Event.ts#L454) and called from [Body.ts:66](../src/typescript/lib/core/Body.ts#L66); this plan still inherits that migration (Architecture Decisions § first decision).
+
 ## Overview
 
-The framework registers and fires listeners in many shapes today. The canonical event surface — `Event.addListener` / `Event.addSubtreeListener` / `Event.addViewportListener` / `Event.fireEvent` at [core/Event.ts:213](../src/typescript/lib/core/Event.ts#L213), [:303](../src/typescript/lib/core/Event.ts#L303), [:383](../src/typescript/lib/core/Event.ts#L383), [:185](../src/typescript/lib/core/Event.ts#L185) — coexists with ad-hoc `addXxxListener` / `removeXxxListener` pairs, single-slot `setOnXxxCallback` setters with private `_fireXxx` invokers, and the data store's `on('event', fn)` / `off('event', fn)` pair at [data/AbstractStore.ts:804](../src/typescript/lib/data/AbstractStore.ts#L804). The variants disagree on three axes: (1) the registration verb (`addListener` vs `addXxxListener` vs `on` vs `setOnXxxCallback`), (2) whether multiple listeners are supported (multi-listener arrays vs single-slot callbacks), and (3) the firing surface (`Event.fireEvent` dispatched DOM event vs in-class `fireXxx` array walk vs `emit` private method).
+The framework registers and fires listeners in many shapes today. The canonical event surface — `Event.addListener` / `Event.addSubtreeListener` / `Event.addViewportListener` / `Event.fireEvent` at [core/Event.ts:213](../src/typescript/lib/core/Event.ts#L213), [:303](../src/typescript/lib/core/Event.ts#L303), [:383](../src/typescript/lib/core/Event.ts#L383), [:185](../src/typescript/lib/core/Event.ts#L185) — coexists with ad-hoc `addXxxListener` / `removeXxxListener` pairs, single-slot `setOnXxxCallback` setters with private `_fireXxx` invokers, and the data store's `on('event', fn)` / `off('event', fn)` pair at [data/AbstractStore.ts:804](../src/typescript/lib/data/AbstractStore.ts#L804) / [:821](../src/typescript/lib/data/AbstractStore.ts#L821). The variants disagree on three axes: (1) the registration verb (`addListener` vs `addXxxListener` vs `on` vs `setOnXxxCallback`), (2) whether multiple listeners are supported (multi-listener arrays vs single-slot callbacks), and (3) the firing surface (`Event.fireEvent` dispatched DOM event vs in-class `fireXxx` array walk vs `emit` private method).
 
 Picking one canonical (de-)registration shape and one canonical firing shape — applied uniformly across the four families (DOM-routed component events, framework custom events, single-callback handoffs, store events) — collapses cognitive overhead, makes listener removal symmetric everywhere, and lets `grep` find every site of a given listener type with one pattern. Existing constraints stay intact: listeners reference named functions, hover events use `mouseover`/`mouseout`, container delegation uses `addSubtreeListener` (per memory feedback).
 
@@ -55,6 +57,13 @@ Three reasons the two surfaces stay separate:
 
 The split is principled: **`Event.X` for anything that originates as a real DOM event**, **`on`/`off`/`emit` for anything that doesn't.**
 
+**Concretely — what gets renamed to `on`/`off`, and what doesn't:**
+
+- `Event.addListener` / `Event.removeListener` / `Event.addSubtreeListener` / `Event.removeSubtreeListener` / `Event.addViewportListener` / `Event.removeViewportListener` / `Event.fireEvent` — **unchanged**, no rename. They are already canonical.
+- `Button.addActionListener` — **renamed to `on("click", fn)`** as a typed shorthand wrapping `Event.addListener(this, "click", listener)`; matching `off("click", fn)` added for symmetry. `addActionListener` stays as a `@deprecated` one-line forwarder during the deprecation window; the follow-up plan deletes it once demos migrate.
+- The legacy custom-event `addXxxListener` / `removeXxxListener` and `setOnXxxCallback` families — **collapsed to `on`/`off`/`emit`** (full machinery: `_listenerMap`, `emit`). These are: `AbstractInput.addChangeListener` / `removeChangeListener` / `addBindingListener`; `Binding.addChangeListener` / `addCommitListener` / `addRejectListener` / `addBeforeRecordListener`; `Tree.addSelectionListener`; `ButtonGroup.addSelectionListener`; `Scrollbar.addScrollListener` / `removeScrollListener`; `ScrollArrowButton.addTickListener`; `SpinButton.addTickListener`; `WindowBorder.addDragListener` / `removeDragListener`; `SplitGutter.addDragListener` / `removeDragListener`; `ResizeHandle.setOnDragStart` / `setOnDragMove` / `setOnDragEnd`; `Cell.setOnCommit` / `setOnEditEnd`; `HeaderCell.setOnSortClick` / `setOnContextMenu` / `setOnResizeDrag`; `Header.setOnColumnResize` / `setOnColumnContextMenu`; `Accordion.setOnSectionToggle`; `Tab.setOnTabClose` (+ `TabPanel.setOnTabClose` forwarder); `BooleanEditor.setOnChange`.
+- `AbstractStore.on` / `off` already use the canonical names; this plan only widens their return type from `void` to `this` and brings `emit` from `private` to `protected`.
+
 ### Canonical firing shape per family
 
 | Family | Canonical firing call | Why |
@@ -70,10 +79,10 @@ The split is principled: **`Event.X` for anything that originates as a real DOM 
 Today's pattern:
 
 ```typescript
-// AbstractInput.ts:129
+// AbstractInput.ts:129, :143, :174
 addChangeListener(fn: (value: TValue) => void): this { this._changeListeners.push(fn); return this; }
 removeChangeListener(fn: (value: TValue) => void): this { /* splice */ }
-protected notifyChange(value: TValue): void { for (const fn of this._changeListeners) fn(value); }
+protected notifyChange(value: TValue): void { for (const fn of this._changeListeners) fn(value); for (const fn of this._bindingListeners) fn(); }
 ```
 
 After:
@@ -90,14 +99,31 @@ protected emit(event: "binding"): void;
 
 Backward compatibility: keep `addChangeListener` / `removeChangeListener` as one-line `@deprecated` wrappers that forward to `on('change', fn)` / `off('change', fn)`. Same for the other consolidated APIs (`addScrollListener`, `addTickListener`, `addSelectionListener`, `addDragListener`, `addActionListener`, …). Wrappers are removed in a follow-up plan after consumer migration — see Non-Goals.
 
-`addActionListener` ([Button.ts:312](../src/typescript/lib/component/button/Button.ts#L312)) is a special case: its body is *literally* `Event.addListener(this, "click", listener)`. It belongs in the DOM-routed family, not the custom-event family. The canonical replacement is the bare `Event.addListener(button, "click", fn)` — leave `addActionListener` as a `@deprecated` shorthand, then remove in the same follow-up.
+`addActionListener` ([Button.ts:439](../src/typescript/lib/component/button/Button.ts#L439)) is a special case: its body is *literally* `Event.addListener(this, "click", listener)`. It belongs in the DOM-routed family, not the custom-event family. **It is renamed to `on` with `"click"` as the only allowed event type** — a typed shorthand over `Event.addListener` rather than a deletion. After migration:
+
+```typescript
+// Button.ts — typed shorthand wrapping Event.addListener / Event.removeListener:
+on(event: "click", listener: ClickListener): this {
+    Event.addListener(this, "click", listener);
+    return this;
+}
+
+off(event: "click", listener: ClickListener): this {
+    Event.removeListener(this, "click", listener);
+    return this;
+}
+```
+
+No `_listenerMap`, no `emit` — Button has no internal multi-listener bag to manage, because `Event.addListener` already supports multiple listeners per `(id, type)` through its own per-id bucket. The typed event union (`"click"` and only `"click"`) makes `button.on("dblclick", fn)` a compile error; any future DOM event Button wants to expose is added by widening the union. `addActionListener` stays during the deprecation window as a one-line `@deprecated` forwarder to `on("click", fn)`; the follow-up demo-migration plan deletes it.
+
+This makes Button's `on` a deliberately thin convenience over `Event.addListener` — same dispatcher, same window-level capture handler, same listener-bucket. The split is therefore "**`Event.X` is the *underlying* DOM-routed API** for everywhere; classes that own a small, canonical set of DOM events MAY expose them as a typed `on`/`off` shorthand; classes that own custom non-DOM events MUST use the `on`/`off`/`emit` full-machinery shape." Currently only Button qualifies for the shorthand; other DOM-event-bearing components keep raw `Event.addListener` at call sites until a similar small-canonical-event-set case appears.
 
 ### `setOnXxxCallback(fn)` family — collapse into `on('xxx', fn)`
 
 The setter-of-callback shape:
 
 ```typescript
-// ResizeHandle.ts:136
+// ResizeHandle.ts:140
 setOnDragStart(fn: (event: MouseEvent) => void): this { this._onDragStart = fn; return this; }
 fireDragMove(delta: number): void { this._onDragMove?.(delta); }
 ```
@@ -153,15 +179,25 @@ The Node `EventEmitter` shape (`on(event, listener)` / `emit(event, ...args)` / 
 - **No event-bubble / wildcard.** Custom events don't bubble. There's no `'*'` listener; that's a footgun.
 - **No `emit` arg spreading.** Each event has a single typed payload object (mirrors the Store's `emit(event, payload)` form at [AbstractStore.ts:839](../src/typescript/lib/data/AbstractStore.ts#L839)). Multi-arg `emit` invites positional bugs.
 
-### `BaseObject` does *not* gain `on` / `off` / `emit`
+### Reuse via composition, not inheritance — `ListenerBag<TEvent>` delegate
 
-Tempting to put the multi-listener machinery on `BaseObject` so every class inherits it for free. Rejected:
+The multi-listener bag logic — map of buckets, push on `on`, splice on `off`, walk on `emit` — is the same in every emitting class. Three ways to factor that out:
 
-- Most `BaseObject` subclasses don't dispatch any events. Threading an event map into every framework object (every Insets, Border, Color, Size, …) is dead weight.
-- Class-typed `on(event: FooEvent, listener: FooListener)` doesn't compose through a generic base — you'd lose the event-name typing. Each event-emitting class re-declares `on`/`off`/`emit` with its own typed event union.
-- A shared mixin / interface could express the contract (`interface EventEmitter<TEvent extends string>`), but no two classes today share an event vocabulary, so a mixin earns nothing.
+| Option | Verdict |
+|---|---|
+| **A. Put `on`/`off`/`emit` on `BaseObject`.** | Rejected. Most `BaseObject` subclasses don't dispatch any events; threading an event map into every Insets, Border, Color, Size, … is dead weight. Class-typed `on(event: FooEvent, listener: FooListener)` doesn't compose through a generic base — you'd lose the event-name typing. |
+| **B. Shared mixin / interface (`interface EventEmitter<TEvent extends string>`).** | Rejected. TypeScript mixin gymnastics fight the framework's straightforward class hierarchy, and no two classes today share an event vocabulary, so a structural contract earns nothing. |
+| **C. Composition via a private `ListenerBag<TEvent>` delegate field.** | **Chosen.** The bag is a tiny utility class (`core/ListenerBag.ts`) holding the `Map<TEvent, Function[]>` + `add` / `remove` / `fire` methods. Each emitting class instantiates one as a private field and writes one-line forwarders for its typed `on` / `off` / `emit`. Per-class boilerplate drops from ≈25 lines to ≈5 lines + the typed overload signatures the host owns either way. |
 
-The duplication is genuine but small (≈30 lines per emitting class for the `_listenerMap`, `on`, `off`, `emit` boilerplate). The alternative — base-class machinery — costs more in lost typing.
+**Why composition sidesteps options A and B:**
+
+1. **No dead weight.** Only classes that actually emit instantiate a `ListenerBag`. Insets / Border / Color / Size pay nothing.
+2. **Typing preserved.** The typed `on(event: FooEvent, listener: FooListener)` overloads stay on the host class with the host's own event union; the bag is generic on `TEvent` and the host instantiates it with its own union. `tree.on("typo", fn)` is still a compile error.
+3. **Single source of truth for the bag logic.** Future tweaks (registration-order guarantees, `once`, listener-count introspection) happen in one file.
+
+**Encapsulation:** the bag field is **private**, never exposed. `tree._listeners.fire(...)` from outside the host is not possible because there is no public accessor. The host's `protected emit` forwards into `this._listeners.fire`; that protected method remains the only path to dispatch.
+
+**Cost:** one function-call hop per `add` / `remove` / `fire` (in the noise) and one extra import + one new file. Compared to ≈275 lines of duplicated boilerplate across 11+ classes, the trade is clearly worth it.
 
 ### Removal symmetry
 
@@ -171,41 +207,42 @@ Every `add` has a `remove`. Every `on` has an `off`. Every `Event.addListener` h
 
 ## Public API (TypeScript Signatures)
 
-### Canonical mixin shape (template — not a real symbol)
+### `ListenerBag<TEvent>` (new utility class — `core/ListenerBag.ts`)
 
-The shape every event-emitting class implements. Not a runtime interface; the framework prefers concrete typed methods over a generic.
+Holds the multi-listener bag for one emitter. Generic on the event-name union.
 
 ```typescript
-// Conceptual; each class re-declares with its own event union:
-abstract class EventfulFoo {
-    private _listenerMap: Map<string, Function[]> = new Map();
+// core/ListenerBag.ts
+export class ListenerBag<TEvent extends string> {
+    private _buckets: Map<TEvent, Function[]> = new Map();
 
-    on(event: FooEvent, listener: FooListener): this {
-        let bucket = this._listenerMap.get(event);
+    /** Append `listener` to the bucket for `event`. */
+    add(event: TEvent, listener: Function): void {
+        let bucket = this._buckets.get(event);
         if (!bucket) {
             bucket = [];
-            this._listenerMap.set(event, bucket);
+            this._buckets.set(event, bucket);
         }
 
         bucket.push(listener);
-        return this;
     }
 
-    off(event: FooEvent, listener: FooListener): this {
-        const bucket = this._listenerMap.get(event);
+    /** Remove the first occurrence of `listener` from the bucket for `event`. No-op if absent. */
+    remove(event: TEvent, listener: Function): void {
+        const bucket = this._buckets.get(event);
         if (!bucket) {
-            return this;
+            return;
         }
 
         const idx = bucket.indexOf(listener);
         if (idx >= 0) {
             bucket.splice(idx, 1);
         }
-        return this;
     }
 
-    protected emit(event: FooEvent, ...payload: unknown[]): void {
-        const bucket = this._listenerMap.get(event);
+    /** Invoke every listener registered for `event` with `payload`, in registration order. */
+    fire(event: TEvent, ...payload: unknown[]): void {
+        const bucket = this._buckets.get(event);
         if (!bucket) {
             return;
         }
@@ -216,6 +253,33 @@ abstract class EventfulFoo {
     }
 }
 ```
+
+### Canonical host shape (template — not a real symbol)
+
+The shape every event-emitting class implements: a private `ListenerBag` field plus typed `on` / `off` / `emit` overloads whose bodies forward to the bag.
+
+```typescript
+// Conceptual; each class re-declares with its own event union:
+class EventfulFoo {
+    private _listeners = new ListenerBag<FooEvent>();
+
+    on(event: FooEvent, listener: FooListener): this {
+        this._listeners.add(event, listener);
+        return this;
+    }
+
+    off(event: FooEvent, listener: FooListener): this {
+        this._listeners.remove(event, listener);
+        return this;
+    }
+
+    protected emit(event: FooEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+}
+```
+
+The typed payload typing (per-event overloads) lives on the host's `on` / `off` / `emit` methods; `ListenerBag` stays loose on payload (`Function` + `...payload: unknown[]`) because runtime-side typing earns nothing here. The compile-time gate is at the host's overload signatures.
 
 ### `AbstractStore` (existing, widened)
 
@@ -289,13 +353,28 @@ Single-slot `_onXCallback` fields + `setOnXxx(fn)` setters + `fireX(...)` invoke
 |---|---|
 | `ResizeHandle` | `"dragstart"` `(e)`, `"dragmove"` `(delta)`, `"dragend"` `()` |
 | `Cell` | `"commit"` `(value)`, `"editend"` `()` |
-| `HeaderCell` ([table/cell/Header.ts](../src/typescript/lib/component/table/cell/Header.ts)) | `"sortclick"` `(fieldName, shiftKey)`, `"contextmenu"` `(fieldName, x, y)`, `"resizedrag"` `(delta)` |
-| `Header` ([table/Header.ts](../src/typescript/lib/component/table/Header.ts)) | `"columnresize"` `(colIndex, delta)`, `"columncontextmenu"` `(fieldName, x, y)` |
+| `HeaderCell` ([table/cell/Header.ts:302](../src/typescript/lib/component/table/cell/Header.ts#L302), [:311](../src/typescript/lib/component/table/cell/Header.ts#L311), [:356](../src/typescript/lib/component/table/cell/Header.ts#L356)) | `"sortclick"` `(fieldName, shiftKey)`, `"contextmenu"` `(fieldName, x, y)`, `"resizedrag"` `(delta)` |
+| `Header` ([table/Header.ts:154](../src/typescript/lib/component/table/Header.ts#L154), [:163](../src/typescript/lib/component/table/Header.ts#L163)) | `"columnresize"` `(colIndex, delta)`, `"columncontextmenu"` `(fieldName, x, y)` |
 | `Accordion` | `"sectiontoggle"` `(panel, isOpen, index)` |
 | `Tab` / `TabPanel` | `"tabclose"` `(component)` |
-| `BooleanEditor` ([table/cell/editor/Boolean.ts](../src/typescript/lib/component/table/cell/editor/Boolean.ts)) | `"change"` `(value)` |
+| `BooleanEditor` ([table/cell/editor/Boolean.ts:61](../src/typescript/lib/component/table/cell/editor/Boolean.ts#L61)) | `"change"` `(value)` |
 
 For each, the legacy `setOnXxx(fn)` method becomes a one-line `@deprecated` wrapper: `this.on("xxx", fn); return this;`. *Caveat: setter-style is single-listener; calling it twice today replaces the first callback. The forwarder doesn't replace — it appends. Document this in the deprecation JSDoc.* Removing the legacy setters in the follow-up plan is when the no-replacement semantics finally bind.
+
+### `Button` (typed DOM shorthand)
+
+```typescript
+type ButtonEvent = "click";
+type ClickListener = (event: MouseEvent) => void;
+
+on(event: "click", listener: ClickListener): this;   // body: Event.addListener(this, "click", listener)
+off(event: "click", listener: ClickListener): this;  // body: Event.removeListener(this, "click", listener)
+
+/** @deprecated Use `on("click", fn)`. */
+addActionListener(listener: ClickListener): this;    // body: return this.on("click", listener);
+```
+
+No `emit`, no `ListenerBag` — Button doesn't host its own custom-event bag. The on/off pair is a typed forwarder over `Event.X`; the dispatcher and the multi-listener bucket stay inside the `Event` class. Every other host in this plan uses `ListenerBag`; Button is the documented exception because its only event is a DOM-routed one.
 
 ### `XOptions` listener bag
 
@@ -323,51 +402,30 @@ Existing single-callback option fields (`onDragStart`, `onTabClose`, `onSectionT
 
 ### Per-class event-emitter boilerplate
 
-Each emitting class adds approximately this block (illustrative, with `Tree` as the example):
+Each emitting class adds approximately this block (illustrative, with `Tree` as the example). The `ListenerBag` delegate carries all the bag logic; the host writes one-line forwarders.
 
 ```typescript
 // Tree.ts
+import { ListenerBag } from "../../core/ListenerBag";
+
 type TreeEvent = "selection";
 
 class Tree extends Component<TreeOptions> {
     // existing fields ...
-    private _listenerMap: Map<TreeEvent, Function[]> = new Map();
+    private _listeners = new ListenerBag<TreeEvent>();
 
     on(event: "selection", listener: (nodes: TreeNode[]) => void): this {
-        let bucket = this._listenerMap.get(event);
-        if (!bucket) {
-            bucket = [];
-            this._listenerMap.set(event, bucket);
-        }
-
-        bucket.push(listener);
-
+        this._listeners.add(event, listener);
         return this;
     }
 
     off(event: TreeEvent, listener: Function): this {
-        const bucket = this._listenerMap.get(event);
-        if (!bucket) {
-            return this;
-        }
-
-        const idx = bucket.indexOf(listener);
-        if (idx >= 0) {
-            bucket.splice(idx, 1);
-        }
-
+        this._listeners.remove(event, listener);
         return this;
     }
 
     protected emit(event: "selection", nodes: TreeNode[]): void {
-        const bucket = this._listenerMap.get(event);
-        if (!bucket) {
-            return;
-        }
-
-        for (const listener of bucket) {
-            listener(nodes);
-        }
+        this._listeners.fire(event, nodes);
     }
 
     /** @deprecated Use `on("selection", fn)`. */
@@ -379,7 +437,7 @@ class Tree extends Component<TreeOptions> {
 }
 ```
 
-The boilerplate is genuinely ≈30 lines per class. A shared mixin / utility is rejected (see Architecture Decisions); the duplication is the cost of typed-event support without TypeScript generic gymnastics.
+Per-class cost is one import, one field, three forwarder methods (≈8 lines + the typed overload signatures, which the host owns either way). All the bag mechanics — bucket creation, splice-on-remove, registration-order walk — live in `core/ListenerBag.ts`.
 
 ### Collapsing single-slot setters
 
@@ -398,24 +456,32 @@ fireDragEnd(): void { this._onDragEnd?.(); }
 // init() — Event.addListener(this, "mousedown", (e) => this._onDragStart?.(e));
 ```
 
-After — one map, one `on`/`off`/`emit`:
+After — one delegate field, one `on`/`off`/`emit`:
 
 ```typescript
 type ResizeHandleEvent = "dragstart" | "dragmove" | "dragend";
 
-private _listenerMap: Map<ResizeHandleEvent, Function[]> = new Map();
+private _listeners = new ListenerBag<ResizeHandleEvent>();
 
 on(event: "dragstart", listener: (e: MouseEvent) => void): this;
 on(event: "dragmove", listener: (delta: number) => void): this;
 on(event: "dragend", listener: () => void): this;
-on(event: ResizeHandleEvent, listener: Function): this { /* boilerplate */ }
+on(event: ResizeHandleEvent, listener: Function): this {
+    this._listeners.add(event, listener);
+    return this;
+}
 
-off(event: ResizeHandleEvent, listener: Function): this { /* boilerplate */ }
+off(event: ResizeHandleEvent, listener: Function): this {
+    this._listeners.remove(event, listener);
+    return this;
+}
 
 protected emit(event: "dragstart", e: MouseEvent): void;
 protected emit(event: "dragmove", delta: number): void;
 protected emit(event: "dragend"): void;
-protected emit(event: ResizeHandleEvent, ...payload: unknown[]): void { /* boilerplate */ }
+protected emit(event: ResizeHandleEvent, ...payload: unknown[]): void {
+    this._listeners.fire(event, ...payload);
+}
 
 protected init(element?: HTMLElement): this {
     super.init(element);
@@ -454,89 +520,109 @@ Pattern: when an outer component needs to drive an inner component's event, defi
 
 Each step ends with a grep checkpoint that should hold before moving on. Steps are ordered to avoid colliding with `rectify-inline-event-listeners.md`.
 
-### Step 1 — `AbstractStore`: widen `on`/`off` to return `this`
+### Step 1 — Create `core/ListenerBag.ts`
 
-1. Change [`AbstractStore.on`:804](../src/typescript/lib/data/AbstractStore.ts#L804) return type from `void` to `this`; add `return this;` before the closing brace.
-2. Same for `off` at [:821](../src/typescript/lib/data/AbstractStore.ts#L821).
-3. Update JSDoc to document the chaining return.
-4. **Verify:** `npx tsc --noEmit` → 0 errors (Stores already return `this` from other setters; the change is additive).
+The shared multi-listener bag utility every emitting class will delegate to.
 
-### Step 2 — `AbstractInput`: introduce `on` / `off` / `emit`; deprecate `addChangeListener` / `removeChangeListener` / `addBindingListener`
+1. Create `src/typescript/lib/core/ListenerBag.ts` with the class shape defined in **Public API § ListenerBag<TEvent>** above (`add`, `remove`, `fire`; loose `Function` + `...payload: unknown[]` runtime typing; per-event-name typing happens at the host).
+2. Export from the `core` barrel ([src/typescript/lib/core/index.ts](../src/typescript/lib/core/index.ts)) so other lib files can import it.
+3. Add a brief JSDoc class header explaining the role ("private bag of multi-listener buckets, owned by an event-emitting host; the host writes typed `on`/`off`/`emit` forwarders over it").
+4. **Verify:** `npx tsc --noEmit` → 0 errors. `grep -n 'ListenerBag' src/typescript/lib/core/index.ts` → 1 export line.
 
-1. Add `type AbstractInputEvent = "change" | "binding";` near the file top.
-2. Add `private _listenerMap: Map<AbstractInputEvent, Function[]> = new Map();` field.
-3. Add `on` / `off` overloaded methods, `protected emit` overloads, matching the canonical mixin shape.
+### Step 2 — `AbstractStore`: widen `on`/`off` to return `this`; swap to `ListenerBag` delegate
+
+1. Replace the existing `private _listenerMap: Map<StoreEvent, StoreListener[]> = new Map();` field with `private _listeners = new ListenerBag<StoreEvent>();`.
+2. Rewrite [`AbstractStore.on`:804](../src/typescript/lib/data/AbstractStore.ts#L804) body to `this._listeners.add(event, listener); return this;`. Widen return type from `void` to `this`.
+3. Same for [`off`:821](../src/typescript/lib/data/AbstractStore.ts#L821) → `this._listeners.remove(event, listener); return this;`; widen return type.
+4. Rewrite [`emit`:839](../src/typescript/lib/data/AbstractStore.ts#L839) body to `this._listeners.fire(event, payload);`. Promote visibility from `private` to `protected` (Architecture Decisions § "`emit` is `protected` — but `AbstractStore.emit` is `private` today").
+5. Update JSDoc on `on` / `off` to document the chaining return.
+6. **Verify:** `npx tsc --noEmit` → 0 errors. `grep -n '_listenerMap' src/typescript/lib/data/AbstractStore.ts` → 0.
+
+### Step 3 — `AbstractInput`: introduce `on` / `off` / `emit`; deprecate `addChangeListener` / `removeChangeListener` / `addBindingListener`
+
+1. Add `type AbstractInputEvent = "change" | "binding";` near the file top; import `ListenerBag`.
+2. Add `private _listeners = new ListenerBag<AbstractInputEvent>();` field.
+3. Add typed `on` / `off` overloaded methods + `protected emit` overloads (matching **Public API § Canonical host shape**), bodies forwarding to `this._listeners.add` / `.remove` / `.fire`.
 4. Mark `addChangeListener` / `removeChangeListener` / `addBindingListener` `@deprecated`; bodies become `return this.on("change", fn);` / `return this.off("change", fn);` / `return this.on("binding", fn);`.
-5. Rewrite `notifyChange(value)` body: replace the two for-loops at [AbstractInput.ts:174-181](../src/typescript/lib/component/input/AbstractInput.ts#L174) with `this.emit("change", value); this.emit("binding");`. Delete the two private `_changeListeners` / `_bindingListeners` array fields once `notifyChange` is the sole reader (use grep to confirm).
+5. Rewrite `notifyChange(value)` body: replace the two for-loops at [AbstractInput.ts:174-182](../src/typescript/lib/component/input/AbstractInput.ts#L174) with `this.emit("change", value); this.emit("binding");`. Delete the two protected `_changeListeners` / `_bindingListeners` array fields at [:40-41](../src/typescript/lib/component/input/AbstractInput.ts#L40) once `notifyChange` is the sole reader (use grep to confirm).
 6. **Verify:** `grep -nE '_changeListeners|_bindingListeners' src/typescript/lib/component/input/AbstractInput.ts` → 0 hits after deletion. `npx tsc --noEmit` → 0 errors.
 
-### Step 3 — `Binding`: introduce `on` / `off` / `emit`; deprecate the four `addXxxListener` methods
+### Step 4 — `Binding`: introduce `on` / `off` / `emit`; deprecate the four `addXxxListener` methods
 
-1. Add `type BindingEvent = "change" | "commit" | "reject" | "beforerecord";`.
-2. Add `_listenerMap`, `on`, `off`, `protected emit` per the canonical shape.
+1. Add `type BindingEvent = "change" | "commit" | "reject" | "beforerecord";`; import `ListenerBag`.
+2. Add `private _listeners = new ListenerBag<BindingEvent>();` field + the typed `on` / `off` / `emit` forwarders per the canonical host shape.
 3. Convert each existing `addXxxListener` ([Binding.ts:241, 248, 255, 279](../src/typescript/lib/core/Binding.ts#L241)) to a `@deprecated` forwarder.
 4. Replace internal `_changeListeners.push` / `for (const fn of this._changeListeners) fn(...)` patterns with `this.on(...)` / `this.emit(...)`. Delete the four array fields once they're unreferenced.
 5. **Verify:** `grep -nE '_(change|commit|reject|beforeRecord)Listeners' src/typescript/lib/core/Binding.ts` → 0. `npx tsc --noEmit` → 0.
 
-### Step 4 — `Tree`, `ButtonGroup`: `addSelectionListener` → `on("selection", fn)`
+### Step 5 — `Tree`, `ButtonGroup`: `addSelectionListener` → `on("selection", fn)`
 
-Same shape as Steps 2-3, applied to the two `addSelectionListener` sites at [Tree.ts:164](../src/typescript/lib/component/tree/Tree.ts#L164) and [ButtonGroup.ts:70](../src/typescript/lib/core/ButtonGroup.ts#L70).
+Same shape as Steps 3-4, applied to the two `addSelectionListener` sites at [Tree.ts:164](../src/typescript/lib/component/tree/Tree.ts#L164) and [ButtonGroup.ts:70](../src/typescript/lib/core/ButtonGroup.ts#L70).
 
-1. Add per-class `type TreeEvent = "selection";` / `type ButtonGroupEvent = "selection";`.
-2. Add the canonical machinery; preserve the existing `addSelectionListener` as `@deprecated` forwarder.
+1. Add per-class `type TreeEvent = "selection";` / `type ButtonGroupEvent = "selection";`; import `ListenerBag` in each.
+2. Add `private _listeners = new ListenerBag<TreeEvent>();` / `<ButtonGroupEvent>();` field + typed `on` / `off` / `emit` forwarders. Preserve the existing `addSelectionListener` as `@deprecated` forwarder.
 3. Convert `_fireSelectionListeners` (Tree) / inline `_selectionListeners.forEach` (ButtonGroup) to `this.emit("selection", nodes)` / `this.emit("selection", button)`.
 4. **Verify:** `grep -nE '_selectionListeners|_fireSelectionListeners' src/typescript/lib/component/tree/Tree.ts src/typescript/lib/core/ButtonGroup.ts` → 0.
 
-### Step 5 — `Scrollbar` + nested `ScrollArrowButton`: `addScrollListener` / `addTickListener` → `on(...)`
+### Step 6 — `Scrollbar` + nested `ScrollArrowButton`: `addScrollListener` / `addTickListener` → `on(...)`
 
-1. `Scrollbar`: add `type ScrollbarEvent = "scroll";`, canonical machinery, `@deprecated` forwarder on `addScrollListener` / `removeScrollListener`.
-2. `ScrollArrowButton` (same file): `type ScrollArrowEvent = "tick";`, machinery, forwarder.
-3. Convert `fireScrollListeners` / `fireTicks` to `this.emit(...)`.
-4. **Verify:** `grep -n 'fireScrollListeners\|fireTicks\|_scrollListeners\|_tickListeners' src/typescript/lib/component/container/Scrollbar.ts` → only the wrapped `emit` body's reference to `_listenerMap`.
+1. `Scrollbar`: add `type ScrollbarEvent = "scroll";`, `private _listeners = new ListenerBag<ScrollbarEvent>();` field + typed `on` / `off` / `emit` forwarders, `@deprecated` forwarders on `addScrollListener` ([Scrollbar.ts:463](../src/typescript/lib/component/container/Scrollbar.ts#L463)) / `removeScrollListener` ([:474](../src/typescript/lib/component/container/Scrollbar.ts#L474)).
+2. `ScrollArrowButton` (same file): `type ScrollArrowEvent = "tick";`, its own `_listeners` bag + forwarders, `@deprecated` forwarder on `addTickListener` ([:144](../src/typescript/lib/component/container/Scrollbar.ts#L144)).
+3. Convert `fireScrollListeners` ([:688](../src/typescript/lib/component/container/Scrollbar.ts#L688)) / `fireTicks` ([:256](../src/typescript/lib/component/container/Scrollbar.ts#L256)) to `this.emit(...)`.
+4. **Internal call sites** at [:381](../src/typescript/lib/component/container/Scrollbar.ts#L381) and [:390](../src/typescript/lib/component/container/Scrollbar.ts#L390) (`this._arrowStart.addTickListener((): void => this.onArrowTick(-1))`) currently pass inline arrows — they violate the named-function rule. Rewrite to pass a method reference: `this._arrowStart.on("tick", this._onStartTick)` where `_onStartTick = (): void => this.onArrowTick(-1)` is a bound class field, or use the named method directly. Same fix at :390.
+5. **Verify:** `grep -n 'fireScrollListeners\|fireTicks\|_scrollListeners\|_tickListeners' src/typescript/lib/component/container/Scrollbar.ts` → 0 (the only `_listeners` reference is the new `ListenerBag` field).
 
-### Step 6 — `SpinButton`: `addTickListener` → `on("tick", fn)`
+### Step 7 — `SpinButton`: `addTickListener` → `on("tick", fn)`
 
 Mirror Scrollbar's arrow button migration in [SpinButton.ts:49, 125, 175](../src/typescript/lib/component/input/SpinButton.ts#L49).
 
-### Step 7 — `WindowBorder`, `SplitGutter`: `addDragListener` → `on("drag", fn)`
+### Step 8 — `WindowBorder`, `SplitGutter`: `addDragListener` → `on("drag", fn)`
 
-Two sites with structurally identical `_dragListeners: Function[]` arrays. Apply the canonical shape. **Also fixes the pre-existing bug at [WindowBorder.ts:138](../src/typescript/lib/component/container/WindowBorder.ts#L138)** where `removeDragListener` mistakenly calls `push` instead of `splice` — the `off` body splices correctly. Mention in commit message; no separate plan needed since the buggy code is being deleted.
+Two sites with structurally identical `_dragListeners: Function[]` arrays. Apply the canonical host shape: add `type WindowBorderEvent = "drag";` / `SplitGutterEvent = "drag";`, swap to `private _listeners = new ListenerBag<…>();`, write the typed `on` / `off` / `emit` forwarders, delete the old `_dragListeners` array + `fireDragListeners` private. **Also fixes the pre-existing bug at [WindowBorder.ts:142](../src/typescript/lib/component/container/WindowBorder.ts#L142)** where `removeDragListener` ([:136](../src/typescript/lib/component/container/WindowBorder.ts#L136)) mistakenly calls `push` instead of `splice` — `ListenerBag.remove` splices correctly. Mention in commit message; no separate plan needed since the buggy code is being deleted.
 
-### Step 8 — `ResizeHandle`: collapse single-slot setters into `on` / `off` / `emit` + public verbs `dragMove(delta)` / `dragEnd()`
+### Step 9 — `ResizeHandle`: collapse single-slot setters into `on` / `off` / `emit` + public verbs `dragMove(delta)` / `dragEnd()`
 
-1. Add `type ResizeHandleEvent = "dragstart" | "dragmove" | "dragend";` and the canonical machinery.
+1. Add `type ResizeHandleEvent = "dragstart" | "dragmove" | "dragend";`, `private _listeners = new ListenerBag<ResizeHandleEvent>();` field, and the typed `on` / `off` / `emit` forwarders per the canonical host shape.
 2. Rewrite the constructor body so the `mousedown` / `click` listeners fire `this.emit("dragstart", e)` / `e.stopPropagation()` instead of calling `_onDragStart?.(e)`.
 3. Delete the three `_onDragStart` / `_onDragMove` / `_onDragEnd` fields and the three setters.
 4. Replace `fireDragMove(delta)` / `fireDragEnd()` public methods with `dragMove(delta)` / `dragEnd()` (same body: `this.emit("dragmove", delta)` / `this.emit("dragend")`).
 5. Add `listeners?: { dragstart?, dragmove?, dragend? }` to `ResizeHandleOptions`; `applyOptions` reads it and dispatches.
-6. Update the host call sites in `HeaderCell` (table/cell/Header.ts at lines 370, 379) to call `this._resizeHandle.dragMove(e.movementX)` / `this._resizeHandle.dragEnd()`.
-7. **Verify:** `grep -n '_onDragStart\|_onDragMove\|_onDragEnd\|setOnDragStart\|setOnDragMove\|setOnDragEnd\|fireDragMove\|fireDragEnd' src/typescript/lib/component/table/cell/ResizeHandle.ts` → 0 (allow matches in `@deprecated` forwarders if Step 8.5 keeps them; otherwise 0). The cell host's grep should show only `dragMove` / `dragEnd` calls.
+6. Update the host call sites in `HeaderCell` ([table/cell/Header.ts:387](../src/typescript/lib/component/table/cell/Header.ts#L387), [:396](../src/typescript/lib/component/table/cell/Header.ts#L396)) to call `this._resizeHandle.dragMove(e.movementX)` / `this._resizeHandle.dragEnd()`.
+7. **Verify:** `grep -n '_onDragStart\|_onDragMove\|_onDragEnd\|setOnDragStart\|setOnDragMove\|setOnDragEnd\|fireDragMove\|fireDragEnd' src/typescript/lib/component/table/cell/ResizeHandle.ts` → 0 (allow matches in `@deprecated` forwarders if Step 9.5 keeps them; otherwise 0). The cell host's grep should show only `dragMove` / `dragEnd` calls.
 
-### Step 9 — `Cell`, `HeaderCell`, `Header`: collapse setOn* setters
+### Step 10 — `Cell`, `HeaderCell`, `Header`: collapse setOn* setters
 
 Apply the canonical shape to:
 
 - [`Cell.setOnCommit` / `setOnEditEnd`:97, :108](../src/typescript/lib/component/table/cell/Cell.ts#L97) → `on("commit", fn)` / `on("editend", fn)`.
-- [`HeaderCell.setOnSortClick` / `setOnContextMenu` / `setOnResizeDrag`:296, :305, :339](../src/typescript/lib/component/table/cell/Header.ts#L296) → `on("sortclick", fn)` / `on("contextmenu", fn)` / `on("resizedrag", fn)`.
-- [`Header.setOnColumnResize` / `setOnColumnContextMenu`:124, :133](../src/typescript/lib/component/table/Header.ts#L124) → `on("columnresize", fn)` / `on("columncontextmenu", fn)`.
+- [`HeaderCell.setOnSortClick` / `setOnContextMenu` / `setOnResizeDrag`:302, :311, :356](../src/typescript/lib/component/table/cell/Header.ts#L302) → `on("sortclick", fn)` / `on("contextmenu", fn)` / `on("resizedrag", fn)`.
+- [`Header.setOnColumnResize` / `setOnColumnContextMenu`:154, :163](../src/typescript/lib/component/table/Header.ts#L154) → `on("columnresize", fn)` / `on("columncontextmenu", fn)`.
 
-Each public-verb requirement (Step 8's pattern) only kicks in if an external class needs to drive the event; for these three, the event source is the class itself, so no external `dragMove`-style verb is needed.
+Each public-verb requirement (Step 9's pattern) only kicks in if an external class needs to drive the event; for these three, the event source is the class itself, so no external `dragMove`-style verb is needed.
 
-### Step 10 — `Accordion`, `Tab`, `TabPanel`, `BooleanEditor`
+### Step 11 — `Accordion`, `Tab`, `TabPanel`, `BooleanEditor`
 
 - [`Accordion.setOnSectionToggle`:283](../src/typescript/lib/layout/Accordion.ts#L283) → `on("sectiontoggle", fn)`.
 - [`Tab.setOnTabClose`:699](../src/typescript/lib/layout/Tab.ts#L699) + [`TabPanel.setOnTabClose`:136](../src/typescript/lib/component/container/TabPanel.ts#L136) (forwarder) → `on("tabclose", fn)`.
-- [`BooleanEditor.setOnChange`:36](../src/typescript/lib/component/table/cell/editor/Boolean.ts#L36) → `on("change", fn)`.
+- [`BooleanEditor.setOnChange`:61](../src/typescript/lib/component/table/cell/editor/Boolean.ts#L61) → `on("change", fn)`.
 
-### Step 11 — `Button.addActionListener` deprecation
+### Step 12 — `Button.addActionListener` → `on("click", fn)` typed shorthand
 
-[`Button.addActionListener`:312](../src/typescript/lib/component/button/Button.ts#L312)'s body is literally `Event.addListener(this, "click", listener); return this;`. Mark `@deprecated`, keep the body. The follow-up plan removes it and migrates the ~30 demo call sites to bare `Event.addListener(button, "click", fn)`.
+[`Button.addActionListener`:439](../src/typescript/lib/component/button/Button.ts#L439) is renamed to `on`, with `"click"` as the sole permitted event type. Body stays as `Event.addListener(this, "click", listener); return this;` — **no `ListenerBag`, no `emit`** (Button has no internal custom-event bag; the DOM dispatches clicks and `Event.addListener` already supports multiple listeners per id). Button is the only host in the plan whose `on`/`off` forwards to `Event.X` instead of a `ListenerBag`.
 
-### Step 12 — `XOptions` listener bags
+1. Add `type ButtonEvent = "click";` near the file top.
+2. Add `on(event: "click", listener: ClickListener): this` — body wraps `Event.addListener(this, "click", listener); return this;`.
+3. Add `off(event: "click", listener: ClickListener): this` — body wraps `Event.removeListener(this, "click", listener); return this;` (symmetry; not strictly needed by current consumers, but the plan's removal-symmetry rule requires it).
+4. Mark `addActionListener` `@deprecated`; rewrite its body as `return this.on("click", listener);` (one-line forwarder).
+5. **Verify:** `npx tsc --noEmit` → 0 errors. `button.on("dblclick", fn)` would be a compile error if attempted; confirm by inserting a probe locally and removing before commit.
+
+The ~30 demo call sites continue to compile via the `@deprecated` forwarder; the follow-up plan migrates them to `button.on("click", fn)` and deletes `addActionListener`. **Demos do not migrate to `Event.addListener(button, "click", fn)`** — they migrate to the new `on` shorthand. The bare `Event.addListener` form remains the canonical surface for DOM-event-bearing components that *don't* offer a typed `on` shorthand (everything except Button today).
+
+### Step 13 — `XOptions` listener bags
 
 For each class touched in Steps 2-10, extend the `XOptions` interface with a `listeners?` field and dispatch from `applyOptions`. Single-callback option fields (`onSectionToggle`, `onTabClose`, `onDragStart`, …) stay during the deprecation window as one-line forwarders that read the field and call `this.on(event, fn)`.
 
-### Step 13 — Final grep gates
+### Step 14 — Final grep gates
 
 ```bash
 # Every event-emitting class exposes the canonical `on` method:
@@ -557,11 +643,23 @@ grep -rnE '\bfire[A-Z]\w+\(' src/typescript --include="*.ts" | grep -v 'Event\.f
 # Expect: 0.
 ```
 
-### Step 14 — Typecheck + docs
+### Step 15 — Typecheck + docs
 
 - `npx tsc --noEmit` → 0 errors.
 - `npm run docs:build` → 0 errors, 0 link warnings (typedoc's "unsupported TypeScript version" notice is the only acceptable warning).
 - Manual smoke: open `http://localhost:8015` and exercise the demo panels that wire these listeners (BindingPanel, AccordionDemoPanel, TabDemoPanel, ToolBarPanel, slow-table panel for Tree selection + Cell editing + Column resize, NumberSpinner, SplitPanel, Window resizing, ButtonGroup-via-RadioButton form). Each interaction that previously fired a listener still fires it (verify via console.log inserted ad-hoc, removed before commit).
+
+### Step 16 — Draft the follow-up demo-migration plan
+
+This plan ends with the `@deprecated` forwarders in place — the demo files (`MiscPanel.ts`, `BindingPanel.ts`, `AccordionDemoPanel.ts`, `TabDemoPanel.ts`, `ToolBarPanel.ts`, `SplitPanel.ts`, `LayoutTestPanel.ts`, `MultiSelectListPanel.ts`, plus a handful of lib call sites in `Slider.ts`, `NumberSpinner.ts`, `AbstractPickerField.ts`, `AutoCompleteField.ts`, `ComboBox.ts`, `PaginationBar.ts`, `TablePanel.ts`, `TreeTablePanel.ts`, `VirtualScroller.ts`, `WindowHeader.ts`, `Window.ts`, `Dialog.ts`) keep working unchanged. The follow-up plan migrates them to the canonical `on(...)` form and deletes the deprecated methods + the `XOptions` legacy single-callback fields (`onSectionToggle`, `onTabClose`, `onDragStart`, …).
+
+Done now, while the migration shape is fresh in mind:
+
+1. Invoke the `plan` skill with the brief: *"Migrate all `.addXxxListener(...)` / `.setOnXxx(...)` demo and lib call sites to `.on('xxx', ...)`; then delete the `@deprecated` forwarders, `_fireXxx` private helpers (where still present), and the legacy `onXxx` single-callback fields on `XOptions` interfaces. Scope is captured by `grep -rnE '\.add(Action|Selection|Tick|Drag|Scroll|Change|Binding|Commit|Reject|BeforeRecord)Listener\(|\.setOn[A-Z]\w+\(' src/typescript --include='*.ts'` after this plan ships."*
+2. The skill writes the plan to `plans/migrate-listener-deprecations.md` (or whatever name it picks); leave the actual implementation for a later session.
+3. Cross-link: this plan's Non-Goals section, the Step 12 Button paragraph, and the call-site-impact callout in **Files to Modify** all reference "the follow-up plan" — once the file exists, those references become concrete links rather than placeholders.
+
+**Verify:** `ls plans/migrate-listener-deprecations.md` (or the chosen filename) succeeds; the plan's Overview enumerates the deprecated symbols this plan introduced.
 
 ---
 
@@ -569,7 +667,9 @@ grep -rnE '\bfire[A-Z]\w+\(' src/typescript --include="*.ts" | grep -v 'Event\.f
 
 | Action | File | Notes |
 |---|---|---|
-| Modify | `src/typescript/lib/data/AbstractStore.ts` | `on`/`off` return `this`. |
+| Create | `src/typescript/lib/core/ListenerBag.ts` | New utility class. The multi-listener bag (`add` / `remove` / `fire`); every host except `Button` instantiates one as a private field. |
+| Modify | `src/typescript/lib/core/index.ts` | Re-export `ListenerBag` from the `core` barrel. |
+| Modify | `src/typescript/lib/data/AbstractStore.ts` | Swap `_listenerMap` for `ListenerBag<StoreEvent>` delegate; widen `on`/`off` return to `this`; promote `emit` from `private` to `protected`. |
 | Modify | `src/typescript/lib/component/input/AbstractInput.ts` | Add `on`/`off`/`emit`; rewrite `notifyChange`; deprecate `addChangeListener`/`removeChangeListener`/`addBindingListener`. |
 | Modify | `src/typescript/lib/core/Binding.ts` | Add `on`/`off`/`emit`; deprecate four `addXxxListener` methods. |
 | Modify | `src/typescript/lib/component/tree/Tree.ts` | Add `on`/`off`/`emit`; deprecate `addSelectionListener`. |
@@ -582,14 +682,14 @@ grep -rnE '\bfire[A-Z]\w+\(' src/typescript --include="*.ts" | grep -v 'Event\.f
 | Modify | `src/typescript/lib/component/table/cell/Cell.ts` | Collapse two `setOn*` into `on`/`off`/`emit`. |
 | Modify | `src/typescript/lib/component/table/cell/Header.ts` | Collapse three `setOn*` into `on`/`off`/`emit`; update local emits. |
 | Modify | `src/typescript/lib/component/table/Header.ts` | Collapse two `setOn*` into `on`/`off`/`emit`. |
-| Modify | `src/typescript/lib/component/table/Table.ts` | Update call sites at [:115-116](../src/typescript/lib/component/table/Table.ts#L115) from `setOnColumnResize` / `setOnColumnContextMenu` to `on(...)`. |
+| Modify | `src/typescript/lib/component/table/Table.ts` | Update call sites at [:121-122](../src/typescript/lib/component/table/Table.ts#L121) from `setOnColumnResize` / `setOnColumnContextMenu` to `on(...)`. |
 | Modify | `src/typescript/lib/component/table/cell/editor/Boolean.ts` | Collapse `setOnChange` into `on("change", fn)`. |
-| Modify | `src/typescript/lib/component/table/cell/Boolean.ts` | Update [:40](../src/typescript/lib/component/table/cell/Boolean.ts#L40) caller. |
+| Modify | `src/typescript/lib/component/table/cell/Boolean.ts` | Update [:51](../src/typescript/lib/component/table/cell/Boolean.ts#L51) caller. |
 | Modify | `src/typescript/lib/layout/Accordion.ts` | Collapse `setOnSectionToggle` into `on("sectiontoggle", fn)`. |
 | Modify | `src/typescript/lib/layout/Tab.ts` | Collapse `setOnTabClose` into `on("tabclose", fn)`. |
 | Modify | `src/typescript/lib/component/container/TabPanel.ts` | Update forwarder at [:136](../src/typescript/lib/component/container/TabPanel.ts#L136). |
 | Modify | `src/typescript/lib/component/container/AccordionPanel.ts` | Update forwarder at [:88](../src/typescript/lib/component/container/AccordionPanel.ts#L88). |
-| Modify | `src/typescript/lib/component/button/Button.ts` | Mark `addActionListener` `@deprecated`; body unchanged. |
+| Modify | `src/typescript/lib/component/button/Button.ts` | Add typed `on("click", fn)` / `off("click", fn)` wrapping `Event.addListener` / `Event.removeListener`; rewrite `addActionListener` as a one-line `@deprecated` forwarder. |
 | Modify | `src/typescript/lib/core/Body.ts` | Apply the same `_onViewportResize` migration `rectify-inline-event-listeners.md` mandates (if that plan hasn't shipped first). |
 
 **Demo call-site impact** — every demo file that calls `.addActionListener(...)` / `.addSelectionListener(...)` / `.addTickListener(...)` keeps working via the deprecation forwarders. The follow-up plan migrates the demos:
@@ -609,7 +709,7 @@ No files created, none deleted.
 
 - `npx tsc --noEmit` → 0 errors after each step and at the end.
 - `npm run docs:build` → 0 errors, 0 link warnings (typedoc's "unsupported TypeScript version" notice is the lone acceptable warning). Verify `@deprecated` methods render with their deprecation marker in the generated API pages.
-- Step 13 greps all pass.
+- Step 14 greps all pass.
 - Manual smoke on `http://localhost:8015`:
   - **Store events:** load a table that uses `store.on('load', ...)`. Reload data; listener fires.
   - **AbstractInput:** Slider drag fires `change` listener bound via the new `slider.on("change", fn)` *and* a legacy `slider.addChangeListener(fn)` in the same demo.
@@ -637,8 +737,7 @@ No files created, none deleted.
 
 ## Potential Challenges
 
-- **Generic-base alternative would catch typos better.** Per-class `type FooEvent` literal unions get the typing job done, but they don't compose. A shared `EventEmitter<TEvent extends string, TPayload extends Record<TEvent, unknown[]>>` mixin would centralise the boilerplate and still type-check event names — at the cost of TypeScript declaration-merging / mixin gymnastics that fight the framework's straightforward class hierarchy. Default: stay with per-class duplication; revisit if the boilerplate proves painful after the third or fourth class.
-- **`Tab` is a `LayoutManager`, not a `Component`.** The `on`/`off`/`emit` shape doesn't care — `LayoutManager` extends `BaseObject` and can host the same machinery — but `Tab` doesn't have a `_listenerMap` today. Adding it is fine; just don't expect to share helpers with the Component side.
+- **`Tab` is a `LayoutManager`, not a `Component`.** The `ListenerBag` delegate doesn't care — any class can hold one as a private field. `Tab` doesn't have a bag today; adding one is unremarkable. Just don't expect to share helpers with the Component side.
 - **Multi-`setOnXxx` clobber semantics change.** A caller doing `cell.setOnCommit(a); cell.setOnCommit(b);` today silently drops `a`. The forwarder `setOnCommit = (fn) => this.on("commit", fn)` appends both. Document in the `@deprecated` JSDoc; flag in the migration commit message. If any consumer depended on the clobber semantics, that bug surfaces during smoke testing — there's no clean way to preserve the misbehaviour through a multi-listener forwarder.
 - **Order of listener invocation isn't formally guaranteed.** Today's array-walk is registration order; `Map<event, Function[]>` plus `push` preserves that. Document this in the JSDoc on `on` so consumers don't accidentally depend on it before it's part of the contract — registration order is the contract, but say so.
 - **`emit` is `protected` — but `AbstractStore.emit` is `private` today.** Bring it to `protected` so subclasses (e.g. a future server-side `SocketStore`) can emit. No external behavioral change.
@@ -651,7 +750,8 @@ No files created, none deleted.
 ## Critical Files
 
 - [src/typescript/lib/core/Event.ts](../src/typescript/lib/core/Event.ts) — the canonical DOM-routed listener surface; unchanged by this plan.
-- [src/typescript/lib/data/AbstractStore.ts](../src/typescript/lib/data/AbstractStore.ts) — the canonical custom-event `on`/`off`/`emit` shape; lines [804](../src/typescript/lib/data/AbstractStore.ts#L804), [821](../src/typescript/lib/data/AbstractStore.ts#L821), [839](../src/typescript/lib/data/AbstractStore.ts#L839).
+- `src/typescript/lib/core/ListenerBag.ts` (new) — the shared multi-listener bag; every emitting host except `Button` instantiates one.
+- [src/typescript/lib/data/AbstractStore.ts](../src/typescript/lib/data/AbstractStore.ts) — the canonical custom-event `on`/`off`/`emit` shape; lines [804](../src/typescript/lib/data/AbstractStore.ts#L804), [821](../src/typescript/lib/data/AbstractStore.ts#L821), [839](../src/typescript/lib/data/AbstractStore.ts#L839). After Step 2, internals swap to a `ListenerBag<StoreEvent>` delegate.
 - [src/typescript/lib/component/input/AbstractInput.ts](../src/typescript/lib/component/input/AbstractInput.ts) — broadest emitter (every input subclass inherits `change`); migrate first after Store.
 - [ARCHITECTURE.md](../ARCHITECTURE.md), "Event handling" — the named-function rule and the `Event.X` mandate this plan reinforces.
 - [CODE_CONVENTIONS.md](../CODE_CONVENTIONS.md), "Framework rules" — the typed-setter rule (the `on`/`off`/`emit` shape is the listener-side typed-setter equivalent).
@@ -669,6 +769,6 @@ No files created, none deleted.
 - **Adding `once(event, listener)` to the `on`/`off`/`emit` API.** No current call site needs it. Speculative.
 - **Adding event-bubbling to custom (non-DOM) events.** No call site needs it; the absence is the simplifier.
 - **Merging the two surfaces** (`Event.X` and `on`/`off`/`emit`) into a single unified API. Rejected for cause in the Architecture Decisions — the window-level capture handler and the subtree semantics are the differentiators.
-- **Promoting `on`/`off`/`emit` onto `BaseObject` as inheritable machinery.** Rejected — most subclasses don't emit; the typed-event-union per class won't compose through a generic base.
+- **Promoting `on`/`off`/`emit` onto `BaseObject` as inheritable machinery.** Rejected — most subclasses don't emit; the typed-event-union per class won't compose through a generic base. The plan reuses the bag logic via composition (`ListenerBag<TEvent>` delegate) instead.
 - **Fixing the `WindowBorder.removeDragListener` splice bug as a standalone change.** It's repaired incidentally when its body becomes `off`'s splice; the fix is mentioned in the commit message but not split into its own plan.
 - **Auditing `Event.ts`'s internal `addEventListener` calls.** Those are the four window-level central handlers the API is built on; already correct.
