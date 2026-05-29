@@ -2,6 +2,7 @@
 
 export { BaseObject } from '~/core/BaseObject.js';
 export { Event } from '~/core/Event.js';
+export { ListenerBag } from '~/core/ListenerBag.js';
 export { Animation } from '~/core/Animation.js';
 export { Util } from '~/core/Util.js';
 export type { TextMeasureOptions, TextMetrics } from '~/core/Util.js';
@@ -38,7 +39,7 @@ export { StyleTarget, StyleRule, InlineStyle } from '~/core/StyleTarget.js';
 export type { StyleRuleScope, StyleRuleSpec } from '~/core/StyleTarget.js';
 
 export { Binding } from '~/core/Binding.js';
-export type { BeforeRecordListener } from '~/core/Binding.js';
+export type { BeforeRecordListener, BindingEvent } from '~/core/Binding.js';
 export type { Bindable, BindingAccessors } from '~/core/Bindable.js';
 
 export { DragManager } from '~/core/DragManager.js';

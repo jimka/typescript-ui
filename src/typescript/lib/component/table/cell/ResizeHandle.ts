@@ -3,7 +3,15 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * String-literal union of the events emitted by {@link ResizeHandle}.
+ *
+ * @category Components
+ */
+export type ResizeHandleEvent = "dragstart" | "dragmove" | "dragend";
 
 /**
  * Construction-time options for {@link ResizeHandle}.
@@ -11,9 +19,22 @@ import { callable } from "~/core/Callable.js";
  * @category Components
  */
 export interface ResizeHandleOptions extends ComponentOptions {
+    /** @deprecated Use `listeners.dragstart` or `on("dragstart", fn)`. */
     onDragStart?: (event: MouseEvent) => void;
+    /** @deprecated Use `listeners.dragmove` or `on("dragmove", fn)`. */
     onDragMove?:  (delta: number) => void;
+    /** @deprecated Use `listeners.dragend` or `on("dragend", fn)`. */
     onDragEnd?:   () => void;
+    /**
+     * Multi-event listener bag dispatched to {@link ResizeHandle.on} at
+     * construction time. Each entry is appended; calling `on(event, fn)`
+     * later registers another listener for the same event.
+     */
+    listeners?: {
+        dragstart?: (event: MouseEvent) => void;
+        dragmove?:  (delta: number)     => void;
+        dragend?:   ()                  => void;
+    };
 }
 
 let _classRule: StyleRule | null = null;
@@ -62,26 +83,19 @@ function ensureResizeHandleClassRule(): void {
  */
 class ResizeHandle extends Component<ResizeHandleOptions> {
 
-    declare private _onDragStart: ((event: MouseEvent) => void) | null;
-    declare private _onDragMove:  ((delta: number) => void) | null;
-    declare private _onDragEnd:   (() => void) | null;
+    private _listeners: ListenerBag<ResizeHandleEvent> = new ListenerBag<ResizeHandleEvent>();
 
     /**
-     * Constructs a resize handle. Callbacks default to `null` and may be
-     * registered later via {@link setOnDragStart} / {@link setOnDragMove} /
-     * {@link setOnDragEnd}, or passed up-front through `options`.
+     * Constructs a resize handle. Callbacks default to none; consumers
+     * register them via {@link on} or pass them through `options.listeners`.
      *
-     * @param options - Optional configuration bag (drag callbacks plus common
+     * @param options - Optional configuration bag (drag listeners plus common
      *   Component fields).
      */
     constructor(options?: ResizeHandleOptions) {
         ensureResizeHandleClassRule();
 
         super({ tag: "div", ...(options ?? {}) });
-
-        this._onDragStart ??= null;
-        this._onDragMove  ??= null;
-        this._onDragEnd   ??= null;
 
         this.setCursor("var(--ts-ui-table-resize-handle-cursor, ew-resize)");
         // 5 px-wide drag target with a 1 px colored stripe at the right
@@ -96,9 +110,9 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
     }
 
     /**
-     * Applies a {@link ResizeHandleOptions} bag. Drag callbacks are written
-     * pure to the backing fields here; inherited Component fields cascade
-     * through `super.applyOptions`.
+     * Applies a {@link ResizeHandleOptions} bag. Drag listeners are routed
+     * into the listener bag; inherited Component fields cascade through
+     * `super.applyOptions`.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -107,16 +121,22 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
 
         const opts = { ...this._defaultOptions, ...options } as ResizeHandleOptions;
 
-        if (opts.onDragStart !== undefined) this._onDragStart = opts.onDragStart;
-        if (opts.onDragMove  !== undefined) this._onDragMove  = opts.onDragMove;
-        if (opts.onDragEnd   !== undefined) this._onDragEnd   = opts.onDragEnd;
+        if (opts.listeners !== undefined) {
+            if (opts.listeners.dragstart !== undefined) this.on("dragstart", opts.listeners.dragstart);
+            if (opts.listeners.dragmove  !== undefined) this.on("dragmove",  opts.listeners.dragmove);
+            if (opts.listeners.dragend   !== undefined) this.on("dragend",   opts.listeners.dragend);
+        }
+
+        if (opts.onDragStart !== undefined) this.on("dragstart", opts.onDragStart);
+        if (opts.onDragMove  !== undefined) this.on("dragmove",  opts.onDragMove);
+        if (opts.onDragEnd   !== undefined) this.on("dragend",   opts.onDragEnd);
 
         return this;
     }
 
     /**
      * Wires the framework-routed mousedown + click listeners after the element
-     * has rendered. Mousedown fires the registered drag-start callback; click
+     * has rendered. Mousedown fires the registered drag-start listeners; click
      * is intercepted to prevent a sort from firing on the host header cell.
      *
      * @param element - Optional element passed from the framework init chain.
@@ -125,68 +145,129 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
     protected init(element?: HTMLElement): this {
         super.init(element);
 
-        Event.addListener(this, "mousedown", (e: MouseEvent) => this._onDragStart?.(e));
-        Event.addListener(this, "click",     (e: MouseEvent) => e.stopPropagation());
+        Event.addListener(this, "mousedown", this._onMouseDown);
+        Event.addListener(this, "click",     this._onClick);
 
         return this;
     }
 
     /**
-     * Registers the callback invoked on `mousedown` over the handle.
+     * Registers a listener for one of this handle's drag events.
      *
-     * @param fn - Called with the originating MouseEvent.
-     * @returns This component, for method chaining.
-     */
-    setOnDragStart(fn: (event: MouseEvent) => void): this {
-        this._onDragStart = fn;
-
-        return this;
-    }
-
-    /**
-     * Registers the callback invoked with the per-mousemove horizontal pixel
-     * delta. The host wires viewport-level mousemove listeners during a drag
-     * and forwards `movementX` here.
+     * @param event - `"dragstart"` fires on mousedown over the handle;
+     *   `"dragmove"` fires on each viewport mousemove during a drag with the
+     *   horizontal pixel delta; `"dragend"` fires when the viewport mouseup
+     *   observes the release.
+     * @param listener - The callback to invoke when the event fires.
      *
-     * @param fn - Called with the horizontal pixel delta on each drag move.
-     * @returns This component, for method chaining.
+     * @returns This handle, for method chaining.
      */
-    setOnDragMove(fn: (delta: number) => void): this {
-        this._onDragMove = fn;
+    on(event: "dragstart",         listener: (e: MouseEvent) => void): this;
+    on(event: "dragmove",          listener: (delta: number) => void): this;
+    on(event: "dragend",           listener: () => void): this;
+    on(event: ResizeHandleEvent,   listener: Function): this {
+        this._listeners.add(event, listener);
 
         return this;
     }
 
     /**
-     * Registers the callback invoked when the drag ends. The host fires this
-     * once the viewport-level `mouseup` listener observes the release.
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
      *
-     * @param fn - Called when the drag ends.
-     * @returns This component, for method chaining.
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This handle, for method chaining.
      */
-    setOnDragEnd(fn: () => void): this {
-        this._onDragEnd = fn;
+    off(event: ResizeHandleEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
 
         return this;
     }
 
     /**
-     * Invokes the registered drag-move callback (no-op when unset). Used by
-     * the host's viewport-mousemove listener.
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order. Internal use only — outer hosts call the public
+     * verbs {@link dragMove} / {@link dragEnd} which forward to `emit`.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "dragstart",       e: MouseEvent): void;
+    protected emit(event: "dragmove",        delta: number): void;
+    protected emit(event: "dragend"): void;
+    protected emit(event: ResizeHandleEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * Drives the `"dragmove"` event from the host's viewport-mousemove
+     * listener. The host extracts `movementX` and forwards it here; this
+     * method fires `"dragmove"` listeners with that delta.
      *
      * @param delta - The horizontal pixel delta for this mousemove tick.
      */
-    fireDragMove(delta: number): void {
-        this._onDragMove?.(delta);
+    dragMove(delta: number): void {
+        this.emit("dragmove", delta);
     }
 
     /**
-     * Invokes the registered drag-end callback (no-op when unset). Used by
-     * the host's viewport-mouseup listener.
+     * Drives the `"dragend"` event from the host's viewport-mouseup
+     * listener.
      */
-    fireDragEnd(): void {
-        this._onDragEnd?.();
+    dragEnd(): void {
+        this.emit("dragend");
     }
+
+    /**
+     * @deprecated Use `on("dragstart", fn)`.
+     *
+     * @param fn - Called with the originating MouseEvent.
+     *
+     * @returns This handle, for method chaining.
+     */
+    setOnDragStart(fn: (event: MouseEvent) => void): this {
+        return this.on("dragstart", fn);
+    }
+
+    /**
+     * @deprecated Use `on("dragmove", fn)`.
+     *
+     * @param fn - Called with the horizontal pixel delta on each drag move.
+     *
+     * @returns This handle, for method chaining.
+     */
+    setOnDragMove(fn: (delta: number) => void): this {
+        return this.on("dragmove", fn);
+    }
+
+    /**
+     * @deprecated Use `on("dragend", fn)`.
+     *
+     * @param fn - Called when the drag ends.
+     *
+     * @returns This handle, for method chaining.
+     */
+    setOnDragEnd(fn: () => void): this {
+        return this.on("dragend", fn);
+    }
+
+    /**
+     * Bound mousedown handler — fires the `"dragstart"` event with the
+     * originating MouseEvent.
+     */
+    private _onMouseDown = (e: MouseEvent): void => {
+        this.emit("dragstart", e);
+    };
+
+    /**
+     * Bound click handler — swallows the click so the host header cell does
+     * not interpret it as a sort.
+     */
+    private _onClick = (e: MouseEvent): void => {
+        e.stopPropagation();
+    };
 }
 
 const ResizeHandleCallable = callable(ResizeHandle);

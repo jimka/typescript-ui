@@ -127,14 +127,16 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
 
     /**
      * Registers a callback fired when the user closes a tab via its close
-     * button. Forwards to the wrapped `Tab.setOnTabClose`.
+     * button. Forwards to the wrapped {@link Tab.on}.
      *
      * @param callback - Called with the closed tab's content component.
      *
      * @returns This panel, for method chaining.
+     *
+     * @deprecated Use `getTabManager().on("tabclose", fn)`.
      */
     setOnTabClose(callback: (component: Component) => void): this {
-        this.getTabManager().setOnTabClose(callback);
+        this.getTabManager().on("tabclose", callback);
 
         return this;
     }

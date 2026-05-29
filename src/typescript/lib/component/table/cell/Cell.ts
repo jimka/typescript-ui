@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Card } from "~/layout/Card.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
@@ -9,6 +10,13 @@ import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { ThemeManager } from "~/core/Theme.js";
+
+/**
+ * String-literal union of the events emitted by {@link Cell}.
+ *
+ * @category Components
+ */
+export type CellEvent = "commit" | "editend";
 
 /**
  * Base class for table cells that support both a display renderer and an optional in-place editor.
@@ -29,8 +37,7 @@ export class Cell<T> extends Component {
     private _editor: CellEditor<T> | undefined;
     private _editorPool: CellEditorPool | null = null;
     protected _activeEditor: CellEditor<T> | null = null;
-    private _onCommit: ((value: T) => void) | undefined;
-    private _onEditEnd: (() => void) | undefined;
+    private _listeners: ListenerBag<CellEvent> = new ListenerBag<CellEvent>();
 
     constructor(tag: string, renderer: CellRenderer<T>, editor?: CellEditor<T>, rendererConstraints?: LayoutConstraints, editorContraints?: LayoutConstraints) {
         super({ tag: tag || "td" });
@@ -90,23 +97,67 @@ export class Cell<T> extends Component {
     }
 
     /**
-     * Registers a callback to invoke with the new value when an edit is committed.
+     * Registers a listener for one of this cell's events.
+     *
+     * @param event - `"commit"` fires with the committed value whenever an
+     *   edit is committed; `"editend"` fires after the cell returns to
+     *   renderer view via keyboard action (Enter / Escape), not on blur.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This cell, for method chaining.
+     */
+    on(event: "commit",   listener: (value: T) => void): this;
+    on(event: "editend",  listener: () => void): this;
+    on(event: CellEvent,  listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This cell, for method chaining.
+     */
+    off(event: CellEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "commit",   value: T): void;
+    protected emit(event: "editend"): void;
+    protected emit(event: CellEvent,  ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("commit", fn)`.
      *
      * @param fn - The callback to fire on commit, receiving the committed value.
      */
     setOnCommit(fn: (value: T) => void): void {
-        this._onCommit = fn;
+        this.on("commit", fn);
     }
 
     /**
-     * Registers a callback invoked when an edit ends via keyboard (Enter or Escape), but NOT on blur.
+     * @deprecated Use `on("editend", fn)`.
      *
-     * @remarks Use this to return focus to the container after a keyboard-triggered edit exit,
-     * without stealing focus from wherever the user clicked when a blur triggered the commit.
      * @param fn - Called after the cell returns to renderer view via keyboard action.
      */
     setOnEditEnd(fn: () => void): void {
-        this._onEditEnd = fn;
+        this.on("editend", fn);
     }
 
     /**
@@ -167,7 +218,7 @@ export class Cell<T> extends Component {
             const committedValue = this._activeEditor.getValue();
 
             this._renderer.setValue(committedValue);
-            this._onCommit?.(committedValue as T);
+            this.emit("commit", committedValue as T);
             this.detachEditor();
         }
 
@@ -190,10 +241,10 @@ export class Cell<T> extends Component {
     onKeyDown(evnt: KeyboardEvent): void {
         if (evnt.keyCode == 13) { // Enter
             this.commitEdit();
-            this._onEditEnd?.();
+            this.emit("editend");
         } else if (evnt.keyCode == 27) { // Escape
             this.cancelEdit();
-            this._onEditEnd?.();
+            this.emit("editend");
         }
     }
 
@@ -268,7 +319,7 @@ export class Cell<T> extends Component {
         const value = editor.getValue();
 
         this._renderer.setValue(value);
-        this._onCommit?.(value as T);
+        this.emit("commit", value as T);
 
         this.detachEditor();
 

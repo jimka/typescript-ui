@@ -11,6 +11,7 @@ export type { ColumnConfig, ColumnSpec } from '~/component/table/ColumnConfig.js
 export { TableExporter } from '~/component/table/TableExporter.js';
 export type { ExportOptions } from '~/component/table/TableExporter.js';
 export { Header } from '~/component/table/Header.js';
+export type { HeaderEvent } from '~/component/table/Header.js';
 export { Body } from '~/component/table/Body.js';
 export { TreeBody } from '~/component/table/TreeBody.js';
 export type { FlatRecord, TreeBodySpec } from '~/component/table/TreeBody.js';
@@ -18,8 +19,10 @@ export { FooterRow } from '~/component/table/Footer.js';
 export { Row } from '~/component/table/Row.js';
 
 export { Cell } from '~/component/table/cell/Cell.js';
+export type { CellEvent } from '~/component/table/cell/Cell.js';
 export { DefaultCell } from '~/component/table/cell/Default.js';
 export { HeaderCell } from '~/component/table/cell/Header.js';
+export type { HeaderCellEvent } from '~/component/table/cell/Header.js';
 export { ParentHeaderCell } from '~/component/table/cell/ParentHeader.js';
 export { BooleanCell } from '~/component/table/cell/Boolean.js';
 export { NumberCell } from '~/component/table/cell/Number.js';

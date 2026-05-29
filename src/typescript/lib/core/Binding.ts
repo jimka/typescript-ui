@@ -4,9 +4,17 @@ import { BaseObject } from '~/core/BaseObject.js';
 import { ModelRecord } from '~/data/ModelRecord.js';
 import { Bindable, BindingAccessors } from '~/core/Bindable.js';
 import { Component } from '~/core/Component.js';
+import { ListenerBag } from '~/core/ListenerBag.js';
 import { ValidationRule, FieldValidationConfig } from '~/validation/ValidationRule.js';
 import { FieldDecorator } from '~/validation/FieldDecorator.js';
 import { applyRule } from '~/validation/Validator.js';
+
+/**
+ * String-literal union of events emitted by {@link Binding}.
+ *
+ * @category Data
+ */
+export type BindingEvent = "change" | "commit" | "reject" | "beforerecord";
 
 interface BoundEntry {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,10 +66,7 @@ export class Binding extends BaseObject {
 
     private _record: ModelRecord | null = null;
     private _entries: Map<string, BoundEntry> = new Map();
-    private _changeListeners:  Array<(fieldName: string, value: unknown) => void> = [];
-    private _commitListeners:  Array<() => void> = [];
-    private _rejectListeners:  Array<() => void> = [];
-    private _beforeRecordListeners: Array<BeforeRecordListener> = [];
+    private _listeners: ListenerBag<BindingEvent> = new ListenerBag<BindingEvent>();
     private _validationConfigs: Map<string, FieldValidationConfig> = new Map();
     private _globalValidateOnChange: boolean = false;
     private _loading: boolean = false;
@@ -111,9 +116,7 @@ export class Binding extends BaseObject {
             const value = acc.get();
             this._record.set(fieldName, value);
 
-            for (const fn of this._changeListeners) {
-                fn(fieldName, value);
-            }
+            this.emit("change", fieldName, value);
 
             this._validateFieldIfLive(fieldName);
         });
@@ -156,7 +159,7 @@ export class Binding extends BaseObject {
      * @param record - The record to bind, or `null` to detach.
      */
     setRecord(record: ModelRecord | null): this {
-        for (const fn of this._beforeRecordListeners) {
+        for (const fn of this._listeners.get("beforerecord") as BeforeRecordListener[]) {
             if (fn(record) === false) {
                 return this;
             }
@@ -203,9 +206,7 @@ export class Binding extends BaseObject {
     commit(): this {
         this._record?.commit();
 
-        for (const fn of this._commitListeners) {
-            fn();
-        }
+        this.emit("commit");
 
         return this;
     }
@@ -226,58 +227,108 @@ export class Binding extends BaseObject {
 
         this.clearValidation();
 
-        for (const fn of this._rejectListeners) {
-            fn();
-        }
+        this.emit("reject");
     }
 
     // ── Listeners ────────────────────────────────────────────────────────────
 
     /**
-     * Registers a listener that fires whenever any bound component changes a field value.
+     * Registers a listener for one of this binding's events.
+     *
+     * @param event - `"change"` fires whenever any bound component changes a
+     *   field value, receiving `(fieldName, value)`. `"commit"` fires after
+     *   {@link commit}. `"reject"` fires after {@link reject}.
+     *   `"beforerecord"` is consulted before {@link setRecord} mutates state;
+     *   returning `false` vetoes the call as a complete no-op.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This binding, for method chaining.
+     *
+     * @remarks `"beforerecord"` veto semantics: iteration stops on the first
+     *   `false`; if any listener vetoes, {@link setRecord} returns without
+     *   modifying any state. Returning `true` — or anything other than
+     *   `false`, including `undefined` — allows the change. Async
+     *   confirmation must be handled at the call site — {@link setRecord}
+     *   stays synchronous. A listener that itself calls {@link setRecord}
+     *   re-enters the same veto loop, which is supported but discouraged.
+     *   `null` is a valid `next` value (it represents a clear); a listener
+     *   that only wants to guard non-clear switches must short-circuit
+     *   `next === null` itself.
+     */
+    on(event: "change",       listener: (fieldName: string, value: unknown) => void): this;
+    on(event: "commit",       listener: () => void): this;
+    on(event: "reject",       listener: () => void): this;
+    on(event: "beforerecord", listener: BeforeRecordListener): this;
+    on(event: BindingEvent,   listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This binding, for method chaining.
+     */
+    off(event: BindingEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order. Internal use only — external callers route
+     * dispatch through {@link commit} / {@link reject} / {@link setRecord}.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "change", fieldName: string, value: unknown): void;
+    protected emit(event: "commit"): void;
+    protected emit(event: "reject"): void;
+    protected emit(event: BindingEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("change", fn)`.
      *
      * @param fn - Called with the field name and new value on every change.
      */
     addChangeListener(fn: (fieldName: string, value: unknown) => void): void {
-        this._changeListeners.push(fn);
+        this.on("change", fn);
     }
 
     /**
-     * Registers a listener that fires after {@link commit} is called.
+     * @deprecated Use `on("commit", fn)`.
+     *
+     * @param fn - Called after {@link commit} fires.
      */
     addCommitListener(fn: () => void): void {
-        this._commitListeners.push(fn);
+        this.on("commit", fn);
     }
 
     /**
-     * Registers a listener that fires after {@link reject} is called.
+     * @deprecated Use `on("reject", fn)`.
+     *
+     * @param fn - Called after {@link reject} fires.
      */
     addRejectListener(fn: () => void): void {
-        this._rejectListeners.push(fn);
+        this.on("reject", fn);
     }
 
     /**
-     * Registers a listener that is consulted before a record change takes effect.
-     *
-     * The listener receives the *next* record (or `null`) and returns `false`
-     * to cancel the change. Iteration stops on the first `false`; if any listener
-     * vetoes, {@link setRecord} returns without modifying any state. Returning
-     * `true` — or anything other than `false`, including `undefined` — allows
-     * the change.
-     *
-     * @remarks
-     * Async confirmation must be handled at the call site — {@link setRecord}
-     * stays synchronous. A caller that needs to reconcile its UI after a veto
-     * (e.g. reset a record-picker combo) should compare {@link getRecord} after
-     * the call. A listener that itself calls {@link setRecord} re-enters the
-     * same veto loop, which is supported but discouraged. `null` is a valid
-     * `next` value (it represents a clear); a listener that only wants to guard
-     * non-clear switches must short-circuit `next === null` itself.
+     * @deprecated Use `on("beforerecord", fn)`.
      *
      * @param fn - Called with the next record (or `null`). Return `false` to veto.
      */
     addBeforeRecordListener(fn: BeforeRecordListener): void {
-        this._beforeRecordListeners.push(fn);
+        this.on("beforerecord", fn);
     }
 
     // ── Validation ───────────────────────────────────────────────────────────

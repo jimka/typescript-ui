@@ -85,7 +85,7 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
         }
 
         if (options?.onSectionToggle) {
-            this.getAccordionManager().setOnSectionToggle(options.onSectionToggle);
+            this.getAccordionManager().on("sectiontoggle", options.onSectionToggle);
         }
     }
 

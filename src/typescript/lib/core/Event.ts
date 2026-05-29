@@ -444,23 +444,4 @@ export namespace Event {
             window.removeEventListener(type, baseViewportListener, captureOpts(type));
         }
     }
-
-    /**
-     * Registers a window resize listener that receives a `{width, height}` size object.
-     *
-     * @param listener - The callback function invoked on every window resize event,
-     * called with `{ width: number, height: number }` as its argument.
-     */
-    export function addViewportResizeListener(this: any, listener: Function) {
-        var me = this;
-
-        window.addEventListener('resize', function () {
-            let size = {
-                width: window.innerWidth,
-                height: window.innerHeight
-            };
-
-            listener.apply(me, [size]);
-        }, true);
-    }
 }
