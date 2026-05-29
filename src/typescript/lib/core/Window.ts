@@ -265,6 +265,13 @@ class Window extends Panel<WindowOptions> {
         if (this._options.maximizable    !== undefined) this.setMaximizable(this._options.maximizable);
         if (this._options.maximizeBounds !== undefined) this.setMaximizeBounds(this._options.maximizeBounds);
         if (this._options.windowState    !== undefined) this.setWindowState(this._options.windowState);
+
+        // Default minSize: enough header room for the title glyph, a 100px
+        // text budget, and the three trailing buttons. Skipped when the
+        // caller supplied an explicit `minSize` in the options bag.
+        if (options?.minSize === undefined) {
+            this.setMinSize(this._header.getMinContentWidth(), 200);
+        }
     }
 
     /**
@@ -317,6 +324,46 @@ class Window extends Panel<WindowOptions> {
      */
     getHeader(): WindowHeader {
         return this._header;
+    }
+
+    /**
+     * Sets the window width, clamping to the dynamic {@link getMinSize}
+     * floor so border drags can't shrink the window below the header's
+     * required width or the body content's min width.
+     *
+     * @param width - Requested width in pixels.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks `Component.setWidth` already clamps against `_options.minSize`
+     * via its private `clampWidth`, but that path ignores the layout
+     * manager's contribution — which is where the body content's minSize
+     * lives. Consulting `getMinSize` first folds both sides in.
+     */
+    setWidth(width: number): this {
+        const min = this.getMinSize();
+        if (min && width < min.width) {
+            width = min.width;
+        }
+
+        return super.setWidth(width);
+    }
+
+    /**
+     * Sets the window height, clamping to the dynamic {@link getMinSize}
+     * floor for the same reason described on {@link setWidth}.
+     *
+     * @param height - Requested height in pixels.
+     *
+     * @returns This component, for method chaining.
+     */
+    setHeight(height: number): this {
+        const min = this.getMinSize();
+        if (min && height < min.height) {
+            height = min.height;
+        }
+
+        return super.setHeight(height);
     }
 
     /**

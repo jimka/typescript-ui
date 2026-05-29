@@ -316,6 +316,25 @@ class WindowHeader extends Header {
     }
 
     /**
+     * Computes the natural required width of the header: title glyph width
+     * (or 0 when no glyph is set) plus the supplied text budget plus the
+     * three trailing buttons' row width. Used by the owning
+     * [`Window`](/api/core/classes/Window) to derive a minSize that keeps
+     * the title icon, some text space, and the trailing buttons all visible
+     * when the window is shrunk.
+     *
+     * @param textBudget - Pixels to reserve for the title text label.
+     *
+     * @returns The natural required header width in pixels.
+     */
+    getMinContentWidth(textBudget: number = 100): number {
+        const glyphW    = this._titleGlyph?.getPreferredSize()?.width ?? 0;
+        const trailingW = this._trailingRow.getPreferredSize()?.width  ?? 0;
+
+        return glyphW + textBudget + trailingW;
+    }
+
+    /**
      * Returns the minimize button DOM element, if the header has been rendered.
      *
      * @returns The minimize button's HTMLElement, or undefined when the header
