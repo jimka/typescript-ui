@@ -85,10 +85,10 @@
   "sideEffects": false,
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run typecheck && vite build",
     "build:lib": "tsc -p tsconfig.lib.json && vite build --config vite.lib.config.ts",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.lib.json --noEmit",
     "doc": "typedoc --out dist/docs src/typescript",
     "docs:api": "typedoc",
     "docs:dev": "vitepress dev docs",

@@ -205,11 +205,13 @@ export class VirtualScroller {
         let vVisible = false;
         let hVisible = false;
         for (let i = 0; i < 2; i++) {
-            const effH = outerH - (hVisible ? trackW : 0);
-            const effW = outerW - (vVisible ? trackW : 0);
+            const effH: number = outerH - (hVisible ? trackW : 0);
+            const effW: number = outerW - (vVisible ? trackW : 0);
+
             vVisible = contentHeight > effH;
             hVisible = contentWidth  > effW;
         }
+
         const effH = outerH - (hVisible ? trackW : 0);
         const effW = outerW - (vVisible ? trackW : 0);
 

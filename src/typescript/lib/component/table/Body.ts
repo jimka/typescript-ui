@@ -70,7 +70,6 @@ class Body extends Component {
     private _focusedColIndex: number                    = 0;
     private _editorPool      : CellEditorPool            = new CellEditorPool();
     private _header          : Header | null             = null;
-    private _onSelectionChange : ((records: ModelRecord[]) => void) | null = null;
     private _onVerticalScroll  : ((scrollTop: number)     => void) | null = null;
     private _onHorizontalScroll: ((scrollLeft: number)    => void) | null = null;
 
@@ -984,12 +983,6 @@ class Body extends Component {
      * Replaces the selected-record set with exactly the given records.
      * Mirrors {@link selectRecord} but accepts a multi-record list.
      *
-     * Does not invoke the callback registered via
-     * {@link setOnSelectionChange} — the asymmetry between this setter
-     * and the user-driven click/keyboard paths is what lets
-     * [`PinnedTable`](/api/component/table/classes/PinnedTable) mirror
-     * selection between two bodies without an infinite loop.
-     *
      * @param records - The records that should appear selected. The
      *   first record (if any) becomes the new anchor.
      */
@@ -1004,25 +997,6 @@ class Body extends Component {
         this._boundIndices.forEach((dataIdx, i) => {
             if (dataIdx !== -1) this.updateRowVisualState(i);
         });
-    }
-
-    /**
-     * Registers a callback fired after a user-driven selection change
-     * mutates this body's selected-record set. Single callback;
-     * calling again replaces the previous registration. Pass `null`
-     * to clear.
-     *
-     * @param fn - Receives the new selected-record array, or `null`
-     *   to remove the previous callback.
-     *
-     * @remarks Fires from `onRowClick` and the row-navigation branch
-     * of `onKeyDown`, never from programmatic {@link selectRecord} /
-     * {@link setSelectedRecords} calls — that asymmetry lets
-     * [`PinnedTable`](/api/component/table/classes/PinnedTable) mirror
-     * selection between two bodies without an infinite loop.
-     */
-    setOnSelectionChange(fn: ((records: ModelRecord[]) => void) | null): void {
-        this._onSelectionChange = fn;
     }
 
     /**
