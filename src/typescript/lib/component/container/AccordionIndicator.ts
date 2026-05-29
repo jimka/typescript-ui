@@ -55,7 +55,7 @@ function ensureAccordionIndicatorClassRule(): void {
  *
  * The static overlay geometry lives in a shared `.AccordionIndicator` class
  * rule registered on first use. The per-instance `.expanded` rotation rule is
- * allocated through {@link Component.createStyleRule} so the framework
+ * allocated through `Component.createStyleRule` so the framework
  * materialises it at render time.
  *
  * @category Components
@@ -133,7 +133,7 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
     /**
      * Sets the expanded state of the indicator. Toggles the live `.expanded`
      * class when the element is rendered; otherwise the cached state is
-     * applied on first paint by {@link render}.
+     * applied on first paint by `render`.
      *
      * @param value - True to rotate the chevron to the expanded position.
      * @returns This component, for method chaining.
@@ -162,7 +162,7 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
     /**
      * Overrides the chevron's `transform` transition timing so it matches the
      * duration and easing of the owning Accordion's panel-height transition.
-     * Routes through {@link Component.setTransition}, which writes to the
+     * Routes through [`Component.setTransition`](/api/core/classes/Component#settransition), which writes to the
      * indicator's own per-instance CSS rule — each instance keeps its own
      * timing without affecting siblings.
      *

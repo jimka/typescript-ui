@@ -4,7 +4,7 @@
  * CSS `position` values used by the framework.
  *
  * The framework positions every component absolutely (see
- * [ARCHITECTURE.md](../../../ARCHITECTURE.md) §Positioning). Only three values
+ * [ARCHITECTURE.md](/ARCHITECTURE.md) §Positioning). Only three values
  * are exposed:
  *
  * - `ABSOLUTE` — the universal default for every framework component.

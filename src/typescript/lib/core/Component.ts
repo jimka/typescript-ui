@@ -2226,7 +2226,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Framework-internal CSS position setter. Application code should NOT
      * call this — every framework component is positioned absolutely, and
      * layout managers compute child coordinates against the parent's padding
-     * box on that assumption. See [ARCHITECTURE.md](../../../ARCHITECTURE.md)
+     * box on that assumption. See [ARCHITECTURE.md](/ARCHITECTURE.md)
      * §Positioning for the rationale.
      *
      * Subclasses MAY call this with [`Position.FIXED`](/api/primitive/enums/Position#FIXED)
