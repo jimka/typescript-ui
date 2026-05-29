@@ -138,11 +138,12 @@ export interface Theme {
         };
 
         checkbox: {
-            background        : string;
-            selectedBackground: string;
-            checkColor        : string;
-            size              : string;
-            radius            : string;
+            background             : string;
+            selectedBackground     : string;
+            indeterminateBackground: string;
+            checkColor             : string;
+            size                   : string;
+            radius                 : string;
         };
 
         radio: {
@@ -505,11 +506,12 @@ export const DefaultTheme: Theme = {
             trackThickness       : '4px',
         },
         checkbox: {
-            background        : 'rgb(255, 255, 255)',
-            selectedBackground: 'rgb(30, 100, 200)',
-            checkColor        : 'rgb(255, 255, 255)',
-            size              : '16px',
-            radius            : '3px',
+            background             : 'rgb(255, 255, 255)',
+            selectedBackground     : 'rgb(30, 100, 200)',
+            indeterminateBackground: 'rgb(160, 160, 160)',
+            checkColor             : 'rgb(255, 255, 255)',
+            size                   : '16px',
+            radius                 : '3px',
         },
         radio   : {
             background        : 'rgb(255, 255, 255)',
@@ -781,11 +783,12 @@ export const DarkTheme: Theme = {
             trackThickness       : '4px',
         },
         checkbox: {
-            background        : 'rgb(40, 40, 40)',
-            selectedBackground: 'rgb(120, 170, 240)',
-            checkColor        : 'rgb(20, 20, 20)',
-            size              : '16px',
-            radius            : '3px',
+            background             : 'rgb(40, 40, 40)',
+            selectedBackground     : 'rgb(120, 170, 240)',
+            indeterminateBackground: 'rgb(100, 100, 100)',
+            checkColor             : 'rgb(20, 20, 20)',
+            size                   : '16px',
+            radius                 : '3px',
         },
         radio   : {
             background        : 'rgb(40, 40, 40)',
@@ -1038,6 +1041,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-slider-track-thickness'           : theme.form.slider.trackThickness,
         '--ts-ui-checkbox-bg'                      : theme.form.checkbox.background,
         '--ts-ui-checkbox-bg-selected'             : theme.form.checkbox.selectedBackground,
+        '--ts-ui-checkbox-bg-indeterminate'        : theme.form.checkbox.indeterminateBackground,
         '--ts-ui-checkbox-check-color'             : theme.form.checkbox.checkColor,
         '--ts-ui-checkbox-size'                    : theme.form.checkbox.size,
         '--ts-ui-checkbox-radius'                  : theme.form.checkbox.radius,

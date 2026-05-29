@@ -76,8 +76,11 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         this._check.setForegroundColor("var(--ts-ui-checkbox-check-color, rgb(255, 255, 255))");
         this._check.setPreferredSize(12, 12);
         this._check.setMaxSize(12, 12);
-        this._check.setX(2);
-        this._check.setY(2);
+        // With box-sizing: border-box and the 1px box border, absolute children
+        // are positioned relative to the 14×14 padding edge — so centering a
+        // 12×12 glyph inside the 16×16 visible box means (14−12)/2 = 1, not 2.
+        this._check.setX(1);
+        this._check.setY(1);
         this._check.setOpacity(0);
         // Pass-through so clicks on the glyph still hit the box underneath.
         this._check.setPointerEvents("none");
@@ -87,8 +90,8 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         this._dash.setPreferredSize(8, 2);
         this._dash.setMaxSize(8, 2);
         this._dash.setSize({ width: 8, height: 2 });
-        this._dash.setX(4);
-        this._dash.setY(7);
+        this._dash.setX(3);
+        this._dash.setY(6);
         this._dash.setOpacity(0);
         this._dash.setPointerEvents("none");
 
@@ -369,13 +372,19 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
             this.getAria().setChecked(selected);
         }
 
-        const filled = selected || indeterminate;
-        this._box.setBackgroundColor(filled
-            ? "var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))"
-            : "var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))");
-        this._box.setBorder(filled
-            ? "1px solid var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))"
-            : "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))");
+        const fill = indeterminate
+            ? "var(--ts-ui-checkbox-bg-indeterminate, rgb(160, 160, 160))"
+            : selected
+                ? "var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))"
+                : "var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))";
+        const border = selected || indeterminate
+            ? "1px solid " + (indeterminate
+                ? "var(--ts-ui-checkbox-bg-indeterminate, rgb(160, 160, 160))"
+                : "var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))")
+            : "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))";
+
+        this._box.setBackgroundColor(fill);
+        this._box.setBorder(border);
 
         this._check.setOpacity(selected && !indeterminate ? 1 : 0);
         this._dash.setOpacity(indeterminate ? 1 : 0);
