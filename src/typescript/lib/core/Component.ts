@@ -11,6 +11,7 @@ import { Type } from "~/core/Type.js";
 import { Util } from "~/core/Util.js";
 import { Position } from "~/primitive/Position.js";
 import { Aria } from "~/core/Aria.js";
+import { Event } from "~/core/Event.js";
 import { StyleRule, InlineStyle } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 
@@ -3393,6 +3394,70 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     flushLayout(): this {
         pendingLayouts.delete(this);
         this.doLayout();
+
+        return this;
+    }
+
+    /**
+     * Registers a `mousedown` event listener on this component. Named
+     * accessor that lets cross-bucket consumers (e.g.
+     * [`DragManager`](/api/core/variables/DragManager)) route through the
+     * component instead of reaching for
+     * `Event.addListener(component, "mousedown", ...)` directly — the
+     * framework's "components own their event surface" rule
+     * (`ARCHITECTURE.md` §Event handling).
+     *
+     * @param listener - The callback invoked with the originating MouseEvent.
+     *
+     * @returns This component, for method chaining.
+     */
+    addMouseDownListener(listener: Function): this {
+        Event.addListener(this, "mousedown", listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered mousedown listener.
+     *
+     * @param listener - The exact callback reference passed to {@link addMouseDownListener}.
+     *
+     * @returns This component, for method chaining.
+     */
+    removeMouseDownListener(listener: Function): this {
+        Event.removeListener(this, "mousedown", listener);
+
+        return this;
+    }
+
+    /**
+     * Registers a subtree `mousedown` listener — the handler fires
+     * whenever a mousedown lands on this component **or any of its
+     * descendants**. Used by
+     * [`DragManager`](/api/core/variables/DragManager) so a press
+     * anywhere on a complex source (e.g. a `Row` whose cells receive
+     * the actual mousedown) starts the drag.
+     *
+     * @param listener - The callback invoked with the originating MouseEvent.
+     *
+     * @returns This component, for method chaining.
+     */
+    addMouseDownSubtreeListener(listener: Function): this {
+        Event.addSubtreeListener(this, "mousedown", listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered subtree mousedown listener.
+     *
+     * @param listener - The exact callback reference passed to
+     *   {@link addMouseDownSubtreeListener}.
+     *
+     * @returns This component, for method chaining.
+     */
+    removeMouseDownSubtreeListener(listener: Function): this {
+        Event.removeSubtreeListener(this, "mousedown", listener);
 
         return this;
     }

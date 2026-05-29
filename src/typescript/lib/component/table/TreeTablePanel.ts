@@ -9,6 +9,7 @@ import { Placement } from "~/primitive/Placement.js";
 import { Button } from "~/component/button/Button.js";
 import { PaginationBar } from "~/component/display/PaginationBar.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
+import { ModelRecord } from "~/data/ModelRecord.js";
 import { TreeTable } from "~/component/table/TreeTable.js";
 import { TreeTableSpec } from "~/component/table/TreeTableSpec.js";
 import { ExportOptions } from "~/component/table/TableExporter.js";
@@ -27,9 +28,10 @@ Glyph.register(plus, minus, arrows_rotate, ban);
  * add/remove/sync toolbar — the tree counterpart to {@link TablePanel}.
  *
  * The toolbar is docked to the north region; the tree table fills the
- * center region. The "add" button adds a root-level record. Use
- * {@link TreeTable.addRow} on the inner table directly to add a child
- * under a specific parent.
+ * center region. The "add" button adds a row under the currently-
+ * selected directory — or under a selected leaf's parent, or at root
+ * when nothing is selected. Use {@link TreeTable.addRow} on the inner
+ * table directly to override the selection-aware target.
  *
  * @category Components
  */
@@ -59,7 +61,7 @@ class TreeTablePanel extends Panel {
 
         const addBtn = new Button({ glyph: "plus" });
         addBtn.setPreferredSize(28, 28);
-        addBtn.addActionListener(() => this._treeTable.addRow());
+        addBtn.addActionListener(() => this.addRowUnderSelection());
         Tooltip.attach(addBtn, "Add row");
         this._toolbar.addComponent(addBtn);
 
@@ -106,6 +108,33 @@ class TreeTablePanel extends Panel {
         store.on('load', refreshSyncButtons);
 
         this.refreshSyncButtons();
+    }
+
+    /**
+     * Adds a new record under the user's current selection. When the
+     * selection is a directory, the new record slots underneath it;
+     * when the selection is a leaf, the record slots under the leaf's
+     * parent (matching VS Code / Finder "new sibling" behaviour). With
+     * no selection, the record lands at root — the documented fallback
+     * that mirrors the no-state add of {@link TreeTable.addRow}.
+     *
+     * @returns The newly created record.
+     */
+    private addRowUnderSelection(): ModelRecord {
+        const selected = this._treeTable.getSelectedRecord();
+
+        if (selected === null) {
+            return this._treeTable.addRow();
+        }
+
+        if (this._treeTable.isDirectoryRecord(selected)) {
+            return this._treeTable.addRow({}, selected);
+        }
+
+        const parentId = selected.get(this._treeTable.getTreeSpec().parentField);
+        const parent   = parentId != null ? this._treeTable.getRecordById(parentId) : undefined;
+
+        return this._treeTable.addRow({}, parent);
     }
 
     /**

@@ -20,6 +20,7 @@ Task-oriented end-to-end snippets. Each recipe walks from imports through behavi
 
 - [Custom brand theme](/recipes/custom-theme) — derive from `DefaultTheme`.
 - [Keyboard shortcuts in `MenuBar`](/recipes/keyboard-shortcuts) — pair shortcut hints with real handlers.
+- [Drag-and-drop with `DragManager`](/recipes/drag-and-drop) — turn any `Component` into a drag source or drop target.
 
 ## Construction patterns
 
