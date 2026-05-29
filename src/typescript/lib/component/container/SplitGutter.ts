@@ -188,11 +188,12 @@ class SplitGutter extends Component<SplitGutterOptions> {
     }
 
     /**
-     * Invokes all registered drag listeners with the pixel movement amount.
+     * Internal mousemove/touchmove dispatch — fires the `drag` event with
+     * the pixel movement amount.
      *
      * @param movement - The pixel delta in the relevant axis for this drag event.
      */
-    fireDragListeners(movement: number) {
+    private _dispatchDrag(movement: number): void {
         this.emit("drag", movement);
     }
 
@@ -235,7 +236,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
             movement = evnt.movementY;
         }
 
-        this.fireDragListeners(movement);
+        this._dispatchDrag(movement);
     }
 
     /**

@@ -34,6 +34,7 @@ export { GlyphCell } from '~/component/table/cell/Glyph.js';
 
 export { CellEditor } from '~/component/table/cell/editor/CellEditor.js';
 export { BooleanEditor } from '~/component/table/cell/editor/Boolean.js';
+export type { BooleanEditorEvent } from '~/component/table/cell/editor/Boolean.js';
 export { NumberEditor } from '~/component/table/cell/editor/Number.js';
 export { StringEditor } from '~/component/table/cell/editor/String.js';
 export { DateEditor } from '~/component/table/cell/editor/Date.js';

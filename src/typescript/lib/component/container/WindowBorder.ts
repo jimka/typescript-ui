@@ -99,7 +99,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
         this._dragStartListener = this.onDragStart.bind(this);
         this._dragStopListener = this.onDragStop.bind(this);
-        this._fireDragListener = this.fireDragListeners.bind(this);
+        this._fireDragListener = this._dispatchDrag.bind(this);
 
         Event.addListener(this, 'mousedown', this._dragStartListener);
 
@@ -202,11 +202,12 @@ class WindowBorder extends Component<WindowBorderOptions> {
     }
 
     /**
-     * Invokes all registered drag listeners with this border and the mouse event.
+     * Internal mousemove dispatch — fires the `drag` event with this border
+     * and the originating mouse event.
      *
-     * @param e - The MouseEvent to pass to each listener.
+     * @param e - The MouseEvent observed by the viewport-mousemove listener.
      */
-    fireDragListeners(e: MouseEvent) {
+    private _dispatchDrag(e: MouseEvent): void {
         this.emit("drag", this, e);
     }
 

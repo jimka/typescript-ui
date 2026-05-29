@@ -310,12 +310,6 @@ class Tree extends Component<TreeOptions> {
         this._renderWindow();
     }
 
-    /**
-     * Fires all selection listeners with the current selected-node array.
-     */
-    private _fireSelectionListeners(): void {
-        this.emit("selection", this.getSelectedNodes());
-    }
 
     /**
      * Fills `_selectedNodes` with every node in `_flatRows` between `anchorIdx` and `focusIdx` (inclusive).
@@ -355,7 +349,7 @@ class Tree extends Component<TreeOptions> {
         this._scrollIntoView(index);
         this._renderWindow();
         this._updateActiveDescendant();
-        this._fireSelectionListeners();
+        this.emit("selection", this.getSelectedNodes());
     }
 
     /**
@@ -379,7 +373,7 @@ class Tree extends Component<TreeOptions> {
         this._scrollIntoView(index);
         this._renderWindow();
         this._updateActiveDescendant();
-        this._fireSelectionListeners();
+        this.emit("selection", this.getSelectedNodes());
     }
 
     /**
@@ -569,7 +563,7 @@ class Tree extends Component<TreeOptions> {
                 this._anchorNode = node;
                 this._focusNode = node;
                 this._updateSelectionStyle();
-                this._fireSelectionListeners();
+                this.emit("selection", this.getSelectedNodes());
             } else {
                 this._selectAtIndex(clickedIdx);
             }

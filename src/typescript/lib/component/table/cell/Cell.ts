@@ -37,7 +37,12 @@ export class Cell<T> extends Component {
     private _editor: CellEditor<T> | undefined;
     private _editorPool: CellEditorPool | null = null;
     protected _activeEditor: CellEditor<T> | null = null;
-    private _listeners: ListenerBag<CellEvent> = new ListenerBag<CellEvent>();
+    // Typed as `ListenerBag<string>` rather than `ListenerBag<CellEvent>` so
+    // subclasses (e.g. HeaderCell) can re-declare the bag with a wider
+    // event union without fighting TypeScript's invariant generic on
+    // `ListenerBag.add`. The compile-time gate on event names lives on the
+    // host's typed `on` / `off` / `emit` overloads, not on the bag field.
+    protected _listeners: ListenerBag<string> = new ListenerBag<string>();
 
     constructor(tag: string, renderer: CellRenderer<T>, editor?: CellEditor<T>, rendererConstraints?: LayoutConstraints, editorContraints?: LayoutConstraints) {
         super({ tag: tag || "td" });

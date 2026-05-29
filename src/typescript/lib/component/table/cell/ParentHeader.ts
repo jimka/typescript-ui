@@ -80,7 +80,7 @@ class ParentHeaderCell extends DefaultCell {
 
     /**
      * Registers a callback invoked when the user right-clicks this parent
-     * header cell. Mirrors {@link HeaderCell.setOnContextMenu} but elides
+     * header cell. Mirrors `HeaderCell.on("contextmenu", fn)` but elides
      * the per-column `fieldName` — parent cells span multiple columns, so
      * the host only needs the viewport coordinates to anchor the menu.
      *
