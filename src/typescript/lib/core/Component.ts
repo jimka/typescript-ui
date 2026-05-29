@@ -1625,7 +1625,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const next: Size = { width, height };
         this._options.preferredSize = next;
-        this.setDataAttribute("preferredSize", next.width + " " + next.height);
+        this.setDataAttribute("preferredSize", (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.width) + "px")) + " " + (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.height) + "px")));
         this._onPreferredSizeChange?.();
 
         return this;
@@ -1695,6 +1695,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             minHeight: next.height + "px"
         });
 
+        this.setDataAttribute("minSize", (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.width) + "px")) + " " + (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.height) + "px")));
+
         return this;
     }
 
@@ -1762,7 +1764,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             maxHeight: next.height === Number.MAX_VALUE ? "none" : next.height + "px"
         });
 
-        this.setDataAttribute("maxSize", next.width + " " + next.height);
+        this.setDataAttribute("maxSize", (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.width) + "px")) + " " + (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.height) + "px")));
 
         return this;
     }
@@ -2919,7 +2921,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (maxSize) {
             this._styleRule.set("maxWidth",  maxSize.width  === Number.MAX_VALUE ? "none" : maxSize.width  + "px");
             this._styleRule.set("maxHeight", maxSize.height === Number.MAX_VALUE ? "none" : maxSize.height + "px");
-            this.setDataAttribute("maxSize", maxSize.width + " " + maxSize.height);
+            this.setDataAttribute("maxSize", (maxSize.width === Number.MAX_VALUE ? "inf" : (Math.round(maxSize.width) + "px")) + " " + (maxSize.width === Number.MAX_VALUE ? "inf" : (Math.round(maxSize.height) + "px")));
         }
 
         if (this._overflowX !== null) {
