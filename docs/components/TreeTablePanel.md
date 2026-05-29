@@ -31,7 +31,7 @@ container.addComponent(panel);
 
 The toolbar exposes the same four actions as [`TablePanel`](/components/TablePanel):
 
-- **Add** — calls `treeTable.addRow()` which inserts a root-level record (no parent). Use `panel.getTreeTable().addRow({ ... }, parentRecord)` directly to insert a child under a specific parent.
+- **Add** — inserts a record under the current selection. When the selected row is a directory the new record becomes its child; when the selected row is a leaf the new record slots under the leaf's parent (so it lands next to it under the same directory); with no selection the record lands at root. Use `panel.getTreeTable().addRow({ ... }, parentRecord)` directly to override the selection-aware target.
 - **Remove** — calls `store.remove(record)` for the selected row.
 - **Sync** — calls `store.sync()` to push pending changes to the proxy.
 - **Reject** — calls `store.reject()` to revert dirty rows, drop new ones, and restore pending removals.

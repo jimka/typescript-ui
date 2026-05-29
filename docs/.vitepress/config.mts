@@ -185,6 +185,7 @@ export default defineConfig({
                 { text: 'Theming + interaction', collapsed: false, items: [
                     { text: 'Custom brand theme',  link: '/recipes/custom-theme' },
                     { text: 'Keyboard shortcuts', link: '/recipes/keyboard-shortcuts' },
+                    { text: 'Drag-and-drop',      link: '/recipes/drag-and-drop' },
                 ] },
                 { text: 'Construction patterns', collapsed: false, items: [
                     { text: 'Component constructor options', link: '/recipes/component-options' },

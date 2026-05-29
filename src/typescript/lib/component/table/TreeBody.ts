@@ -2,10 +2,37 @@
 
 import { _Body } from "~/component/table/Body.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
+import { DragEventDetail, DragManager } from "~/core/DragManager.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
 import { TreeCellRenderer } from "~/component/table/cell/renderer/TreeCell.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * Drop-target outcome callback injected by
+ * [`TreeTable`](/api/component/table/classes/TreeTable). Returns whether
+ * the drop reparented the dragged record.
+ *
+ * @internal Framework wiring between `TreeTable` and `TreeBody`. Not
+ *   part of the public API.
+ */
+type TreeBodyReparentHandler = (
+    dragged: ModelRecord,
+    newParent: ModelRecord | null,
+) => boolean;
+
+/**
+ * Drop-target validity callback. Returns `true` when the dragged record
+ * may legally land under `newParent`. Used by the per-row drop targets
+ * to drive the green/red feedback tint before commit.
+ *
+ * @internal Framework wiring between `TreeTable` and `TreeBody`. Not
+ *   part of the public API.
+ */
+type TreeBodyReparentValidator = (
+    dragged: ModelRecord,
+    newParent: ModelRecord | null,
+) => boolean;
 
 /**
  * A flattened entry in {@link TreeBody}'s visible-row list.
@@ -92,6 +119,24 @@ class TreeBody extends _Body {
     private _flatRows: FlatRecord[]            = [];
 
     /**
+     * Per-row drag-source + drop-target teardown bag. Keyed by the
+     * pool `Row` (whose identity is stable across rebinds — the
+     * underlying record changes, but the row component does not), so a
+     * rebind tears down the previous closures around the previous
+     * record before installing fresh ones.
+     */
+    private _rowDnDTeardowns: Map<Row, () => void> = new Map();
+
+    /** Empty-area drop-target teardown — registered in {@link init}. */
+    private _emptyAreaDropTeardown: (() => void) | null = null;
+
+    /** Optional reparent commit injected by `TreeTable`. */
+    private _reparentHandler: TreeBodyReparentHandler | null = null;
+
+    /** Optional reparent validity check injected by `TreeTable`. */
+    private _reparentValidator: TreeBodyReparentValidator | null = null;
+
+    /**
      * Constructs a TreeBody bound to the given store, configured by the
      * tree spec.
      *
@@ -153,6 +198,93 @@ class TreeBody extends _Body {
      */
     getFlatRecords(): FlatRecord[] {
         return this._flatRows;
+    }
+
+    /**
+     * Resolves a record by its id-field value. Reads the `_byId` map
+     * maintained by `rebuildIndex`, so the lookup is O(1) and stays in
+     * sync with the latest store snapshot.
+     *
+     * @param id - The id-field value to look up.
+     *
+     * @returns The matching record, or `undefined` when the id is not
+     *   present in the current store view.
+     */
+    getRecordById(id: any): ModelRecord | undefined {
+        return this._byId.get(id);
+    }
+
+    /**
+     * Returns the records that name `id` as their parent-id. Reads the
+     * `_childIds` map maintained by `rebuildIndex`; returns an empty
+     * array (not the underlying list) when the id has no children, so
+     * callers can iterate without an existence check.
+     *
+     * @param id - The parent-id field value to look up.
+     *
+     * @returns A snapshot of the child records (do not mutate).
+     */
+    getChildrenOf(id: any): ModelRecord[] {
+        return this._childIds.get(id) ?? [];
+    }
+
+    /**
+     * Returns whether the given record currently has at least one
+     * child — i.e. behaves as a directory in the rendered tree.
+     *
+     * @param record - The record to test.
+     *
+     * @returns `true` when the record has children; `false` for leaves.
+     */
+    isDirectoryRecord(record: ModelRecord): boolean {
+        return this.getChildrenOf(record.get(this._idField)).length > 0;
+    }
+
+    /**
+     * Walks the parent chain from `descendant` upward and returns
+     * `true` when `ancestor` is found at any depth. Used by
+     * [`TreeTable.reparentRow`](/api/component/table/classes/TreeTable#reparentrow)
+     * to reject drops that would create a cycle.
+     *
+     * @param ancestor - The candidate ancestor record.
+     * @param descendant - The starting record. The walk follows
+     *   `descendant.get(parentField)` recursively.
+     *
+     * @returns `true` when `ancestor === descendant` or `ancestor` is
+     *   any transitive parent of `descendant`.
+     */
+    isAncestorOf(ancestor: ModelRecord, descendant: ModelRecord): boolean {
+        if (ancestor === descendant) {
+            return true;
+        }
+
+        const ancestorId = ancestor.get(this._idField);
+
+        let current: ModelRecord | undefined = descendant;
+        const seen = new Set<any>();
+
+        while (current) {
+            const parentId = current.get(this._parentField);
+
+            if (parentId == null) {
+                return false;
+            }
+
+            if (parentId === ancestorId) {
+                return true;
+            }
+
+            // Defensive cycle guard — a corrupt parent chain must not
+            // infinite-loop the validity check.
+            if (seen.has(parentId)) {
+                return false;
+            }
+
+            seen.add(parentId);
+            current = this._byId.get(parentId);
+        }
+
+        return false;
     }
 
     /**
@@ -332,6 +464,24 @@ class TreeBody extends _Body {
     }
 
     /**
+     * Initialises the tree body, then registers the empty-area drop
+     * target so a row released over the body's whitespace reparents to
+     * root. The element must exist before {@link DragManager.makeDropTarget}
+     * can resolve its id — defer past the base class `init`.
+     *
+     * @param element - Optional element to initialise with.
+     *
+     * @returns This body, for method chaining.
+     */
+    protected init(element?: HTMLElement): this {
+        super.init(element);
+
+        this.ensureEmptyAreaDropTarget();
+
+        return this;
+    }
+
+    /**
      * Rebuilds the parent/child index from the current store records,
      * then re-flattens the visible subtree. Invoked from
      * `Body.onStoreChange` before the inherited refresh runs.
@@ -408,26 +558,195 @@ class TreeBody extends _Body {
      * Pushes depth + expansion state to the row's
      * [`TreeCellRenderer`](/api/component/table/classes/TreeCellRenderer)
      * so the toggle glyph and indent match the flat record at this
-     * data index. Idempotent when state hasn't changed.
+     * data index, then re-wires the per-row drag source / drop target
+     * for the bound record.
      *
      * @param row - The pool row being processed.
      * @param dataIndex - The row's index into `_flatRows`.
+     * @param wasRebound - True when the row's record changed on this
+     *   pass; the DnD closures captured the previous record and must be
+     *   replaced.
      */
-    protected afterRowBound(row: Row, dataIndex: number, _wasRebound: boolean): void {
+    protected afterRowBound(row: Row, dataIndex: number, wasRebound: boolean): void {
         const treeCell = row.getTreeCell();
-
-        if (!treeCell) {
-            return;
-        }
-
-        const renderer = treeCell.getRenderer() as TreeCellRenderer<any>;
         const flat     = this._flatRows[dataIndex];
 
-        if (!flat) {
+        if (treeCell && flat) {
+            const renderer = treeCell.getRenderer() as TreeCellRenderer<any>;
+
+            renderer.setTreeState(flat.depth, flat.hasChildren, flat.expanded);
+        }
+
+        if (this._reparentHandler === null) {
             return;
         }
 
-        renderer.setTreeState(flat.depth, flat.hasChildren, flat.expanded);
+        if (!flat) {
+            this.teardownRowDnD(row);
+
+            return;
+        }
+
+        if (wasRebound || !this._rowDnDTeardowns.has(row)) {
+            this.installRowDnD(row, flat.record);
+        }
+    }
+
+    /**
+     * Installs the manager-side {@link DragManager.makeDragSource} +
+     * {@link DragManager.makeDropTarget} pair for a pool row, replacing
+     * any previously installed pair.
+     */
+    private installRowDnD(row: Row, record: ModelRecord): void {
+        this.teardownRowDnD(row);
+
+        const tearDownSource = DragManager.makeDragSource(row, {
+            dragData: { recordId: record.get(this._idField) },
+        });
+
+        const dropTargetForRow = (detail: DragEventDetail): ModelRecord | null => {
+            const dragged = this.resolveDragged(detail);
+
+            if (!dragged) {
+                return null;
+            }
+
+            return this.resolveDropParentForRow(record);
+        };
+
+        const tearDownTarget = DragManager.makeDropTarget(row, {
+            accepts: (detail: DragEventDetail) => {
+                const dragged = this.resolveDragged(detail);
+
+                if (!dragged) {
+                    return false;
+                }
+
+                const newParent = dropTargetForRow(detail);
+
+                return this._reparentValidator?.(dragged, newParent) ?? false;
+            },
+            onDrop: (detail: DragEventDetail): boolean | void => {
+                const dragged = this.resolveDragged(detail);
+
+                if (!dragged) {
+                    return false;
+                }
+
+                const newParent = dropTargetForRow(detail);
+
+                return this._reparentHandler?.(dragged, newParent) ?? false;
+            },
+        });
+
+        this._rowDnDTeardowns.set(row, () => {
+            tearDownSource();
+            tearDownTarget();
+        });
+    }
+
+    /**
+     * Resolves the dragged record from the manager's detail payload
+     * (which carries the record-id assigned in {@link installRowDnD}).
+     * Returns `undefined` when the record is no longer in the store.
+     */
+    private resolveDragged(detail: DragEventDetail): ModelRecord | undefined {
+        const id = detail.dragData["recordId"];
+
+        return this._byId.get(id);
+    }
+
+    /**
+     * Maps a hovered row's bound record to the directory it implies.
+     * Directories accept drops directly; leaves forward to their
+     * parent (so "drop on a sibling file" lands next to it under the
+     * same directory).
+     */
+    private resolveDropParentForRow(record: ModelRecord): ModelRecord | null {
+        if (this.isDirectoryRecord(record)) {
+            return record;
+        }
+
+        const parentId = record.get(this._parentField);
+
+        if (parentId == null) {
+            return null;
+        }
+
+        return this._byId.get(parentId) ?? null;
+    }
+
+    /**
+     * Tears down the drag-source + drop-target pair for a pool row.
+     */
+    private teardownRowDnD(row: Row): void {
+        const teardown = this._rowDnDTeardowns.get(row);
+
+        if (teardown) {
+            teardown();
+            this._rowDnDTeardowns.delete(row);
+        }
+    }
+
+    /**
+     * Wires the reparent callbacks supplied by `TreeTable`. Installed
+     * once at construction so per-row DnD has everything it needs by
+     * the time `afterRowBound` first runs.
+     *
+     * @param validator - Pre-drop validity check.
+     * @param handler - Commits the reparent and returns whether it
+     *   succeeded.
+     *
+     * @returns This body, for method chaining.
+     *
+     * @internal Framework wiring; application code does not call this.
+     */
+    setReparentHandlers(validator: TreeBodyReparentValidator, handler: TreeBodyReparentHandler): this {
+        this._reparentValidator = validator;
+        this._reparentHandler   = handler;
+
+        if (this.getElement()) {
+            this.ensureEmptyAreaDropTarget();
+        }
+
+        return this;
+    }
+
+    /**
+     * Registers the body element itself as a drop target so a row
+     * released over the empty area below the last row reparents to
+     * root. Idempotent — safe to call after either
+     * {@link setReparentHandlers} or `init`.
+     */
+    private ensureEmptyAreaDropTarget(): void {
+        if (this._emptyAreaDropTeardown !== null) {
+            return;
+        }
+
+        if (this._reparentHandler === null) {
+            return;
+        }
+
+        this._emptyAreaDropTeardown = DragManager.makeDropTarget(this, {
+            accepts: (detail: DragEventDetail) => {
+                const dragged = this.resolveDragged(detail);
+
+                if (!dragged) {
+                    return false;
+                }
+
+                return this._reparentValidator?.(dragged, null) ?? false;
+            },
+            onDrop: (detail: DragEventDetail): boolean | void => {
+                const dragged = this.resolveDragged(detail);
+
+                if (!dragged) {
+                    return false;
+                }
+
+                return this._reparentHandler?.(dragged, null) ?? false;
+            },
+        });
     }
 
     /**

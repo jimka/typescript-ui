@@ -443,6 +443,29 @@ export interface Theme {
         pulseDuration: string;
         beatDuration : string;
     };
+
+    /**
+     * Tokens consumed by the drag-and-drop overlays — the ghost that
+     * follows the cursor, the per-target validity tint applied by
+     * [`DragFeedback`](/api/core/classes/DragFeedback), and the
+     * insertion-line bar drawn by
+     * [`ReorderIndicator`](/api/core/classes/ReorderIndicator).
+     */
+    drag: {
+        ghost: {
+            background: string;
+            border    : string;
+            shadow    : string;
+            opacity   : string;
+        };
+        feedback: {
+            valid  : { background: string; border: string; };
+            invalid: { background: string; border: string; };
+        };
+        reorderIndicator: {
+            color: string;
+        };
+    };
 }
 
 /**
@@ -720,6 +743,21 @@ export const DefaultTheme: Theme = {
         pulseDuration: '1000ms',
         beatDuration : '1000ms',
     },
+    drag: {
+        ghost: {
+            background: 'rgba(200, 200, 200, 0.9)',
+            border    : 'rgb(150, 150, 150)',
+            shadow    : '2px 4px 12px rgba(0, 0, 0, 0.25)',
+            opacity   : '0.85',
+        },
+        feedback: {
+            valid  : { background: 'rgba(30, 180, 80, 0.12)', border: 'rgb(30, 180, 80)'  },
+            invalid: { background: 'rgba(200, 50, 50, 0.10)', border: 'rgb(200, 50, 50)' },
+        },
+        reorderIndicator: {
+            color: 'rgb(30, 100, 200)',
+        },
+    },
 };
 
 /**
@@ -993,6 +1031,21 @@ export const DarkTheme: Theme = {
         pulseDuration: '1000ms',
         beatDuration : '1000ms',
     },
+    drag: {
+        ghost: {
+            background: 'rgba(60, 60, 60, 0.9)',
+            border    : 'rgb(100, 100, 100)',
+            shadow    : '2px 4px 12px rgba(0, 0, 0, 0.6)',
+            opacity   : '0.85',
+        },
+        feedback: {
+            valid  : { background: 'rgba(30, 180, 80, 0.2)',  border: 'rgb(30, 180, 80)'  },
+            invalid: { background: 'rgba(200, 50, 50, 0.18)', border: 'rgb(200, 50, 50)' },
+        },
+        reorderIndicator: {
+            color: 'rgb(80, 140, 240)',
+        },
+    },
 };
 
 /**
@@ -1179,6 +1232,15 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-glyph-spin-duration'              : theme.glyph.spinDuration,
         '--ts-ui-glyph-pulse-duration'             : theme.glyph.pulseDuration,
         '--ts-ui-glyph-beat-duration'              : theme.glyph.beatDuration,
+        '--ts-ui-drag-ghost-bg'                    : theme.drag.ghost.background,
+        '--ts-ui-drag-ghost-border'                : theme.drag.ghost.border,
+        '--ts-ui-drag-ghost-shadow'                : theme.drag.ghost.shadow,
+        '--ts-ui-drag-ghost-opacity'               : theme.drag.ghost.opacity,
+        '--ts-ui-drag-feedback-valid-bg'           : theme.drag.feedback.valid.background,
+        '--ts-ui-drag-feedback-valid-border'       : theme.drag.feedback.valid.border,
+        '--ts-ui-drag-feedback-invalid-bg'         : theme.drag.feedback.invalid.background,
+        '--ts-ui-drag-feedback-invalid-border'     : theme.drag.feedback.invalid.border,
+        '--ts-ui-drag-reorder-color'               : theme.drag.reorderIndicator.color,
     };
 }
 
