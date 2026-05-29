@@ -123,19 +123,53 @@ export class Cell<T> extends Component {
      * {@link Cell.startEdit}, render with the
      * `--ts-ui-table-cell-readonly-bg` tint, and present a default
      * cursor instead of any renderer-supplied edit affordance.
-     * Idempotent.
+     * Idempotent — passing the current value short-circuits before any
+     * style writes.
      *
      * Body rows call this from their cell-construction loop based on
-     * the column's `ColumnConfig.readOnly` flag — application code
-     * should declare read-only at the column level rather than calling
-     * this setter directly on a cell.
+     * the column's `ColumnConfig.readOnly` flag, and the body's
+     * per-rebind read-only resolution forwards the OR of the static
+     * column flag, the spec-level row predicate, and the per-cell
+     * predicate. Application code should declare read-only through
+     * those config-level surfaces rather than calling this setter
+     * directly on a cell.
+     *
+     * Calling `setReadOnly(true)` while the cell is in edit mode
+     * silently commits the active edit before flipping the flag, so the
+     * borrowed editor releases back to the {@link CellEditorPool}
+     * cleanly and the in-progress user input lands on the record. The
+     * commit fires the cell's `onCommit` callback (and any cascading
+     * store-event refresh) as if the user had blurred the editor.
      *
      * @param value - `true` to mark read-only, `false` to restore the
      *   default editable appearance.
      * @returns This cell, for method chaining.
      */
     setReadOnly(value: boolean): this {
+        if (this._readOnly === value) {
+            return this;
+        }
+
+        // Flip the flag BEFORE running the mid-edit commit. The
+        // commit's onCommit callback synchronously calls
+        // `store.notifyRecordChanged`, which cascades back into
+        // `Body.applyReadOnlyState` and re-invokes this same setter on
+        // this same cell. Flipping first lets the re-entrant call
+        // short-circuit on the idempotence guard above; otherwise it
+        // would observe `_readOnly === false`, see `isEditing() ===
+        // true`, and recurse into `commitEdit` indefinitely.
+        // `commitEdit` itself checks `isReadOnly()` and would
+        // short-circuit now that the flag is set, so we inline its
+        // value/renderer/onCommit/detach sequence here instead.
         this._readOnly = value;
+
+        if (value && this._activeEditor) {
+            const committedValue = this._activeEditor.getValue();
+
+            this._renderer.setValue(committedValue);
+            this._onCommit?.(committedValue as T);
+            this.detachEditor();
+        }
 
         if (value) {
             this.setBackgroundColor('var(--ts-ui-table-cell-readonly-bg, rgba(0, 0, 0, 0.04))');

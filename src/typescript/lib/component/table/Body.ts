@@ -53,6 +53,7 @@ class Body extends Component {
     private _hiddenColumns   : Set<string>               = new Set();
     private _columns         : Column[]                  = [];
     private _columnConfigs   : Map<string, ColumnConfig> = new Map();
+    private _rowReadOnly     : ((record: ModelRecord) => boolean) | null = null;
     private _rowPool         : Row[]                     = [];
     private _boundIndices    : number[]                  = [];
     private _rowGeom         : Array<{ ty: number, w: number, h: number } | null> = [];
@@ -366,6 +367,24 @@ class Body extends Component {
         this._columns = columns;
         this.syncPoolCells();
         this.renderWindow();
+
+        return this;
+    }
+
+    /**
+     * Sets the table-wide row-level read-only predicate forwarded from
+     * {@link ColumnSpec.rowReadOnly}. Cleared by passing `null`.
+     *
+     * @param predicate - Returns `true` to mark every cell in the
+     *   record's row read-only. Called on every rebind; must be O(1)
+     *   and pure.
+     * @returns This body, for method chaining.
+     *
+     * @remarks Internal wiring called by {@link Table} — not for
+     * consumer use. Consumers declare the predicate in the spec.
+     */
+    setRowReadOnly(predicate: ((record: ModelRecord) => boolean) | null): this {
+        this._rowReadOnly = predicate;
 
         return this;
     }
@@ -747,6 +766,7 @@ class Body extends Component {
                 this._boundIndices[i] = dataIndex;
                 this.updateRowVisualState(i);
                 this.computeRowAria(row, dataIndex);
+                this.applyReadOnlyState(row, records[dataIndex]);
             }
 
             this.afterRowBound(row, dataIndex, wasRebound);
@@ -1049,6 +1069,45 @@ class Body extends Component {
         }
 
         this.setScrollY(idx * this._rowHeight);
+    }
+
+    /**
+     * Computes the read-only union per cell and forwards it to
+     * {@link Cell.setReadOnly}. Runs inside the rebind block once per
+     * row.
+     *
+     * The union is OR-composed from three sources:
+     *
+     * 1. Column-level static flag from {@link ColumnConfig.readOnly}.
+     * 2. Spec-level row predicate from {@link ColumnSpec.rowReadOnly}
+     *    (cached in `_rowReadOnly`).
+     * 3. Per-column per-record predicate from
+     *    {@link ColumnConfig.cellReadOnly}.
+     *
+     * Source 1 is read from the column config rather than the cell's
+     * current `_readOnly` flag — a previous bind may have marked the
+     * cell read-only via a dynamic predicate, and re-reading the cell
+     * state would make a positive predicate result sticky once a row
+     * went read-only.
+     *
+     * @param row - The pool row being rebound.
+     * @param record - The record now bound to that row.
+     */
+    private applyReadOnlyState(row: Row, record: ModelRecord): void {
+        const rowOverride = this._rowReadOnly?.(record) === true;
+        const cells       = row.getComponents() as Cell<any>[];
+        const fieldNames  = row.getFieldNames();
+
+        for (let i = 0; i < cells.length; i++) {
+            const cell       = cells[i];
+            const fieldName  = fieldNames[i];
+            const config     = this._columnConfigs.get(fieldName);
+            const colStatic  = config?.readOnly === true;
+            const cellPredOk = config?.cellReadOnly?.(record) === true;
+            const union      = colStatic || rowOverride || cellPredOk;
+
+            cell.setReadOnly(union);
+        }
     }
 
     /**
