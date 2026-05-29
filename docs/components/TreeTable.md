@@ -51,7 +51,7 @@ panel.addComponent(tree);
 
 Every other `ColumnSpec` field (`columns`, `appendUnlisted`, plus the per-column knobs `minWidth`, `maxWidth`, `hidden`, `readOnly`, `showSeconds`, `headerGlyph`, `group`, `groupColor`) works unchanged.
 
-A read-only tree column still expands and collapses — toggling expansion is not editing. Mark non-tree columns `readOnly: true` to make them display-only without affecting the tree's structural interactions.
+A read-only tree column still expands and collapses — toggling expansion is not editing. Mark non-tree columns `readOnly: true` to make them display-only without affecting the tree's structural interactions. Row-level and per-cell read-only predicates (from `ColumnSpec.rowReadOnly` and `ColumnConfig.cellReadOnly`) work identically in `TreeTable` — toggling expansion is not editing, so a locked tree row can still expand and collapse.
 
 The tree column is automatically marked `unhideable: true` so the indent and expand/collapse toggle always have a place to render. You may also declare `unhideable: true` on any other column in `spec.columns`.
 

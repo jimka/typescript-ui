@@ -124,6 +124,20 @@ class Row extends Component {
     }
 
     /**
+     * Returns the field names backing this row's cells, in the same
+     * order as `getComponents()`. Hidden columns are excluded.
+     *
+     * @returns The field names, in cell order.
+     *
+     * @remarks Used by the host `Body` to align cell index → field name
+     * → {@link ColumnConfig} lookup when resolving per-cell read-only
+     * state on each rebind. Not for consumer use.
+     */
+    getFieldNames(): string[] {
+        return this._fieldNames;
+    }
+
+    /**
      * Returns the ModelRecord currently bound to this row.
      *
      * @returns The bound {@link ModelRecord}, or undefined if none has been set.

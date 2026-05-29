@@ -323,11 +323,12 @@ And the new helper, defined as a private method on `Body`:
  *    (cached in `_rowReadOnly`).
  * 3. Per-column per-record predicate from `ColumnConfig.cellReadOnly`.
  *
- * Source 1 is already reflected in the cell's `_readOnly` field by
- * `Row`'s constructor for cells whose column was declared
- * `readOnly: true` — but this helper still ORs it in explicitly via
- * `cell.isReadOnly()` so the union remains correct regardless of
- * any in-between mutation.
+ * Source 1 is read from the column config rather than the cell's
+ * current `_readOnly` flag — a previous bind may have marked the
+ * cell read-only via a dynamic predicate, and re-reading the cell
+ * state would make a positive predicate result sticky once a row
+ * went read-only. (Drift fix vs. the as-drafted plan, which used
+ * `cell.isReadOnly()` as the static source.)
  */
 private applyReadOnlyState(row: Row, record: ModelRecord): void {
     const rowOverride = this._rowReadOnly?.(record) === true;
@@ -338,7 +339,7 @@ private applyReadOnlyState(row: Row, record: ModelRecord): void {
         const cell        = cells[i];
         const fieldName   = fieldNames[i];
         const config      = this._columnConfigs.get(fieldName);
-        const colStatic   = cell.isReadOnly();           // already true for column-level readOnly
+        const colStatic   = config?.readOnly === true;
         const cellPredOk  = config?.cellReadOnly?.(record) === true;
         const union       = colStatic || rowOverride || cellPredOk;
 
