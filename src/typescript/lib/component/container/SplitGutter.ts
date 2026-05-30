@@ -2,8 +2,16 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * String-literal union of the events emitted by {@link SplitGutter}.
+ *
+ * @category Components
+ */
+export type SplitGutterEvent = "drag";
 
 /**
  * Construction-time options for {@link SplitGutter}.
@@ -12,6 +20,13 @@ import { callable } from "~/core/Callable.js";
  */
 export interface SplitGutterOptions extends ComponentOptions {
     orientation?: string;
+    /**
+     * Multi-event listener bag dispatched to {@link SplitGutter.on} at
+     * construction time.
+     */
+    listeners?: {
+        drag?: (movement: number) => void;
+    };
 }
 
 /**
@@ -35,7 +50,7 @@ const _defaultSplitGutterOptions: Partial<SplitGutterOptions> = {
 class SplitGutter extends Component<SplitGutterOptions> {
 
     declare private _direction: String;
-    private _dragListeners: Array<Function> = [];
+    private _listeners: ListenerBag<SplitGutterEvent> = new ListenerBag<SplitGutterEvent>();
 
     constructor(direction: String, options?: SplitGutterOptions) {
         super(options, _defaultSplitGutterOptions);
@@ -52,6 +67,14 @@ class SplitGutter extends Component<SplitGutterOptions> {
         }
 
         Event.addListener(this, 'mousedown', this.onDragStart);
+
+        // Listener wiring runs here — NOT inside `applyOptions` — because
+        // Component's constructor calls `applyOptions` from inside super(),
+        // before the class-field `_listeners` initializer has run. Wiring
+        // after super() guarantees `_listeners` exists.
+        if (options?.listeners?.drag !== undefined) {
+            this.on("drag", options.listeners.drag);
+        }
     }
 
     /**
@@ -97,51 +120,85 @@ class SplitGutter extends Component<SplitGutterOptions> {
     }
 
     /**
-     * Registers a listener to receive the pixel movement amount on each drag event.
+     * Registers a listener for one of this gutter's events.
+     *
+     * @param event - `"drag"` fires on each mousemove/touchmove during a
+     *   drag, receiving the pixel delta in the gutter's drag axis.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This gutter, for method chaining.
+     */
+    on(event: "drag",            listener: (movement: number) => void): this;
+    on(event: SplitGutterEvent,  listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This gutter, for method chaining.
+     */
+    off(event: SplitGutterEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "drag",            movement: number): void;
+    protected emit(event: SplitGutterEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("drag", fn)`.
      *
      * @param listener - The callback invoked with the pixel delta on each mousemove/touchmove.
+     *
+     * @returns This gutter, for method chaining.
      */
     addDragListener(listener: Function) : this {
-        this._dragListeners.push(listener);
-
-        return this;
+        return this.on("drag", listener as (movement: number) => void);
     }
 
     /**
-     * Removes a previously registered drag listener.
+     * @deprecated Use `off("drag", fn)`.
      *
      * @param listener - The callback to remove.
+     *
+     * @returns This gutter, for method chaining.
      */
     removeDragListener(listener: Function) : this {
-        let idx = this._dragListeners.indexOf(listener);
-        if (idx < 0) {
-            return this;
-        }
-
-        this._dragListeners.splice(idx, 1);
-
-        return this;
+        return this.off("drag", listener);
     }
 
     /**
-     * Removes event listeners and clears the drag listener list.
+     * Removes the mousedown listener.
      */
     destroy() {
         Event.removeListener(this, 'mousedown', this.onDragStart);
-        this._dragListeners = [];
     }
 
     /**
-     * Invokes all registered drag listeners with the pixel movement amount.
+     * Internal mousemove/touchmove dispatch — fires the `drag` event with
+     * the pixel movement amount.
      *
      * @param movement - The pixel delta in the relevant axis for this drag event.
      */
-    fireDragListeners(movement: number) {
-        for (let idx in this._dragListeners) {
-            let dragListener = this._dragListeners[idx];
-
-            dragListener(movement);
-        }
+    private _dispatchDrag(movement: number): void {
+        this.emit("drag", movement);
     }
 
     /**
@@ -183,7 +240,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
             movement = evnt.movementY;
         }
 
-        this.fireDragListeners(movement);
+        this._dispatchDrag(movement);
     }
 
     /**

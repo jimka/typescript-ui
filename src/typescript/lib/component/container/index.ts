@@ -9,7 +9,7 @@ export type { MenuItemConfig, MenuConfig, MenuItemCSSVarPrefix, MenuItemOptions 
 export { MenuSeparator } from '~/component/container/MenuSeparator.js';
 export type { MenuSeparatorOptions } from '~/component/container/MenuSeparator.js';
 export { Scrollbar } from '~/component/container/Scrollbar.js';
-export type { ScrollbarListener, ScrollbarOrientation, ScrollbarOptions } from '~/component/container/Scrollbar.js';
+export type { ScrollbarListener, ScrollbarOrientation, ScrollbarOptions, ScrollbarEvent } from '~/component/container/Scrollbar.js';
 export { StatusBar, STATUS_BAR_HEIGHT } from '~/component/container/StatusBar.js';
 export type { StatusBarOptions } from '~/component/container/StatusBar.js';
 export { VirtualScroller } from '~/component/container/VirtualScroller.js';
@@ -17,9 +17,9 @@ export type { VirtualScrollerOnScroll } from '~/component/container/VirtualScrol
 export { Spacer } from '~/component/container/Spacer.js';
 export type { SpacerOptions } from '~/component/container/Spacer.js';
 export { SplitGutter } from '~/component/container/SplitGutter.js';
-export type { SplitGutterOptions } from '~/component/container/SplitGutter.js';
+export type { SplitGutterOptions, SplitGutterEvent } from '~/component/container/SplitGutter.js';
 export { WindowBorder, Direction } from '~/component/container/WindowBorder.js';
-export type { WindowBorderOptions } from '~/component/container/WindowBorder.js';
+export type { WindowBorderOptions, WindowBorderEvent } from '~/component/container/WindowBorder.js';
 export { WindowHeader } from '~/component/container/WindowHeader.js';
 export type { WindowHeaderOptions } from '~/component/container/WindowHeader.js';
 export { AccordionHeader } from '~/component/container/AccordionHeader.js';

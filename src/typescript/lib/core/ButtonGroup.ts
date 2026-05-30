@@ -2,10 +2,18 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { RadioButton } from "~/component/input/RadioButton.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * String-literal union of the events emitted by {@link ButtonGroup}.
+ *
+ * @category Core
+ */
+export type ButtonGroupEvent = "selection";
 
 /**
  * Construction-time options for {@link ButtonGroup}.
@@ -14,6 +22,13 @@ import { callable } from "~/core/Callable.js";
  */
 export interface ButtonGroupOptions {
     buttons?: Array<RadioButton | ToggleButton>;
+    /**
+     * Multi-event listener bag dispatched to {@link ButtonGroup.on} at
+     * construction time.
+     */
+    listeners?: {
+        selection?: (button: RadioButton | ToggleButton) => void;
+    };
 }
 
 /**
@@ -31,7 +46,7 @@ class ButtonGroup {
 
     private _groupId: string = 'bg-' + Math.random().toString(36).slice(2, 10);
     private _rovingTabIndex: RovingTabIndex | null = null;
-    private _selectionListeners: Array<(button: RadioButton | ToggleButton) => void> = [];
+    private _listeners: ListenerBag<ButtonGroupEvent> = new ListenerBag<ButtonGroupEvent>();
 
     /**
      * Creates a ButtonGroup, optionally populated with an initial set of buttons.
@@ -41,6 +56,9 @@ class ButtonGroup {
      */
     constructor(options?: ButtonGroupOptions) {
         if (options?.buttons !== undefined) this.addButtons(options.buttons);
+        if (options?.listeners?.selection !== undefined) {
+            this.on("selection", options.listeners.selection);
+        }
     }
 
     /**
@@ -59,16 +77,59 @@ class ButtonGroup {
             });
         }
 
-        this._selectionListeners.forEach((listener) => listener(initiatorButton));
+        this.emit("selection", initiatorButton);
     }
 
     /**
-     * Registers a listener that is called whenever the selected button in the group changes.
+     * Registers a listener for one of this group's events.
+     *
+     * @param event - `"selection"` fires whenever the selected button in the
+     *   group changes, receiving the newly selected button.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This group, for method chaining.
+     */
+    on(event: "selection",      listener: (button: RadioButton | ToggleButton) => void): this;
+    on(event: ButtonGroupEvent, listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This group, for method chaining.
+     */
+    off(event: ButtonGroupEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "selection",      button: RadioButton | ToggleButton): void;
+    protected emit(event: ButtonGroupEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("selection", fn)`.
      *
      * @param listener - Callback receiving the newly selected button.
      */
     addSelectionListener(listener: (button: RadioButton | ToggleButton) => void): void {
-        this._selectionListeners.push(listener);
+        this.on("selection", listener);
     }
 
     /**

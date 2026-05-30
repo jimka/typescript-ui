@@ -225,7 +225,7 @@ class Split extends LayoutManager {
 
         for (let i = this._gutters.length; i < gutterCount; i += 1) {
             let gutter = new SplitGutter(this._direction);
-            gutter.addDragListener(function (dragAmount: number) {
+            gutter.on("drag", function (dragAmount: number) {
                 me.onDrag(<Component>container, gutter, dragAmount);
             });
 

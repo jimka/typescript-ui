@@ -5,7 +5,7 @@ export type { TextOptions } from '~/component/input/Text.js';
 export { Label } from '~/component/input/Label.js';
 export type { LabelOptions } from '~/component/input/Label.js';
 export { AbstractInput } from '~/component/input/AbstractInput.js';
-export type { AbstractInputOptions } from '~/component/input/AbstractInput.js';
+export type { AbstractInputOptions, AbstractInputEvent } from '~/component/input/AbstractInput.js';
 export { AbstractPickerField } from '~/component/input/AbstractPickerField.js';
 export type { AbstractPickerFieldOptions } from '~/component/input/AbstractPickerField.js';
 export { PickerInput } from '~/component/input/PickerInput.js';
@@ -48,4 +48,4 @@ export type { AutoCompleteFieldOptions, AutoCompleteFieldConfig, AutoCompleteMat
 export { NumberSpinner } from '~/component/input/NumberSpinner.js';
 export type { NumberSpinnerOptions } from '~/component/input/NumberSpinner.js';
 export { SpinButton } from '~/component/input/SpinButton.js';
-export type { SpinButtonOptions } from '~/component/input/SpinButton.js';
+export type { SpinButtonOptions, SpinButtonEvent } from '~/component/input/SpinButton.js';

@@ -2,9 +2,23 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * String-literal union of the events emitted by {@link Scrollbar}.
+ *
+ * @category Components
+ */
+export type ScrollbarEvent = "scroll";
+
+/**
+ * String-literal union of the events emitted by the file-local
+ * `ScrollArrowButton`.
+ */
+type ScrollArrowEvent = "tick";
 
 const TRACK_WIDTH    = 12;
 const THUMB_INSET    = 2;
@@ -73,6 +87,14 @@ export interface ScrollbarOptions extends ComponentOptions {
      * `arrowsEnabled` is `false`. Defaults to `40`.
      */
     arrowStep?: number;
+
+    /**
+     * Multi-event listener bag dispatched to {@link Scrollbar.on} at
+     * construction time.
+     */
+    listeners?: {
+        scroll?: ScrollbarListener;
+    };
 }
 
 /**
@@ -96,7 +118,7 @@ class ScrollArrowButton extends Component {
 
     private _glyph:         Glyph;
     private _disabled:      boolean                              = false;
-    private _tickListeners: Array<() => void>                    = [];
+    private _listeners:     ListenerBag<ScrollArrowEvent>        = new ListenerBag<ScrollArrowEvent>();
     private _repeatHandle:  ReturnType<typeof setTimeout> | null = null;
     private _repeatDelay:   number                               = ARROW_REPEAT_INITIAL_MS;
 
@@ -136,13 +158,53 @@ class ScrollArrowButton extends Component {
     }
 
     /**
-     * Registers a callback fired on each logical tick (initial mousedown plus
-     * every subsequent hold-repeat tick).
+     * Registers a listener for one of this arrow button's events.
+     *
+     * @param event - `"tick"` fires on each logical tick (initial mousedown
+     *   plus every subsequent hold-repeat tick).
+     * @param listener - The callback invoked when the event fires.
+     *
+     * @returns This arrow button, for method chaining.
+     */
+    on(event: "tick",            listener: () => void): this;
+    on(event: ScrollArrowEvent,  listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This arrow button, for method chaining.
+     */
+    off(event: ScrollArrowEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with no arguments.
+     *
+     * @param event - The event to emit.
+     */
+    protected emit(event: "tick"): void;
+    protected emit(event: ScrollArrowEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("tick", fn)`.
      *
      * @param listener - The callback invoked on every tick.
      */
     addTickListener(listener: () => void): void {
-        this._tickListeners.push(listener);
+        this.on("tick", listener);
     }
 
     /**
@@ -204,7 +266,7 @@ class ScrollArrowButton extends Component {
             return;
         }
 
-        this.fireTicks();
+        this.emit("tick");
         this.scheduleNext();
     };
 
@@ -244,20 +306,12 @@ class ScrollArrowButton extends Component {
      */
     private scheduleNext(): void {
         this._repeatHandle = setTimeout((): void => {
-            this.fireTicks();
+            this.emit("tick");
             this._repeatDelay = Math.max(ARROW_REPEAT_FLOOR_MS, this._repeatDelay * ARROW_REPEAT_DECAY);
             this.scheduleNext();
         }, this._repeatDelay);
     }
 
-    /**
-     * Invokes all registered tick listeners in registration order.
-     */
-    private fireTicks(): void {
-        for (const fn of this._tickListeners) {
-            fn();
-        }
-    }
 }
 
 /**
@@ -296,7 +350,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
     private _thumbPos        : number                   = -1;
     private _dragStartClient : number                   = 0;
     private _dragStartScroll : number                   = 0;
-    private _scrollListeners : ScrollbarListener[]      = [];
+    private _listeners       : ListenerBag<ScrollbarEvent> = new ListenerBag<ScrollbarEvent>();
 
     private _arrowsEnabled   : boolean                  = true;
     private _arrowStep       : number                   = DEFAULT_ARROW_STEP_PX;
@@ -361,6 +415,10 @@ class Scrollbar extends Component<ScrollbarOptions> {
         Event.addListener(this._thumb, "mouseout",   this._onThumbMouseOut);
         Event.addListener(this, "mousedown",  this._onTrackClick);
         Event.addListener(this, "touchstart", this._onTrackClick);
+
+        if (options?.listeners?.scroll !== undefined) {
+            this.on("scroll", options.listeners.scroll);
+        }
     }
 
     /**
@@ -378,7 +436,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         this._arrowStart = new ScrollArrowButton(startDirection);
         this._arrowStart.setX(0);
         this._arrowStart.setY(0);
-        this._arrowStart.addTickListener((): void => this.onArrowTick(-1));
+        this._arrowStart.on("tick", this._onArrowStartTick);
         this._arrowStart.setDisabledState(true);
         super.addComponent(this._arrowStart);
 
@@ -387,9 +445,20 @@ class Scrollbar extends Component<ScrollbarOptions> {
         // position it inside `setMetrics`. Cross-axis stays at 0.
         this._arrowEnd.setX(0);
         this._arrowEnd.setY(0);
-        this._arrowEnd.addTickListener((): void => this.onArrowTick(+1));
+        this._arrowEnd.on("tick", this._onArrowEndTick);
         super.addComponent(this._arrowEnd);
     }
+
+    /**
+     * Bound forwarder for the start arrow's `"tick"` event. Kept as a class
+     * field so {@link off}-style detachment would have a stable reference.
+     */
+    private _onArrowStartTick = (): void => this.onArrowTick(-1);
+
+    /**
+     * Bound forwarder for the end arrow's `"tick"` event.
+     */
+    private _onArrowEndTick = (): void => this.onArrowTick(+1);
 
     /**
      * Computes the next scroll position one `_arrowStep` away from the current
@@ -404,7 +473,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         const newPosition = Math.max(0, Math.min(maxScroll, this._scrollPosition + direction * this._arrowStep));
 
         if (newPosition !== this._scrollPosition) {
-            this.fireScrollListeners(newPosition);
+            this.emit("scroll", newPosition);
         }
     }
 
@@ -455,29 +524,69 @@ class Scrollbar extends Component<ScrollbarOptions> {
     }
 
     /**
-     * Registers a callback fired when the user changes the scroll position by
-     * dragging the thumb or clicking the track.
+     * Registers a listener for one of this scrollbar's events.
      *
-     * @param listener - The callback to invoke with the new scroll position.
+     * @param event - `"scroll"` fires when the user changes the scroll
+     *   position by dragging the thumb, clicking the track, or pressing an
+     *   arrow button, receiving the new scroll position in pixels.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This scrollbar, for method chaining.
      */
-    addScrollListener(listener: ScrollbarListener): this {
-        this._scrollListeners.push(listener);
+    on(event: "scroll",        listener: ScrollbarListener): this;
+    on(event: ScrollbarEvent,  listener: Function): this {
+        this._listeners.add(event, listener);
 
         return this;
     }
 
     /**
-     * Removes a previously registered scroll listener.
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
      *
-     * @param listener - The exact callback reference to remove.
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This scrollbar, for method chaining.
      */
-    removeScrollListener(listener: ScrollbarListener): this {
-        const idx = this._scrollListeners.indexOf(listener);
-        if (idx >= 0) {
-            this._scrollListeners.splice(idx, 1);
-        }
+    off(event: ScrollbarEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
 
         return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "scroll",       position: number): void;
+    protected emit(event: ScrollbarEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("scroll", fn)`.
+     *
+     * @param listener - The callback to invoke with the new scroll position.
+     *
+     * @returns This scrollbar, for method chaining.
+     */
+    addScrollListener(listener: ScrollbarListener): this {
+        return this.on("scroll", listener);
+    }
+
+    /**
+     * @deprecated Use `off("scroll", fn)`.
+     *
+     * @param listener - The exact callback reference to remove.
+     *
+     * @returns This scrollbar, for method chaining.
+     */
+    removeScrollListener(listener: ScrollbarListener): this {
+        return this.off("scroll", listener);
     }
 
     /**
@@ -680,16 +789,6 @@ class Scrollbar extends Component<ScrollbarOptions> {
         }
     }
 
-    /**
-     * Fires all registered scroll listeners with the new position.
-     *
-     * @param position - The new scroll position in pixels.
-     */
-    private fireScrollListeners(position: number): void {
-        for (const listener of this._scrollListeners) {
-            listener(position);
-        }
-    }
 
     /**
      * Reads the client coordinate along the scroll axis from a mouse or touch
@@ -758,7 +857,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         const scrollDelta = (delta / maxThumb) * maxScroll;
         const newPosition = Math.max(0, Math.min(maxScroll, this._dragStartScroll + scrollDelta));
 
-        this.fireScrollListeners(newPosition);
+        this.emit("scroll", newPosition);
     };
 
     /**
@@ -823,7 +922,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         const maxScroll   = Math.max(0, this._contentSize - this._viewportSize);
         const newPosition = Math.max(0, Math.min(maxScroll, this._scrollPosition + direction * this._viewportSize));
 
-        this.fireScrollListeners(newPosition);
+        this.emit("scroll", newPosition);
     };
 }
 

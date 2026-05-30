@@ -5,6 +5,7 @@ import { ModelRecord } from '~/data/ModelRecord.js';
 import { Proxy, ReadParams } from '~/data/proxy/Proxy.js';
 import { FilterDescriptor, matchesFilter } from '~/data/FilterDescriptor.js';
 import { StoreWorkerClient } from '~/data/StoreWorkerClient.js';
+import { ListenerBag } from '~/core/ListenerBag.js';
 
 /**
  * Datasets above this size are sorted/filtered on a Web Worker so the main
@@ -78,7 +79,7 @@ export abstract class AbstractStore {
     private _pendingRemoved: ModelRecord[] = [];
     private _activeFilters: FilterDescriptor[] = [];
     private _activeSorters: SortDescriptor[] = [];
-    private _listenerMap: Map<string, StoreListener[]> = new Map();
+    private _listeners: ListenerBag<StoreEvent> = new ListenerBag<StoreEvent>();
 
     // Worker-offload state. Each store gets a unique id so the shared worker can
     // keep snapshots from different stores apart. `snapshotDirty` flags whether
@@ -796,55 +797,43 @@ export abstract class AbstractStore {
     // ── Events ───────────────────────────────────────────────────────────────
 
     /**
-     * Subscribes a listener to a store event.
+     * Subscribes a listener to a store event. Listeners are invoked in
+     * registration order when the matching event is emitted.
      *
      * @param event - The name of the store event to listen for.
      * @param listener - The callback function to invoke when the event fires.
+     *
+     * @returns This store, for method chaining.
      */
-    on(event: StoreEvent, listener: StoreListener): void {
-        let bucket = this._listenerMap.get(event);
-        if (!bucket) {
-            bucket = [];
+    on(event: StoreEvent, listener: StoreListener): this {
+        this._listeners.add(event, listener);
 
-            this._listenerMap.set(event, bucket);
-        }
-
-        bucket.push(listener);
+        return this;
     }
 
     /**
-     * Removes a previously registered store event listener.
+     * Removes a previously registered store event listener. No-op if the
+     * listener was never registered for the given event.
      *
      * @param event - The name of the store event the listener was registered for.
-     * @param listener - The callback function to remove.
+     * @param listener - The exact callback reference to remove.
+     *
+     * @returns This store, for method chaining.
      */
-    off(event: StoreEvent, listener: StoreListener): void {
-        const bucket = this._listenerMap.get(event);
-        if (!bucket) {
-            return;
-        }
+    off(event: StoreEvent, listener: StoreListener): this {
+        this._listeners.remove(event, listener);
 
-        const idx = bucket.indexOf(listener);
-        if (idx > -1) {
-            bucket.splice(idx, 1);
-        }
+        return this;
     }
 
     /**
-     * Notifies all listeners registered for an event.
+     * Notifies all listeners registered for an event, in registration order.
      *
      * @param event - The name of the event to emit.
      * @param payload - The data object passed to each listener.
      */
-    private emit(event: string, payload: any): void {
-        const bucket = this._listenerMap.get(event);
-        if (!bucket) {
-            return;
-        }
-
-        for (const listener of bucket) {
-            listener(payload);
-        }
+    protected emit(event: StoreEvent, payload: any): void {
+        this._listeners.fire(event, payload);
     }
 
     // ── Internal ─────────────────────────────────────────────────────────────

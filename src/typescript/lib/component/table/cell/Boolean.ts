@@ -48,7 +48,7 @@ class BooleanCell extends Cell<Boolean | null> {
      * with the editor's signature but is never emitted by the editor.
      */
     setOnCommit(fn: (value: Boolean | null) => void): void {
-        this._checkbox.setOnChange(fn);
+        this._checkbox.on("change", fn);
     }
 
     /**

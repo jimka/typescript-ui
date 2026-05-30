@@ -3,6 +3,7 @@
 import { DefaultCell } from "~/component/table/cell/Default.js";
 import { ResizeHandle } from "~/component/table/cell/ResizeHandle.js";
 import { SortPriorityBadge } from "~/component/table/cell/SortPriorityBadge.js";
+import { CellEvent } from "~/component/table/cell/Cell.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { StyleRule } from "~/core/StyleTarget.js";
@@ -11,6 +12,14 @@ import { ThemeManager } from "~/core/Theme.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * String-literal union of the events emitted by {@link HeaderCell}. Extends
+ * the inherited `CellEvent` union with the header-specific events.
+ *
+ * @category Components
+ */
+export type HeaderCellEvent = CellEvent | "sortclick" | "contextmenu" | "resizedrag";
 
 /**
  * Width (px) used both for the side-loaded `Glyph`'s preferred size and for
@@ -73,9 +82,6 @@ class HeaderCell extends DefaultCell {
 
     private _text: String;
     private _fieldName: string;
-    private _onSortClickCallback: ((fieldName: string, shiftKey: boolean) => void) | null = null;
-    private _onContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
-    private _resizeDragCallback: ((delta: number) => void) | null = null;
     private _isDragging: boolean = false;
     private _tooltipText: string = '';
     declare private _resizeHandle: ResizeHandle;
@@ -121,12 +127,14 @@ class HeaderCell extends DefaultCell {
 
         // Wire the resize-handle drag lifecycle: mousedown installs viewport
         // mousemove/mouseup listeners that forward through the handle's
-        // callbacks. The `_isDragging` flag straddles the handle and the
+        // events. The `_isDragging` flag straddles the handle and the
         // host's click listener (which suppresses the synthetic post-drag
         // click) so the bookkeeping must live on the host.
         this._resizeHandle = new ResizeHandle({
-            onDragStart: (e: MouseEvent) => this.onResizeDragStart(e),
-            onDragMove : (delta: number) => this._resizeDragCallback?.(delta),
+            listeners: {
+                dragstart: (e: MouseEvent) => this.onResizeDragStart(e),
+                dragmove : (delta: number) => this.emit("resizedrag", delta),
+            },
         });
         this._priorityBadge = new SortPriorityBadge();
     }
@@ -152,7 +160,7 @@ class HeaderCell extends DefaultCell {
         Event.addSubtreeListener(this, 'contextmenu', (e: MouseEvent) => {
             e.preventDefault();
 
-            this._onContextMenuCallback?.(this._fieldName, e.clientX, e.clientY);
+            this.emit("contextmenu", this._fieldName, e.clientX, e.clientY);
         });
 
         // Side-load the resize handle and sort-priority badge as overlays.
@@ -294,29 +302,81 @@ class HeaderCell extends DefaultCell {
     }
 
     /**
-     * Registers the callback invoked when the user clicks to sort this column.
+     * Registers a listener for one of this header cell's events.
+     *
+     * @param event - `"commit"` / `"editend"` inherit from {@link Cell} (they
+     *   are unused on the non-editable header surface but kept on the typed
+     *   signature for inheritance compatibility); `"sortclick"` fires when
+     *   the user clicks the header, receiving the field name and the
+     *   shift-key state; `"contextmenu"` fires on right-click, receiving the
+     *   field name and the viewport x/y; `"resizedrag"` fires on each
+     *   mousemove during a resize drag, receiving the horizontal pixel
+     *   delta.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This cell, for method chaining.
+     */
+    on(event: "commit",      listener: (value: String | null) => void): this;
+    on(event: "editend",     listener: () => void): this;
+    on(event: "sortclick",   listener: (fieldName: string, shiftKey: boolean) => void): this;
+    on(event: "contextmenu", listener: (fieldName: string, x: number, y: number) => void): this;
+    on(event: "resizedrag",  listener: (delta: number) => void): this;
+    on(event: HeaderCellEvent, listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This cell, for method chaining.
+     */
+    off(event: HeaderCellEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "commit",          value: String | null): void;
+    protected emit(event: "editend"): void;
+    protected emit(event: "sortclick",       fieldName: string, shiftKey: boolean): void;
+    protected emit(event: "contextmenu",     fieldName: string, x: number, y: number): void;
+    protected emit(event: "resizedrag",      delta: number): void;
+    protected emit(event: HeaderCellEvent,   ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("sortclick", fn)`.
      *
      * @param fn - Receives the field name for this column and whether the
      *   shift key was held during the click (used to compose multi-column sort).
      */
     setOnSortClick(fn: (fieldName: string, shiftKey: boolean) => void): void {
-        this._onSortClickCallback = fn;
+        this.on("sortclick", fn);
     }
 
     /**
-     * Registers the callback invoked when the user right-clicks this header cell.
+     * @deprecated Use `on("contextmenu", fn)`.
      *
      * @param fn - Receives the field name, and the viewport x/y coordinates of the event.
      */
     setOnContextMenu(fn: (fieldName: string, x: number, y: number) => void): void {
-        this._onContextMenuCallback = fn;
+        this.on("contextmenu", fn);
     }
 
-    /**
-     * Registers the callback invoked with the horizontal pixel delta on each drag move.
-     *
-     * @param fn - Receives movementX on each mousemove during a resize drag.
-     */
     /**
      * Sets the tooltip text shown when hovering this header cell.
      *
@@ -349,12 +409,12 @@ class HeaderCell extends DefaultCell {
     }
 
     /**
-     * Registers the callback invoked with the horizontal pixel delta on each drag move.
+     * @deprecated Use `on("resizedrag", fn)`.
      *
      * @param fn - Receives movementX on each mousemove during a resize drag.
      */
     setOnResizeDrag(fn: (delta: number) => void): void {
-        this._resizeDragCallback = fn;
+        this.on("resizedrag", fn);
     }
 
     /**
@@ -369,7 +429,7 @@ class HeaderCell extends DefaultCell {
             return;
         }
 
-        this._onSortClickCallback?.(this._fieldName, shiftKey);
+        this.emit("sortclick", this._fieldName, shiftKey);
     }
 
     private onResizeDragStart(e: MouseEvent): void {
@@ -384,7 +444,7 @@ class HeaderCell extends DefaultCell {
     }
 
     private onResizeDrag(e: MouseEvent): void {
-        this._resizeHandle.fireDragMove(e.movementX);
+        this._resizeHandle.dragMove(e.movementX);
     }
 
     private onResizeDragStop(): void {
@@ -393,7 +453,7 @@ class HeaderCell extends DefaultCell {
 
         Util.select('body').style.pointerEvents = '';
 
-        this._resizeHandle.fireDragEnd();
+        this._resizeHandle.dragEnd();
 
         // clear flag after synthesized click fires
         setTimeout(() => { this._isDragging = false; }, 0);

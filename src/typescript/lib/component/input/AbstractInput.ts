@@ -2,6 +2,15 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Bindable } from "~/core/Bindable.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
+
+/**
+ * String-literal union of the events emitted by every {@link AbstractInput}
+ * subclass.
+ *
+ * @category Components
+ */
+export type AbstractInputEvent = "change" | "binding";
 
 /**
  * Construction-time options for {@link AbstractInput}. Extended by every
@@ -13,6 +22,15 @@ import { Bindable } from "~/core/Bindable.js";
 export interface AbstractInputOptions extends ComponentOptions {
     enabled?:  boolean;
     readOnly?: boolean;
+    /**
+     * Multi-event listener bag dispatched at construction time. Entries
+     * are appended to the subclass's listener bag as if `on(event, fn)`
+     * had been called.
+     */
+    listeners?: {
+        change?:  (value: any) => void;
+        binding?: () => void;
+    };
 }
 
 /**
@@ -37,8 +55,7 @@ abstract class AbstractInput<
     extends Component<TOptions>
     implements Bindable<TValue>
 {
-    protected _changeListeners:  Array<(value: TValue) => void> = [];
-    protected _bindingListeners: Array<() => void>              = [];
+    private _listeners: ListenerBag<AbstractInputEvent> = new ListenerBag<AbstractInputEvent>();
 
     /**
      * @param options - Caller-supplied options bag.
@@ -48,6 +65,13 @@ abstract class AbstractInput<
      */
     constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
         super(options, subclassDefaults);
+
+        // Listener wiring runs here — NOT inside `applyOptions` — because
+        // Component's constructor calls `applyOptions` from inside super(),
+        // before the class-field `_listeners` initializer has run. Wiring
+        // after super() guarantees `_listeners` exists.
+        if (options?.listeners?.change  !== undefined) this.on("change",  options.listeners.change);
+        if (options?.listeners?.binding !== undefined) this.on("binding", options.listeners.binding);
     }
 
     /**
@@ -119,66 +143,95 @@ abstract class AbstractInput<
     }
 
     /**
-     * Registers a callback fired on every user-driven and programmatic value
-     * change. The callback receives the current value.
+     * Registers a listener for one of this input's events.
+     *
+     * @param event - `"change"` fires on every committed value change with
+     *   the new value; `"binding"` fires on every user-driven change with
+     *   no arguments (consumed by [`Binding`](/api/core/classes/Binding)).
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This component, for method chaining.
+     */
+    on(event: "change",  listener: (value: TValue) => void): this;
+    on(event: "binding", listener: () => void): this;
+    on(event: AbstractInputEvent, listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback
+     * reference must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    off(event: AbstractInputEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every registered listener for `event` with `payload`, in
+     * registration order. Subclasses call this after committing a
+     * user-driven value change.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "change",  value: TValue): void;
+    protected emit(event: "binding"): void;
+    protected emit(event: AbstractInputEvent, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * Fires `"change"` listeners with `value` and `"binding"` listeners
+     * with no arguments. Subclasses call this after committing a
+     * user-driven value change.
+     *
+     * @param value - The newly committed value.
+     */
+    protected notifyChange(value: TValue): void {
+        this.emit("change", value);
+        this.emit("binding");
+    }
+
+    /**
+     * @deprecated Use `on("change", fn)`.
      *
      * @param fn - The callback to invoke on each change.
      *
      * @returns This component, for method chaining.
      */
     addChangeListener(fn: (value: TValue) => void): this {
-        this._changeListeners.push(fn);
-
-        return this;
+        return this.on("change", fn);
     }
 
     /**
-     * Removes a previously registered change listener. The exact callback
-     * reference must match.
+     * @deprecated Use `off("change", fn)`.
      *
      * @param fn - The callback to remove.
      *
      * @returns This component, for method chaining.
      */
     removeChangeListener(fn: (value: TValue) => void): this {
-        const idx = this._changeListeners.indexOf(fn);
-
-        if (idx >= 0) {
-            this._changeListeners.splice(idx, 1);
-        }
-
-        return this;
+        return this.off("change", fn);
     }
 
     /**
-     * Subscribes a callback invoked on every user-driven value change. Used
-     * by the [`Bindable`](/api/core/interfaces/Bindable) interface.
+     * @deprecated Use `on("binding", fn)`.
      *
-     * @param fn - The callback to invoke on each change.
+     * @param fn - The callback to invoke on each user-driven change.
      *
      * @returns This component, for method chaining.
      */
     addBindingListener(fn: () => void): this {
-        this._bindingListeners.push(fn);
-
-        return this;
-    }
-
-    /**
-     * Fires every registered change listener with `value` and every
-     * registered binding listener with no arguments. Subclasses call this
-     * after committing a user-driven value change.
-     *
-     * @param value - The newly committed value.
-     */
-    protected notifyChange(value: TValue): void {
-        for (const fn of this._changeListeners) {
-            fn(value);
-        }
-
-        for (const fn of this._bindingListeners) {
-            fn();
-        }
+        return this.on("binding", fn);
     }
 
     /**
