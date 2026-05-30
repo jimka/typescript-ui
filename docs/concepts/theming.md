@@ -57,6 +57,8 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `tab.toolbar.background` | `--ts-ui-tab-toolbar-bg` | Background of the tab button toolbar in the [`Tab`](/api/layout/classes/Tab) layout |
 | `tab.toolbar.border` | `--ts-ui-tab-toolbar-border` | Bottom border of the tab button toolbar |
 | `tab.button.background` | `--ts-ui-tab-button-bg` | Background of inactive tab buttons |
+| `tab.indicator.color` | `--ts-ui-tab-indicator-color` | Fill of the sliding active-tab selection bar |
+| `tab.indicator.thickness` | `--ts-ui-tab-indicator-thickness` | Thickness of the active-tab selection bar |
 | `window.shadow` | `--ts-ui-window-shadow` | Drop shadow on floating [`Window`](/api/core/classes/Window) components |
 | `header.font.size` | `--ts-ui-header-font-size` | Font size of window and panel title-bar labels |
 | `table.header.background` | `--ts-ui-table-header-bg` | Background fill of the table column header; falls back to `button.background` so headers track the button surface unless given a distinct value |
