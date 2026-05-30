@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { Row } from "~/component/table/Row.js";
 import { AbstractModel } from "~/data/AbstractModel.js";
 import { AbstractStore, SortDescriptor } from "~/data/AbstractStore.js";
@@ -10,6 +11,13 @@ import { HeaderCell } from "~/component/table/cell/Header.js";
 import { ParentHeaderCell } from "~/component/table/cell/ParentHeader.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * String-literal union of the events emitted by the table {@link Header}.
+ *
+ * @category Components
+ */
+export type HeaderEvent = "columnresize" | "columncontextmenu";
 
 /**
  * The header section of a table, rendered as a `<thead>` element.
@@ -29,8 +37,7 @@ class Header extends Component {
     private _store: AbstractStore;
     private _hiddenColumns: Set<string> = new Set();
     private _columns: Column[] = [];
-    private _onResizeCallback: ((colIndex: number, delta: number) => void) | null = null;
-    private _onColumnContextMenuCallback: ((fieldName: string, x: number, y: number) => void) | null = null;
+    private _listeners: ListenerBag<HeaderEvent> = new ListenerBag<HeaderEvent>();
     private _scrollbarCover: HTMLDivElement | null = null;
 
     constructor(model: AbstractModel, store: AbstractStore) {
@@ -147,21 +154,69 @@ class Header extends Component {
     }
 
     /**
-     * Registers the callback invoked when the user drags a column resize handle.
+     * Registers a listener for one of this header's events.
+     *
+     * @param event - `"columnresize"` fires when the user drags a column
+     *   resize handle, receiving the zero-based column index and the pixel
+     *   delta; `"columncontextmenu"` fires on a right-click anywhere in the
+     *   header band, receiving the field name (empty string when the click
+     *   landed on a parent-header cell) and the viewport x/y coordinates.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This header, for method chaining.
+     */
+    on(event: "columnresize",      listener: (colIndex: number, delta: number) => void): this;
+    on(event: "columncontextmenu", listener: (fieldName: string, x: number, y: number) => void): this;
+    on(event: HeaderEvent,         listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This header, for method chaining.
+     */
+    off(event: HeaderEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with `payload`, in
+     * registration order.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "columnresize",      colIndex: number, delta: number): void;
+    protected emit(event: "columncontextmenu", fieldName: string, x: number, y: number): void;
+    protected emit(event: HeaderEvent,         ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("columnresize", fn)`.
      *
      * @param fn - Receives the zero-based column index and the pixel delta.
      */
     setOnColumnResize(fn: (colIndex: number, delta: number) => void): void {
-        this._onResizeCallback = fn;
+        this.on("columnresize", fn);
     }
 
     /**
-     * Registers the callback invoked when the user right-clicks a header cell.
+     * @deprecated Use `on("columncontextmenu", fn)`.
      *
      * @param fn - Receives the field name, and viewport x/y coordinates.
      */
     setOnColumnContextMenu(fn: (fieldName: string, x: number, y: number) => void): void {
-        this._onColumnContextMenuCallback = fn;
+        this.on("columncontextmenu", fn);
     }
 
     /**
@@ -452,7 +507,7 @@ class Header extends Component {
             }
 
             cell.setOnContextMenu((x, y) => {
-                this._onColumnContextMenuCallback?.("", x, y);
+                this.emit("columncontextmenu", "", x, y);
             });
 
             row.addComponent(cell, { data: { spanFrom: runStart, spanTo: endExclusive - 1 } });
@@ -490,9 +545,9 @@ class Header extends Component {
      * @param idx - Zero-based column index used by the resize callback.
      */
     private wireCell(cell: HeaderCell, idx: number): void {
-        cell.setOnSortClick((fieldName, shiftKey) => this.handleSortClick(fieldName, shiftKey));
-        cell.setOnResizeDrag((delta) => this._onResizeCallback?.(idx, delta));
-        cell.setOnContextMenu((fieldName, x, y) => this._onColumnContextMenuCallback?.(fieldName, x, y));
+        cell.on("sortclick",   (fieldName, shiftKey) => this.handleSortClick(fieldName, shiftKey));
+        cell.on("resizedrag",  (delta) => this.emit("columnresize", idx, delta));
+        cell.on("contextmenu", (fieldName, x, y) => this.emit("columncontextmenu", fieldName, x, y));
     }
 
     /**

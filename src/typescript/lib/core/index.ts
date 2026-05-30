@@ -2,6 +2,7 @@
 
 export { BaseObject } from '~/core/BaseObject.js';
 export { Event } from '~/core/Event.js';
+export { ListenerBag } from '~/core/ListenerBag.js';
 export { Animation } from '~/core/Animation.js';
 export { Util } from '~/core/Util.js';
 export type { TextMeasureOptions, TextMetrics } from '~/core/Util.js';
@@ -16,7 +17,7 @@ export type { AriaRole, AriaSort, AriaLive, AriaOrientation } from '~/core/Aria.
 export { RovingTabIndex } from '~/core/RovingTabIndex.js';
 export { Body } from '~/core/Body.js';
 export { ButtonGroup } from '~/core/ButtonGroup.js';
-export type { ButtonGroupOptions } from '~/core/ButtonGroup.js';
+export type { ButtonGroupOptions, ButtonGroupEvent } from '~/core/ButtonGroup.js';
 export { Window } from '~/core/Window.js';
 export type { WindowOptions, WindowState, WindowMaximizeBounds, WindowSnapModifier } from '~/core/Window.js';
 export { Menu } from '~/core/Menu.js';
@@ -38,7 +39,7 @@ export { StyleTarget, StyleRule, InlineStyle } from '~/core/StyleTarget.js';
 export type { StyleRuleScope, StyleRuleSpec } from '~/core/StyleTarget.js';
 
 export { Binding } from '~/core/Binding.js';
-export type { BeforeRecordListener } from '~/core/Binding.js';
+export type { BeforeRecordListener, BindingEvent } from '~/core/Binding.js';
 export type { Bindable, BindingAccessors } from '~/core/Bindable.js';
 
 export { DragManager } from '~/core/DragManager.js';

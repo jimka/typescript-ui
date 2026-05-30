@@ -118,8 +118,8 @@ class Table extends Component<TableOptions> {
         this.initHiddenFromSpec();
 
         this._header = new Header(store.model, store);
-        this._header.setOnColumnResize((i, d) => this.onColumnResize(i, d));
-        this._header.setOnColumnContextMenu((_, x, y) => this.showColumnMenu(x, y));
+        this._header.on("columnresize",       (i, d) => this.onColumnResize(i, d));
+        this._header.on("columncontextmenu",  (_, x, y) => this.showColumnMenu(x, y));
         // The header is the permanent target of horizontal scroll mirroring (see the
         // scroll listener below), so promote it to its own compositor layer for the
         // Table's lifetime. One hint per Table is well under the per-page threshold.

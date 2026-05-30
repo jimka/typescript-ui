@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Button, ButtonOptions } from "~/component/button/Button.js";
+import { Button, ButtonEvent, ButtonOptions, ClickListener } from "~/component/button/Button.js";
 import { Event } from "~/core/Event.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { Util } from "~/core/Util.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { BorderStyle } from "~/primitive/BorderStyle.js";
@@ -11,6 +12,14 @@ import { Glyph } from "~/component/display/Glyph.js";
 import { chevron_up } from "~/glyphs/solid/chevron_up.js";
 import { chevron_down } from "~/glyphs/solid/chevron_down.js";
 
+/**
+ * String-literal union of the events emitted by {@link SpinButton}. Extends
+ * the inherited `ButtonEvent` union with the spin-specific events.
+ *
+ * @category Components
+ */
+export type SpinButtonEvent = ButtonEvent | "tick";
+
 Glyph.register(chevron_up, chevron_down);
 
 /**
@@ -19,6 +28,13 @@ Glyph.register(chevron_up, chevron_down);
  * @category Components
  */
 export interface SpinButtonOptions extends ButtonOptions {
+    /**
+     * Multi-event listener bag dispatched to {@link SpinButton.on} at
+     * construction time.
+     */
+    listeners?: {
+        tick?: () => void;
+    };
 }
 
 /**
@@ -46,7 +62,7 @@ const _defaultSpinButtonOptions: Partial<SpinButtonOptions> = {
  */
 class SpinButton extends Button<SpinButtonOptions> {
 
-    private _tickListeners: Array<() => void> = [];
+    private _listeners    : ListenerBag<SpinButtonEvent> = new ListenerBag<SpinButtonEvent>();
     private _repeatHandle : ReturnType<typeof setTimeout> | null = null;
     private _repeatDelay  : number = 400;
 
@@ -93,6 +109,10 @@ class SpinButton extends Button<SpinButtonOptions> {
         Event.addListener(this, "mousedown", () => this.onMouseDown());
         Event.addViewportListener(this, "mouseup", () => this.onMouseUp());
         Event.addViewportListener(this, "mouseleave", () => this.onMouseUp());
+
+        if (options?.listeners?.tick !== undefined) {
+            this.on("tick", options.listeners.tick);
+        }
     }
 
     /**
@@ -118,12 +138,67 @@ class SpinButton extends Button<SpinButtonOptions> {
     }
 
     /**
-     * Registers a callback that fires on each logical tick (initial click and each hold-repeat tick).
+     * Registers a listener for one of this spin button's events.
+     *
+     * @param event - `"click"` is the inherited DOM-routed click;
+     *   `"tick"` fires on each logical tick (initial click plus every
+     *   subsequent hold-repeat tick).
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This spin button, for method chaining.
+     */
+    on(event: "click",          listener: ClickListener): this;
+    on(event: "tick",           listener: () => void): this;
+    on(event: SpinButtonEvent,  listener: Function): this {
+        if (event === "click") {
+            Event.addListener(this, event, listener as ClickListener);
+        } else {
+            this._listeners.add(event, listener);
+        }
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This spin button, for method chaining.
+     */
+    off(event: "click",         listener: ClickListener): this;
+    off(event: "tick",          listener: () => void): this;
+    off(event: SpinButtonEvent, listener: Function): this {
+        if (event === "click") {
+            Event.removeListener(this, event, listener as ClickListener);
+        } else {
+            this._listeners.remove(event, listener);
+        }
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` (excluding `"click"`, which
+     * routes through the framework's DOM event surface) with no arguments.
+     *
+     * @param event - The event to emit. Only non-DOM events (currently
+     *   `"tick"`) are dispatched through this method.
+     */
+    protected emit(event: "tick"): void;
+    protected emit(event: "tick", ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
+    }
+
+    /**
+     * @deprecated Use `on("tick", fn)`.
      *
      * @param listener - The callback invoked on every tick.
      */
     addTickListener(listener: () => void): void {
-        this._tickListeners.push(listener);
+        this.on("tick", listener);
     }
 
     /**
@@ -142,7 +217,7 @@ class SpinButton extends Button<SpinButtonOptions> {
      * Fires the first tick immediately and schedules subsequent accelerating ticks.
      */
     private onMouseDown(): void {
-        this.fireTicks();
+        this.emit("tick");
         this.scheduleNext();
     }
 
@@ -163,19 +238,10 @@ class SpinButton extends Button<SpinButtonOptions> {
      */
     private scheduleNext(): void {
         this._repeatHandle = setTimeout(() => {
-            this.fireTicks();
+            this.emit("tick");
             this._repeatDelay = Math.max(40, this._repeatDelay * 0.75);
             this.scheduleNext();
         }, this._repeatDelay);
-    }
-
-    /**
-     * Invokes all registered tick listeners in registration order.
-     */
-    private fireTicks(): void {
-        for (const fn of this._tickListeners) {
-            fn();
-        }
     }
 }
 

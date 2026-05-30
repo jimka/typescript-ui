@@ -140,8 +140,8 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
         this.addComponent(this._input, { weight: 1 });
         this.addComponent(this._btnBox);
 
-        this._upBtn.addTickListener(() => this.applyValue(this.getValue() + this.getStep()));
-        this._downBtn.addTickListener(() => this.applyValue(this.getValue() - this.getStep()));
+        this._upBtn.on("tick",   () => this.applyValue(this.getValue() + this.getStep()));
+        this._downBtn.on("tick", () => this.applyValue(this.getValue() - this.getStep()));
 
         Event.addListener(this._input, "blur", () => this.onBlur());
         Event.addListener(this._input, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));

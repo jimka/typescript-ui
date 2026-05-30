@@ -3,7 +3,6 @@
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
-import { Size } from "~/primitive/Size.js";
 import { ThemeManager, DefaultTheme } from "~/core/Theme.js";
 
 /**
@@ -57,16 +56,20 @@ export class Body extends Component {
     protected init(): this {
         super.init();
 
-        let viewportSize = Util.getViewportSize();
-
-        let me = this;
-        this.setSize(viewportSize);
+        this.setSize(Util.getViewportSize());
         this.clearInsets();
 
-        Event.addViewportResizeListener(function (size: Size) {
-            me.setSize(size);
-        });
+        Event.addViewportListener(this, "resize", this._onViewportResize);
 
         return this;
     }
+
+    /**
+     * Bound viewport-resize handler. Reads the current viewport extent on
+     * each fire (DOM `resize` events carry no payload) and writes it
+     * through the typed setter.
+     */
+    private _onViewportResize = (): void => {
+        this.setSize(Util.getViewportSize());
+    };
 }
