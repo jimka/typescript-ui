@@ -140,18 +140,18 @@ class SpinButton extends Button<SpinButtonOptions> {
     /**
      * Registers a listener for one of this spin button's events.
      *
-     * @param event - `"click"` is the inherited DOM-routed click;
+     * @param event - `"action"` is the inherited DOM-routed click;
      *   `"tick"` fires on each logical tick (initial click plus every
      *   subsequent hold-repeat tick).
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This spin button, for method chaining.
      */
-    on(event: "click",          listener: ClickListener): this;
+    on(event: "action",         listener: ClickListener): this;
     on(event: "tick",           listener: () => void): this;
     on(event: SpinButtonEvent,  listener: Function): this {
-        if (event === "click") {
-            Event.addListener(this, event, listener as ClickListener);
+        if (event === "action") {
+            Event.addListener(this, "click", listener as ClickListener);
         } else {
             this._listeners.add(event, listener);
         }
@@ -168,11 +168,11 @@ class SpinButton extends Button<SpinButtonOptions> {
      *
      * @returns This spin button, for method chaining.
      */
-    off(event: "click",         listener: ClickListener): this;
+    off(event: "action",        listener: ClickListener): this;
     off(event: "tick",          listener: () => void): this;
     off(event: SpinButtonEvent, listener: Function): this {
-        if (event === "click") {
-            Event.removeListener(this, event, listener as ClickListener);
+        if (event === "action") {
+            Event.removeListener(this, "click", listener as ClickListener);
         } else {
             this._listeners.remove(event, listener);
         }
@@ -190,15 +190,6 @@ class SpinButton extends Button<SpinButtonOptions> {
     protected emit(event: "tick"): void;
     protected emit(event: "tick", ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
-    }
-
-    /**
-     * @deprecated Use `on("tick", fn)`.
-     *
-     * @param listener - The callback invoked on every tick.
-     */
-    addTickListener(listener: () => void): void {
-        this.on("tick", listener);
     }
 
     /**

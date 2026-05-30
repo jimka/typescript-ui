@@ -218,15 +218,6 @@ class Tree extends Component<TreeOptions> {
     }
 
     /**
-     * @deprecated Use `on("selection", fn)`.
-     *
-     * @param listener - Called with the full array of selected {@link TreeNode} instances.
-     */
-    addSelectionListener(listener: (nodes: TreeNode[]) => void): void {
-        this.on("selection", listener);
-    }
-
-    /**
      * Sets the renderer factory used to create one
      * [`TreeNodeRenderer`](/api/component/tree/classes/TreeNodeRenderer)
      * instance per pool slot.

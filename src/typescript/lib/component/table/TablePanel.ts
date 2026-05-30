@@ -47,25 +47,25 @@ class TablePanel extends Panel {
 
         const addBtn = new Button({ glyph: "plus" });
         addBtn.setPreferredSize(28, 28);
-        addBtn.addActionListener(() => this._table.addRow());
+        addBtn.on("action", () => this._table.addRow());
         Tooltip.attach(addBtn, "Add row");
         this._toolbar.addComponent(addBtn);
 
         const removeBtn = new Button({ glyph: "minus" });
         removeBtn.setPreferredSize(28, 28);
-        removeBtn.addActionListener(() => this._table.removeSelectedRow());
+        removeBtn.on("action", () => this._table.removeSelectedRow());
         Tooltip.attach(removeBtn, "Remove selected row");
         this._toolbar.addComponent(removeBtn);
 
         this._syncBtn = new Button({ glyph: "arrows-rotate" });
         this._syncBtn.setPreferredSize(28, 28);
-        this._syncBtn.addActionListener(() => this._table.sync());
+        this._syncBtn.on("action", () => this._table.sync());
         Tooltip.attach(this._syncBtn, "Sync pending changes");
         this._toolbar.addComponent(this._syncBtn);
 
         this._rejectBtn = new Button({ glyph: "ban" });
         this._rejectBtn.setPreferredSize(28, 28);
-        this._rejectBtn.addActionListener(() => this._table.reject());
+        this._rejectBtn.on("action", () => this._table.reject());
         Tooltip.attach(this._rejectBtn, "Reject pending changes");
         this._toolbar.addComponent(this._rejectBtn);
 

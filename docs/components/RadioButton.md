@@ -19,7 +19,7 @@ group.addButton(large);
 medium.setSelected(true);
 
 [small, medium, large].forEach(rb => {
-    rb.addChangeListener(selected => {
+    rb.on("change", selected => {
         if (selected) console.log('chose', rb.getLabel());
     });
 });
@@ -38,9 +38,8 @@ panel.addComponent(large);
 | `getLabel()` / `setLabel(text \| null)` | Inline label text. |
 | `isEnabled()` / `setEnabled(boolean)` | Toggle interactivity. |
 | `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user input. |
-| `addActionListener(fn)` | Back-compat — wired by [`ButtonGroup`](/api/core/classes/ButtonGroup) on `"change"`. |
-| `addChangeListener(fn)` / `removeChangeListener(fn)` | Subscribe to selection changes. |
-| `addBindingListener(fn)` | Used by [`Binding`](/data/binding). |
+| `on("change", fn)` / `off("change", fn)` | Subscribe to selection changes. |
+| `on("binding", fn)` | Used by [`Binding`](/data/binding). |
 
 ## Group navigation
 

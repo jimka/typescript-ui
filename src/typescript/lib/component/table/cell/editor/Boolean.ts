@@ -42,10 +42,10 @@ class BooleanEditor extends CellEditor<Boolean | null> {
         this._checkBox.setAnimated(false);
         this.addComponent(this._checkBox);
 
-        this._checkBox.addActionListener(() => {
+        this._checkBox.on("action", () => {
             // `Checkbox.setSelected` dispatches a synthetic
             // `CustomEvent("click")` on the root for backward-compat with
-            // `addActionListener` consumers, which fires for BOTH real user
+            // `on("action", fn)` consumers, which fires for BOTH real user
             // toggles AND programmatic `setValue` calls. Without the
             // `_suppressCommit` guard, every scroll-driven `setValue` would
             // commit the bound record back to the store, fire
@@ -101,15 +101,6 @@ class BooleanEditor extends CellEditor<Boolean | null> {
     protected emit(event: "change",            value: Boolean | null): void;
     protected emit(event: BooleanEditorEvent,  ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
-    }
-
-    /**
-     * @deprecated Use `on("change", fn)`.
-     *
-     * @param fn - The callback to invoke with the new boolean value on each change.
-     */
-    setOnChange(fn: (value: Boolean | null) => void): void {
-        this.on("change", fn);
     }
 
     /**

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { BooleanEditor } from "~/component/table/cell/editor/Boolean.js";
-import { Cell } from "~/component/table/cell/Cell.js";
+import { Cell, CellEvent } from "~/component/table/cell/Cell.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { callable } from "~/core/Callable.js";
@@ -34,21 +34,55 @@ class BooleanCell extends Cell<Boolean | null> {
     }
 
     /**
-     * Wires the commit callback directly to the checkbox's onChange handler.
+     * Registers a listener for one of this cell's events. The `"commit"`
+     * listener is wired directly to the checkbox's `"change"` event rather
+     * than the base {@link Cell} listener bag.
      *
-     * @param fn - The callback to fire when the checkbox value changes.
+     * @param event - The event name.
+     * @param listener - The callback to invoke when the event fires.
      *
-     * @remarks Overrides the base class implementation because BooleanCell has no separate
-     * edit/commit cycle; changes are committed immediately on each checkbox interaction.
-     * Routed through the cached editor reference rather than `getRenderer()` so the
-     * wiring survives a [`TreeCellRenderer`](/api/component/table/classes/TreeCellRenderer)
-     * wrap when the column is the tree column. The callback only fires
-     * for user interaction, which always lands on a concrete `true`/`false`;
-     * the `null` branch of the parameter type is included for consistency
-     * with the editor's signature but is never emitted by the editor.
+     * @returns This cell, for method chaining.
+     *
+     * @remarks Overrides the base class because BooleanCell has no separate
+     * edit/commit cycle; changes are committed immediately on each checkbox
+     * interaction. Routed through the cached editor reference rather than
+     * `getRenderer()` so the wiring survives a
+     * [`TreeCellRenderer`](/api/component/table/classes/TreeCellRenderer)
+     * wrap when the column is the tree column. The `"commit"` listener only
+     * fires for user interaction, which always lands on a concrete
+     * `true`/`false`; the `null` branch is included for consistency with the
+     * editor's signature but is never emitted by the editor.
      */
-    setOnCommit(fn: (value: Boolean | null) => void): void {
-        this._checkbox.on("change", fn);
+    on(event: "commit",  listener: (value: Boolean | null) => void): this;
+    on(event: "editend", listener: () => void): this;
+    on(event: CellEvent, listener: Function): this {
+        if (event === "commit") {
+            this._checkbox.on("change", listener as (value: Boolean | null) => void);
+
+            return this;
+        }
+
+        return super.on(event, listener as () => void);
+    }
+
+    /**
+     * Removes a previously registered listener. The `"commit"` listener is
+     * detached from the checkbox's `"change"` event; other events delegate
+     * to the base {@link Cell}.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This cell, for method chaining.
+     */
+    off(event: CellEvent, listener: Function): this {
+        if (event === "commit") {
+            this._checkbox.off("change", listener);
+
+            return this;
+        }
+
+        return super.off(event, listener);
     }
 
     /**

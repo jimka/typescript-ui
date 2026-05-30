@@ -22,7 +22,7 @@ sidebar.setLayoutManager(Accordion({
     singleOpen       : true,        // only one section open at a time
     headerHeight     : 32,
     animationDuration: 150,
-    onSectionToggle  : (idx, open) => console.log(idx, open),
+    listeners        : { sectiontoggle: (idx, open) => console.log(idx, open) },
 }));
 
 const section1 = Component();
@@ -34,7 +34,7 @@ section2.addComponent(Text('Content of section 2'));
 sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 ```
 
-[`AccordionOptions`](/api/layout/interfaces/AccordionOptions) accepts `singleOpen`, `headerHeight`, `animationDuration`, and `onSectionToggle` declaratively. The corresponding setters (`setSingleOpen`, `setHeaderHeight`, `setAnimationDuration`, `setOnSectionToggle`) still work for runtime updates.
+[`AccordionOptions`](/api/layout/interfaces/AccordionOptions) accepts `singleOpen`, `headerHeight`, `animationDuration`, and a `listeners: { sectiontoggle }` bag declaratively. The setters (`setSingleOpen`, `setHeaderHeight`, `setAnimationDuration`) still work for runtime updates; subscribe to toggles via `on("sectiontoggle", fn)`.
 
 ## Per-child constraints
 
@@ -47,7 +47,7 @@ sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 
 ## Toggle callback
 
-Pass `onSectionToggle` in the constructor (preferred) or call `setOnSectionToggle` later:
+Pass a `listeners: { sectiontoggle }` bag in the constructor (preferred) or call `on("sectiontoggle", fn)` later:
 
 ```typescript
 import { SectionToggleCallback } from '@jimka/typescript-ui/layout';
@@ -55,7 +55,9 @@ const onToggle: SectionToggleCallback = (index, open) => {
     console.log(`section ${index} now ${open ? 'open' : 'closed'}`);
 };
 
-accordion.setOnSectionToggle(onToggle);
+const accordion = new Accordion({ listeners: { sectiontoggle: onToggle } });
+// …or after construction:
+accordion.on("sectiontoggle", onToggle);
 ```
 
 ## Animation

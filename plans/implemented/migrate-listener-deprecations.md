@@ -52,13 +52,42 @@ grep -rnE '\.add(Action|Selection|Tick|Drag|Scroll|Change|Binding|Commit|Reject|
 
 Run that snapshot to bound the work before starting.
 
-Class-specific listener APIs **outside the scope of this plan** (left alone
-because they were not introduced by the consistency plan): `Slider.addActionListener`,
-`Checkbox.addActionListener`, `TextArea.addActionListener`, `AutoCompleteField.addChangeListener`
-/ `addSelectListener`, `AbstractCustomList.addActionListener` / `fireChange`,
-`List.fireChange`, `MultiSelectList.fireChange`, `ParentHeaderCell.setOnContextMenu`
-/ `_onContextMenuCallback`. These have their own ergonomics decisions and are
-left as a separate cleanup if the project decides to consolidate them.
+### Scope expansion (2026-05-30)
+
+The original plan deferred the class-specific `addActionListener` /
+`setOn*` surfaces that predate the consistency plan. They are now **in
+scope** — this becomes a complete sweep with no residual deprecated
+listener surfaces. Additional classes:
+
+- **`addActionListener` family** — each wraps a DOM event through
+  `Event.addListener`, so each gains a typed `on(<domevent>, fn)` /
+  `off(<domevent>, fn)` shorthand (the `Button` pattern) and loses
+  `addActionListener`:
+  - `TextField` / `TextArea` / `Slider` → `on("input", fn)`.
+  - `Checkbox` → `on("click", fn)`.
+  - `RadioButton` / `ToggleButton` / `ComboBox` / `AbstractCustomList`
+    / `AbstractListComponent` → `on("change", fn)`.
+  - For `ComboBox` / `RadioButton`, the DOM `"change"` reuses the
+    `"change"` name: the subclass overrides `on`/`off` to route
+    `"change"` to `Event.addListener` while `"binding"` (and the base
+    `"change"` ListenerBag path) delegate to `super`. Runtime behaviour
+    is preserved exactly.
+- **Single-callback `setOn*`** — collapse into `on`/`off`/`emit` exactly
+  like their in-scope siblings:
+  - `ParentHeaderCell.setOnContextMenu` → `on("contextmenu", fn)`
+    `(x, y)`.
+  - `Body.setOnVerticalScroll` / `setOnHorizontalScroll` →
+    `on("verticalscroll", fn)` `(scrollTop)` / `on("horizontalscroll",
+    fn)` `(scrollLeft)`. The legacy `| null`-clears semantics drop (no
+    caller passes `null`).
+  - `BooleanCell.setOnCommit` → override `on("commit", fn)`, routing to
+    the inner checkbox editor's `on("change", fn)`.
+
+Still out of scope (genuinely orthogonal event vocabularies, no
+`addXxxListener` / `setOn*` surface): `AutoCompleteField.addChangeListener`
+/ `addSelectListener`, `AbstractCustomList.fireChange`, `List.fireChange`,
+`MultiSelectList.fireChange` (these are `fire*` internals, not public
+registration verbs).
 
 ---
 

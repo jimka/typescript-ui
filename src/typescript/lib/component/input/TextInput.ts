@@ -95,7 +95,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
         });
 
         // Bridge the native `input` DOM event into AbstractInput's change /
-        // binding listener fan-out so `addChangeListener` fires on every
+        // binding listener fan-out so `on("change", fn)` fires on every
         // keystroke for every text-derived control. Bindings already fire on
         // the same DOM event in subclass-specific `onInput` hooks; this opens
         // the second dispatch path for the unified listener API.
@@ -155,6 +155,50 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
         }
 
         return this;
+    }
+
+    /**
+     * Registers a listener for one of this text input's events. `"action"`
+     * is a typed semantic shorthand over {@link Event.addListener} for the
+     * native `input` DOM event (fired on every keystroke); `"change"` and
+     * `"binding"` are the inherited {@link AbstractInput} value-change
+     * events dispatched through the listener bag.
+     *
+     * @param event - The event name.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This component, for method chaining.
+     */
+    on(event: "action",  listener: Function): this;
+    on(event: "change",  listener: (value: string) => void): this;
+    on(event: "binding", listener: () => void): this;
+    on(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
+            Event.addListener(this, "input", listener);
+
+            return this;
+        }
+
+        return super.on(event as "change", listener as (value: string) => void);
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback
+     * reference must match the one passed to {@link on}.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    off(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
+            Event.removeListener(this, "input", listener);
+
+            return this;
+        }
+
+        return super.off(event, listener);
     }
 
     /**

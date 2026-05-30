@@ -148,10 +148,10 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
         Event.addListener(this._textField, "blur",    () => this.onBlur());
         // Bridge user-driven text changes from the inner TextField up into
         // AbstractInput's change / binding listener fan-out so consumers
-        // attached via the inherited `addChangeListener` see every keystroke
+        // attached via the inherited `on("change", fn)` see every keystroke
         // and every suggestion-pick (suggestions hit setValue, which writes
         // through the TextField and re-fires its own change listeners).
-        this._textField.addChangeListener(value => this.notifyChange(value));
+        this._textField.on("change", value => this.notifyChange(value));
 
         if (options) {
             this.applyOptions(options);
@@ -252,7 +252,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
      * Sets the field value programmatically without firing binding or select
      * listeners. Forwards directly to the inner TextField so the inherited
      * `notifyChange` does not double-fire on this path; user-driven changes
-     * fire through the constructor's `_textField.addChangeListener` bridge.
+     * fire through the constructor's `_textField.on("change", fn)` bridge.
      *
      * @param value - The string value to display.
      */
@@ -388,7 +388,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
      *
      * Schedules a debounced query when the typed value meets the `minChars`
      * threshold. AbstractInput's change / binding listeners fire through
-     * the constructor's `_textField.addChangeListener` bridge, so this
+     * the constructor's `_textField.on("change", fn)` bridge, so this
      * handler doesn't fan out to them itself.
      */
     private onInput(): void {

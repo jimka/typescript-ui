@@ -75,7 +75,7 @@ class BindingPanel extends Panel {
                     return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "";
                 },
                 set:    (v: unknown) => birthDateField.setValue(v ? new Date(String(v) + "T00:00:00") : null),
-                listen: (fn) => birthDateField.addBindingListener(fn),
+                listen: (fn) => birthDateField.on("binding", fn),
             })
             .bind('reminderTime', reminderTimeField, {
                 get:    () => {
@@ -92,7 +92,7 @@ class BindingPanel extends Panel {
                     d.setHours(h, m, 0, 0);
                     reminderTimeField.setValue(d);
                 },
-                listen: (fn) => reminderTimeField.addBindingListener(fn),
+                listen: (fn) => reminderTimeField.on("binding", fn),
             })
             .addValidation('name', nameField, [
                 { type: 'required',  message: 'Name is required.' },
@@ -108,15 +108,15 @@ class BindingPanel extends Panel {
 
         binding.setValidateOnChange(true);
 
-        binding.addChangeListener((_field, _value) => {
+        binding.on("change", (_field, _value) => {
             statusText.setText("Status: modified");
         });
 
-        binding.addCommitListener(() => {
+        binding.on("commit", () => {
             statusText.setText("Status: clean");
         });
 
-        binding.addRejectListener(() => {
+        binding.on("reject", () => {
             statusText.setText("Status: clean");
         });
 
@@ -179,7 +179,7 @@ class BindingPanel extends Panel {
 
         // ── Wire up interactions ─────────────────────────────────────────────
 
-        commitButton.addActionListener(() => {
+        commitButton.on("action", () => {
             if (binding.validate()) {
                 binding.commit();
                 Notification.show('Record saved.', 'success');
@@ -188,7 +188,7 @@ class BindingPanel extends Panel {
             }
         });
 
-        rejectButton.addActionListener(() => binding.reject());
+        rejectButton.on("action", () => binding.reject());
 
         // Load stores then bind the first record
         roleStore.load().then(() => {
@@ -199,8 +199,8 @@ class BindingPanel extends Panel {
         });
 
         // Veto record switches while the current record has uncommitted edits.
-        // Demonstrates addBeforeRecordListener: returning false cancels setRecord().
-        binding.addBeforeRecordListener((next) => {
+        // Demonstrates on("beforerecord", fn): returning false cancels setRecord().
+        binding.on("beforerecord", (next) => {
             const current = binding.getRecord();
 
             if (current && current !== next && current.isDirty()) {
@@ -212,7 +212,7 @@ class BindingPanel extends Panel {
             return true;
         });
 
-        recordCombo.addActionListener(() => {
+        recordCombo.on("action", () => {
             const id = Number(recordCombo.getValue());
             const record = personStore.find('id', id);
 

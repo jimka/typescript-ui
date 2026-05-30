@@ -124,15 +124,6 @@ class ButtonGroup {
     }
 
     /**
-     * @deprecated Use `on("selection", fn)`.
-     *
-     * @param listener - Callback receiving the newly selected button.
-     */
-    addSelectionListener(listener: (button: RadioButton | ToggleButton) => void): void {
-        this.on("selection", listener);
-    }
-
-    /**
      * Returns the group's buttons as a {@link Component} array, suitable for passing
      * directly to {@link Component.addComponents}.
      *
@@ -177,7 +168,7 @@ class ButtonGroup {
     addButton(button: RadioButton | ToggleButton): this {
         this.buttons.push(button);
 
-        button.addActionListener(() => {
+        button.on("action", () => {
             this.updateButtonStates(button);
         });
 
