@@ -1,6 +1,6 @@
 # Custom brand theme
 
-Build a theme that reflects your brand by overriding tokens in [`DefaultTheme`](/api/core/variables/DefaultTheme).
+Build a theme that reflects your brand by overriding tokens in [`ClassicTheme`](/api/core/variables/ClassicTheme).
 
 ## Goal
 
@@ -9,27 +9,27 @@ A blue-tinted theme with custom button gradients, a softer page background, and 
 ## Spread + override
 
 ```typescript
-import { Theme, ThemeManager, DefaultTheme } from '@jimka/typescript-ui/core';
+import { Theme, ThemeManager, ClassicTheme } from '@jimka/typescript-ui/core';
 const BrandTheme: Theme = {
-    ...DefaultTheme,
+    ...ClassicTheme,
 
     body: { background: 'rgb(245, 248, 252)' },
     text: { color:      'rgb(20, 30, 50)'   },
 
     button: {
-        ...DefaultTheme.button,
+        ...ClassicTheme.button,
         background: 'linear-gradient(rgb(80, 130, 220), rgb(60, 100, 180))',
         border:     'rgb(50, 90, 160)',
         shadow:     '0 1px 3px rgba(0, 0, 0, 0.15)',
         pressed: {
-            ...DefaultTheme.button.pressed,
+            ...ClassicTheme.button.pressed,
             background: 'linear-gradient(rgb(40, 80, 160), rgb(30, 60, 130))',
             foreground: 'white',
             shadow:     'inset 0 2px 4px rgba(0, 0, 0, 0.3)',
         },
     },
 
-    border: { ...DefaultTheme.border, color: 'rgb(170, 190, 220)' },
+    border: { ...ClassicTheme.border, color: 'rgb(170, 190, 220)' },
 };
 
 ThemeManager.setTheme(BrandTheme);
@@ -40,7 +40,7 @@ ThemeManager.setTheme(BrandTheme);
 Call `setTheme` **before** mounting any component so the first render reads the correct CSS variables:
 
 ```typescript
-import { ThemeManager, DefaultTheme, Body } from '@jimka/typescript-ui/core';
+import { ThemeManager, ClassicTheme, Body } from '@jimka/typescript-ui/core';
 ThemeManager.setTheme(BrandTheme);
 
 const root = buildAppLayout();
@@ -52,7 +52,7 @@ Body.getInstance().addComponent(root);
 `setTheme` rewrites CSS custom properties on `:root` so every component updates without re-rendering:
 
 ```typescript
-import { Event, ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui/core';
+import { Event, ThemeManager, ClassicTheme, DarkTheme } from '@jimka/typescript-ui/core';
 import { Button } from '@jimka/typescript-ui/component/button';
 const toggle = Button('Toggle theme');
 let dark = false;
@@ -83,4 +83,4 @@ Custom components that subscribe to `onThemeChange` should always store the unsu
 ## See also
 
 - [Theming](/concepts/theming) — full token table and behaviour notes
-- [API: Theme](/api/core/interfaces/Theme), [DefaultTheme](/api/core/variables/DefaultTheme), [DarkTheme](/api/core/variables/DarkTheme)
+- [API: Theme](/api/core/interfaces/Theme), [ClassicTheme](/api/core/variables/ClassicTheme), [DarkTheme](/api/core/variables/DarkTheme)
