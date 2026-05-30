@@ -311,7 +311,7 @@ class ScrollArrowButton extends Component {
  * Designed for components that own their own scroll state (e.g. transform-based
  * virtual lists) and don't expose native browser scrolling. The owner pushes
  * viewport/content metrics in via {@link Scrollbar.setMetrics} and subscribes
- * to scroll position changes via {@link Scrollbar.addScrollListener}.
+ * to scroll position changes via {@link Scrollbar.on}.
  *
  * The thumb is dragged with the mouse; clicking the track above/beside the
  * thumb pages by one viewport. The scrollbar hides itself when content fits in

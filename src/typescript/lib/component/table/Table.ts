@@ -154,13 +154,13 @@ class Table extends Component<TableOptions> {
         // Sync header horizontal scroll with body. The body uses
         // transform-based virtual scroll (via `VirtualScroller`), so the
         // native DOM `scroll` event never fires; hook the body's
-        // `setOnHorizontalScroll` callback instead. Translate the header's
+        // `on("horizontalscroll")` listener instead. Translate the header's
         // two inner rows (parent row + column row) rather than the header
         // element itself — the header band stays pinned to the viewport
         // width so its background covers the vertical-scrollbar reserve
         // band on the right edge, and only the cells inside scroll with
         // the body.
-        this._body.setOnHorizontalScroll(scrollLeft => {
+        this._body.on("horizontalscroll", scrollLeft => {
             this._header.getParentRow().setTranslate(-scrollLeft, 0);
             this._header.getComponents()[1].setTranslate(-scrollLeft, 0);
         });

@@ -31,7 +31,6 @@ class ParentHeaderCell extends DefaultCell {
     private _text: string;
     private _color: string | null;
     private _tooltipText: string = "";
-    private _onContextMenuCallback: ((x: number, y: number) => void) | null = null;
 
     /**
      * Constructs a parent header cell over a contiguous run of grouped
@@ -79,23 +78,60 @@ class ParentHeaderCell extends DefaultCell {
     }
 
     /**
-     * Registers a callback invoked when the user right-clicks this parent
-     * header cell. Mirrors `HeaderCell.on("contextmenu", fn)` but elides
-     * the per-column `fieldName` — parent cells span multiple columns, so
-     * the host only needs the viewport coordinates to anchor the menu.
+     * Registers a listener for this parent header cell's `"contextmenu"`
+     * event, fired when the user right-clicks the cell. Mirrors
+     * `HeaderCell.on("contextmenu", fn)` but elides the per-column
+     * `fieldName` — parent cells span multiple columns, so the host only
+     * needs the viewport coordinates to anchor the menu.
      *
-     * Wiring: the subtree `contextmenu` listener is installed once at
-     * `init` time and reads `_onContextMenuCallback` at fire time —
-     * calling this setter after `init` runs is supported (the next
-     * right-click picks up the new callback), but the listener itself
-     * is not re-installed.
+     * Wiring: the subtree `contextmenu` DOM listener is installed once at
+     * `init` time and fires every registered listener at right-click time —
+     * registering after `init` runs is supported (the next right-click
+     * picks up the new listener), but the DOM listener itself is not
+     * re-installed.
      *
-     * @param fn - Receives the viewport x and y coordinates of the event.
+     * @param event - The event name. Only `"contextmenu"` is accepted.
+     * @param listener - Receives the viewport x and y coordinates of the event.
+     *
+     * @returns This cell, for method chaining.
      */
-    setOnContextMenu(fn: (x: number, y: number) => void): this {
-        this._onContextMenuCallback = fn;
+    on(event: "contextmenu", listener: (x: number, y: number) => void): this;
+    on(event: "commit",      listener: (value: String | null) => void): this;
+    on(event: "editend",     listener: () => void): this;
+    on(event: string,        listener: Function): this {
+        this._listeners.add(event, listener);
 
         return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback
+     * reference must match the one passed to {@link on}.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This cell, for method chaining.
+     */
+    off(event: string, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every registered listener for `event`, in registration order.
+     * Widens the inherited {@link Cell} emitter with the `"contextmenu"`
+     * event carrying the right-click's viewport coordinates.
+     *
+     * @param event - The event to emit.
+     * @param payload - Forwarded to each listener.
+     */
+    protected emit(event: "contextmenu", x: number, y: number): void;
+    protected emit(event: "commit",      value: String | null): void;
+    protected emit(event: "editend"): void;
+    protected emit(event: string, ...payload: unknown[]): void {
+        this._listeners.fire(event, ...payload);
     }
 
     /**
@@ -175,15 +211,15 @@ class ParentHeaderCell extends DefaultCell {
 
     /**
      * Subtree contextmenu handler. Suppresses the browser's native menu
-     * and forwards the viewport coordinates to the host's context-menu
-     * callback (typically the table's column-toggle menu).
+     * and fires the `"contextmenu"` event with the viewport coordinates
+     * (the host's listener typically opens the table's column-toggle menu).
      *
      * @param e - The contextmenu event captured from a descendant.
      */
     private onContextMenu(e: MouseEvent): void {
         e.preventDefault();
 
-        this._onContextMenuCallback?.(e.clientX, e.clientY);
+        this.emit("contextmenu", e.clientX, e.clientY);
     }
 }
 

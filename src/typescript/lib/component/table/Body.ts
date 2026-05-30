@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
@@ -16,6 +17,13 @@ import type { HeaderCell } from "~/component/table/cell/Header.js";
 import { callable } from "~/core/Callable.js";
 
 const SCROLL_BUFFER = 2;
+
+/**
+ * String-literal union of the events emitted by the table {@link Body}.
+ * `"verticalscroll"` / `"horizontalscroll"` fire after the body's virtual
+ * scroll position changes, carrying the new pixel offset.
+ */
+type BodyEvent = "verticalscroll" | "horizontalscroll";
 
 function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
     if (!b) return a.length === 0;
@@ -70,8 +78,7 @@ class Body extends Component {
     private _focusedColIndex: number                    = 0;
     private _editorPool      : CellEditorPool            = new CellEditorPool();
     private _header          : Header | null             = null;
-    private _onVerticalScroll  : ((scrollTop: number)     => void) | null = null;
-    private _onHorizontalScroll: ((scrollLeft: number)    => void) | null = null;
+    private _listeners       : ListenerBag<BodyEvent>    = new ListenerBag<BodyEvent>();
 
     constructor(store: AbstractStore) {
         super({ tag: "tbody" });
@@ -483,12 +490,8 @@ class Body extends Component {
         this._scroller = new VirtualScroller(this, el, () => {
             this.renderWindow();
             if (this._scroller) {
-                if (this._onVerticalScroll) {
-                    this._onVerticalScroll(this._scroller.getScrollY());
-                }
-                if (this._onHorizontalScroll) {
-                    this._onHorizontalScroll(this._scroller.getScrollX());
-                }
+                this.emit("verticalscroll",   this._scroller.getScrollY());
+                this.emit("horizontalscroll", this._scroller.getScrollX());
             }
         });
 
@@ -607,11 +610,11 @@ class Body extends Component {
 
         const newScrollX = scroller.getScrollX();
         const newScrollY = scroller.getScrollY();
-        if (newScrollX !== prevScrollX && this._onHorizontalScroll) {
-            this._onHorizontalScroll(newScrollX);
+        if (newScrollX !== prevScrollX) {
+            this.emit("horizontalscroll", newScrollX);
         }
-        if (newScrollY !== prevScrollY && this._onVerticalScroll) {
-            this._onVerticalScroll(newScrollY);
+        if (newScrollY !== prevScrollY) {
+            this.emit("verticalscroll", newScrollY);
         }
 
         this._updateFocusStyle();
@@ -1000,35 +1003,57 @@ class Body extends Component {
     }
 
     /**
-     * Registers a callback fired after the body scrolls vertically.
-     * Single callback; calling again replaces the previous registration.
-     * Pass `null` to clear.
+     * Registers a listener for one of this body's virtual-scroll events.
+     * `"verticalscroll"` fires after the body scrolls vertically with the
+     * new `scrollY`; `"horizontalscroll"` fires after a horizontal scroll
+     * with the new `scrollX`.
      *
-     * @param fn - Receives the new `scrollY` in pixels, or `null` to
-     *   remove the previous callback.
+     * @param event - The event name.
+     * @param listener - Receives the new pixel offset along the scroll axis.
      *
-     * @remarks Used by
+     * @returns This body, for method chaining.
+     *
+     * @remarks `"verticalscroll"` is used by
      * [`PinnedTable`](/api/component/table/classes/PinnedTable) to mirror
-     * `scrollY` from the scroll-side body into the pinned-side body. The
-     * callback is invoked from the {@link VirtualScroller}'s onScroll
-     * hook (see `init`) — the body uses transform-based virtual scroll,
-     * so the native DOM `scroll` event never fires.
+     * `scrollY` from the scroll-side body into the pinned-side body;
+     * `"horizontalscroll"` is used by `Table` to mirror `scrollX` into the
+     * header's transform so column headers stay aligned with the body cells
+     * they label. The listeners fire from the {@link VirtualScroller}'s
+     * onScroll hook (see `init`) — the body uses transform-based virtual
+     * scroll, so the native DOM `scroll` event never fires.
      */
-    setOnVerticalScroll(fn: ((scrollTop: number) => void) | null): void {
-        this._onVerticalScroll = fn;
+    on(event: "verticalscroll",   listener: (scrollTop: number) => void): this;
+    on(event: "horizontalscroll", listener: (scrollLeft: number) => void): this;
+    on(event: BodyEvent,          listener: Function): this {
+        this._listeners.add(event, listener);
+
+        return this;
     }
 
     /**
-     * Registers a callback fired after the body scrolls horizontally.
-     * Same shape as {@link setOnVerticalScroll}; used by `Table` to mirror
-     * `scrollX` into the header's transform so column headers stay aligned
-     * with the body cells they label.
+     * Removes a previously registered scroll listener. The exact callback
+     * reference must match the one passed to {@link on}.
      *
-     * @param fn - Receives the new `scrollX` in pixels, or `null` to
-     *   remove the previous callback.
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This body, for method chaining.
      */
-    setOnHorizontalScroll(fn: ((scrollLeft: number) => void) | null): void {
-        this._onHorizontalScroll = fn;
+    off(event: BodyEvent, listener: Function): this {
+        this._listeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event` with the new scroll
+     * offset, in registration order.
+     *
+     * @param event - The event to emit.
+     * @param offset - The new pixel offset along the scroll axis.
+     */
+    protected emit(event: BodyEvent, offset: number): void {
+        this._listeners.fire(event, offset);
     }
 
     /**
@@ -1306,7 +1331,7 @@ class Body extends Component {
             if (cell instanceof Cell) {
                 const typedCell = cell as Cell<unknown>;
 
-                typedCell.setOnEditEnd(() => {
+                typedCell.on("editend", () => {
                     this.focus();
                     this._updateFocusStyle();
                     this._updateActiveDescendant();

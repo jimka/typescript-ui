@@ -81,7 +81,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
         }
 
         if (options?.onTabClose) {
-            this.setOnTabClose(options.onTabClose);
+            this.on("tabclose", options.onTabClose);
         }
     }
 
@@ -154,17 +154,6 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
         this.getTabManager().off(event, listener as (component: Component) => void);
 
         return this;
-    }
-
-    /**
-     * @deprecated Use `on("tabclose", fn)`.
-     *
-     * @param callback - Called with the closed tab's content component.
-     *
-     * @returns This panel, for method chaining.
-     */
-    setOnTabClose(callback: (component: Component) => void): this {
-        return this.on("tabclose", callback);
     }
 
     /**
