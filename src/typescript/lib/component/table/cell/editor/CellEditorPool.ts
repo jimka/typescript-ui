@@ -115,7 +115,13 @@ export class CellEditorPool {
      * @param editor - The freshly constructed editor to wire.
      */
     private wireListeners(editor: CellEditor<unknown>): void {
-        Event.addListener(editor, "blur", () => {
+        editor.setCommitRequestHandler(() => this._activeCell?.commitEdit());
+
+        Event.addListener(editor, "blur", (e: FocusEvent) => {
+            if (editor.retainsFocus(e.relatedTarget as Node | null)) {
+                return;
+            }
+
             this._activeCell?.commitEdit();
         });
         Event.addListener(editor, "keydown", (e: KeyboardEvent) => {

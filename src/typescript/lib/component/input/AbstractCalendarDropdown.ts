@@ -602,11 +602,18 @@ abstract class AbstractCalendarDropdown<
     }
 
     /**
-     * Suppresses focus loss while the user is interacting with the panel.
+     * Suppresses focus loss while the user is interacting with the panel — but
+     * lets a `pointerdown` on a focusable `<input>` through (e.g. the embedded
+     * time field in the date-time picker) so the user can place the caret and
+     * type. The day/year cells are not inputs, so they stay guarded.
      *
      * @param e - The pointerdown event.
      */
     private onPointerDown(e: PointerEvent): void {
+        if (e.target instanceof HTMLInputElement) {
+            return;
+        }
+
         e.preventDefault();
     }
 
