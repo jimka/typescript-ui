@@ -508,7 +508,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         Event.addListener(this, "click",   ()                 => this.toggleDropdown());
         Event.addListener(this, "keydown", (e: KeyboardEvent) => this.onKeyDown(e));
         // Bridge the existing "change" event into AbstractInput's change /
-        // binding listener fan-out so addChangeListener fires on every
+        // binding listener fan-out so on("change", fn) fires on every
         // user-driven selection. The "change" event is dispatched by
         // `setSelectedIndex(idx, true)` from `onRowSelected`, which is
         // the single user-commit path — mouse click and keyboard

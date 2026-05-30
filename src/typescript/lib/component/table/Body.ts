@@ -23,7 +23,7 @@ const SCROLL_BUFFER = 2;
  * `"verticalscroll"` / `"horizontalscroll"` fire after the body's virtual
  * scroll position changes, carrying the new pixel offset.
  */
-type BodyEvent = "verticalscroll" | "horizontalscroll";
+export type BodyEvent = "verticalscroll" | "horizontalscroll";
 
 function columnWidthsEqual(a: number[], b: number[] | undefined): boolean {
     if (!b) return a.length === 0;
