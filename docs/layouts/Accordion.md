@@ -22,7 +22,7 @@ sidebar.setLayoutManager(Accordion({
     singleOpen       : true,        // only one section open at a time
     headerHeight     : 32,
     animationDuration: 150,
-    onSectionToggle  : (idx, open) => console.log(idx, open),
+    listeners        : { sectiontoggle: (idx, open) => console.log(idx, open) },
 }));
 
 const section1 = Component();
@@ -34,7 +34,7 @@ section2.addComponent(Text('Content of section 2'));
 sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 ```
 
-[`AccordionOptions`](/api/layout/interfaces/AccordionOptions) accepts `singleOpen`, `headerHeight`, `animationDuration`, and `onSectionToggle` declaratively. The corresponding setters (`setSingleOpen`, `setHeaderHeight`, `setAnimationDuration`, `setOnSectionToggle`) still work for runtime updates.
+[`AccordionOptions`](/api/layout/interfaces/AccordionOptions) accepts `singleOpen`, `headerHeight`, `animationDuration`, and a `listeners: { sectiontoggle }` bag declaratively. The setters (`setSingleOpen`, `setHeaderHeight`, `setAnimationDuration`) still work for runtime updates; subscribe to toggles via `on("sectiontoggle", fn)`.
 
 ## Per-child constraints
 

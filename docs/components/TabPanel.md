@@ -1,6 +1,6 @@
 # TabPanel
 
-[`TabPanel`](/api/component/container/classes/TabPanel) is a [`Panel`](/api/core/classes/Panel) subclass that owns an internal [`Tab`](/api/layout/classes/Tab) layout manager. It exposes a tab-typed `addTab` / `addLazyTab` / `setOnTabClose` surface, so consumers don't have to wire `new Panel({ layoutManager: new Tab() })` themselves.
+[`TabPanel`](/api/component/container/classes/TabPanel) is a [`Panel`](/api/core/classes/Panel) subclass that owns an internal [`Tab`](/api/layout/classes/Tab) layout manager. It exposes a tab-typed `addTab` / `addLazyTab` / `on("tabclose", fn)` surface, so consumers don't have to wire `new Panel({ layoutManager: new Tab() })` themselves.
 
 The bare `new Panel({ layoutManager: new Tab() })` form still works — `TabPanel` is the convenience entry point.
 
@@ -39,7 +39,7 @@ The factory runs once, the first time the user activates the tab.
 
 ## Close hooks
 
-Either the construction-time `onTabClose` option or [`setOnTabClose`](/api/component/container/classes/TabPanel#setontabclose) wires a callback for closeable tabs:
+Either the construction-time `onTabClose` option or [`on("tabclose", fn)`](/api/component/container/classes/TabPanel#on) wires a callback for closeable tabs:
 
 ```typescript
 tabs.on("tabclose", component => store.removeBinding(component));
