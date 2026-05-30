@@ -13,9 +13,9 @@ npm install @jimka/typescript-ui
 ## Bootstrap
 
 ```typescript
-import { Body, Window, ThemeManager, DefaultTheme } from '@jimka/typescript-ui/core';
+import { Body, Window, ThemeManager, ClassicTheme } from '@jimka/typescript-ui/core';
 import { Button } from '@jimka/typescript-ui/component/button';
-ThemeManager.setTheme(DefaultTheme);
+ThemeManager.setTheme(ClassicTheme);
 
 const win = Window('Hello');
 win.show();

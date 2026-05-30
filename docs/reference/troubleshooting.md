@@ -42,7 +42,7 @@ The theme manager writes CSS custom properties on `:root` (the `<html>` element)
 1. **Did you call `setTheme` before mounting?** Components apply CSS rules on construction. Calling `setTheme` later still works (cascade re-flows), but it must run at *some* point.
 
    ```typescript
-   ThemeManager.setTheme(DefaultTheme);  // before any component construction
+   ThemeManager.setTheme(ClassicTheme);  // before any component construction
    ```
 
 2. **Are you using a fallback in your CSS rule?** Tokens with no fallback show as empty when unset.
