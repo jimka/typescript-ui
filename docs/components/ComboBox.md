@@ -1,21 +1,24 @@
 # ComboBox
 
-[`ComboBox`](/api/component/input/classes/ComboBox) is a drop-down selector backed by a `<select>` element. Populate it from an explicit list of [`Option`](/api/component/input/classes/Option) items, or bind it to a data [`Store`](/data/store) so the options track records as they load and change.
+[`ComboBox`](/api/component/input/classes/ComboBox) is a drop-down selector backed by a styled `<div>` surface and an [`AnimatedDropdown`](/components/AnimatedDropdown) panel. Populate it from a list of string items, or bind it to a data [`Store`](/data/store) so the options track records as they load and change.
 
 It implements [`Bindable<string>`](/api/core/interfaces/Bindable), so it can participate in a [`Binding`](/data/binding) directly.
 
 ## Static items
 
+Pass plain strings via the `items` option (or `addItem` / `setItems`):
+
 ```typescript
 import { Event } from '@jimka/typescript-ui/core';
-import { ComboBox, Option } from '@jimka/typescript-ui/component/input';
-const role = ComboBox();
-role.addItem(Option('admin', 'Admin'));
-role.addItem(Option('user',  'User'));
-role.addItem(Option('guest', 'Guest'));
+import { ComboBox } from '@jimka/typescript-ui/component/input';
+
+const role = ComboBox({ items: ['Admin', 'User', 'Guest'] });
 
 Event.addListener(role, 'change', () => {
-    console.log('selected:', role.getValue());
+    // Plain string items are keyed by position, so `getValue()` returns the
+    // selected row index as a string; read `getSelectedIndex()` for the index.
+    // When each option needs its own distinct value, use a store (below).
+    console.log('selected index:', role.getSelectedIndex());
 });
 
 panel.addComponent(role);
@@ -59,6 +62,8 @@ The combo refreshes automatically on store `datachanged` events.
 ## Theming
 
 The combo's thin gray border (and its dropdown panel's matching border) is driven by the `input.border` token — see [Theming › Theme keys](/concepts/theming#theme-keys).
+
+The trigger chevron points down when the dropdown is closed and rotates to point up while it is open, animated in step with the dropdown's own fade (and snapping instantly when the dropdown is non-animated).
 
 ## See also
 
