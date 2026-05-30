@@ -92,12 +92,32 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
     }
 
     /**
-     * Registers a listener for the list's 'change' event.
+     * Registers a listener for the list's `change` event. A typed shorthand
+     * over {@link Event.addListener}; `"change"` is currently the only
+     * allowed event name.
      *
+     * @param event - The event name. Only `"change"` is accepted.
      * @param listener - The callback to invoke when the selection changes.
+     *
+     * @returns This component, for method chaining.
      */
-    addActionListener(listener: Function) : this {
-        Event.addListener(this, "change", listener);
+    on(event: "change", listener: Function): this {
+        Event.addListener(this, event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback
+     * reference must match the one passed to {@link on}.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    off(event: "change", listener: Function): this {
+        Event.removeListener(this, event, listener);
 
         return this;
     }

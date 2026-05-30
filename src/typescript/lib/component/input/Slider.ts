@@ -191,7 +191,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         this.applyValue(next);
         this.notifyChange(next);
 
-        // Existing consumers wire to "input" via `addActionListener`. Fire so
+        // Existing consumers wire to "input" via `on("input", fn)`. Fire so
         // demos that read `slider.getValue()` from an `input` callback keep
         // working.
         Event.fireEvent(this, "input");
@@ -393,19 +393,46 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
     }
 
     /**
-     * Back-compat alias for the existing `input` event listener API. Existing
-     * demos call `slider.addActionListener(fn)` and read `slider.getValue()`;
-     * preserving the surface means migrating to the custom-drawn control is
-     * a no-op for those call sites.
+     * Registers a listener for one of this slider's events. `"input"` is a
+     * typed shorthand over {@link Event.addListener} for the value-change
+     * event (fired on each drag step); `"change"` and `"binding"` are the
+     * inherited {@link AbstractInput} listener-bag events.
      *
-     * @param listener - The callback to invoke on each value change.
+     * @param event - The event name.
+     * @param listener - The callback to invoke when the event fires.
      *
      * @returns This component, for method chaining.
      */
-    addActionListener(listener: Function): this {
-        Event.addListener(this, "input", listener);
+    on(event: "input",   listener: Function): this;
+    on(event: "change",  listener: (value: number) => void): this;
+    on(event: "binding", listener: () => void): this;
+    on(event: "input" | "change" | "binding", listener: Function): this {
+        if (event === "input") {
+            Event.addListener(this, "input", listener);
 
-        return this;
+            return this;
+        }
+
+        return super.on(event as "change", listener as (value: number) => void);
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback
+     * reference must match the one passed to {@link on}.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    off(event: "input" | "change" | "binding", listener: Function): this {
+        if (event === "input") {
+            Event.removeListener(this, "input", listener);
+
+            return this;
+        }
+
+        return super.off(event, listener);
     }
 
     /**

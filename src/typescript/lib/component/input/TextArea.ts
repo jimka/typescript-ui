@@ -295,17 +295,6 @@ class TextArea extends TextInput<TextAreaOptions> {
         this.setText(element.value);
     }
 
-    /**
-     * Registers a listener for the 'input' event, fired on every keystroke.
-     *
-     * @param listener - The callback to invoke on each input event.
-     */
-    addActionListener(listener: Function) : this {
-        Event.addListener(this, "input", listener);
-
-        return this;
-    }
-
 }
 
 const TextAreaCallable = callable(TextArea);

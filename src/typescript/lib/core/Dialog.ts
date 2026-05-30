@@ -193,7 +193,7 @@ class DialogTitleBar extends Component {
         this._closeButton.setPreferredSize(CLOSE_SIZE, CLOSE_SIZE);
         this.addComponent(this._closeButton);
 
-        this._closeButton.addActionListener(onClose);
+        this._closeButton.on("click", onClose);
     }
 
     /**
@@ -353,7 +353,7 @@ class DialogButtonRow extends Component {
                 }
             }
 
-            btn.addActionListener(() => onButton(result));
+            btn.on("click", () => onButton(result));
             this._buttons.push(btn);
             this.addComponent(btn);
         }

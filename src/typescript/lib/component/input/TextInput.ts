@@ -158,6 +158,50 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     }
 
     /**
+     * Registers a listener for one of this text input's events. `"input"`
+     * is a typed shorthand over {@link Event.addListener} for the native
+     * `input` DOM event (fired on every keystroke); `"change"` and
+     * `"binding"` are the inherited {@link AbstractInput} value-change
+     * events dispatched through the listener bag.
+     *
+     * @param event - The event name.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This component, for method chaining.
+     */
+    on(event: "input",   listener: Function): this;
+    on(event: "change",  listener: (value: string) => void): this;
+    on(event: "binding", listener: () => void): this;
+    on(event: "input" | "change" | "binding", listener: Function): this {
+        if (event === "input") {
+            Event.addListener(this, "input", listener);
+
+            return this;
+        }
+
+        return super.on(event as "change", listener as (value: string) => void);
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback
+     * reference must match the one passed to {@link on}.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    off(event: "input" | "change" | "binding", listener: Function): this {
+        if (event === "input") {
+            Event.removeListener(this, "input", listener);
+
+            return this;
+        }
+
+        return super.off(event, listener);
+    }
+
+    /**
      * Sets the HTML `type` attribute on the underlying input element.
      *
      * Typically called once at construction time by subclasses (e.g.

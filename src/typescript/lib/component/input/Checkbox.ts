@@ -226,7 +226,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         this.applySelected(next, false);
         this.notifyChange(next);
 
-        // Existing consumers wire "click"-based behaviour through `addActionListener`,
+        // Existing consumers wire "click"-based behaviour through `on("click", fn)`,
         // so synthesize a "click" on the root so a programmatic state flip
         // continues to fire it. The user-toggle handler lives on `_box`, not
         // the root, so this synthetic event no longer races back into the
@@ -333,18 +333,47 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     }
 
     /**
-     * Back-compat alias kept for existing consumers (e.g. the [`BooleanEditor`](/api/component/table/cell/editor/classes/BooleanEditor)
-     * cell editor) that listen for "click" on the underlying control. Wires
-     * the listener through `Event.addListener` on this component.
+     * Registers a listener for one of this checkbox's events. `"click"` is a
+     * typed shorthand over {@link Event.addListener} for the native click
+     * (used e.g. by the [`BooleanEditor`](/api/component/table/cell/editor/classes/BooleanEditor)
+     * cell editor); `"change"` and `"binding"` are the inherited
+     * {@link AbstractInput} listener-bag events.
      *
-     * @param listener - Callback invoked on each click.
+     * @param event - The event name.
+     * @param listener - Callback invoked when the event fires.
      *
      * @returns This component, for method chaining.
      */
-    addActionListener(listener: Function): this {
-        Event.addListener(this, "click", listener);
+    on(event: "click",   listener: Function): this;
+    on(event: "change",  listener: (value: boolean) => void): this;
+    on(event: "binding", listener: () => void): this;
+    on(event: "click" | "change" | "binding", listener: Function): this {
+        if (event === "click") {
+            Event.addListener(this, "click", listener);
 
-        return this;
+            return this;
+        }
+
+        return super.on(event as "change", listener as (value: boolean) => void);
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback
+     * reference must match the one passed to {@link on}.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    off(event: "click" | "change" | "binding", listener: Function): this {
+        if (event === "click") {
+            Event.removeListener(this, "click", listener);
+
+            return this;
+        }
+
+        return super.off(event, listener);
     }
 
     /**

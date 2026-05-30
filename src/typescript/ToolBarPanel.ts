@@ -43,20 +43,20 @@ class ToolBarPanel extends Panel {
         styleGroup.addButton(italic);
         styleGroup.addButton(underline);
 
-        bold.addActionListener(() => { status("Toggle Bold"); });
-        italic.addActionListener(() => { status("Toggle Italic"); });
-        underline.addActionListener(() => { status("Toggle Underline"); });
+        bold.on("change", () => { status("Toggle Bold"); });
+        italic.on("change", () => { status("Toggle Italic"); });
+        underline.on("change", () => { status("Toggle Underline"); });
 
         const cut   = new Button("Cut");
         const copy  = new Button("Copy");
         const paste = new Button("Paste");
 
-        cut.addActionListener(() => { status("Cut"); });
-        copy.addActionListener(() => { status("Copy"); });
-        paste.addActionListener(() => { status("Paste"); });
+        cut.on("click", () => { status("Cut"); });
+        copy.on("click", () => { status("Copy"); });
+        paste.on("click", () => { status("Paste"); });
 
         const zoom = new ComboBox({ items: ["50%", "75%", "100%", "125%", "150%"] });
-        zoom.addActionListener((value: string) => { status("Zoom " + value); });
+        zoom.on("change", (value: string) => { status("Zoom " + value); });
 
         bar.addComponent(bold);
         bar.addComponent(italic);

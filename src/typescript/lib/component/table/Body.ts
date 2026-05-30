@@ -850,7 +850,7 @@ class Body extends Component {
     protected onSubtreeClick(e: MouseEvent): void {
         // Filter synthetic "click" events. `Checkbox.setSelected` dispatches
         // a `CustomEvent("click")` on its root for backward-compat with
-        // `addActionListener` consumers; during a scroll rebind, the Active
+        // `on("click", fn)` consumers; during a scroll rebind, the Active
         // column's cell receives a programmatic `setValue` for every pool
         // slot, so a flurry of synthetic clicks bubbles up here and would
         // each fire `onRowClick` — selecting whichever record happens to be

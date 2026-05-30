@@ -482,17 +482,6 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * @deprecated Use `on("click", fn)`.
-     *
-     * @param listener - The callback to invoke when the button is clicked.
-     *
-     * @returns This button, for method chaining.
-     */
-    addActionListener(listener: Function): this {
-        return this.on("click", listener as ClickListener);
-    }
-
-    /**
      * Registers a `pointerdown` event listener on this button. The named
      * surface lets external consumers (e.g.
      * [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField))
