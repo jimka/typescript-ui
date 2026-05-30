@@ -67,7 +67,15 @@ export class Cell<T> extends Component {
         if (editor) {
             this.addComponent(editor, editorContraints);
 
-            Event.addListener(editor, 'blur', () => this.commitEdit());
+            editor.setCommitRequestHandler(() => this.commitEdit());
+
+            Event.addListener(editor, 'blur', (e: FocusEvent) => {
+                if (editor.retainsFocus(e.relatedTarget as Node | null)) {
+                    return;
+                }
+
+                this.commitEdit();
+            });
             Event.addListener(editor, 'keydown', (e: KeyboardEvent) => this.onKeyDown(e));
         }
 
