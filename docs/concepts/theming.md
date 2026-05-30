@@ -5,12 +5,13 @@ The framework includes a [`ThemeManager`](/api/core/classes/ThemeManager) that a
 ## Quick start
 
 ```typescript
-import { ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui/core';
-ThemeManager.setTheme(DefaultTheme); // light
+import { ThemeManager, ClassicTheme, DarkTheme, ModernTheme } from '@jimka/typescript-ui/core';
+ThemeManager.setTheme(ModernTheme);  // flat light (the default)
+ThemeManager.setTheme(ClassicTheme); // classic gradient light
 ThemeManager.setTheme(DarkTheme);    // dark
 ```
 
-Two built-in themes ship with the package: `DefaultTheme` (light) and `DarkTheme`. Custom themes are created by spreading one of them and overriding tokens — see [Custom themes](#custom-themes) below.
+Three built-in themes ship with the package: `ModernTheme` — a flat, gradient-free light theme that is **preselected by default** — alongside `ClassicTheme` (the original gradient light look) and `DarkTheme`. Custom themes are created by spreading one of them and overriding tokens — see [Custom themes](#custom-themes) below.
 
 ## How it works
 
@@ -58,6 +59,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `tab.button.background` | `--ts-ui-tab-button-bg` | Background of inactive tab buttons |
 | `window.shadow` | `--ts-ui-window-shadow` | Drop shadow on floating [`Window`](/api/core/classes/Window) components |
 | `header.font.size` | `--ts-ui-header-font-size` | Font size of window and panel title-bar labels |
+| `table.header.background` | `--ts-ui-table-header-bg` | Background fill of the table column header; falls back to `button.background` so headers track the button surface unless given a distinct value |
 | `table.header.border` | `--ts-ui-table-header-border` | Bottom border separating the table header from the body |
 | `table.header.font.size` | `--ts-ui-table-header-font-size` | Font size of table column header cells |
 | `table.row.selected` | `--ts-ui-table-row-selected` | Background tint of the currently selected table row |
@@ -89,16 +91,16 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 
 ## Custom themes
 
-Implement the [`Theme`](/api/core/interfaces/Theme) interface and pass it to `setTheme`. Spread `DefaultTheme` and override only the keys you care about:
+Implement the [`Theme`](/api/core/interfaces/Theme) interface and pass it to `setTheme`. Spread a built-in theme (here `ModernTheme`) and override only the keys you care about:
 
 ```typescript
-import { Theme, ThemeManager, DefaultTheme } from '@jimka/typescript-ui/core';
+import { Theme, ThemeManager, ModernTheme } from '@jimka/typescript-ui/core';
 const MyTheme: Theme = {
-    ...DefaultTheme,
+    ...ModernTheme,
     body: { background: 'rgb(240, 248, 255)' },
     text: { color: 'rgb(10, 30, 60)' },
     button: {
-        ...DefaultTheme.button,
+        ...ModernTheme.button,
         background: 'linear-gradient(rgb(200, 220, 255), rgb(160, 190, 240))',
     },
 };

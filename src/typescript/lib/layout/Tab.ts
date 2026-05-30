@@ -341,10 +341,30 @@ class Tab extends LayoutManager {
     private buildTabEntry(name: string, constraints?: LayoutConstraints): TabEntry {
         let tabButton = new ToggleButton(name);
 
+        // Unselected fill. ToggleButton inherits Button's `--ts-ui-button-bg`
+        // gradient on `background-image`, which otherwise paints over the tab
+        // colour below and makes `--ts-ui-tab-button-bg` invisible. Route the
+        // same tab token through the image layer so a colour value drops out
+        // (invalid as an image) and a gradient value wins — killing the
+        // gradient bleed-through.
         tabButton.setBackgroundColor("var(--ts-ui-tab-button-bg, #b8b8c3)");
-        tabButton.clearBorder();
+        tabButton.setBackgroundImage("var(--ts-ui-tab-button-bg, #b8b8c3)");
+        tabButton.setBorder("var(--ts-ui-tab-button-border, none)");
         tabButton.clearBorderRadius();
         tabButton.clearShadow();
+
+        // Hover state.
+        tabButton.setHoverBackgroundColor("var(--ts-ui-tab-button-hover-bg, #c4c4cf)");
+        tabButton.setHoverBackgroundImage("var(--ts-ui-tab-button-hover-bg, #c4c4cf)");
+        tabButton.setHoverShadow("none");
+        tabButton.setHoverBorder("var(--ts-ui-tab-button-hover-border, none)");
+
+        // Selected (active) state.
+        tabButton.setSelectedBackgroundColor("var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))");
+        tabButton.setSelectedBackgroundImage("var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))");
+        tabButton.setSelectedShadow("none");
+        tabButton.setSelectedBorder("var(--ts-ui-tab-button-selected-border, none)");
+
         tabButton.setInsets(new Insets(0, 4, 0, 4));
         tabButton.getText().setInsets(new Insets(0, 4, 0, 4));
 

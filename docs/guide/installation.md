@@ -41,8 +41,8 @@ The library is bundler-agnostic. Verified configurations:
 Theming uses runtime-injected CSS custom properties. There is **no `.css` file to import**. Call [`ThemeManager.setTheme`](/api/core/classes/ThemeManager) once on startup before mounting any component:
 
 ```typescript
-import { ThemeManager, DefaultTheme } from '@jimka/typescript-ui/core';
-ThemeManager.setTheme(DefaultTheme);
+import { ThemeManager, ClassicTheme } from '@jimka/typescript-ui/core';
+ThemeManager.setTheme(ClassicTheme);
 ```
 
 See [Theming](/concepts/theming) for details and custom themes.

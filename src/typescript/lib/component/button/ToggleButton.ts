@@ -133,6 +133,65 @@ class ToggleButton extends Button<ToggleButtonOptions> {
     }
 
     /**
+     * Sets the background color for the `.selected` CSS rule, overriding the
+     * default `--ts-ui-toggle-selected-bg` token for this instance.
+     *
+     * @param backgroundColor - A CSS color string.
+     *
+     * @returns This button, for method chaining.
+     */
+    setSelectedBackgroundColor(backgroundColor: string): this {
+        this.selectedStyleRule.set("backgroundColor", backgroundColor);
+
+        return this;
+    }
+
+    /**
+     * Sets the background image for the `.selected` CSS rule. Pairs with
+     * {@link setSelectedBackgroundColor} so a plain colour drops out (invalid
+     * as an image) and a gradient wins, matching the framework's background
+     * colour/image auto-routing.
+     *
+     * @param backgroundImage - A CSS background-image string.
+     *
+     * @returns This button, for method chaining.
+     */
+    setSelectedBackgroundImage(backgroundImage: string): this {
+        this.selectedStyleRule.set("backgroundImage", backgroundImage);
+
+        return this;
+    }
+
+    /**
+     * Sets the box-shadow for the `.selected` CSS rule, overriding the default
+     * `--ts-ui-toggle-selected-shadow` token for this instance.
+     *
+     * @param shadow - A CSS box-shadow string (e.g. `"none"`).
+     *
+     * @returns This button, for method chaining.
+     */
+    setSelectedShadow(shadow: string): this {
+        this.selectedStyleRule.set("boxShadow", shadow);
+
+        return this;
+    }
+
+    /**
+     * Sets the border for the `.selected` CSS rule from a CSS `border`
+     * shorthand string (e.g. `"1px solid rgb(...)"` or `"none"`), overriding
+     * the default selected-state border for this instance.
+     *
+     * @param border - A CSS `border` shorthand value.
+     *
+     * @returns This button, for method chaining.
+     */
+    setSelectedBorder(border: string): this {
+        this.selectedStyleRule.set("border", border);
+
+        return this;
+    }
+
+    /**
      * Toggles the selected state and fires a 'change' event when the button is clicked.
      */
     private onAction() {
