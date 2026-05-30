@@ -97,6 +97,7 @@ export const ClassicTheme: Theme = {
             hover     : { background: 'linear-gradient(rgb(220, 220, 227), rgb(198, 198, 208))', border: 'none' },
             selected  : { background: 'linear-gradient(rgb(255, 255, 255), rgb(235, 235, 240))', border: 'none' },
         },
+        indicator: { color: '#1a73e8', thickness: '2px' },
     },
     window: {
         shadow      : '3px 3px 2px rgba(0, 0, 0, 0.4)',

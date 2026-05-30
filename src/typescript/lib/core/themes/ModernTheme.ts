@@ -98,6 +98,7 @@ export const ModernTheme: Theme = {
             hover     : { background: 'rgb(234, 236, 239)', border: '1px solid rgb(206, 210, 216)' },
             selected  : { background: 'rgb(255, 255, 255)', border: '1px solid rgb(214, 217, 222)' },
         },
+        indicator: { color: '#1a73e8', thickness: '2px' },
     },
     window: {
         shadow      : '3px 3px 2px rgba(0, 0, 0, 0.4)',

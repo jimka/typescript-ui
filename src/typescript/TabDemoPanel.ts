@@ -2,8 +2,8 @@
 
 import { callable, Component } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
-import { Fit, HBox, VBox } from '@jimka/typescript-ui/layout';
-import { Text } from '@jimka/typescript-ui/component/input';
+import { Fit, HBox, VBox, TabWidthMode } from '@jimka/typescript-ui/layout';
+import { Text, ComboBox, NumberSpinner } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { TabPanel } from '@jimka/typescript-ui/component/container';
 
@@ -36,11 +36,42 @@ class TabDemoPanel extends Component {
         const addCloseableBtn = new Button("Add Closeable Tab");
         toolbar.addComponent(addCloseableBtn);
 
+        const toggleBorderBtn = new Button("Toggle Under-border");
+        toolbar.addComponent(toggleBorderBtn);
+
         this.addComponent(toolbar);
 
+        // --- Tab-width experimentation row ---
+        // `fill` stretches tabs to share the strip; `content` caps each tab's
+        // own width at Max; `equal` sizes every tab to the widest (capped at
+        // Max); `fixed` pins every tab to Fixed px. Tweak the numbers live.
+        const widthRow = new Component();
+        widthRow.setLayoutManager(new HBox());
+
+        const widthModes: TabWidthMode[] = ["fill", "content", "equal", "fixed"];
+        const modeCombo = new ComboBox({ items: widthModes, selectedIndex: 1 });
+
+        const maxSpinner = new NumberSpinner({ min: 40, max: 400, step: 10, value: 160 });
+        const fixedSpinner = new NumberSpinner({ min: 40, max: 400, step: 10, value: 120 });
+
+        widthRow.addComponent(new Text("Width mode:", { preferredSize: { width: 80, height: 28 } }));
+        widthRow.addComponent(modeCombo);
+        widthRow.addComponent(new Text("Max:", { preferredSize: { width: 36, height: 28 } }));
+        widthRow.addComponent(maxSpinner);
+        widthRow.addComponent(new Text("Fixed:", { preferredSize: { width: 44, height: 28 } }));
+        widthRow.addComponent(fixedSpinner);
+
+        this.addComponent(widthRow);
+
         // --- TabPanel ---
+        // Starts in `content` mode at Max 160 so the sliding selection
+        // indicator is easy to see as it travels between capped, left-aligned
+        // tabs; the row above switches strategy and values live.
         this.tabPanel = new TabPanel({
             preferredSize: { width: 0, height: 300 },
+            tabWidthMode: "content",
+            tabMaxWidth: 160,
+            tabFixedWidth: 120,
             tabs: [
                 { label: "Alpha", component: this.buildContent("Alpha") },
                 { label: "Beta",  component: this.buildContent("Beta"),  closeable: true },
@@ -53,6 +84,25 @@ class TabDemoPanel extends Component {
         });
 
         this.addComponent(this.tabPanel);
+
+        // --- Wire width controls ---
+        // The ComboBox keys plain string items by index, so its `getValue()`
+        // returns the row index, not the label — map the selected index back to
+        // the mode rather than reading the value.
+        modeCombo.on("change", () => {
+            this.tabPanel.setTabWidthMode(widthModes[modeCombo.getSelectedIndex()]);
+            this.doLayout();
+        });
+
+        maxSpinner.on("change", () => {
+            this.tabPanel.setTabMaxWidth(maxSpinner.getValue());
+            this.doLayout();
+        });
+
+        fixedSpinner.on("change", () => {
+            this.tabPanel.setTabFixedWidth(fixedSpinner.getValue());
+            this.doLayout();
+        });
 
         // --- Log row ---
         const logRow = new Component({ preferredSize: { width: 0, height: 28 } });
@@ -78,6 +128,10 @@ class TabDemoPanel extends Component {
             const label = `Tab ${this.tabCounter}`;
             this.tabPanel.addTab(this.buildContent(label), label, { closeable: true });
             this.doLayout();
+        });
+
+        toggleBorderBtn.on("action", () => {
+            this.tabPanel.setTabUnderBorderFullWidth(!this.tabPanel.isTabUnderBorderFullWidth());
         });
     }
 
