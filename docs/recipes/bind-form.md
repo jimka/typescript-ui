@@ -68,7 +68,7 @@ const cancelBtn = Button('Cancel');
 saveBtn.setEnabled(false);
 cancelBtn.setEnabled(false);
 
-binding.addChangeListener(() => {
+binding.on("change", () => {
     const dirty = binding.getRecord()?.isDirty() ?? false;
     saveBtn.setEnabled(dirty);
     cancelBtn.setEnabled(dirty);

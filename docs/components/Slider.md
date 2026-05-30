@@ -9,7 +9,7 @@ import { Slider } from '@jimka/typescript-ui/component/input';
 const volume = Slider({ min: 0, max: 100, step: 1, value: 50 });
 volume.setPreferredSize(200, 24);
 
-volume.addChangeListener(v => {
+volume.on("change", v => {
     console.log('volume:', v);
 });
 
@@ -27,8 +27,8 @@ panel.addComponent(volume);
 | `setOrientation('horizontal' \| 'vertical')` | Track axis. |
 | `isEnabled()` / `setEnabled(boolean)` | Toggle interactivity. |
 | `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user-driven changes. |
-| `addChangeListener(fn)` / `removeChangeListener(fn)` | Subscribe to value changes. |
-| `addBindingListener(fn)` | Used by [`Binding`](/data/binding). |
+| `on("change", fn)` / `off("change", fn)` | Subscribe to value changes. |
+| `on("binding", fn)` | Used by [`Binding`](/data/binding). |
 
 ## Keyboard model
 
@@ -45,7 +45,7 @@ panel.addComponent(volume);
 
 - Drag is handled via `pointerdown` + `setPointerCapture`, so the cursor can leave the track mid-drag without losing the input stream.
 - Themed through the shared `--ts-ui-form-*` family plus per-control slider tokens (`--ts-ui-slider-track-bg`, `--ts-ui-slider-track-active-bg`, `--ts-ui-slider-thumb-bg`, `--ts-ui-slider-thumb-size`, `--ts-ui-slider-track-thickness`).
-- `addActionListener` and the deprecated `setMinValue` / `setMaxValue` / `getMinValue` / `getMaxValue` aliases remain available for migration; prefer `addChangeListener` and `setMin` / `setMax` in new code.
+- The deprecated `setMinValue` / `setMaxValue` / `getMinValue` / `getMaxValue` aliases remain available for migration; prefer `setMin` / `setMax` in new code. Subscribe to committed value changes with `on("change", fn)`, or to the raw per-step drag stream with `on("input", fn)`.
 
 ## See also
 

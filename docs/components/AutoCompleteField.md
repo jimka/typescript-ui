@@ -54,11 +54,11 @@ See [`AutoCompleteFieldConfig`](/api/component/input/type-aliases/AutoCompleteFi
 
 | Method | Fires on |
 | --- | --- |
-| `addChangeListener(fn)` | Every value change — keystroke **and** suggestion pick. |
-| `addBindingListener(fn)` | Same as `addChangeListener`; used by [`Binding`](/data/binding). |
+| `on("change", fn)` | Every value change — keystroke **and** suggestion pick. |
+| `on("binding", fn)` | Same as `on("change", fn)`; used by [`Binding`](/data/binding). |
 | `addSelectListener(fn)` | Only when a suggestion is picked from the dropdown. |
 
-A suggestion-select fires `addSelectListener` and, through the underlying value change, also fires `addChangeListener`.
+A suggestion-select fires `addSelectListener` and, through the underlying value change, also fires `on("change", fn)`.
 
 ## Notes
 

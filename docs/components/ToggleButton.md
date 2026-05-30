@@ -28,7 +28,7 @@ The `change` event fires whenever the selection state flips.
 | --- | --- |
 | `isSelected()` | Returns the current selection state. |
 | `setSelected(boolean)` | Programmatically set / clear the selection (does **not** fire `change`). |
-| `addBindingListener(fn)` | Subscribe to user-driven changes (used by `Binding`). |
+| `on("binding", fn)` | Subscribe to user-driven changes (used by `Binding`). |
 
 ## Mutual exclusivity
 
