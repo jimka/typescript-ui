@@ -90,11 +90,11 @@ export class VirtualScroller {
 
         this._scrollbarV = new Scrollbar("vertical");
         element.appendChild(this._scrollbarV.getElement(true));
-        this._scrollbarV.addScrollListener((p: number) => this.setScrollY(p));
+        this._scrollbarV.on("scroll", (p: number) => this.setScrollY(p));
 
         this._scrollbarH = new Scrollbar("horizontal");
         element.appendChild(this._scrollbarH.getElement(true));
-        this._scrollbarH.addScrollListener((p: number) => this.setScrollX(p));
+        this._scrollbarH.on("scroll", (p: number) => this.setScrollX(p));
 
         this._owner.setTouchAction("none");
 

@@ -35,8 +35,6 @@ const TAB_FADE_DURATION_MS = 120;
  * @category Layouts
  */
 export interface TabOptions extends LayoutManagerOptions {
-    /** @deprecated Use `listeners.tabclose`. */
-    onTabClose?: (component: Component) => void;
     /**
      * Multi-event listener bag dispatched to {@link Tab.on} at construction
      * time.
@@ -138,10 +136,6 @@ class Tab extends LayoutManager {
 
         if (options.listeners?.tabclose !== undefined) {
             this.on("tabclose", options.listeners.tabclose);
-        }
-
-        if (options.onTabClose !== undefined) {
-            this.setOnTabClose(options.onTabClose);
         }
     }
 
@@ -354,7 +348,7 @@ class Tab extends LayoutManager {
         tabButton.setInsets(new Insets(0, 4, 0, 4));
         tabButton.getText().setInsets(new Insets(0, 4, 0, 4));
 
-        tabButton.addActionListener(() => this.onTabPressed(tabButton));
+        tabButton.on("action", () => this.onTabPressed(tabButton));
 
         const wrapperHBox = new HBox();
         wrapperHBox.setComponentSpacing(0);
@@ -391,7 +385,7 @@ class Tab extends LayoutManager {
         };
 
         if (closeButton) {
-            closeButton.addActionListener(() => this.closeTab(entry));
+            closeButton.on("action", () => this.closeTab(entry));
         }
 
         this._tabs.push(entry);
@@ -752,15 +746,6 @@ class Tab extends LayoutManager {
     protected emit(event: "tabclose", component: Component): void;
     protected emit(event: TabEvent,   ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
-    }
-
-    /**
-     * @deprecated Use `on("tabclose", fn)`.
-     *
-     * @param callback - Receives the content component that was removed.
-     */
-    setOnTabClose(callback: (component: Component) => void): void {
-        this.on("tabclose", callback);
     }
 
     /**

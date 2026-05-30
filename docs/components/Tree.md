@@ -37,7 +37,7 @@ Nodes with a non-empty `children` array render as expandable parents; nodes with
 | --- | --- |
 | `setNodes(nodes[])` | Replace the entire tree. |
 | `expandAll()` / `collapseAll()` | Bulk-toggle expansion. |
-| `addSelectionListener(fn)` | Subscribe to user-driven selection changes. |
+| `on("selection", fn)` | Subscribe to user-driven selection changes. |
 | `setRendererFactory(fn)` | Replace the content renderer used for every row. |
 
 ## Custom row renderers

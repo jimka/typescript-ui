@@ -199,15 +199,6 @@ class ScrollArrowButton extends Component {
     }
 
     /**
-     * @deprecated Use `on("tick", fn)`.
-     *
-     * @param listener - The callback invoked on every tick.
-     */
-    addTickListener(listener: () => void): void {
-        this.on("tick", listener);
-    }
-
-    /**
      * Returns whether this arrow is currently in the at-edge disabled state.
      *
      * @returns `true` when disabled, `false` otherwise.
@@ -320,7 +311,7 @@ class ScrollArrowButton extends Component {
  * Designed for components that own their own scroll state (e.g. transform-based
  * virtual lists) and don't expose native browser scrolling. The owner pushes
  * viewport/content metrics in via {@link Scrollbar.setMetrics} and subscribes
- * to scroll position changes via {@link Scrollbar.addScrollListener}.
+ * to scroll position changes via {@link Scrollbar.on}.
  *
  * The thumb is dragged with the mouse; clicking the track above/beside the
  * thumb pages by one viewport. The scrollbar hides itself when content fits in
@@ -565,28 +556,6 @@ class Scrollbar extends Component<ScrollbarOptions> {
     protected emit(event: "scroll",       position: number): void;
     protected emit(event: ScrollbarEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
-    }
-
-    /**
-     * @deprecated Use `on("scroll", fn)`.
-     *
-     * @param listener - The callback to invoke with the new scroll position.
-     *
-     * @returns This scrollbar, for method chaining.
-     */
-    addScrollListener(listener: ScrollbarListener): this {
-        return this.on("scroll", listener);
-    }
-
-    /**
-     * @deprecated Use `off("scroll", fn)`.
-     *
-     * @param listener - The exact callback reference to remove.
-     *
-     * @returns This scrollbar, for method chaining.
-     */
-    removeScrollListener(listener: ScrollbarListener): this {
-        return this.off("scroll", listener);
     }
 
     /**

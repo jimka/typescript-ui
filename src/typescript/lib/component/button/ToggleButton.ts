@@ -2,7 +2,7 @@
 
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
-import { Button, ButtonOptions } from "~/component/button/Button.js";
+import { Button, ButtonOptions, ClickListener } from "~/component/button/Button.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -71,12 +71,36 @@ class ToggleButton extends Button<ToggleButtonOptions> {
     }
 
     /**
-     * Registers a listener for the 'change' event, fired when the toggle state changes.
+     * Registers a listener for this toggle button's `"action"` event — fired
+     * when the toggle state changes. Overrides the inherited
+     * [`Button`](/api/component/button/classes/Button) `on` so `"action"`
+     * routes to the DOM `"change"` event (the toggle) rather than the base
+     * `"click"`. A typed semantic shorthand over {@link Event.addListener}.
      *
-     * @param listener - The callback to invoke when the selection state changes.
+     * @param event - The event name. Only `"action"` is accepted.
+     * @param listener - The callback to invoke when the toggle state changes.
+     *
+     * @returns This button, for method chaining.
      */
-    addActionListener(listener: Function) : this {
+    on(event: "action", listener: ClickListener): this;
+    on(_event: "action", listener: ClickListener): this {
         Event.addListener(this, "change", listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered `"action"` listener. The exact
+     * callback reference must match the one passed to {@link on}.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This button, for method chaining.
+     */
+    off(event: "action", listener: ClickListener): this;
+    off(_event: "action", listener: ClickListener): this {
+        Event.removeListener(this, "change", listener);
 
         return this;
     }

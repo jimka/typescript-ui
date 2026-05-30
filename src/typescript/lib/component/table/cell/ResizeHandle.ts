@@ -19,12 +19,6 @@ export type ResizeHandleEvent = "dragstart" | "dragmove" | "dragend";
  * @category Components
  */
 export interface ResizeHandleOptions extends ComponentOptions {
-    /** @deprecated Use `listeners.dragstart` or `on("dragstart", fn)`. */
-    onDragStart?: (event: MouseEvent) => void;
-    /** @deprecated Use `listeners.dragmove` or `on("dragmove", fn)`. */
-    onDragMove?:  (delta: number) => void;
-    /** @deprecated Use `listeners.dragend` or `on("dragend", fn)`. */
-    onDragEnd?:   () => void;
     /**
      * Multi-event listener bag dispatched to {@link ResizeHandle.on} at
      * construction time. Each entry is appended; calling `on(event, fn)`
@@ -118,10 +112,6 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
         if (options?.listeners?.dragstart !== undefined) this.on("dragstart", options.listeners.dragstart);
         if (options?.listeners?.dragmove  !== undefined) this.on("dragmove",  options.listeners.dragmove);
         if (options?.listeners?.dragend   !== undefined) this.on("dragend",   options.listeners.dragend);
-
-        if (options?.onDragStart !== undefined) this.on("dragstart", options.onDragStart);
-        if (options?.onDragMove  !== undefined) this.on("dragmove",  options.onDragMove);
-        if (options?.onDragEnd   !== undefined) this.on("dragend",   options.onDragEnd);
     }
 
     /**
@@ -208,39 +198,6 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
      */
     dragEnd(): void {
         this.emit("dragend");
-    }
-
-    /**
-     * @deprecated Use `on("dragstart", fn)`.
-     *
-     * @param fn - Called with the originating MouseEvent.
-     *
-     * @returns This handle, for method chaining.
-     */
-    setOnDragStart(fn: (event: MouseEvent) => void): this {
-        return this.on("dragstart", fn);
-    }
-
-    /**
-     * @deprecated Use `on("dragmove", fn)`.
-     *
-     * @param fn - Called with the horizontal pixel delta on each drag move.
-     *
-     * @returns This handle, for method chaining.
-     */
-    setOnDragMove(fn: (delta: number) => void): this {
-        return this.on("dragmove", fn);
-    }
-
-    /**
-     * @deprecated Use `on("dragend", fn)`.
-     *
-     * @param fn - Called when the drag ends.
-     *
-     * @returns This handle, for method chaining.
-     */
-    setOnDragEnd(fn: () => void): this {
-        return this.on("dragend", fn);
     }
 
     /**

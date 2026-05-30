@@ -359,25 +359,6 @@ class HeaderCell extends DefaultCell {
     }
 
     /**
-     * @deprecated Use `on("sortclick", fn)`.
-     *
-     * @param fn - Receives the field name for this column and whether the
-     *   shift key was held during the click (used to compose multi-column sort).
-     */
-    setOnSortClick(fn: (fieldName: string, shiftKey: boolean) => void): void {
-        this.on("sortclick", fn);
-    }
-
-    /**
-     * @deprecated Use `on("contextmenu", fn)`.
-     *
-     * @param fn - Receives the field name, and the viewport x/y coordinates of the event.
-     */
-    setOnContextMenu(fn: (fieldName: string, x: number, y: number) => void): void {
-        this.on("contextmenu", fn);
-    }
-
-    /**
      * Sets the tooltip text shown when hovering this header cell.
      *
      * Safe to call before or after the cell has rendered: pre-init calls are
@@ -406,15 +387,6 @@ class HeaderCell extends DefaultCell {
      */
     getTooltip(): string {
         return this._tooltipText;
-    }
-
-    /**
-     * @deprecated Use `on("resizedrag", fn)`.
-     *
-     * @param fn - Receives movementX on each mousemove during a resize drag.
-     */
-    setOnResizeDrag(fn: (delta: number) => void): void {
-        this.on("resizedrag", fn);
     }
 
     /**

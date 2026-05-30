@@ -45,7 +45,7 @@ acc.setSingleOpen(false);  // allow multiple sections open simultaneously
 
 ## Toggle callback
 
-Pass `onSectionToggle` at construction or call [`getAccordionManager().setOnSectionToggle(...)`](/api/layout/classes/Accordion#setonsectiontoggle) to react to expand / collapse events:
+Pass `onSectionToggle` at construction or call [`getAccordionManager().on("sectiontoggle", ...)`](/api/layout/classes/Accordion#on) to react to expand / collapse events:
 
 ```typescript
 new AccordionPanel({

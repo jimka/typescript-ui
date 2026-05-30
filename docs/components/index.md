@@ -31,7 +31,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 
 ## Inputs
 
-Every value-bearing control below extends [`AbstractInput<T>`](/api/component/input/classes/AbstractInput) — the abstract base owns the [`Bindable<T>`](/api/core/interfaces/Bindable) value contract, the `addChangeListener` / `addBindingListener` fan-out, and the `setEnabled` / `setReadOnly` surface. `instanceof AbstractInput` is the universal check for "this is a form input." The three picker fields share a second base, [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField), which owns the [`PickerInput`](/api/component/input/classes/PickerInput) + [`PickerButton`](/api/component/input/classes/PickerButton) chrome and the dropdown lifecycle.
+Every value-bearing control below extends [`AbstractInput<T>`](/api/component/input/classes/AbstractInput) — the abstract base owns the [`Bindable<T>`](/api/core/interfaces/Bindable) value contract, the `on("change", fn)` / `on("binding", fn)` fan-out, and the `setEnabled` / `setReadOnly` surface. `instanceof AbstractInput` is the universal check for "this is a form input." The three picker fields share a second base, [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField), which owns the [`PickerInput`](/api/component/input/classes/PickerInput) + [`PickerButton`](/api/component/input/classes/PickerButton) chrome and the dropdown lifecycle.
 
 | Component | Purpose |
 | --- | --- |
@@ -143,7 +143,7 @@ tree.setNodes([
 
 | Component | Purpose |
 | --- | --- |
-| [`TabPanel`](/components/TabPanel) | [`Panel`](/api/core/classes/Panel) subclass wrapping the [`Tab`](/api/layout/classes/Tab) layout — typed `addTab` / `addLazyTab` / `setOnTabClose` |
+| [`TabPanel`](/components/TabPanel) | [`Panel`](/api/core/classes/Panel) subclass wrapping the [`Tab`](/api/layout/classes/Tab) layout — typed `addTab` / `addLazyTab` / `on("tabclose")` |
 | [`AccordionPanel`](/components/AccordionPanel) | [`Panel`](/api/core/classes/Panel) subclass wrapping the [`Accordion`](/api/layout/classes/Accordion) layout — typed `addSection` / `openSection` / `setSingleOpen` |
 
 ## Layout primitives

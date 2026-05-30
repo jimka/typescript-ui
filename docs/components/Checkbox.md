@@ -8,7 +8,7 @@
 import { Checkbox } from '@jimka/typescript-ui/component/input';
 const subscribe = Checkbox({ label: 'Subscribe', value: true });
 
-subscribe.addChangeListener(on => {
+subscribe.on("change", on => {
     console.log('subscribed:', on);
 });
 
@@ -25,9 +25,9 @@ panel.addComponent(subscribe);
 | `getLabel()` / `setLabel(text \| null)` | Optional inline label. |
 | `isEnabled()` / `setEnabled(boolean)` | Toggle interactivity. |
 | `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user-driven changes. |
-| `addChangeListener(fn)` / `removeChangeListener(fn)` | Subscribe to value changes. |
-| `addBindingListener(fn)` | Used by [`Binding`](/data/binding). |
-| `addActionListener(fn)` | Back-compat alias for click listeners. |
+| `on("change", fn)` / `off("change", fn)` | Subscribe to value changes. |
+| `on("binding", fn)` | Used by [`Binding`](/data/binding). |
+| `on("action", fn)` | Subscribe to the click action. |
 
 ## Indeterminate / mixed state
 

@@ -66,14 +66,14 @@ class TabDemoPanel extends Component {
         this.addComponent(logRow);
 
         // --- Wire controls ---
-        addNormalBtn.addActionListener(() => {
+        addNormalBtn.on("action", () => {
             this.tabCounter += 1;
             const label = `Tab ${this.tabCounter}`;
             this.tabPanel.addTab(this.buildContent(label), label);
             this.doLayout();
         });
 
-        addCloseableBtn.addActionListener(() => {
+        addCloseableBtn.on("action", () => {
             this.tabCounter += 1;
             const label = `Tab ${this.tabCounter}`;
             this.tabPanel.addTab(this.buildContent(label), label, { closeable: true });

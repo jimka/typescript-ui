@@ -72,7 +72,7 @@ Pass an explicit accessor object as the third argument to `binding.bind`:
 binding.bind('field', myComponent, {
     get:    () => myComponent.getValue(),
     set:    (value) => myComponent.setValue(value),
-    listen: (fn) => myComponent.addChangeListener(fn),
+    listen: (fn) => myComponent.on("change", fn),
 });
 ```
 

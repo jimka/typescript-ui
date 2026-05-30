@@ -24,8 +24,9 @@ export type HeaderEvent = "columnresize" | "columncontextmenu";
  *
  * Builds one {@link HeaderCell} per visible field from the supplied model. Each cell is
  * wired with a sort-click callback (cycles asc → desc → clear), a resize-drag
- * callback (forwarded to the owner via {@link Header.setOnColumnResize}), and a context-menu
- * callback (forwarded via {@link Header.setOnColumnContextMenu}).
+ * callback (forwarded to the owner via the `"columnresize"` event), and a
+ * context-menu callback (forwarded via the `"columncontextmenu"` event); see
+ * {@link Header.on}.
  *
  * Re-exported as `TableHeader` from the package barrel.
  *
@@ -199,24 +200,6 @@ class Header extends Component {
     protected emit(event: "columncontextmenu", fieldName: string, x: number, y: number): void;
     protected emit(event: HeaderEvent,         ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
-    }
-
-    /**
-     * @deprecated Use `on("columnresize", fn)`.
-     *
-     * @param fn - Receives the zero-based column index and the pixel delta.
-     */
-    setOnColumnResize(fn: (colIndex: number, delta: number) => void): void {
-        this.on("columnresize", fn);
-    }
-
-    /**
-     * @deprecated Use `on("columncontextmenu", fn)`.
-     *
-     * @param fn - Receives the field name, and viewport x/y coordinates.
-     */
-    setOnColumnContextMenu(fn: (fieldName: string, x: number, y: number) => void): void {
-        this.on("columncontextmenu", fn);
     }
 
     /**
@@ -506,7 +489,7 @@ class Header extends Component {
                 cell.setTooltip(`${runKey}: ${fieldNames.join(", ")}`);
             }
 
-            cell.setOnContextMenu((x, y) => {
+            cell.on("contextmenu", (x, y) => {
                 this.emit("columncontextmenu", "", x, y);
             });
 

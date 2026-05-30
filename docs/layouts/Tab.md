@@ -19,7 +19,7 @@ import { Component } from '@jimka/typescript-ui/core';
 import { Tab } from '@jimka/typescript-ui/layout';
 const tabbed = Component();
 tabbed.setLayoutManager(Tab({
-    onTabClose: removed => console.log('closed', removed.getId()),
+    listeners: { tabclose: removed => console.log('closed', removed.getId()) },
 }));
 
 tabbed.addComponent(generalPanel,   { name: 'General'  });
@@ -27,7 +27,7 @@ tabbed.addComponent(networkPanel,   { name: 'Network'  });
 tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 ```
 
-[`TabOptions`](/api/layout/interfaces/TabOptions) currently exposes `onTabClose`; the `setOnTabClose` setter still works.
+[`TabOptions`](/api/layout/interfaces/TabOptions) accepts a `listeners: { tabclose }` bag declaratively; call `on("tabclose", fn)` for runtime wiring.
 
 ## Per-child constraints
 

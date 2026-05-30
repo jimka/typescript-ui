@@ -32,7 +32,7 @@ const binding = new Binding()
     .bind('name', myWidget, {
         get:    () => myWidget.getValue(),
         set:    (v) => myWidget.setValue(v),
-        listen: (fn) => myWidget.addChangeListener(fn),
+        listen: (fn) => myWidget.on("change", fn),
     });
 ```
 
@@ -43,9 +43,9 @@ The accessor object matches [`BindingAccessors`](/api/core/interfaces/BindingAcc
 `Binding` fires three event types:
 
 ```typescript
-binding.addChangeListener(() => console.log('field edited, dirty =', binding.getRecord()?.isDirty()));
-binding.addCommitListener(() => console.log('committed'));
-binding.addRejectListener(() => console.log('rejected'));
+binding.on("change", () => console.log('field edited, dirty =', binding.getRecord()?.isDirty()));
+binding.on("commit", () => console.log('committed'));
+binding.on("reject", () => console.log('rejected'));
 ```
 
 These let callers react to record mutations without polling. Use them to enable / disable a save button, show a "you have unsaved changes" indicator, etc.
@@ -64,10 +64,10 @@ binding.setRecord(store.getAt(1));   // discards uncommitted edits on record 0
 
 ## Vetoing a record change
 
-`addBeforeRecordListener` registers a guard that runs before `setRecord` mutates any state. The listener receives the *next* record (which may be `null`) and returns `false` to cancel the change:
+`on("beforerecord", fn)` registers a guard that runs before `setRecord` mutates any state. The listener receives the *next* record (which may be `null`) and returns `false` to cancel the change:
 
 ```typescript
-binding.addBeforeRecordListener((next) => {
+binding.on("beforerecord", (next) => {
     const current = binding.getRecord();
 
     if (current && current !== next && current.isDirty()) {
@@ -86,7 +86,7 @@ The veto API is intentionally synchronous and boolean. For async confirmation fl
 If a veto fires, any picker UI that drove the call (e.g. a record-selector combo) will still show the rejected selection while the binding remains on the previous record. The call site is responsible for reconciling — compare [`getRecord`](/api/core/classes/Binding#getrecord) after the call and reset the picker if they diverge:
 
 ```typescript
-recordCombo.addActionListener(() => {
+recordCombo.on("action", () => {
     const next = store.find('id', Number(recordCombo.getElement().value));
     if (!next) return;
 

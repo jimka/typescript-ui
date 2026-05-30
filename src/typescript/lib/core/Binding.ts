@@ -56,7 +56,7 @@ export type BeforeRecordListener = (next: ModelRecord | null) => boolean;
  *     .bind('name', myWidget, {
  *         get:    () => myWidget.getValue(),
  *         set:    (v) => myWidget.setValue(v),
- *         listen: (fn) => myWidget.addChangeListener(fn),
+ *         listen: (fn) => myWidget.on("change", fn),
  *     });
  * ```
  *
@@ -98,7 +98,7 @@ export class Binding extends BaseObject {
         const acc: BindingAccessors<any> = accessors ?? {
             get:    () => (component as Bindable<T>).getValue(),
             set:    (v: T) => (component as Bindable<T>).setValue(v),
-            listen: (fn) => (component as Bindable<T>).addBindingListener(fn),
+            listen: (fn) => (component as Bindable<T>).on("binding", fn),
         };
 
         const entry: BoundEntry = { accessors: acc, active: true };
@@ -151,8 +151,8 @@ export class Binding extends BaseObject {
      * Loads a record into the binding. All registered components are immediately
      * populated with the corresponding field values. Pass `null` to clear the binding.
      *
-     * Before any state mutation, every listener registered via
-     * {@link addBeforeRecordListener} is consulted; if any returns `false` the
+     * Before any state mutation, every `on("beforerecord", fn)` listener is
+     * consulted; if any returns `false` the
      * call is a complete no-op (no validation reset, no field population) and
      * `this` is returned unchanged.
      *
@@ -293,42 +293,6 @@ export class Binding extends BaseObject {
     protected emit(event: "reject"): void;
     protected emit(event: BindingEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
-    }
-
-    /**
-     * @deprecated Use `on("change", fn)`.
-     *
-     * @param fn - Called with the field name and new value on every change.
-     */
-    addChangeListener(fn: (fieldName: string, value: unknown) => void): void {
-        this.on("change", fn);
-    }
-
-    /**
-     * @deprecated Use `on("commit", fn)`.
-     *
-     * @param fn - Called after {@link commit} fires.
-     */
-    addCommitListener(fn: () => void): void {
-        this.on("commit", fn);
-    }
-
-    /**
-     * @deprecated Use `on("reject", fn)`.
-     *
-     * @param fn - Called after {@link reject} fires.
-     */
-    addRejectListener(fn: () => void): void {
-        this.on("reject", fn);
-    }
-
-    /**
-     * @deprecated Use `on("beforerecord", fn)`.
-     *
-     * @param fn - Called with the next record (or `null`). Return `false` to veto.
-     */
-    addBeforeRecordListener(fn: BeforeRecordListener): void {
-        this.on("beforerecord", fn);
     }
 
     // ── Validation ───────────────────────────────────────────────────────────

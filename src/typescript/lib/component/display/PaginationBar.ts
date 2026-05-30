@@ -93,10 +93,10 @@ class PaginationBar extends Component<PaginationBarOptions> {
         // Match the buttons' 28px row height so the page label baseline lines up.
         this._pageText.centerInHeight(28);
 
-        this._firstBtn.addActionListener(() => this._store.goToPage(1));
-        this._prevBtn.addActionListener(() => this._store.prevPage());
-        this._nextBtn.addActionListener(() => this._store.nextPage());
-        this._lastBtn.addActionListener(() => {
+        this._firstBtn.on("action", () => this._store.goToPage(1));
+        this._prevBtn.on("action", () => this._store.prevPage());
+        this._nextBtn.on("action", () => this._store.nextPage());
+        this._lastBtn.on("action", () => {
             const total = this._store.getTotalPages();
             this._store.goToPage(total ?? this._store.getPage());
         });
