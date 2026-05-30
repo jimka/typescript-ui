@@ -3,12 +3,13 @@
 import {
     ButtonGroup,
     callable,
+    ClassicTheme,
     Component,
     DarkTheme,
-    DefaultTheme,
     Dialog,
     Event,
     Menu,
+    ModernTheme,
     Notification,
     Panel,
     Popover,
@@ -415,12 +416,17 @@ class MiscPanel extends Panel {
         });
         leftColumn.addComponent(buttonTreeTable);
 
-        let isDark = false;
-        let buttonTheme = new Button("Switch to dark theme");
+        const themeCycle = [
+            { theme: ModernTheme,  next: "Switch to classic theme" },
+            { theme: ClassicTheme, next: "Switch to dark theme"    },
+            { theme: DarkTheme,    next: "Switch to modern theme"  },
+        ];
+        let themeIndex = 0;
+        let buttonTheme = new Button(themeCycle[0].next);
         buttonTheme.on("action", function () {
-            isDark = !isDark;
-            ThemeManager.setTheme(isDark ? DarkTheme : DefaultTheme);
-            buttonTheme.getText().setText(isDark ? "Switch to default theme" : "Switch to dark theme");
+            themeIndex = (themeIndex + 1) % themeCycle.length;
+            ThemeManager.setTheme(themeCycle[themeIndex].theme);
+            buttonTheme.getText().setText(themeCycle[themeIndex].next);
         });
         leftColumn.addComponent(buttonTheme);
 

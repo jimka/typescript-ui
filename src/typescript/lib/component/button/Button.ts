@@ -1004,13 +1004,25 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Sets the border for the `:hover:not(:active)` CSS rule.
+     * Sets the border for the `:hover:not(:active)` CSS rule. Accepts either a
+     * {@link BorderOptions} bag or a CSS `border` shorthand string (e.g.
+     * `"1px solid rgb(...)"` or `"none"`); the string form writes the `border`
+     * shorthand directly, mirroring [`Component.setBorder`](/api/core/classes/Component#setborder)'s `var(...)`
+     * handling.
      *
-     * @param options - Optional. Border configuration (style, width, color). Omit to apply a default border.
+     * @param options - Border configuration, a CSS `border` shorthand string, or omitted for a default border.
      *
      * @returns This component, for method chaining.
      */
-    setHoverBorder(options?: BorderOptions): this {
+    setHoverBorder(options?: BorderOptions): this;
+    setHoverBorder(border: string): this;
+    setHoverBorder(options?: BorderOptions | string): this {
+        if (typeof options === "string") {
+            this.hoverStyleRule.set("border", options);
+
+            return this;
+        }
+
         this._hoverBorder = new Border(options);
         this.hoverStyleRule.setMany(this._hoverBorder.toStyle());
 

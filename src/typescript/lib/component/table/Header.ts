@@ -46,7 +46,7 @@ class Header extends Component {
 
         this.getAria().setRole("rowgroup");
         this.setBorder({ bottom: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-table-header-border, black)" } });
-        this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
+        this.setBackgroundImage("var(--ts-ui-table-header-bg, var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))))");
         // Clip cells that would otherwise extend past the header's right
         // edge when the inner rows are translated horizontally.
         this.setOverflow("hidden");
@@ -263,7 +263,7 @@ class Header extends Component {
             // resize handles whose cells happen to be horizontally scrolled
             // under the cover still receive clicks.
             cover.style.pointerEvents   = "none";
-            cover.style.backgroundImage = "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))";
+            cover.style.backgroundImage = "var(--ts-ui-table-header-bg, var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))))";
             // Left border matches the column-cell right border so the cover
             // reads as a visual continuation of the column separators
             // rather than a seam in the gradient.
