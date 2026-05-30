@@ -95,7 +95,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
         });
 
         // Bridge the native `input` DOM event into AbstractInput's change /
-        // binding listener fan-out so `addChangeListener` fires on every
+        // binding listener fan-out so `on("change", fn)` fires on every
         // keystroke for every text-derived control. Bindings already fire on
         // the same DOM event in subclass-specific `onInput` hooks; this opens
         // the second dispatch path for the unified listener API.

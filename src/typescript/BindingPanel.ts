@@ -199,7 +199,7 @@ class BindingPanel extends Panel {
         });
 
         // Veto record switches while the current record has uncommitted edits.
-        // Demonstrates addBeforeRecordListener: returning false cancels setRecord().
+        // Demonstrates on("beforerecord", fn): returning false cancels setRecord().
         binding.on("beforerecord", (next) => {
             const current = binding.getRecord();
 

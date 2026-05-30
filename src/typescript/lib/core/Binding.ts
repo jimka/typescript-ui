@@ -151,8 +151,8 @@ export class Binding extends BaseObject {
      * Loads a record into the binding. All registered components are immediately
      * populated with the corresponding field values. Pass `null` to clear the binding.
      *
-     * Before any state mutation, every listener registered via
-     * {@link addBeforeRecordListener} is consulted; if any returns `false` the
+     * Before any state mutation, every `on("beforerecord", fn)` listener is
+     * consulted; if any returns `false` the
      * call is a complete no-op (no validation reset, no field population) and
      * `this` is returned unchanged.
      *

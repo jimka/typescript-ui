@@ -38,7 +38,7 @@ export interface TabPanelOptions extends PanelOptions {
 /**
  * A [`Panel`](/api/core/classes/Panel) subclass that owns an internal
  * [`Tab`](/api/layout/classes/Tab) layout manager and exposes a tab-typed
- * `addTab` / `addLazyTab` / `setOnTabClose` surface so consumers do not have
+ * `addTab` / `addLazyTab` / `on("tabclose")` surface so consumers do not have
  * to wire `new Panel({ layoutManager: new Tab() })` themselves. The bare
  * Panel + Tab manager path still works unchanged; `TabPanel` is the
  * convenience entry point.
