@@ -179,7 +179,7 @@ class BindingPanel extends Panel {
 
         // ── Wire up interactions ─────────────────────────────────────────────
 
-        commitButton.addActionListener(() => {
+        commitButton.on("click", () => {
             if (binding.validate()) {
                 binding.commit();
                 Notification.show('Record saved.', 'success');
@@ -188,7 +188,7 @@ class BindingPanel extends Panel {
             }
         });
 
-        rejectButton.addActionListener(() => binding.reject());
+        rejectButton.on("click", () => binding.reject());
 
         // Load stores then bind the first record
         roleStore.load().then(() => {
@@ -212,7 +212,7 @@ class BindingPanel extends Panel {
             return true;
         });
 
-        recordCombo.addActionListener(() => {
+        recordCombo.on("change", () => {
             const id = Number(recordCombo.getValue());
             const record = personStore.find('id', id);
 

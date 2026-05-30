@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Header, HeaderOptions } from "~/component/display/Header.js";
-import { Button } from "~/component/button/Button.js";
+import { Button, ClickListener } from "~/component/button/Button.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -275,7 +275,7 @@ class WindowHeader extends Header {
      * @param listener - The callback to invoke when the close button is clicked.
      */
     addExitButtonListener(listener: Function) : this {
-        this._exitButton.addActionListener(listener);
+        this._exitButton.on("click", listener as ClickListener);
 
         return this;
     }
@@ -286,7 +286,7 @@ class WindowHeader extends Header {
      * @param listener - The callback to invoke when the minimize button is clicked.
      */
     addMinimizeButtonListener(listener: Function): this {
-        this._minimizeButton.addActionListener(listener);
+        this._minimizeButton.on("click", listener as ClickListener);
 
         return this;
     }
@@ -297,7 +297,7 @@ class WindowHeader extends Header {
      * @param listener - The callback to invoke when the maximize button is clicked.
      */
     addMaximizeButtonListener(listener: Function): this {
-        this._maximizeButton.addActionListener(listener);
+        this._maximizeButton.on("click", listener as ClickListener);
 
         return this;
     }

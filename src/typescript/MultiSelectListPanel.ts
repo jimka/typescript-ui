@@ -28,7 +28,7 @@ class MultiSelectListPanel extends Panel {
 
         const selectionText = new Text("Selected: (none)");
 
-        staticList.addActionListener(() => {
+        staticList.on("change", () => {
             const vals = staticList.getValue();
             selectionText.setText(`Selected: ${vals.length === 0 ? "(none)" : vals.join(", ")}`);
         });
@@ -36,12 +36,12 @@ class MultiSelectListPanel extends Panel {
         const selectAllBtn  = new Button("Select All");
         const clearBtn      = new Button("Clear");
 
-        selectAllBtn.addActionListener(() => {
+        selectAllBtn.on("click", () => {
             staticList.setValues(["0", "1", "2", "3", "4"]);
             selectionText.setText(`Selected: ${staticList.getValue().join(", ")}`);
         });
 
-        clearBtn.addActionListener(() => {
+        clearBtn.on("click", () => {
             staticList.setValues([]);
             selectionText.setText("Selected: (none)");
         });
@@ -82,7 +82,7 @@ class MultiSelectListPanel extends Panel {
 
         const storeText = new Text("Selected records: (none)");
 
-        storeList.addActionListener(() => {
+        storeList.on("change", () => {
             const recs = storeList.getSelectedRecords();
             const names = recs.map(r => String(r.get('label'))).join(", ");
             storeText.setText(`Selected records: ${names || "(none)"}`);
@@ -117,7 +117,7 @@ class MultiSelectListPanel extends Panel {
             .bind('tags', tagList, {
                 get:    () => tagList.getValue(),
                 set:    (v: unknown) => tagList.setValues(v ? String(v).split(",").filter(Boolean) : []),
-                listen: (fn) => tagList.addActionListener(fn),
+                listen: (fn) => tagList.on("change", fn),
             });
 
         binding.addChangeListener(() => {
@@ -135,8 +135,8 @@ class MultiSelectListPanel extends Panel {
         const commitBtn = new Button("Commit");
         const rejectBtn = new Button("Reject");
 
-        commitBtn.addActionListener(() => binding.commit());
-        rejectBtn.addActionListener(() => binding.reject());
+        commitBtn.on("click", () => binding.commit());
+        rejectBtn.on("click", () => binding.reject());
 
         const bindingBtnRow = new Component();
         bindingBtnRow.setLayoutManager(new HBox());

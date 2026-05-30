@@ -42,10 +42,10 @@ class BooleanEditor extends CellEditor<Boolean | null> {
         this._checkBox.setAnimated(false);
         this.addComponent(this._checkBox);
 
-        this._checkBox.addActionListener(() => {
+        this._checkBox.on("click", () => {
             // `Checkbox.setSelected` dispatches a synthetic
             // `CustomEvent("click")` on the root for backward-compat with
-            // `addActionListener` consumers, which fires for BOTH real user
+            // `on("click", fn)` consumers, which fires for BOTH real user
             // toggles AND programmatic `setValue` calls. Without the
             // `_suppressCommit` guard, every scroll-driven `setValue` would
             // commit the bound record back to the store, fire

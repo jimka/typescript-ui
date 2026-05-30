@@ -73,7 +73,7 @@ class LayoutTestPanel extends Panel {
 
         let slider = new Slider();
         sliderText.setText(slider.getValue().toString() + "%");
-        slider.addActionListener(() => {
+        slider.on("input", () => {
             sliderText.setText(slider.getValue().toString() + "%");
         });
         this.addComponent(slider);
@@ -82,7 +82,7 @@ class LayoutTestPanel extends Panel {
         this.addComponent(textArea);
 
         let textField = new TextField();
-        textField.addActionListener(() => {
+        textField.on("input", () => {
             helloText.setText(textField.getText());
             textArea.setText(textField.getText());
         });

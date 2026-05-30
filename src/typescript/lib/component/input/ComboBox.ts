@@ -141,7 +141,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         // writes (`setItemsArray`, `setSelectedIndex(idx, false)` used
         // by `showAt`) bypass this path, so re-opening the dropdown
         // doesn't trigger a spurious commit.
-        this._list.addActionListener(() => onSelect(this._list.getSelectedIndex()));
+        this._list.on("change", () => onSelect(this._list.getSelectedIndex()));
     }
 
     /**
@@ -771,14 +771,45 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Registers a listener for the 'change' event, fired on each selection change.
+     * Registers a listener for one of this combo box's events. `"change"`
+     * is a typed shorthand over {@link Event.addListener} for the DOM change
+     * event, fired on each selection change. `"binding"` is the inherited
+     * {@link AbstractInput} listener-bag event.
      *
-     * @param listener - The callback to invoke when the selection changes.
+     * @param event - The event name.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This component, for method chaining.
      */
-    addActionListener(listener: Function): this {
-        Event.addListener(this, "change", listener);
+    on(event: "change",  listener: Function): this;
+    on(event: "binding", listener: () => void): this;
+    on(event: "change" | "binding", listener: Function): this {
+        if (event === "change") {
+            Event.addListener(this, "change", listener);
 
-        return this;
+            return this;
+        }
+
+        return super.on("binding", listener as () => void);
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback
+     * reference must match the one passed to {@link on}.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This component, for method chaining.
+     */
+    off(event: "change" | "binding", listener: Function): this {
+        if (event === "change") {
+            Event.removeListener(this, "change", listener);
+
+            return this;
+        }
+
+        return super.off("binding", listener);
     }
 
     /**

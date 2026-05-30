@@ -55,19 +55,19 @@ class AccordionDemoPanel extends Panel {
         this.addComponent(this.accordion);
 
         // --- Wire controls ---
-        openAllBtn.addActionListener(() => {
+        openAllBtn.on("click", () => {
             for (let i = 0; i < 4; i++) {
                 this.accordion.openSection(i);
             }
         });
 
-        closeAllBtn.addActionListener(() => {
+        closeAllBtn.on("click", () => {
             for (let i = 0; i < 4; i++) {
                 this.accordion.closeSection(i);
             }
         });
 
-        this.singleOpenToggle.addActionListener(() => {
+        this.singleOpenToggle.on("click", () => {
             const next = !this.accordion.isSingleOpen();
 
             this.accordion.setSingleOpen(next);

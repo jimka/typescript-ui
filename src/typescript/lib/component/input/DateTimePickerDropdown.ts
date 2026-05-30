@@ -108,7 +108,7 @@ class DateTimePickerSelect extends ComboBox {
             this.setSelectedIndex(-1, false);
         }
 
-        this.addActionListener(() => this.onChange());
+        this.on("change", () => this.onChange());
     }
 
     /**

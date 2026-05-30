@@ -53,7 +53,7 @@ class SplitPanel extends Panel {
 
         let slider = new Slider();
         sliderText.setText(slider.getValue().toString() + "%");
-        slider.addActionListener(() => {
+        slider.on("input", () => {
             sliderText.setText(slider.getValue().toString() + "%");
         });
         southComponent.addComponent(slider);
