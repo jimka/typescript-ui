@@ -191,7 +191,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         this.applyValue(next);
         this.notifyChange(next);
 
-        // Existing consumers wire to "input" via `on("input", fn)`. Fire so
+        // Existing consumers wire to "input" via `on("action", fn)`. Fire so
         // demos that read `slider.getValue()` from an `input` callback keep
         // working.
         Event.fireEvent(this, "input");
