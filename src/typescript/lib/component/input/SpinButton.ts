@@ -193,15 +193,6 @@ class SpinButton extends Button<SpinButtonOptions> {
     }
 
     /**
-     * @deprecated Use `on("tick", fn)`.
-     *
-     * @param listener - The callback invoked on every tick.
-     */
-    addTickListener(listener: () => void): void {
-        this.on("tick", listener);
-    }
-
-    /**
      * Cancels any in-progress hold-repeat schedule and resets the tick delay to its initial value.
      */
     cancelRepeat(): void {

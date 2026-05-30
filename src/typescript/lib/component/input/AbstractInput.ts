@@ -202,39 +202,6 @@ abstract class AbstractInput<
     }
 
     /**
-     * @deprecated Use `on("change", fn)`.
-     *
-     * @param fn - The callback to invoke on each change.
-     *
-     * @returns This component, for method chaining.
-     */
-    addChangeListener(fn: (value: TValue) => void): this {
-        return this.on("change", fn);
-    }
-
-    /**
-     * @deprecated Use `off("change", fn)`.
-     *
-     * @param fn - The callback to remove.
-     *
-     * @returns This component, for method chaining.
-     */
-    removeChangeListener(fn: (value: TValue) => void): this {
-        return this.off("change", fn);
-    }
-
-    /**
-     * @deprecated Use `on("binding", fn)`.
-     *
-     * @param fn - The callback to invoke on each user-driven change.
-     *
-     * @returns This component, for method chaining.
-     */
-    addBindingListener(fn: () => void): this {
-        return this.on("binding", fn);
-    }
-
-    /**
      * Subclass hook: reflect the enabled state in visuals + ARIA. Called
      * from {@link setEnabled} after the cached state is updated.
      *

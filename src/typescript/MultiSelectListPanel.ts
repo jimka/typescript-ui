@@ -120,15 +120,15 @@ class MultiSelectListPanel extends Panel {
                 listen: (fn) => tagList.on("change", fn),
             });
 
-        binding.addChangeListener(() => {
+        binding.on("change", () => {
             bindingStatusText.setText("Binding status: modified");
         });
 
-        binding.addCommitListener(() => {
+        binding.on("commit", () => {
             bindingStatusText.setText("Binding status: clean");
         });
 
-        binding.addRejectListener(() => {
+        binding.on("reject", () => {
             bindingStatusText.setText("Binding status: clean");
         });
 

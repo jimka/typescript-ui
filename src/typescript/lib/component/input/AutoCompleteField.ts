@@ -151,7 +151,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
         // attached via the inherited `addChangeListener` see every keystroke
         // and every suggestion-pick (suggestions hit setValue, which writes
         // through the TextField and re-fires its own change listeners).
-        this._textField.addChangeListener(value => this.notifyChange(value));
+        this._textField.on("change", value => this.notifyChange(value));
 
         if (options) {
             this.applyOptions(options);
