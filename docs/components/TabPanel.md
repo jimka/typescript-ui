@@ -47,6 +47,44 @@ tabs.on("tabclose", component => store.removeBinding(component));
 
 The callback fires after the tab is removed; the closed component is passed in so callers can dispose any external state.
 
+## Tab strip styling
+
+The active tab is marked by a single shared indicator bar that **slides** to the
+newly-selected tab on each selection change; its colour and thickness come from
+the `--ts-ui-tab-indicator-color` / `--ts-ui-tab-indicator-thickness` theme
+tokens.
+
+Construction-time options (each with a matching setter) tune the strip:
+
+```typescript
+const tabs = new TabPanel({
+    tabWidthMode: "equal",         // "fill" | "content" | "equal" | "fixed"
+    tabMaxWidth: 160,              // width cap for "content" / "equal"; null = uncapped
+    tabFixedWidth: 120,            // per-tab width for "fixed" mode
+    tabUnderBorderFullWidth: true, // 1px rule under the whole strip (the default)
+    tabs: [/* … */],
+});
+
+tabs.setTabWidthMode("fixed");
+tabs.setTabFixedWidth(140);
+tabs.setTabUnderBorderFullWidth(false);
+```
+
+[`setTabWidthMode`](/api/component/container/classes/TabPanel#settabwidthmode)
+chooses the tab-button width strategy:
+
+- `"fill"` (default) — tabs split the strip equally and stretch to fill it.
+- `"content"` — each tab takes its own content width, capped at
+  [`tabMaxWidth`](/api/component/container/classes/TabPanel#settabmaxwidth).
+- `"equal"` — every tab matches the widest tab, capped at `tabMaxWidth`.
+- `"fixed"` — every tab takes
+  [`tabFixedWidth`](/api/component/container/classes/TabPanel#settabfixedwidth).
+
+Every mode except `"fill"` leaves the strip full-width with the tabs
+left-aligned. [`setTabUnderBorderFullWidth`](/api/component/container/classes/TabPanel#settabunderborderfullwidth)
+toggles the edge-to-edge rule drawn under the strip. All forward to the wrapped
+[`Tab`](/api/layout/classes/Tab) manager.
+
 ## Accessing the underlying `Tab` manager
 
 For features `TabPanel` doesn't forward (e.g. directly inspecting `Tab`-only state), use [`getTabManager`](/api/component/container/classes/TabPanel#gettabmanager):

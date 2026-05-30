@@ -3,7 +3,7 @@
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
-import { Tab, TabEvent } from "~/layout/Tab.js";
+import { Tab, TabEvent, TabWidthMode } from "~/layout/Tab.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -33,6 +33,14 @@ export interface TabPanelOptions extends PanelOptions {
      * button. Receives the closed tab's content component.
      */
     onTabClose?: (component: Component) => void;
+    /** Tab-button width strategy; defaults to `"fill"`. */
+    tabWidthMode?: TabWidthMode;
+    /** Per-tab maximum width in px for `"content"` / `"equal"` modes; `null` (the default) leaves tabs uncapped. */
+    tabMaxWidth?: number | null;
+    /** Per-tab width in px for `"fixed"` mode; defaults to `120`. */
+    tabFixedWidth?: number;
+    /** Whether the 1px strip under-border runs edge-to-edge; defaults to `true`. */
+    tabUnderBorderFullWidth?: boolean;
 }
 
 /**
@@ -73,6 +81,22 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
         // `layoutManager` via the options bag, `TabPanel`'s identity is the
         // `Tab` manager. Override-by-options would defeat the class.
         this.setLayoutManager(new Tab());
+
+        if (options?.tabWidthMode !== undefined) {
+            this.setTabWidthMode(options.tabWidthMode);
+        }
+
+        if (options?.tabMaxWidth !== undefined) {
+            this.setTabMaxWidth(options.tabMaxWidth);
+        }
+
+        if (options?.tabFixedWidth !== undefined) {
+            this.setTabFixedWidth(options.tabFixedWidth);
+        }
+
+        if (options?.tabUnderBorderFullWidth !== undefined) {
+            this.setTabUnderBorderFullWidth(options.tabUnderBorderFullWidth);
+        }
 
         if (options?.tabs) {
             for (const entry of options.tabs) {
@@ -154,6 +178,97 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
         this.getTabManager().off(event, listener as (component: Component) => void);
 
         return this;
+    }
+
+    /**
+     * Caps every tab cell's width, forwarding to the wrapped {@link Tab} manager.
+     *
+     * @param px - The maximum width per tab in px, or `null` to remove the cap.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabMaxWidth(px: number | null): this {
+        this.getTabManager().setTabMaxWidth(px);
+
+        return this;
+    }
+
+    /**
+     * Returns the current per-tab maximum width.
+     *
+     * @returns The cap in px, or `null` when tabs are uncapped.
+     */
+    getTabMaxWidth(): number | null {
+        return this.getTabManager().getTabMaxWidth();
+    }
+
+    /**
+     * Selects the tab-button width strategy, forwarding to the wrapped
+     * {@link Tab} manager.
+     *
+     * @param mode - The {@link TabWidthMode} to apply.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabWidthMode(mode: TabWidthMode): this {
+        this.getTabManager().setTabWidthMode(mode);
+
+        return this;
+    }
+
+    /**
+     * Returns the current tab-button width strategy.
+     *
+     * @returns The active {@link TabWidthMode}.
+     */
+    getTabWidthMode(): TabWidthMode {
+        return this.getTabManager().getTabWidthMode();
+    }
+
+    /**
+     * Sets the per-tab width used by the `"fixed"` width mode, forwarding to the
+     * wrapped {@link Tab} manager.
+     *
+     * @param px - The fixed width per tab in px.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabFixedWidth(px: number): this {
+        this.getTabManager().setTabFixedWidth(px);
+
+        return this;
+    }
+
+    /**
+     * Returns the per-tab width used by the `"fixed"` width mode.
+     *
+     * @returns The fixed width in px.
+     */
+    getTabFixedWidth(): number {
+        return this.getTabManager().getTabFixedWidth();
+    }
+
+    /**
+     * Toggles the edge-to-edge 1px rule under the tab strip, forwarding to the
+     * wrapped {@link Tab} manager.
+     *
+     * @param full - `true` to draw the strip's full-width under-border, `false` to remove it.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabUnderBorderFullWidth(full: boolean): this {
+        this.getTabManager().setTabUnderBorderFullWidth(full);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the strip's under-border runs edge-to-edge.
+     *
+     * @returns `true` when the full-width under-border is drawn.
+     */
+    isTabUnderBorderFullWidth(): boolean {
+        return this.getTabManager().isTabUnderBorderFullWidth();
     }
 
     /**
