@@ -67,7 +67,7 @@ class Row extends Component {
                 let cell  = Row.createCellForField(field, columnConfigs);
 
                 cell.setValue(value);
-                cell.setOnCommit((newValue) => {
+                cell.on("commit", (newValue) => {
                     if (this._data) {
                         this._data.set(field.getName(), newValue);
                         this._onCellCommit?.(this._data);
@@ -292,7 +292,7 @@ class Row extends Component {
                 cell = Row.createCellForField(field, columnConfigs);
             }
 
-            cell.setOnCommit((newValue) => {
+            cell.on("commit", (newValue) => {
                 if (this._data) {
                     this._data.set(fieldName, newValue);
                     this._onCellCommit?.(this._data);

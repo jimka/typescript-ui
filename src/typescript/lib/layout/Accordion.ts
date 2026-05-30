@@ -57,8 +57,6 @@ export interface AccordionOptions extends LayoutManagerOptions {
     singleOpen?:        boolean;
     headerHeight?:      number;
     animationDuration?: number;
-    /** @deprecated Use `listeners.sectiontoggle`. */
-    onSectionToggle?:   SectionToggleCallback;
     /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
@@ -137,10 +135,6 @@ class Accordion extends LayoutManager {
 
         if (options.listeners?.sectiontoggle !== undefined) {
             this.on("sectiontoggle", options.listeners.sectiontoggle);
-        }
-
-        if (options.onSectionToggle !== undefined) {
-            this.setOnSectionToggle(options.onSectionToggle);
         }
 
         if (options.singleOpen !== undefined) {
@@ -337,21 +331,6 @@ class Accordion extends LayoutManager {
     protected emit(event: "sectiontoggle", index: number, open: boolean): void;
     protected emit(event: AccordionEvent,  ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
-    }
-
-    /**
-     * @deprecated Use `on("sectiontoggle", fn)`. `null` is silently
-     *   dropped; use `off("sectiontoggle", fn)` to detach a specific
-     *   listener.
-     *
-     * @param callback - The callback, or null to drop the call.
-     */
-    setOnSectionToggle(callback: SectionToggleCallback | null): this {
-        if (callback) {
-            this.on("sectiontoggle", callback);
-        }
-
-        return this;
     }
 
     /**

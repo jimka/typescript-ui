@@ -148,24 +148,6 @@ export class Cell<T> extends Component {
     }
 
     /**
-     * @deprecated Use `on("commit", fn)`.
-     *
-     * @param fn - The callback to fire on commit, receiving the committed value.
-     */
-    setOnCommit(fn: (value: T) => void): void {
-        this.on("commit", fn);
-    }
-
-    /**
-     * @deprecated Use `on("editend", fn)`.
-     *
-     * @param fn - Called after the cell returns to renderer view via keyboard action.
-     */
-    setOnEditEnd(fn: () => void): void {
-        this.on("editend", fn);
-    }
-
-    /**
      * Returns true if the cell cannot be edited.
      *
      * @returns True if the cell is read-only.

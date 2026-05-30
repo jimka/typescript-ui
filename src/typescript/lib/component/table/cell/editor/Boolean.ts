@@ -104,15 +104,6 @@ class BooleanEditor extends CellEditor<Boolean | null> {
     }
 
     /**
-     * @deprecated Use `on("change", fn)`.
-     *
-     * @param fn - The callback to invoke with the new boolean value on each change.
-     */
-    setOnChange(fn: (value: Boolean | null) => void): void {
-        this.on("change", fn);
-    }
-
-    /**
      * Returns the cached boolean value, or `null` when the checkbox is
      * still in its initial indeterminate state.
      *
