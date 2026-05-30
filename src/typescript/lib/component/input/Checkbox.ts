@@ -226,7 +226,7 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
         this.applySelected(next, false);
         this.notifyChange(next);
 
-        // Existing consumers wire "click"-based behaviour through `on("click", fn)`,
+        // Existing consumers wire "click"-based behaviour through `on("action", fn)`,
         // so synthesize a "click" on the root so a programmatic state flip
         // continues to fire it. The user-toggle handler lives on `_box`, not
         // the root, so this synthetic event no longer races back into the
