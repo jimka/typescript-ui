@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, DarkTheme, DefaultTheme, ThemeManager } from '@jimka/typescript-ui/core';
+import { ClassicTheme, Component, DarkTheme, ThemeManager } from '@jimka/typescript-ui/core';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Table } from '@jimka/typescript-ui/component/table';
 /**
@@ -253,7 +253,7 @@ export class Benchmark {
         const original = ThemeManager.getTheme();
         const start = performance.now();
         for (let i = 0; i < iterations; i++) {
-            ThemeManager.setTheme(i % 2 === 0 ? DarkTheme : DefaultTheme);
+            ThemeManager.setTheme(i % 2 === 0 ? DarkTheme : ClassicTheme);
         }
         const elapsed = performance.now() - start;
         ThemeManager.setTheme(original);
