@@ -410,6 +410,8 @@ class ComboBoxLabel extends Component {
  * caret past the right edge into `overflow: hidden`).
  */
 class ComboBoxCaret extends Component {
+    private _glyph: Glyph = new Glyph("chevron-down");
+
     constructor() {
         super({ tag: "span" });
         // Lock the size at 16×16 via the typed min/max setters so the box
@@ -419,9 +421,18 @@ class ComboBoxCaret extends Component {
         this.setMaxSize(16, 16);
         this.setPointerEvents("none");
 
-        const glyph = new Glyph("chevron-down");
-        glyph.setPointerEvents("none");
-        this.addComponent(glyph);
+        this._glyph.setPointerEvents("none");
+        this.addComponent(this._glyph);
+    }
+
+    /**
+     * Exposes the trigger glyph so the owning {@link ComboBox} can rotate it in
+     * step with the dropdown's open / close animation.
+     *
+     * @returns The chevron glyph centered in the caret box.
+     */
+    getGlyph(): Glyph {
+        return this._glyph;
     }
 }
 
@@ -656,7 +667,23 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         // keeps the public `showAt` signature unchanged.
         this._dropdown.showAt(this.getElement(true), list.getItems(), list.getSelectedIndex());
         this.getAria().setExpanded(true);
+        this.setCaretOpen(true);
         Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
+    }
+
+    /**
+     * Rotates the caret glyph to mirror the dropdown's open state, timed to the
+     * dropdown's own fade so the arrow and panel move in lock-step. When the
+     * dropdown is non-animated the rotation snaps instantly.
+     *
+     * @param open - `true` to point the chevron up (panel open), `false` to point it down (closed).
+     */
+    private setCaretOpen(open: boolean): void {
+        const glyph = this._caret.getGlyph();
+        const ms    = this._dropdown.isAnimated() ? this._dropdown.getDurationMs() : 0;
+
+        glyph.setTransition(`transform ${ms}ms ease`);
+        glyph.setTransform(open ? "rotate(180deg)" : "rotate(0deg)");
     }
 
     /**
@@ -672,6 +699,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
             Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
             this._dropdown.hideAnimated();
             this.getAria().setExpanded(false);
+            this.setCaretOpen(false);
         }
     }
 
