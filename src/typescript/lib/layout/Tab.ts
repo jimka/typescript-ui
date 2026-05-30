@@ -348,7 +348,7 @@ class Tab extends LayoutManager {
         tabButton.setInsets(new Insets(0, 4, 0, 4));
         tabButton.getText().setInsets(new Insets(0, 4, 0, 4));
 
-        tabButton.on("change", () => this.onTabPressed(tabButton));
+        tabButton.on("action", () => this.onTabPressed(tabButton));
 
         const wrapperHBox = new HBox();
         wrapperHBox.setComponentSpacing(0);
@@ -385,7 +385,7 @@ class Tab extends LayoutManager {
         };
 
         if (closeButton) {
-            closeButton.on("click", () => this.closeTab(entry));
+            closeButton.on("action", () => this.closeTab(entry));
         }
 
         this._tabs.push(entry);

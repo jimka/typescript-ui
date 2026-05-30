@@ -61,25 +61,25 @@ class TreeTablePanel extends Panel {
 
         const addBtn = new Button({ glyph: "plus" });
         addBtn.setPreferredSize(28, 28);
-        addBtn.on("click", () => this.addRowUnderSelection());
+        addBtn.on("action", () => this.addRowUnderSelection());
         Tooltip.attach(addBtn, "Add row");
         this._toolbar.addComponent(addBtn);
 
         const removeBtn = new Button({ glyph: "minus" });
         removeBtn.setPreferredSize(28, 28);
-        removeBtn.on("click", () => this._treeTable.removeSelectedRow());
+        removeBtn.on("action", () => this._treeTable.removeSelectedRow());
         Tooltip.attach(removeBtn, "Remove selected row");
         this._toolbar.addComponent(removeBtn);
 
         this._syncBtn = new Button({ glyph: "arrows-rotate" });
         this._syncBtn.setPreferredSize(28, 28);
-        this._syncBtn.on("click", () => this._treeTable.sync());
+        this._syncBtn.on("action", () => this._treeTable.sync());
         Tooltip.attach(this._syncBtn, "Sync pending changes");
         this._toolbar.addComponent(this._syncBtn);
 
         this._rejectBtn = new Button({ glyph: "ban" });
         this._rejectBtn.setPreferredSize(28, 28);
-        this._rejectBtn.on("click", () => this._treeTable.reject());
+        this._rejectBtn.on("action", () => this._treeTable.reject());
         Tooltip.attach(this._rejectBtn, "Reject pending changes");
         this._toolbar.addComponent(this._rejectBtn);
 

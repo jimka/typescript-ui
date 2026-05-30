@@ -24,7 +24,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type ButtonEvent = "click";
+export type ButtonEvent = "action";
 
 /**
  * The handler shape consumers register for the `"click"` button event.
@@ -448,35 +448,36 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Registers a listener for one of this button's events. A typed
-     * shorthand over {@link Event.addListener} — `"click"` is currently the
-     * only allowed event name. Future DOM events Button wants to expose are
-     * added by widening `ButtonEvent`.
+     * Registers a listener for this button's `"action"` event — fired on
+     * click. A typed semantic shorthand over {@link Event.addListener}
+     * (the underlying DOM event is `"click"`); `"action"` is currently the
+     * only allowed event name.
      *
-     * @param event - The event name. Only `"click"` is accepted.
-     * @param listener - The callback to invoke when the event fires.
+     * @param event - The event name. Only `"action"` is accepted.
+     * @param listener - The callback to invoke when the button is actioned.
      *
      * @returns This button, for method chaining.
      */
-    on(event: "click",     listener: ClickListener): this;
-    on(event: ButtonEvent, listener: ClickListener): this {
-        Event.addListener(this, event, listener);
+    on(event: "action", listener: ClickListener): this;
+    on(_event: "action", listener: ClickListener): this {
+        Event.addListener(this, "click", listener);
 
         return this;
     }
 
     /**
-     * Removes a previously registered listener. A typed shorthand over
-     * {@link Event.removeListener}; the exact callback reference must match.
+     * Removes a previously registered `"action"` listener. A typed shorthand
+     * over {@link Event.removeListener}; the exact callback reference must
+     * match the one passed to {@link on}.
      *
      * @param event - The event the listener was registered for.
      * @param listener - The callback to remove.
      *
      * @returns This button, for method chaining.
      */
-    off(event: "click",     listener: ClickListener): this;
-    off(event: ButtonEvent, listener: ClickListener): this {
-        Event.removeListener(this, event, listener);
+    off(event: "action", listener: ClickListener): this;
+    off(_event: "action", listener: ClickListener): this {
+        Event.removeListener(this, "click", listener);
 
         return this;
     }

@@ -125,7 +125,7 @@ abstract class AbstractPickerField<
         // Route button events through the named-method surface — never raw
         // `Event.addListener(button, …)` per ARCHITECTURE.md's "component
         // owns its event surface" rule.
-        this._button.on("click", ()                => this.onButtonClick());
+        this._button.on("action", ()                => this.onButtonClick());
         // Suppress focus loss when clicking the button (it would blur the input).
         this._button.addPointerDownListener((e: PointerEvent) => this.onButtonPointerDown(e));
 

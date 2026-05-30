@@ -42,7 +42,7 @@ class BooleanEditor extends CellEditor<Boolean | null> {
         this._checkBox.setAnimated(false);
         this.addComponent(this._checkBox);
 
-        this._checkBox.on("click", () => {
+        this._checkBox.on("action", () => {
             // `Checkbox.setSelected` dispatches a synthetic
             // `CustomEvent("click")` on the root for backward-compat with
             // `on("click", fn)` consumers, which fires for BOTH real user

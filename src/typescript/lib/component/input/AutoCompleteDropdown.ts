@@ -109,7 +109,7 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
         // keyboard reducer mutates the selection set). Programmatic
         // writes (`setItemsArray`) bypass this path, so re-opening the
         // dropdown doesn't trigger a spurious commit.
-        this._list.on("change", () => {
+        this._list.on("action", () => {
             const value = this._list.getValue();
 
             if (value) {

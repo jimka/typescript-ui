@@ -141,7 +141,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         // writes (`setItemsArray`, `setSelectedIndex(idx, false)` used
         // by `showAt`) bypass this path, so re-opening the dropdown
         // doesn't trigger a spurious commit.
-        this._list.on("change", () => onSelect(this._list.getSelectedIndex()));
+        this._list.on("action", () => onSelect(this._list.getSelectedIndex()));
     }
 
     /**
@@ -771,26 +771,28 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Registers a listener for one of this combo box's events. `"change"`
-     * is a typed shorthand over {@link Event.addListener} for the DOM change
-     * event, fired on each selection change. `"binding"` is the inherited
-     * {@link AbstractInput} listener-bag event.
+     * Registers a listener for one of this combo box's events. `"action"`
+     * is a typed semantic shorthand over {@link Event.addListener} for the
+     * DOM change event, fired on each selection change. `"change"` and
+     * `"binding"` are the inherited {@link AbstractInput} listener-bag
+     * events.
      *
      * @param event - The event name.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This component, for method chaining.
      */
-    on(event: "change",  listener: Function): this;
+    on(event: "action",  listener: Function): this;
+    on(event: "change",  listener: (value: string) => void): this;
     on(event: "binding", listener: () => void): this;
-    on(event: "change" | "binding", listener: Function): this {
-        if (event === "change") {
+    on(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
             Event.addListener(this, "change", listener);
 
             return this;
         }
 
-        return super.on("binding", listener as () => void);
+        return super.on(event as "change", listener as (value: string) => void);
     }
 
     /**
@@ -802,14 +804,14 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      *
      * @returns This component, for method chaining.
      */
-    off(event: "change" | "binding", listener: Function): this {
-        if (event === "change") {
+    off(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
             Event.removeListener(this, "change", listener);
 
             return this;
         }
 
-        return super.off("binding", listener);
+        return super.off(event, listener);
     }
 
     /**

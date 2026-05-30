@@ -393,21 +393,22 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
     }
 
     /**
-     * Registers a listener for one of this slider's events. `"input"` is a
-     * typed shorthand over {@link Event.addListener} for the value-change
-     * event (fired on each drag step); `"change"` and `"binding"` are the
-     * inherited {@link AbstractInput} listener-bag events.
+     * Registers a listener for one of this slider's events. `"action"` is a
+     * typed semantic shorthand over {@link Event.addListener} for the
+     * value-change event (the native `input`, fired on each drag step);
+     * `"change"` and `"binding"` are the inherited {@link AbstractInput}
+     * listener-bag events.
      *
      * @param event - The event name.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This component, for method chaining.
      */
-    on(event: "input",   listener: Function): this;
+    on(event: "action",  listener: Function): this;
     on(event: "change",  listener: (value: number) => void): this;
     on(event: "binding", listener: () => void): this;
-    on(event: "input" | "change" | "binding", listener: Function): this {
-        if (event === "input") {
+    on(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
             Event.addListener(this, "input", listener);
 
             return this;
@@ -425,8 +426,8 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
      *
      * @returns This component, for method chaining.
      */
-    off(event: "input" | "change" | "binding", listener: Function): this {
-        if (event === "input") {
+    off(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
             Event.removeListener(this, "input", listener);
 
             return this;
