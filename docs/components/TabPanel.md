@@ -42,7 +42,7 @@ The factory runs once, the first time the user activates the tab.
 Either the construction-time `onTabClose` option or [`setOnTabClose`](/api/component/container/classes/TabPanel#setontabclose) wires a callback for closeable tabs:
 
 ```typescript
-tabs.setOnTabClose(component => store.removeBinding(component));
+tabs.on("tabclose", component => store.removeBinding(component));
 ```
 
 The callback fires after the tab is removed; the closed component is passed in so callers can dispose any external state.

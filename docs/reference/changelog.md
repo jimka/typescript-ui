@@ -6,6 +6,13 @@ Release history. For breaking-change details by version, see [Migration](/refere
 
 The package is at version `0.0.0` — pre-release, not yet published. Until a `0.x` or `1.0.0` is tagged, anything here may change without a migration note. Highlights below describe work-in-progress capabilities of the development snapshot, not stable contracts.
 
+**Unified listener surface — `on` / `off` / `emit`** (breaking — every `addXxxListener` / `setOnXxx` removed):
+
+- **One registration verb everywhere.** Every emitting class now exposes its events through a typed `on(event, fn)` / `off(event, fn)` pair (custom events also expose a `protected emit`). The per-class `addXxxListener` / `removeXxxListener` pairs and the single-slot `setOnXxx` setters are gone — including `Button.addActionListener`, `AbstractInput.addChangeListener` / `addBindingListener`, `Binding.add{Change,Commit,Reject,BeforeRecord}Listener`, `Tree` / `ButtonGroup` `addSelectionListener`, `Scrollbar` / `SpinButton` tick & scroll listeners, `WindowBorder` / `SplitGutter` `addDragListener`, and the `Cell` / `HeaderCell` / `Header` / `ResizeHandle` / `Accordion` / `Tab` / `TabPanel` / `BooleanEditor` `setOnXxx` family.
+- **Migration is mechanical:** `x.addActionListener(fn)` → `x.on("click", fn)` (Button); `slider.addChangeListener(fn)` → `slider.on("change", fn)`; `combo.addActionListener(fn)` → `combo.on("change", fn)`; `field.addBindingListener(fn)` → `field.on("binding", fn)`; `binding.addCommitListener(fn)` → `binding.on("commit", fn)`; `cell.setOnCommit(fn)` → `cell.on("commit", fn)`; and so on. Each class's event name matches the old method's domain (`"click"`, `"input"`, `"change"`, `"selection"`, `"scroll"`, `"tick"`, `"drag"`, `"commit"`, `"editend"`, `"tabclose"`, `"sectiontoggle"`, …).
+- **Construction-time wiring** moves from the legacy single-callback option fields (`ResizeHandleOptions.onDragStart`, `AccordionOptions.onSectionToggle`, `TabOptions.onTabClose`) to a `listeners?: { [event]?: fn }` bag dispatched to `on(...)`. The Panel-level `AccordionPanel` / `TabPanel` `onSectionToggle` / `onTabClose` convenience options are unchanged.
+- **The `Bindable` interface** now requires `on("binding", fn)` instead of `addBindingListener(fn)`.
+
 **HBox / VBox sizing mode** (replaces `Column` / `Row`; additive `mode` option, two class deletions):
 
 - **New `mode: "preferred" | "equal"` option on [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox).** `"preferred"` (default) preserves the existing preferred-width / preferred-height sequencing with `weight`-cell support and the overflow shrink-to-min path. `"equal"` divides the container's inner extent equally among children, clamping the per-cell floor to the largest child's min size on the main axis; `weight` constraints are silently ignored in this mode. The `stretching` default depends on `mode`: `false` for `"preferred"`, `true` for `"equal"`. The explicit `stretching` option always wins.
@@ -203,7 +210,7 @@ The package is at version `0.0.0` — pre-release, not yet published. Until a `0
 
 **Data-binding additions** (additive):
 
-- **`Binding.addBeforeRecordListener`.** Registers a synchronous veto listener consulted before `setRecord` mutates any state. Listener returns `false` to cancel the change; iteration short-circuits on the first veto. Use it for programmatic guards such as "refuse to switch records while the current one is dirty". Async confirmation flows still belong at the call site — `setRecord` stays synchronous. New exported type `BeforeRecordListener` from `@jimka/typescript-ui/core`.
+- **`Binding.on("beforerecord", fn)`.** Registers a synchronous veto listener consulted before `setRecord` mutates any state. Listener returns `false` to cancel the change; iteration short-circuits on the first veto. Use it for programmatic guards such as "refuse to switch records while the current one is dirty". Async confirmation flows still belong at the call site — `setRecord` stays synchronous. New exported type `BeforeRecordListener` from `@jimka/typescript-ui/core`.
 
 **Declarative-construction additions** (all additive — every `new X(...)` call site still works):
 

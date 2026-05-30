@@ -10,7 +10,7 @@
 import { Toggle } from '@jimka/typescript-ui/component/input';
 const wifi = Toggle({ label: 'Wi-Fi', value: true });
 
-wifi.addChangeListener(on => {
+wifi.on("change", on => {
     console.log('wifi is now', on ? 'on' : 'off');
 });
 
@@ -26,8 +26,8 @@ panel.addComponent(wifi);
 | `getLabel()` / `setLabel(text \| null)` | Optional inline label. |
 | `isEnabled()` / `setEnabled(boolean)` | Toggle interactivity; `false` removes keyboard focus. |
 | `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user-driven changes. |
-| `addChangeListener(fn)` / `removeChangeListener(fn)` | Subscribe to value changes. |
-| `addBindingListener(fn)` | Used by [`Binding`](/data/binding). |
+| `on("change", fn)` / `off("change", fn)` | Subscribe to value changes. |
+| `on("binding", fn)` | Used by [`Binding`](/data/binding). |
 
 ## Notes
 

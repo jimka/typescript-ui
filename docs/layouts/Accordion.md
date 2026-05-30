@@ -47,7 +47,7 @@ sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 
 ## Toggle callback
 
-Pass `onSectionToggle` in the constructor (preferred) or call `setOnSectionToggle` later:
+Pass a `listeners: { sectiontoggle }` bag in the constructor (preferred) or call `on("sectiontoggle", fn)` later:
 
 ```typescript
 import { SectionToggleCallback } from '@jimka/typescript-ui/layout';
@@ -55,7 +55,9 @@ const onToggle: SectionToggleCallback = (index, open) => {
     console.log(`section ${index} now ${open ? 'open' : 'closed'}`);
 };
 
-accordion.setOnSectionToggle(onToggle);
+const accordion = new Accordion({ listeners: { sectiontoggle: onToggle } });
+// …or after construction:
+accordion.on("sectiontoggle", onToggle);
 ```
 
 ## Animation

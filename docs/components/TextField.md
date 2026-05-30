@@ -24,8 +24,8 @@ panel.addComponent(nameField);
 | --- | --- |
 | `getValue()` / `setValue(text)` | Read / write the field's text. Inherited from [`AbstractInput<string>`](/api/component/input/classes/AbstractInput). |
 | `setText(text)` / `getText()` | Alias retained from the abstract base. |
-| `addChangeListener(fn)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); fires on every keystroke with the current text value. |
-| `addBindingListener(fn)` | Subscribe to user-driven changes (used by `Binding`). |
+| `on("change", fn)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); fires on every keystroke with the current text value. |
+| `on("binding", fn)` | Subscribe to user-driven changes (used by `Binding`). |
 | `setEnabled(boolean)` / `setReadOnly(boolean)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); writes the native `disabled` / `readonly` attributes on the underlying `<input>`. |
 | `select()` | Select all current text. |
 

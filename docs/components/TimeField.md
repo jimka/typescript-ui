@@ -30,8 +30,8 @@ panel.addComponent(startTime);
 | --- | --- |
 | `getValue()` | Returns the entered time as a Date, or `null` when empty. |
 | `setValue(date \| null)` | Programmatically set the time. |
-| `addChangeListener(fn)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); the callback receives the parsed `Date \| null`. Replaces the prior `addActionListener` shim whose callback received the raw DOM event. |
-| `addBindingListener(fn)` | Subscribe to user-driven changes (used by `Binding`). |
+| `on("change", fn)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); the callback receives the parsed `Date \| null`. Replaces the prior `addActionListener` shim whose callback received the raw DOM event. |
+| `on("binding", fn)` | Subscribe to user-driven changes (used by `Binding`). |
 | `setEnabled(boolean)` / `setReadOnly(boolean)` | Inherited from [`AbstractInput`](/api/component/input/classes/AbstractInput); both forward to the inner [`PickerInput`](/api/component/input/classes/PickerInput). |
 | `setDropdownAnimated(boolean)` | Toggle the fade animation on the time dropdown. |
 

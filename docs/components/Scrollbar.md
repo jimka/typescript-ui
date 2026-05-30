@@ -17,7 +17,7 @@ const bar = Scrollbar('vertical');
 bar.setHeight(400);                 // track length on the scroll axis
 bar.setX(container.getWidth() - 12);// place on the right edge
 
-bar.addScrollListener((position) => {
+bar.on("scroll", (position) => {
     // user dragged the thumb or clicked the track — react here
     contentEl.scrollTop = position;
 });
@@ -39,7 +39,7 @@ The scrollbar hides itself automatically when `contentSize <= viewportSize`.
 const bar = Scrollbar('horizontal');
 bar.setWidth(800);                          // primary axis = width
 bar.setY(container.getHeight() - 12);       // cross axis = bottom edge
-bar.addScrollListener(x => contentEl.scrollLeft = x);
+bar.on("scroll", x => contentEl.scrollLeft = x);
 bar.setMetrics(viewportWidth, contentWidth, scrollX);
 ```
 
@@ -50,7 +50,7 @@ The track-width constant (12 px) is shared across orientations and exposed via `
 | Method | Purpose |
 | --- | --- |
 | `setMetrics(viewport, content, position)` | Push the current scroll state; recomputes thumb size and position. |
-| `addScrollListener(fn)` / `removeScrollListener(fn)` | Subscribe to user-driven scroll changes (`fn(position)`). |
+| `on("scroll", fn)` / `off("scroll", fn)` | Subscribe to user-driven scroll changes (`fn(position)`). |
 | `getTrackWidth()` | The fixed cross-axis dimension in pixels (use it for owner-side layout reservation). |
 | `getOrientation()` | `"vertical"` or `"horizontal"`. |
 | `setArrowsEnabled(b)` / `isArrowsEnabled()` | Toggle end-cap arrow buttons (see below). |

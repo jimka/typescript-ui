@@ -30,7 +30,7 @@ panel.addComponent(quantity);
 | `setMin(n)` / `setMax(n)` | Range clamping. |
 | `setStep(n)` | Increment per spin click and keyboard arrow press. |
 | `setPrecision(n)` | Number of decimal digits in the displayed text. |
-| `addBindingListener(fn)` | Subscribe to user-driven changes (used by `Binding`). |
+| `on("binding", fn)` | Subscribe to user-driven changes (used by `Binding`). |
 
 ## Behavior
 

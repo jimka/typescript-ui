@@ -44,7 +44,7 @@ group.setContainer(toolbar); // enables roving tabindex
 ## Listening for changes
 
 ```typescript
-group.addSelectionListener(button => {
+group.on("selection", button => {
     console.log('selected:', button.getText());
 });
 ```
@@ -55,7 +55,7 @@ group.addSelectionListener(button => {
 | --- | --- |
 | `addButton(button)` | Add a `RadioButton` or `ToggleButton` to the group. |
 | `setContainer(component)` | Wire roving tabindex (toggle groups only). |
-| `addSelectionListener(fn)` | Subscribe to selection changes. |
+| `on("selection", fn)` | Subscribe to selection changes. |
 | `getSelected()` | Return the currently selected button or `null`. |
 
 ## See also
