@@ -184,6 +184,12 @@ export interface Theme {
                 border    : string;
             };
         };
+        indicator: {
+            /** Fill colour of the sliding active-tab selection bar. */
+            color    : string;
+            /** Thickness (CSS length) of the indicator bar. */
+            thickness: string;
+        };
     };
 
     window: {
@@ -558,6 +564,8 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-tab-button-hover-border'          : theme.tab.button.hover.border,
         '--ts-ui-tab-button-selected-bg'           : theme.tab.button.selected.background,
         '--ts-ui-tab-button-selected-border'       : theme.tab.button.selected.border,
+        '--ts-ui-tab-indicator-color'              : theme.tab.indicator.color,
+        '--ts-ui-tab-indicator-thickness'          : theme.tab.indicator.thickness,
         '--ts-ui-window-shadow'                    : theme.window.shadow,
         '--ts-ui-window-snap-glow'                 : theme.window.snapGlow,
         '--ts-ui-window-min-dock-width'            : theme.window.minDockWidth,

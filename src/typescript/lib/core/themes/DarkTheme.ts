@@ -95,6 +95,7 @@ export const DarkTheme: Theme = {
             hover     : { background: '#454545',          border: 'none' },
             selected  : { background: 'rgb(30, 30, 30)', border: 'none' },
         },
+        indicator: { color: '#4a9eff', thickness: '2px' },
     },
     window    : {
         shadow      : '3px 3px 2px rgba(0, 0, 0, 0.6)',

@@ -26,8 +26,34 @@ import { callable } from "~/core/Callable.js";
  */
 export type TabEvent = "tabclose";
 
-/** Duration (ms) of the cross-tab fade-in transition. */
+/**
+ * Tab-button width strategy for the {@link Tab} strip.
+ *
+ * - `"fill"` — tabs split the strip equally and stretch to fill it (default).
+ * - `"content"` — each tab takes its own content width, capped at `tabMaxWidth`.
+ * - `"equal"` — every tab takes the width of the widest tab, capped at
+ *   `tabMaxWidth`.
+ * - `"fixed"` — every tab takes `tabFixedWidth`.
+ *
+ * Every mode except `"fill"` leaves the strip full-width with the tabs
+ * left-aligned and any leftover space empty.
+ *
+ * @category Layouts
+ */
+export type TabWidthMode = "fill" | "content" | "equal" | "fixed";
+
+/**
+ * Duration (ms) shared by the cross-tab content fade-in and the selection
+ * indicator's slide. Matches `AnimatedDropdown`'s default so tabs and the
+ * ComboBox caret animate at the same pace.
+ */
 const TAB_FADE_DURATION_MS = 120;
+
+/** Side length (px) of the square close button overlaid on closeable tabs. */
+const CLOSE_BUTTON_SIZE = 16;
+
+/** Side length (px) of the ✕ glyph inside the close button (half the hit box). */
+const CLOSE_GLYPH_SIZE = 8;
 
 /**
  * Construction-time options for {@link Tab}.
@@ -42,6 +68,18 @@ export interface TabOptions extends LayoutManagerOptions {
     listeners?: {
         tabclose?: (component: Component) => void;
     };
+
+    /** Tab-button width strategy; defaults to `"fill"`. */
+    tabWidthMode?: TabWidthMode;
+
+    /** Per-tab maximum width in px for `"content"` / `"equal"` modes; `null` (the default) leaves tabs uncapped. */
+    tabMaxWidth?: number | null;
+
+    /** Per-tab width in px for `"fixed"` mode; defaults to `120`. */
+    tabFixedWidth?: number;
+
+    /** Whether the 1px strip under-border runs edge-to-edge; defaults to `true`. */
+    tabUnderBorderFullWidth?: boolean;
 }
 
 /**
@@ -86,6 +124,88 @@ interface TabEntry {
 }
 
 /**
+ * The single shared selection bar that slides under the active tab. Styles
+ * itself entirely from theme tokens; {@link Tab} drives its horizontal position
+ * and width via {@link slideTo} on each layout pass.
+ *
+ * @remarks Lives as a raw-appended overlay inside the tab toolbar's element
+ * rather than a laid-out child, so the toolbar's `HBox` never allocates it a
+ * tab-cell slot.
+ */
+class TabIndicator extends Component {
+    private _barLeft: number = 0;
+
+    /**
+     * Builds the indicator. Colour and the fade transition go through the
+     * framework-tracked setters so they survive `applyStyle`'s inline-style
+     * wipe; the token-driven bottom/height geometry is re-applied in the
+     * `applyStyle` override below, which the base setters don't know about.
+     */
+    constructor() {
+        super();
+
+        this.setBackgroundColor("var(--ts-ui-tab-indicator-color, #1a73e8)");
+        this.setTransition(`transform ${TAB_FADE_DURATION_MS}ms ease, width ${TAB_FADE_DURATION_MS}ms ease`);
+        this.setPointerEvents("none");
+        // Raw-appended before any tab wrapper exists, so it sits first in DOM
+        // order; lift it above the opaque tab buttons that would otherwise
+        // paint over its 2px sliver.
+        this.setZIndex(2);
+    }
+
+    /**
+     * Positions the bar over the active tab cell. `width` routes through the
+     * tracked `setWidth` (replayed by `applyStyle`); the horizontal offset is
+     * cached and written as a `transform` via {@link applyBarGeometry}.
+     *
+     * @param left - The active tab cell's left offset within the strip, in px.
+     * @param width - The active tab cell's width, in px.
+     *
+     * @returns This indicator, for chaining.
+     */
+    slideTo(left: number, width: number): this {
+        this._barLeft = left;
+        this.setWidth(width);
+
+        if (this.getElement()) {
+            this.applyBarGeometry();
+        }
+
+        return this;
+    }
+
+    /**
+     * Re-applies the token-driven bar geometry after the base re-render, which
+     * strips inline styles and only replays the fields it tracks.
+     *
+     * @param element - The indicator's DOM element.
+     *
+     * @returns This indicator, for chaining.
+     */
+    applyStyle(element: HTMLElement): this {
+        super.applyStyle(element);
+        this.applyBarGeometry();
+
+        return this;
+    }
+
+    /**
+     * Writes the absolute bottom-edge placement, token thickness, and current
+     * horizontal transform — the styles the base `applyStyle` doesn't replay.
+     *
+     * @returns This indicator, for chaining.
+     */
+    private applyBarGeometry(): this {
+        return this.setElementStyles({
+            left     : "0",
+            bottom   : "0",
+            height   : "var(--ts-ui-tab-indicator-thickness, 2px)",
+            transform: `translateX(${this._barLeft}px)`,
+        });
+    }
+}
+
+/**
  * A layout manager that renders a row of tab buttons above the container content area
  * and shows exactly one child component at a time based on the selected tab.
  * Tab button labels are taken from `LayoutConstraints.name` when available,
@@ -105,6 +225,12 @@ class Tab extends LayoutManager {
     // selection changes (not on every relayout, e.g. window resize).
     private _lastFadedTabIndex: number = -1;
     private _listeners: ListenerBag<TabEvent> = new ListenerBag<TabEvent>();
+
+    private _tabWidthMode: TabWidthMode = "fill";
+    private _tabMaxWidth: number | null = null;
+    private _tabFixedWidth: number = 120;
+    private _underBorderFullWidth: boolean = true;
+    private _indicator: TabIndicator = new TabIndicator();
 
     /**
      * Creates a Tab layout manager with an empty toolbar.
@@ -137,6 +263,201 @@ class Tab extends LayoutManager {
         if (options.listeners?.tabclose !== undefined) {
             this.on("tabclose", options.listeners.tabclose);
         }
+
+        if (options.tabWidthMode !== undefined) {
+            this.setTabWidthMode(options.tabWidthMode);
+        }
+
+        if (options.tabMaxWidth !== undefined) {
+            this.setTabMaxWidth(options.tabMaxWidth);
+        }
+
+        if (options.tabFixedWidth !== undefined) {
+            this.setTabFixedWidth(options.tabFixedWidth);
+        }
+
+        if (options.tabUnderBorderFullWidth !== undefined) {
+            this.setTabUnderBorderFullWidth(options.tabUnderBorderFullWidth);
+        }
+    }
+
+    /**
+     * Selects the tab-button width strategy (see {@link TabWidthMode}) and
+     * re-lays out the strip.
+     *
+     * @param mode - The width strategy to apply.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setTabWidthMode(mode: TabWidthMode): this {
+        this._tabWidthMode = mode;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the current tab-button width strategy.
+     *
+     * @returns The active {@link TabWidthMode}.
+     */
+    getTabWidthMode(): TabWidthMode {
+        return this._tabWidthMode;
+    }
+
+    /**
+     * Sets the per-tab width cap used by the `"content"` and `"equal"` width
+     * modes, then re-lays out the strip.
+     *
+     * @param px - The maximum width per tab in px, or `null` to remove the cap.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setTabMaxWidth(px: number | null): this {
+        this._tabMaxWidth = px;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the current per-tab maximum width.
+     *
+     * @returns The cap in px, or `null` when tabs are uncapped.
+     */
+    getTabMaxWidth(): number | null {
+        return this._tabMaxWidth;
+    }
+
+    /**
+     * Sets the per-tab width used by the `"fixed"` width mode, then re-lays out
+     * the strip.
+     *
+     * @param px - The fixed width per tab in px.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setTabFixedWidth(px: number): this {
+        this._tabFixedWidth = px;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the per-tab width used by the `"fixed"` width mode.
+     *
+     * @returns The fixed width in px.
+     */
+    getTabFixedWidth(): number {
+        return this._tabFixedWidth;
+    }
+
+    /**
+     * Applies the active {@link TabWidthMode} to the toolbar layout and every
+     * tab wrapper. Called from `doLayout` before the toolbar lays out so the
+     * widths are in place when the strip positions its tabs.
+     *
+     * @remarks `"fill"` uses the toolbar's `equal` HBox (tabs stretch to share
+     * the strip). Every other mode switches to `preferred` (tabs left-aligned,
+     * leftover empty) and pins each wrapper's width: `"content"` caps the
+     * natural width at `tabMaxWidth`; `"equal"` and `"fixed"` clamp min and max
+     * to a single uniform width so every tab matches.
+     */
+    private applyTabWidths(): void {
+        const hbox = this._toolbar.getLayoutManager() as HBox;
+
+        if (this._tabWidthMode === "fill") {
+            hbox.setMode("equal");
+
+            for (const entry of this._tabs) {
+                entry.wrapper.setMinSize(0, 0);
+                entry.wrapper.setMaxSize(Number.MAX_VALUE, Number.MAX_VALUE);
+            }
+
+            return;
+        }
+
+        hbox.setMode("preferred");
+
+        if (this._tabWidthMode === "content") {
+            const cap = this._tabMaxWidth ?? Number.MAX_VALUE;
+
+            for (const entry of this._tabs) {
+                entry.wrapper.setMinSize(0, 0);
+                entry.wrapper.setMaxSize(cap, Number.MAX_VALUE);
+            }
+
+            return;
+        }
+
+        // "equal" / "fixed": pin every wrapper to a single uniform width.
+        let width: number;
+
+        if (this._tabWidthMode === "fixed") {
+            width = this._tabFixedWidth;
+        } else {
+            let widest = 0;
+
+            for (const entry of this._tabs) {
+                const preferred = entry.button.getPreferredSize();
+
+                if (preferred) {
+                    widest = Math.max(widest, preferred.width);
+                }
+            }
+
+            width = Math.min(widest, this._tabMaxWidth ?? Number.MAX_VALUE);
+        }
+
+        // Pre-measurement guard: fall back to natural widths until the tab
+        // buttons have reported a real preferred size.
+        if (width <= 0) {
+            for (const entry of this._tabs) {
+                entry.wrapper.setMinSize(0, 0);
+                entry.wrapper.setMaxSize(Number.MAX_VALUE, Number.MAX_VALUE);
+            }
+
+            return;
+        }
+
+        for (const entry of this._tabs) {
+            entry.wrapper.setMinSize(width, 0);
+            entry.wrapper.setMaxSize(width, Number.MAX_VALUE);
+        }
+    }
+
+    /**
+     * Toggles the edge-to-edge 1px rule under the tab strip.
+     *
+     * @param full - `true` to draw the strip's full-width under-border, `false` to remove it.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setTabUnderBorderFullWidth(full: boolean): this {
+        this._underBorderFullWidth = full;
+
+        if (full) {
+            this._toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
+        } else {
+            this._toolbar.clearBorder();
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns whether the strip's under-border runs edge-to-edge.
+     *
+     * @returns `true` when the full-width under-border is drawn.
+     */
+    isTabUnderBorderFullWidth(): boolean {
+        return this._underBorderFullWidth;
     }
 
     /**
@@ -170,6 +491,12 @@ class Tab extends LayoutManager {
 
         let element = this._toolbar.getElement(true);
         container.getElement(true).appendChild(element);
+
+        // Raw-append the selection indicator as an overlay inside the toolbar
+        // element. Going through `addComponent` would enrol it in the toolbar's
+        // `HBox`, which would then allocate it a tab-cell slot and shrink the
+        // real buttons; the indicator must be positioned manually instead.
+        element.appendChild(this._indicator.getElement(true));
 
         this._toolbar.getAria().setRole("tablist");
 
@@ -365,32 +692,58 @@ class Tab extends LayoutManager {
         tabButton.setSelectedShadow("none");
         tabButton.setSelectedBorder("var(--ts-ui-tab-button-selected-border, none)");
 
-        tabButton.setInsets(new Insets(0, 4, 0, 4));
+        // Reserve room on the right for the overlaid close button on closeable
+        // tabs so a long label doesn't run under the ✕.
+        const rightInset = constraints?.closeable ? CLOSE_BUTTON_SIZE + 4 : 4;
+        tabButton.setInsets(new Insets(0, rightInset, 0, 4));
         tabButton.getText().setInsets(new Insets(0, 4, 0, 4));
 
         tabButton.on("action", () => this.onTabPressed(tabButton));
 
-        const wrapperHBox = new HBox();
-        wrapperHBox.setComponentSpacing(0);
-        wrapperHBox.setStretching(true);
-
+        // The tab button fills the whole cell (Fit) so its per-state background
+        // spans the full width; the close button is overlaid on top at the
+        // right rather than placed as a sibling, so the tab reads as one
+        // surface with a ✕ in its corner instead of two abutting buttons.
         const wrapper = new Component();
-        wrapper.setLayoutManager(wrapperHBox);
+        wrapper.setLayoutManager(new Fit());
         wrapper.setBackgroundColor("transparent");
         wrapper.clearBorder();
         wrapper.clearShadow();
         wrapper.setInsets(new Insets(0, 0, 0, 0));
 
-        wrapper.addComponent(tabButton, { weight: 1 });
+        wrapper.addComponent(tabButton);
 
         let closeButton: TabCloseButton | undefined;
 
         if (constraints?.closeable) {
             closeButton = new TabCloseButton();
+
+            // Transparent so the tab's own background shows through; a faint
+            // rounded tint on hover gives the ✕ its affordance.
+            closeButton.setBackgroundColor("transparent");
+            closeButton.setBackgroundImage("none");
+            closeButton.setHoverBackgroundColor("var(--ts-ui-tab-close-hover-bg, rgba(0, 0, 0, 0.12))");
+            closeButton.setHoverBackgroundImage("none");
+            closeButton.setHoverShadow("none");
+            closeButton.setBorderRadius("3px");
             closeButton.clearBorder();
-            closeButton.clearBorderRadius();
             closeButton.clearShadow();
-            wrapper.addComponent(closeButton);
+            closeButton.setZIndex(1);
+
+            // Shrink the ✕ glyph to half the hit box, centred — the 16px button
+            // stays the click target while the mark itself reads lighter.
+            const glyph = closeButton.getGlyph();
+
+            if (glyph) {
+                glyph.setPreferredSize(CLOSE_GLYPH_SIZE, CLOSE_GLYPH_SIZE);
+                glyph.setMinSize(CLOSE_GLYPH_SIZE, CLOSE_GLYPH_SIZE);
+                glyph.setMaxSize(CLOSE_GLYPH_SIZE, CLOSE_GLYPH_SIZE);
+            }
+
+            // Overlay it inside the cell rather than enrolling it in the Fit
+            // layout (which would stretch it over the whole tab); `doLayout`
+            // pins it to the right edge.
+            wrapper.getElement(true).appendChild(closeButton.getElement(true));
         }
 
         const entry: TabEntry = {
@@ -666,7 +1019,31 @@ class Tab extends LayoutManager {
         this._toolbar.setWidth(containerSize ? containerSize.width : 0);
         this._toolbar.setHeight(toolbarHeight);
 
+        this.applyTabWidths();
         this._toolbar.doLayout();
+
+        // Slide the selection bar over the active tab cell. The HBox has just
+        // positioned every wrapper, so the active wrapper's left/width are
+        // valid; guard against the pre-render pass where the cell has no width.
+        const activeWrapper = this._tabs[this._selectedTabIndex]?.wrapper;
+
+        if (activeWrapper && activeWrapper.getWidth() > 0) {
+            this._indicator.slideTo(activeWrapper.getX(), activeWrapper.getWidth());
+        }
+
+        // Pin each close button to the right edge of its (now-sized) tab cell,
+        // vertically centred. It overlays the tab button rather than sharing a
+        // layout row, so it is positioned by hand here.
+        for (const entry of this._tabs) {
+            const closeButton = entry.closeButton;
+
+            if (closeButton && entry.wrapper.getWidth() > 0) {
+                closeButton.setWidth(CLOSE_BUTTON_SIZE);
+                closeButton.setHeight(CLOSE_BUTTON_SIZE);
+                closeButton.setX(entry.wrapper.getWidth() - CLOSE_BUTTON_SIZE - 2);
+                closeButton.setY(Math.round((entry.wrapper.getHeight() - CLOSE_BUTTON_SIZE) / 2));
+            }
+        }
 
         if (!component) {
             return;
