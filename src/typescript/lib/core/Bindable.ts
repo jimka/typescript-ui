@@ -26,5 +26,5 @@ export interface Bindable<T> {
     getValue(): T;
 
     /** Subscribe to user-driven value changes. */
-    addBindingListener(fn: () => void): void;
+    on(event: "binding", listener: () => void): unknown;
 }

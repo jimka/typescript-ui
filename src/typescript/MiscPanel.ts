@@ -625,7 +625,7 @@ class MiscPanel extends Panel {
         modeGroup.addButton(radioContainsCS);
         modeGroup.addButton(radioStartsWithCS);
 
-        modeGroup.addSelectionListener((button) => {
+        modeGroup.on("selection", (button) => {
             if (button === radioContains) {
                 autoCompleteField.setMatchMode('contains');
             } else if (button === radioStartsWith) {
@@ -712,9 +712,9 @@ class MiscPanel extends Panel {
             );
         };
 
-        integerSpinner.addChangeListener(updateSpinnerText);
-        decimalSpinner.addChangeListener(updateSpinnerText);
-        unboundedSpinner.addChangeListener(updateSpinnerText);
+        integerSpinner.on("change", updateSpinnerText);
+        decimalSpinner.on("change", updateSpinnerText);
+        unboundedSpinner.on("change", updateSpinnerText);
 
         const spinnerRow = new Component();
         spinnerRow.setLayoutManager(new HBox());

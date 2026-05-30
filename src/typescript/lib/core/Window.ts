@@ -214,14 +214,14 @@ class Window extends Panel<WindowOptions> {
             southwest: new WindowBorder(Direction.SOUTHWEST),
         };
 
-        this._borderComponents.west.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.northwest.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.north.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.northeast.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.east.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.southeast.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.south.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
-        this._borderComponents.southwest.addDragListener((border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.west.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.northwest.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.north.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.northeast.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.east.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.southeast.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.south.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+        this._borderComponents.southwest.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
 
         // Build the header with the effective text up front (consumer's
         // `options.headerText` from the cascade-written `_options`, falling

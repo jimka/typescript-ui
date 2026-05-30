@@ -180,28 +180,6 @@ class WindowBorder extends Component<WindowBorderOptions> {
     }
 
     /**
-     * @deprecated Use `on("drag", fn)`.
-     *
-     * @param listener - The callback invoked with this WindowBorder and the MouseEvent on each drag.
-     *
-     * @returns This border, for method chaining.
-     */
-    addDragListener(listener: Function) : this {
-        return this.on("drag", listener as (b: WindowBorder, e: MouseEvent) => void);
-    }
-
-    /**
-     * @deprecated Use `off("drag", fn)`.
-     *
-     * @param listener - The callback to remove.
-     *
-     * @returns This border, for method chaining.
-     */
-    removeDragListener(listener: Function) : this {
-        return this.off("drag", listener);
-    }
-
-    /**
      * Internal mousemove dispatch — fires the `drag` event with this border
      * and the originating mouse event.
      *

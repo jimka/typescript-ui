@@ -163,28 +163,6 @@ class SplitGutter extends Component<SplitGutterOptions> {
     }
 
     /**
-     * @deprecated Use `on("drag", fn)`.
-     *
-     * @param listener - The callback invoked with the pixel delta on each mousemove/touchmove.
-     *
-     * @returns This gutter, for method chaining.
-     */
-    addDragListener(listener: Function) : this {
-        return this.on("drag", listener as (movement: number) => void);
-    }
-
-    /**
-     * @deprecated Use `off("drag", fn)`.
-     *
-     * @param listener - The callback to remove.
-     *
-     * @returns This gutter, for method chaining.
-     */
-    removeDragListener(listener: Function) : this {
-        return this.off("drag", listener);
-    }
-
-    /**
      * Removes the mousedown listener.
      */
     destroy() {
