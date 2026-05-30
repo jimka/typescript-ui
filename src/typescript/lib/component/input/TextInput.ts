@@ -158,9 +158,9 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     }
 
     /**
-     * Registers a listener for one of this text input's events. `"input"`
-     * is a typed shorthand over {@link Event.addListener} for the native
-     * `input` DOM event (fired on every keystroke); `"change"` and
+     * Registers a listener for one of this text input's events. `"action"`
+     * is a typed semantic shorthand over {@link Event.addListener} for the
+     * native `input` DOM event (fired on every keystroke); `"change"` and
      * `"binding"` are the inherited {@link AbstractInput} value-change
      * events dispatched through the listener bag.
      *
@@ -169,11 +169,11 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
      *
      * @returns This component, for method chaining.
      */
-    on(event: "input",   listener: Function): this;
+    on(event: "action",  listener: Function): this;
     on(event: "change",  listener: (value: string) => void): this;
     on(event: "binding", listener: () => void): this;
-    on(event: "input" | "change" | "binding", listener: Function): this {
-        if (event === "input") {
+    on(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
             Event.addListener(this, "input", listener);
 
             return this;
@@ -191,8 +191,8 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
      *
      * @returns This component, for method chaining.
      */
-    off(event: "input" | "change" | "binding", listener: Function): this {
-        if (event === "input") {
+    off(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
             Event.removeListener(this, "input", listener);
 
             return this;

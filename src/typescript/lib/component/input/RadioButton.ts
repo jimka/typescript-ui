@@ -298,27 +298,28 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
 
     /**
      * Registers a listener for one of this radio button's events.
-     * `"change"` is a typed shorthand over {@link Event.addListener} for the
-     * DOM change event — fired on user-driven selection and used by
+     * `"action"` is a typed semantic shorthand over {@link Event.addListener}
+     * for the DOM change event — fired on user-driven selection and used by
      * [`ButtonGroup`](/api/core/classes/ButtonGroup) to enforce mutual
-     * exclusivity. `"binding"` is the inherited {@link AbstractInput}
-     * listener-bag event.
+     * exclusivity. `"change"` and `"binding"` are the inherited
+     * {@link AbstractInput} listener-bag events.
      *
      * @param event - The event name.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This component, for method chaining.
      */
-    on(event: "change",  listener: Function): this;
+    on(event: "action",  listener: Function): this;
+    on(event: "change",  listener: (value: boolean) => void): this;
     on(event: "binding", listener: () => void): this;
-    on(event: "change" | "binding", listener: Function): this {
-        if (event === "change") {
+    on(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
             Event.addListener(this, "change", listener);
 
             return this;
         }
 
-        return super.on("binding", listener as () => void);
+        return super.on(event as "change", listener as (value: boolean) => void);
     }
 
     /**
@@ -330,14 +331,14 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
      *
      * @returns This component, for method chaining.
      */
-    off(event: "change" | "binding", listener: Function): this {
-        if (event === "change") {
+    off(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
             Event.removeListener(this, "change", listener);
 
             return this;
         }
 
-        return super.off("binding", listener);
+        return super.off(event, listener);
     }
 
     /**

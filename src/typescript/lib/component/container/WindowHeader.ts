@@ -275,7 +275,7 @@ class WindowHeader extends Header {
      * @param listener - The callback to invoke when the close button is clicked.
      */
     addExitButtonListener(listener: Function) : this {
-        this._exitButton.on("click", listener as ClickListener);
+        this._exitButton.on("action", listener as ClickListener);
 
         return this;
     }
@@ -286,7 +286,7 @@ class WindowHeader extends Header {
      * @param listener - The callback to invoke when the minimize button is clicked.
      */
     addMinimizeButtonListener(listener: Function): this {
-        this._minimizeButton.on("click", listener as ClickListener);
+        this._minimizeButton.on("action", listener as ClickListener);
 
         return this;
     }
@@ -297,7 +297,7 @@ class WindowHeader extends Header {
      * @param listener - The callback to invoke when the maximize button is clicked.
      */
     addMaximizeButtonListener(listener: Function): this {
-        this._maximizeButton.on("click", listener as ClickListener);
+        this._maximizeButton.on("action", listener as ClickListener);
 
         return this;
     }

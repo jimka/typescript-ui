@@ -155,7 +155,7 @@ class MiscPanel extends Panel {
         this.addComponent(rightColumn);
 
         let buttonWindowImage = new Button("Show window with image!");
-        buttonWindowImage.on("click", function () {
+        buttonWindowImage.on("action", function () {
             let win = new Window("Hello World!");
             win.setX(100);
             win.setY(100);
@@ -169,7 +169,7 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(buttonWindowImage);
 
         let buttonWindowTable = new Button("Show window with table (slow)!");
-        buttonWindowTable.on("click", function () {
+        buttonWindowTable.on("action", function () {
             let win2 = new Window("blaah!");
 
             win2.setX(50);
@@ -235,7 +235,7 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(buttonWindowTable);
 
         let buttonPaginatedTable = new Button("Show window with paginated table!")
-            .on("click", function () {
+            .on("action", function () {
                 const pagModel = new Model([
                     { name: "id"    , type: "number" , description: "id"    , order: 0 },
                     { name: "name"  , type: "string" , description: "name"  , order: 1 },
@@ -272,7 +272,7 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(buttonPaginatedTable);
 
         let buttonWindowTableSpec = new Button("Show window with table (column spec)!");
-        buttonWindowTableSpec.on("click", function () {
+        buttonWindowTableSpec.on("action", function () {
             let win3 = new Window("Table with column spec");
 
             win3.setX(100);
@@ -355,7 +355,7 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(buttonWindowTableSpec);
 
         let buttonTreeTable = new Button("Show window with tree table!");
-        buttonTreeTable.on("click", function () {
+        buttonTreeTable.on("action", function () {
             const win4 = new Window("TreeTable — file-system layout");
 
             win4.setX(150);
@@ -417,7 +417,7 @@ class MiscPanel extends Panel {
 
         let isDark = false;
         let buttonTheme = new Button("Switch to dark theme");
-        buttonTheme.on("click", function () {
+        buttonTheme.on("action", function () {
             isDark = !isDark;
             ThemeManager.setTheme(isDark ? DarkTheme : DefaultTheme);
             buttonTheme.getText().setText(isDark ? "Switch to default theme" : "Switch to dark theme");
@@ -449,7 +449,7 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(buttonTooltip);
 
         const buttonTree = new Button("Show tree component");
-        buttonTree.on("click", () => {
+        buttonTree.on("action", () => {
             const win = new Window("Tree component");
             win.setX(200);
             win.setY(150);
@@ -500,7 +500,7 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(spacer);
 
         const buttonTreeIcons = new Button("Show tree component (icon renderer)");
-        buttonTreeIcons.on("click", () => {
+        buttonTreeIcons.on("action", () => {
             const win = new Window("Tree — IconLabel renderer");
             win.setX(220);
             win.setY(170);
@@ -558,31 +558,31 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(buttonTreeIcons);
 
         const buttonNotificationInfo = new Button("Notification — info");
-        buttonNotificationInfo.on("click", () => {
+        buttonNotificationInfo.on("action", () => {
             Notification.show("This is an informational message.", "info");
         });
         leftColumn.addComponent(buttonNotificationInfo);
 
         const buttonNotificationSuccess = new Button("Notification — success");
-        buttonNotificationSuccess.on("click", () => {
+        buttonNotificationSuccess.on("action", () => {
             Notification.show("Record saved successfully.", "success");
         });
         leftColumn.addComponent(buttonNotificationSuccess);
 
         const buttonNotificationWarning = new Button("Notification — warning");
-        buttonNotificationWarning.on("click", () => {
+        buttonNotificationWarning.on("action", () => {
             Notification.show("Unsaved changes will be lost.", "warning");
         });
         leftColumn.addComponent(buttonNotificationWarning);
 
         const buttonNotificationError = new Button("Notification — error");
-        buttonNotificationError.on("click", () => {
+        buttonNotificationError.on("action", () => {
             Notification.show("Connection failed. Please try again.", "error");
         });
         leftColumn.addComponent(buttonNotificationError);
 
         const buttonNotificationStack = new Button("Notification — show all types");
-        buttonNotificationStack.on("click", () => {
+        buttonNotificationStack.on("action", () => {
             Notification.show("This is an informational message.", "info");
             Notification.show("Record saved successfully.", "success");
             Notification.show("Unsaved changes will be lost.", "warning");
@@ -653,7 +653,7 @@ class MiscPanel extends Panel {
         rightColumn.addComponent(selectedText);
 
         const buttonDialogConfirm = new Button("Dialog — confirm/cancel");
-        buttonDialogConfirm.on("click", async () => {
+        buttonDialogConfirm.on("action", async () => {
             const confirmed = await Dialog.confirm(
                 'Confirm action',
                 'Are you sure you want to proceed with this action?'
@@ -664,7 +664,7 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(buttonDialogConfirm);
 
         const buttonDialogOk = new Button("Dialog — OK only");
-        buttonDialogOk.on("click", async () => {
+        buttonDialogOk.on("action", async () => {
             await Dialog.show({
                 title  : 'Information',
                 message: 'This is a simple informational dialog with a single OK button.',
@@ -673,7 +673,7 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(buttonDialogOk);
 
         const buttonDialogBackdrop = new Button("Dialog — close on backdrop click");
-        buttonDialogBackdrop.on("click", async () => {
+        buttonDialogBackdrop.on("action", async () => {
             const result = await Dialog.show({
                 title          : 'Click outside to close',
                 message        : 'You can dismiss this dialog by clicking the backdrop or pressing Escape.',
@@ -745,7 +745,7 @@ class MiscPanel extends Panel {
 
         const buttonProgressStart = new Button("Animate progress bar");
         let progressAnimationHandle: ReturnType<typeof setInterval> | null = null;
-        buttonProgressStart.on("click", () => {
+        buttonProgressStart.on("action", () => {
             if (progressAnimationHandle !== null) {
                 clearInterval(progressAnimationHandle);
             }
@@ -769,7 +769,7 @@ class MiscPanel extends Panel {
         rightColumn.addComponent(buttonProgressStart);
 
         const buttonProgressIndeterminate = new Button("Toggle indeterminate progress bar");
-        buttonProgressIndeterminate.on("click", () => {
+        buttonProgressIndeterminate.on("action", () => {
             progressBar.setIndeterminate(!progressBar.isIndeterminate());
             progressText.setText(progressBar.isIndeterminate() ? "Progress: indeterminate" : "Progress: " + progressBar.getValue() + "%");
         });
@@ -816,7 +816,7 @@ class MiscPanel extends Panel {
         rightColumn.addComponent(iconLabelRow);
 
         const buttonGlyphWindow = new Button("Show window with title glyph");
-        buttonGlyphWindow.on("click", () => {
+        buttonGlyphWindow.on("action", () => {
             const win = new Window("Settings", { glyph: "arrow-right" });
             win.setX(220);
             win.setY(180);
@@ -827,7 +827,7 @@ class MiscPanel extends Panel {
         rightColumn.addComponent(buttonGlyphWindow);
 
         const buttonOverlaySpinner = new Button("Overlay spinner on this panel for 2 s");
-        buttonOverlaySpinner.on("click", () => {
+        buttonOverlaySpinner.on("action", () => {
             const overlay = new ProgressSpinner(48);
             overlay.showOverlay(this);
 
@@ -874,7 +874,7 @@ class MiscPanel extends Panel {
 
         for (const mode of autoScrollModes) {
             const button = new Button("autoScroll: " + mode);
-            button.on("click", () => {
+            button.on("action", () => {
                 const win = new Window("Panel autoScroll = \"" + mode + "\"");
                 win.setX(240);
                 win.setY(200);

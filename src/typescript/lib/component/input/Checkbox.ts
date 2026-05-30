@@ -333,9 +333,9 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     }
 
     /**
-     * Registers a listener for one of this checkbox's events. `"click"` is a
-     * typed shorthand over {@link Event.addListener} for the native click
-     * (used e.g. by the [`BooleanEditor`](/api/component/table/cell/editor/classes/BooleanEditor)
+     * Registers a listener for one of this checkbox's events. `"action"` is a
+     * typed semantic shorthand over {@link Event.addListener} for the native
+     * click (used e.g. by the [`BooleanEditor`](/api/component/table/cell/editor/classes/BooleanEditor)
      * cell editor); `"change"` and `"binding"` are the inherited
      * {@link AbstractInput} listener-bag events.
      *
@@ -344,11 +344,11 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
      *
      * @returns This component, for method chaining.
      */
-    on(event: "click",   listener: Function): this;
+    on(event: "action",  listener: Function): this;
     on(event: "change",  listener: (value: boolean) => void): this;
     on(event: "binding", listener: () => void): this;
-    on(event: "click" | "change" | "binding", listener: Function): this {
-        if (event === "click") {
+    on(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
             Event.addListener(this, "click", listener);
 
             return this;
@@ -366,8 +366,8 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
      *
      * @returns This component, for method chaining.
      */
-    off(event: "click" | "change" | "binding", listener: Function): this {
-        if (event === "click") {
+    off(event: "action" | "change" | "binding", listener: Function): this {
+        if (event === "action") {
             Event.removeListener(this, "click", listener);
 
             return this;

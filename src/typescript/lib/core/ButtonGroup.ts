@@ -168,7 +168,7 @@ class ButtonGroup {
     addButton(button: RadioButton | ToggleButton): this {
         this.buttons.push(button);
 
-        button.on("change", () => {
+        button.on("action", () => {
             this.updateButtonStates(button);
         });
 
