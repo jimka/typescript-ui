@@ -356,6 +356,27 @@ class PickerColumn extends Component {
 
         return this;
     }
+
+    /**
+     * Re-highlights cells in place: the first {@link PickerCell} whose label
+     * equals `value` is selected and every other cell is cleared. Passing
+     * `null` clears the whole column. Unlike a rebuild this touches no DOM
+     * structure and leaves `scrollTop` untouched, so a click-driven selection
+     * change doesn't jump the scroll position. Mirrors the in-place
+     * `refreshYearSelection` pattern in `AbstractCalendarDropdown`.
+     *
+     * @param value - The cell label to select, or null to clear the column.
+     * @returns This component, for method chaining.
+     */
+    setSelectedValue(value: string | null): this {
+        for (const child of this._cellList.getComponents()) {
+            if (child instanceof PickerCell) {
+                child.setSelected(child.getText().valueOf() === value);
+            }
+        }
+
+        return this;
+    }
 }
 
 export {
