@@ -75,13 +75,13 @@ Subclasses customise the size by overriding the protected `computePreferredSize(
 
 ## Event handlers
 
-Register click handlers via `on("click", fn)` and pointer-down handlers via `addPointerDownListener(fn)`. Both are framework-routed through `Event.addListener`, so the named-listener guarantee from [ARCHITECTURE.md](/concepts/architecture) applies — never reach for `Event.addListener(button, …)` from external code; every event a consumer wants to listen to is the button's responsibility to expose via a named method. The listener argument should be a named method on the host component (or a module-level function) rather than an inline arrow, so it's removable, identifiable in stack traces, and grep-able.
+Register click (action) handlers via `on("action", fn)` and pointer-down handlers via `addPointerDownListener(fn)`. Both are framework-routed through `Event.addListener`, so the named-listener guarantee from [ARCHITECTURE.md](/concepts/architecture) applies — never reach for `Event.addListener(button, …)` from external code; every event a consumer wants to listen to is the button's responsibility to expose via a named method. The listener argument should be a named method on the host component (or a module-level function) rather than an inline arrow, so it's removable, identifiable in stack traces, and grep-able.
 
 ```typescript
 class Editor {
     constructor() {
         const save = new Button('Save');
-        save.on("click", this.handleSave);
+        save.on("action", this.handleSave);
         save.addPointerDownListener(this.handleSavePointerDown);
     }
 

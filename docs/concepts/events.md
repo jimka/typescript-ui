@@ -20,10 +20,14 @@ bubbling depend on the event existing in the DOM). **`on`/`off` is the
 surface for in-process custom events** that the framework defines on
 top of, or independently of, the DOM.
 
-A handful of classes expose a typed `on("dom-event", fn)` shorthand over
-`Event.addListener` — currently just [`Button.on("click", fn)`](/api/component/button/classes/Button#on).
-The dispatcher and the multi-listener bucket stay inside the `Event`
-class; the shorthand is a per-class typed convenience.
+Interactive controls expose a typed **semantic** `on("action", fn)`
+shorthand over `Event.addListener` for their primary gesture — e.g.
+[`Button.on("action", fn)`](/api/component/button/classes/Button#on)
+wraps the DOM `click`, `Slider.on("action", fn)` wraps `input`,
+`ComboBox.on("action", fn)` wraps `change`. The dispatcher and the
+multi-listener bucket stay inside the `Event` class; the shorthand is a
+per-class typed convenience whose public name (`"action"`) is decoupled
+from the underlying DOM event.
 
 This page covers the three DOM listener flavours, the `on`/`off`/`emit`
 surface, when to use each, and the hover-event quirk that bites everyone
@@ -187,7 +191,7 @@ The framework installs one window-level handler per event type, so the first reg
 | `Event.addSubtreeListener`                  | Delegated handlers on a container. Hover detection (`mouseover` / `mouseout`).          |
 | `Event.addViewportListener`                 | Drag-track gestures, global keyboard hooks.                                             |
 | `emitter.on(event, listener)`               | Framework custom events: store/binding/selection/scroll/tick/drag/commit, tab/section.  |
-| `button.on("click", listener)` (and `off`)  | Typed shorthand over `Event.addListener` exposed on classes that own a small DOM-event set. |
+| `button.on("action", listener)` (and `off`) | Typed semantic shorthand over `Event.addListener` exposed by interactive controls (the public `"action"` name is decoupled from the DOM event). |
 
 ## See also
 

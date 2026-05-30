@@ -86,7 +86,7 @@ The veto API is intentionally synchronous and boolean. For async confirmation fl
 If a veto fires, any picker UI that drove the call (e.g. a record-selector combo) will still show the rejected selection while the binding remains on the previous record. The call site is responsible for reconciling — compare [`getRecord`](/api/core/classes/Binding#getrecord) after the call and reset the picker if they diverge:
 
 ```typescript
-recordCombo.on("change", () => {
+recordCombo.on("action", () => {
     const next = store.find('id', Number(recordCombo.getElement().value));
     if (!next) return;
 

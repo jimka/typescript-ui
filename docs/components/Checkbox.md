@@ -27,7 +27,7 @@ panel.addComponent(subscribe);
 | `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user-driven changes. |
 | `on("change", fn)` / `off("change", fn)` | Subscribe to value changes. |
 | `on("binding", fn)` | Used by [`Binding`](/data/binding). |
-| `on("click", fn)` | Subscribe to click events. |
+| `on("action", fn)` | Subscribe to the click action. |
 
 ## Indeterminate / mixed state
 
