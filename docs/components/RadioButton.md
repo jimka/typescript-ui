@@ -38,7 +38,6 @@ panel.addComponent(large);
 | `getLabel()` / `setLabel(text \| null)` | Inline label text. |
 | `isEnabled()` / `setEnabled(boolean)` | Toggle interactivity. |
 | `isReadOnly()` / `setReadOnly(boolean)` | Stays focusable but ignores user input. |
-| `addActionListener(fn)` | Back-compat — wired by [`ButtonGroup`](/api/core/classes/ButtonGroup) on `"change"`. |
 | `on("change", fn)` / `off("change", fn)` | Subscribe to selection changes. |
 | `on("binding", fn)` | Used by [`Binding`](/data/binding). |
 
