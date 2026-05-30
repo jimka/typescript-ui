@@ -3,9 +3,9 @@
 import {
     ButtonGroup,
     callable,
+    ClassicTheme,
     Component,
     DarkTheme,
-    DefaultTheme,
     Dialog,
     Event,
     Menu,
@@ -417,9 +417,9 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(buttonTreeTable);
 
         const themeCycle = [
-            { theme: DefaultTheme, next: "Switch to dark theme"    },
+            { theme: ModernTheme,  next: "Switch to classic theme" },
+            { theme: ClassicTheme, next: "Switch to dark theme"    },
             { theme: DarkTheme,    next: "Switch to modern theme"  },
-            { theme: ModernTheme,  next: "Switch to default theme" },
         ];
         let themeIndex = 0;
         let buttonTheme = new Button(themeCycle[0].next);

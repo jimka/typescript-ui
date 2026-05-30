@@ -3,11 +3,13 @@
 import type { Theme } from '~/core/Theme.js';
 
 /**
- * Light-mode theme using white backgrounds and black text.
+ * Classic light theme using white backgrounds, black text, and gradient
+ * buttons. The original default look, retained as an opt-in alternative now
+ * that {@link ModernTheme} is the preselected theme.
  *
  * @category Theme
  */
-export const DefaultTheme: Theme = {
+export const ClassicTheme: Theme = {
     colorScheme: 'light',
     font       : { family: 'system-ui, sans-serif', size: '14px', lineHeight: 1.2 },
     text       : { color: 'rgb(0, 0, 0)' },

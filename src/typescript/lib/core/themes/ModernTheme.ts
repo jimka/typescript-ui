@@ -4,7 +4,7 @@ import type { Theme } from '~/core/Theme.js';
 
 /**
  * Opt-in modern light theme: flat, gradient-free buttons and a flatter table
- * header surface. Reuses {@link DefaultTheme} values everywhere except the
+ * header surface. Reuses {@link ClassicTheme} values everywhere except the
  * `button` and `table.header` buckets, so it stays a light scheme that simply
  * reads as a cleaner, more contemporary variant of the default.
  *

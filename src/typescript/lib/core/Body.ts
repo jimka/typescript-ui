@@ -3,7 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
-import { ThemeManager, DefaultTheme } from "~/core/Theme.js";
+import { ThemeManager, ModernTheme } from "~/core/Theme.js";
 
 /**
  * A {@link Component} that wraps the page's `<body>` element.
@@ -36,7 +36,7 @@ export class Body extends Component {
 
         this.setBackgroundColor("var(--ts-ui-body-bg, rgb(241, 241, 241))");
 
-        ThemeManager.setTheme(DefaultTheme);
+        ThemeManager.setTheme(ModernTheme);
     }
 
     /**

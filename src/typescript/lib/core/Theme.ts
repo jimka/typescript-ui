@@ -4,10 +4,10 @@ import { InlineStyle } from '~/core/StyleTarget.js';
 import { Util } from '~/core/Util.js';
 // The three built-in theme literals live in their own files under
 // `core/themes/`; they are imported here so `ThemeManager` can default to
-// `DefaultTheme`, and re-exported below so existing
-// `import { DefaultTheme } from '~/core/Theme.js'` paths and the core barrel
+// `ModernTheme`, and re-exported below so existing
+// `import { ClassicTheme } from '~/core/Theme.js'` paths and the core barrel
 // keep resolving unchanged.
-import { DefaultTheme } from '~/core/themes/DefaultTheme.js';
+import { ClassicTheme } from '~/core/themes/ClassicTheme.js';
 import { DarkTheme } from '~/core/themes/DarkTheme.js';
 import { ModernTheme } from '~/core/themes/ModernTheme.js';
 
@@ -488,7 +488,7 @@ export interface Theme {
     };
 }
 
-export { DefaultTheme, DarkTheme, ModernTheme };
+export { ClassicTheme, DarkTheme, ModernTheme };
 
 /**
  * Converts a Theme object into a map of CSS custom property names to values.
@@ -698,16 +698,16 @@ function themeToVars(theme: Theme): Record<string, string> {
  *
  * @example
  * ```typescript
- * import { ThemeManager, DefaultTheme, DarkTheme } from '@jimka/typescript-ui/core';
+ * import { ThemeManager, ClassicTheme, DarkTheme } from '@jimka/typescript-ui/core';
 *
- * ThemeManager.setTheme(DefaultTheme); // light
+ * ThemeManager.setTheme(ClassicTheme); // classic light
  * ThemeManager.setTheme(DarkTheme);    // dark
  * ```
  *
  * @category Theme
  */
 export class ThemeManager {
-    private static current: Theme = DefaultTheme;
+    private static current: Theme = ModernTheme;
     private static themeListeners: Array<() => void> = [];
 
     /**
@@ -759,7 +759,7 @@ export class ThemeManager {
     /**
      * Returns the currently active theme.
      *
-     * @returns The `Theme` object that was last passed to `setTheme`, defaulting to [`DefaultTheme`](/api/core/variables/DefaultTheme).
+     * @returns The `Theme` object that was last passed to `setTheme`, defaulting to [`ModernTheme`](/api/core/variables/ModernTheme).
      */
     static getTheme(): Theme {
         return ThemeManager.current;
