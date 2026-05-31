@@ -2,6 +2,7 @@
 
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
+import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import { Button, ButtonOptions, ClickListener } from "~/component/button/Button.js";
 import { callable } from "~/core/Callable.js";
 
@@ -177,16 +178,18 @@ class ToggleButton extends Button<ToggleButtonOptions> {
     }
 
     /**
-     * Sets the border for the `.selected` CSS rule from a CSS `border`
-     * shorthand string (e.g. `"1px solid rgb(...)"` or `"none"`), overriding
-     * the default selected-state border for this instance.
+     * Sets the border for the `.selected` CSS rule, overriding the default
+     * selected-state border for this instance. Accepts either a {@link BorderOptions}
+     * bag or a CSS `border` shorthand string (sugar for `{ border: <string> }`,
+     * e.g. `"1px solid rgb(...)"` or `"none"`).
      *
-     * @param border - A CSS `border` shorthand value.
+     * @param options - Border configuration, or a CSS `border` shorthand value.
      *
      * @returns This button, for method chaining.
      */
-    setSelectedBorder(border: string): this {
-        this.selectedStyleRule.set("border", border);
+    setSelectedBorder(options: BorderOptions | string): this {
+        const border = typeof options === "string" ? { border: options } : options;
+        this.selectedStyleRule.setMany(borderToStyle(border));
 
         return this;
     }

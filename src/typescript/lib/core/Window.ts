@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Border } from "~/layout/Border.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Component } from "~/core/Component.js";
 import { WindowHeader } from "~/component/container/WindowHeader.js";
 import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
@@ -108,7 +107,7 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
     y:                 50,
     width:             400,
     height:            300,
-    border:            { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" },
+    border:            "1px solid var(--ts-ui-border-color, black)",
     borderRadius:      "var(--ts-ui-border-radius, 4px)",
     shadow:            "var(--ts-ui-window-shadow, 3px 3px 2px rgba(0, 0, 0, 0.4))",
     backgroundColor:   "var(--ts-ui-body-bg, rgb(241, 241, 241))",

@@ -5,7 +5,6 @@ import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Util } from "~/core/Util.js";
 import { ThemeManager } from "~/core/Theme.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -46,7 +45,7 @@ export interface SpinButtonOptions extends ButtonOptions {
  * guarded on the consumer options bag.
  */
 const _defaultSpinButtonOptions: Partial<SpinButtonOptions> = {
-    border:       { style: BorderStyle.NONE },
+    border:       "none",
     borderRadius: "0",
     insets:       new Insets(0, 0, 0, 0),
 };

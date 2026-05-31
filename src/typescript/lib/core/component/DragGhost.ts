@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Position } from "~/primitive/Position.js";
 import { Text } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
@@ -66,7 +65,7 @@ class DragGhost extends Component {
         this.setHeight(height ?? DEFAULT_HEIGHT);
 
         this.setBackgroundColor("var(--ts-ui-drag-ghost-bg)");
-        this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-drag-ghost-border)" });
+        this.setBorder({ border: "1px solid var(--ts-ui-drag-ghost-border)" });
         this.setShadow("var(--ts-ui-drag-ghost-shadow)");
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setOpacity(Number("0.85"));

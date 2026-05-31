@@ -90,6 +90,7 @@ export const ClassicTheme: Theme = {
         indicator: { color: 'rgb(100,100,100)' },
     },
     tab   : {
+        underBorderFullWidth: true,
         toolbar: { background: '#eee',     border: '#e1e1e8' },
         button : {
             background: 'linear-gradient(rgb(208, 208, 216), rgb(185, 185, 196))',

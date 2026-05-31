@@ -2,7 +2,6 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 
@@ -80,10 +79,8 @@ class ProgressSpinner extends Component {
         this._arc = new Component();
         this._arc.setBorderRadius("50%");
         this._arc.setBorder({
-            style: BorderStyle.SOLID,
-            width: ARC_BORDER_WIDTH,
-            color: "var(--ts-ui-progress-spinner-color, rgb(30, 100, 200))",
-            top  : { style: BorderStyle.SOLID, width: ARC_BORDER_WIDTH, color: "transparent" },
+            border:    `${ARC_BORDER_WIDTH}px solid var(--ts-ui-progress-spinner-color, rgb(30, 100, 200))`,
+            borderTop: `${ARC_BORDER_WIDTH}px solid transparent`,
         });
         this._arc.setAnimation("ts-ui-progress-spinner-rotate 0.8s linear infinite");
 

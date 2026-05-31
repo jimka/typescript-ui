@@ -56,6 +56,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `gutter.background` | `--ts-ui-gutter-bg` | Background of the [`Split`](/api/layout/classes/Split) drag gutter; also used as the scrollbar track color |
 | `tab.toolbar.background` | `--ts-ui-tab-toolbar-bg` | Background of the tab button toolbar in the [`Tab`](/api/layout/classes/Tab) layout |
 | `tab.toolbar.border` | `--ts-ui-tab-toolbar-border` | Bottom border of the tab button toolbar |
+| `tab.underBorderFullWidth` | — | Boolean (read from the theme object, not a CSS variable): whether the [`Tab`](/api/layout/classes/Tab) strip draws the edge-to-edge 1px rule under the toolbar. `false` for Modern, `true` for Classic/Dark. An explicit `tabUnderBorderFullWidth` layout option overrides it |
 | `tab.button.background` | `--ts-ui-tab-button-bg` | Background of inactive tab buttons |
 | `tab.indicator.color` | `--ts-ui-tab-indicator-color` | Fill of the sliding active-tab selection bar |
 | `tab.indicator.thickness` | `--ts-ui-tab-indicator-thickness` | Thickness of the active-tab selection bar |

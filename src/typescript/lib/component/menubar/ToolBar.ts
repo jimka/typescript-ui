@@ -6,7 +6,6 @@ import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { VBox } from "~/layout/VBox.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
 import { callable } from "~/core/Callable.js";
@@ -191,9 +190,9 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Panel<TO
         const ruleColor = "var(--ts-ui-toolbar-border, rgb(220, 220, 220))";
 
         if (value === "horizontal") {
-            this.setBorder({ bottom: { style: BorderStyle.SOLID, width: 1, color: ruleColor } });
+            this.setBorder({ borderBottom: `1px solid ${ruleColor}` });
         } else {
-            this.setBorder({ right: { style: BorderStyle.SOLID, width: 1, color: ruleColor } });
+            this.setBorder({ borderRight: `1px solid ${ruleColor}` });
         }
 
         return this;

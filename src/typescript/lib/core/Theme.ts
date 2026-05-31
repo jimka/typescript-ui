@@ -167,21 +167,43 @@ export interface Theme {
     };
 
     tab: {
+        /**
+         * Whether the tab strip draws the edge-to-edge 1px rule under the toolbar.
+         * Read by the [`Tab`](/api/layout/classes/Tab) layout manager as the default
+         * for its under-border; an explicit `tabUnderBorderFullWidth` option overrides it.
+         */
+        underBorderFullWidth: boolean;
         toolbar: {
             background: string;
             border    : string;
         };
         button: {
             background: string;
-            /** CSS `border` shorthand applied to all four sides (e.g. `'1px solid rgb(...)'` or `'none'`). */
+            /** CSS `border` shorthand applied to all four sides (e.g. `'1px solid rgb(...)'` or `'none'`); the uniform fallback for the per-side overrides. */
             border    : string;
+            /** Optional CSS `border-top` override for the normal state; falls back to `border`. */
+            borderTop?   : string;
+            /** Optional CSS `border-right` override for the normal state; falls back to `border`. */
+            borderRight? : string;
+            /** Optional CSS `border-bottom` override for the normal state; falls back to `border`. */
+            borderBottom?: string;
+            /** Optional CSS `border-left` override for the normal state; falls back to `border`. */
+            borderLeft?  : string;
             hover: {
                 background: string;
                 border    : string;
+                borderTop?   : string;
+                borderRight? : string;
+                borderBottom?: string;
+                borderLeft?  : string;
             };
             selected: {
                 background: string;
                 border    : string;
+                borderTop?   : string;
+                borderRight? : string;
+                borderBottom?: string;
+                borderLeft?  : string;
             };
         };
         indicator: {
@@ -497,6 +519,30 @@ export interface Theme {
 export { ClassicTheme, DarkTheme, ModernTheme };
 
 /**
+ * Emits the four per-side tab-button border custom properties for one state,
+ * keyed `<base>-top` / `-right` / `-bottom` / `-left`, each resolving to the
+ * side's own value or falling back to the uniform `border`. All four are always
+ * emitted with a concrete value so switching to a theme that leaves the per-side
+ * fields unset overwrites (rather than leaks) the previous theme's per-side vars.
+ *
+ * @param base - The uniform border var name for the state (e.g. `'--ts-ui-tab-button-border'`).
+ * @param side - The tab-button (sub-)object carrying the uniform `border` plus optional per-side fields.
+ *
+ * @returns A map of all four per-side custom properties.
+ */
+function tabButtonSideVars(
+    base: string,
+    side: { border: string; borderTop?: string; borderRight?: string; borderBottom?: string; borderLeft?: string }
+): Record<string, string> {
+    return {
+        [`${base}-top`]:    side.borderTop    ?? side.border,
+        [`${base}-right`]:  side.borderRight  ?? side.border,
+        [`${base}-bottom`]: side.borderBottom ?? side.border,
+        [`${base}-left`]:   side.borderLeft   ?? side.border,
+    };
+}
+
+/**
  * Converts a Theme object into a map of CSS custom property names to values.
  */
 function themeToVars(theme: Theme): Record<string, string> {
@@ -560,10 +606,13 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-tab-toolbar-border'               : theme.tab.toolbar.border,
         '--ts-ui-tab-button-bg'                    : theme.tab.button.background,
         '--ts-ui-tab-button-border'                : theme.tab.button.border,
+        ...tabButtonSideVars('--ts-ui-tab-button-border', theme.tab.button),
         '--ts-ui-tab-button-hover-bg'              : theme.tab.button.hover.background,
         '--ts-ui-tab-button-hover-border'          : theme.tab.button.hover.border,
+        ...tabButtonSideVars('--ts-ui-tab-button-hover-border', theme.tab.button.hover),
         '--ts-ui-tab-button-selected-bg'           : theme.tab.button.selected.background,
         '--ts-ui-tab-button-selected-border'       : theme.tab.button.selected.border,
+        ...tabButtonSideVars('--ts-ui-tab-button-selected-border', theme.tab.button.selected),
         '--ts-ui-tab-indicator-color'              : theme.tab.indicator.color,
         '--ts-ui-tab-indicator-thickness'          : theme.tab.indicator.thickness,
         '--ts-ui-window-shadow'                    : theme.window.shadow,

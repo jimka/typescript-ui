@@ -6,7 +6,6 @@ import { Panel } from "~/core/Panel.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Type } from "~/core/Type.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
 import { VBox } from "~/layout/VBox.js";
@@ -76,7 +75,7 @@ const _defaultAbstractCustomListOptions: Partial<AbstractCustomListOptions> = {
     tag:             "div",
     backgroundColor: "var(--ts-ui-list-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
-    border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-list-border, rgb(200, 200, 200))" },
+    border:          "1px solid var(--ts-ui-list-border, rgb(200, 200, 200))",
     borderRadius:    "var(--ts-ui-border-radius, 4px)",
     preferredSize:   { width: 200, height: 200 },
     maxSize:         { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER },
