@@ -11,6 +11,17 @@ import { HeaderCell } from "~/component/table/cell/Header.js";
 import { ParentHeaderCell } from "~/component/table/cell/ParentHeader.js";
 import { callable } from "~/core/Callable.js";
 
+// The header surface, themed via `--ts-ui-table-header-bg`. The value is
+// applied as BOTH a background-color and a background-image because the token
+// is a flat colour in some themes (e.g. ModernTheme) and a gradient in others
+// (e.g. ClassicTheme): a colour is invalid as a background-image (resolves to
+// `none`) and a gradient is invalid as a background-color (resolves to
+// transparent), so setting both lets whichever form the active theme supplies
+// paint while the other harmlessly drops out. Setting only background-image —
+// the previous behaviour — left the surface transparent under a flat-colour
+// theme, which surfaced as a see-through scrollbar-cover band.
+const TABLE_HEADER_BG = "var(--ts-ui-table-header-bg, var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))))";
+
 /**
  * String-literal union of the events emitted by the table {@link Header}.
  *
@@ -45,7 +56,8 @@ class Header extends Component {
 
         this.getAria().setRole("rowgroup");
         this.setBorder({ borderBottom: "1px solid var(--ts-ui-table-header-border, black)" });
-        this.setBackgroundImage("var(--ts-ui-table-header-bg, var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))))");
+        this.setBackgroundColor(TABLE_HEADER_BG);
+        this.setBackgroundImage(TABLE_HEADER_BG);
         // Clip cells that would otherwise extend past the header's right
         // edge when the inner rows are translated horizontally.
         this.setOverflow("hidden");
@@ -267,7 +279,8 @@ class Header extends Component {
             // resize handles whose cells happen to be horizontally scrolled
             // under the cover still receive clicks.
             cover.style.pointerEvents   = "none";
-            cover.style.backgroundImage = "var(--ts-ui-table-header-bg, var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))))";
+            cover.style.backgroundColor = TABLE_HEADER_BG;
+            cover.style.backgroundImage = TABLE_HEADER_BG;
             // Left border matches the column-cell right border so the cover
             // reads as a visual continuation of the column separators
             // rather than a seam in the gradient.
