@@ -167,6 +167,12 @@ export interface Theme {
     };
 
     tab: {
+        /**
+         * Whether the tab strip draws the edge-to-edge 1px rule under the toolbar.
+         * Read by the [`Tab`](/api/layout/classes/Tab) layout manager as the default
+         * for its under-border; an explicit `tabUnderBorderFullWidth` option overrides it.
+         */
+        underBorderFullWidth: boolean;
         toolbar: {
             background: string;
             border    : string;
