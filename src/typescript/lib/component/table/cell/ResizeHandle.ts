@@ -26,7 +26,7 @@ export interface ResizeHandleOptions extends ComponentOptions {
      */
     listeners?: {
         dragstart?: (event: MouseEvent) => void;
-        dragmove?:  (delta: number)     => void;
+        dragmove?:  (clientX: number)   => void;
         dragend?:   ()                  => void;
     };
 }
@@ -134,16 +134,17 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
     /**
      * Registers a listener for one of this handle's drag events.
      *
-     * @param event - `"dragstart"` fires on mousedown over the handle;
+     * @param event - `"dragstart"` fires on mousedown over the handle, carrying
+     *   the originating `MouseEvent` (whose `clientX` seeds the drag origin);
      *   `"dragmove"` fires on each viewport mousemove during a drag with the
-     *   horizontal pixel delta; `"dragend"` fires when the viewport mouseup
+     *   absolute pointer `clientX`; `"dragend"` fires when the viewport mouseup
      *   observes the release.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This handle, for method chaining.
      */
     on(event: "dragstart",         listener: (e: MouseEvent) => void): this;
-    on(event: "dragmove",          listener: (delta: number) => void): this;
+    on(event: "dragmove",          listener: (clientX: number) => void): this;
     on(event: "dragend",           listener: () => void): this;
     on(event: ResizeHandleEvent,   listener: Function): this {
         this._listeners.add(event, listener);
@@ -175,7 +176,7 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
      * @param payload - Forwarded to each listener.
      */
     protected emit(event: "dragstart",       e: MouseEvent): void;
-    protected emit(event: "dragmove",        delta: number): void;
+    protected emit(event: "dragmove",        clientX: number): void;
     protected emit(event: "dragend"): void;
     protected emit(event: ResizeHandleEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
@@ -183,13 +184,13 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
 
     /**
      * Drives the `"dragmove"` event from the host's viewport-mousemove
-     * listener. The host extracts `movementX` and forwards it here; this
-     * method fires `"dragmove"` listeners with that delta.
+     * listener. The host extracts `clientX` and forwards it here; this
+     * method fires `"dragmove"` listeners with that absolute coordinate.
      *
-     * @param delta - The horizontal pixel delta for this mousemove tick.
+     * @param clientX - The absolute pointer `clientX` for this mousemove tick.
      */
-    dragMove(delta: number): void {
-        this.emit("dragmove", delta);
+    dragMove(clientX: number): void {
+        this.emit("dragmove", clientX);
     }
 
     /**

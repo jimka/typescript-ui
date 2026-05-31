@@ -19,7 +19,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type HeaderCellEvent = CellEvent | "sortclick" | "contextmenu" | "resizedrag";
+export type HeaderCellEvent = CellEvent | "sortclick" | "contextmenu" | "resizestart" | "resizedrag";
 
 /**
  * Width (px) used both for the side-loaded `Glyph`'s preferred size and for
@@ -132,8 +132,8 @@ class HeaderCell extends DefaultCell {
         // click) so the bookkeeping must live on the host.
         this._resizeHandle = new ResizeHandle({
             listeners: {
-                dragstart: (e: MouseEvent) => this.onResizeDragStart(e),
-                dragmove : (delta: number) => this.emit("resizedrag", delta),
+                dragstart: (e: MouseEvent)   => this.onResizeDragStart(e),
+                dragmove : (clientX: number) => this.emit("resizedrag", clientX),
             },
         });
         this._priorityBadge = new SortPriorityBadge();
@@ -309,9 +309,10 @@ class HeaderCell extends DefaultCell {
      *   signature for inheritance compatibility); `"sortclick"` fires when
      *   the user clicks the header, receiving the field name and the
      *   shift-key state; `"contextmenu"` fires on right-click, receiving the
-     *   field name and the viewport x/y; `"resizedrag"` fires on each
-     *   mousemove during a resize drag, receiving the horizontal pixel
-     *   delta.
+     *   field name and the viewport x/y; `"resizestart"` fires on mousedown
+     *   over the resize handle, receiving the absolute pointer `clientX` at the
+     *   moment the drag began; `"resizedrag"` fires on each mousemove during a
+     *   resize drag, receiving the absolute pointer `clientX`.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This cell, for method chaining.
@@ -320,7 +321,8 @@ class HeaderCell extends DefaultCell {
     on(event: "editend",     listener: () => void): this;
     on(event: "sortclick",   listener: (fieldName: string, shiftKey: boolean) => void): this;
     on(event: "contextmenu", listener: (fieldName: string, x: number, y: number) => void): this;
-    on(event: "resizedrag",  listener: (delta: number) => void): this;
+    on(event: "resizestart", listener: (clientX: number) => void): this;
+    on(event: "resizedrag",  listener: (clientX: number) => void): this;
     on(event: HeaderCellEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -353,7 +355,8 @@ class HeaderCell extends DefaultCell {
     protected emit(event: "editend"): void;
     protected emit(event: "sortclick",       fieldName: string, shiftKey: boolean): void;
     protected emit(event: "contextmenu",     fieldName: string, x: number, y: number): void;
-    protected emit(event: "resizedrag",      delta: number): void;
+    protected emit(event: "resizestart",     clientX: number): void;
+    protected emit(event: "resizedrag",      clientX: number): void;
     protected emit(event: HeaderCellEvent,   ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
@@ -409,6 +412,8 @@ class HeaderCell extends DefaultCell {
 
         this._isDragging = true;
 
+        this.emit("resizestart", e.clientX);
+
         Event.addViewportListener(this, 'mousemove', this.onResizeDrag);
         Event.addViewportListener(this, 'mouseup', this.onResizeDragStop);
 
@@ -416,7 +421,7 @@ class HeaderCell extends DefaultCell {
     }
 
     private onResizeDrag(e: MouseEvent): void {
-        this._resizeHandle.dragMove(e.movementX);
+        this._resizeHandle.dragMove(e.clientX);
     }
 
     private onResizeDragStop(): void {

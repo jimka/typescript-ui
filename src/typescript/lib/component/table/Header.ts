@@ -17,7 +17,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type HeaderEvent = "columnresize" | "columncontextmenu";
+export type HeaderEvent = "columnresizestart" | "columnresize" | "columncontextmenu";
 
 /**
  * The header section of a table, rendered as a `<thead>` element.
@@ -157,16 +157,20 @@ class Header extends Component {
     /**
      * Registers a listener for one of this header's events.
      *
-     * @param event - `"columnresize"` fires when the user drags a column
-     *   resize handle, receiving the zero-based column index and the pixel
-     *   delta; `"columncontextmenu"` fires on a right-click anywhere in the
-     *   header band, receiving the field name (empty string when the click
-     *   landed on a parent-header cell) and the viewport x/y coordinates.
+     * @param event - `"columnresizestart"` fires on mousedown over a column
+     *   resize handle, receiving the zero-based column index and the absolute
+     *   pointer `clientX` at the moment the drag began; `"columnresize"` fires
+     *   when the user drags a column resize handle, receiving the zero-based
+     *   column index and the absolute pointer `clientX`; `"columncontextmenu"`
+     *   fires on a right-click anywhere in the header band, receiving the field
+     *   name (empty string when the click landed on a parent-header cell) and
+     *   the viewport x/y coordinates.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This header, for method chaining.
      */
-    on(event: "columnresize",      listener: (colIndex: number, delta: number) => void): this;
+    on(event: "columnresizestart", listener: (colIndex: number, clientX: number) => void): this;
+    on(event: "columnresize",      listener: (colIndex: number, clientX: number) => void): this;
     on(event: "columncontextmenu", listener: (fieldName: string, x: number, y: number) => void): this;
     on(event: HeaderEvent,         listener: Function): this {
         this._listeners.add(event, listener);
@@ -196,7 +200,8 @@ class Header extends Component {
      * @param event - The event to emit.
      * @param payload - Forwarded to each listener.
      */
-    protected emit(event: "columnresize",      colIndex: number, delta: number): void;
+    protected emit(event: "columnresizestart", colIndex: number, clientX: number): void;
+    protected emit(event: "columnresize",      colIndex: number, clientX: number): void;
     protected emit(event: "columncontextmenu", fieldName: string, x: number, y: number): void;
     protected emit(event: HeaderEvent,         ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
@@ -529,7 +534,8 @@ class Header extends Component {
      */
     private wireCell(cell: HeaderCell, idx: number): void {
         cell.on("sortclick",   (fieldName, shiftKey) => this.handleSortClick(fieldName, shiftKey));
-        cell.on("resizedrag",  (delta) => this.emit("columnresize", idx, delta));
+        cell.on("resizestart", (clientX) => this.emit("columnresizestart", idx, clientX));
+        cell.on("resizedrag",  (clientX) => this.emit("columnresize", idx, clientX));
         cell.on("contextmenu", (fieldName, x, y) => this.emit("columncontextmenu", fieldName, x, y));
     }
 
