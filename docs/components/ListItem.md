@@ -25,10 +25,9 @@ panel.addComponent(list);
 
 ## Notes
 
-- `ListItem` is not the same as [`Option`](/components/Option). Use `Option` for items inside a [`ComboBox`](/components/ComboBox) or [`List`](/components/List); use `ListItem` for items inside a `BulletedList` / `NumberedList`.
+- `ListItem` is not the same as a [`ComboBox`](/components/ComboBox) / [`List`](/components/List) item. Those accept plain strings or `{ key, label }` pairs through `setItems` / `addItem`; use `ListItem` for items inside a `BulletedList` / `NumberedList`.
 
 ## See also
 
 - [API: ListItem](/api/component/list/classes/ListItem)
 - [`BulletedList`](/components/BulletedList), [`NumberedList`](/components/NumberedList) — typical containers
-- [`Option`](/components/Option) — for `ComboBox` / `List` items

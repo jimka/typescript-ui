@@ -28,6 +28,15 @@ export interface CustomListItem {
 }
 
 /**
+ * Accepted form for a single item passed to a custom list's `setItems` /
+ * `addItem`: either a plain string (auto-keyed by its array position) or a
+ * pre-formed {@link CustomListItem} with an explicit caller-supplied key.
+ *
+ * @category Components
+ */
+export type CustomListItemSpec = String | CustomListItem;
+
+/**
  * Pixel height of one rendered row. Matches `CustomListRow`'s cached
  * `preferredSize(0, 22)` and the `lineHeight: 22px` declaration in the
  * shared `.CustomListRow` class rule. Keep these three values in lockstep
@@ -568,35 +577,41 @@ abstract class AbstractCustomList<
     }
 
     /**
-     * Replaces all items with the given string labels. Selection and
+     * Replaces all items with the given specs. Each entry is either a plain
+     * string — auto-keyed by its array position (`{ key: String(i), label }`),
+     * matching the historical behaviour — or a pre-formed
+     * {@link CustomListItem} whose explicit key is kept verbatim. Selection and
      * focus are reset; the row pool is reconciled against the new length.
      *
-     * @param items - A single string or an array of strings.
+     * @param items - A single spec or an array of specs. Each spec is a string
+     *   (auto-keyed by position) or a `{ key, label }` object (explicit key).
+     *
+     * @remarks The caller owns key uniqueness across explicit keys and across
+     *   any collision between an explicit key and a string's auto-index:
+     *   `getValue` / `setValue` resolve to the first row whose `key` matches, so
+     *   a duplicate key is merely addressed by its lowest matching row.
      *
      * @returns This component, for method chaining.
      */
-    setItems(items: String | Array<String>): this {
+    setItems(items: CustomListItemSpec | Array<CustomListItemSpec>): this {
         if (!Type.isArray(items)) {
-            items = [items as String];
+            items = [items as CustomListItemSpec];
         }
 
-        const list = items as Array<String>;
-        this._items = [];
+        const list = items as Array<CustomListItemSpec>;
+        const built: Array<CustomListItem> = [];
 
         for (let i = 0; i < list.length; i++) {
-            this._items.push({ key: String(i), label: list[i] as string });
+            const entry = list[i];
+
+            built.push(
+                typeof entry === "string"
+                    ? { key: String(i), label: entry }
+                    : { key: (entry as CustomListItem).key, label: (entry as CustomListItem).label },
+            );
         }
 
-        this._selectedSet.clear();
-        this._anchorIndex  = null;
-        this._focusedIndex = -1;
-
-        this.pauseLayout();
-        this.syncRows();
-        this.resumeLayout();
-        this.updateActiveDescendant();
-
-        return this;
+        return this.setItemsArray(built);
     }
 
     /**
@@ -632,14 +647,27 @@ abstract class AbstractCustomList<
     }
 
     /**
-     * Appends a new item to the end of the list.
+     * Appends a new item to the end of the list. A plain string is auto-keyed
+     * by the appended position (`{ key: String(this._items.length), label }`),
+     * matching the historical behaviour; a pre-formed {@link CustomListItem}
+     * keeps its explicit key verbatim.
      *
-     * @param item - The string label for the new item.
+     * @param item - A string (auto-keyed by final position) or a `{ key, label }`
+     *   object (explicit key).
+     *
+     * @remarks The caller owns key uniqueness — appending a string after
+     *   explicit-keyed items index-keys by final position, which can collide
+     *   with an earlier explicit key. `getValue` / `setValue` resolve to the
+     *   first matching row.
      *
      * @returns This component, for method chaining.
      */
-    addItem(item: String): this {
-        this._items.push({ key: String(this._items.length), label: item as string });
+    addItem(item: CustomListItemSpec): this {
+        this._items.push(
+            typeof item === "string"
+                ? { key: String(this._items.length), label: item }
+                : { key: (item as CustomListItem).key, label: (item as CustomListItem).label },
+        );
 
         this.pauseLayout();
         this.syncRows();

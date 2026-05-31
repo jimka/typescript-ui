@@ -44,7 +44,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`PasswordField`](/api/component/input/classes/PasswordField) | Masked text input |
 | [`Checkbox`](/api/component/input/classes/Checkbox) | Boolean toggle (supports indeterminate / mixed state) |
 | [`Toggle`](/api/component/input/classes/Toggle) | Sliding-pill on/off switch |
-| [`ComboBox`](/api/component/input/classes/ComboBox) | Drop-down selection from a list of [`Option`](/api/component/input/classes/Option) or a [`Store`](/api/data/classes/Store) |
+| [`ComboBox`](/api/component/input/classes/ComboBox) | Drop-down selection from a list of items or a [`Store`](/api/data/classes/Store) |
 | [`AutoCompleteField`](/api/component/input/classes/AutoCompleteField) | Text field with type-ahead suggestions |
 | [`DateField`](/api/component/input/classes/DateField) | Date picker with animated calendar dropdown |
 | [`TimeField`](/api/component/input/classes/TimeField) | Time picker with animated hour/minute dropdown |
@@ -78,7 +78,6 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`ListItem`](/api/component/list/classes/ListItem) | Item inside a `List` / `MultiSelectList` |
 | [`BulletedList`](/api/component/list/classes/BulletedList) | `<ul>`-style bulleted list (style via [`BulletedListItemStyle`](/api/component/list/enumerations/BulletedListItemStyle)) |
 | [`NumberedList`](/api/component/list/classes/NumberedList) | `<ol>`-style numbered list (style via [`NumberedListItemStyle`](/api/component/list/enumerations/NumberedListItemStyle)) |
-| [`Option`](/api/component/input/classes/Option) | Item inside a [`ComboBox`](/api/component/input/classes/ComboBox) |
 
 ## Toolbar
 
