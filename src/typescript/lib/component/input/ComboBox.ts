@@ -8,7 +8,7 @@ import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
-import { CustomListItem } from "~/component/list/AbstractCustomList.js";
+import { CustomListItem, CustomListItemSpec } from "~/component/list/AbstractCustomList.js";
 import { List } from "~/component/list/List.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -919,11 +919,16 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Replaces all options with the given string values.
+     * Replaces all options with the given specs. Each entry is either a plain
+     * string — auto-keyed by its array position — or a pre-formed
+     * [`CustomListItem`](/api/component/list/interfaces/CustomListItem) whose
+     * explicit key is kept verbatim, in which case `getValue()` returns that
+     * key instead of the positional index. The caller owns key uniqueness.
      *
-     * @param items - A single string or an array of strings to use as option labels.
+     * @param items - A single spec or an array of specs. Each spec is a string
+     *   (auto-keyed by position) or a `{ key, label }` object (explicit key).
      */
-    setItems(items: String | Array<String>): this {
+    setItems(items: CustomListItemSpec | Array<CustomListItemSpec>): this {
         this._dropdown.getList().setItems(items);
         this.reapplyPendingValue();
         this.autoSelectFirstIfEmpty();
@@ -933,11 +938,15 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Appends a new option to the end of the list.
+     * Appends a new option to the end of the list. A plain string is auto-keyed
+     * by the appended position; a pre-formed
+     * [`CustomListItem`](/api/component/list/interfaces/CustomListItem) keeps
+     * its explicit key verbatim.
      *
-     * @param item - The string label for the new option.
+     * @param item - A string (auto-keyed by final position) or a `{ key, label }`
+     *   object (explicit key).
      */
-    addItem(item: String): this {
+    addItem(item: CustomListItemSpec): this {
         this._dropdown.getList().addItem(item);
         this.reapplyPendingValue();
         this.autoSelectFirstIfEmpty();

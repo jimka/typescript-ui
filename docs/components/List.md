@@ -20,6 +20,8 @@ Event.addListener(fruits, 'change', () => {
 panel.addComponent(fruits);
 ```
 
+`addItem` / `setItems` also accept pre-formed `{ key, label }` pairs (a [`CustomListItem`](/api/component/list/interfaces/CustomListItem)) when each row needs an explicit, stable key instead of its positional index — e.g. `fruits.setItems([{ key: 'apple', label: 'Apple' }, 'Banana'])`. String entries are auto-keyed by array position; the caller owns key uniqueness.
+
 ## Keyboard
 
 The list root is focusable; rows are not. Focus tracks the active row via `aria-activedescendant`.
