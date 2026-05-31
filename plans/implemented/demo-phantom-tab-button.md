@@ -18,7 +18,7 @@ The fix lives in [`Tab.ts`](../src/typescript/lib/layout/Tab.ts) (the auto-`crea
 
 ### 1. Lazy tabs do not pre-populate the container
 
-`main.ts` calls `addLazyTab` 18 times. `Tab.addLazyTab` ([Tab.ts:486-492](../src/typescript/lib/layout/Tab.ts#L486)) builds a tab *entry* (button + bookkeeping) but leaves `component: null`, `state: "lazy"`. No component is added to the container. So initially `_tabs.length === 18` and `container.getComponents().length === 0`.
+`main.ts` calls `addLazyTab` 17 times. `Tab.addLazyTab` ([Tab.ts:486-492](../src/typescript/lib/layout/Tab.ts#L486)) builds a tab *entry* (button + bookkeeping) but leaves `component: null`, `state: "lazy"`. No component is added to the container. So initially `_tabs.length === 17` and `container.getComponents().length === 0`.
 
 ### 2. `materialize` adds children to the container — and never removes the built one
 
@@ -199,7 +199,7 @@ No public API changes. The fix is internal to `Tab.doLayout`'s private catch-up 
   1. Click through many tabs repeatedly, including "MultiSelect", "Misc.", and "Complex" (the heavy lazy panels), switching back and forth 15+ times.
   2. Confirm **no** new tab button appears at the far right and **no** tab is ever labelled with a UUID.
   3. Each demo tab still materializes (spinner → content fade) on first open and re-selects instantly afterwards.
-- **Runtime confirmation (recommended)** via Chrome DevTools MCP: after heavy clicking, evaluate the tab toolbar button count and assert it equals the registered tab count (18) and does not grow. Capturing the phantom child's identity before the fix (its `getId()` and which `entry.component` it equals) confirms the "multi-select content" attribution in Root Cause §5.
+- **Runtime confirmation (recommended)** via Chrome DevTools MCP: after heavy clicking, evaluate the tab toolbar button count and assert it equals the registered tab count (17) and does not grow. Capturing the phantom child's identity before the fix (its `getId()` and which `entry.component` it equals) confirms the "multi-select content" attribution in Root Cause §5.
 - **Regression — bare-Panel tab path:** in a scratch check (or the `TabDemoPanel` eager `addTab` flow), confirm directly-added components still produce correctly-labelled tabs, proving the ownership guard did not break the eager path.
 
 ---
