@@ -17,9 +17,10 @@ class MultiSelectListPanel extends Panel {
      * static items, store-backed items, and a bound multi-select.
      */
     constructor() {
-        super();
-
-        this.setLayoutManager(new VBox());
+        super({
+            layoutManager: new VBox(),
+            autoScroll: "auto"
+        });
 
         // ── Section 1: Static items ──────────────────────────────────────────
 
