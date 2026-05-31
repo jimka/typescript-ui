@@ -165,9 +165,11 @@ export namespace Util {
      *
      * @returns The baseline offset in pixels, rounded to the nearest integer.
      *
-     * @remarks Reads the UA-applied `border-top` and `padding-top` from a probe
-     * `<input>` rendered at the active theme font, then adds the text baseline of
-     * the same font measured by `measureTextMetrics`. This avoids relying on
+     * @remarks A native single-line `<input>` vertically centres its line box in
+     * the content area, so the baseline is modelled centre-anchored: the probe's
+     * UA-applied border/padding and box height are read, the line box (measured at
+     * `line-height: normal` to match the input's own rendering) is centred in the
+     * content height, and the text baseline is added. This avoids relying on
      * `vertical-align: baseline` against an `<input>`, which browsers
      * inconsistently resolve to either the inner-text baseline or the element's
      * bottom edge. The result is cached after the first measurement; call
@@ -246,19 +248,25 @@ export namespace Util {
 
         document.body.appendChild(probe);
 
-        const computed   = getComputedStyle(probe);
-        const borderTop  = parseFloat(computed.borderTopWidth) || 0;
-        const paddingTop = parseFloat(computed.paddingTop)     || 0;
+        const computed      = getComputedStyle(probe);
+        const borderTop     = parseFloat(computed.borderTopWidth)    || 0;
+        const borderBottom  = parseFloat(computed.borderBottomWidth) || 0;
+        const paddingTop    = parseFloat(computed.paddingTop)        || 0;
+        const paddingBottom = parseFloat(computed.paddingBottom)     || 0;
+        const boxHeight     = probe.getBoundingClientRect().height;
 
         document.body.removeChild(probe);
 
         const textMetrics = measureTextMetrics("X", {
             fontFamily: "var(--ts-ui-font-family, sans-serif)",
             fontSize  : "var(--ts-ui-font-size, 14px)",
-            lineHeight: "var(--ts-ui-line-height, 1.2)",
+            lineHeight: "normal",
         });
 
-        inputBaseline = borderTop + paddingTop + textMetrics.baseline;
+        const contentHeight = boxHeight - borderTop - borderBottom - paddingTop - paddingBottom;
+        const lineTop       = borderTop + paddingTop + Math.max(0, (contentHeight - textMetrics.height) / 2);
+
+        inputBaseline = Math.round(lineTop + textMetrics.baseline);
 
         return inputBaseline;
     }
