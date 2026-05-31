@@ -318,6 +318,12 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             return;
         }
 
+        // Floor the reported minimum height to one line so a single-line label
+        // is never squeezed below its line box (the measured height is 0 for
+        // empty text and unset before the first probe).
+        const lineHeightPx  = this.getLineHeight() ?? this.readThemeLineHeightPx();
+        const minLineHeight = Math.ceil(lineHeightPx);
+
         const text = this._options.text;
         if (text) {
             const fontSize   = this.getFontSize();
@@ -346,14 +352,14 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
                 : width;
             this._defaultOptions.minSize = {
                 width:  autoMinWidth,
-                height: height,
+                height: Math.max(height, minLineHeight),
             };
         } else {
             // No glyphs means no baseline — report null so HBox doesn't try
             // to baseline-align surrounding components against an empty box.
             this._measuredBaseline = null;
             this.setCalculatedSize(0, 0);
-            this._defaultOptions.minSize = { width: 0, height: 0 };
+            this._defaultOptions.minSize = { width: 0, height: minLineHeight };
         }
     }
 
