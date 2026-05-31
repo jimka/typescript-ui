@@ -135,7 +135,7 @@ class BindingPanel extends Panel {
 
         // Group the bound fields in a labelled fieldset, capped at 600px wide
         // so the form lines stay a comfortable reading length on wide screens.
-        const FIELDSET_MAX_WIDTH = 600;
+        const FIELDSET_MAX_WIDTH = 400;
 
         const fieldSet = new FieldSet("Information");
         fieldSet.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
