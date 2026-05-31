@@ -16,9 +16,17 @@ The fix: every resize path must derive `newSize = originSize + (currentPointer �
 
 ## Architecture Decisions
 
-### Parallel fixes, not one shared fix — the resize math is decentralised
+### Parallel fixes, not one shared fix — the clamp math is decentralised
 
-There is no central "resize controller." Three independent consumers (`Window`, `Split`, `Table`) each own their own clamp math, fed by three independent handlers (`WindowBorder`, `SplitGutter`, `ResizeHandle`+`Header`). They share no resize code, so a single shared fix is not possible. Each path gets the same *shape* of fix applied locally. This matches the existing architecture and keeps changes surgical.
+There is no central "resize controller." Three independent consumers (`Window`, `Split`, `Table`) each own their own clamp math, fed by three independent handlers (`WindowBorder`, `SplitGutter`, `ResizeHandle`+`Header`). What they share is **only the origin-relative offset** (`current − originPointer`); the clamp+apply that consumes it genuinely diverges:
+
+- **Window** ([flushResize](../src/typescript/lib/core/Window.ts#L991)) — a single edge, **2D**, an 8-case `Direction` switch, **position-coupled** (WEST/NORTH move `x`/`y` as they resize), with the clamp living *inside* `setWidth`/`setHeight` via `getMinSize()` (no call-site clamp).
+- **Split** ([onDrag](../src/typescript/lib/layout/Split.ts#L92)) — an **adjacent pair**, zero-sum (lhs grows, rhs shrinks by the same amount), with no explicit call-site clamp today — it leans on `setWidth`'s floor.
+- **Table** ([onColumnResize](../src/typescript/lib/component/table/Table.ts#L704)) — an adjacent pair with **two-sided min/max redistribution**: overflow past one column's `min` is pushed onto its neighbour (`w1 += w0 − min0`) and re-checked. This is the only site that cannot be expressed as a scalar `Math.max(min, Math.min(max, x))`.
+
+A single shared *clamp* helper would fit Window awkwardly, Split partially, and Table not at all, so it is **not** worth a central abstraction. Each path therefore gets the offset fix applied locally against its own clamp. This matches the existing architecture and keeps changes surgical.
+
+> **Optional consolidation (implementer's call).** The one piece that *is* identical across all three is the per-drag **origin bookkeeping** the steps below add to each consumer (`originPointer` + `originSize`, an `originCaptured` flag, capture-at-mousedown, reset-at-dragend). Being the exact bookkeeping each path historically got wrong, it is the real regression risk for any future resize surface. If regression-resistance is valued over a minimal diff, extract a ~10-line value holder — capture once, read the offset each move — and reuse it from all three; [DragManager](../src/typescript/lib/core/DragManager.ts#L250) already models this session concept and is the pattern to mirror. If the three sites are unlikely to grow, leaving the fields inline is acceptable — the compiler enforces the payload migration regardless. **This is the only consolidation on the table; the clamp stays decentralised either way.**
 
 ### Carry the absolute pointer coordinate, not a per-tick delta
 
@@ -85,7 +93,7 @@ class Header extends Component {
 
 ## Internal Structure
 
-The fix shape, identical across all three consumers:
+The **offset computation** is identical across all three consumers; the clamp+apply that follows is per-site (see Architecture Decisions). The common shape:
 
 ```typescript
 // At dragstart (mousedown):
@@ -180,7 +188,7 @@ For window WEST/NORTH/NORTHWEST/SOUTHWEST edges the offset is **subtracted** (dr
 
 ## Non-Goals
 
-- No new central "ResizeController" abstraction — the three paths stay independent (Architecture Decisions).
+- No new central "ResizeController" abstraction — the **clamp math** stays decentralised across the three paths (Architecture Decisions). This does not preclude the optional shared origin-bookkeeping holder noted there, which carries no clamp logic.
 - No change to the 4 px drag threshold, snap, or maximize/minimize behaviour.
 - No touch-event-specific rework beyond mirroring the mouse change (the handlers already share a move handler for `touchmove`; `clientX/clientY` exist on touch points via the existing event normalisation — confirm at implementation, do not add new touch plumbing).
 - No change to `WindowBorder` / `ResizeHandle` box geometry, cursors, or theming.
