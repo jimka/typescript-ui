@@ -9,7 +9,6 @@ import { Field } from "~/data/Field.js";
 import { Column } from "~/component/table/Column.js";
 import { HeaderCell } from "~/component/table/cell/Header.js";
 import { ParentHeaderCell } from "~/component/table/cell/ParentHeader.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -45,7 +44,7 @@ class Header extends Component {
         super({ tag: "thead" });
 
         this.getAria().setRole("rowgroup");
-        this.setBorder({ bottom: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-table-header-border, black)" } });
+        this.setBorder({ borderBottom: "1px solid var(--ts-ui-table-header-border, black)" });
         this.setBackgroundImage("var(--ts-ui-table-header-bg, var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))))");
         // Clip cells that would otherwise extend past the header's right
         // edge when the inner rows are translated horizontally.

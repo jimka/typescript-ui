@@ -8,7 +8,6 @@ import { SpinButton } from "~/component/input/SpinButton.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { Insets } from "~/primitive/Insets.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Util } from "~/core/Util.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { StyleRule } from "~/core/StyleTarget.js";
@@ -76,7 +75,7 @@ export interface NumberSpinnerOptions extends AbstractInputOptions {
  */
 const _defaultNumberSpinnerOptions: Partial<NumberSpinnerOptions> = {
     insets:          new Insets(0, 0, 0, 0),
-    border:          { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-button-border, rgb(200, 200, 200))" },
+    border:          "1px solid var(--ts-ui-button-border, rgb(200, 200, 200))",
     borderRadius:    "var(--ts-ui-border-radius, 4px)",
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
 };
@@ -107,7 +106,7 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
 
         this._input = new TextField();
         this._input.setTextAlign("right");
-        this._input.setBorder({ style: BorderStyle.NONE });
+        this._input.setBorder("none");
         this._input.setBorderRadius("0");
         // Suppress the browser-default focus ring; the outer NumberSpinner's
         // `:focus-within::after` rule shows the framework focus indicator
@@ -119,9 +118,9 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
 
         this._upBtn   = new SpinButton("▲");
         this._downBtn = new SpinButton("▼");
-        this._upBtn.setBorder({ top: { style: BorderStyle.SOLID, width: 1, color: "transparent" } });
+        this._upBtn.setBorder({ borderTop: "1px solid transparent" });
         this._upBtn.setBorderRadius("0");
-        this._downBtn.setBorder({ top: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-spinner-divider, rgb(180, 180, 180))" } });
+        this._downBtn.setBorder({ borderTop: "1px solid var(--ts-ui-spinner-divider, rgb(180, 180, 180))" });
         this._downBtn.setBorderRadius("0");
 
         this._btnBox = new Component();

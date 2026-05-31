@@ -3,7 +3,6 @@
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
 import { TextField } from "~/component/input/TextField.js";
 import { AnchorType } from "~/layout/AnchorType.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Event } from "~/core/Event.js";
 import { callable } from "~/core/Callable.js";
 
@@ -42,7 +41,7 @@ class NumberEditor extends CellEditor<Number | null> {
         this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
         this._textField.clearPadding();
         this.setBorderRadius("0");
-        this._textField.setBorder({ style: BorderStyle.SOLID, width: 0, color: 'transparent' });
+        this._textField.setBorder({ border: "0px solid transparent" });
         this._textField.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-editor-border, rgba(30, 100, 200, 0.6))');
         this._textField.setOutline('none');
         this._textField.setTextAlign("right");

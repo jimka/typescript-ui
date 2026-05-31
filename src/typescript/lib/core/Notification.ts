@@ -4,7 +4,6 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { Animation } from "~/core/Animation.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Text } from "~/component/input/Text.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Button } from "~/component/button/Button.js";
@@ -122,7 +121,7 @@ export class Notification extends Component {
         const shadowVar = `var(--ts-ui-notification-shadow)`;
 
         this.setBackgroundColor(bgVar);
-        this.setBorder({ style: BorderStyle.SOLID, width: 1, color: borderVar });
+        this.setBorder({ border: `1px solid ${borderVar}` });
         this.setShadow(shadowVar);
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
 
@@ -143,7 +142,7 @@ export class Notification extends Component {
 
         this._closeButton = new Button({ glyph: "xmark" });
         this._closeButton.setInsets(new Insets(0, 0, 0, 0));
-        this._closeButton.setBorder({ style: BorderStyle.NONE });
+        this._closeButton.setBorder("none");
         this._closeButton.clearBackgroundImage();
         this._closeButton.setBackgroundColor("transparent");
         this._closeButton.clearShadow();

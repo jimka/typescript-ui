@@ -1,167 +1,66 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { BorderLine } from "~/primitive/BorderLine.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
-
 /**
- * Configuration options for a single border side.
- *
- * @category Util
- */
-export interface BorderSideOptions {
-    style?: BorderStyle;
-    width?: number;
-    color?: string;
-}
-
-/**
- * Configuration options for all four sides of a border.
- * Top-level `style`, `width`, and `color` act as fallbacks for any side that does not
- * specify its own options.
+ * A border specification built from complete CSS border strings.
+ * `border` is the all-sides fallback; each per-side field overrides it for
+ * that side. An unspecified side falls back to `border`, then to `"none"`.
  *
  * @category Util
  */
 export interface BorderOptions {
-    style?: BorderStyle;
-    width?: number;
-    color?: string;
-    top?: BorderSideOptions;
-    right?: BorderSideOptions;
-    bottom?: BorderSideOptions;
-    left?: BorderSideOptions;
+    /** CSS `border` shorthand applied to all four sides (e.g. `"1px solid rgb(...)"`, `"none"`, `"var(--x)"`). */
+    border?: string;
+    /** CSS `border-top` value; overrides `border` for the top side. */
+    borderTop?: string;
+    /** CSS `border-right` value; overrides `border` for the right side. */
+    borderRight?: string;
+    /** CSS `border-bottom` value; overrides `border` for the bottom side. */
+    borderBottom?: string;
+    /** CSS `border-left` value; overrides `border` for the left side. */
+    borderLeft?: string;
 }
 
 /**
- * Represents a complete CSS border composed of four individually configurable sides.
+ * Expands a {@link BorderOptions} into the four camelCase longhand style keys
+ * (`borderTop`/`borderRight`/`borderBottom`/`borderLeft`) that `StyleRule.setMany`
+ * consumes. Each side resolves via `side ?? border ?? "none"`, so a pure-longhand
+ * map replays deterministically regardless of what else touched the rule.
+ *
+ * @param border - The border specification to expand.
+ *
+ * @returns A map of the four longhand keys to their resolved CSS values.
  *
  * @category Util
  */
-export class Border extends Object {
+export function borderToStyle(border: BorderOptions): Record<string, string | null> {
+    const all = border.border ?? "none";
 
-    private _top: BorderLine;
-    private _right: BorderLine;
-    private _bottom: BorderLine;
-    private _left: BorderLine;
+    return {
+        borderTop:    border.borderTop    ?? all,
+        borderRight:  border.borderRight  ?? all,
+        borderBottom: border.borderBottom ?? all,
+        borderLeft:   border.borderLeft   ?? all,
+    };
+}
 
-    /**
-     * @param options - Optional. Border configuration. Per-side options take precedence over
-     * the top-level `style`, `width`, and `color` fallback values.
-     */
-    constructor(options?: BorderOptions) {
-        super();
-
-        const fallback: BorderSideOptions = { style: options?.style, width: options?.width, color: options?.color };
-
-        const top    = options?.top    ?? fallback;
-        const right  = options?.right  ?? fallback;
-        const bottom = options?.bottom ?? fallback;
-        const left   = options?.left   ?? fallback;
-
-        this._top    = new BorderLine("border-top"   , top.style, top.width, top.color);
-        this._right  = new BorderLine("border-right" , right.style as BorderStyle, right.width as number, right.color as string);
-        this._bottom = new BorderLine("border-bottom", bottom.style as BorderStyle, bottom.width as number, bottom.color as string);
-        this._left   = new BorderLine("border-left"  , left.style as BorderStyle, left.width as number, left.color as string);
+/**
+ * Best-effort leading-`<n>px` width of one side's CSS value. Returns `0` for
+ * `undefined`, `none`, `0`, `var(...)`, or any non-`px` leading token. Used both
+ * to parse the always-`<n>px` values `getComputedStyle` returns (authoritative,
+ * post-render) and to estimate a width from a spec string before an element exists.
+ *
+ * @param value - A single side's CSS border value, or `undefined`.
+ *
+ * @returns The leading pixel width, or `0` when none can be parsed.
+ *
+ * @category Util
+ */
+export function borderSideWidth(value: string | undefined): number {
+    if (!value) {
+        return 0;
     }
 
-    /**
-     * Returns the top border line definition.
-     *
-     * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the top side.
-     */
-    getTop() {
-        return this._top;
-    }
+    const match = value.trim().match(/^([\d.]+)px\b/i);
 
-    /**
-     * Returns the right border line definition.
-     *
-     * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the right side.
-     */
-    getRight() {
-        return this._right;
-    }
-
-    /**
-     * Returns the bottom border line definition.
-     *
-     * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the bottom side.
-     */
-    getBottom() {
-        return this._bottom;
-    }
-
-    /**
-     * Returns the left border line definition.
-     *
-     * @returns The [`BorderLine`](/api/primitive/classes/BorderLine) instance for the left side.
-     */
-    getLeft() {
-        return this._left;
-    }
-
-    /**
-     * Sets all four sides to the same style, width, and color.
-     *
-     * @param borderStyle - The [`BorderStyle`](/api/primitive/enumerations/BorderStyle) enum value to apply to all sides.
-     * @param width - The border width in pixels to apply to all sides.
-     * @param color - The border color string to apply to all sides.
-     */
-    set(borderStyle: BorderStyle, width: number, color: string) : this {
-        this._top.set(borderStyle, width, color);
-        this._right.set(borderStyle, width, color);
-        this._bottom.set(borderStyle, width, color);
-        this._left.set(borderStyle, width, color);
-
-        return this;
-    }
-
-    /**
-     * Returns all four border sides as a [`Style`](/api/core/interfaces/Style)
-     * map ready to feed into `Component.setElementCSSRules`, so the writes are
-     * buffered through the component's dirty-style path instead of mutating a
-     * live `CSSStyleRule`.
-     *
-     * @returns A map of CSS property names to string values covering all four sides.
-     */
-    toStyle(): { [key: string]: string | null } {
-        return {
-            ...this._top.toStyle(),
-            ...this._right.toStyle(),
-            ...this._bottom.toStyle(),
-            ...this._left.toStyle()
-        };
-    }
-
-    /**
-     * Parses a CSS border shorthand string (e.g. `"1px solid #aaa"`) into a Border object.
-     * Tokens are classified as width (`<n>px`), style (any BorderStyle keyword), or color (everything else).
-     *
-     * @param css - A CSS border shorthand value.
-     * @returns A Border whose four sides share the parsed width, style, and color.
-     */
-    static fromString(css: string): Border {
-        const tokens = css.trim().split(/\s+/);
-        let width = 0;
-        let style: BorderStyle = BorderStyle.SOLID;
-        const colorParts: string[] = [];
-
-        for (const token of tokens) {
-            const widthMatch = token.match(/^([\d.]+)px$/i);
-            if (widthMatch) {
-                width = parseFloat(widthMatch[1]);
-                continue;
-            }
-
-            const key = token.toUpperCase();
-            if (key in BorderStyle && typeof (BorderStyle as Record<string, unknown>)[key] === 'number') {
-                style = (BorderStyle as Record<string, unknown>)[key] as BorderStyle;
-                continue;
-            }
-
-            colorParts.push(token);
-        }
-
-        const color = colorParts.length > 0 ? colorParts.join(' ') : 'black';
-        return new Border({ style, width, color });
-    }
+    return match ? parseFloat(match[1]) : 0;
 }

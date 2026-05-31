@@ -8,7 +8,6 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
 import { Insets } from "~/primitive/Insets.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { FillType } from "~/layout/FillType.js";
 import { ButtonGroup } from "~/core/ButtonGroup.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
@@ -243,7 +242,7 @@ class Tab extends LayoutManager {
         this._toolbar.setLayoutManager(new HBox({ mode: "equal", spacing: 0 }));
         this._toolbar.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
         this._toolbar.clearInsets();
-        this._toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
+        this._toolbar.setBorder({ border: "1px solid var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
         this._toolbar.setPreferredSize(0, 30);
 
         if (options) {
@@ -441,7 +440,7 @@ class Tab extends LayoutManager {
         this._underBorderFullWidth = full;
 
         if (full) {
-            this._toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
+            this._toolbar.setBorder({ border: "1px solid var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
         } else {
             this._toolbar.clearBorder();
         }
@@ -681,7 +680,12 @@ class Tab extends LayoutManager {
         // gradient bleed-through.
         tabButton.setBackgroundColor("var(--ts-ui-tab-button-bg, #b8b8c3)");
         tabButton.setBackgroundImage("var(--ts-ui-tab-button-bg, #b8b8c3)");
-        tabButton.setBorder("var(--ts-ui-tab-button-border, none)");
+        tabButton.setBorder({
+            borderTop:    "var(--ts-ui-tab-button-border-top,    var(--ts-ui-tab-button-border, none))",
+            borderRight:  "var(--ts-ui-tab-button-border-right,  var(--ts-ui-tab-button-border, none))",
+            borderBottom: "var(--ts-ui-tab-button-border-bottom, var(--ts-ui-tab-button-border, none))",
+            borderLeft:   "var(--ts-ui-tab-button-border-left,   var(--ts-ui-tab-button-border, none))",
+        });
         tabButton.clearBorderRadius();
         tabButton.clearShadow();
 
@@ -689,13 +693,23 @@ class Tab extends LayoutManager {
         tabButton.setHoverBackgroundColor("var(--ts-ui-tab-button-hover-bg, #c4c4cf)");
         tabButton.setHoverBackgroundImage("var(--ts-ui-tab-button-hover-bg, #c4c4cf)");
         tabButton.setHoverShadow("none");
-        tabButton.setHoverBorder("var(--ts-ui-tab-button-hover-border, none)");
+        tabButton.setHoverBorder({
+            borderTop:    "var(--ts-ui-tab-button-hover-border-top,    var(--ts-ui-tab-button-hover-border, none))",
+            borderRight:  "var(--ts-ui-tab-button-hover-border-right,  var(--ts-ui-tab-button-hover-border, none))",
+            borderBottom: "var(--ts-ui-tab-button-hover-border-bottom, var(--ts-ui-tab-button-hover-border, none))",
+            borderLeft:   "var(--ts-ui-tab-button-hover-border-left,   var(--ts-ui-tab-button-hover-border, none))",
+        });
 
         // Selected (active) state.
         tabButton.setSelectedBackgroundColor("var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))");
         tabButton.setSelectedBackgroundImage("var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))");
         tabButton.setSelectedShadow("none");
-        tabButton.setSelectedBorder("var(--ts-ui-tab-button-selected-border, none)");
+        tabButton.setSelectedBorder({
+            borderTop:    "var(--ts-ui-tab-button-selected-border-top,    var(--ts-ui-tab-button-selected-border, none))",
+            borderRight:  "var(--ts-ui-tab-button-selected-border-right,  var(--ts-ui-tab-button-selected-border, none))",
+            borderBottom: "var(--ts-ui-tab-button-selected-border-bottom, var(--ts-ui-tab-button-selected-border, none))",
+            borderLeft:   "var(--ts-ui-tab-button-selected-border-left,   var(--ts-ui-tab-button-selected-border, none))",
+        });
 
         // Reserve room on the right for the overlaid close button on closeable
         // tabs so a long label doesn't run under the ✕.

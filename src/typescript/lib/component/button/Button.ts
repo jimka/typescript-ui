@@ -7,10 +7,9 @@ import { HBox } from "~/layout/HBox.js";
 import { Text } from "~/component/input/Text.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import { Border, BorderOptions } from "~/primitive/Border.js";
+import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
@@ -45,13 +44,13 @@ export interface ButtonOptions extends ComponentOptions {
     pressedBackgroundColor?: string;
     pressedBackgroundImage?: string;
     pressedForegroundColor?: string;
-    pressedBorder?:          BorderOptions;
+    pressedBorder?:          BorderOptions | string;
     pressedBorderRadius?:    string;
     pressedShadow?:          string;
     hoverBackgroundColor?:   string;
     hoverBackgroundImage?:   string;
     hoverForegroundColor?:   string;
-    hoverBorder?:            BorderOptions;
+    hoverBorder?:            BorderOptions | string;
     hoverBorderRadius?:      string;
     hoverShadow?:            string;
 
@@ -100,7 +99,7 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
     tag:                    "button",
     cursor:                 "pointer",
     foregroundColor:        "var(--ts-ui-text-color, black)",
-    border:                 { style: BorderStyle.RIDGE, width: 2, color: "var(--ts-ui-button-border, rgb(200, 200, 200))" },
+    border:                 "2px ridge var(--ts-ui-button-border, rgb(200, 200, 200))",
     borderRadius:           "var(--ts-ui-border-radius, 4px)",
     shadow:                 "var(--ts-ui-button-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2))",
     backgroundImage:        "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))",
@@ -188,7 +187,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     private get pressedStyleRule(): StyleRule {
         return this._pressedStyleRule ??= this.createStyleRule(":active");
     }
-    private _pressedBorder: Border | null = null;
+    private _pressedBorder: BorderOptions | null = null;
 
     // Lazy `:hover:not(:active)` rule. The `:not(:active)` guard makes the
     // cascade unambiguous regardless of source order — the moment the
@@ -198,7 +197,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     private get hoverStyleRule(): StyleRule {
         return this._hoverStyleRule ??= this.createStyleRule(":hover:not(:active)");
     }
-    private _hoverBorder: Border | null = null;
+    private _hoverBorder: BorderOptions | null = null;
 
     private _enabledCursor: string = "pointer";
 
@@ -336,9 +335,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // so the spread merge masks the defaults and `applyStyle`'s
             // `if (opts.X)` falsy gates skip the property.
             //
-            // Border goes through private `_border` / `_borderCSS` fields, so
-            // `clearBorder` resets those to a 0-width none-style border that
-            // overrides the UA `<button>` ridge.
+            // Border goes through the private `_border` field, so `clearBorder`
+            // clears it to a `none` border that overrides the UA `<button>` ridge.
             //
             // Finally, the UA `<button>` element has a non-transparent
             // background-color; set transparent unless the caller specified
@@ -799,22 +797,23 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     /**
      * Returns the border applied when the button is in the :active state.
      *
-     * @returns The Border instance for the :active state, or null if not set.
+     * @returns The {@link BorderOptions} for the :active state, or null if not set.
      */
-    getPressedBorder(): Border | null {
+    getPressedBorder(): BorderOptions | null {
         return this._pressedBorder;
     }
 
     /**
-     * Sets the border for the :active CSS rule.
+     * Sets the border for the :active CSS rule. Accepts either a {@link BorderOptions}
+     * bag or a CSS `border` shorthand string (sugar for `{ border: <string> }`).
      *
-     * @param options - Optional. Border configuration (style, width, color). Omit to apply a default border.
+     * @param options - Border configuration, a CSS `border` shorthand string, or omitted for a `none` border.
      *
      * @returns This component, for method chaining.
      */
-    setPressedBorder(options?: BorderOptions): this {
-        this._pressedBorder = new Border(options);
-        this.pressedStyleRule.setMany(this._pressedBorder.toStyle());
+    setPressedBorder(options?: BorderOptions | string): this {
+        this._pressedBorder = typeof options === "string" ? { border: options } : (options ?? {});
+        this.pressedStyleRule.setMany(borderToStyle(this._pressedBorder));
 
         return this;
     }
@@ -997,34 +996,25 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     /**
      * Returns the border applied when the pointer is over the button (but not pressed).
      *
-     * @returns The [`Border`](/api/primitive/classes/Border) instance for the hover state, or null if not set.
+     * @returns The {@link BorderOptions} for the hover state, or null if not set.
      */
-    getHoverBorder(): Border | null {
+    getHoverBorder(): BorderOptions | null {
         return this._hoverBorder;
     }
 
     /**
      * Sets the border for the `:hover:not(:active)` CSS rule. Accepts either a
-     * {@link BorderOptions} bag or a CSS `border` shorthand string (e.g.
-     * `"1px solid rgb(...)"` or `"none"`); the string form writes the `border`
-     * shorthand directly, mirroring [`Component.setBorder`](/api/core/classes/Component#setborder)'s `var(...)`
-     * handling.
+     * {@link BorderOptions} bag or a CSS `border` shorthand string (sugar for
+     * `{ border: <string> }`, e.g. `"1px solid rgb(...)"` or `"none"`). The four
+     * CSS longhands are written so a per-side hover border survives.
      *
-     * @param options - Border configuration, a CSS `border` shorthand string, or omitted for a default border.
+     * @param options - Border configuration, a CSS `border` shorthand string, or omitted for a `none` border.
      *
      * @returns This component, for method chaining.
      */
-    setHoverBorder(options?: BorderOptions): this;
-    setHoverBorder(border: string): this;
     setHoverBorder(options?: BorderOptions | string): this {
-        if (typeof options === "string") {
-            this.hoverStyleRule.set("border", options);
-
-            return this;
-        }
-
-        this._hoverBorder = new Border(options);
-        this.hoverStyleRule.setMany(this._hoverBorder.toStyle());
+        this._hoverBorder = typeof options === "string" ? { border: options } : (options ?? {});
+        this.hoverStyleRule.setMany(borderToStyle(this._hoverBorder));
 
         return this;
     }

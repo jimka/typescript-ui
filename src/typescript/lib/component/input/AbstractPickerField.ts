@@ -6,7 +6,6 @@ import { PickerInput } from "~/component/input/PickerInput.js";
 import { PickerButton } from "~/component/input/PickerButton.js";
 import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Util } from "~/core/Util.js";
@@ -437,11 +436,7 @@ abstract class AbstractPickerField<
         this._invalid = invalid;
 
         if (invalid) {
-            this.setBorder({
-                style: BorderStyle.SOLID,
-                width: 1,
-                color: "var(--ts-ui-validation-error-border)",
-            });
+            this.setBorder({ border: "1px solid var(--ts-ui-validation-error-border)" });
         } else {
             this.setBorder(this.getDefaultBorder());
         }

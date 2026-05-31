@@ -5,7 +5,6 @@ import { Animation } from "~/core/Animation.js";
 import { Event } from "~/core/Event.js";
 import { Position } from "~/primitive/Position.js";
 import { Util } from "~/core/Util.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Text } from "~/component/input/Text.js";
 import { Button } from "~/component/button/Button.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -156,10 +155,8 @@ class DialogTitleBar extends Component {
 
         this.setBackgroundColor("var(--ts-ui-body-bg)");
         this.setBorder({
-            top   : { style: BorderStyle.NONE },
-            right : { style: BorderStyle.NONE },
-            bottom: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-dialog-border)" },
-            left  : { style: BorderStyle.NONE },
+            border:       "none",
+            borderBottom: "1px solid var(--ts-ui-dialog-border)",
         });
         this.setPreferredSize(0, TITLE_HEIGHT);
 
@@ -175,7 +172,7 @@ class DialogTitleBar extends Component {
 
         this._closeButton = new Button({ glyph: "xmark" });
         this._closeButton.setInsets(new Insets(0, 0, 0, 0));
-        this._closeButton.setBorder({ style: BorderStyle.NONE });
+        this._closeButton.setBorder("none");
         this._closeButton.clearBackgroundImage();
         this._closeButton.setBackgroundColor("transparent");
         this._closeButton.clearShadow();
@@ -328,10 +325,8 @@ class DialogButtonRow extends Component {
         super();
 
         this.setBorder({
-            top   : { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-dialog-border)" },
-            right : { style: BorderStyle.NONE },
-            bottom: { style: BorderStyle.NONE },
-            left  : { style: BorderStyle.NONE },
+            border:    "none",
+            borderTop: "1px solid var(--ts-ui-dialog-border)",
         });
         this.setBackgroundColor("var(--ts-ui-body-bg)");
         this.setPreferredSize(0, BUTTON_HEIGHT);
