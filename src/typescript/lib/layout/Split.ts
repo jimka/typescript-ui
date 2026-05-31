@@ -29,6 +29,10 @@ class Split extends LayoutManager {
     private _sizes: Map<Component, number> = new Map<Component, number>();
     private _gutters: Array<SplitGutter> = [];
 
+    private _dragOriginPointer: number = 0;
+    private _dragOriginLhsSize: number = 0;
+    private _dragOriginRhsSize: number = 0;
+
     constructor(direction?: String | SplitOptions, options?: SplitOptions) {
         super();
 
@@ -80,37 +84,85 @@ class Split extends LayoutManager {
     }
 
     /**
-     * Adjusts the sizes of the two panels adjacent to a gutter when it is dragged.
+     * Captures the drag origin when a gutter's drag begins: the absolute
+     * pointer coordinate and the current sizes of the two adjacent panels.
+     * Subsequent `drag` events derive the new sizes from these origins so
+     * over-travel past a panel's minimum is absorbed without decoupling the
+     * gutter from the cursor on reversal.
      *
      * @param container - The container component that owns the panels.
-     * @param gutter - The gutter being dragged.
-     * @param dragAmount - The number of pixels the gutter was moved (negative moves left/up).
-     *
-     * @remarks The stored sizes for both affected panels are updated so the next `doLayout`
-     * call preserves the user-defined split ratio.
+     * @param gutter - The gutter whose drag is starting.
+     * @param position - The absolute pointer coordinate (`clientX`/`clientY`)
+     *   in the split axis at the moment the drag began.
      */
-    onDrag(container: Component, gutter: SplitGutter, dragAmount: number) {
+    onDragStart(container: Component, gutter: SplitGutter, position: number) {
         let gutterIdx = this._gutters.indexOf(gutter);
         let lhs = container.getComponents()[gutterIdx];
         let rhs = container.getComponents()[gutterIdx + 1];
 
+        this._dragOriginPointer = position;
+
         if (this._direction === "horizontal") {
-            lhs.setWidth(lhs.getWidth() + dragAmount);
+            this._dragOriginLhsSize = lhs.getWidth();
+            this._dragOriginRhsSize = rhs.getWidth();
+        } else {
+            this._dragOriginLhsSize = lhs.getHeight();
+            this._dragOriginRhsSize = rhs.getHeight();
+        }
+    }
+
+    /**
+     * Adjusts the sizes of the two panels adjacent to a gutter when it is dragged.
+     *
+     * @param container - The container component that owns the panels.
+     * @param gutter - The gutter being dragged.
+     * @param position - The absolute pointer coordinate (`clientX`/`clientY`) in
+     *   the split axis for this move.
+     *
+     * @remarks The new panel sizes are computed from the drag origin captured in
+     * {@link onDragStart} as `origin + (position − originPointer)`, then clamped
+     * against each panel's minimum size while conserving the pair's combined
+     * size. Clamping the absolute result (rather than accumulating per-move
+     * deltas) means dragging past a panel's minimum is idempotent: the panel
+     * stays at its floor until the pointer returns past the boundary
+     * coordinate. The stored sizes for both affected panels are updated so the
+     * next `doLayout` call preserves the user-defined split ratio.
+     */
+    onDrag(container: Component, gutter: SplitGutter, position: number) {
+        let gutterIdx = this._gutters.indexOf(gutter);
+        let lhs = container.getComponents()[gutterIdx];
+        let rhs = container.getComponents()[gutterIdx + 1];
+
+        const horizontal = this._direction === "horizontal";
+        const total      = this._dragOriginLhsSize + this._dragOriginRhsSize;
+
+        const lhsMin = lhs.getMinSize();
+        const rhsMin = rhs.getMinSize();
+        const minLhs = lhsMin ? (horizontal ? lhsMin.width : lhsMin.height) : 0;
+        const minRhs = rhsMin ? (horizontal ? rhsMin.width : rhsMin.height) : 0;
+
+        const offset = position - this._dragOriginPointer;
+
+        let newLhs = this._dragOriginLhsSize + offset;
+        newLhs = Math.max(minLhs, Math.min(total - minRhs, newLhs));
+
+        const newRhs    = total - newLhs;
+        const dragAmount = newLhs - (horizontal ? lhs.getWidth() : lhs.getHeight());
+
+        if (horizontal) {
+            lhs.setWidth(newLhs);
             gutter.setX(gutter.getX() + dragAmount);
             rhs.setX(rhs.getX() + dragAmount);
-            rhs.setWidth(rhs.getWidth() - dragAmount);
-
-            this._sizes.set(lhs, lhs.getWidth());
-            this._sizes.set(rhs, rhs.getWidth());
+            rhs.setWidth(newRhs);
         } else {
-            lhs.setHeight(lhs.getHeight() + dragAmount);
+            lhs.setHeight(newLhs);
             gutter.setY(gutter.getY() + dragAmount);
             rhs.setY(rhs.getY() + dragAmount);
-            rhs.setHeight(rhs.getHeight() - dragAmount);
-
-            this._sizes.set(lhs, lhs.getHeight());
-            this._sizes.set(rhs, rhs.getHeight());
+            rhs.setHeight(newRhs);
         }
+
+        this._sizes.set(lhs, newLhs);
+        this._sizes.set(rhs, newRhs);
 
         lhs.doLayout();
         rhs.doLayout();
@@ -225,8 +277,11 @@ class Split extends LayoutManager {
 
         for (let i = this._gutters.length; i < gutterCount; i += 1) {
             let gutter = new SplitGutter(this._direction);
-            gutter.on("drag", function (dragAmount: number) {
-                me.onDrag(<Component>container, gutter, dragAmount);
+            gutter.on("dragstart", function (position: number) {
+                me.onDragStart(<Component>container, gutter, position);
+            });
+            gutter.on("drag", function (position: number) {
+                me.onDrag(<Component>container, gutter, position);
             });
 
             this._gutters.push(gutter);

@@ -17,7 +17,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type HeaderEvent = "columnresize" | "columncontextmenu";
+export type HeaderEvent = "columnresizestart" | "columnresize" | "columncontextmenu";
 
 /**
  * The header section of a table, rendered as a `<thead>` element.
@@ -157,16 +157,20 @@ class Header extends Component {
     /**
      * Registers a listener for one of this header's events.
      *
-     * @param event - `"columnresize"` fires when the user drags a column
-     *   resize handle, receiving the zero-based column index and the pixel
-     *   delta; `"columncontextmenu"` fires on a right-click anywhere in the
-     *   header band, receiving the field name (empty string when the click
-     *   landed on a parent-header cell) and the viewport x/y coordinates.
+     * @param event - `"columnresizestart"` fires on mousedown over a column
+     *   resize handle, receiving the zero-based column index and the absolute
+     *   pointer `clientX` at the moment the drag began; `"columnresize"` fires
+     *   when the user drags a column resize handle, receiving the zero-based
+     *   column index and the absolute pointer `clientX`; `"columncontextmenu"`
+     *   fires on a right-click anywhere in the header band, receiving the field
+     *   name (empty string when the click landed on a parent-header cell) and
+     *   the viewport x/y coordinates.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This header, for method chaining.
      */
-    on(event: "columnresize",      listener: (colIndex: number, delta: number) => void): this;
+    on(event: "columnresizestart", listener: (colIndex: number, clientX: number) => void): this;
+    on(event: "columnresize",      listener: (colIndex: number, clientX: number) => void): this;
     on(event: "columncontextmenu", listener: (fieldName: string, x: number, y: number) => void): this;
     on(event: HeaderEvent,         listener: Function): this {
         this._listeners.add(event, listener);
@@ -196,7 +200,8 @@ class Header extends Component {
      * @param event - The event to emit.
      * @param payload - Forwarded to each listener.
      */
-    protected emit(event: "columnresize",      colIndex: number, delta: number): void;
+    protected emit(event: "columnresizestart", colIndex: number, clientX: number): void;
+    protected emit(event: "columnresize",      colIndex: number, clientX: number): void;
     protected emit(event: "columncontextmenu", fieldName: string, x: number, y: number): void;
     protected emit(event: HeaderEvent,         ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
@@ -411,6 +416,15 @@ class Header extends Component {
                 cell.setTooltip(field.getDescription());
 
                 row.addComponent(cell, { data: field });
+
+                // Wire exactly once, at creation. The resize/sort/context
+                // closures resolve the cell's visible-column index live (via
+                // getColumns) at emit time, so a later hide/show that shifts
+                // indices needs no re-wiring. Re-wiring a surviving cell would
+                // stack duplicate listeners on its ListenerBag — making a
+                // single drag emit `columnresize` several times with mismatched
+                // indices, and a single header click cycle the sort twice.
+                this.wireCell(cell);
             }
 
             // Tint the column header with the group's `groupColor` so
@@ -425,11 +439,6 @@ class Header extends Component {
             if (groupColor) {
                 cell.setBackgroundColor(groupColor);
             }
-
-            // Re-wire on every sync so the resize-callback closure
-            // captures the new visible-column index when an earlier
-            // column was hidden/shown.
-            this.wireCell(cell, i);
         }
 
         // Re-order children to the new visible-field display order so
@@ -522,14 +531,22 @@ class Header extends Component {
     }
 
     /**
-     * Wires the sort, resize, and context-menu callbacks for one cell.
+     * Wires the sort, resize, and context-menu callbacks for one cell. Called
+     * exactly once per cell, at creation.
      *
      * @param cell - The header cell whose listeners are being attached.
-     * @param idx - Zero-based column index used by the resize callback.
+     *
+     * @remarks The resize callbacks report the cell's *current* visible-column
+     * index by looking it up live through {@link getColumns} when the event
+     * fires, rather than capturing an index at wiring time. This keeps the
+     * index correct after a hide/show/reorder shuffles the columns without
+     * re-wiring — re-wiring would stack duplicate listeners on the surviving
+     * cell's `ListenerBag`.
      */
-    private wireCell(cell: HeaderCell, idx: number): void {
+    private wireCell(cell: HeaderCell): void {
         cell.on("sortclick",   (fieldName, shiftKey) => this.handleSortClick(fieldName, shiftKey));
-        cell.on("resizedrag",  (delta) => this.emit("columnresize", idx, delta));
+        cell.on("resizestart", (clientX) => this.emit("columnresizestart", this.getColumns().indexOf(cell), clientX));
+        cell.on("resizedrag",  (clientX) => this.emit("columnresize", this.getColumns().indexOf(cell), clientX));
         cell.on("contextmenu", (fieldName, x, y) => this.emit("columncontextmenu", fieldName, x, y));
     }
 

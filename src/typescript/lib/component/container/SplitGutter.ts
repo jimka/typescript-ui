@@ -11,7 +11,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type SplitGutterEvent = "drag";
+export type SplitGutterEvent = "dragstart" | "drag";
 
 /**
  * Construction-time options for {@link SplitGutter}.
@@ -25,7 +25,8 @@ export interface SplitGutterOptions extends ComponentOptions {
      * construction time.
      */
     listeners?: {
-        drag?: (movement: number) => void;
+        dragstart?: (position: number) => void;
+        drag?:      (position: number) => void;
     };
 }
 
@@ -42,8 +43,9 @@ const _defaultSplitGutterOptions: Partial<SplitGutterOptions> = {
  * A draggable gutter component used to resize split panels.
  *
  * Listens for mouse/touch drag events on the viewport and notifies registered drag
- * listeners with the pixel delta on each move. Disables body pointer events during
- * a drag to prevent text selection.
+ * listeners with the absolute pointer coordinate (`clientX`/`clientY`) in the gutter's
+ * drag axis on each move. Disables body pointer events during a drag to prevent text
+ * selection.
  *
  * @category Components
  */
@@ -72,6 +74,10 @@ class SplitGutter extends Component<SplitGutterOptions> {
         // Component's constructor calls `applyOptions` from inside super(),
         // before the class-field `_listeners` initializer has run. Wiring
         // after super() guarantees `_listeners` exists.
+        if (options?.listeners?.dragstart !== undefined) {
+            this.on("dragstart", options.listeners.dragstart);
+        }
+
         if (options?.listeners?.drag !== undefined) {
             this.on("drag", options.listeners.drag);
         }
@@ -122,13 +128,16 @@ class SplitGutter extends Component<SplitGutterOptions> {
     /**
      * Registers a listener for one of this gutter's events.
      *
-     * @param event - `"drag"` fires on each mousemove/touchmove during a
-     *   drag, receiving the pixel delta in the gutter's drag axis.
+     * @param event - `"dragstart"` fires on mousedown, receiving the absolute
+     *   pointer coordinate (`clientX`/`clientY`) in the gutter's drag axis at
+     *   the moment the drag begins; `"drag"` fires on each mousemove/touchmove
+     *   during a drag, receiving the absolute pointer coordinate in that axis.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This gutter, for method chaining.
      */
-    on(event: "drag",            listener: (movement: number) => void): this;
+    on(event: "dragstart",       listener: (position: number) => void): this;
+    on(event: "drag",            listener: (position: number) => void): this;
     on(event: SplitGutterEvent,  listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -157,7 +166,8 @@ class SplitGutter extends Component<SplitGutterOptions> {
      * @param event - The event to emit.
      * @param payload - Forwarded to each listener.
      */
-    protected emit(event: "drag",            movement: number): void;
+    protected emit(event: "dragstart",       position: number): void;
+    protected emit(event: "drag",            position: number): void;
     protected emit(event: SplitGutterEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
@@ -170,19 +180,29 @@ class SplitGutter extends Component<SplitGutterOptions> {
     }
 
     /**
-     * Internal mousemove/touchmove dispatch — fires the `drag` event with
-     * the pixel movement amount.
+     * Internal mousemove/touchmove dispatch — fires the `drag` event with the
+     * absolute pointer coordinate in the gutter's drag axis.
      *
-     * @param movement - The pixel delta in the relevant axis for this drag event.
+     * @param position - The absolute pointer coordinate (`clientX`/`clientY`)
+     *   in the relevant axis for this drag event.
      */
-    private _dispatchDrag(movement: number): void {
-        this.emit("drag", movement);
+    private _dispatchDrag(position: number): void {
+        this.emit("drag", position);
     }
 
     /**
-     * Attaches viewport mouse/touch move and stop listeners and disables body pointer events.
+     * Attaches viewport mouse/touch move and stop listeners, disables body
+     * pointer events, and fires the `dragstart` event with the absolute pointer
+     * coordinate so the consumer can capture its drag origin.
+     *
+     * @param evnt - The mousedown event; its `clientX`/`clientY` seeds the
+     *   drag origin in the gutter's axis.
      */
-    onDragStart() {
+    onDragStart(evnt: MouseEvent) {
+        const position = this._direction === "horizontal" ? evnt.clientX : evnt.clientY;
+
+        this.emit("dragstart", position);
+
         Event.addViewportListener(this, 'mouseup', this.onDragStop);
         Event.addViewportListener(this, 'touchend', this.onDragStop);
         Event.addViewportListener(this, 'touchcancel', this.onDragStop);
@@ -206,19 +226,20 @@ class SplitGutter extends Component<SplitGutterOptions> {
     }
 
     /**
-     * Extracts the movement amount from the mouse event and fires all drag listeners.
+     * Extracts the absolute pointer coordinate from the mouse event and fires
+     * all drag listeners.
      *
-     * @param evnt - The MouseEvent from which movementX or movementY is read.
+     * @param evnt - The MouseEvent from which clientX or clientY is read.
      */
     onDrag(evnt: MouseEvent) {
-        let movement;
+        let position;
         if (this._direction === "horizontal") {
-            movement = evnt.movementX;
+            position = evnt.clientX;
         } else {
-            movement = evnt.movementY;
+            position = evnt.clientY;
         }
 
-        this._dispatchDrag(movement);
+        this._dispatchDrag(position);
     }
 
     /**
