@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Util } from "~/core/Util.js";
+import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -95,6 +96,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private _lineHeightCSSVar : string | null = "--ts-ui-line-height";
     private _lineHeightCSSRule: string | null = "var(--ts-ui-line-height, 1.2)";
     private _measuredBaseline: number | null = null;
+    private _measuredMinSize: Size | null = null;
     private _autoMeasure: boolean = true;
     private _measurementDirty: boolean = true;
     private _wordBreak: string | null = null;
@@ -318,6 +320,12 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             return;
         }
 
+        // Floor the reported minimum height to one line so a single-line label
+        // is never squeezed below its line box (the measured height is 0 for
+        // empty text and unset before the first probe).
+        const lineHeightPx  = this.getLineHeight() ?? this.readThemeLineHeightPx();
+        const minLineHeight = Math.ceil(lineHeightPx);
+
         const text = this._options.text;
         if (text) {
             const fontSize   = this.getFontSize();
@@ -335,25 +343,31 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
             this._measuredBaseline = baseline;
             this.setCalculatedSize(width, height);
-            // Write to `_defaultOptions` (not `_options`) so an explicit
-            // `setMinSize` from the caller still wins via `Component.getMinSize`'s
-            // `_options.minSize ?? _defaultOptions.minSize` fallback. When
-            // truncation is disabled, report the full natural width as
-            // `minSize.width` so the parent layout widens to fit instead of
-            // squeezing the text.
+            // Store the measured floor as per-instance derived state (like
+            // `_measuredBaseline`), kept out of `_defaultOptions`, which holds
+            // the class-level Text defaults rather than per-instance
+            // measurements. `getMinSize` folds this into the inherited min.
+            // When truncation is disabled, report the full natural width so the
+            // parent layout widens to fit instead of squeezing the text;
+            // otherwise cap it so the parent can shrink the text past its
+            // natural width.
             const autoMinWidth = this._truncate
                 ? Math.min(width, TEXT_AUTO_MIN_WIDTH_CAP_PX)
                 : width;
-            this._defaultOptions.minSize = {
+            this._measuredMinSize = {
                 width:  autoMinWidth,
-                height: height,
+                height: Math.max(height, minLineHeight),
             };
         } else {
             // No glyphs means no baseline — report null so HBox doesn't try
             // to baseline-align surrounding components against an empty box.
+            // Reserve no line height either: an empty Text (e.g. the label slot
+            // of an icon-only button) must collapse so it doesn't inflate the
+            // container and knock the icon off-centre. The one-line floor only
+            // applies once there is text to keep on its line.
             this._measuredBaseline = null;
             this.setCalculatedSize(0, 0);
-            this._defaultOptions.minSize = { width: 0, height: 0 };
+            this._measuredMinSize = { width: 0, height: 0 };
         }
     }
 
@@ -404,6 +418,46 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         }
 
         return super.getPreferredSize();
+    }
+
+    /**
+     * Returns the effective minimum size, folding the measured one-line height
+     * floor (from `calculateSize`) into the inherited component/layout minimum.
+     *
+     * @returns The minimum `{width, height}`, never shorter than one line of
+     * text, or `null` only when neither a measurement nor an inherited minimum
+     * exists.
+     *
+     * @remarks Only the **height** floor participates in the hard minimum —
+     * text cannot render below its line box without clipping. The measured
+     * width is deliberately *not* folded in: surfacing each label's natural
+     * width as a hard minimum would stop parent layouts (e.g. an equal-mode tab
+     * bar) from compressing short labels to fit, which is why `Text.minSize`
+     * has historically reported a zero width. The floor is per-instance derived
+     * state held in `_measuredMinSize`, not a class default, so it lives outside
+     * `_defaultOptions`. An explicit caller `setMinSize` taller than the floor
+     * still wins via `Math.max`; a value shorter than one line is lifted to it.
+     */
+    getMinSize(): Size | null {
+        if (this._measurementDirty) {
+            this.calculateSize();
+        }
+
+        const measured = this._measuredMinSize;
+        const base     = super.getMinSize();
+
+        if (!measured) {
+            return base;
+        }
+
+        if (!base) {
+            return { width: 0, height: measured.height };
+        }
+
+        return {
+            width:  base.width,
+            height: Math.max(base.height, measured.height),
+        };
     }
 
     /**
