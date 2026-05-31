@@ -477,6 +477,8 @@ abstract class AbstractCustomList<
         });
         this.addComponent(this._innerPanel);
 
+        this.setMinSize(100, 100);
+
         Event.addListener(this, "keydown", this.handleKeyDown);
 
         // Late-built state: `store` / `items` / `enabled` / `readOnly`
