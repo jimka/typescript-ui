@@ -468,6 +468,10 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * holds the pending key until an items-load resolves it.
      */
     private _pendingValue:         string | null = null;
+    /** The store currently subscribed for option refreshes, or null. */
+    private _boundStore:           AbstractStore | null = null;
+    /** Handler re-asserting selection + label after the inner list rebuilds from a store event. */
+    private readonly _onStoreRefresh: () => void;
     private readonly _onViewportPointerDown: (e: PointerEvent) => void;
 
     /**
@@ -528,6 +532,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         Event.addListener(this, "change", () => this.notifyChange(this.getValue()));
 
         this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
+        this._onStoreRefresh        = () => this.onStoreRefresh();
 
         // Late-built state: store / items / selection were written pure to
         // `_options` by the super-time cascade. Dispatch them now that the
@@ -952,13 +957,28 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         // Keep `_options.store` / `displayField` / `valueField` in sync so
         // anything still inspecting them (constructor-time dispatch on
         // re-entry, future option-bag introspection) reads the current
-        // binding. The store-event subscription itself lives on the inner
-        // list; its `setStore` de-registers any previous handlers.
+        // binding.
         this._options.store        = store;
         this._options.displayField = displayField;
         this._options.valueField   = valueField;
 
+        if (this._boundStore) {
+            (['load', 'add', 'remove', 'datachanged'] as const).forEach(e =>
+                this._boundStore!.off(e, this._onStoreRefresh)
+            );
+        }
+
+        // Bind the inner list first so its own store handler is registered —
+        // and therefore fires — before the combo's `_onStoreRefresh`, which
+        // relies on the list having already rebuilt its rows.
         this._dropdown.getList().setStore(store, displayField, valueField);
+
+        this._boundStore = store;
+
+        (['load', 'add', 'remove', 'datachanged'] as const).forEach(e =>
+            store.on(e, this._onStoreRefresh)
+        );
+
         this.reapplyPendingValue();
         this.autoSelectFirstIfEmpty();
         this.refreshLabel();
@@ -1017,6 +1037,20 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         if (list.getSelectedIndex() < 0 && list.getItems().length > 0) {
             list.setSelectedIndex(0, false);
         }
+    }
+
+    /**
+     * Re-asserts the surface selection and label after the inner list
+     * rebuilds its rows from a deferred store event (an async `load`, or a
+     * later `add` / `remove` / `datachanged`). The inner list clears its
+     * selection whenever it rebuilds from the store, so without this the
+     * combo would show populated options but a blank label on first paint
+     * when the store loads after construction.
+     */
+    private onStoreRefresh(): void {
+        this.reapplyPendingValue();
+        this.autoSelectFirstIfEmpty();
+        this.refreshLabel();
     }
 
     /**
