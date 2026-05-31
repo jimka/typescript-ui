@@ -150,9 +150,9 @@ Per-side tab-button override tokens. The existing uniform tokens stay as fallbac
 | `--ts-ui-tab-button-selected-border-left` | — | — | `1px solid rgb(214,217,222)` | Per-side override, selected |
 | `--ts-ui-tab-button-selected-border-right` | — | — | `1px solid rgb(214,217,222)` | Per-side override, selected |
 
-Top/bottom are intentionally left to fall through to the uniform `none` (no `-top`/`-bottom` tokens needed). Default/Dark set no per-side fields, so they keep flat/gradient borderless tabs. Modern demonstrates left/right hairline with `none` top/bottom.
+Top/bottom are intentionally left to fall through to the uniform `none` (no `-top`/`-bottom` tokens needed). Classic/Dark set no per-side fields, so they keep flat/gradient borderless tabs. Modern demonstrates left/right hairline with `none` top/bottom.
 
-`Theme` block change (`tab.button` and its `.hover`/`.selected` sub-objects): add optional `borderLeft?`, `borderRight?`, `borderTop?`, `borderBottom?` alongside the existing `border: string`. Entries needed in: `Theme` interface ([Theme.ts:174](../src/typescript/lib/core/Theme.ts#L174)), `DefaultTheme`, `DarkTheme`, `ModernTheme`, and `themeToVars` ([Theme.ts:555](../src/typescript/lib/core/Theme.ts#L555)) — emit each per-side var only when the theme field is present (or always emit, with `undefined` omitted from the var map; match how `themeToVars` handles other optional fields).
+`Theme` block change (`tab.button` and its `.hover`/`.selected` sub-objects): add optional `borderLeft?`, `borderRight?`, `borderTop?`, `borderBottom?` alongside the existing `border: string`. Entries needed in: `Theme` interface ([Theme.ts:174](../src/typescript/lib/core/Theme.ts#L174)), `ClassicTheme` (the project's default theme), `DarkTheme`, `ModernTheme`, and `themeToVars` ([Theme.ts:555](../src/typescript/lib/core/Theme.ts#L555)) — emit each per-side var only when the theme field is present (or always emit, with `undefined` omitted from the var map; match how `themeToVars` handles other optional fields).
 
 ---
 
@@ -246,7 +246,7 @@ tabButton.setBorder({
 4. **`core/Component.ts`**: replace `_border`/`_borderCSS` fields with `_border: BorderOptions | null`; add `_borderWidths: PerimeterSize | null` cache. Rewrite `setBorder` (string ⇒ `{ border }`, object stored as-is, no `getComputedStyle`/`fromString`; null `_borderWidths`; lazily register a `ThemeManager.onThemeChange` handler that nulls `_borderWidths` on first border set), `clearBorder` (`_border = null`, null `_borderWidths`), `getBorder` (return `BorderOptions | null`); rewrite `getBorderSize` per Internal Structure (browser-measure + cache); rewrite the `applyStyle` replay block ([~2939](../src/typescript/lib/core/Component.ts#L2939)) to `setMany(borderToStyle(this._border))` / `set("border", null)`. Tear down the theme listener in the component's dispose/remove path. Update the `Border` import to the new helpers + type. → verify: typecheck.
 5. **`component/button/Button.ts`**: change `_hoverBorder`/`_pressedBorder` to `BorderOptions | null`; collapse `setHoverBorder` overloads into one `BorderOptions | string` signature writing `borderToStyle(...)` via `setMany`; same for `setPressedBorder`; update `getHoverBorder`/`getPressedBorder` return types and the `_clearChrome` comments if they reference the old shorthand. Update option-bag forwarding ([362](../src/typescript/lib/component/button/Button.ts#L362)/[369](../src/typescript/lib/component/button/Button.ts#L369)/[603](../src/typescript/lib/component/button/Button.ts#L603)/[610](../src/typescript/lib/component/button/Button.ts#L610)) — signatures already accept the union, no change to call lines. Update `ButtonOptions` field types. Fix the `_clearChrome` `clearBorder` interaction comment ([339](../src/typescript/lib/component/button/Button.ts#L339)).
 6. **`component/button/ToggleButton.ts`**: `setSelectedBorder(options: BorderOptions | string)` routing through `borderToStyle` into `selectedStyleRule`.
-7. **`Theme` interface + three theme files + `themeToVars`**: add per-side optional fields to `tab.button[/hover/selected]`; emit the per-side vars in `themeToVars`; populate Modern's left/right hairline values; leave Default/Dark per-side fields unset.
+7. **`Theme` interface + three theme files + `themeToVars`**: add per-side optional fields to `tab.button[/hover/selected]`; emit the per-side vars in `themeToVars`; populate Modern's left/right hairline values; leave Classic/Dark per-side fields unset.
 8. **`layout/Tab.ts` `buildTabEntry`** ([352](../src/typescript/lib/layout/Tab.ts#L352)/[360](../src/typescript/lib/layout/Tab.ts#L360)/[366](../src/typescript/lib/layout/Tab.ts#L366)): replace the three string `setBorder`/`setHoverBorder`/`setSelectedBorder` calls with the per-side nested-var `BorderOptions` objects. The toolbar `setBorder` ([120](../src/typescript/lib/layout/Tab.ts#L120)) migrates from `{ style, width, color }` to `{ border: "1px solid var(--ts-ui-tab-toolbar-border, #e1e1e8)" }`.
 9. **Migrate all object-form `setBorder({...})` call sites** from `{ style, width, color, top/right/bottom/left }` to the new string fields. Full list in Files table. Pattern translations:
    - `{ style: SOLID, width: 1, color: C }` → `{ border: "1px solid " + C }` (or a template literal).
@@ -273,7 +273,7 @@ tabButton.setBorder({
 | Modify | src/typescript/lib/component/button/ToggleButton.ts |
 | Modify | src/typescript/lib/layout/Tab.ts |
 | Modify | src/typescript/lib/core/Theme.ts |
-| Modify | src/typescript/lib/core/themes/DefaultTheme.ts |
+| Modify | src/typescript/lib/core/themes/ClassicTheme.ts |
 | Modify | src/typescript/lib/core/themes/DarkTheme.ts |
 | Modify | src/typescript/lib/core/themes/ModernTheme.ts |
 | Modify | src/typescript/lib/core/Popover.ts |
@@ -309,7 +309,7 @@ tabButton.setBorder({
 - `grep -rln 'new Border\|BorderLine\|BorderSideOptions' src/` — zero.
 - `npm run docs:build` — 0 errors, 0 link warnings (typedoc's "unsupported TypeScript version" notice is the lone acceptable warning). Confirm `docs/api/primitive/classes/Border.md`, `BorderLine.md`, and `interfaces/BorderSideOptions.md` are no longer generated (typedoc drops them automatically) and that `docs/api/primitive/interfaces/BorderOptions.md` regenerates with the five string fields.
 - Manual smoke (`npm run dev`, app on http://localhost:8015):
-  - **Tabs**: switch the active theme (Default → Dark → Modern). Modern tabs show left/right hairline borders with no top/bottom; Default/Dark stay borderless. Demo screen: any panel with a `Tab` layout (the ComplexUIPanel tabbed area).
+  - **Tabs**: switch the active theme (Default → Dark → Modern). Modern tabs show left/right hairline borders with no top/bottom; Classic/Dark stay borderless. Demo screen: any panel with a `Tab` layout (the ComplexUIPanel tabbed area).
   - **Per-side border survives render**: a component with a per-side border (StatusBar top, table Header bottom, NumberSpinner divider) renders the border after a resize/relayout (the applyStyle replay) — this is the bug-fix the consolidation targets.
   - **Buttons**: hover/pressed/selected borders still apply (Dialog close button borderless; ToggleButton selected state).
   - **Inputs**: validation-error red border on a picker field; checkbox/radio selected borders.
