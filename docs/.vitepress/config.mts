@@ -106,7 +106,6 @@ export default defineConfig({
                     { text: 'ListItem',        link: '/components/ListItem' },
                     { text: 'BulletedList',    link: '/components/BulletedList' },
                     { text: 'NumberedList',    link: '/components/NumberedList' },
-                    { text: 'Option',          link: '/components/Option' },
                 ] },
                 { text: 'Toolbar', collapsed: false, items: [
                     { text: 'ToolBar',          link: '/components/ToolBar' },
