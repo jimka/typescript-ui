@@ -88,6 +88,7 @@ export const DarkTheme: Theme = {
         indicator: { color: 'rgb(160,160,160)' },
     },
     tab   : {
+        underBorderFullWidth: true,
         toolbar: { background: '#2a2a2a', border: '#444' },
         button : {
             background: '#3a3a3a',

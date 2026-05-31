@@ -4,7 +4,6 @@ import { Component } from "~/core/Component.js";
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Text } from "~/component/input/Text.js";
 import { HBox } from "~/layout/HBox.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 import { Spacer } from "./Spacer";
@@ -106,13 +105,7 @@ class StatusBar extends Panel<StatusBarOptions> {
 
         this.setBackgroundColor("var(--ts-ui-statusbar-bg, rgb(245, 245, 245))");
         this.setForegroundColor("var(--ts-ui-statusbar-color, rgb(60, 60, 60))");
-        this.setBorder({
-            top: {
-                style: BorderStyle.SOLID,
-                width: STATUS_BAR_BORDER_TOP_WIDTH,
-                color: "var(--ts-ui-statusbar-border, rgb(220, 220, 220))",
-            },
-        });
+        this.setBorder({ borderTop: `${STATUS_BAR_BORDER_TOP_WIDTH}px solid var(--ts-ui-statusbar-border, rgb(220, 220, 220))` });
         this.setMinSize(0,                       STATUS_BAR_HEIGHT);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, STATUS_BAR_HEIGHT);
 

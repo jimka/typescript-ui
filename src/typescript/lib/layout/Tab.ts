@@ -5,10 +5,10 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Size } from "~/primitive/Size.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { Component } from "~/core/Component.js";
+import { ThemeManager } from "~/core/Theme.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
 import { Insets } from "~/primitive/Insets.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { FillType } from "~/layout/FillType.js";
 import { ButtonGroup } from "~/core/ButtonGroup.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
@@ -29,10 +29,10 @@ export type TabEvent = "tabclose";
 /**
  * Tab-button width strategy for the {@link Tab} strip.
  *
- * - `"fill"` — tabs split the strip equally and stretch to fill it (default).
+ * - `"fill"` — tabs split the strip equally and stretch to fill it.
  * - `"content"` — each tab takes its own content width, capped at `tabMaxWidth`.
  * - `"equal"` — every tab takes the width of the widest tab, capped at
- *   `tabMaxWidth`.
+ *   `tabMaxWidth` (default).
  * - `"fixed"` — every tab takes `tabFixedWidth`.
  *
  * Every mode except `"fill"` leaves the strip full-width with the tabs
@@ -69,7 +69,7 @@ export interface TabOptions extends LayoutManagerOptions {
         tabclose?: (component: Component) => void;
     };
 
-    /** Tab-button width strategy; defaults to `"fill"`. */
+    /** Tab-button width strategy; defaults to `"equal"`. */
     tabWidthMode?: TabWidthMode;
 
     /** Per-tab maximum width in px for `"content"` / `"equal"` modes; `null` (the default) leaves tabs uncapped. */
@@ -78,7 +78,11 @@ export interface TabOptions extends LayoutManagerOptions {
     /** Per-tab width in px for `"fixed"` mode; defaults to `120`. */
     tabFixedWidth?: number;
 
-    /** Whether the 1px strip under-border runs edge-to-edge; defaults to `true`. */
+    /**
+     * Whether the 1px strip under-border runs edge-to-edge. When omitted, follows
+     * the active theme's `tab.underBorderFullWidth` (Modern `false`, Classic/Dark
+     * `true`); setting it explicitly pins the value and stops it tracking the theme.
+     */
     tabUnderBorderFullWidth?: boolean;
 }
 
@@ -226,10 +230,12 @@ class Tab extends LayoutManager {
     private _lastFadedTabIndex: number = -1;
     private _listeners: ListenerBag<TabEvent> = new ListenerBag<TabEvent>();
 
-    private _tabWidthMode: TabWidthMode = "fill";
+    private _tabWidthMode: TabWidthMode = "equal";
     private _tabMaxWidth: number | null = null;
     private _tabFixedWidth: number = 120;
     private _underBorderFullWidth: boolean = true;
+    private _underBorderFromTheme: boolean = true;
+    private _themeCleanup: (() => void) | null = null;
     private _indicator: TabIndicator = new TabIndicator();
 
     /**
@@ -240,14 +246,40 @@ class Tab extends LayoutManager {
     constructor(options?: TabOptions) {
         super();
 
+        this._underBorderFullWidth = ThemeManager.getTheme().tab.underBorderFullWidth;
+
         this._toolbar.setLayoutManager(new HBox({ mode: "equal", spacing: 0 }));
         this._toolbar.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
         this._toolbar.clearInsets();
-        this._toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
+        this.applyUnderBorder();
         this._toolbar.setPreferredSize(0, 30);
+
+        // Follow the active theme's under-border default until a consumer pins
+        // it explicitly. Torn down in detach().
+        this._themeCleanup = ThemeManager.onThemeChange(() => {
+            if (!this._underBorderFromTheme) {
+                return;
+            }
+
+            this._underBorderFullWidth = ThemeManager.getTheme().tab.underBorderFullWidth;
+            this.applyUnderBorder();
+            this.getContainer()?.scheduleLayout();
+        });
 
         if (options) {
             this.applyOptions(options);
+        }
+    }
+
+    /**
+     * Applies the current `_underBorderFullWidth` value to the toolbar: a
+     * full-width 1px rule when set, no border when cleared.
+     */
+    private applyUnderBorder(): void {
+        if (this._underBorderFullWidth) {
+            this._toolbar.setBorder({ border: "1px solid var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
+        } else {
+            this._toolbar.clearBorder();
         }
     }
 
@@ -365,9 +397,13 @@ class Tab extends LayoutManager {
      * the strip). Every other mode switches to `preferred` (tabs left-aligned,
      * leftover empty) and pins each wrapper's width: `"content"` caps the
      * natural width at `tabMaxWidth`; `"equal"` and `"fixed"` clamp min and max
-     * to a single uniform width so every tab matches.
+     * to a single uniform width so every tab matches. `"equal"` additionally
+     * collapses to `"fill"` when its uniform width would overflow `available`,
+     * so the tabs shrink to share the strip rather than spilling past it.
+     *
+     * @param available - The strip's inner content width (px) the tabs must fit within.
      */
-    private applyTabWidths(): void {
+    private applyTabWidths(available: number): void {
         const hbox = this._toolbar.getLayoutManager() as HBox;
 
         if (this._tabWidthMode === "fill") {
@@ -424,6 +460,20 @@ class Tab extends LayoutManager {
             return;
         }
 
+        // "equal" shrinks to fit: when the uniform width can't fit the strip,
+        // collapse to fill so the tabs share the available width instead of
+        // overflowing. "fixed" stays rigid (overflow is the consumer's intent).
+        if (this._tabWidthMode === "equal" && this._tabs.length > 0 && width * this._tabs.length > available) {
+            hbox.setMode("equal");
+
+            for (const entry of this._tabs) {
+                entry.wrapper.setMinSize(0, 0);
+                entry.wrapper.setMaxSize(Number.MAX_VALUE, Number.MAX_VALUE);
+            }
+
+            return;
+        }
+
         for (const entry of this._tabs) {
             entry.wrapper.setMinSize(width, 0);
             entry.wrapper.setMaxSize(width, Number.MAX_VALUE);
@@ -431,20 +481,19 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Toggles the edge-to-edge 1px rule under the tab strip.
+     * Toggles the edge-to-edge 1px rule under the tab strip. Pins the value for
+     * this instance, so it no longer follows the active theme's
+     * `tab.underBorderFullWidth` default on theme changes.
      *
      * @param full - `true` to draw the strip's full-width under-border, `false` to remove it.
      *
      * @returns This layout manager, for chaining.
      */
     setTabUnderBorderFullWidth(full: boolean): this {
+        this._underBorderFromTheme = false;
         this._underBorderFullWidth = full;
 
-        if (full) {
-            this._toolbar.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
-        } else {
-            this._toolbar.clearBorder();
-        }
+        this.applyUnderBorder();
 
         this.getContainer()?.scheduleLayout();
 
@@ -510,6 +559,11 @@ class Tab extends LayoutManager {
      */
     detach(): this {
         super.detach();
+
+        if (this._themeCleanup) {
+            this._themeCleanup();
+            this._themeCleanup = null;
+        }
 
         this._toolbar.getElement().remove();
 
@@ -681,7 +735,12 @@ class Tab extends LayoutManager {
         // gradient bleed-through.
         tabButton.setBackgroundColor("var(--ts-ui-tab-button-bg, #b8b8c3)");
         tabButton.setBackgroundImage("var(--ts-ui-tab-button-bg, #b8b8c3)");
-        tabButton.setBorder("var(--ts-ui-tab-button-border, none)");
+        tabButton.setBorder({
+            borderTop:    "var(--ts-ui-tab-button-border-top,    var(--ts-ui-tab-button-border, none))",
+            borderRight:  "var(--ts-ui-tab-button-border-right,  var(--ts-ui-tab-button-border, none))",
+            borderBottom: "var(--ts-ui-tab-button-border-bottom, var(--ts-ui-tab-button-border, none))",
+            borderLeft:   "var(--ts-ui-tab-button-border-left,   var(--ts-ui-tab-button-border, none))",
+        });
         tabButton.clearBorderRadius();
         tabButton.clearShadow();
 
@@ -689,13 +748,23 @@ class Tab extends LayoutManager {
         tabButton.setHoverBackgroundColor("var(--ts-ui-tab-button-hover-bg, #c4c4cf)");
         tabButton.setHoverBackgroundImage("var(--ts-ui-tab-button-hover-bg, #c4c4cf)");
         tabButton.setHoverShadow("none");
-        tabButton.setHoverBorder("var(--ts-ui-tab-button-hover-border, none)");
+        tabButton.setHoverBorder({
+            borderTop:    "var(--ts-ui-tab-button-hover-border-top,    var(--ts-ui-tab-button-hover-border, none))",
+            borderRight:  "var(--ts-ui-tab-button-hover-border-right,  var(--ts-ui-tab-button-hover-border, none))",
+            borderBottom: "var(--ts-ui-tab-button-hover-border-bottom, var(--ts-ui-tab-button-hover-border, none))",
+            borderLeft:   "var(--ts-ui-tab-button-hover-border-left,   var(--ts-ui-tab-button-hover-border, none))",
+        });
 
         // Selected (active) state.
         tabButton.setSelectedBackgroundColor("var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))");
         tabButton.setSelectedBackgroundImage("var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))");
         tabButton.setSelectedShadow("none");
-        tabButton.setSelectedBorder("var(--ts-ui-tab-button-selected-border, none)");
+        tabButton.setSelectedBorder({
+            borderTop:    "var(--ts-ui-tab-button-selected-border-top,    var(--ts-ui-tab-button-selected-border, none))",
+            borderRight:  "var(--ts-ui-tab-button-selected-border-right,  var(--ts-ui-tab-button-selected-border, none))",
+            borderBottom: "var(--ts-ui-tab-button-selected-border-bottom, var(--ts-ui-tab-button-selected-border, none))",
+            borderLeft:   "var(--ts-ui-tab-button-selected-border-left,   var(--ts-ui-tab-button-selected-border, none))",
+        });
 
         // Reserve room on the right for the overlaid close button on closeable
         // tabs so a long label doesn't run under the ✕.
@@ -1053,7 +1122,12 @@ class Tab extends LayoutManager {
         this._toolbar.setWidth(containerSize ? containerSize.width : 0);
         this._toolbar.setHeight(toolbarHeight);
 
-        this.applyTabWidths();
+        // Inner width available to the tab strip: toolbar width minus its own
+        // horizontal border (the under-border, when present, draws all four sides).
+        const toolbarBorder = this._toolbar.getBorderSize();
+        const available     = (containerSize ? containerSize.width : 0) - toolbarBorder.left - toolbarBorder.right;
+
+        this.applyTabWidths(available);
         this._toolbar.doLayout();
 
         // Slide the selection bar over the active tab cell. The HBox has just
