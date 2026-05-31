@@ -7,7 +7,6 @@ import { Body } from "~/component/table/Body.js";
 import { FooterRow } from "~/component/table/Footer.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Menu } from "~/core/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
@@ -107,7 +106,7 @@ class Table extends Component<TableOptions> {
 
         this.setLayoutManager(new TableLayout());
         this.getAria().setRole("grid");
-        this.setBorder({ style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" });
+        this.setBorder({ border: "1px solid var(--ts-ui-border-color, black)" });
         this.setInsets(new Insets(0, 0, 0, 0));
         this.setOverflow("hidden");
 

@@ -2,7 +2,6 @@
 
 import { Component } from "~/core/Component.js";
 import { Row } from "~/component/table/Row.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -19,7 +18,7 @@ class FooterRow extends Component {
     constructor() {
         super({ tag: "tfoot" });
 
-        this.setBorder({ top: { style: BorderStyle.SOLID, width: 1, color: "var(--ts-ui-border-color, black)" } });
+        this.setBorder({ borderTop: "1px solid var(--ts-ui-border-color, black)" });
         this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
 
         let row = new Row();

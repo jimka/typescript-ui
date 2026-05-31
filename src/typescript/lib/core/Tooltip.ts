@@ -4,7 +4,6 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { Animation } from "~/core/Animation.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Text } from "~/component/input/Text.js";
 
 const TOOLTIP_ANIM_DURATION_MS: number = 100;
@@ -90,11 +89,7 @@ export class Tooltip extends Component {
         this.setZIndex(10001);
         this.setBackgroundColor("var(--ts-ui-tooltip-bg, rgb(255, 255, 240))");
         this.setForegroundColor("var(--ts-ui-tooltip-color, rgb(0, 0, 0))");
-        this.setBorder({
-            style: BorderStyle.SOLID,
-            width: 1,
-            color: "var(--ts-ui-tooltip-border, rgb(180, 180, 100))",
-        });
+        this.setBorder({ border: "1px solid var(--ts-ui-tooltip-border, rgb(180, 180, 100))" });
         this.setShadow("var(--ts-ui-tooltip-shadow, 1px 2px 4px rgba(0, 0, 0, 0.2))");
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setPointerEvents("none");
@@ -302,11 +297,7 @@ export class Tooltip extends Component {
         inst.setForegroundColor(
             colors?.color ?? 'var(--ts-ui-tooltip-color, rgb(0, 0, 0))'
         );
-        inst.setBorder({
-            style: BorderStyle.SOLID,
-            width: 1,
-            color: colors?.border ?? 'var(--ts-ui-tooltip-border, rgb(180, 180, 100))',
-        });
+        inst.setBorder({ border: `1px solid ${colors?.border ?? 'var(--ts-ui-tooltip-border, rgb(180, 180, 100))'}` });
     }
 
     /**

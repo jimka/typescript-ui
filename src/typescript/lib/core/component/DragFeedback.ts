@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
 
@@ -116,11 +115,7 @@ class DragFeedback extends Component {
         const suffix = this._valid ? "valid" : "invalid";
 
         this.setBackgroundColor(`var(--ts-ui-drag-feedback-${suffix}-bg)`);
-        this.setBorder({
-            style: BorderStyle.SOLID,
-            width: 2,
-            color: `var(--ts-ui-drag-feedback-${suffix}-border)`,
-        });
+        this.setBorder({ border: `2px solid var(--ts-ui-drag-feedback-${suffix}-border)` });
     }
 }
 

@@ -4,7 +4,6 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Insets } from "~/primitive/Insets.js";
 import { VBox } from "~/layout/VBox.js";
 import { MenuItem, MenuItemConfig } from "~/component/container/MenuItem.js";
@@ -482,11 +481,7 @@ class Menu extends Component {
         this.setZIndex(9999);
         this.setBackgroundColor("var(--ts-ui-menu-bar-panel-bg, rgb(255, 255, 255))");
         this.setInsets(new Insets(4, 0, 4, 0));
-        this.setBorder({
-            style: BorderStyle.SOLID,
-            width: 1,
-            color: "var(--ts-ui-menu-bar-panel-border, rgb(200, 200, 200))",
-        });
+        this.setBorder({ border: "1px solid var(--ts-ui-menu-bar-panel-border, rgb(200, 200, 200))" });
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-menu-bar-panel-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
         this.getAria().setRole("menu");
@@ -501,11 +496,7 @@ class Menu extends Component {
         this.setZIndex(10000);
         this.setBackgroundColor("var(--ts-ui-context-menu-bg, rgb(255, 255, 255))");
         this.setInsets(new Insets(4, 0, 4, 0));
-        this.setBorder({
-            style: BorderStyle.SOLID,
-            width: 1,
-            color: "var(--ts-ui-context-menu-border, rgb(200, 200, 200))",
-        });
+        this.setBorder({ border: "1px solid var(--ts-ui-context-menu-border, rgb(200, 200, 200))" });
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-context-menu-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
         this.setContain("layout");

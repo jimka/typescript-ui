@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { TextInputCellEditor } from "~/component/table/cell/editor/TextInputCellEditor.js";
-import { BorderStyle } from "~/primitive/BorderStyle.js";
 import { Event } from "~/core/Event.js";
 import { DatePickerDropdown } from "~/component/input/DatePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
@@ -32,7 +31,7 @@ class DateEditor extends TextInputCellEditor<Date | null> {
 
         this.setMaxSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
         this.setBorderRadius('0');
-        this.setBorder({ style: BorderStyle.SOLID, width: 0, color: 'transparent' });
+        this.setBorder({ border: "0px solid transparent" });
         this.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-editor-border, rgba(30, 100, 200, 0.6))');
         this.setOutline('none');
 

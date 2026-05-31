@@ -2,7 +2,7 @@
 
 import { LayoutManager } from "~/layout/LayoutManager.js";
 import { Absolute } from "~/layout/Absolute.js";
-import { Border, BorderOptions } from "~/primitive/Border.js";
+import { BorderOptions, borderToStyle, borderSideWidth } from "~/primitive/Border.js";
 import { Size } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BaseObject } from "~/core/BaseObject.js";
@@ -13,6 +13,7 @@ import { Position } from "~/primitive/Position.js";
 import { Aria } from "~/core/Aria.js";
 import { Event } from "~/core/Event.js";
 import { StyleRule, InlineStyle } from "~/core/StyleTarget.js";
+import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 
 //import { FastDom } from "~/FastDom.js";
@@ -226,8 +227,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _transform            : string | null           = null;
     private _opacity              : number | null           = null;
     private _disabledAttribute    : boolean                 = false;
-    private _border               : Border | null           = null;
-    private _borderCSS            : string | null           = null;
+    private _border               : BorderOptions | null     = null;
+    private _borderWidths         : PerimeterSize | null      = null;
+    private _borderThemeCleanup    : (() => void) | null       = null;
     private _autoCommitStyle      : boolean                 = true;
     private _layoutPaused         : boolean                 = false;
     private _aria                : Aria | null             = null;
@@ -449,6 +451,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Removes the component's DOM element when the component is destroyed.
      */
     protected destructor() {
+        if (this._borderThemeCleanup) {
+            this._borderThemeCleanup();
+            this._borderThemeCleanup = null;
+        }
+
         let element = this.getElement();
         if (element) {
             element.remove();
@@ -1202,56 +1209,49 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Returns the Border instance, or null if no border is set.
+     * Returns the current border specification, or null if no border is set.
      *
-     * @returns The current Border object, or null.
+     * @returns The current {@link BorderOptions}, or null.
      */
-    getBorder(): Border | null {
+    getBorder(): BorderOptions | null {
         return this._border;
     }
 
     /**
-     * Clears the component's border by applying an explicit 0-width, none-style,
-     * black-colour border on every side. The longhand writes guarantee the cleared
-     * state overrides any inherited or class-level border styling.
+     * Clears the component's border. Applies an explicit `none` on every side so
+     * the cleared state overrides any inherited, class-level, or UA `<button>`
+     * border styling, and invalidates the cached per-side widths.
      *
      * @returns This component, for method chaining.
      */
     clearBorder(): this {
-        this._borderCSS = null;
-        this._border    = new Border();
-        this.setElementCSSRules(this._border.toStyle());
+        this._border       = { border: "none" };
+        this._borderWidths = null;
+        this.setElementCSSRules(borderToStyle(this._border));
 
         return this;
     }
 
     /**
-     * Creates and applies a border from options.
+     * Applies a border from a {@link BorderOptions} bag or a CSS `border` shorthand
+     * string. A bare string is sugar for `{ border: <string> }`. The four CSS
+     * longhands are written so a per-side value survives the {@link applyStyle}
+     * replay; the cached per-side widths are invalidated and re-measured lazily at
+     * layout time (see {@link getBorderSize}).
      *
-     * @param options - Border configuration (style, width, color), or a CSS border shorthand string. Use {@link clearBorder} to clear the border explicitly.
+     * @param options - Border configuration, or a CSS `border` shorthand string. Use {@link clearBorder} to clear the border explicitly.
      *
      * @returns This component, for method chaining.
      */
     setBorder(options: BorderOptions | string): this {
-        if (typeof options === 'string' && options.trimStart().startsWith('var(')) {
-            this._borderCSS = options;
-            this.setElementCSSRule("border", options);
+        this._border       = typeof options === "string" ? { border: options } : options;
+        this._borderWidths = null;
 
-            const varName  = options.match(/var\((--[^,)]+)/)?.[1];
-            const resolved = varName
-                ? getComputedStyle(document.documentElement).getPropertyValue(varName).trim()
-                : null;
-
-            this._border = resolved ? Border.fromString(resolved) : null;
-        } else if (typeof options === 'string') {
-            this._borderCSS = null;
-            this._border    = Border.fromString(options);
-            this.setElementCSSRules(this._border.toStyle());
-        } else {
-            this._borderCSS = null;
-            this._border    = new Border(options);
-            this.setElementCSSRules(this._border.toStyle());
+        if (!this._borderThemeCleanup) {
+            this._borderThemeCleanup = ThemeManager.onThemeChange(() => this._borderWidths = null);
         }
+
+        this.setElementCSSRules(borderToStyle(this._border));
 
         return this;
     }
@@ -1793,26 +1793,89 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Returns the per-side pixel widths of the component's border.
+     * Returns the per-side pixel widths of the component's border. Once the element
+     * is connected to the document the widths are browser-measured (so `var()`,
+     * `none`, and keywords all resolve) and cached until the next
+     * `setBorder`/`clearBorder` or theme change. Before the element is connected,
+     * `getComputedStyle` can't resolve `var()` (the element doesn't yet inherit
+     * from `:root`), so it falls back to an estimate from the spec strings that
+     * resolves a leading `var(--name)` against `:root` directly. The estimate is
+     * not cached, so it is re-measured authoritatively once the element connects.
      *
      * @returns A PerimeterSize with zero values on each side when no border is set.
      */
-    getBorderSize() {
-        let borderSize: PerimeterSize = {
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0
-        };
-
-        if (this._border) {
-            borderSize.top    = this._border.getTop().getWidth();
-            borderSize.right  = this._border.getRight().getWidth();
-            borderSize.bottom = this._border.getBottom().getWidth();
-            borderSize.left   = this._border.getLeft().getWidth();
+    getBorderSize(): PerimeterSize {
+        if (!this._border) {
+            return { top: 0, right: 0, bottom: 0, left: 0 };
         }
 
-        return borderSize;
+        if (this._borderWidths) {
+            return this._borderWidths;
+        }
+
+        const element = this.getElement();
+
+        if (element && element.isConnected) {
+            // Authoritative: getComputedStyle resolves var()/none/keywords to "<n>px"
+            // once the element is in the document and inherits :root's custom props.
+            const cs = getComputedStyle(element);
+
+            this._borderWidths = {
+                top:    borderSideWidth(cs.borderTopWidth),
+                right:  borderSideWidth(cs.borderRightWidth),
+                bottom: borderSideWidth(cs.borderBottomWidth),
+                left:   borderSideWidth(cs.borderLeftWidth),
+            };
+
+            return this._borderWidths;
+        }
+
+        // Pre-attach estimate from the spec strings, resolving a leading var()
+        // against :root so themed var-borders report their width before connect.
+        const all = this._border.border;
+
+        return {
+            top:    this.estimateBorderSideWidth(this._border.borderTop    ?? all),
+            right:  this.estimateBorderSideWidth(this._border.borderRight  ?? all),
+            bottom: this.estimateBorderSideWidth(this._border.borderBottom ?? all),
+            left:   this.estimateBorderSideWidth(this._border.borderLeft   ?? all),
+        };
+    }
+
+    /**
+     * Estimates one border side's pixel width before the element is connected.
+     * A leading `<n>px` wins outright; otherwise a leading `var(--name)` is
+     * resolved against `:root`'s custom properties (recursing into the resolved
+     * value) so themed var-borders report a width pre-attach. Returns `0` when no
+     * width can be determined.
+     *
+     * @param value - A single side's CSS border value, or `undefined`.
+     *
+     * @returns The estimated pixel width, or `0`.
+     */
+    private estimateBorderSideWidth(value: string | undefined): number {
+        if (!value) {
+            return 0;
+        }
+
+        const trimmed = value.trim();
+        const direct  = borderSideWidth(trimmed);
+
+        if (direct > 0) {
+            return direct;
+        }
+
+        const varName = trimmed.match(/^var\(\s*(--[\w-]+)/)?.[1];
+
+        if (varName) {
+            const resolved = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+
+            if (resolved) {
+                return this.estimateBorderSideWidth(resolved);
+            }
+        }
+
+        return 0;
     }
 
     /**
@@ -2936,10 +2999,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._styleRule.set("whiteSpace", this._whiteSpace);
         }
 
-        if (this._borderCSS) {
-            this._styleRule.set("border", this._borderCSS);
-        } else if (this._border) {
-            this._styleRule.setMany(this._border.toStyle());
+        if (this._border) {
+            this._styleRule.setMany(borderToStyle(this._border));
         } else {
             this._styleRule.set("border", null);
         }

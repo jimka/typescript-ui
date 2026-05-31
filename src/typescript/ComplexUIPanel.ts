@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { ButtonGroup, callable, Panel } from '@jimka/typescript-ui/core';
-import { BorderStyle } from '@jimka/typescript-ui/primitive';
 import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { ComboBox, RadioButton, Text, TextArea, TextField } from '@jimka/typescript-ui/component/input';
@@ -31,7 +30,7 @@ class ComplexUIPanel extends Panel {
     private buildPanel1() {
         return Panel({
             layoutManager: HBox(),
-            border: { style: BorderStyle.SOLID, width: 1, color: "black" },
+            border: "1px solid black",
             components: [
                 Panel({
                     layoutManager: VBox(),
