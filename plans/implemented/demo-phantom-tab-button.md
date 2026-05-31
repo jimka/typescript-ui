@@ -18,7 +18,7 @@ The fix lives in [`Tab.ts`](../src/typescript/lib/layout/Tab.ts) (the auto-`crea
 
 ### 1. Lazy tabs do not pre-populate the container
 
-`main.ts` calls `addLazyTab` 18 times. `Tab.addLazyTab` ([Tab.ts:486-492](../src/typescript/lib/layout/Tab.ts#L486)) builds a tab *entry* (button + bookkeeping) but leaves `component: null`, `state: "lazy"`. No component is added to the container. So initially `_tabs.length === 18` and `container.getComponents().length === 0`.
+`main.ts` calls `addLazyTab` 17 times. `Tab.addLazyTab` ([Tab.ts:486-492](../src/typescript/lib/layout/Tab.ts#L486)) builds a tab *entry* (button + bookkeeping) but leaves `component: null`, `state: "lazy"`. No component is added to the container. So initially `_tabs.length === 17` and `container.getComponents().length === 0`.
 
 ### 2. `materialize` adds children to the container — and never removes the built one
 
@@ -61,6 +61,46 @@ else { name = component.getId(); }     // UUID
 
 `materialize` adds its children with no constraints, so `getLayoutConstraints(component)` is empty and the label is the component's UUID — exactly the symptom.
 
+### 4b. CORRECTION (found during implementation) — the real trigger is an async assignment gap, not click accumulation
+
+Runtime verification disproved the "appears only after clicking for a while"
+framing. The phantom appears on a **fresh load with zero clicks**, on the very
+first materialization (the initial `Misc` tab). The cause:
+
+`Animation.materialize` ([Animation.ts:411-441](../src/typescript/lib/core/Animation.ts#L411))
+attaches the built component to the container and immediately schedules a
+layout — but the `onReady` callback that assigns `entry.component`
+([Tab.ts:924](../src/typescript/lib/layout/Tab.ts#L924)) does not fire until the
+~120 ms cross-fade's `onComplete`:
+
+```ts
+const component = factory();
+host.addComponent(component);   // built child attached NOW
+host.scheduleLayout();          // doLayout runs in the gap...
+play(el, { ... onComplete: () => {
+    host.removeComponent(spinner);
+    config.onReady?.(component); // ...entry.component set only HERE, ~120 ms later
+}});
+```
+
+So for the whole fade window the built child sits in the container with
+`entry.component` still `null`. The ownership set (built from
+`entry.component`/`entry.spinner`) therefore does **not** include it, and the
+`scheduleLayout()` runs `doLayout` inside that gap → `createTab` mints a phantom
+UUID tab. The original plan's ownership-set fix is **necessary but not
+sufficient** because it assumed those entry fields are populated before
+`doLayout` sees the child.
+
+**Corrected fix (still `Tab.ts`-only, `Animation.ts` untouched):** capture
+`entry.component` the instant the factory builds it (wrap the factory in
+`materializeAsync` so the assignment happens before `Animation` attaches the
+child and schedules layout), and reorder `getVisibleComponent` so the
+`building`+`spinner` branch is checked before `entry.component` — otherwise the
+early capture would hide the spinner mid-fade. Combined with the ownership-set
+loop, this closes both the first-load gap and the click-accumulation path.
+Verified at runtime: root tab strip stays at 17 with zero UUID labels after
+clicking every tab three times.
+
 ### 5. Why the phantom's content is the multi-select panel
 
 The overflow child that `createTab` consumes is `components[i]` at the overflow index. The multi-select demo (`MultiSelectListPanel`) is one of the heavier lazy panels, so its factory + cross-fade window is among the longest, making it the panel most likely to be the freshly-appended overflow child when `componentCount` crosses `_tabs.length`. The phantom tab's content is therefore a previously-materialized panel that got re-tabbed — observed in practice as the multi-select panel. *(The attribution of "specifically multi-select" is empirical to the report; the deterministic core — an unnamed materialize-injected child becoming a UUID tab — holds for any overflow child. Verification step confirms the exact child.)*
@@ -96,6 +136,15 @@ for (const component of components) {
 
 This is a behavioural correction local to tab-creation, with no change to toolbar geometry, fade logic, or sizing — keeping it clear of the parallel L&F/indicator/max-width changes.
 
+**Supplement (see §4b):** the ownership-set loop alone leaves a first-load gap,
+because `entry.component` is assigned ~120 ms too late. Two further `Tab.ts`-only
+edits close it: (1) in `materializeAsync`, wrap the factory so `entry.component`
+is captured the instant the panel is built, before `Animation.materialize`
+attaches it and schedules layout; (2) in `getVisibleComponent`, check the
+`state === "building" && spinner` branch *before* `entry.component`, so the
+early capture does not steal the visible slot from the spinner during the fade.
+`Animation.ts` stays untouched, honouring the parallel-plan constraint.
+
 ### Reject the alternative: removing the materialized panel on tab switch
 
 One could make `materialize`/`Tab` remove the previous panel from the container when switching tabs. Rejected: `Tab` intentionally keeps built panels attached and toggles visibility (`doLayout` sets `setVisible(false/true)` per child, [Tab.ts:625-655](../src/typescript/lib/layout/Tab.ts#L625)) so re-selecting a tab is instant. Detaching/reattaching would re-incur build/layout cost and risk losing panel state — a larger, riskier change than the ownership guard.
@@ -114,13 +163,22 @@ No public API changes. The fix is internal to `Tab.doLayout`'s private catch-up 
 
 ## Ordered Implementation Steps
 
-1. In [`src/typescript/lib/layout/Tab.ts`](../src/typescript/lib/layout/Tab.ts), inside `doLayout` ([Tab.ts:612-615](../src/typescript/lib/layout/Tab.ts#L612)), replace the index-threshold catch-up loop with the ownership-test loop from _Architecture Decisions_: build a `Set<Component>` of every `entry.component` and `entry.spinner`, then `createTab` only for container children not in that set.
+> **Line numbers below are from the original plan and have drifted.** Current
+> locations: `doLayout` at [Tab.ts:974](../src/typescript/lib/layout/Tab.ts#L974),
+> the catch-up loop it replaces was at lines 985-988; `materializeAsync` at
+> [Tab.ts:899](../src/typescript/lib/layout/Tab.ts#L899); `getVisibleComponent`
+> at [Tab.ts:525](../src/typescript/lib/layout/Tab.ts#L525).
+
+1. In [`src/typescript/lib/layout/Tab.ts`](../src/typescript/lib/layout/Tab.ts), inside `doLayout`, replace the index-threshold catch-up loop with the ownership-test loop from _Architecture Decisions_: build a `Set<Component>` of every `entry.component` and `entry.spinner`, then `createTab` only for container children not in that set. (The now-orphaned `componentCount` local is removed.)
 2. Confirm `Component` is already imported in `Tab.ts` (it is — line 7) so the `Set<Component>` type resolves with no new import.
-3. Leave `createTab`, `materializeAsync`, the visibility loop, and all sizing/fade code unchanged — the fix is confined to which children become tabs.
-4. Typecheck / build — expect zero errors.
-5. Grep regression check: confirm the old threshold loop is gone —
+3. **(added — see §4b)** In `materializeAsync`, wrap the entry's `factory` so it sets `entry.component` to the built component before returning, closing the ~120 ms gap before `onReady` would otherwise assign it.
+4. **(added — see §4b)** In `getVisibleComponent`, move the `state === "building" && entry.spinner` check above the `entry.component` check so the spinner keeps the visible slot during the fade despite the early capture.
+5. Leave `createTab`, the visibility loop, and all sizing/fade code unchanged — the fix is confined to which children become tabs and when the entry learns its component.
+6. Typecheck / build — expect zero errors.
+7. Grep regression check: confirm the old threshold loop is gone —
    `grep -n "i < componentCount" src/typescript/lib/layout/Tab.ts` — expect zero matches.
-6. Confirm the bare-Panel path is intact by inspection: a directly-`addComponent`-ed child (no entry references it) still hits `createTab`.
+8. Confirm the bare-Panel path is intact by inspection: a directly-`addComponent`-ed child (no entry references it) still hits `createTab`.
+9. **Runtime verification (required, not optional):** the async gap is invisible to typecheck/grep — load the app, confirm the root tab strip is 17 tabs with no UUID label on a fresh load *and* after clicking every tab repeatedly, and confirm the spinner still shows on first open.
 
 ---
 
@@ -141,7 +199,7 @@ No public API changes. The fix is internal to `Tab.doLayout`'s private catch-up 
   1. Click through many tabs repeatedly, including "MultiSelect", "Misc.", and "Complex" (the heavy lazy panels), switching back and forth 15+ times.
   2. Confirm **no** new tab button appears at the far right and **no** tab is ever labelled with a UUID.
   3. Each demo tab still materializes (spinner → content fade) on first open and re-selects instantly afterwards.
-- **Runtime confirmation (recommended)** via Chrome DevTools MCP: after heavy clicking, evaluate the tab toolbar button count and assert it equals the registered tab count (18) and does not grow. Capturing the phantom child's identity before the fix (its `getId()` and which `entry.component` it equals) confirms the "multi-select content" attribution in Root Cause §5.
+- **Runtime confirmation (recommended)** via Chrome DevTools MCP: after heavy clicking, evaluate the tab toolbar button count and assert it equals the registered tab count (17) and does not grow. Capturing the phantom child's identity before the fix (its `getId()` and which `entry.component` it equals) confirms the "multi-select content" attribution in Root Cause §5.
 - **Regression — bare-Panel tab path:** in a scratch check (or the `TabDemoPanel` eager `addTab` flow), confirm directly-added components still produce correctly-labelled tabs, proving the ownership guard did not break the eager path.
 
 ---
