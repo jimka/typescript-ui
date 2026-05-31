@@ -28,6 +28,7 @@ const _defaultFieldSetOptions: Partial<FieldSetOptions> = {
     padding:       new Insets(15, 3, 3, 3),
     insets:        new Insets(5, 5, 15, 5),
     preferredSize: { width: 200, height: 200 },
+    minSize:       { width: 100, height: 100 },
 };
 
 /**
@@ -81,6 +82,37 @@ class FieldSet extends Component {
      */
     setTitle(title: string) : this {
         this._legend.setText(title);
+        this.clampLegendWidth();
+
+        return this;
+    }
+
+    /**
+     * Clamps the legend's `max-width` to the fieldset's current inner width so
+     * a long title ellipsises inside the border notch instead of spilling out.
+     * The legend already carries `overflow:hidden; text-overflow:ellipsis;
+     * white-space:nowrap` (from `Text`'s `truncate:true`), so a `max-width` is
+     * the only missing piece for the ellipsis to engage.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks No-op until the first layout pass commits a width — `getWidth()`
+     * returns 0 on a detached / unsized fieldset. `doLayout()` re-runs the
+     * clamp once a width exists.
+     */
+    private clampLegendWidth(): this {
+        const width = this.getWidth();
+        if (width <= 0) {
+            return this;
+        }
+
+        const perim    = this.getPerimiterSize();
+        const padding  = this.getPadding();
+        const padW     = padding ? padding.getLeft() + padding.getRight() : 0;
+        const chromeW  = perim.left + perim.right + padW;
+        const innerW   = Math.max(0, width - chromeW);
+
+        this._legend.setMaxSize(innerW, Number.MAX_VALUE);
 
         return this;
     }
@@ -114,6 +146,21 @@ class FieldSet extends Component {
             width:  Math.max(baseMin.width, fieldsetW),
             height: baseMin.height,
         };
+    }
+
+    /**
+     * Lays out the fieldset, then re-clamps the legend to the freshly committed
+     * inner width so the title ellipsis tracks fieldset resizes. The clamp runs
+     * post-layout because `getWidth()` only reports a real width once the layout
+     * pass has committed one.
+     *
+     * @returns This component, for method chaining.
+     */
+    doLayout(): this {
+        super.doLayout();
+        this.clampLegendWidth();
+
+        return this;
     }
 
     /**

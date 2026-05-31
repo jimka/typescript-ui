@@ -14,7 +14,6 @@ export interface TextAreaOptions extends TextInputOptions {
     rows?: number;
     cols?: number;
     wrap?: string;
-    resize?: string;
 }
 
 /**
@@ -27,9 +26,9 @@ const _defaultTextAreaOptions: Partial<TextAreaOptions> = {
     cursor:          "text",
     padding:         new Insets(3, 3, 3, 3),
     preferredSize:   { width: 200, height: 200 },
+    minSize:         { width: 100, height: 100 },
     backgroundColor: "var(--ts-ui-input-bg, rgb(255, 255, 255))",
     foregroundColor: "var(--ts-ui-text-color, black)",
-    resize:          "none",
 };
 
 /**
@@ -49,6 +48,13 @@ class TextArea extends TextInput<TextAreaOptions> {
             options,
             text ? { ..._defaultTextAreaOptions, text } : _defaultTextAreaOptions,
         );
+
+        // The `<textarea>` corner grip is the only user-resize affordance on
+        // any of these components. Pin `resize: none` as a persistent CSS rule
+        // (not an inline style, which `applyStyle` would wipe on re-render) so
+        // the area can never be drag-resized. There is no accompanying option
+        // or setter — non-resizability is immutable by design.
+        this.setElementCSSRules({ resize: "none" });
 
         Event.addListener(this, "input", this.onInput);
     }
@@ -74,10 +80,6 @@ class TextArea extends TextInput<TextAreaOptions> {
 
         if (opts.wrap !== undefined) {
             this.setWrap(opts.wrap);
-        }
-
-        if (opts.resize !== undefined) {
-            this.setResize(opts.resize);
         }
 
         return this;
@@ -196,51 +198,6 @@ class TextArea extends TextInput<TextAreaOptions> {
 
         this._options.wrap = undefined;
         this.removeElementAttribute("wrap");
-
-        return this;
-    }
-
-    /**
-     * Returns the configured CSS `resize` value, or null if not set.
-     *
-     * @returns The CSS `resize` string, or null.
-     */
-    getResize(): string | null {
-        return this._options.resize ?? null;
-    }
-
-    /**
-     * Sets the CSS `resize` style on the underlying textarea. Use
-     * {@link clearResize} to remove the inline declaration and fall back to
-     * the user-agent default.
-     *
-     * @param value - A CSS `resize` value (e.g. "none", "both", "vertical", "horizontal").
-     *
-     * @returns This component, for method chaining.
-     */
-    setResize(value: string): this {
-        if (this._options.resize === value) {
-            return this;
-        }
-
-        this._options.resize = value;
-        this.setElementStyle("resize", value);
-
-        return this;
-    }
-
-    /**
-     * Removes the inline CSS `resize` declaration from the underlying textarea.
-     *
-     * @returns This component, for method chaining.
-     */
-    clearResize(): this {
-        if (this._options.resize === undefined) {
-            return this;
-        }
-
-        this._options.resize = undefined;
-        this.setElementStyle("resize", null);
 
         return this;
     }
