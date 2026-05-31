@@ -38,7 +38,7 @@ You can express a UI tree as a single declarative expression — and the framewo
 ```ts
 Panel({
     layoutManager: HBox(),
-    border: { style: BorderStyle.SOLID, width: 1, color: "black" },
+    border: "1px solid black",
     components: [
         Panel({
             layoutManager: VBox(),
