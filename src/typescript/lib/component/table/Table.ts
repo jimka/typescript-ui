@@ -81,6 +81,9 @@ class Table extends Component<TableOptions> {
     private _footer           : FooterRow;
     private _footerVisible    : boolean;
     private _columnWidths     : number[] = [];
+    private _resizeOriginClientX: number = 0;
+    private _resizeOriginW0    : number = 0;
+    private _resizeOriginW1    : number = 0;
     private _savedColumnWidths: Map<string, number> = new Map();
     private _columnConfigs    : Map<string, ColumnConfig> = new Map();
     private _exportMenuEnabled: boolean = false;
@@ -118,7 +121,8 @@ class Table extends Component<TableOptions> {
         this.initHiddenFromSpec();
 
         this._header = new Header(store.model, store);
-        this._header.on("columnresize",       (i, d) => this.onColumnResize(i, d));
+        this._header.on("columnresizestart",  (i, clientX) => this.onColumnResizeStart(i, clientX));
+        this._header.on("columnresize",        (i, clientX) => this.onColumnResize(i, clientX));
         this._header.on("columncontextmenu",  (_, x, y) => this.showColumnMenu(x, y));
         // The header is the permanent target of horizontal scroll mirroring (see the
         // scroll listener below), so promote it to its own compositor layer for the
@@ -695,13 +699,43 @@ class Table extends Component<TableOptions> {
     }
 
     /**
+     * Captures the resize origin when a column-resize drag begins: the absolute
+     * pointer `clientX` and the current widths of the adjacent column pair.
+     * {@link onColumnResize} derives the new widths from these origins so
+     * over-travel past a column's `minWidth`/`maxWidth` is absorbed without the
+     * edge decoupling from the cursor on reversal.
+     *
+     * @param colIndex - Zero-based index of the column whose right edge is being dragged.
+     * @param clientX  - The absolute pointer `clientX` at the moment the drag began.
+     */
+    private onColumnResizeStart(colIndex: number, clientX: number): void {
+        const n = this._columnWidths.length;
+
+        if (n === 0 || colIndex >= n - 1) {
+            return;
+        }
+
+        this._resizeOriginClientX = clientX;
+        this._resizeOriginW0      = this._columnWidths[colIndex];
+        this._resizeOriginW1      = this._columnWidths[colIndex + 1];
+    }
+
+    /**
      * Handles a column resize drag, clamping the adjacent column pair to their
      * per-column `minWidth` and `maxWidth` constraints.
      *
      * @param colIndex - Zero-based index of the column whose right edge is being dragged.
-     * @param delta    - Pixel delta: positive moves the edge right, negative moves it left.
+     * @param clientX  - The absolute pointer `clientX` for this move.
+     *
+     * @remarks The new widths are derived from the origin captured in
+     * {@link onColumnResizeStart} as `originWidth ± (clientX − originClientX)`,
+     * then clamped/redistributed against the pair's `minWidth`/`maxWidth`.
+     * Clamping the absolute result (rather than accumulating per-move deltas)
+     * makes dragging past a column's minimum idempotent: the edge stays at the
+     * boundary until the pointer returns past the coordinate where the clamp
+     * was hit.
      */
-    private onColumnResize(colIndex: number, delta: number): void {
+    private onColumnResize(colIndex: number, clientX: number): void {
         const n = this._columnWidths.length;
 
         if (n === 0 || colIndex >= n - 1) {
@@ -714,8 +748,10 @@ class Table extends Component<TableOptions> {
         const min1 = columns[colIndex + 1]?.getMinWidth() ?? 30;
         const max1 = columns[colIndex + 1]?.getMaxWidth() ?? Infinity;
 
-        let w0 = this._columnWidths[colIndex]     + delta;
-        let w1 = this._columnWidths[colIndex + 1] - delta;
+        const delta = clientX - this._resizeOriginClientX;
+
+        let w0 = this._resizeOriginW0 + delta;
+        let w1 = this._resizeOriginW1 - delta;
 
         if (w0 < min0) {
             w1 += w0 - min0;

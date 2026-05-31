@@ -166,9 +166,16 @@ class Window extends Panel<WindowOptions> {
     };
 
     private _animationFrameId: number | null = null;
-    private _pendingMouseDX: number = 0;
-    private _pendingMouseDY: number = 0;
+    private _pendingClientX: number = 0;
+    private _pendingClientY: number = 0;
     private _pendingBorder: WindowBorder | null = null;
+    private _resizeSessionActive: boolean = false;
+    private _resizeOriginClientX: number = 0;
+    private _resizeOriginClientY: number = 0;
+    private _resizeOriginX: number = 0;
+    private _resizeOriginY: number = 0;
+    private _resizeOriginW: number = 0;
+    private _resizeOriginH: number = 0;
     private _resizeFps: number = 60;
     private _lastFlushTime: number = 0;
     private _dragStartLeft: number = 0;
@@ -191,6 +198,7 @@ class Window extends Panel<WindowOptions> {
 
     private readonly _boundOnDrag: (e: MouseEvent) => void = (e: MouseEvent) => this.onDrag(e);
     private readonly _boundOnMouseUp: () => void = () => this.onMouseUp();
+    private readonly _boundOnResizeEnd: () => void = () => this.onResizeEnd();
     private readonly _boundOnSnapKeyDown:   (e: KeyboardEvent) => void = (e) => this.onSnapKeyDown(e);
     private readonly _boundOnSnapKeyUp:     (e: KeyboardEvent) => void = (e) => this.onSnapKeyUp(e);
     private readonly _boundOnSnapMouseMove: (e: MouseEvent)    => void = (e) => this.onSnapMouseMove(e);
@@ -928,7 +936,14 @@ class Window extends Panel<WindowOptions> {
      * Adjusts the window's position and size based on the dragged border direction.
      *
      * @param border - The border handle that triggered the resize.
-     * @param e - The mouse event carrying the movement delta.
+     * @param e - The mouse event carrying the absolute pointer coordinate.
+     *
+     * @remarks On the first move of a drag session the window's origin geometry
+     * (pointer `clientX`/`clientY`, position, and size) is captured so that
+     * `flushResize` can derive the new size from `origin + offset` rather
+     * than accumulating per-move deltas. `WindowBorder` exposes no mousedown
+     * hook to the window, so the capture is lazy and a viewport `mouseup`
+     * listener clears the session flag when the drag ends.
      */
     onResize(border: WindowBorder, e: MouseEvent) {
         if (this.getWindowState() !== "normal") {
@@ -937,13 +952,40 @@ class Window extends Panel<WindowOptions> {
 
         e.preventDefault();
 
-        this._pendingMouseDX += e.movementX;
-        this._pendingMouseDY += e.movementY;
+        if (!this._resizeSessionActive) {
+            this._resizeSessionActive = true;
+            this._resizeOriginClientX = e.clientX;
+            this._resizeOriginClientY = e.clientY;
+            this._resizeOriginX       = this.getX();
+            this._resizeOriginY       = this.getY();
+            this._resizeOriginW       = this.getWidth();
+            this._resizeOriginH       = this.getHeight();
+
+            Event.addViewportListener(this, 'mouseup',     this._boundOnResizeEnd);
+            Event.addViewportListener(this, 'touchend',    this._boundOnResizeEnd);
+            Event.addViewportListener(this, 'touchcancel', this._boundOnResizeEnd);
+        }
+
+        this._pendingClientX = e.clientX;
+        this._pendingClientY = e.clientY;
         this._pendingBorder = border;
 
         if (this._animationFrameId === null) {
             this._animationFrameId = requestAnimationFrame((ts) => this.flushResize(ts));
         }
+    }
+
+    /**
+     * Clears the resize-session origin capture when a border drag ends, so the
+     * next drag re-captures a fresh origin. Detaches the viewport listeners it
+     * was registered with.
+     */
+    private onResizeEnd(): void {
+        this._resizeSessionActive = false;
+
+        Event.removeViewportListener(this, 'mouseup',     this._boundOnResizeEnd);
+        Event.removeViewportListener(this, 'touchend',    this._boundOnResizeEnd);
+        Event.removeViewportListener(this, 'touchcancel', this._boundOnResizeEnd);
     }
 
     /**
@@ -975,60 +1017,67 @@ class Window extends Panel<WindowOptions> {
         this._lastFlushTime = timestamp;
         this._animationFrameId = null;
 
-        const dx = this._pendingMouseDX;
-        const dy = this._pendingMouseDY;
         const border = this._pendingBorder;
 
-        this._pendingMouseDX = 0;
-        this._pendingMouseDY = 0;
         this._pendingBorder = null;
 
         if (!border) {
             return;
         }
 
+        // Offset of the pointer from where the drag began. The new size is
+        // `origin ± offset` clamped by setWidth/setHeight; WEST/NORTH edges
+        // additionally re-derive position from the *clamped* size so the
+        // opposite (fixed) edge stays put and over-travel past the minimum is
+        // absorbed instead of decoupling the dragged edge from the cursor.
+        const offsetX = this._pendingClientX - this._resizeOriginClientX;
+        const offsetY = this._pendingClientY - this._resizeOriginClientY;
+
+        const originRight  = this._resizeOriginX + this._resizeOriginW;
+        const originBottom = this._resizeOriginY + this._resizeOriginH;
+
         this.setAutoCommitStyle(false);
         switch (border.getDirection()) {
             case Direction.NORTHWEST:
-                this.setX(this.getX() + dx);
-                this.setY(this.getY() + dy);
-                this.setWidth(this.getWidth() - dx);
-                this.setHeight(this.getHeight() - dy);
+                this.setWidth(this._resizeOriginW - offsetX);
+                this.setHeight(this._resizeOriginH - offsetY);
+                this.setX(originRight - this.getWidth());
+                this.setY(originBottom - this.getHeight());
 
                 break;
             case Direction.NORTH:
-                this.setY(this.getY() + dy);
-                this.setHeight(this.getHeight() - dy);
+                this.setHeight(this._resizeOriginH - offsetY);
+                this.setY(originBottom - this.getHeight());
 
                 break;
             case Direction.NORTHEAST:
-                this.setY(this.getY() + dy);
-                this.setWidth(this.getWidth() + dx);
-                this.setHeight(this.getHeight() - dy);
+                this.setWidth(this._resizeOriginW + offsetX);
+                this.setHeight(this._resizeOriginH - offsetY);
+                this.setY(originBottom - this.getHeight());
 
                 break;
             case Direction.EAST:
-                this.setWidth(this.getWidth() + dx);
+                this.setWidth(this._resizeOriginW + offsetX);
 
                 break;
             case Direction.SOUTHEAST:
-                this.setWidth(this.getWidth() + dx);
-                this.setHeight(this.getHeight() + dy);
+                this.setWidth(this._resizeOriginW + offsetX);
+                this.setHeight(this._resizeOriginH + offsetY);
 
                 break;
             case Direction.SOUTH:
-                this.setHeight(this.getHeight() + dy);
+                this.setHeight(this._resizeOriginH + offsetY);
 
                 break;
             case Direction.SOUTHWEST:
-                this.setX(this.getX() + dx);
-                this.setWidth(this.getWidth() - dx);
-                this.setHeight(this.getHeight() + dy);
+                this.setWidth(this._resizeOriginW - offsetX);
+                this.setHeight(this._resizeOriginH + offsetY);
+                this.setX(originRight - this.getWidth());
 
                 break;
             case Direction.WEST:
-                this.setX(this.getX() + dx);
-                this.setWidth(this.getWidth() - dx);
+                this.setWidth(this._resizeOriginW - offsetX);
+                this.setX(originRight - this.getWidth());
 
                 break;
         }
