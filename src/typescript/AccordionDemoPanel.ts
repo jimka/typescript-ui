@@ -134,10 +134,17 @@ class AccordionDemoPanel extends Panel {
 
         const list = new List();
 
-        for (const item of ['Report Q1.pdf', 'Budget 2026.xlsx', 'Meeting notes.txt',
-                             'Design mockup.png', 'Proposal draft.docx', 'Invoice #1042.pdf']) {
-            list.addItem(item);
-        }
+        // Keyed items: explicit `{ key, label }` entries keep their caller
+        // chosen key (so `getValue()` returns e.g. `"q1"`), while the trailing
+        // plain string is auto-keyed by its array position.
+        list.setItems([
+            { key: 'q1',      label: 'Report Q1.pdf' },
+            { key: 'budget',  label: 'Budget 2026.xlsx' },
+            { key: 'notes',   label: 'Meeting notes.txt' },
+            { key: 'mockup',  label: 'Design mockup.png' },
+            { key: 'draft',   label: 'Proposal draft.docx' },
+            'Invoice #1042.pdf',
+        ]);
 
         panel.addComponent(list);
 
