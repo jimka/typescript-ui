@@ -242,6 +242,15 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // queues `element.style.X = ...` writes until `init()` attaches it.
     private _styleRule            : StyleRule    = new StyleRule({ scope: "component", name: this.getId(), materialize: false });
     private _inlineStyle          : InlineStyle  = new InlineStyle();
+    // Optional clip frame: a presentational wrapper element interposed between
+    // this component's element and its DOM parent, sized to a cell rect with
+    // `overflow: hidden` so a layout manager can visually clip an element that
+    // is wider/taller than its allotted cell (e.g. a `Grid` fixed column). The
+    // frame carries no id and no listeners — it is a non-interactive sheath, so
+    // it stays runtime-only state off the options bag. `_clipFrameStyle` buffers
+    // the wrapper's geometry writes through the framework's deferred-write seam.
+    private _clipFrame            : HTMLElement | null = null;
+    private _clipFrameStyle       : InlineStyle  = new InlineStyle();
     // Subclass-owned state rules (e.g. Button's `:active` / `:hover`,
     // ToggleButton's `.selected`) keyed by selector suffix and materialised
     // at first render. Assigned in the constructor body (not via a field
@@ -563,9 +572,120 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
+        // Tear any active clip frame down first so the wrapper is removed with
+        // the element rather than orphaned in the DOM once the element leaves.
+        this.clearClipFrame();
+
         element.remove();
 
         return this;
+    }
+
+    /**
+     * Wraps this component's element in a clip frame — a presentational wrapper
+     * element positioned at `(x, y)`, sized `width`×`height`, with
+     * `overflow: hidden` — and parks this element at `(0, 0)` inside it. Lets a
+     * layout manager visually clip an element that is wider or taller than its
+     * allotted cell without fighting the element's own `min-width` /
+     * `min-height` CSS floor (which `overflow: hidden` on the element itself
+     * cannot, since it clips only descendants, not the element's own box).
+     *
+     * @param x - Left edge of the frame in the parent's coordinate space.
+     * @param y - Top edge of the frame in the parent's coordinate space.
+     * @param width - Frame width in pixels; element content beyond it is clipped.
+     * @param height - Frame height in pixels; element content beyond it is clipped.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks Idempotent: re-calling with a new rect resizes the existing
+     * frame rather than creating a second one. No-op when the element is not
+     * yet in the DOM — the layout manager drives this from a layout pass, by
+     * which point the element exists. The frame carries no id and no listeners,
+     * so subtree event delegation (which keys off element ids while walking
+     * ancestors) routes through it unaffected.
+     */
+    setClipFrame(x: number, y: number, width: number, height: number): this {
+        const element = this.getElement();
+        if (!element) {
+            return this;
+        }
+
+        if (!this._clipFrame) {
+            const frame  = document.createElement("div");
+            const parent = element.parentNode;
+
+            if (parent) {
+                parent.insertBefore(frame, element);
+            }
+
+            frame.appendChild(element);
+
+            this._clipFrame = frame;
+            this._clipFrameStyle.attach(frame);
+
+            // `position: absolute` matches the framework's absolute-positioning
+            // model and makes the frame the containing block for the absolutely
+            // positioned element parked inside it, so the element's `(0, 0)`
+            // resolves against the frame.
+            this._clipFrameStyle.setMany({
+                position: "absolute",
+                overflow: "hidden"
+            });
+        }
+
+        this._clipFrameStyle.setMany({
+            left:   x + "px",
+            top:    y + "px",
+            width:  width  + "px",
+            height: height + "px"
+        });
+
+        return this;
+    }
+
+    /**
+     * Removes the clip frame installed by {@link setClipFrame}, re-parenting
+     * this element back to the frame's parent at the frame's former DOM
+     * position. No-op when no frame is active, so callers can invoke it
+     * unconditionally on the non-clipped path.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearClipFrame(): this {
+        const frame = this._clipFrame;
+        if (!frame) {
+            return this;
+        }
+
+        const element = this.getElement();
+        const parent  = frame.parentNode;
+
+        if (element && parent) {
+            parent.insertBefore(element, frame);
+        }
+
+        frame.remove();
+
+        this._clipFrame = null;
+        // The buffer was attached to the now-removed frame; replace it so a
+        // later `setClipFrame` attaches a fresh buffer to the new wrapper.
+        this._clipFrameStyle = new InlineStyle();
+
+        return this;
+    }
+
+    /**
+     * Returns the DOM node this component occupies in its parent's child list:
+     * the clip frame when one is active (see {@link setClipFrame}), otherwise
+     * the component's own element. Sibling DOM positioning must reference this
+     * node rather than `getElement()`, because a clip-framed component's
+     * element sits inside its frame, not directly under the container.
+     *
+     * @returns The frame element when clipped, else the component's element, or
+     *   undefined when the element is not yet in the DOM.
+     */
+    private getAttachNode(): HTMLElement | null | undefined {
+        return this._clipFrame ?? this.getElement();
     }
 
     /**
@@ -3188,8 +3308,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         let compElement = component.getElement(true);
+        // Reference the following sibling's attach node, not its element: a
+        // clip-framed sibling sits inside its frame, so `insertBefore` against
+        // its bare element (no longer a direct child of this container) would
+        // throw. `getAttachNode` resolves to the frame when one is active.
         const nextSibling = clampedIndex + 1 < this._components.length
-            ? this._components[clampedIndex + 1].getElement()
+            ? this._components[clampedIndex + 1].getAttachNode()
             : null;
         element.insertBefore(compElement, nextSibling ?? null);
         this.scheduleLayout();
