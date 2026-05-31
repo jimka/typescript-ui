@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Binding, callable, Component, Notification, Panel } from '@jimka/typescript-ui/core';
-import { HBox, VBox } from '@jimka/typescript-ui/layout';
+import { Grid, GridConstraints, HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Checkbox, ComboBox, DateField, Text, TextField, TimeField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
+import { FieldSet } from '@jimka/typescript-ui/component/container';
 class BindingPanel extends Panel {
 
     constructor() {
         super();
 
-        this.setLayoutManager(new VBox());
+        // The panel stacks a single fieldset; width-stretching lets the
+        // fieldset fill the available width up to its 600px cap.
+        this.setLayoutManager(new VBox({ stretching: true }));
 
         // ── Model and record ─────────────────────────────────────────────────
 
@@ -130,52 +133,68 @@ class BindingPanel extends Panel {
 
         // ── Layout ───────────────────────────────────────────────────────────
 
-        const selectorRow = new Component();
-        selectorRow.setLayoutManager(new HBox());
-        selectorRow.addComponent(new Text("Record:"));
-        selectorRow.addComponent(recordCombo);
-        this.addComponent(selectorRow);
+        // Group the bound fields in a labelled fieldset, capped at 600px wide
+        // so the form lines stay a comfortable reading length on wide screens.
+        const FIELDSET_MAX_WIDTH = 600;
 
-        const nameRow = new Component();
-        nameRow.setLayoutManager(new HBox());
-        nameRow.addComponent(new Text("Name:"));
-        nameRow.addComponent(nameField);
-        this.addComponent(nameRow);
+        const fieldSet = new FieldSet("Information");
+        fieldSet.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
 
-        const activeRow = new Component();
-        activeRow.setLayoutManager(new HBox());
-        activeRow.addComponent(new Text("Active:"));
-        activeRow.addComponent(activeCheck);
-        this.addComponent(activeRow);
+        // Two-column form grid inside the fieldset: six labelled fields plus a
+        // status line and a button bar that each span both columns — eight rows
+        // in all (hence FORM_ROW_COUNT; bump it if a field is added). The left
+        // column sizes to its content (the titles); the right column takes the
+        // slack so the inputs share a common right edge. Every row sizes to its
+        // content so inputs keep their natural height.
+        const FORM_ROW_COUNT = 8;
 
-        const roleRow = new Component();
-        roleRow.setLayoutManager(new HBox());
-        roleRow.addComponent(new Text("Role:"));
-        roleRow.addComponent(roleCombo);
-        this.addComponent(roleRow);
+        fieldSet.setLayoutManager(new Grid({
+            rows:    FORM_ROW_COUNT,
+            columns: 2,
+            spacing: 8,
+            columnTracks: [
+                { mode: "content" },
+                { mode: "weight", value: 1 },
+            ],
+            rowTracks: Array.from({ length: FORM_ROW_COUNT }, () => ({ mode: "content" as const })),
+        }));
 
-        const birthDateRow = new Component();
-        birthDateRow.setLayoutManager(new HBox());
-        birthDateRow.addComponent(new Text("Birth date:"));
-        birthDateRow.addComponent(birthDateField);
-        this.addComponent(birthDateRow);
+        // Each call fills one grid row: title into the content column, input
+        // into the weight column.
+        const addField = (title: string, input: Component): void => {
+            fieldSet.addComponent(new Text(title));
+            fieldSet.addComponent(input);
+        };
 
-        const reminderTimeRow = new Component();
-        reminderTimeRow.setLayoutManager(new HBox());
-        reminderTimeRow.addComponent(new Text("Reminder time:"));
-        reminderTimeRow.addComponent(reminderTimeField);
-        this.addComponent(reminderTimeRow);
+        addField("Record",        recordCombo);
+        addField("Name",          nameField);
+        addField("Active",        activeCheck);
+        addField("Role",          roleCombo);
+        addField("Birth date",    birthDateField);
+        addField("Reminder time", reminderTimeField);
 
-        this.addComponent(statusText);
+        // The status line and button bar each occupy a full row across both
+        // columns.
+        const spanBothColumns = (): GridConstraints => {
+            const cons = new GridConstraints();
+            cons.colSpan = 2;
+
+            return cons;
+        };
+
+        fieldSet.addComponent(statusText, spanBothColumns());
 
         const buttonRow = new Component();
         buttonRow.setLayoutManager(new HBox());
 
         const commitButton = new Button("Commit");
         const rejectButton = new Button("Reject");
+
         buttonRow.addComponent(commitButton);
         buttonRow.addComponent(rejectButton);
-        this.addComponent(buttonRow);
+        fieldSet.addComponent(buttonRow, spanBothColumns());
+
+        this.addComponent(fieldSet);
 
         // ── Wire up interactions ─────────────────────────────────────────────
 
