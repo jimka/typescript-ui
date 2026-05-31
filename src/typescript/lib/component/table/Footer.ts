@@ -19,7 +19,14 @@ class FooterRow extends Component {
         super({ tag: "tfoot" });
 
         this.setBorder({ borderTop: "1px solid var(--ts-ui-border-color, black)" });
-        this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
+        // Apply the surface as both a colour and an image so a flat-colour
+        // theme (e.g. ModernTheme, where --ts-ui-button-bg is a solid colour)
+        // paints via the colour and a gradient theme via the image. Setting
+        // only background-image left the footer transparent under a flat-colour
+        // theme, since a colour is invalid as a background-image.
+        const footerBg = "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))";
+        this.setBackgroundColor(footerBg);
+        this.setBackgroundImage(footerBg);
 
         let row = new Row();
         this.addRow(row);
