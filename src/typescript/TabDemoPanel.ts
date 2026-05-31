@@ -49,7 +49,7 @@ class TabDemoPanel extends Component {
         widthRow.setLayoutManager(new HBox());
 
         const widthModes: TabWidthMode[] = ["fill", "content", "equal", "fixed"];
-        const modeCombo = new ComboBox({ items: widthModes, selectedIndex: 1 });
+        const modeCombo = new ComboBox({ items: widthModes, selectedIndex: 2 });
 
         const maxSpinner = new NumberSpinner({ min: 40, max: 400, step: 10, value: 160 });
         const fixedSpinner = new NumberSpinner({ min: 40, max: 400, step: 10, value: 120 });
@@ -69,7 +69,7 @@ class TabDemoPanel extends Component {
         // tabs; the row above switches strategy and values live.
         this.tabPanel = new TabPanel({
             preferredSize: { width: 0, height: 300 },
-            tabWidthMode: "content",
+            tabWidthMode: "equal",
             tabMaxWidth: 160,
             tabFixedWidth: 120,
             tabs: [

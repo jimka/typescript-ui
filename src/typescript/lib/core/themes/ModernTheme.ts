@@ -91,6 +91,7 @@ export const ModernTheme: Theme = {
         indicator: { color: 'rgb(100,100,100)' },
     },
     tab   : {
+        underBorderFullWidth: false,
         toolbar: { background: '#eee',     border: '#e1e1e8' },
         button : {
             background : 'rgb(226, 229, 233)',
