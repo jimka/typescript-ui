@@ -6,6 +6,12 @@ Release history. For breaking-change details by version, see [Migration](/refere
 
 The package is at version `0.0.0` — pre-release, not yet published. Until a `0.x` or `1.0.0` is tagged, anything here may change without a migration note. Highlights below describe work-in-progress capabilities of the development snapshot, not stable contracts.
 
+**Component sizing constraints** (breaking — `TextArea.resize` removed; additive min-size floors):
+
+- **`Table`, `TextArea`, `FieldSet`, `List`, and `MultiSelectList` now floor at a `100×100` minimum size.** Each declares `setMinSize(100, 100)` in its constructor so the layout manager never crushes it below a usable box. The values are intrinsic usability floors, not theme tokens.
+- **`TextArea` is permanently non-resizable.** The `resize` option on `TextAreaOptions` and the `getResize` / `setResize` / `clearResize` accessors are removed; `resize: none` is now pinned as a persistent CSS rule with no API to change it. Callers that passed `{ resize: ... }` or called the accessors must drop them — the textarea can no longer expose a drag-to-resize corner grip.
+- **`FieldSet` clamps a long legend title.** The legend's `max-width` tracks the fieldset's laid-out inner width, so an over-long title ellipsises inside the border notch instead of spilling out.
+
 **`ModernTheme` is now the default; `DefaultTheme` renamed to `ClassicTheme`** (breaking — exported symbol rename):
 
 - **`ModernTheme` is the preselected theme.** The framework now applies [`ModernTheme`](/api/core/variables/ModernTheme) at startup (and `ThemeManager.getTheme()` defaults to it before any `setTheme` call). The previous gradient light look is still available, now named `ClassicTheme`.
