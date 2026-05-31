@@ -23,6 +23,7 @@ Plus optional metadata:
 Each manager subclasses this to add its own fields:
 
 - [`AccordionConstraints`](/api/layout/classes/AccordionConstraints) — `label`, `initiallyOpen`
+- [`GridConstraints`](/api/layout/classes/GridConstraints) — `col`, `row`, `colSpan`, `rowSpan` (see [Grid](/layouts/Grid#cell-spanning-and-explicit-placement))
 - The plain `{ region: Placement }` object passed to [`Border`](/layouts/Border)
 
 ## FillType
