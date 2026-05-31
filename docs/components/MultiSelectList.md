@@ -18,6 +18,8 @@ Event.addListener(tags, 'change', () => {
 panel.addComponent(tags);
 ```
 
+`setItems` / `addItem` also accept pre-formed `{ key, label }` pairs (a [`CustomListItem`](/api/component/list/interfaces/CustomListItem)) when rows need explicit keys instead of their positional index — e.g. `tags.setItems([{ key: 'urgent', label: 'Urgent' }, 'Blocked'])`. Those keys round-trip through `getValue()` / `setValues()`; string entries are auto-keyed by array position and the caller owns key uniqueness.
+
 ## Selection model
 
 | Gesture | Behaviour |

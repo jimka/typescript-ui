@@ -17,11 +17,23 @@ const role = ComboBox({ items: ['Admin', 'User', 'Guest'] });
 Event.addListener(role, 'change', () => {
     // Plain string items are keyed by position, so `getValue()` returns the
     // selected row index as a string; read `getSelectedIndex()` for the index.
-    // When each option needs its own distinct value, use a store (below).
+    // When each option needs its own distinct value, use keyed items or a
+    // store (below).
     console.log('selected index:', role.getSelectedIndex());
 });
 
 panel.addComponent(role);
+```
+
+### Keyed items
+
+`addItem` / `setItems` also accept pre-formed `{ key, label }` entries — a [`CustomListItem`](/api/component/list/interfaces/CustomListItem) — so each option carries its own stable key without standing up a store. Explicit keys and plain strings can be mixed in one call; string entries are auto-keyed by their array position, object entries keep their key verbatim, and the caller owns key uniqueness:
+
+```typescript
+const role = ComboBox();
+role.setItems([{ key: 'admin', label: 'Admin' }, 'Guest']);
+// Selecting "Admin" makes getValue() return "admin"; selecting "Guest"
+// returns "1" (the string auto-keyed by its array position).
 ```
 
 ## Backed by a store
@@ -52,8 +64,8 @@ The combo refreshes automatically on store `datachanged` events.
 
 | Method | Purpose |
 | --- | --- |
-| `addItem(option)` | Append a static `Option`. |
-| `setItems(options[])` | Replace the option list. |
+| `addItem(item)` | Append an item (string or `{ key, label }`). |
+| `setItems(items[])` | Replace the item list (strings or `{ key, label }` pairs). |
 | `getValue()` / `setValue(value)` | Read / write the selected option's value. |
 | `getSelectedIndex()` / `setSelectedIndex(i)` | Index-based selection. |
 | `setStore(store)` / `setDisplayField(name)` / `setValueField(name)` | Bind to a data store. |
