@@ -22,6 +22,8 @@ export { VBox } from '~/layout/VBox.js';
 export type { VBoxOptions } from '~/layout/VBox.js';
 export { Grid } from '~/layout/Grid.js';
 export type { GridOptions } from '~/layout/Grid.js';
+export { GridConstraints } from '~/layout/GridConstraints.js';
+export type { GridTrack, GridTrackMode } from '~/layout/GridTrack.js';
 export { Split } from '~/layout/Split.js';
 export type { SplitOptions } from '~/layout/Split.js';
 export { Card } from '~/layout/Card.js';

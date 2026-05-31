@@ -11,7 +11,7 @@ A [`LayoutManager`](/api/layout/classes/LayoutManager) is attached to a containe
 | [`Border`](/api/layout/classes/Border) | Five-region layout: north, south, east, west, center |
 | [`Card`](/api/layout/classes/Card) | Stacked layers — one visible at a time |
 | [`Fit`](/api/layout/classes/Fit) | Places one child inside the container — stretch to fill (default) or centre at preferred size via `FillType.NONE` |
-| [`Grid`](/api/layout/classes/Grid) | Two-dimensional grid |
+| [`Grid`](/api/layout/classes/Grid) | Two-dimensional grid with weight/fixed/content track sizing, cell spanning, and explicit placement |
 | [`HBox`](/api/layout/classes/HBox) | Horizontal stack; `mode: "preferred"` honours per-child widths, `mode: "equal"` divides the row into equal cells |
 | [`Split`](/api/layout/classes/Split) | Two panes with a draggable resize gutter |
 | [`Tab`](/api/layout/classes/Tab) | Tabbed interface with a button toolbar |
