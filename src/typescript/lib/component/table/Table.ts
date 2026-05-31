@@ -109,6 +109,7 @@ class Table extends Component<TableOptions> {
         this.setBorder({ border: "1px solid var(--ts-ui-border-color, black)" });
         this.setInsets(new Insets(0, 0, 0, 0));
         this.setOverflow("hidden");
+        this.setMinSize(100, 100);
 
         this._store = store;
         this._spec = spec;
