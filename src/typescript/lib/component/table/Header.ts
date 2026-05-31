@@ -416,6 +416,15 @@ class Header extends Component {
                 cell.setTooltip(field.getDescription());
 
                 row.addComponent(cell, { data: field });
+
+                // Wire exactly once, at creation. The resize/sort/context
+                // closures resolve the cell's visible-column index live (via
+                // getColumns) at emit time, so a later hide/show that shifts
+                // indices needs no re-wiring. Re-wiring a surviving cell would
+                // stack duplicate listeners on its ListenerBag — making a
+                // single drag emit `columnresize` several times with mismatched
+                // indices, and a single header click cycle the sort twice.
+                this.wireCell(cell);
             }
 
             // Tint the column header with the group's `groupColor` so
@@ -430,11 +439,6 @@ class Header extends Component {
             if (groupColor) {
                 cell.setBackgroundColor(groupColor);
             }
-
-            // Re-wire on every sync so the resize-callback closure
-            // captures the new visible-column index when an earlier
-            // column was hidden/shown.
-            this.wireCell(cell, i);
         }
 
         // Re-order children to the new visible-field display order so
@@ -527,15 +531,22 @@ class Header extends Component {
     }
 
     /**
-     * Wires the sort, resize, and context-menu callbacks for one cell.
+     * Wires the sort, resize, and context-menu callbacks for one cell. Called
+     * exactly once per cell, at creation.
      *
      * @param cell - The header cell whose listeners are being attached.
-     * @param idx - Zero-based column index used by the resize callback.
+     *
+     * @remarks The resize callbacks report the cell's *current* visible-column
+     * index by looking it up live through {@link getColumns} when the event
+     * fires, rather than capturing an index at wiring time. This keeps the
+     * index correct after a hide/show/reorder shuffles the columns without
+     * re-wiring — re-wiring would stack duplicate listeners on the surviving
+     * cell's `ListenerBag`.
      */
-    private wireCell(cell: HeaderCell, idx: number): void {
+    private wireCell(cell: HeaderCell): void {
         cell.on("sortclick",   (fieldName, shiftKey) => this.handleSortClick(fieldName, shiftKey));
-        cell.on("resizestart", (clientX) => this.emit("columnresizestart", idx, clientX));
-        cell.on("resizedrag",  (clientX) => this.emit("columnresize", idx, clientX));
+        cell.on("resizestart", (clientX) => this.emit("columnresizestart", this.getColumns().indexOf(cell), clientX));
+        cell.on("resizedrag",  (clientX) => this.emit("columnresize", this.getColumns().indexOf(cell), clientX));
         cell.on("contextmenu", (fieldName, x, y) => this.emit("columncontextmenu", fieldName, x, y));
     }
 
