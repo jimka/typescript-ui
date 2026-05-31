@@ -530,12 +530,17 @@ class Tab extends LayoutManager {
 
         const entry = this._tabs[this._selectedTabIndex];
         if (entry) {
-            if (entry.component) {
-                return entry.component;
-            }
-
+            // While a build is in flight the spinner stays the visible child
+            // even though `component` may already be captured (see
+            // `materializeAsync`): the built component fades in over the
+            // spinner via opacity, so the spinner must hold the slot until
+            // `onReady` flips the entry to "ready".
             if (entry.state === "building" && entry.spinner) {
                 return entry.spinner;
+            }
+
+            if (entry.component) {
+                return entry.component;
             }
 
             return null;
@@ -843,11 +848,12 @@ class Tab extends LayoutManager {
      * do not trigger factory invocations — they observe the spinner placeholder
      * until the build completes.
      *
-     * Once a `Tab` contains any lazy entries, mixing direct
-     * `container.addComponent(c, {...})` calls is not supported: `tabs.length`
-     * may equal or exceed `componentCount`, which causes the auto-`createTab`
-     * loop in `doLayout` to skip the eager component. Use `addLazyTab` for all
-     * subsequent additions, or stay fully eager.
+     * Mixing direct `container.addComponent(c, {...})` calls with lazy entries
+     * is supported: `doLayout` creates a tab for every container child that no
+     * existing entry already owns (through its `component`/`spinner`), so an
+     * eager directly-added child still gets its own tab no matter how many lazy
+     * panels have materialized. Materialize-injected children are entry-owned,
+     * so they are never re-tabbed.
      *
      * @example
      * ```typescript
@@ -917,7 +923,18 @@ class Tab extends LayoutManager {
 
         Animation.materialize({
             host:             container,
-            factory:          factory,
+            factory:          () => {
+                const component = factory();
+
+                // Capture the built component on the entry the instant it
+                // exists — before `Animation.materialize` attaches it to the
+                // container and schedules the layout that would otherwise see
+                // an entry-unowned child and mint a phantom UUID tab for it.
+                // `onReady` re-asserts this once the fade completes.
+                entry.component = component;
+
+                return component;
+            },
             spinnerComponent: spinner,
             onReady:          (component) => {
                 entry.component = component;
@@ -980,11 +997,28 @@ class Tab extends LayoutManager {
         let containerSize = container.getInnerSize();
         let containerInsets = container.getInsets();
 
-        let componentCount = components.length;
+        // Catch the tab strip up to any container child that no tab entry owns
+        // yet — the bare-`Panel` eager path, where a consumer called
+        // `addComponent` directly and expects a tab to appear.
+        // `Animation.materialize` also injects children (the built lazy panels
+        // and the transient spinner), but each of those is referenced by an
+        // existing entry's `component`/`spinner`, so the ownership test skips
+        // them and they never become phantom UUID-labelled tabs.
+        let owned = new Set<Component>();
+        for (let entry of this._tabs) {
+            if (entry.component) {
+                owned.add(entry.component);
+            }
 
-        for (let i = this._tabs.length; i < componentCount; i += 1) {
-            let component = components[i];
-            this.createTab(component);
+            if (entry.spinner) {
+                owned.add(entry.spinner);
+            }
+        }
+
+        for (let component of components) {
+            if (!owned.has(component)) {
+                this.createTab(component);
+            }
         }
 
         // The initial tab is never explicitly clicked, so its factory has to
