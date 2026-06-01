@@ -453,7 +453,13 @@ class Split extends LayoutManager {
             }
         }
 
-        this._lastAvailableMain = available;
+        // Only remember a positive extent. If the container collapsed below the
+        // gutter footprint (`available == 0`) the stored sizes were left frozen,
+        // so keeping the last positive baseline lets the next growth rescale
+        // them back to fill instead of stranding the pre-collapse sizes.
+        if (available > 0) {
+            this._lastAvailableMain = available;
+        }
     }
 }
 
