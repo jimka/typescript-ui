@@ -71,7 +71,7 @@ class AccordionDemoPanel extends Panel {
             const next = !this.accordion.isSingleOpen();
 
             this.accordion.setSingleOpen(next);
-            this.singleOpenToggle.getText().setText(`Single-open: ${next ? 'ON' : 'OFF'}`);
+            this.singleOpenToggle.setText(`Single-open: ${next ? 'ON' : 'OFF'}`);
         });
     }
 

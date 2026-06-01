@@ -3,6 +3,7 @@
 import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { AccordionIndicator } from "~/component/container/AccordionIndicator.js";
 import { Insets } from "~/primitive/Insets.js";
+import { AnchorType } from "~/layout/AnchorType.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -32,13 +33,21 @@ class AccordionHeader extends Button<AccordionHeaderOptions> {
      * @param label - Text displayed in the header button.
      */
     constructor(label: string, options?: AccordionHeaderOptions) {
-        super(label, options);
+        // Left-anchor the label row via Button's own `anchor` option (consumed
+        // once when the constructor adds the content row to the outer Fit), so
+        // the header text reads left-aligned. An explicit caller `anchor`
+        // still wins.
+        super(label, { ...options, anchor: options?.anchor ?? AnchorType.WEST });
 
         this._indicator = new AccordionIndicator();
         this._indicator.setExpanded(this._options.expanded ?? false);
 
-        this.getText().setTextAlign('left');
-        this.getText().setInsets(new Insets(0, 0, 0, 8));
+        // Reproduce the former 8px left gap (previously applied to the inner
+        // label) by widening the button's own left inset by 8 over its
+        // resolved default — keeping the other three sides untouched.
+        const insets = this.getInsets();
+
+        this.setInsets(new Insets(insets.getTop(), insets.getRight(), insets.getBottom(), insets.getLeft() + 8));
     }
 
     /**

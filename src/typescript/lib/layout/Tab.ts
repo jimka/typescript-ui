@@ -767,10 +767,12 @@ class Tab extends LayoutManager {
         });
 
         // Reserve room on the right for the overlaid close button on closeable
-        // tabs so a long label doesn't run under the ✕.
+        // tabs so a long label doesn't run under the ✕. The label's own 4px
+        // horizontal breathing room is folded into the button's insets here
+        // (left 4 + 4, right rightInset + 4) since the inner label is no
+        // longer directly reachable.
         const rightInset = constraints?.closeable ? CLOSE_BUTTON_SIZE + 4 : 4;
-        tabButton.setInsets(new Insets(0, rightInset, 0, 4));
-        tabButton.getText().setInsets(new Insets(0, 4, 0, 4));
+        tabButton.setInsets(new Insets(0, rightInset + 4, 0, 8));
 
         tabButton.on("action", () => this.onTabPressed(tabButton));
 

@@ -58,6 +58,11 @@ export interface Theme {
         font: {
             size: string;
         };
+        description: {
+            fontSize  : string;
+            foreground: string;
+            weight    : string;
+        };
         pressed: {
             foreground: string;
             background: string;
@@ -559,6 +564,9 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-button-shadow'                    : theme.button.shadow,
         '--ts-ui-button-padding'                   : theme.button.padding,
         '--ts-ui-button-font-size'                 : theme.button.font.size,
+        '--ts-ui-button-description-font-size'     : theme.button.description.fontSize,
+        '--ts-ui-button-description-fg'            : theme.button.description.foreground,
+        '--ts-ui-button-description-weight'        : theme.button.description.weight,
         '--ts-ui-button-pressed-fg'                : theme.button.pressed.foreground,
         '--ts-ui-button-pressed-bg'                : theme.button.pressed.background,
         '--ts-ui-button-pressed-shadow'            : theme.button.pressed.shadow,
