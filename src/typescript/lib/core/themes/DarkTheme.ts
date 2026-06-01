@@ -199,10 +199,10 @@ export const DarkTheme: Theme = {
     },
     notification: {
         shadow : '2px 4px 8px rgba(0, 0, 0, 0.4)',
-        info   : { background: 'rgba(30, 100, 200, 0.2)',  border: 'rgb(30, 100, 200)'  },
-        success: { background: 'rgba(30, 180, 80, 0.2)',   border: 'rgb(30, 180, 80)'   },
-        warning: { background: 'rgba(220, 140, 0, 0.2)',   border: 'rgb(220, 140, 0)'   },
-        error  : { background: 'rgba(200, 50, 50, 0.2)',   border: 'rgb(200, 50, 50)'   },
+        info   : { background: 'rgba(30, 100, 200, 0.4)',  border: 'rgb(30, 100, 200)'  },
+        success: { background: 'rgba(30, 180, 80, 0.4)',   border: 'rgb(30, 180, 80)'   },
+        warning: { background: 'rgba(220, 140, 0, 0.4)',   border: 'rgb(220, 140, 0)'   },
+        error  : { background: 'rgba(200, 50, 50, 0.4)',   border: 'rgb(200, 50, 50)'   },
     },
     validation: {
         error: {

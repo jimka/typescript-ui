@@ -201,10 +201,10 @@ export const ClassicTheme: Theme = {
     },
     notification: {
         shadow : '2px 4px 8px rgba(0, 0, 0, 0.15)',
-        info   : { background: 'rgba(30, 100, 200, 0.1)',  border: 'rgb(30, 100, 200)'  },
-        success: { background: 'rgba(30, 180, 80, 0.1)',   border: 'rgb(30, 180, 80)'   },
-        warning: { background: 'rgba(220, 140, 0, 0.1)',   border: 'rgb(220, 140, 0)'   },
-        error  : { background: 'rgba(200, 50, 50, 0.1)',   border: 'rgb(200, 50, 50)'   },
+        info   : { background: 'rgba(210, 224, 244, 0.75)',  border: 'rgb(30, 100, 200)'  },
+        success: { background: 'rgba(210, 240, 220, 0.75)',  border: 'rgb(30, 180, 80)'   },
+        warning: { background: 'rgba(248, 232, 204, 0.75)',  border: 'rgb(220, 140, 0)'   },
+        error  : { background: 'rgba(244, 214, 214, 0.75)',  border: 'rgb(200, 50, 50)'   },
     },
     validation: {
         error: {
