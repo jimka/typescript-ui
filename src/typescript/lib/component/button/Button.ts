@@ -103,7 +103,7 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
     borderRadius:           "var(--ts-ui-border-radius, 4px)",
     shadow:                 "var(--ts-ui-button-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2))",
     backgroundImage:        "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))",
-    insets:                 new Insets(4, 4, 4, 4),
+    insets:                 new Insets(5, 10, 5, 10),
     anchor:                 AnchorType.CENTER,
     fill:                   FillType.NONE,
     pressedForegroundColor: "var(--ts-ui-button-pressed-fg, rgb(150, 150, 150))",
