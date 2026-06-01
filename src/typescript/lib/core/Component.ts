@@ -836,14 +836,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Returns the DOM node this component's children attach to: its content
      * frame when one is active (see {@link setContentFrame}), otherwise its own
      * element. The mirror of {@link getAttachNode} — that answers "what node do
-     * I occupy in my parent", this answers "where do my children attach". New
-     * children added while a content frame is active must land inside the frame
-     * rather than directly under the element.
+     * I occupy in my parent", this answers "where do my children attach".
      *
      * @returns The content frame when active, else the component's element, or
      *   undefined when the element is not yet in the DOM.
      */
-    private getChildHost(): HTMLElement | null | undefined {
+    private getChildHost(): HTMLElement | undefined {
         return this._contentFrame ?? this.getElement();
     }
 
@@ -3471,7 +3469,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         let compElement = component.getElement(true);
         // Attach into the content frame when one is active (overflow scrolling),
         // else directly under the element.
-        (this.getChildHost() ?? element).appendChild(compElement);
+        this.getChildHost()?.appendChild(compElement);
         this.scheduleLayout();
 
         return this;
@@ -3524,7 +3522,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const nextSibling = clampedIndex + 1 < this._components.length
             ? this._components[clampedIndex + 1].getAttachNode()
             : null;
-        (this.getChildHost() ?? element).insertBefore(compElement, nextSibling ?? null);
+        this.getChildHost()?.insertBefore(compElement, nextSibling ?? null);
         this.scheduleLayout();
 
         return this;
