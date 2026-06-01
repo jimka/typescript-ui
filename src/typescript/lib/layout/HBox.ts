@@ -464,6 +464,8 @@ class HBox extends LayoutManager {
                     x += columnWidth + spacing;
                 }
 
+                this.reserveContentFrame();
+
                 return;
             }
 
@@ -512,6 +514,8 @@ class HBox extends LayoutManager {
 
                 x += columnWidth + spacing;
             }
+
+            this.reserveContentFrame();
 
             return;
         }
@@ -663,6 +667,8 @@ class HBox extends LayoutManager {
             x += component.getWidth();
             x += spacing;
         }
+
+        this.reserveContentFrame();
     }
 }
 

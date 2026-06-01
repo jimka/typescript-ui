@@ -447,6 +447,8 @@ class VBox extends LayoutManager {
                 y += rowHeight + spacing;
             }
 
+            this.reserveContentFrame();
+
             return;
         }
 
@@ -551,6 +553,8 @@ class VBox extends LayoutManager {
             y += component.getHeight();
             y += spacing;
         }
+
+        this.reserveContentFrame();
     }
 }
 

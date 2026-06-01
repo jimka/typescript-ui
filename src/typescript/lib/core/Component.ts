@@ -251,6 +251,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // the wrapper's geometry writes through the framework's deferred-write seam.
     private _clipFrame            : HTMLElement | null = null;
     private _clipFrameStyle       : InlineStyle  = new InlineStyle();
+    // Optional content frame: a presentational wrapper interposed between this
+    // component's element and ITS children, sized to the full content extent
+    // (leading inset + children + trailing inset) so the host's native scroll
+    // reserves both insets symmetrically when the children overflow. The mirror
+    // image of the clip frame — that one clips a single oversized child, this
+    // one exposes an oversized child set for scrolling. Same runtime-only,
+    // id-less, listener-free discipline; the geometry writes buffer through
+    // `_contentFrameStyle`.
+    private _contentFrame         : HTMLElement | null = null;
+    private _contentFrameStyle    : InlineStyle  = new InlineStyle();
     // Subclass-owned state rules (e.g. Button's `:active` / `:hover`,
     // ToggleButton's `.selected`) keyed by selector suffix and materialised
     // at first render. Assigned in the constructor body (not via a field
@@ -572,9 +582,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        // Tear any active clip frame down first so the wrapper is removed with
-        // the element rather than orphaned in the DOM once the element leaves.
+        // Tear any active clip / content frame down first so the wrapper is
+        // removed with the element rather than orphaned in the DOM once the
+        // element leaves.
         this.clearClipFrame();
+        this.clearContentFrame();
 
         element.remove();
 
@@ -611,26 +623,20 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (!this._clipFrame) {
-            const frame  = document.createElement("div");
             const parent = element.parentNode;
+
+            // `position: absolute` (applied by createFrame) makes the frame the
+            // containing block for the absolutely positioned element parked
+            // inside it, so the element's `(0, 0)` resolves against the frame;
+            // `overflow: hidden` clips a child larger than the cell rect.
+            const frame = this.createFrame(this._clipFrameStyle, { overflow: "hidden" });
+            this._clipFrame = frame;
 
             if (parent) {
                 parent.insertBefore(frame, element);
             }
 
             frame.appendChild(element);
-
-            this._clipFrame = frame;
-            this._clipFrameStyle.attach(frame);
-
-            // `position: absolute` matches the framework's absolute-positioning
-            // model and makes the frame the containing block for the absolutely
-            // positioned element parked inside it, so the element's `(0, 0)`
-            // resolves against the frame.
-            this._clipFrameStyle.setMany({
-                position: "absolute",
-                overflow: "hidden"
-            });
         }
 
         this._clipFrameStyle.setMany({
@@ -664,12 +670,150 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             parent.insertBefore(element, frame);
         }
 
+        // disposeFrame removes the wrapper and returns a fresh buffer — the old
+        // one was bound to the now-removed frame.
+        this._clipFrameStyle = this.disposeFrame(frame);
+        this._clipFrame = null;
+
+        return this;
+    }
+
+    /**
+     * Creates a presentational frame `<div>` for {@link setClipFrame} /
+     * {@link setContentFrame}: a non-interactive sheath with no id and no
+     * listeners, positioned absolutely so it can act as a containing block.
+     * The caller's {@link InlineStyle} buffer is attached and seeded with
+     * `position: absolute` plus any `base` overrides (e.g. `overflow: hidden`
+     * for a clip frame); the caller is responsible for the geometry writes and
+     * for splicing the returned element into the DOM.
+     *
+     * @param style - The buffer to attach to the new frame and write through.
+     * @param base - Extra CSS properties applied alongside `position: absolute`.
+     *
+     * @returns The freshly created, styled frame element.
+     */
+    private createFrame(style: InlineStyle, base: Record<string, string>): HTMLElement {
+        const frame = document.createElement("div");
+
+        style.attach(frame);
+        style.setMany({ position: "absolute", ...base });
+
+        return frame;
+    }
+
+    /**
+     * Tears a frame created by {@link createFrame} down: removes it from the DOM
+     * and returns a fresh {@link InlineStyle} for the caller to assign back to
+     * its buffer field. A fresh buffer is required because the previous one was
+     * bound to the now-removed frame. The caller must re-parent any wrapped
+     * nodes out of the frame before calling this.
+     *
+     * @param frame - The frame element to remove.
+     *
+     * @returns A new, unattached InlineStyle buffer.
+     */
+    private disposeFrame(frame: HTMLElement): InlineStyle {
         frame.remove();
 
-        this._clipFrame = null;
-        // The buffer was attached to the now-removed frame; replace it so a
-        // later `setClipFrame` attaches a fresh buffer to the new wrapper.
-        this._clipFrameStyle = new InlineStyle();
+        return new InlineStyle();
+    }
+
+    /**
+     * Wraps this container's children in a content frame sized to
+     * `width`×`height` and re-parents every child into it, so the host's native
+     * scroll extent equals the frame's box rather than the children's bounding
+     * rect. A layout manager calls this when the children's content (including
+     * both insets) overflows the container, sizing the frame to the full content
+     * extent so the trailing inset is reserved as scrollable space — the mirror
+     * of {@link setClipFrame}, which clips a single oversized child instead.
+     *
+     * Idempotent: when a frame already exists it is only resized. The frame is
+     * id-less and carries no listeners, so it is transparent to subtree event
+     * delegation (which walks the ancestor chain by id). No-op when the element
+     * is not in the DOM.
+     *
+     * @param width - The content-frame width in pixels.
+     * @param height - The content-frame height in pixels.
+     *
+     * @returns This component, for method chaining.
+     */
+    setContentFrame(width: number, height: number): this {
+        const element = this.getElement();
+        if (!element) {
+            return this;
+        }
+
+        if (!this._contentFrame) {
+            // Re-parenting the child set can reset the host's native scroll
+            // offset; capture and restore it around the move.
+            const scrollLeft = element.scrollLeft;
+            const scrollTop  = element.scrollTop;
+
+            // `left/top: 0` parks the frame at the container's padding-box
+            // origin, so children keep their existing coordinates inside it.
+            const frame = this.createFrame(this._contentFrameStyle, { left: "0px", top: "0px" });
+            this._contentFrame = frame;
+
+            // Move each child by its OUTERMOST node (its clip frame when one is
+            // active, else its element) so a clip-framed child stays wrapped.
+            for (const component of this._components) {
+                const node = component.getAttachNode();
+
+                if (node) {
+                    frame.appendChild(node);
+                }
+            }
+
+            element.appendChild(frame);
+
+            element.scrollLeft = scrollLeft;
+            element.scrollTop  = scrollTop;
+        }
+
+        this._contentFrameStyle.setMany({
+            width:  width  + "px",
+            height: height + "px"
+        });
+
+        return this;
+    }
+
+    /**
+     * Removes the content frame installed by {@link setContentFrame},
+     * re-parenting the children back onto the element. No-op when no frame is
+     * active, so a layout manager can call it unconditionally on the
+     * non-overflowing path.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearContentFrame(): this {
+        const frame = this._contentFrame;
+        if (!frame) {
+            return this;
+        }
+
+        const element = this.getElement();
+
+        if (element) {
+            const scrollLeft = element.scrollLeft;
+            const scrollTop  = element.scrollTop;
+
+            // Re-parent the children back onto the element by their outermost
+            // node before the frame is removed.
+            for (const component of this._components) {
+                const node = component.getAttachNode();
+
+                if (node) {
+                    element.appendChild(node);
+                }
+            }
+
+            element.scrollLeft = scrollLeft;
+            element.scrollTop  = scrollTop;
+        }
+
+        this._contentFrameStyle = this.disposeFrame(frame);
+        this._contentFrame = null;
 
         return this;
     }
@@ -684,8 +828,23 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The frame element when clipped, else the component's element, or
      *   undefined when the element is not yet in the DOM.
      */
-    private getAttachNode(): HTMLElement | null | undefined {
+    protected getAttachNode(): HTMLElement | null | undefined {
         return this._clipFrame ?? this.getElement();
+    }
+
+    /**
+     * Returns the DOM node this component's children attach to: its content
+     * frame when one is active (see {@link setContentFrame}), otherwise its own
+     * element. The mirror of {@link getAttachNode} — that answers "what node do
+     * I occupy in my parent", this answers "where do my children attach". New
+     * children added while a content frame is active must land inside the frame
+     * rather than directly under the element.
+     *
+     * @returns The content frame when active, else the component's element, or
+     *   undefined when the element is not yet in the DOM.
+     */
+    private getChildHost(): HTMLElement | null | undefined {
+        return this._contentFrame ?? this.getElement();
     }
 
     /**
@@ -3310,7 +3469,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         let compElement = component.getElement(true);
-        element.appendChild(compElement);
+        // Attach into the content frame when one is active (overflow scrolling),
+        // else directly under the element.
+        (this.getChildHost() ?? element).appendChild(compElement);
         this.scheduleLayout();
 
         return this;
@@ -3363,7 +3524,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const nextSibling = clampedIndex + 1 < this._components.length
             ? this._components[clampedIndex + 1].getAttachNode()
             : null;
-        element.insertBefore(compElement, nextSibling ?? null);
+        (this.getChildHost() ?? element).insertBefore(compElement, nextSibling ?? null);
         this.scheduleLayout();
 
         return this;
