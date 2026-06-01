@@ -21,6 +21,9 @@ export interface LegendOptions extends TextOptions {
  */
 class Legend extends Text<LegendOptions> {
 
+    /** Left inset (px) so the title clears the fieldset's left border corner. */
+    private static readonly LEFT_MARGIN = 10;
+
     constructor(options?: LegendOptions) {
         // `tag` is structural — the element type is by definition `<legend>`.
         super(undefined, {
@@ -34,6 +37,23 @@ class Legend extends Text<LegendOptions> {
         // exception alongside `FIXED` floating overlays. See
         // ARCHITECTURE.md §Positioning.
         this.setPosition(Position.STATIC);
+    }
+
+    /**
+     * Applies base styles, then re-asserts a left margin so the legend clears
+     * the fieldset's left border corner instead of hugging it. `Component`'s
+     * `applyStyle` zeroes the `margin` shorthand on every component, which
+     * strips the browser's default `<legend>` inset; this longhand write runs
+     * after `super` and overrides only the left side.
+     *
+     * @param element - The HTMLElement to apply styles to.
+     */
+    applyStyle(element: HTMLElement): this {
+        super.applyStyle(element);
+
+        this.setElementCSSRule("marginLeft", `${Legend.LEFT_MARGIN}px`);
+
+        return this;
     }
 }
 
