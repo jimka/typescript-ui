@@ -7,6 +7,12 @@ import { FillType } from "~/layout/FillType.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 
+// Pixel thickness of a single draggable gutter. The main-axis sizing math
+// subtracts the gutters' combined footprint before dividing space among
+// panes, so this constant is the single source of truth for both the size
+// reservation and the gutter placement in `doLayout`.
+const GUTTER_SIZE = 4;
+
 /**
  * Construction-time options for {@link Split}.
  *
@@ -32,6 +38,13 @@ class Split extends LayoutManager {
     private _dragOriginPointer: number = 0;
     private _dragOriginLhsSize: number = 0;
     private _dragOriginRhsSize: number = 0;
+
+    // The available (net-of-gutters) main-axis extent the stored `_sizes`
+    // were last normalised against. Lets `recalculateSizes` rescale the
+    // frozen pane sizes when the container grows or shrinks, so panes keep
+    // filling the container across viewport resizes. `0` until the first
+    // connected layout, which correctly suppresses the rescale pass.
+    private _lastAvailableMain: number = 0;
 
     constructor(direction?: String | SplitOptions, options?: SplitOptions) {
         super();
@@ -188,6 +201,18 @@ class Split extends LayoutManager {
     }
 
     /**
+     * Returns the combined pixel footprint of all gutters for a given pane
+     * count: one gutter sits between each adjacent pane pair.
+     *
+     * @param componentCount - The number of panes in the container.
+     *
+     * @returns The total gutter thickness along the split axis.
+     */
+    private gutterTotal(componentCount: number): number {
+        return Math.max(0, componentCount - 1) * GUTTER_SIZE;
+    }
+
+    /**
      * Computes the children's combined minSize along this manager's geometry:
      * along the split axis the per-pane `_sizes` are the user's floor (their
      * sum is the total); the cross-axis follows the max child minSize. Used
@@ -208,10 +233,7 @@ class Split extends LayoutManager {
             return { width: 0, height: 0 };
         }
 
-        const gutterSize = 4;
-        const gutterCount = Math.max(0, components.length - 1);
-
-        let splitTotal = gutterCount * gutterSize;
+        let splitTotal = this.gutterTotal(components.length);
         let crossMax = 0;
 
         for (const component of components) {
@@ -272,7 +294,6 @@ class Split extends LayoutManager {
         let containerInsets = container.getContentInsets();
 
         let componentCount = components.length;
-        let gutterSize = 4;
         let gutterCount = componentCount - 1;
 
         for (let i = this._gutters.length; i < gutterCount; i += 1) {
@@ -330,15 +351,15 @@ class Split extends LayoutManager {
                 gutter.setY(y);
 
                 if (this._direction === "horizontal") {
-                    gutter.setWidth(gutterSize);
+                    gutter.setWidth(GUTTER_SIZE);
                     gutter.setHeight(componentHeight);
 
-                    x += gutterSize;
+                    x += GUTTER_SIZE;
                 } else {
                     gutter.setWidth(componentWidth);
-                    gutter.setHeight(gutterSize);
+                    gutter.setHeight(GUTTER_SIZE);
 
-                    y += gutterSize;
+                    y += GUTTER_SIZE;
                 }
             }
         }
@@ -362,9 +383,35 @@ class Split extends LayoutManager {
             return;
         }
 
-        let containerInsets = container.getInsets();
-
         let components = container.getComponents();
+
+        // `getInnerSize` already removed the perimeter (insets + border +
+        // padding); the only thing the panes don't get is the gutters, so the
+        // space to divide is the inner main axis minus the gutter footprint.
+        // `doLayout` places panes from `getContentInsets` and advances by this
+        // same gutter total, so a pane sum of `available` lands flush with the
+        // inner edge — no `gutterCount × GUTTER_SIZE` overflow.
+        let main = this._direction === "horizontal" ? containerSize.width : containerSize.height;
+        let available = Math.max(0, main - this.gutterTotal(components.length));
+
+        // Rescale the frozen pane sizes to the new extent so they keep filling
+        // the container across viewport resizes. Ratios are scale-invariant, so
+        // multiplying every stored size by the same factor preserves any split
+        // the user dragged. Skipped on the first connected layout
+        // (`_lastAvailableMain` is still 0) and when nothing changed.
+        if (this._lastAvailableMain > 0 && available > 0 && available !== this._lastAvailableMain && this._sizes.size > 0) {
+            let factor = available / this._lastAvailableMain;
+
+            for (let idx = 0; idx < components.length; idx += 1) {
+                let component = components[idx];
+                let stored = this._sizes.get(component);
+
+                if (stored != undefined) {
+                    this._sizes.set(component, stored * factor);
+                }
+            }
+        }
+
         let componentsWithSize = 0;
 
         for (let idx = 0; idx < components.length; idx += 1) {
@@ -398,17 +445,15 @@ class Split extends LayoutManager {
                         this._sizes.set(c, cSize);
                     }
                 } else {
-                    if (this._direction === "horizontal") {
-                        componentSize = containerSize.width - containerInsets.getLeft() - containerInsets.getRight();
-                    } else {
-                        componentSize = containerSize.height - containerInsets.getTop() - containerInsets.getBottom();
-                    }
+                    componentSize = available;
                 }
 
                 this._sizes.set(component, componentSize);
                 componentsWithSize += 1;
             }
         }
+
+        this._lastAvailableMain = available;
     }
 }
 
