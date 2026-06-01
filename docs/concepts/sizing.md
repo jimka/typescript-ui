@@ -70,6 +70,8 @@ Missing units silently produce zero-height components — an early bug fixed in 
 
 Layout managers operate on `getInnerSize()` of their container. Use this when you need the rectangle a child can actually occupy, accounting for the container's borders and padding.
 
+Because every component is absolutely positioned, a child's containing block is its parent's *padding box* — a child at `left: 0` lands at the inner edge of the border, ignoring the padding. So a layout manager offsets each child's origin by [`getContentInsets()`](/api/core/classes/Component) (inset + padding, border excluded) rather than the bare insets, keeping padding symmetric on all sides.
+
 ## Baseline (for horizontal layouts)
 
 Every component also exposes `getBaseline()`: the offset, in pixels, from the top of the component to its visual baseline. [`HBox`](/layouts/HBox) and [`Grid`](/layouts/Grid) use this to align children of mixed heights so their text baselines coincide — much like CSS `vertical-align`.
