@@ -25,8 +25,12 @@ const _defaultFieldSetOptions: Partial<FieldSetOptions> = {
     tag:           "fieldset",
     border:        "var(--ts-ui-input-border)",
     borderRadius:  "var(--ts-ui-border-radius, 4px)",
-    padding:       new Insets(15, 3, 3, 3),
-    insets:        new Insets(5, 5, 15, 5),
+    // Intrinsic chrome carried as insets, not CSS padding. Top (5) is the gap
+    // above content; the legend's own reserved height is added separately in
+    // getPerimiterSize so it counts toward the box height without also pushing
+    // the child origin (a <fieldset> already offsets its absolutely positioned
+    // children below the legend). Sides/bottom (8) are the inner gutter.
+    insets:        new Insets(5, 8, 8, 8),
     preferredSize: { width: 200, height: 200 },
     minSize:       { width: 100, height: 100 },
 };
@@ -40,7 +44,13 @@ const _defaultFieldSetOptions: Partial<FieldSetOptions> = {
  */
 class FieldSet extends Component {
 
+    /** Legend clearance (px) used before the legend element can be measured. */
+    private static readonly LEGEND_CLEARANCE_FALLBACK = 16;
+
     private _legend: Legend = new Legend();
+
+    /** Cached measured legend height; null until a positive measurement lands. */
+    private _legendClearance: number | null = null;
 
     constructor(title: string = "", options?: FieldSetOptions, subclassDefaults?: Partial<FieldSetOptions>) {
         super(options, { ..._defaultFieldSetOptions, ...(subclassDefaults ?? {}) });
@@ -106,11 +116,9 @@ class FieldSet extends Component {
             return this;
         }
 
-        const perim    = this.getPerimiterSize();
-        const padding  = this.getPadding();
-        const padW     = padding ? padding.getLeft() + padding.getRight() : 0;
-        const chromeW  = perim.left + perim.right + padW;
-        const innerW   = Math.max(0, width - chromeW);
+        const perim   = this.getPerimiterSize();
+        const chromeW = perim.left + perim.right;
+        const innerW  = Math.max(0, width - chromeW);
 
         this._legend.setMaxSize(innerW, Number.MAX_VALUE);
 
@@ -133,9 +141,7 @@ class FieldSet extends Component {
         }
 
         const perim   = this.getPerimiterSize();
-        const padding = this.getPadding();
-        const padW    = padding ? padding.getLeft() + padding.getRight() : 0;
-        const chromeW = perim.left + perim.right + padW;
+        const chromeW = perim.left + perim.right;
 
         const fieldsetW = legendMin.width + chromeW;
         if (!baseMin) {
@@ -146,6 +152,59 @@ class FieldSet extends Component {
             width:  Math.max(baseMin.width, fieldsetW),
             height: baseMin.height,
         };
+    }
+
+    /**
+     * Augments the top perimeter with the legend's reserved vertical space.
+     *
+     * A `<fieldset>` reserves room for its `<legend>` at the top of its content
+     * box automatically: absolutely positioned children begin below the legend
+     * regardless of the framework's insets, and the browser supplies that
+     * offset itself. {@link getInnerSize} must account for the same space or
+     * the bottom row overflows the border, so this adds the legend's height to
+     * the `top` perimeter. The child origin is deliberately left untouched —
+     * {@link Component.getContentInsets} derives from insets alone, and the
+     * browser already provides the matching downward offset, so adding it to
+     * the origin too would double-count it.
+     *
+     * The legend is browser-rendered chrome, not a framework-layout child, so
+     * its height is read from the element and cached. The measurement slightly
+     * over-reserves when the legend is raised into the border notch, which errs
+     * toward extra bottom space rather than clipping. Before the element can be
+     * measured a constant fallback is used and not cached, so the real height
+     * supersedes it on the first connected pass.
+     *
+     * @returns The base perimeter with the legend clearance added to `top`.
+     */
+    getPerimiterSize() {
+        const perim = super.getPerimiterSize();
+
+        perim.top += this.legendClearance();
+
+        return perim;
+    }
+
+    /**
+     * Returns the legend's reserved top clearance in pixels: the measured
+     * legend height once it is connected and laid out (cached after the first
+     * positive measurement), or {@link LEGEND_CLEARANCE_FALLBACK} until then.
+     *
+     * @returns The legend clearance in pixels.
+     */
+    private legendClearance(): number {
+        if (this._legendClearance != null) {
+            return this._legendClearance;
+        }
+
+        const element = this._legend.getElement();
+
+        if (element && element.isConnected && element.offsetHeight > 0) {
+            this._legendClearance = element.offsetHeight;
+
+            return this._legendClearance;
+        }
+
+        return FieldSet.LEGEND_CLEARANCE_FALLBACK;
     }
 
     /**

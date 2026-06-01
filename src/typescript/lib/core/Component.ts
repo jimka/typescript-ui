@@ -1177,6 +1177,39 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the per-side offset a layout manager must apply to a child's
+     * origin: insets plus CSS padding, border excluded.
+     *
+     * @returns An Insets whose sides are `inset + padding`.
+     *
+     * @remarks Framework components are absolutely positioned, so a child's
+     * containing block is its parent's padding box. A child placed at
+     * `left: 0` therefore lands at the inner edge of the border — the outer
+     * edge of the padding — and the browser does not shift it inward by the
+     * padding. `getInnerSize` has already subtracted padding from the usable
+     * width/height, so a layout manager must add padding back into the child
+     * origin or the whole padding allowance piles onto the far side. Border is
+     * deliberately omitted: the containing-block edge already sits inside it.
+     * Derived on each call from {@link getInsets} and {@link getPadding}; no
+     * stored field, mirroring {@link getPerimiterSize}.
+     */
+    getContentInsets(): Insets {
+        const insets = this.getInsets();
+        const padding = this.getPadding();
+
+        if (!padding) {
+            return new Insets(insets.getTop(), insets.getRight(), insets.getBottom(), insets.getLeft());
+        }
+
+        return new Insets(
+            insets.getTop()    + padding.getTop(),
+            insets.getRight()  + padding.getRight(),
+            insets.getBottom() + padding.getBottom(),
+            insets.getLeft()   + padding.getLeft()
+        );
+    }
+
+    /**
      * Returns the component's background color, or null if inherited.
      *
      * @returns The CSS color string, or null if none is set.
@@ -1999,13 +2032,21 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Returns the total per-side consumed space: insets plus border widths.
+     * Returns the total per-side consumed space: insets plus border widths plus
+     * CSS padding. These are the three bands between the component's outer box
+     * and the content area a layout manager may fill, so `getInnerSize`
+     * subtracts all of them and the size-hint paths add them back. CSS padding
+     * is real layout space the browser reserves inside the (border-box) element,
+     * so omitting it left a layout manager believing it had more room than the
+     * content box actually offers — the surplus surfaced as content spilling
+     * past the far inset (e.g. a `FieldSet`'s bottom inset).
      *
-     * @returns A PerimeterSize where each side is the sum of the inset and border width for that side.
+     * @returns A PerimeterSize where each side is the sum of the inset, border width, and padding for that side.
      */
     getPerimiterSize() {
         let borderSize = this.getBorderSize();
         let insets = this.getInsets();
+        let padding = this.getPadding();
 
         let perimiterSize: PerimeterSize = {
             top: 0,
@@ -2026,6 +2067,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             perimiterSize.right += borderSize.right;
             perimiterSize.bottom += borderSize.bottom;
             perimiterSize.left += borderSize.left;
+        }
+
+        if (padding) {
+            perimiterSize.top += padding.getTop();
+            perimiterSize.right += padding.getRight();
+            perimiterSize.bottom += padding.getBottom();
+            perimiterSize.left += padding.getLeft();
         }
 
         return perimiterSize;

@@ -255,7 +255,7 @@ class Fit extends LayoutManager {
         }
 
         let containerSize = container.getInnerSize();
-        let containerInsets = container.getInsets();
+        let containerInsets = container.getContentInsets();
 
         // Universal scroll: see HBox.doLayout for the rationale. When the
         // host has marked the corresponding axis as overflowing, grow the

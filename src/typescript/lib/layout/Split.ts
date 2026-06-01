@@ -269,7 +269,7 @@ class Split extends LayoutManager {
 
         let element = container.getElement();
         let components = container.getComponents();
-        let containerInsets = container.getInsets();
+        let containerInsets = container.getContentInsets();
 
         let componentCount = components.length;
         let gutterSize = 4;

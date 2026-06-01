@@ -410,7 +410,7 @@ class Border extends LayoutManager {
             throw new Error("Unable to determine component size.");
         }
 
-        let containerInsets = container.getInsets();
+        let containerInsets = container.getContentInsets();
         if (!containerInsets) {
             throw new Error("Unable to determine component insets.");
         }
