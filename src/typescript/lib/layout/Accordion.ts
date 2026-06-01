@@ -542,7 +542,7 @@ class Accordion extends LayoutManager {
         }
 
         const containerSize = container.getInnerSize();
-        const insets = container.getInsets();
+        const insets = container.getContentInsets();
         let containerWidth = containerSize ? containerSize.width : 0;
 
         // Universal scroll, X-axis only: Accordion stacks sections vertically

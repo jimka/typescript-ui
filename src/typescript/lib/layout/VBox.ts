@@ -149,9 +149,8 @@ class VBox extends LayoutManager {
             return null;
         }
 
-        let containerBorderSize = container.getBorderSize();
+        let perimiterSize = container.getPerimiterSize();
         let components = container.getComponents();
-        let containerInsets = container.getInsets();
 
         if (this._mode === "equal") {
             let innerWidth = 0;
@@ -167,15 +166,15 @@ class VBox extends LayoutManager {
                 }
             }
 
-            const width  = innerWidth + containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
+            const width  = innerWidth + perimiterSize.left + perimiterSize.right;
             const height = components.length * (innerHeight + this._spacing) - this._spacing
-                         + containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
+                         + perimiterSize.top + perimiterSize.bottom;
 
             return { width, height };
         }
 
         let width = Number.MAX_SAFE_INTEGER;
-        let height = containerInsets.getTop() + containerInsets.getBottom();
+        let height = perimiterSize.top + perimiterSize.bottom;
 
         for (let idx in components) {
             let component = components[idx];
@@ -187,8 +186,8 @@ class VBox extends LayoutManager {
             }
         }
 
-        width += containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
-        height += this._spacing * (components.length - 1) + containerBorderSize.top + containerBorderSize.bottom;
+        width += perimiterSize.left + perimiterSize.right;
+        height += this._spacing * (components.length - 1);
 
         return {
             width: width,
@@ -210,9 +209,8 @@ class VBox extends LayoutManager {
             return null;
         }
 
-        let containerBorderSize = container.getBorderSize();
+        let perimiterSize = container.getPerimiterSize();
         let components = container.getComponents();
-        let containerInsets = container.getInsets();
 
         if (this._mode === "equal") {
             let innerWidth = 0;
@@ -228,15 +226,15 @@ class VBox extends LayoutManager {
                 }
             }
 
-            const width  = innerWidth + containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
+            const width  = innerWidth + perimiterSize.left + perimiterSize.right;
             const height = components.length * (innerHeight + this._spacing) - this._spacing
-                         + containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
+                         + perimiterSize.top + perimiterSize.bottom;
 
             return { width, height };
         }
 
         let width = 0;
-        let height = containerInsets.getTop() + containerInsets.getBottom();
+        let height = perimiterSize.top + perimiterSize.bottom;
 
         for (let idx in components) {
             let component = components[idx];
@@ -248,8 +246,8 @@ class VBox extends LayoutManager {
             }
         }
 
-        width += containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
-        height += this._spacing * (components.length - 1) + containerBorderSize.top + containerBorderSize.bottom;
+        width += perimiterSize.left + perimiterSize.right;
+        height += this._spacing * (components.length - 1);
 
         return {
             width: width,
@@ -271,9 +269,8 @@ class VBox extends LayoutManager {
             return null;
         }
 
-        let containerBorderSize = container.getBorderSize();
+        let perimiterSize = container.getPerimiterSize();
         let components = container.getComponents();
-        let containerInsets = container.getInsets();
 
         if (this._mode === "equal") {
             let innerWidth = Number.MAX_SAFE_INTEGER;
@@ -289,15 +286,15 @@ class VBox extends LayoutManager {
                 }
             }
 
-            const width  = innerWidth + containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
+            const width  = innerWidth + perimiterSize.left + perimiterSize.right;
             const height = components.length * (innerHeight + this._spacing) - this._spacing
-                         + containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
+                         + perimiterSize.top + perimiterSize.bottom;
 
             return { width, height };
         }
 
         let width = Number.MAX_SAFE_INTEGER;
-        let height = containerInsets.getTop() + containerInsets.getBottom();
+        let height = perimiterSize.top + perimiterSize.bottom;
 
         for (let idx in components) {
             let component = components[idx];
@@ -309,8 +306,8 @@ class VBox extends LayoutManager {
             }
         }
 
-        width += containerInsets.getLeft() + containerInsets.getRight() + containerBorderSize.left + containerBorderSize.right;
-        height += this._spacing * (components.length - 1) + containerBorderSize.top + containerBorderSize.bottom;
+        width += perimiterSize.left + perimiterSize.right;
+        height += this._spacing * (components.length - 1);
 
         return {
             width: width,
@@ -397,7 +394,7 @@ class VBox extends LayoutManager {
             return;
         }
 
-        let containerInsets = container.getInsets();
+        let containerInsets = container.getContentInsets();
         let components = container.getComponents();
         let spacing = this.getComponentSpacing();
 
