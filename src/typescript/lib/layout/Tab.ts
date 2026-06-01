@@ -1064,7 +1064,7 @@ class Tab extends LayoutManager {
 
         let components = container.getComponents();
         let containerSize = container.getInnerSize();
-        let containerInsets = container.getInsets();
+        let containerInsets = container.getContentInsets();
 
         // Catch the tab strip up to any container child that no tab entry owns
         // yet — the bare-`Panel` eager path, where a consumer called

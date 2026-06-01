@@ -94,7 +94,7 @@ class Table extends LayoutManager {
             return;
         }
 
-        const containerInsets = container.getInsets();
+        const containerInsets = container.getContentInsets();
         const columns         = container.getColumns();
         const columnCount     = container.getHeader().getColumns().length;
         const availableWidth  = containerSize.width - Util.getScrollBarWidth();

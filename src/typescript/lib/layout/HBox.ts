@@ -163,10 +163,9 @@ class HBox extends LayoutManager {
             return null;
         }
 
-        let containerBorderSize = container.getBorderSize();
+        let perimiterSize = container.getPerimiterSize();
         let components = container.getComponents();
-        let containerInsets = container.getInsets();
-        let width = containerInsets.getLeft() + containerInsets.getRight();
+        let width = perimiterSize.left + perimiterSize.right;
 
         const heights: number[] = [];
         const baselines: Array<number | null> = [];
@@ -203,8 +202,7 @@ class HBox extends LayoutManager {
 
         let height = this.computeRowHeight(heights, baselines);
 
-        width  += containerBorderSize.left + containerBorderSize.right;
-        height += containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
+        height += perimiterSize.top + perimiterSize.bottom;
 
         return {
             width: width,
@@ -227,10 +225,9 @@ class HBox extends LayoutManager {
             return null;
         }
 
-        let containerBorderSize = container.getBorderSize();
+        let perimiterSize = container.getPerimiterSize();
         let components = container.getComponents();
-        let containerInsets = container.getInsets();
-        let width = containerInsets.getLeft() + containerInsets.getRight();
+        let width = perimiterSize.left + perimiterSize.right;
 
         const heights: number[] = [];
         const baselines: Array<number | null> = [];
@@ -267,8 +264,7 @@ class HBox extends LayoutManager {
 
         let height = this.computeRowHeight(heights, baselines);
 
-        width  += containerBorderSize.left + containerBorderSize.right;
-        height += containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
+        height += perimiterSize.top + perimiterSize.bottom;
 
         return {
             width: width,
@@ -289,10 +285,9 @@ class HBox extends LayoutManager {
             return null;
         }
 
-        let containerBorderSize = container.getBorderSize();
+        let perimiterSize = container.getPerimiterSize();
         let components = container.getComponents();
-        let containerInsets = container.getInsets();
-        let width = containerInsets.getLeft() + containerInsets.getRight();
+        let width = perimiterSize.left + perimiterSize.right;
         let height = Number.MAX_SAFE_INTEGER;
 
         if (this._mode === "equal") {
@@ -323,8 +318,7 @@ class HBox extends LayoutManager {
             width += this._spacing * (components.length - 1);
         }
 
-        width  += containerBorderSize.left + containerBorderSize.right;
-        height += containerInsets.getTop() + containerInsets.getBottom() + containerBorderSize.top + containerBorderSize.bottom;
+        height += perimiterSize.top + perimiterSize.bottom;
 
         return {
             width: width,
@@ -411,7 +405,7 @@ class HBox extends LayoutManager {
             return;
         }
 
-        let containerInsets = container.getInsets();
+        let containerInsets = container.getContentInsets();
         let components = container.getComponents();
         let spacing = this.getComponentSpacing();
 

@@ -292,7 +292,7 @@ class Card extends LayoutManager {
         }
 
         let containerSize = container.getInnerSize();
-        const containerInsets = container.getInsets();
+        const containerInsets = container.getContentInsets();
 
         // Universal scroll: see HBox.doLayout for the rationale. When the
         // host has marked the corresponding axis as overflowing, grow the
