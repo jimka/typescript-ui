@@ -3,7 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size } from "~/primitive/Size.js";
-import { BoxMode } from "~/layout/HBox.js";
+import { BoxMode, BoxOverflowSizing } from "~/layout/HBox.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -19,9 +19,10 @@ import { callable } from "~/core/Callable.js";
  * @category Layouts
  */
 export interface VBoxOptions extends LayoutManagerOptions {
-    spacing?:    number;
-    stretching?: boolean;
-    mode?:       BoxMode;
+    spacing?:         number;
+    stretching?:      boolean;
+    mode?:            BoxMode;
+    overflowSizing?:  BoxOverflowSizing;
 }
 
 /**
@@ -36,6 +37,7 @@ class VBox extends LayoutManager {
     private _spacing: number = 5;
     private _stretching: boolean = false;
     private _mode: BoxMode = "preferred";
+    private _overflowSizing: BoxOverflowSizing = "preferred";
     private _defaultComponentHeight: number = 100;
 
     constructor(options?: VBoxOptions) {
@@ -72,6 +74,10 @@ class VBox extends LayoutManager {
             this.setStretching(options.stretching);
         } else if (options.mode === "equal") {
             this.setStretching(true);
+        }
+
+        if (options.overflowSizing !== undefined) {
+            this.setOverflowSizing(options.overflowSizing);
         }
     }
 
@@ -132,6 +138,30 @@ class VBox extends LayoutManager {
      */
     setMode(mode: BoxMode): this {
         this._mode = mode;
+
+        return this;
+    }
+
+    /**
+     * Returns the cell-sizing strategy used when an `"equal"`-mode column
+     * overflows a scrolling host.
+     *
+     * @returns Either `"preferred"` or `"min"`.
+     */
+    getOverflowSizing(): BoxOverflowSizing {
+        return this._overflowSizing;
+    }
+
+    /**
+     * Sets the cell-sizing strategy used when an `"equal"`-mode column overflows
+     * a scrolling host.
+     *
+     * @param overflowSizing - `"preferred"` grows every cell to the tallest
+     *   child's preferred height and scrolls; `"min"` keeps cells at the min
+     *   floor and scrolls at the minimum cell size. See {@link BoxOverflowSizing}.
+     */
+    setOverflowSizing(overflowSizing: BoxOverflowSizing): this {
+        this._overflowSizing = overflowSizing;
 
         return this;
     }
@@ -394,6 +424,11 @@ class VBox extends LayoutManager {
             return;
         }
 
+        // Real inner size, captured before the overflow inflation below may
+        // replace `containerSize` with the (larger) min total. Equal mode needs
+        // the true viewport to decide whether the column actually overflows.
+        const innerSize = containerSize;
+
         let containerInsets = container.getContentInsets();
         let components = container.getComponents();
         let spacing = this.getComponentSpacing();
@@ -411,23 +446,42 @@ class VBox extends LayoutManager {
         }
 
         if (this._mode === "equal") {
-            // Equal-mode: divide the container height equally among children
-            // and clamp the per-cell height to the largest child's min
-            // height, mirroring HBox's equal-mode clamp. Without it, trailing
-            // cells silently squeeze below their min height when the
-            // equal-share is small.
+            // Equal-mode: divide the container height equally among children,
+            // clamped to a per-cell floor. The tallest child's min height and
+            // preferred height drive that floor (see the cases below).
             let maxChildMinHeight = 0;
+            let maxChildPreferredHeight = 0;
 
             for (const component of components) {
                 const min = component.getMinSize();
                 if (min) {
                     maxChildMinHeight = Math.max(maxChildMinHeight, min.height);
                 }
+
+                const pref = component.getPreferredSize();
+                if (pref) {
+                    maxChildPreferredHeight = Math.max(maxChildPreferredHeight, pref.height);
+                }
             }
 
-            const equalShare = (containerSize.height - spacing * (components.length - 1)) / components.length;
-            const rowHeight  = Math.max(equalShare, maxChildMinHeight);
-            const rowWidth   = containerSize.width;
+            // Measure the equal share against the *real* viewport — the working
+            // `containerSize` may have been inflated to the min total above.
+            const equalShare = (innerSize.height - spacing * (components.length - 1)) / components.length;
+
+            // Three cases (see HBox.doLayout for the full rationale):
+            //   1. Share clears the min floor → the column fits; divide equally.
+            //   2. Share below the min floor (overflow), host opted into
+            //      scrolling, and `overflowSizing` is `"preferred"` → tallest
+            //      child's preferred height so cells regain preferred size
+            //      instead of sticking at min when scrolling.
+            //   3. Otherwise (no scroll, or `overflowSizing` is `"min"`) → clamp
+            //      to the min floor; with no scroll the host clips the surplus.
+            const rowHeight = equalShare >= maxChildMinHeight
+                ? equalShare
+                : this.isOverflowingY() && this._overflowSizing === "preferred"
+                    ? Math.max(maxChildMinHeight, maxChildPreferredHeight)
+                    : maxChildMinHeight;
+            const rowWidth  = containerSize.width;
 
             const x = containerInsets.getLeft();
             let y = containerInsets.getTop();

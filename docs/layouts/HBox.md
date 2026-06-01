@@ -23,13 +23,15 @@ toolbar.addComponent(Button('Copy'));
 toolbar.addComponent(Button('Paste'));
 ```
 
-The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `mode`, `spacing`, and `stretching` declaratively. The `setMode` / `setSpacing` / `setStretching` setters work for runtime updates.
+The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `mode`, `spacing`, `stretching`, and `overflowSizing` declaratively. The `setMode` / `setSpacing` / `setStretching` / `setOverflowSizing` setters work for runtime updates.
 
 ## Sizing modes
 
 `mode: "preferred"` (default) honours each child's preferred width. Non-weighted children take their preferred sizes; cells carrying a `weight` layout constraint share the remaining width. When the children's preferred widths sum past the container, non-weighted children shrink proportionally toward their min widths.
 
-`mode: "equal"` divides the container's inner width equally among children, clamped to the largest child's min width. `weight` constraints are silently ignored in this mode. The `stretching` default for `"equal"` mode is `true`, matching the historical `Column` behaviour.
+`mode: "equal"` divides the container's inner width equally among children, clamped to a per-cell floor. `weight` constraints are silently ignored in this mode. The `stretching` default for `"equal"` mode is `true`, matching the historical `Column` behaviour.
+
+While the equal share clears the largest child's min width the row fits and each cell takes that equal share. When it does not — the row overflows — the cell floor depends on `overflowSizing` (see below).
 
 ```typescript
 import { HBox } from '@jimka/typescript-ui/layout';
@@ -50,6 +52,25 @@ tabs.addComponent(Button('Help'));
 ```
 
 Despite the name, equal-mode `HBox` is the horizontal-equal-share form: every child occupies the same width regardless of its preferred size.
+
+## Overflow sizing (equal mode)
+
+When an `"equal"`-mode row no longer fits — the equal share would drop below the largest child's min width — what the cells do depends on whether the host scrolls and on `overflowSizing` ([`BoxOverflowSizing`](/api/layout/type-aliases/BoxOverflowSizing)):
+
+- **Host does not scroll** (`Panel.setAutoScroll("none")`, the default): cells clamp to the min-width floor and the host's `overflow: hidden` clips the surplus. `overflowSizing` has no effect.
+- **Host scrolls** on the horizontal axis (`autoScroll` `"auto"`, `"x"`, or `"both"`): `overflowSizing` chooses the cell width:
+  - `"preferred"` (default) — every cell grows to the **widest child's preferred width**, so cells keep their preferred size and the host scrolls.
+  - `"min"` — every cell stays at the **min-width floor** and the host scrolls at the minimum cell size.
+
+```typescript
+import { Component, Panel } from '@jimka/typescript-ui/core';
+import { HBox } from '@jimka/typescript-ui/layout';
+// Scrolls at the widest child's preferred width once the row overflows.
+const row = Panel({ autoScroll: "x" });
+row.setLayoutManager(HBox({ mode: "equal", overflowSizing: "preferred" }));
+```
+
+This option only applies to `"equal"` mode. In `"preferred"` mode each child already keeps its own preferred width and the host scrolls when their widths sum past the container, so no knob is needed.
 
 ## Per-child constraints
 
@@ -74,6 +95,7 @@ toolbar.addComponent(button, {
 | `setMode("preferred" | "equal")` | Switch the sizing strategy along the horizontal axis. |
 | `setSpacing(px)` | Gap between children. |
 | `setStretching(boolean)` | When `true`, all children fill the row's full height. |
+| `setOverflowSizing("preferred" | "min")` | Equal mode: cell width when an overflowing row scrolls — preferred width or min floor. |
 
 ## Baseline alignment
 
