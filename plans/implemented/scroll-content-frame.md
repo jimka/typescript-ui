@@ -4,7 +4,7 @@
 
 Introduce a container-scoped **content frame**: a lazily-created, id-less, listener-less wrapper `<div>` interposed between a container's element and its children. When a container's children overflow its inner rect, the frame is created, all child elements are re-parented into it, and it is sized explicitly to the full content extent (`leadingInset + childrenExtent + trailingInset`) on each axis. The host `Panel`'s native `overflow: auto` then scrolls the oversized frame, so the scroll extent is deterministic and BOTH the leading and trailing insets are reserved — fixing the reported HBox/VBox trailing-inset loss under overflow.
 
-The mechanism mirrors the existing per-child clip-frame at container scope. `Component.setClipFrame`/`clearClipFrame` ([Component.ts:607](../src/typescript/lib/core/Component.ts#L607), [Component.ts:654](../src/typescript/lib/core/Component.ts#L654)) already lazily create a wrapper, re-parent ONE element into it, and tear it down on the non-clipped path; `Grid.doLayout` drives that per-child ([Grid.ts:797](../src/typescript/lib/layout/Grid.ts#L797), [Grid.ts:800](../src/typescript/lib/layout/Grid.ts#L800)). This plan adds the parallel `Component.setContentFrame`/`clearContentFrame` pair (wrapping ALL children, no `overflow:hidden`, sized to content) and has `HBox`/`VBox` drive it, retiring their spill branch.
+The mechanism mirrors the existing per-child clip-frame at container scope. `Component.setClipFrame`/`clearClipFrame` ([Component.ts:607](../src/typescript/lib/core/Component.ts#L607), [Component.ts:654](../src/typescript/lib/core/Component.ts#L654)) already lazily create a wrapper, re-parent ONE element into it, and tear it down on the non-clipped path; `Grid.doLayout` drives that per-child ([Grid.ts:797](../src/typescript/lib/layout/Grid.ts#L797), [Grid.ts:800](../src/typescript/lib/layout/Grid.ts#L800)). This plan adds the parallel `Component.setContentFrame`/`clearContentFrame` pair (wrapping ALL children, no `overflow:hidden`, sized to content) and has `HBox`/`VBox` drive it through a shared `LayoutManager.reserveContentFrame` helper layered on top of — not replacing — their existing spill branch (placement stays byte-identical; the frame is purely additive).
 
 This plan adopts the content frame in **`HBox` and `VBox` only**. `Card`/`Accordion`/`Split`/`Grid` keep their existing spill branches and are listed as a `## Non-Goals` follow-up. The new Component API is additive and does not alter the non-adopting managers.
 
@@ -96,7 +96,7 @@ No `XOptions` field and no typed setter pair beyond these — `_contentFrame` is
 
 `setClipFrame`/`clearClipFrame` keep their existing **public signatures**; only their bodies are refactored onto `createFrame`/`disposeFrame` — no API change, no behaviour change.
 
-No manager API changes. `setOverflowing`/`isOverflowingX`/`isOverflowingY` on `LayoutManager` ([LayoutManager.ts:122](../src/typescript/lib/layout/LayoutManager.ts#L122)) are unchanged and still consulted by the adopting managers to decide whether overflow is permitted on each axis.
+No *public* manager API changes. `setOverflowing`/`isOverflowingX`/`isOverflowingY` on `LayoutManager` ([LayoutManager.ts:122](../src/typescript/lib/layout/LayoutManager.ts#L122)) are unchanged. One new `protected reserveContentFrame(): this` is added to `LayoutManager` (internal, not part of the public surface) for the adopting box layouts to call.
 
 ---
 
@@ -176,42 +176,49 @@ this._contentFrame = null;
 return this;
 ```
 
-### `HBox.doLayout` drive (replaces the spill branch at [HBox.ts:417-423](../src/typescript/lib/layout/HBox.ts#L417))
+### Shared drive: `LayoutManager.reserveContentFrame()` (measure committed children)
 
-After resolving `containerInsets` and BEFORE the equal/preferred branches, compute the content extent and drive the frame. The extent is the children's run length plus BOTH insets:
+Rather than each box layout recomputing the children's extent per-mode (preferred vs equal, weight cells, baseline) — which is fragile — the drive is a single shared `protected` helper on `LayoutManager` that runs AFTER the placement loop and measures each child's already-committed bounds (`getX`/`getY`/`getWidth`/`getHeight`). This works because the frame parks at the padding-box origin `(0,0)`: a child's coordinates are identical whether it sits in the frame or directly under the element, so wrapping the children **after** they are positioned never moves them. The chicken-and-egg of "frame must exist before placement" therefore dissolves — placement runs first, the helper wraps afterward.
 
 ```
-// content width = leadingInset.left + childrenRunWidth + trailingInset.right
-// content height = max child height + insets.top + insets.bottom (HBox row height)
-const insets = container.getContentInsets();
-const childrenWidth  = this.computeTotalMinSize().width;   // Σ child-min + spacing (preferred) or equal-cell total
-const contentW = insets.getLeft() + childrenWidth + insets.getRight();
-const contentH = insets.getTop()  + rowHeight     + insets.getBottom();
+protected reserveContentFrame(): this {
+    const container = this.getContainer();
+    if (!container) return this;
 
-const overflowX = this.isOverflowingX() && contentW > containerSize.width  + insets.getLeft() + insets.getRight();
-const overflowY = this.isOverflowingY() && contentH > containerSize.height + insets.getTop()  + insets.getBottom();
+    const inner      = container.getInnerSize();
+    const components = container.getComponents();
+    if (!inner || components.length === 0) { container.clearContentFrame(); return this; }
 
-if (overflowX || overflowY) {
-    // Frame spans the full content box on the overflowing axis, the container's
-    // own content box (inner + both insets) on the non-overflowing axis.
-    container.setContentFrame(
-        overflowX ? contentW : container.getInnerSize().width  + insets.getLeft() + insets.getRight(),
-        overflowY ? contentH : container.getInnerSize().height + insets.getTop()  + insets.getBottom()
-    );
-    containerSize = { width: overflowX ? childrenWidth : containerSize.width,
-                      height: overflowY ? rowHeight     : containerSize.height };
-} else {
-    container.clearContentFrame();
+    const insets = container.getContentInsets();
+    let farRight  = insets.getLeft();
+    let farBottom = insets.getTop();
+    for (const c of components) {
+        farRight  = Math.max(farRight,  c.getX() + c.getWidth());
+        farBottom = Math.max(farBottom, c.getY() + c.getHeight());
+    }
+
+    const overflowX = this.isOverflowingX() && farRight  - insets.getLeft() > inner.width;
+    const overflowY = this.isOverflowingY() && farBottom - insets.getTop()  > inner.height;
+
+    if (overflowX || overflowY) {
+        container.setContentFrame(farRight + insets.getRight(), farBottom + insets.getBottom());
+    } else {
+        container.clearContentFrame();
+    }
+    return this;
 }
 ```
 
-The author MUST reconcile the exact arithmetic against `getInnerSize` (which already subtracts both perimeter bands including padding) and `getContentInsets` (insets + padding, border excluded) so insets are counted EXACTLY once. The implementer should derive `childrenWidth`/`rowHeight` from the SAME per-mode computation the placement loop uses (preferred: `Σ pref + spacing`; equal: `count*(cell+spacing)-spacing`), not from `getInnerSize`. Both early `return`s in equal-mode ([HBox.ts:467](../src/typescript/lib/layout/HBox.ts#L467), [HBox.ts:516](../src/typescript/lib/layout/HBox.ts#L516)) and the preferred-mode tail must run with the frame already installed, since the frame must exist before `placeComponent` commits child positions (children attach via `getChildHost`).
+`farRight`/`farBottom` already include the leading inset (children are placed from `getContentInsets`), so `+ insets.getRight()`/`+ insets.getBottom()` reserves the trailing inset symmetrically. On the non-overflow axis the term lands at or inside the client edge (a zero/within-bounds frame extent), so it never spawns a spurious scrollbar.
 
-`VBox.doLayout` is the transposed twin: extent on the Y axis = `insets.top + Σ child heights + spacing + insets.bottom`; width axis = widest child + insets; replace the spill branch at [VBox.ts:405-411](../src/typescript/lib/layout/VBox.ts#L405) and cover the equal-mode early `return` at [VBox.ts:450](../src/typescript/lib/layout/VBox.ts#L450).
+### Box layouts keep their spill branch and just call the helper
 
-### Frame-creation ordering vs `placeComponent`
+The existing universal-scroll spill branch in `HBox`/`VBox` is **kept unchanged** — it still computes `containerSize` for placement, so child sizing/positioning under overflow is byte-identical to before (lowest-risk). The content frame is purely additive: after placement, the children (which the spill logic let overflow) are wrapped in a frame sized to their measured extent + trailing inset, and the host scrolls the frame instead of the loose children. Each box layout adds one line — `this.reserveContentFrame();` — at the end of every placement branch:
 
-`placeComponent` → `commitBounds` ([LayoutManager.ts:338](../src/typescript/lib/layout/LayoutManager.ts#L338)) sets `left`/`top` on each child element. Those coordinates are relative to the child's containing block — the content frame once it exists. So `setContentFrame` MUST be called before the placement loop runs, and the child coordinates computed from `containerInsets` are unchanged (frame at 0,0 = container padding-box origin). This is why the frame drive is hoisted above the equal/preferred branches.
+- `HBox.doLayout`: before the equal+stretching `return` ([HBox.ts:467](../src/typescript/lib/layout/HBox.ts#L467)), before the equal non-stretching `return` ([HBox.ts:516](../src/typescript/lib/layout/HBox.ts#L516)), and at the preferred-mode tail. Three call sites.
+- `VBox.doLayout`: before the equal `return` ([VBox.ts:450](../src/typescript/lib/layout/VBox.ts#L450)) and at the preferred-mode tail. Two call sites.
+
+Non-adopting managers (`Card`/`Accordion`/`Split`/`Grid`) simply never call `reserveContentFrame`, so they are untouched.
 
 ---
 
@@ -224,10 +231,10 @@ The author MUST reconcile the exact arithmetic against `getInnerSize` (which alr
 5. **`Component.ts` — `setContentFrame`/`clearContentFrame`.** Add both public methods after `clearClipFrame` ([Component.ts:675](../src/typescript/lib/core/Component.ts#L675)), bodies per _Internal Structure_ (built on `createFrame`/`disposeFrame`), full JSDoc with `@category` inherited from the class. No `overflow:hidden`; preserve `scrollLeft`/`scrollTop`; move outermost nodes. The frame carries no id and no listeners.
 6. **`Component.ts` — route appends through `getChildHost`.** In `addComponent` change `element.appendChild(compElement)` ([Component.ts:3313](../src/typescript/lib/core/Component.ts#L3313)) to `(this.getChildHost() ?? element).appendChild(compElement)`. In `insertComponent` change the `element.insertBefore(...)` target ([Component.ts:3366](../src/typescript/lib/core/Component.ts#L3366)) likewise to the child host. Verify `removeComponent`/`removeAllComponents` need no change (they call `component.removeElement()` which uses `element.remove()`, parent-agnostic — confirmed at [Component.ts:569](../src/typescript/lib/core/Component.ts#L569)).
 7. **`Component.ts` — teardown on element removal.** In `removeElement` ([Component.ts:569](../src/typescript/lib/core/Component.ts#L569)) it already calls `clearClipFrame()`; add `clearContentFrame()` alongside so a removed container doesn't orphan its frame.
-8. **`HBox.ts` — drive the frame.** In `doLayout`, replace the spill branch ([HBox.ts:412-423](../src/typescript/lib/layout/HBox.ts#L412)) with: compute per-mode `childrenWidth` and `rowHeight`, derive `contentW`/`contentH` with both insets, decide `overflowX`/`overflowY` against the inner size, call `container.setContentFrame(...)` or `container.clearContentFrame()`, and set `containerSize` to the children's run extent on the overflowing axis. Keep `isOverflowingX/Y` as the gate. Ensure the call precedes both equal-mode early returns and the preferred tail.
-9. **`VBox.ts` — drive the frame.** Transposed twin of step 8, replacing [VBox.ts:400-411](../src/typescript/lib/layout/VBox.ts#L400) and covering the equal-mode early return.
+8. **`LayoutManager.ts` — shared `reserveContentFrame()` helper.** Add the `protected reserveContentFrame(): this` per _Shared drive_ (after `setOverflowing`): it reads each child's committed `getX`/`getY`/`getWidth`/`getHeight`, decides per-axis overflow against `getInnerSize`, and calls `container.setContentFrame(...)` / `clearContentFrame()`. Lives on the base so both box layouts share it; non-adopting managers never call it.
+9. **`HBox.ts` / `VBox.ts` — call the helper.** Leave each manager's spill branch **unchanged** (placement stays byte-identical). Add `this.reserveContentFrame();` at the end of every placement branch: HBox before the equal+stretching `return` ([HBox.ts:467](../src/typescript/lib/layout/HBox.ts#L467)), before the equal non-stretching `return` ([HBox.ts:516](../src/typescript/lib/layout/HBox.ts#L516)), and at the preferred tail; VBox before the equal `return` ([VBox.ts:450](../src/typescript/lib/layout/VBox.ts#L450)) and at the preferred tail. The helper runs AFTER placement, relying on the frame's `(0,0)` origin so wrapping doesn't move already-positioned children.
 10. **Event-delegation / direct-child audit (BLOCKING — do before declaring done).** With the frame interposing a level, audit for code that assumes a component's element is a *direct* DOM child of its container element: `grep -rn "parentElement\|parentNode\|\.children\b\|childNodes\|:scope >" src/typescript/lib/core/Event.ts src/typescript/lib/core/Component.ts src/typescript/lib/layout/`. For each hit, confirm it does not break when the child is a grandchild (under the frame). Read the subtree-listener matcher in [Event.ts](../src/typescript/lib/core/Event.ts) and confirm it walks the FULL ancestor chain by id (so the id-less frame is skipped, not treated as a boundary) and any drag/drop or hit-test target resolution tolerates the extra hop. Listeners must be preserved by node *move* (never clone/rebuild a child element when entering/leaving the frame).
-11. **Regression checkpoint — spill retired in adopters only.** `grep -n "computeTotalMinSize\|isOverflowing" src/typescript/lib/layout/HBox.ts src/typescript/lib/layout/VBox.ts` — `computeTotalMinSize` may still be REUSED for the extent computation, but the old `containerSize = { width: w, height: h }` spill-inflation block must be gone. `grep -n "containerSize = {" src/typescript/lib/layout/Card.ts src/typescript/lib/layout/Accordion.ts src/typescript/lib/layout/Split.ts` — expect the spill blocks to REMAIN (non-adopters untouched).
+11. **Regression checkpoint — spill kept, frame additive.** The spill branch in `HBox`/`VBox` is intentionally retained (placement unchanged); the content frame is layered on top via `reserveContentFrame`. `grep -n "reserveContentFrame" src/typescript/lib/layout/*.ts` — expect 1 definition in `LayoutManager.ts`, 3 calls in `HBox.ts`, 2 calls in `VBox.ts`. `grep -n "containerSize = {" src/typescript/lib/layout/Card.ts src/typescript/lib/layout/Accordion.ts src/typescript/lib/layout/Split.ts` — non-adopters untouched.
 12. **`npm run typecheck`** — expect clean.
 13. **Manual verification** per `## Verification` — including the Grid clip-frame non-regression (step 2's refactor) and the event-delegation exercises (step 10).
 
@@ -238,6 +245,7 @@ The author MUST reconcile the exact arithmetic against `getInnerSize` (which alr
 | Action | File |
 |---|---|
 | Modify | `src/typescript/lib/core/Component.ts` |
+| Modify | `src/typescript/lib/layout/LayoutManager.ts` |
 | Modify | `src/typescript/lib/layout/HBox.ts` |
 | Modify | `src/typescript/lib/layout/VBox.ts` |
 
