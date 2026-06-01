@@ -13,9 +13,23 @@ Event.addListener(saveButton, 'click', () => save());
 panel.addComponent(saveButton);
 ```
 
+## Description / subtitle
+
+Pass a `description` to render a second line below the title, in a smaller, dimmer subtitle style:
+
+```typescript
+Button({ text: 'Save document', description: 'Persist your changes to disk' });
+```
+
+The subtitle stacks below the title inside the content row — a leading `glyph`, if present, stays beside the whole title/subtitle stack. Add or update it at runtime with `setDescription(text)`, read the subtitle [`Text`](/api/component/input/classes/Text) child with `getDescription()` (or `null` when none is set), and remove it with `clearDescription()`. Each re-syncs the button's auto-sized preferred size.
+
+Setting a title and/or description also auto-attaches a hover [`Tooltip`](/components/Tooltip): the title alone when there is no description, or the title and description on separate lines when both are present. The tooltip stays in sync as `setText` / `setDescription` / `clearDescription` change the text.
+
+The subtitle's size, colour, and weight come from the `button.description.*` theme tokens — see [Theming](#theming).
+
 ## Theming
 
-Buttons are themed via the `button.*` token group — see [Theming › Theme keys](/concepts/theming#theme-keys). Pressed state is controlled by `button.pressed.*` tokens; hover state by `button.hover.*` tokens.
+Buttons are themed via the `button.*` token group — see [Theming › Theme keys](/concepts/theming#theme-keys). Pressed state is controlled by `button.pressed.*` tokens; hover state by `button.hover.*` tokens; the optional subtitle by `button.description.*` tokens (`fontSize`, `foreground`, `weight`).
 
 For one-off styling, every pressed-state property has a per-instance setter:
 

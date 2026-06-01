@@ -13,6 +13,8 @@ Tooltip.attach(saveButton, 'Save the document (Ctrl+S)');
 
 The tooltip appears 500 ms after the pointer enters the component and follows the pointer until it leaves.
 
+Tooltip text may contain `\n` newlines to render across multiple lines — the tooltip sizes its height to the line count and its width to the widest line. (This is how a [`Button`](/components/Button) carrying both a title and a description shows them on separate lines.)
+
 ## Manual control
 
 ```typescript
