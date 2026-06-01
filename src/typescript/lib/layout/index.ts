@@ -17,7 +17,7 @@ export type { TabOptions, TabEvent, TabWidthMode } from '~/layout/Tab.js';
 export { Border } from '~/layout/Border.js';
 export type { BorderOptions } from '~/layout/Border.js';
 export { HBox } from '~/layout/HBox.js';
-export type { HBoxOptions, BoxMode } from '~/layout/HBox.js';
+export type { HBoxOptions, BoxMode, BoxOverflowSizing } from '~/layout/HBox.js';
 export { VBox } from '~/layout/VBox.js';
 export type { VBoxOptions } from '~/layout/VBox.js';
 export { Grid } from '~/layout/Grid.js';
