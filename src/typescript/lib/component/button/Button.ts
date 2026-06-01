@@ -11,6 +11,7 @@ import { AnchorType } from "~/layout/AnchorType.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
 import { Insets } from "~/primitive/Insets.js";
+import { Size } from "~/primitive/Size.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 
@@ -643,11 +644,37 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Re-derives this button's preferred size from its content row +
-     * perimeter and pushes the result through Component's setter (bypassing
-     * the consumer-flag flip). Auto-fires from the end of the constructor,
-     * `setGlyph`, `clearGlyph`, `setInsets`, and the registered
-     * `ThemeManager.onThemeChange` handler.
+     * Returns the preferred size, derived live from the content row +
+     * perimeter via {@link computePreferredSize} while the consumer hasn't
+     * pinned one. Deriving live (rather than reading a cached value) means
+     * the button always tracks its current label / glyph: a `getText()
+     * .setText(...)` that grows or shrinks the label is reflected the next
+     * time the parent layout queries this button, with no manual recompute
+     * call needed at the mutation site.
+     *
+     * When the consumer has supplied an explicit `preferredSize`, that pinned
+     * value (recorded by {@link setPreferredSize}) wins via `super`.
+     *
+     * @returns The preferred `{width, height}`.
+     */
+    getPreferredSize(): Size | null {
+        if (this._consumerSetPreferredSize) {
+            return super.getPreferredSize();
+        }
+
+        return this.computePreferredSize();
+    }
+
+    /**
+     * Notifies the parent layout that this button's content-derived size may
+     * have changed, so it re-queries {@link getPreferredSize} (which derives
+     * live). Pushes the freshly computed size through Component's setter both
+     * to fire the parent-relayout notification and to dedupe (the setter
+     * no-ops when the size is unchanged). Auto-fires from the end of the
+     * constructor, `setGlyph`, `clearGlyph`, `setInsets`, and the registered
+     * `ThemeManager.onThemeChange` handler — the content mutations that do
+     * not bubble a preferred-size change on their own (a label `setText`
+     * already bubbles via its own measurement).
      *
      * No-ops when the consumer has supplied an explicit `preferredSize`
      * (Button's `setPreferredSize` override records that intent).
@@ -664,7 +691,9 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         const size = this.computePreferredSize();
 
         // Bypass our own override of setPreferredSize so the consumer flag
-        // doesn't flip on an auto-fire. `super` is `Component`.
+        // doesn't flip on an auto-fire. `super` is `Component`. The written
+        // value isn't read back for sizing (getPreferredSize derives live);
+        // the call stands in for the parent-relayout notification + dedupe.
         super.setPreferredSize(size.width, size.height);
     }
 
