@@ -523,7 +523,7 @@ class Grid extends LayoutManager {
         }
 
         let components = container.getComponents();
-        let containerInsets = container.getInsets();
+        let containerInsets = container.getContentInsets();
         let containerSize = container.getInnerSize();
         if (!containerSize) {
             return;
