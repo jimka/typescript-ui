@@ -157,6 +157,63 @@ export abstract class LayoutManager extends BaseObject {
     }
 
     /**
+     * Reserves the trailing inset in the scrollable area when the children
+     * overflow the container. Box layouts place children from the leading
+     * inset but the trailing inset is otherwise only implicit (the empty space
+     * `getInnerSize` leaves), so once children overflow, the host's native
+     * scroll extent — driven by the children's boxes — ends flush at the last
+     * child and the trailing inset is lost. This wraps the children in a
+     * content frame (see [`Component.setContentFrame`](/api/core/classes/Component#setcontentframe))
+     * sized to their committed far edge plus the trailing inset, so the host
+     * scrolls the frame and both insets are reserved symmetrically. A no-op
+     * (clears any frame) when neither axis actually overflows.
+     *
+     * Call AFTER the placement loop: it reads each child's committed
+     * `getX`/`getY`/`getWidth`/`getHeight`. The frame parks at the padding-box
+     * origin, so the children's coordinates are identical whether they sit in
+     * the frame or directly under the element — wrapping them after placement
+     * does not move them visually.
+     *
+     * @returns This layout manager, for method chaining.
+     */
+    protected reserveContentFrame(): this {
+        const container = this.getContainer();
+        if (!container) {
+            return this;
+        }
+
+        const inner      = container.getInnerSize();
+        const components  = container.getComponents();
+
+        if (!inner || components.length === 0) {
+            container.clearContentFrame();
+
+            return this;
+        }
+
+        const insets = container.getContentInsets();
+
+        let farRight  = insets.getLeft();
+        let farBottom = insets.getTop();
+
+        for (const component of components) {
+            farRight  = Math.max(farRight,  component.getX() + component.getWidth());
+            farBottom = Math.max(farBottom, component.getY() + component.getHeight());
+        }
+
+        const overflowX = this.isOverflowingX() && farRight  - insets.getLeft() > inner.width;
+        const overflowY = this.isOverflowingY() && farBottom - insets.getTop()  > inner.height;
+
+        if (overflowX || overflowY) {
+            container.setContentFrame(farRight + insets.getRight(), farBottom + insets.getBottom());
+        } else {
+            container.clearContentFrame();
+        }
+
+        return this;
+    }
+
+    /**
      * Positions and sizes a child component within the given bounds,
      * respecting fill and anchor constraints.
      *
