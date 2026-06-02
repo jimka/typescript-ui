@@ -32,6 +32,10 @@ The rule holds even when the bypass looks local (e.g. a parent component writing
 
 A class owns exactly one DOM element. If a sub-element needs independent behaviour (event routing, its own CSS rule, layout), extract it into a `Component` subclass. Trivial non-interactive helpers (e.g. a resize-handle div) can stay as raw children.
 
+## Keep presentation state out of data Models
+
+A data `Model` holds domain state only — the fields that represent the record. Presentation and UI state — selection, hover, expanded/collapsed, scroll position, sort order, in-flight edit buffers — never live on the Model; they belong to the component rendering it. The Model is the binding source of truth shared across views, so folding view state into it breaks that contract: multiple views of the same record would contend over one field, and the transient flags would leak into anything that persists the Model.
+
 ## Positioning is always absolute
 
 Every framework `Component` is positioned with `position: absolute`. Coordinates come from the parent's `LayoutManager` via `setX` / `setY` / `setWidth` / `setHeight`. No `position: relative`, no `position: sticky`, no `display: flex` / `display: grid` on a `Component` to lay out its children. The framework's containing-block math, scroll arithmetic, baseline alignment, and `overflow: auto` propagation all assume absolute children.
@@ -172,30 +176,6 @@ Construction must stay JS-only. Every framework primitive buffers DOM writes unt
 - **Inline styles**: `setElementStyle(s)` queues into `inlineStyle`; `init()` attaches and flushes.
 - **Measurement**: never read layout (`getBoundingClientRect`, `getComputedStyle`) during construction. Defer to a layout pass or theme-change callback.
 - **Children**: build child Components in the constructor; their DOM is realised when the parent renders. Don't `getElement(true)` during construction.
-
-## Magic numbers must be documented
-
-Every literal numeric value in code — pixel sizes, durations, timeouts, retry counts, weights, ratios, thresholds — must be documented with **both**:
-
-1. **What it represents.** Prefer extracting to a named `const` whose name carries the meaning (`STATUS_BAR_HEIGHT`, `DEFAULT_DEBOUNCE_MS`). When the value stays inline, the comment must say what it is.
-2. **Why it's hardcoded.** A comment explaining the constraint that produced the number — the spec it tracks, the related theme token it mirrors, the empirical tuning behind it, or why a derived value isn't possible here. "Why this number and not another, and why isn't it computed."
-
-The name covers the "what"; the comment covers the "why," which is the part that rots silently when the constraint shifts. If you can't articulate the "why," the number is probably wrong — find the constraint first.
-
-## Decompose large or complex functions
-
-A function that grows long or branches deeply must be split into named sub-functions. The caller becomes a short summary of its work; each callee owns one nameable step. Reviewers should grasp the top-level flow without reading every line of every branch.
-
-Split when any of these hold:
-
-- The body spans more than ~30 lines of substantive code (excluding JSDoc and braces-only lines).
-- The body contains multiple distinct phases that each summarise to a noun or verb phrase (`collectVisibleRows`, `validateInput`, `flushPendingMeasurements`).
-- A `switch` or `if`/`else` ladder has branches exceeding a few lines each — each branch becomes its own function.
-- The function mixes abstraction levels — high-level orchestration interleaved with low-level DOM/string fiddling.
-
-The name is the test. A sub-function called `handleX`, `doStep1`, or `processIt` defeats the purpose — names must read like a phrase a reviewer would write in the margin. If you can't name the piece, it isn't a piece; keep refactoring until each extracted function has an obvious noun- or verb-phrase name.
-
-**Don't split for its own sake.** A 20-line function with one clear phase stays as one function. Extraction is for *readability*, not for hitting a line count. Sub-functions used by one caller in one file stay `private` — don't widen the API surface just because they exist.
 
 ## Components are exported through `callable()`
 
