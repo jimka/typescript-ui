@@ -84,24 +84,28 @@ export interface DismissableLayer {
 /**
  * Node in the runtime layer tree. Generalizes the per-host `LayerEntry`
  * that `AnimatedDropdown` previously kept module-private: `children` are the
- * layers opened while this one was topmost, and `zIndex` is the band-based
- * stamp the manager assigned at register time.
+ * layers opened while this one was topmost, `band` is the z-index band base
+ * the layer was assigned (inherited from its opener), and `zIndex` is the
+ * band + counter stamp the manager assigned at register time.
  */
 interface LayerNode {
     layer:    DismissableLayer;
     parent:   LayerNode | null;
     children: LayerNode[];
+    band:     number;
     zIndex:   number;
 }
 
 // Z-index bands. Plain module constants because z-index is not themed
 // anywhere today (Theme.ts carries no z-index tokens; the values were inline
-// per class). Each band is wide enough to never collide with the next under
-// the per-register `++_zCounter` increment, and the bands reconcile the four
-// historical bases into one ascending allocator:
-//   Window 9000  <  Popover 9800  <  dropdowns ~10050  <  Dialog 10101.
-// A nested child inherits its opener's band but always lands above it
-// because it registers later and so draws a higher counter.
+// per class). The bands reconcile the four historical bases into one
+// ascending allocator and preserve relative order between unrelated peers:
+//   Window 9000  <  Popover 9800  <  dropdowns 10000  <  Dialog 11000.
+// A nested child inherits its opener's band but always lands above it because
+// it registers later and so draws a higher counter. The 200-1000 gap between
+// bands leaves headroom for the monotonic `_zCounter`; it is not reset, on the
+// assumption a single session opens far fewer than 200 unrelated layers in the
+// same band before a reload — the historical inline values made the same bet.
 const Z_BAND_WINDOW:   number = 9000;
 const Z_BAND_POPOVER:  number = 9800;
 const Z_BAND_DROPDOWN: number = 10000;
@@ -151,11 +155,6 @@ export namespace LayerManager {
 
     let _listenersInstalled: boolean = false;
 
-    // Band width: each band base is a multiple of this, and the per-register
-    // counter never reaches it in practice, so flooring a stamp to this
-    // granularity recovers its band base.
-    const BAND_WIDTH: number = 1000;
-
     /**
      * The four z-index bands a surface returns from
      * {@link DismissableLayer.getBand}. Exposed so each surface can tag itself
@@ -177,7 +176,7 @@ export namespace LayerManager {
      * own surface-type band from {@link DismissableLayer.getBand}.
      */
     function bandFor(parent: LayerNode | null, ownBand: number): number {
-        return parent ? parent.zIndex - (parent.zIndex % BAND_WIDTH) : ownBand;
+        return parent ? parent.band : ownBand;
     }
 
     /**
@@ -197,7 +196,7 @@ export namespace LayerManager {
         const band   = bandFor(parent, layer.getBand?.() ?? Z_BAND_DROPDOWN);
         const zIndex = band + (++_zCounter);
 
-        const node: LayerNode = { layer, parent, children: [], zIndex };
+        const node: LayerNode = { layer, parent, children: [], band, zIndex };
 
         _nodeByLayer.set(layer, node);
         _stack.push(node);
@@ -328,10 +327,8 @@ export namespace LayerManager {
      * through its own typed `setZIndex` (the manager never writes the DOM).
      */
     function restampSubtree(node: LayerNode): void {
-        const band = node.zIndex - (node.zIndex % BAND_WIDTH);
-
         const walk = (n: LayerNode): void => {
-            n.zIndex = band + (++_zCounter);
+            n.zIndex = n.band + (++_zCounter);
             n.layer.onZIndexChanged?.(n.zIndex);
 
             for (const child of n.children) {
