@@ -1028,6 +1028,33 @@ class MiscPanel extends Panel {
         });
         popoverRow.addComponent(buttonPopoverManual);
 
+        // Nested layer demo: a blur-dismiss popover hosting a ComboBox. Opening
+        // the ComboBox's dropdown registers it as the popover's child layer, so
+        // clicking a dropdown row (which lands in a sibling-rooted portal, not
+        // inside the popover's own element) keeps the popover open — the case
+        // the central LayerManager exists to handle. Picking a row commits to
+        // the ComboBox without dismissing the popover; clicking outside both
+        // closes the whole stack.
+        const buttonPopoverNested = new Button("Popover + ComboBox (nested)");
+        const popoverNested = new Popover({
+            placement: "bottom",
+            dismissOn: "blur",
+            title    : "Nested layer",
+        });
+        const nestedCombo = new ComboBox({ items: ["Alpha", "Beta", "Gamma", "Delta"] });
+        popoverNested.setBody("Open the ComboBox below — its dropdown is a child layer, so the popover stays open while you pick.");
+        popoverNested.addComponent(nestedCombo);
+        popoverNested.addAction("Close", () => popoverNested.hide());
+        Event.addListener(buttonPopoverNested, "click", () => {
+            if (popoverNested.isOpen()) {
+                popoverNested.hide();
+            } else {
+                popoverNested.attachToComponent(buttonPopoverNested);
+                popoverNested.show();
+            }
+        });
+        popoverRow.addComponent(buttonPopoverNested);
+
         leftColumn.addComponent(popoverRow);
     }
 }
