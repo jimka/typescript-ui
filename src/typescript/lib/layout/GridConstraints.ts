@@ -15,6 +15,12 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
  * at read time. `rowSpan` / `colSpan` default to `1` and clamp to the cells
  * remaining from the child's origin.
  *
+ * The inherited `fill` ({@link FillType}) and `anchor` ({@link AnchorType})
+ * control how the child sits inside its cell and take precedence over the
+ * grid's `defaultFill` / `defaultAnchor`: a child with `fill = FillType.NONE`
+ * shrinks to its preferred size and parks at its `anchor` even when the grid
+ * default is `FillType.BOTH`. Leave them unset to inherit the grid defaults.
+ *
  * @category Layouts
  */
 export class GridConstraints extends LayoutConstraints {
