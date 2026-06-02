@@ -86,6 +86,12 @@ export class Tooltip extends Component {
     // count. 1 for a single-line tooltip — the unchanged legacy case.
     private _lineCount: number = 1;
 
+    // Resolved per-line pixel height of the tooltip text, set by `show()` from
+    // the live `--ts-ui-line-height` and read by `doLayout()`. Replaces the
+    // fixed `ITEM_HEIGHT` multiplier, which over-allocated ~3px/line and left
+    // a trailing empty line on multi-line tooltips.
+    private _perLine: number = Tooltip.ITEM_HEIGHT;
+
     /** Private — use the static methods; only one instance is ever created. */
     private constructor() {
         super();
@@ -149,12 +155,21 @@ export class Tooltip extends Component {
         const widestLine = lines.reduce((max, line) => Math.max(max, Util.measureTextWidth(line)), 0);
 
         inst._lineCount = lines.length;
+        inst._perLine   = inst._perLineHeight();
 
         // No minimum width — the tooltip hugs its content (widest line plus
         // horizontal padding), capped at MAX_WIDTH. A min-width floor would
         // pad short labels out to a fixed box wider than their text.
         const tooltipWidth  = Math.min(Tooltip.MAX_WIDTH, widestLine + Tooltip.H_PADDING);
-        const tooltipHeight = lines.length * Tooltip.ITEM_HEIGHT + Tooltip.V_PADDING;
+
+        // Height hugs the text: one resolved line height per line plus padding.
+        // Floor the single-line case to the legacy ITEM_HEIGHT box so plain
+        // one-line tooltips stay pixel-stable; only multi-line tooltips switch
+        // to the tighter per-line height that removes the trailing gap.
+        let tooltipHeight = lines.length * inst._perLine + Tooltip.V_PADDING;
+        if (lines.length === 1) {
+            tooltipHeight = Math.max(tooltipHeight, Tooltip.ITEM_HEIGHT + Tooltip.V_PADDING);
+        }
 
         inst.setWidth(tooltipWidth);
         inst.setHeight(tooltipHeight);
@@ -432,6 +447,23 @@ export class Tooltip extends Component {
     }
 
     /**
+     * Resolves the tooltip text's rendered per-line height in pixels from the
+     * live `--ts-ui-line-height` (× the default font size), measured at hover
+     * time. Matches the `_text` label (a default `Text`: 14px font, theme
+     * line-height multiplier) so the box hugs the text vertically with no
+     * trailing gap, and tracks theme/font-size changes on the next hover.
+     *
+     * @returns The per-line height in pixels, ceiled to a whole pixel.
+     */
+    private _perLineHeight(): number {
+        const { height } = Util.measureTextMetrics("X", {
+            lineHeight: "var(--ts-ui-line-height, 1.2)",
+        });
+
+        return Math.ceil(height);
+    }
+
+    /**
      * Positions the label to fill the tooltip body with uniform padding.
      *
      * @returns This component, for method chaining.
@@ -442,7 +474,7 @@ export class Tooltip extends Component {
         this._text.setX(Tooltip.H_PADDING / 2);
         this._text.setY(Tooltip.V_PADDING / 2);
         this._text.setWidth(Math.max(0, this.getWidth() - Tooltip.H_PADDING));
-        this._text.setHeight(this._lineCount * Tooltip.ITEM_HEIGHT);
+        this._text.setHeight(this._lineCount * this._perLine);
 
         return this;
     }
