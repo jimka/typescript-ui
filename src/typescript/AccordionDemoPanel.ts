@@ -23,9 +23,17 @@ class AccordionDemoPanel extends Panel {
 
         // VBox with stretching so children fill the full container width.
         this.setLayoutManager(new VBox({ stretching: true }));
+        this.setAutoScroll("auto");
 
         // --- Controls toolbar ---
-        const toolbar = new Component({ preferredSize: { width: 0, height: 36 } });
+        // Pin a min height equal to the preferred height so the outer VBox's
+        // overflow shrink can't compress this fixed control bar — without it the
+        // toolbar collapses when the open accordion overflows the window, sliding
+        // the accordion's top upward and breaking vertical alignment.
+        const toolbar = new Component({
+            preferredSize: { width: 0, height: 36 },
+            minSize:       { width: 0, height: 36 },
+        });
         toolbar.setLayoutManager(new HBox());
 
         const openAllBtn = new Button("Open All", { preferredSize: { width: 90, height: 28 } });
