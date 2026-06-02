@@ -732,11 +732,9 @@ class Dialog extends Component implements DismissableLayer {
      * @param e - The keyboard event.
      */
     private onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            this.hide('close');
-            return;
-        }
-
+        // Escape is owned by LayerManager's keydown handler, which closes the
+        // topmost non-manual layer (this dialog when it is on top). The dialog
+        // keeps only the Tab focus-trap here.
         if (e.key === 'Tab') {
             const focusable = this.getFocusable();
 
@@ -863,14 +861,15 @@ class Dialog extends Component implements DismissableLayer {
     }
 
     /**
-     * Returns the dismiss mode the document-level handlers consult. Stays
-     * `"manual"` in this phase — the dialog's own viewport keydown still owns
-     * Escape; Phase 3 flips it to `"modal"` and hands Escape to the manager.
+     * Returns the dismiss mode the document-level handlers consult. A dialog
+     * is `"modal"`: the manager neither dismisses ancestors on an outside
+     * interaction nor lets one fall through, and it owns the Escape-to-close
+     * shortcut. The dialog keeps its own Tab focus-trap.
      *
      * @returns The layer dismiss mode.
      */
     getDismissMode(): LayerDismissMode {
-        return "manual";
+        return "modal";
     }
 
     /**

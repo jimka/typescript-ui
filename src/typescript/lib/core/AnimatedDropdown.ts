@@ -94,6 +94,18 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     private _dismissing:  boolean = false;
     private _open:        boolean = false;
 
+    // Host-supplied close thunk invoked from `requestClose` instead of the
+    // bare `hideAnimated`, so the host (a picker field, a ComboBox) can run
+    // its own teardown (caret rotation, aria-expanded, commit) when the
+    // manager dismisses the layer on an outside click. Null until a host
+    // opts into the `"click-outside"` dismiss path.
+    private _closeHandler: (() => void) | null = null;
+
+    // Anchor element (the trigger) excluded from the manager's outside-click
+    // test so the click that toggles the dropdown does not immediately
+    // re-close it. Null for dropdowns whose host owns the toggle gating.
+    private _anchorElement: HTMLElement | null = null;
+
     /**
      * @param options - Optional construction-time options.
      * @param subclassDefaults - Per-subclass default bag layered over this
@@ -383,22 +395,41 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     }
 
     /**
-     * Returns the dismiss mode the document-level handlers consult. The base
-     * dropdown is `"manual"` — its host (picker field, ComboBox, …) drives
-     * dismissal — until Phase 3 flips the migrated hosts to `"click-outside"`.
+     * Returns the dismiss mode the document-level handlers consult. The
+     * dropdown is `"click-outside"`: the manager closes it when a
+     * `pointerdown` lands outside both the dropdown's layer subtree and its
+     * anchor. A click inside a descendant layer counts as inside, so a nested
+     * dropdown keeps its opener open.
      *
      * @returns The layer dismiss mode.
      */
     getDismissMode(): LayerDismissMode {
-        return "manual";
+        return "click-outside";
     }
 
     /**
-     * Advisory close request from the manager. Runs the standard exit fade +
-     * detach, which unregisters the layer on completion.
+     * Advisory close request from the manager. Runs the host-supplied close
+     * thunk when one is set (so the host can rotate a caret, clear
+     * aria-expanded, or commit), otherwise the standard exit fade + detach.
      */
     requestClose(): void {
+        if (this._closeHandler) {
+            this._closeHandler();
+
+            return;
+        }
+
         this.hideAnimated();
+    }
+
+    /**
+     * Returns the anchor element excluded from the manager's outside-click
+     * test, or null when the host gates the toggle itself.
+     *
+     * @returns The anchor element, or null.
+     */
+    getAnchorElement(): HTMLElement | null {
+        return this._anchorElement;
     }
 
     /**
@@ -412,30 +443,35 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     }
 
     /**
-     * Returns true when `target` is a descendant of `layer`'s element or any
-     * descendant layer's element. Thin static delegate to
-     * [`LayerManager.containsAcrossLayers`](/api/core/namespaces/LayerManager/functions/containsAcrossLayers)
-     * so existing host call sites keep working; new code should call the
-     * manager directly.
+     * Installs the close thunk the manager calls from {@link requestClose}
+     * when this dropdown is dismissed by an outside click. The host passes its
+     * own close routine so the dropdown's teardown and the host's UI state
+     * (caret, aria-expanded, commit) stay in lockstep.
      *
-     * @param layer - The layer to test containment for.
-     * @param target - The DOM node receiving the click.
-     * @returns true when `target` is inside `layer` or any of its descendant layers.
+     * @param handler - The host's close routine, or null to fall back to
+     *   {@link hideAnimated}.
+     * @returns This dropdown, for method chaining.
      */
-    static isTargetInsideLayer(layer: AnimatedDropdown, target: Node): boolean {
-        return LayerManager.containsAcrossLayers(layer, target);
+    setCloseHandler(handler: (() => void) | null): this {
+        this._closeHandler = handler;
+
+        return this;
     }
 
     /**
-     * Returns the topmost currently-open layer, or `null` when no layer is
-     * open. Thin static delegate to
-     * [`LayerManager.getTopLayer`](/api/core/namespaces/LayerManager/functions/getTopLayer).
+     * Records the anchor (trigger) element excluded from the manager's
+     * outside-click test, so the gesture that opened the dropdown does not
+     * immediately re-close it.
      *
-     * @returns The topmost open layer, or null when none is open.
+     * @param el - The anchor element, or null to clear it.
+     * @returns This dropdown, for method chaining.
      */
-    static getTopLayer(): DismissableLayer | null {
-        return LayerManager.getTopLayer();
+    setAnchorElement(el: HTMLElement | null): this {
+        this._anchorElement = el;
+
+        return this;
     }
+
 }
 
 /**
