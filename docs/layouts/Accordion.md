@@ -60,11 +60,20 @@ const accordion = new Accordion({ listeners: { sectiontoggle: onToggle } });
 accordion.on("sectiontoggle", onToggle);
 ```
 
+## Sizing
+
+The accordion's size hints follow its open state:
+
+- **[`getPreferredSize`](/api/layout/classes/Accordion#getpreferredsize)** sums every header height plus the *preferred* content height of each **open** section. Closed sections contribute only their header.
+- **[`getMinSize`](/api/layout/classes/Accordion#getminsize)** sums every header height plus the *minimum* content height of each open section — headers are always visible, so they always count. (It does not assume open content can collapse to nothing.)
+
+When the container is shorter than the open sections' combined preferred height, the accordion **shrinks each open section to fit**, mirroring `"preferred"`-mode [`VBox`](/api/layout/classes/VBox): each open section's content shrinks proportionally from its preferred height toward its minimum so the last section's edge lands inside the container. Headers never shrink. If even the open sections' combined *minimum* exceeds the container, the sections fall back to their preferred height and let the host clip or scroll — a layout crammed below every section's minimum reads worse than a clean overflow. When the container can hold every open section at its preferred height, no shrinking happens.
+
 ## Animation
 
 Each toggle animates four things in lock-step over the same duration and easing curve so the close reads as the frame-perfect reverse of the open:
 
-- **Wrapper `height`** — the toggling section's panel grows from 0 to its content's preferred height (or shrinks back). The wrapper has `overflow: hidden` and `contain: layout paint` so it clips its content as it grows or shrinks. The content itself keeps its preferred height through the entire animation — the wrapper does the clipping, not a collapsing content box. `transform: scaleY` was considered and rejected because the wrapper needs to participate in document flow for siblings to reflow.
+- **Wrapper `height`** — the toggling section's panel grows from 0 to the section's laid-out height (its content's preferred height, or a smaller height when the accordion is shrinking open sections to fit — see [Sizing](#sizing)) and shrinks back to 0 on close. The wrapper has `overflow: hidden` and `contain: layout paint` so it clips its content as it grows or shrinks. A closing section's content stays at its full laid-out height while the wrapper clips it to 0 — the wrapper does the clipping, not a collapsing content box. `transform: scaleY` was considered and rejected because the wrapper needs to participate in document flow for siblings to reflow.
 - **Header / wrapper `top`** — every header and wrapper below a toggling section transitions its vertical position so the stack moves as one piece with the toggling wrapper's edge instead of snapping.
 - **Container `height`** — for the duration of each active toggle the accordion's own container element receives the same `height` transition. The parent layout's instant resize (after it re-queries `getPreferredSize` with the new open state) would otherwise clip the still-animating sections via the container's default `overflow: hidden`.
 - **Indicator `transform`** — the [`AccordionHeader`](/api/component/container/classes/AccordionHeader) chevron rotates 90° on the same curve as the panel-height transition so the two motions read as a single gesture.
