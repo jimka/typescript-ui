@@ -6,6 +6,7 @@ import { WindowHeader } from "~/component/container/WindowHeader.js";
 import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
+import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { Fit } from "~/layout/Fit.js";
 import { FillType } from "~/layout/FillType.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
@@ -132,9 +133,8 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
  *
  * @category Core
  */
-class Window extends Panel<WindowOptions> {
+class Window extends Panel<WindowOptions> implements DismissableLayer {
 
-    private static zIndexCounter: number = 9000;
     private static activeWindow: Window | null = null;
     private static openWindows: Set<Window> = new Set<Window>();
 
@@ -386,6 +386,11 @@ class Window extends Panel<WindowOptions> {
     show(): this {
         const el = this.getElement(true);
 
+        // Join the central layer tree before bringToFront so the manager has
+        // a node to re-stamp. A dropdown opened inside the window then
+        // registers as the window's child and stacks above it.
+        LayerManager.register(this);
+
         this.doLayout();
         this.bringToFront();
 
@@ -505,8 +510,66 @@ class Window extends Panel<WindowOptions> {
         }
 
         Window.activeWindow = this;
-        this.setZIndex(++Window.zIndexCounter);
+
+        // Route the z-stamp through the manager so a window and any layers
+        // opened inside it ascend together within the Window band.
+        // bringToFront re-allocates and notifies onZIndexChanged, which
+        // mirrors the value via setZIndex.
+        LayerManager.bringToFront(this);
+
         this._header.setActive(true);
+    }
+
+    // ----- DismissableLayer -----
+
+    /**
+     * Returns the window's root element for the central layer tree.
+     *
+     * @returns The window's element, or null when not yet rendered.
+     */
+    getLayerElement(): HTMLElement | null {
+        return this.getElement();
+    }
+
+    /**
+     * Returns the dismiss mode the document-level handlers consult. A window
+     * is never dismissed by an outside interaction, so it stays `"manual"`;
+     * Phase 2 wires its title-bar activation through {@link Window.onActivate}.
+     *
+     * @returns The layer dismiss mode.
+     */
+    getDismissMode(): LayerDismissMode {
+        return "manual";
+    }
+
+    /**
+     * Advisory close request from the manager. A window owns its own close
+     * affordance (the title-bar exit button), so this routes to the same
+     * teardown.
+     */
+    requestClose(): void {
+        this.onExitAction();
+    }
+
+    /**
+     * Returns the window's z-index band so unrelated windows stack beneath
+     * popovers, dropdowns, and dialogs.
+     *
+     * @returns The window band base.
+     */
+    getBand(): number {
+        return LayerManager.Band.Window;
+    }
+
+    /**
+     * Mirrors a manager-allocated z-index onto the element when the window
+     * (or a layer opened inside it) is raised via
+     * {@link LayerManager.bringToFront}.
+     *
+     * @param zIndex - The fresh z-index assigned by the manager.
+     */
+    onZIndexChanged(zIndex: number): void {
+        this.setZIndex(zIndex);
     }
 
     /**
@@ -535,6 +598,8 @@ class Window extends Panel<WindowOptions> {
         if (Window.activeWindow === this) {
             Window.activeWindow = null;
         }
+
+        LayerManager.unregister(this);
 
         Window.openWindows.delete(this);
 

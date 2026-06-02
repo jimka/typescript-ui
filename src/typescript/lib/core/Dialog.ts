@@ -3,6 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
 import { Event } from "~/core/Event.js";
+import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { Position } from "~/primitive/Position.js";
 import { Util } from "~/core/Util.js";
 import { Text } from "~/component/input/Text.js";
@@ -387,12 +388,6 @@ class DialogButtonRow extends Component {
 // Public: Dialog
 // ---------------------------------------------------------------------------
 
-/** Counter used to compute stacked z-indices. */
-let instanceCounter: number = 0;
-
-/** Base z-index for the dialog panel. */
-const DIALOG_BASE_Z: number = 10101;
-
 /**
  * Canonical dialog button presets. Spread into the `buttons` array of a
  * {@link DialogConfig} to inherit the standard text / result / glyph mapping
@@ -456,7 +451,7 @@ const DEFAULT_BUTTONS: DialogButtonConfig[] = [
  *
  * @category Core
  */
-class Dialog extends Component {
+class Dialog extends Component implements DismissableLayer {
 
     private readonly _titleBar        : DialogTitleBar;
     private readonly _contentContainer: Component;
@@ -468,7 +463,6 @@ class Dialog extends Component {
     private _previousFocus   : Element | null = null;
     private _boundKeyHandler : (e: KeyboardEvent) => void;
     private _boundResizeHandler: () => void;
-    private readonly _instanceZ: number;
 
     /**
      * Constructs a Dialog but does not display it. Call `show()` to open.
@@ -479,8 +473,6 @@ class Dialog extends Component {
         super();
 
         this._config    = config;
-        this._instanceZ = instanceCounter;
-        instanceCounter += 1;
 
         const dialogWidth  = Math.max(MIN_DIALOG_WIDTH, config.width ?? 480);
         const buttons      = config.buttons ?? DEFAULT_BUTTONS;
@@ -493,7 +485,9 @@ class Dialog extends Component {
         this.setPosition(Position.FIXED);
         this.setWidth(dialogWidth);
         this.setHeight(dialogHeight);
-        this.setZIndex(DIALOG_BASE_Z + this._instanceZ * 2);
+        // z-index is stamped from LayerManager's Dialog band at open() time
+        // so stacked dialogs ascend monotonically; the backdrop is set one
+        // below the panel there.
         this.setBackgroundColor("var(--ts-ui-body-bg)");
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-dialog-shadow)");
@@ -633,6 +627,15 @@ class Dialog extends Component {
         if (this._config.closeOnBackdrop) {
             this._backdrop.addClickListener(() => this.hide('close'));
         }
+
+        // Join the central layer tree and stamp the panel from the Dialog
+        // band; the backdrop sits one below the panel so stacked dialogs keep
+        // each panel above its own backdrop.
+        LayerManager.register(this);
+
+        const panelZ = LayerManager.getZIndex(this);
+        this.setZIndex(panelZ);
+        this._backdrop.setZIndex(panelZ - 1);
 
         const backdropEl = this._backdrop.getElement(true);
         document.documentElement.appendChild(backdropEl);
@@ -785,7 +788,7 @@ class Dialog extends Component {
             this.removeElement();
             this.destructor();
 
-            instanceCounter = Math.max(0, instanceCounter - 1);
+            LayerManager.unregister(this);
 
             if (this._previousFocus && 'focus' in this._previousFocus) {
                 (this._previousFocus as HTMLElement).focus();
@@ -846,6 +849,46 @@ class Dialog extends Component {
      */
     getTitleBar(): DialogTitleBar {
         return this._titleBar;
+    }
+
+    // ----- DismissableLayer -----
+
+    /**
+     * Returns the dialog panel's root element for the central layer tree.
+     *
+     * @returns The dialog's element, or null when not yet rendered.
+     */
+    getLayerElement(): HTMLElement | null {
+        return this.getElement();
+    }
+
+    /**
+     * Returns the dismiss mode the document-level handlers consult. Stays
+     * `"manual"` in this phase — the dialog's own viewport keydown still owns
+     * Escape; Phase 3 flips it to `"modal"` and hands Escape to the manager.
+     *
+     * @returns The layer dismiss mode.
+     */
+    getDismissMode(): LayerDismissMode {
+        return "manual";
+    }
+
+    /**
+     * Advisory close request from the manager — closes the dialog with the
+     * `'close'` result, matching the title-bar close affordance.
+     */
+    requestClose(): void {
+        this.hide('close');
+    }
+
+    /**
+     * Returns the dialog's z-index band so unrelated dialogs stack above
+     * every other overlay family.
+     *
+     * @returns The dialog band base.
+     */
+    getBand(): number {
+        return LayerManager.Band.Dialog;
     }
 
     /**

@@ -106,7 +106,6 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
      */
     constructor(onSelect: (index: number) => void) {
         super(undefined, {
-            zIndex:          10050,
             layoutManager:   new Fit(),
             backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
             border:          "var(--ts-ui-input-border)",
