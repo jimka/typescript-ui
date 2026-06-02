@@ -23,6 +23,8 @@ export type { WindowOptions, WindowState, WindowMaximizeBounds, WindowSnapModifi
 export { Menu } from '~/core/Menu.js';
 export { AnimatedDropdown, fadeShow, fadeHideAndDetach } from '~/core/AnimatedDropdown.js';
 export type { AnimatedDropdownOptions, FadeOptions } from '~/core/AnimatedDropdown.js';
+export { LayerManager } from '~/core/LayerManager.js';
+export type { DismissableLayer, LayerDismissMode } from '~/core/LayerManager.js';
 export { Tooltip } from '~/core/Tooltip.js';
 export type { TooltipColors } from '~/core/Tooltip.js';
 export { Popover } from '~/core/Popover.js';
