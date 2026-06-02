@@ -42,6 +42,7 @@ export default defineConfig({
                     { text: 'Layout system',       link: '/concepts/layout-system' },
                     { text: 'Sizing',              link: '/concepts/sizing' },
                     { text: 'Events',              link: '/concepts/events' },
+                    { text: 'Layering',            link: '/concepts/layering' },
                     { text: 'Theming',             link: '/concepts/theming' },
                     { text: 'Data binding',        link: '/concepts/data-binding' },
                     { text: 'Accessibility',       link: '/concepts/accessibility' },
