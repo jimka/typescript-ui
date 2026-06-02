@@ -505,7 +505,7 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
      * with `true` when a pointer / focus interaction lands inside the window
      * (or a layer opened inside it) and `false` when another layer takes over
      * or an empty-viewport click deactivates everything. Replaces the bespoke
-     * `Window.deactivateIfOutside` viewport listener.
+     * window-wide outside-click viewport listener this class used to own.
      *
      * @param active - True when this window is the active layer.
      */
