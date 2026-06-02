@@ -23,7 +23,6 @@ export interface AutoCompleteDropdownOptions extends AnimatedDropdownOptions {}
  * the final value, so any field the caller supplied wins.
  */
 const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> = {
-    zIndex:          10050,
     durationMs:      100,
     backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
     border:          "var(--ts-ui-input-border)",
