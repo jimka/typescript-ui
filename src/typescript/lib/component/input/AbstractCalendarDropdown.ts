@@ -552,7 +552,7 @@ abstract class AbstractCalendarDropdown<
         this._root.addComponent(this._headerRow);
 
         this._weekdayRow = new Component({ preferredSize: { width: 0, height: HEADER_HEIGHT } });
-        this._weekdayRow.setLayoutManager(new Grid({ columns: 7, spacing: 2, stretching: true }));
+        this._weekdayRow.setLayoutManager(new Grid({ columns: 7, spacing: 2 }));
 
         for (const dh of ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) {
             this._weekdayRow.addComponent(new PickerDayHeader(dh));
@@ -561,7 +561,7 @@ abstract class AbstractCalendarDropdown<
         this._root.addComponent(this._weekdayRow);
 
         this._dayGrid = new Component({ preferredSize: { width: 0, height: DAY_GRID_HEIGHT } });
-        this._dayGrid.setLayoutManager(new Grid({ columns: 7, spacing: 2, stretching: true }));
+        this._dayGrid.setLayoutManager(new Grid({ columns: 7, spacing: 2 }));
         this._root.addComponent(this._dayGrid);
 
         this.addComponent(this._root);
