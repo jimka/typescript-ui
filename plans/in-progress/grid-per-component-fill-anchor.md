@@ -28,7 +28,9 @@ Rejected alternative: making `defaultFill = NONE` implicitly re-enable baseline 
 
 ### Migration: remove `stretching`, no deprecated shim
 
-`Grid`'s `setStretching`/`isStretching`/`stretching` option has **zero external call sites** — verified that every `stretching:` / `setStretching` / `isStretching` hit in `src/` belongs to `VBox` or `HBox` (which keep their own independent `_stretching`), and no demo passes `stretching` to a `Grid`. `GridPanel` ([src/typescript/GridPanel.ts:22](../src/typescript/GridPanel.ts#L22)) and `BindingPanel` ([src/typescript/BindingPanel.ts:151](../src/typescript/BindingPanel.ts#L151)) construct `Grid` without `stretching`. Because the public surface is unused, remove `stretching` from `GridOptions`, drop `setStretching`/`isStretching`/`_stretching`, rather than carry a deprecated shim. (VBox/HBox `stretching` is untouched — out of scope.)
+`Grid`'s `setStretching`/`isStretching` setters have zero external call sites, and `GridPanel` / `BindingPanel` construct `Grid` without `stretching`. Because the public surface is (nearly) unused, remove `stretching` from `GridOptions`, drop `setStretching`/`isStretching`/`_stretching`, rather than carry a deprecated shim. (VBox/HBox `stretching` is untouched — out of scope.)
+
+**Drift correction (found during implementation):** the plan originally claimed `stretching:` on `Grid` had *zero* external call sites. In fact `AbstractCalendarDropdown.ts` passes `stretching: true` to two `Grid` constructors ([:555](../src/typescript/lib/component/input/AbstractCalendarDropdown.ts#L555), [:564](../src/typescript/lib/component/input/AbstractCalendarDropdown.ts#L564)). Since `stretching: true` is exactly the new default (`defaultFill = FillType.BOTH`), the fix is to delete the now-redundant `stretching: true` option literal from both constructors — behaviour is byte-for-byte unchanged. This is a mechanical part of the `stretching` removal, not a design change.
 
 ### Clip-on-overflow coexists with fill/anchor by resolving bounds first
 
