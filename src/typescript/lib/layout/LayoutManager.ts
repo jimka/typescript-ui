@@ -157,16 +157,26 @@ export abstract class LayoutManager extends BaseObject {
     }
 
     /**
-     * Reserves the trailing inset in the scrollable area when the children
-     * overflow the container. Box layouts place children from the leading
-     * inset but the trailing inset is otherwise only implicit (the empty space
-     * `getInnerSize` leaves), so once children overflow, the host's native
-     * scroll extent — driven by the children's boxes — ends flush at the last
-     * child and the trailing inset is lost. This wraps the children in a
-     * content frame (see [`Component.setContentFrame`](/api/core/classes/Component#setcontentframe))
+     * Reserves the trailing inset in the scrollable area for a scroll-enabled
+     * host. Box layouts place children from the leading inset but the trailing
+     * inset is otherwise only implicit (the empty space `getInnerSize` leaves),
+     * so once children overflow, the host's native scroll extent — driven by
+     * the children's boxes — ends flush at the last child and the trailing
+     * inset is lost. This wraps the children in a content frame (see
+     * [`Component.setContentFrame`](/api/core/classes/Component#setcontentframe))
      * sized to their committed far edge plus the trailing inset, so the host
-     * scrolls the frame and both insets are reserved symmetrically. A no-op
-     * (clears any frame) when neither axis actually overflows.
+     * scrolls the frame and both insets are reserved symmetrically.
+     *
+     * The frame is **persistent** for any scroll-enabled host (either overflow
+     * axis active): installed once and only resized thereafter, sized to the
+     * children's extent so it shrinks below the viewport — showing no scrollbar
+     * — when they fit, and grows past it when they don't. It is never removed
+     * as the overflow state toggles. That matters because installing or
+     * clearing the frame re-parents the whole child subtree, and moving DOM
+     * nodes cancels any in-flight CSS transition on a descendant (e.g. an
+     * Accordion section animating open/closed would snap the instant a
+     * scrollbar appeared or disappeared). Non-scroll hosts clear any frame —
+     * the trailing-inset reserve is only meaningful when scrolling.
      *
      * Call AFTER the placement loop: it reads each child's committed
      * `getX`/`getY`/`getWidth`/`getHeight`. The frame parks at the padding-box
@@ -201,10 +211,19 @@ export abstract class LayoutManager extends BaseObject {
             farBottom = Math.max(farBottom, component.getY() + component.getHeight());
         }
 
-        const overflowX = this.isOverflowingX() && farRight  - insets.getLeft() > inner.width;
-        const overflowY = this.isOverflowingY() && farBottom - insets.getTop()  > inner.height;
-
-        if (overflowX || overflowY) {
+        // Keep a *persistent* content frame for any scroll-enabled host, sized
+        // to the children's committed extent — created once on the first pass,
+        // only resized afterwards. Sizing it to the content extent (rather than
+        // only when that extent exceeds `inner`) means it shrinks below the
+        // viewport when the children fit, so no scrollbar shows, yet the frame
+        // is never installed/removed as the overflow state toggles. That
+        // matters because installing or clearing the frame re-parents the whole
+        // child subtree, and moving DOM nodes cancels any in-flight CSS
+        // transition on a descendant — e.g. an Accordion section animating
+        // open/closed snaps the instant a scrollbar appears or disappears.
+        // Non-scroll hosts clear the frame as before (the trailing-inset reserve
+        // is only meaningful when scrolling).
+        if (this.isOverflowingX() || this.isOverflowingY()) {
             container.setContentFrame(farRight + insets.getRight(), farBottom + insets.getBottom());
         } else {
             container.clearContentFrame();
