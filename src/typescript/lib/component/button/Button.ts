@@ -50,6 +50,25 @@ export interface ButtonOptions extends ComponentOptions {
      * alongside `text` — see [`setDescription`](/api/component/button/classes/Button#setdescription).
      */
     description?:            string;
+
+    /**
+     * When a leading glyph *and* a description are both present, controls
+     * where the description aligns. `true` (default) spans the description
+     * full-width *below* the glyph+title row, its left edge under the glyph.
+     * `false` indents it under the title text, beside the glyph. No visible
+     * effect without both a glyph and a description, or when `showDescription`
+     * is `false`. Runtime counterpart: `setDescriptionUnderGlyph`.
+     */
+    descriptionUnderGlyph?:  boolean;
+
+    /**
+     * When `false`, the description is *not* rendered on the button face — the
+     * button shows only its glyph and title — but it still appears in the
+     * hover tooltip (`{title}\n\n{description}`). Default `true`. The text is
+     * always stored; only its on-button render is suppressed. No effect
+     * without a description. Runtime counterpart: `setShowDescription`.
+     */
+    showDescription?:        boolean;
     glyph?:                  string;
     enabled?:                boolean;
     pressedBackgroundColor?: string;
@@ -171,10 +190,34 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     /**
      * The subtitle label, created lazily on the first {@link setDescription}
      * call (mirroring `_glyph`'s lazy creation) so a button with no
-     * description never reserves a second line. `null` until then.
+     * description never reserves a second line. `null` until then. Stays
+     * alive (detached, not nulled) when `showDescription` is `false` so the
+     * tooltip can still read its text.
      */
     private _description: Text | null = null;
+
+    /**
+     * Lazy containers used only by the "under glyph" (full-width) description
+     * topology: `_outerColumn` (VBox) holds `[_innerRow, _description]` and
+     * `_innerRow` (HBox) holds `[glyph?, _text]`. Created on first entry into
+     * that mode so a button with no description (or in under-title mode) never
+     * allocates them — keeping the minimal tree the subclasses depend on.
+     * Private; not part of the subclass re-anchor contract.
+     */
+    private _outerColumn: Component | null = null;
+    private _innerRow:    Component | null = null;
+
     private _glyph: Glyph | null = null;
+
+    /**
+     * The square pixel size {@link _syncGlyphSize} last wrote to `_glyph`'s
+     * preferred size. Acts as the per-glyph opt-out guard: on a re-sync (e.g.
+     * theme toggle) the glyph is only re-matched to the title line height when
+     * its current preferred size still equals this value — so a subclass /
+     * consumer that pinned its own glyph size (SpinButton, Tab close-glyph)
+     * is left untouched. `null` until the framework first sizes the glyph.
+     */
+    private _glyphSyncedSize: number | null = null;
 
     /**
      * Flipped to `true` the first time a consumer calls `setPreferredSize`
@@ -327,7 +370,9 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * and `hoverStyleRule` getters make them safe to fire during the
      * super-time cascade). `text`, `description`, and `glyph` are written pure
      * into `_options` here and dispatched from the constructor body once
-     * children exist.
+     * children exist; the `descriptionUnderGlyph` / `showDescription` flags are
+     * also pure-written and consumed live by the content-row rebuild those
+     * dispatches trigger.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -341,6 +386,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (opts.text         !== undefined) this._options.text         = opts.text;
         if (opts.description  !== undefined) this._options.description  = opts.description;
         if (opts.glyph        !== undefined) this._options.glyph        = opts.glyph;
+
+        // Pure writes — consumed live by `_rebuildContentRow` (which the
+        // late-dispatched setGlyph/setDescription already trigger), so no
+        // setter dispatch is needed here. They ride the options bag, not a
+        // class field, so the super-cascade class-field trap does not apply.
+        if (opts.descriptionUnderGlyph !== undefined) this._options.descriptionUnderGlyph = opts.descriptionUnderGlyph;
+        if (opts.showDescription       !== undefined) this._options.showDescription       = opts.showDescription;
 
         if (opts.enabled      !== undefined) this.setEnabled(opts.enabled);
 
@@ -445,11 +497,14 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this._description.setFontSize("--ts-ui-button-description-font-size");
             this._description.setFontWeight("var(--ts-ui-button-description-weight, normal)");
             this._description.setForegroundColor("var(--ts-ui-button-description-fg, rgb(110, 110, 110))");
-
-            this._titleColumn.addComponent(this._description);
         }
 
+        // The instance is created above unconditionally so `_rebuildTooltip`
+        // can always read it; `_rebuildContentRow` decides whether it is
+        // actually parented onto the button face (gated by `showDescription`)
+        // and in which topology (gated by `descriptionUnderGlyph`).
         this._description.setText(text);
+        this._rebuildContentRow();
         this._rebuildTooltip();
         this.recomputePreferredSize();
 
@@ -475,11 +530,9 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearDescription(): this {
-        if (this._description) {
-            this._titleColumn.removeComponent(this._description);
-            this._description = null;
-        }
+        this._description = null;
 
+        this._rebuildContentRow();
         this._rebuildTooltip();
         this.recomputePreferredSize();
 
@@ -513,6 +566,138 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * Resolves the `descriptionUnderGlyph` flag with its `true` default — the
+     * single place the default lives, read by {@link _rebuildContentRow}.
+     *
+     * @returns Whether the description aligns full-width under the glyph.
+     */
+    private _isDescriptionUnderGlyph(): boolean {
+        return this._options.descriptionUnderGlyph ?? true;
+    }
+
+    /**
+     * Resolves the `showDescription` flag with its `true` default.
+     *
+     * @returns Whether the description is rendered on the button face.
+     */
+    private _isShowDescription(): boolean {
+        return this._options.showDescription ?? true;
+    }
+
+    /**
+     * Rebuilds `_content`'s child tree from the current `_glyph` / `_text` /
+     * `_description` instances and the `descriptionUnderGlyph` /
+     * `showDescription` flags. The single point that (re)parents those shared
+     * children, so the topology stays consistent across every glyph /
+     * description / flag mutation. Never recreates `_content` itself, so its
+     * identity and HBox layout — the documented subclass re-anchor seam — are
+     * preserved.
+     *
+     * Idempotent: it empties every content container up front
+     * ({@link Component.removeAllComponents} fully detaches each child), then
+     * re-adds from the current field state, so it is safe to call any number
+     * of times and after a field has been nulled.
+     *
+     * Two topologies:
+     * - **under glyph** (`descriptionUnderGlyph` true, glyph + visible
+     *   description): `_content[ _outerColumn( _innerRow[glyph, _text], _description ) ]`
+     *   — the description spans full width below the glyph+title row.
+     * - **under title** (the default fallback, also used whenever there is no
+     *   glyph, no description, or `showDescription` is false):
+     *   `_content[ glyph?, _titleColumn[ _text, _description? ] ]`.
+     *
+     * When `showDescription` is false the description is treated as absent for
+     * layout — the minimal `[glyph?, _titleColumn[_text]]` tree is built and
+     * `_description` is left detached but alive (so {@link _rebuildTooltip}
+     * can still read it).
+     */
+    private _rebuildContentRow(): void {
+        // Disassemble: empty every container so all shared children are
+        // parentless and re-addable (add/insertComponent throw on a child that
+        // still has a parent). Emptying wholesale also drops any outgoing glyph
+        // / description whose field was reassigned or nulled by the caller.
+        this._content.removeAllComponents();
+        this._titleColumn.removeAllComponents();
+        this._innerRow?.removeAllComponents();
+        this._outerColumn?.removeAllComponents();
+
+        // A hidden description is treated as absent for rendering; the instance
+        // stays alive for the tooltip.
+        const renderDesc = this._description !== null && this._isShowDescription();
+
+        if (renderDesc && this._glyph && this._isDescriptionUnderGlyph()) {
+            if (!this._innerRow) {
+                this._innerRow = new Component();
+                this._innerRow.setLayoutManager(new HBox({ spacing: 2 }));
+                this._innerRow.setInsets(new Insets(0, 0, 0, 0));
+                this._innerRow.setPointerEvents("none");
+            }
+            if (!this._outerColumn) {
+                this._outerColumn = new Component();
+                this._outerColumn.setLayoutManager(new VBox({ spacing: 0 }));
+                this._outerColumn.setInsets(new Insets(0, 0, 0, 0));
+                this._outerColumn.setPointerEvents("none");
+            }
+
+            this._innerRow.addComponent(this._glyph);
+            this._innerRow.addComponent(this._text);
+            this._outerColumn.addComponent(this._innerRow);
+            this._outerColumn.addComponent(this._description!);
+            this._content.addComponent(this._outerColumn);
+        } else {
+            this._titleColumn.addComponent(this._text);
+            if (renderDesc) {
+                this._titleColumn.addComponent(this._description!);
+            }
+            if (this._glyph) {
+                this._content.insertComponent(this._glyph, 0);
+            }
+            this._content.addComponent(this._titleColumn);
+        }
+    }
+
+    /**
+     * Sizes the leading glyph's box so its height matches the title's rendered
+     * line-box height (the line of text it sits beside), instead of the
+     * Glyph's static 16×16 default. The lever is `setPreferredSize`, not
+     * `setFontSize` — a font-size token does not resize an SVG glyph's box.
+     *
+     * Theme-reactive: it reads `_text.getLineHeight()` (button font-size ×
+     * `--ts-ui-line-height`) and runs from {@link recomputePreferredSize},
+     * which already re-fires on every theme change — so the glyph re-tracks the
+     * title line height without an extra listener. Bails when the line height
+     * isn't resolved yet (pre-measure) so it never writes a 0/NaN size.
+     *
+     * Opt-out guard: it only overwrites a glyph size it itself last wrote
+     * (tracked in `_glyphSyncedSize`). A subclass / consumer that pinned its
+     * own glyph size (SpinButton's chevron, Tab's close ✕) leaves the current
+     * size different from `_glyphSyncedSize`, so this method skips it and the
+     * explicit size survives later re-syncs.
+     */
+    private _syncGlyphSize(): void {
+        const glyph = this._glyph;
+        if (!glyph) {
+            return;
+        }
+
+        const lineHeight = this._text.getLineHeight();
+        if (lineHeight === null) {
+            return;
+        }
+
+        const px = Math.round(lineHeight);
+
+        const current = glyph.getPreferredSize();
+        const ours    = this._glyphSyncedSize;
+        if (current && ours !== null && (current.width !== ours || current.height !== ours)) {
+            return;
+        }
+
+        glyph.setPreferredSize(px, px);
+        this._glyphSyncedSize = px;
+    }
+
+    /**
      * Sets or clears an optional leading [`Glyph`](/api/component/display/classes/Glyph) shown alongside the button's text.
      *
      * @param name - Registry glyph name to display, or `null` to clear an existing glyph.
@@ -520,27 +705,28 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      *
      * @remarks
-     * The button's text always lives inside an [`HBox`](/api/layout/classes/HBox)-laid-out
-     * content row anchored by the outer [`Fit`](/api/layout/classes/Fit) layout. This setter
-     * just swaps the leading glyph child of that row in or out — adding the glyph as the
-     * first child and re-appending the text after it to preserve the `[glyph, text]` order.
-     * Empty text combined with `setGlyph(name)` therefore renders as a glyph-only button
-     * with no visual artifacts at the default 0px spacing.
+     * The glyph leads the content row. Its box is auto-sized to match the
+     * title's line height; a consumer can override by sizing the returned glyph
+     * explicitly via `getGlyph().setPreferredSize(...)`. Empty text combined
+     * with `setGlyph(name)` therefore renders as a glyph-only button with no
+     * visual artifacts at the default 0px spacing.
      */
     setGlyph(name: string): this {
-        if (this._glyph) {
-            this._content.removeComponent(this._glyph);
-            this._glyph = null;
-        }
-
         const glyph = new Glyph(name);
         glyph.setPointerEvents("none");
-        this._glyph = glyph;
 
-        this._content.insertComponent(glyph, 0);
+        // Reassign before the rebuild; the rebuild empties the content
+        // containers, detaching any previous glyph so it is dropped cleanly.
+        this._glyph           = glyph;
+        // A fresh glyph hasn't been line-height-synced yet — clear the guard
+        // so `_syncGlyphSize` (via recomputePreferredSize) sizes it.
+        this._glyphSyncedSize = null;
+
+        this._rebuildContentRow();
 
         // The content row's preferred size shifted — re-sync the button's
-        // auto-derived preferred size unless the consumer has pinned it.
+        // auto-derived preferred size (also sizes the glyph) unless the
+        // consumer has pinned it.
         this.recomputePreferredSize();
 
         return this;
@@ -552,11 +738,10 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearGlyph(): this {
-        if (this._glyph) {
-            this._content.removeComponent(this._glyph);
-            this._glyph = null;
-        }
+        this._glyph           = null;
+        this._glyphSyncedSize = null;
 
+        this._rebuildContentRow();
         this.recomputePreferredSize();
 
         return this;
@@ -818,6 +1003,12 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * wiring stays here.
      */
     protected recomputePreferredSize(): void {
+        // Size the glyph to the title line box first, above the consumer-pinned
+        // early-return, so the glyph still line-height-matches even when the
+        // button's own size is frozen. Subclasses that pin their glyph size opt
+        // out via _syncGlyphSize's per-glyph guard, not this early-return.
+        this._syncGlyphSize();
+
         if (this._consumerSetPreferredSize) {
             return;
         }
@@ -1291,6 +1482,63 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     isEnabled(): boolean {
         return this._options.enabled ?? true;
+    }
+
+    /**
+     * Sets whether a description aligns full-width below the glyph (`true`,
+     * default) or indented under the title text beside the glyph (`false`).
+     * Only has a visible effect when the button has both a leading glyph and a
+     * visible description; otherwise both modes resolve to the same minimal
+     * row. Restructures the content row live.
+     *
+     * @param value - `true` for under-glyph (full width), `false` for under-title.
+     *
+     * @returns This component, for method chaining.
+     */
+    setDescriptionUnderGlyph(value: boolean): this {
+        this._options.descriptionUnderGlyph = value;
+
+        this._rebuildContentRow();
+        this.recomputePreferredSize();
+
+        return this;
+    }
+
+    /**
+     * Returns whether the description aligns full-width under the glyph.
+     *
+     * @returns `true` for under-glyph (the default), `false` for under-title.
+     */
+    isDescriptionUnderGlyph(): boolean {
+        return this._isDescriptionUnderGlyph();
+    }
+
+    /**
+     * Sets whether the description is rendered on the button face. When
+     * `false`, the button shows only its glyph and title, but the description
+     * still appears in the hover tooltip — the text is stored either way. Does
+     * not touch the tooltip (which is unaffected by this flag).
+     *
+     * @param value - `true` (default) to show the description on the button, `false` to hide it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setShowDescription(value: boolean): this {
+        this._options.showDescription = value;
+
+        this._rebuildContentRow();
+        this.recomputePreferredSize();
+
+        return this;
+    }
+
+    /**
+     * Returns whether the description is rendered on the button face.
+     *
+     * @returns `true` when the description shows on the button (the default), `false` when it is tooltip-only.
+     */
+    isShowDescription(): boolean {
+        return this._isShowDescription();
     }
 }
 
