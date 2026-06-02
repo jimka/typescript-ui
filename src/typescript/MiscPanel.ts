@@ -74,8 +74,9 @@ import { folder }        from '@jimka/typescript-ui/glyphs/solid/folder';
 import { file }          from '@jimka/typescript-ui/glyphs/solid/file';
 import { file_code }     from '@jimka/typescript-ui/glyphs/solid/file_code';
 import { file_lines }    from '@jimka/typescript-ui/glyphs/solid/file_lines';
+import { floppy_disk }   from '@jimka/typescript-ui/glyphs/solid/floppy_disk';
 
-Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines);
+Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines, floppy_disk);
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and
  * pretends to be a slow network request so the spinner overlay is visible.
@@ -460,6 +461,7 @@ class MiscPanel extends Panel {
         const buttonWithDescription = new Button({
             text:        "Save document",
             description: "Persist your changes to disk",
+            glyph:       "floppy-disk",
         });
         leftColumn.addComponent(buttonWithDescription);
 
