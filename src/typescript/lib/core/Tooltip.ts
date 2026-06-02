@@ -74,7 +74,6 @@ export class Tooltip extends Component {
 
     private static readonly H_PADDING: number = 16;
     private static readonly V_PADDING: number = 8;
-    private static readonly MIN_WIDTH: number = 80;
     private static readonly MAX_WIDTH: number = 300;
     private static readonly ITEM_HEIGHT: number = 20;
     private static readonly CURSOR_OFFSET: number = 14;
@@ -151,10 +150,10 @@ export class Tooltip extends Component {
 
         inst._lineCount = lines.length;
 
-        const tooltipWidth = Math.min(
-            Tooltip.MAX_WIDTH,
-            Math.max(Tooltip.MIN_WIDTH, widestLine + Tooltip.H_PADDING)
-        );
+        // No minimum width — the tooltip hugs its content (widest line plus
+        // horizontal padding), capped at MAX_WIDTH. A min-width floor would
+        // pad short labels out to a fixed box wider than their text.
+        const tooltipWidth  = Math.min(Tooltip.MAX_WIDTH, widestLine + Tooltip.H_PADDING);
         const tooltipHeight = lines.length * Tooltip.ITEM_HEIGHT + Tooltip.V_PADDING;
 
         inst.setWidth(tooltipWidth);
