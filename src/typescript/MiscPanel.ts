@@ -455,15 +455,36 @@ class MiscPanel extends Panel {
         Tooltip.attach(buttonTooltip, "This tooltip appears after a short delay");
         leftColumn.addComponent(buttonTooltip);
 
-        // A button carrying a subtitle below its title. The description renders
-        // smaller/dimmer on a second line, and the auto-attached tooltip shows
-        // the title and description across multiple lines on hover.
+        // A button carrying a subtitle below its title. By default the
+        // description spans full-width below the glyph+title row (under-glyph),
+        // and the auto-attached tooltip shows title + description on hover.
         const buttonWithDescription = new Button({
             text:        "Save document",
             description: "Persist your changes to disk",
             glyph:       "floppy-disk",
         });
         leftColumn.addComponent(buttonWithDescription);
+
+        // Same shape but with descriptionUnderGlyph: false — the description
+        // indents under the title text, beside the glyph, so the two buttons
+        // stack to show both alignment modes.
+        const buttonCancel = new Button({
+            text:                  "Cancel",
+            description:           "Discard your changes",
+            glyph:                 "xmark",
+            descriptionUnderGlyph: false,
+        });
+        leftColumn.addComponent(buttonCancel);
+
+        // showDescription: false — the description is hidden on the button face
+        // (glyph + title only) but still appears in the hover tooltip.
+        const buttonHiddenDescription = new Button({
+            text:            "Delete",
+            description:     "This action cannot be undone",
+            glyph:           "xmark",
+            showDescription: false,
+        });
+        leftColumn.addComponent(buttonHiddenDescription);
 
         const buttonTree = new Button("Show tree component");
         buttonTree.on("action", () => {
