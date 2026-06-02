@@ -862,17 +862,25 @@ class Grid extends LayoutManager {
                 h += rowExtents[i] ?? 0;
             }
 
-            const resolved = this.resolveBounds(component, x, y, w, h, this._defaultFill, this._defaultAnchor);
+            const min = component.getMinSize();
 
-            if (resolved.width > w || resolved.height > h) {
-                // `resolveBounds` floors the child to its own `min-width` /
-                // `min-height`, so a child whose min exceeds the cell resolves
-                // larger than the cell. Clip it with a cell-sized frame: the
-                // frame takes the cell rect and clips, the child parks at
-                // (0, 0) inside it at its (min-floored) natural size.
+            if (min && (min.width > w || min.height > h)) {
+                // The child's own `min-width` / `min-height` keep its box from
+                // shrinking to the cell, so it can never fit regardless of
+                // fill/anchor — clip it with a cell-sized frame: the frame
+                // takes the cell rect and clips, the child parks at (0, 0)
+                // inside it at its (min-floored) natural size. (A `BOTH`-fill
+                // child resolves to the cell size, masking the overflow, so the
+                // clip decision reads the min directly rather than the resolved
+                // box.)
                 component.setClipFrame(x, y, w, h);
                 this.commitBounds(component, 0, 0, w, h);
             } else {
+                // The child fits: resolve its bounds honouring its own
+                // fill/anchor over the grid defaults, then commit the result so
+                // a non-filling child shrinks and anchors within its cell.
+                const resolved = this.resolveBounds(component, x, y, w, h, this._defaultFill, this._defaultAnchor);
+
                 component.clearClipFrame();
                 this.commitBounds(component, resolved.x, resolved.y, resolved.width, resolved.height);
             }
