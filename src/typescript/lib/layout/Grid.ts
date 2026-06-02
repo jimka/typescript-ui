@@ -2,6 +2,7 @@
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
+import { AnchorType } from "~/layout/AnchorType.js";
 import { GridTrack } from "~/layout/GridTrack.js";
 import { GridConstraints } from "~/layout/GridConstraints.js";
 import { Size } from "~/primitive/Size.js";
@@ -15,10 +16,18 @@ import { callable } from "~/core/Callable.js";
  * @category Layouts
  */
 export interface GridOptions extends LayoutManagerOptions {
-    rows?:       number;
-    columns?:    number;
-    spacing?:    number;
-    stretching?: boolean;
+    rows?:    number;
+    columns?: number;
+    spacing?: number;
+
+    /** Grid-wide fill applied to children that don't set their own `fill`. Default {@link FillType.BOTH}. */
+    defaultFill?: FillType;
+
+    /** Grid-wide anchor applied to non-filling children that don't set their own `anchor`. Default {@link AnchorType.CENTER}. */
+    defaultAnchor?: AnchorType;
+
+    /** When `true`, children are baseline-aligned per row (columns stay uniform; children use preferred height). Default `false`. */
+    baselineAlign?: boolean;
 
     /** Per-column sizing tracks; see {@link GridTrack}. */
     columnTracks?: GridTrack[];
@@ -38,7 +47,9 @@ class Grid extends LayoutManager {
     private _rows: number = 0;
     private _columns: number = 0;
     private _spacing: number = 5;
-    private _stretching: boolean = true;
+    private _defaultFill: FillType = FillType.BOTH;
+    private _defaultAnchor: AnchorType = AnchorType.CENTER;
+    private _baselineAlign: boolean = false;
     private _columnTracks: GridTrack[] = [];
     private _rowTracks: GridTrack[] = [];
 
@@ -52,7 +63,8 @@ class Grid extends LayoutManager {
 
     /**
      * Applies a {@link GridOptions} bag, dispatching grid dimensions, spacing,
-     * and stretching after the inherited LayoutManager defaults.
+     * default fill/anchor, and baseline alignment after the inherited
+     * LayoutManager defaults.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -71,8 +83,16 @@ class Grid extends LayoutManager {
             this.setComponentSpacing(options.spacing);
         }
 
-        if (options.stretching !== undefined) {
-            this.setStretching(options.stretching);
+        if (options.defaultFill !== undefined) {
+            this.setDefaultFill(options.defaultFill);
+        }
+
+        if (options.defaultAnchor !== undefined) {
+            this.setDefaultAnchor(options.defaultAnchor);
+        }
+
+        if (options.baselineAlign !== undefined) {
+            this.setBaselineAlign(options.baselineAlign);
         }
 
         if (options.columnTracks !== undefined) {
@@ -85,23 +105,72 @@ class Grid extends LayoutManager {
     }
 
     /**
-     * Returns whether children stretch to fill their cells.
+     * Returns the grid-wide default fill applied to children that don't set
+     * their own `fill` constraint.
      *
-     * @returns `true` if stretching is enabled (default).
+     * @returns The default {@link FillType} (initially {@link FillType.BOTH}).
      */
-    isStretching(): boolean {
-        return this._stretching;
+    getDefaultFill(): FillType {
+        return this._defaultFill;
     }
 
     /**
-     * Sets whether children stretch to fill their cells. When `false`, each row
-     * uses the natural heights of its children and components are
-     * baseline-aligned within the row.
+     * Sets the grid-wide default fill. Each child overrides this with its own
+     * {@link GridConstraints} `fill`; otherwise this value drives whether the
+     * child fills its cell.
      *
-     * @param stretching - Pass `false` to enable per-row baseline alignment instead of stretching.
+     * @param fill - The default fill strategy for children without their own `fill`.
      */
-    setStretching(stretching: boolean): this {
-        this._stretching = stretching;
+    setDefaultFill(fill: FillType): this {
+        this._defaultFill = fill;
+
+        return this;
+    }
+
+    /**
+     * Returns the grid-wide default anchor applied to non-filling children that
+     * don't set their own `anchor` constraint.
+     *
+     * @returns The default {@link AnchorType} (initially {@link AnchorType.CENTER}).
+     */
+    getDefaultAnchor(): AnchorType {
+        return this._defaultAnchor;
+    }
+
+    /**
+     * Sets the grid-wide default anchor. Each child overrides this with its own
+     * {@link GridConstraints} `anchor`; otherwise this value positions a
+     * non-filling child within its cell.
+     *
+     * @param anchor - The default anchor for children without their own `anchor`.
+     */
+    setDefaultAnchor(anchor: AnchorType): this {
+        this._defaultAnchor = anchor;
+
+        return this;
+    }
+
+    /**
+     * Returns whether children are baseline-aligned per row.
+     *
+     * @returns `true` if per-row baseline alignment is enabled.
+     */
+    isBaselineAlign(): boolean {
+        return this._baselineAlign;
+    }
+
+    /**
+     * Sets whether children are baseline-aligned per row. When `true`, columns
+     * stay uniform-width but each row uses the natural heights of its children
+     * and components are baseline-aligned within the row, mirroring
+     * [`HBox`](/api/layout/classes/HBox)'s baseline-aware placement. Orthogonal
+     * to {@link Grid.setDefaultFill} — baseline alignment owns the vertical axis
+     * while fill/anchor still drive the horizontal axis.
+     *
+     * @param baselineAlign - Pass `true` to enable per-row baseline alignment.
+     */
+    setBaselineAlign(baselineAlign: boolean): this {
+        this._baselineAlign = baselineAlign;
 
         return this;
     }
@@ -511,10 +580,15 @@ class Grid extends LayoutManager {
     /**
      * Tiles all children in a grid of equal-sized cells, left-to-right then top-to-bottom.
      *
-     * @remarks When stretching is enabled (default) cells are equal-sized and each
-     * child fills its cell. When stretching is disabled, columns remain uniform-width
-     * but each row uses the natural heights of its children and components are
-     * baseline-aligned within their row, mirroring [`HBox`](/api/layout/classes/HBox)'s baseline-aware placement.
+     * @remarks Each cell is sized by the column/row tracks; how a child sits
+     * inside its cell is driven by the child's own `fill`/`anchor`
+     * ([`GridConstraints`](/api/layout/classes/GridConstraints)) falling back to
+     * the grid's {@link Grid.setDefaultFill}/{@link Grid.setDefaultAnchor}
+     * (default {@link FillType.BOTH}, so children fill their cells out of the
+     * box). When {@link Grid.setBaselineAlign} is enabled, columns stay
+     * uniform-width but each row uses the natural heights of its children and
+     * components are baseline-aligned within their row, mirroring
+     * [`HBox`](/api/layout/classes/HBox)'s baseline-aware placement.
      */
     doLayout() {
         let container = this.getContainer();
@@ -550,7 +624,7 @@ class Grid extends LayoutManager {
         let columnWidth   = (containerSize.width  - totalHSpacing) / cols;
         let columnHeight  = (containerSize.height - totalVSpacing) / rows;
 
-        if (this._stretching) {
+        if (!this._baselineAlign) {
             this.layoutOccupancy(components, cols, rows, containerSize, containerInsets, spacing);
 
             return;
@@ -605,7 +679,8 @@ class Grid extends LayoutManager {
                     cellY,
                     columnWidth,
                     height,
-                    FillType.BOTH
+                    this._defaultFill,
+                    this._defaultAnchor
                 );
 
                 x += columnWidth + spacing;
@@ -787,18 +862,19 @@ class Grid extends LayoutManager {
                 h += rowExtents[i] ?? 0;
             }
 
-            const min = component.getMinSize();
+            const resolved = this.resolveBounds(component, x, y, w, h, this._defaultFill, this._defaultAnchor);
 
-            if (min && (min.width > w || min.height > h)) {
-                // The child's own `min-width` / `min-height` keep its box from
-                // shrinking to the cell, so clip it with a cell-sized frame:
-                // the frame takes the cell rect and clips, the child parks at
+            if (resolved.width > w || resolved.height > h) {
+                // `resolveBounds` floors the child to its own `min-width` /
+                // `min-height`, so a child whose min exceeds the cell resolves
+                // larger than the cell. Clip it with a cell-sized frame: the
+                // frame takes the cell rect and clips, the child parks at
                 // (0, 0) inside it at its (min-floored) natural size.
                 component.setClipFrame(x, y, w, h);
                 this.commitBounds(component, 0, 0, w, h);
             } else {
                 component.clearClipFrame();
-                this.placeComponent(component, x, y, w, h, FillType.BOTH);
+                this.commitBounds(component, resolved.x, resolved.y, resolved.width, resolved.height);
             }
         };
 
