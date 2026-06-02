@@ -155,9 +155,8 @@ class Popover extends Panel<PopoverOptions> {
     private readonly _onScroll:            () => void;
 
     /**
-     * Creates a popover with a 5px layout-side inset (in addition to the
-     * theme-driven CSS padding) and the default chrome wired to the theme
-     * tokens.
+     * Creates a popover with a 5px layout-side inset and the default chrome
+     * wired to the theme tokens.
      *
      * @param options - Optional construction-time options.
      */
@@ -175,7 +174,6 @@ class Popover extends Panel<PopoverOptions> {
         this.setBorder({ border: "1px solid var(--ts-ui-popover-border, rgb(200, 200, 200))" });
         this.setBorderRadius("var(--ts-ui-popover-radius, 6px)");
         this.setShadow("var(--ts-ui-popover-shadow, 2px 4px 12px rgba(0, 0, 0, 0.18))");
-        this.setPadding(new Insets(12, 12, 12, 12));
 
         // Overlay placement: top-level, viewport-fixed, above floating
         // windows but below tooltips / notifications / dialogs.
