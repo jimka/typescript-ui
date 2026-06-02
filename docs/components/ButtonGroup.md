@@ -45,7 +45,7 @@ group.setContainer(toolbar); // enables roving tabindex
 
 ```typescript
 group.on("selection", button => {
-    console.log('selected:', button.getText());
+    console.log('selected:', button);
 });
 ```
 

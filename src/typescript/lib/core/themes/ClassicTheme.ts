@@ -21,6 +21,11 @@ export const ClassicTheme: Theme = {
         shadow    : '1px 2px 5px 0 rgba(0, 0, 0, 0.2)',
         padding   : '0',
         font      : { size: '12px' },
+        description: {
+            fontSize  : '11px',
+            foreground: 'rgb(110, 110, 110)',
+            weight    : 'normal',
+        },
         pressed   : {
             foreground: 'rgb(150, 150, 150)',
             background: 'linear-gradient(rgb(200, 200, 200), rgb(214, 214, 214))',

@@ -2,7 +2,7 @@
 
 [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) is a flat label-style button that opens a [`Menu`](/components/Menu). Used internally by [`MenuBar`](/components/MenuBar) — you'd reach for it directly only when assembling a custom menu strip.
 
-Extends [`Button`](/components/Button) with `chromeless: true` so the menubar's flat label-style appearance dodges Button's ridge border, drop shadow, and gradient defaults. The text/glyph setters (`setText`, `getText`, `setGlyph`, `clearGlyph`, `getGlyph`) are inherited from `Button` unchanged. Because each `MenuBarButton` auto-sizes to `content + insets`, the inherited horizontal `anchor` setting is moot — content fills the inner rect exactly. The `insets` (10px each side by default) instead control the visible gap between adjacent menubar entries. Active state (open dropdown) is indicated by a persistent background fill via `setActive`.
+Extends [`Button`](/components/Button) with `chromeless: true` so the menubar's flat label-style appearance dodges Button's ridge border, drop shadow, and gradient defaults. The text/glyph setters (`setText`, `setGlyph`, `clearGlyph`, `getGlyph`) are inherited from `Button` unchanged. Because each `MenuBarButton` auto-sizes to `content + insets`, the inherited horizontal `anchor` setting is moot — content fills the inner rect exactly. The `insets` (10px each side by default) instead control the visible gap between adjacent menubar entries. Active state (open dropdown) is indicated by a persistent background fill via `setActive`.
 
 ## Usage
 

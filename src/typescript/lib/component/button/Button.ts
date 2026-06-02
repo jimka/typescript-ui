@@ -4,7 +4,9 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
+import { VBox } from "~/layout/VBox.js";
 import { Text } from "~/component/input/Text.js";
+import { Tooltip } from "~/core/Tooltip.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
@@ -40,6 +42,14 @@ export type ClickListener = (event: MouseEvent) => void;
  */
 export interface ButtonOptions extends ComponentOptions {
     text?:                   string;
+
+    /**
+     * Optional subtitle rendered on a second line *below* the title, in a
+     * smaller, dimmer style. Dispatched late (mirroring `text`) so it lands
+     * once the content row's children exist. Drives the hover tooltip
+     * alongside `text` — see [`setDescription`](/api/component/button/classes/Button#setdescription).
+     */
+    description?:            string;
     glyph?:                  string;
     enabled?:                boolean;
     pressedBackgroundColor?: string;
@@ -147,6 +157,23 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * needs to keep this field's identity and shape stable.
      */
     protected _content!: Component;
+
+    /**
+     * The vertical title/subtitle stack nested inside `_content`'s HBox. Holds
+     * `[_text, _description?]` laid out by a `VBox`, so the optional
+     * description renders on a line below the title while the leading glyph
+     * stays beside the whole stack. Private — unlike `_content` this is an
+     * internal detail of how the label row stacks and is not part of the
+     * subclass re-anchor contract.
+     */
+    private _titleColumn!: Component;
+
+    /**
+     * The subtitle label, created lazily on the first {@link setDescription}
+     * call (mirroring `_glyph`'s lazy creation) so a button with no
+     * description never reserves a second line. `null` until then.
+     */
+    private _description: Text | null = null;
     private _glyph: Glyph | null = null;
 
     /**
@@ -242,13 +269,21 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // not be able to override it.
         this.setLayoutManager(new Fit());
 
-        // Build the text/glyph content row.
-        this._text    = new Text();
+        // Build the text/glyph content row. The title (and optional subtitle)
+        // live in a vertical `_titleColumn` so the description stacks below the
+        // title; the glyph sits beside the whole column in the outer HBox.
+        this._text        = new Text();
+        this._titleColumn = new Component();
+        this._titleColumn.setLayoutManager(new VBox({ spacing: 0 }));
+        this._titleColumn.setInsets(new Insets(0, 0, 0, 0));
+        this._titleColumn.setPointerEvents("none");
+        this._titleColumn.addComponent(this._text);
+
         this._content = new Component();
         this._content.setLayoutManager(new HBox({ spacing: 2 }));
         this._content.setInsets(new Insets(0, 0, 0, 0));
         this._content.setPointerEvents("none");
-        this._content.addComponent(this._text);
+        this._content.addComponent(this._titleColumn);
 
         this._text.setPointerEvents("none");
         this._text.setTextAlign("center");
@@ -265,10 +300,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // yet. Dispatch them now that children are wired up.
         const effectiveText = this._options.text ?? text;
         if (effectiveText !== undefined) {
-            this._text.setText(effectiveText);
+            this.setText(effectiveText);
         }
         if (this._options.glyph !== undefined) {
             this.setGlyph(this._options.glyph);
+        }
+        if (this._options.description !== undefined) {
+            this.setDescription(this._options.description);
         }
 
         // Initial auto-sized preferred-size pass. No-ops when the consumer
@@ -287,9 +325,9 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * through `super.applyOptions`; pressed-state, hover-state, and `enabled`
      * fields cascade through their own setters (the lazy `pressedStyleRule`
      * and `hoverStyleRule` getters make them safe to fire during the
-     * super-time cascade). `text` and `glyph` are written pure into
-     * `_options` here and dispatched from the constructor body once children
-     * exist.
+     * super-time cascade). `text`, `description`, and `glyph` are written pure
+     * into `_options` here and dispatched from the constructor body once
+     * children exist.
      *
      * @param options - The options bag carrying the values to apply.
      */
@@ -301,6 +339,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         const opts = { ...this._defaultOptions, ...options } as TOptions;
 
         if (opts.text         !== undefined) this._options.text         = opts.text;
+        if (opts.description  !== undefined) this._options.description  = opts.description;
         if (opts.glyph        !== undefined) this._options.glyph        = opts.glyph;
 
         if (opts.enabled      !== undefined) this.setEnabled(opts.enabled);
@@ -370,12 +409,107 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
-     * Returns the Text child component used to display the button text.
+     * Sets the button's title text. The single entry point for mutating the
+     * title — there is no public accessor for the inner label, so every title
+     * change routes through here, keeping the auto-sized preferred size and
+     * the hover tooltip (composed from title + description) in sync.
      *
-     * @returns The internal Text instance.
+     * @param text - The new title string.
+     *
+     * @returns This component, for method chaining.
      */
-    getText() {
-        return this._text;
+    setText(text: string): this {
+        this._text.setText(text);
+        this.recomputePreferredSize();
+        this._rebuildTooltip();
+
+        return this;
+    }
+
+    /**
+     * Sets the button's subtitle, shown on a line below the title in a
+     * smaller, dimmer style. The subtitle label is created lazily on the
+     * first call (mirroring {@link setGlyph}) so a button with no description
+     * never reserves a second line. Re-syncs the auto-sized preferred size
+     * and the hover tooltip.
+     *
+     * @param text - The subtitle string.
+     *
+     * @returns This component, for method chaining.
+     */
+    setDescription(text: string): this {
+        if (!this._description) {
+            this._description = new Text();
+            this._description.setPointerEvents("none");
+            this._description.setTextAlign("center");
+            this._description.setFontSize("--ts-ui-button-description-font-size");
+            this._description.setFontWeight("var(--ts-ui-button-description-weight, normal)");
+            this._description.setForegroundColor("var(--ts-ui-button-description-fg, rgb(110, 110, 110))");
+
+            this._titleColumn.addComponent(this._description);
+        }
+
+        this._description.setText(text);
+        this._rebuildTooltip();
+        this.recomputePreferredSize();
+
+        return this;
+    }
+
+    /**
+     * Returns the subtitle Text child, or `null` when no description has been
+     * set (mirroring {@link getGlyph}). Read-only access — the only way to
+     * change the subtitle string is {@link setDescription}, so the tooltip
+     * stays authoritative.
+     *
+     * @returns The description [`Text`](/api/component/input/classes/Text) instance, or null.
+     */
+    getDescription(): Text | null {
+        return this._description;
+    }
+
+    /**
+     * Removes the subtitle line, if one is present, and re-syncs the
+     * auto-sized preferred size and the hover tooltip.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearDescription(): this {
+        if (this._description) {
+            this._titleColumn.removeComponent(this._description);
+            this._description = null;
+        }
+
+        this._rebuildTooltip();
+        this.recomputePreferredSize();
+
+        return this;
+    }
+
+    /**
+     * Recomposes the hover tooltip from the current title and description and
+     * (re)attaches it. The tooltip body is `{title}\n\n{description}` when a
+     * description exists, the title alone when it doesn't, and the description
+     * alone when there is no title. Detaches entirely when both are empty.
+     * Routed through [`Tooltip`](/api/core/classes/Tooltip), which renders the
+     * `\n` breaks across multiple lines.
+     */
+    private _rebuildTooltip(): void {
+        const title = this._text.getText().valueOf();
+        const desc  = this._description?.getText().valueOf() ?? "";
+
+        let str: string;
+        if (title && desc) {
+            str = `${title}\n\n${desc}`;
+        } else {
+            str = title || desc;
+        }
+
+        if (str) {
+            Tooltip.attach(this, str);
+        } else {
+            Tooltip.detach(this);
+        }
     }
 
     /**
@@ -647,10 +781,10 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * Returns the preferred size, derived live from the content row +
      * perimeter via {@link computePreferredSize} while the consumer hasn't
      * pinned one. Deriving live (rather than reading a cached value) means
-     * the button always tracks its current label / glyph: a `getText()
-     * .setText(...)` that grows or shrinks the label is reflected the next
-     * time the parent layout queries this button, with no manual recompute
-     * call needed at the mutation site.
+     * the button always tracks its current label / glyph: a {@link setText}
+     * that grows or shrinks the label is reflected the next time the parent
+     * layout queries this button, with no manual recompute call needed at the
+     * mutation site.
      *
      * When the consumer has supplied an explicit `preferredSize`, that pinned
      * value (recorded by {@link setPreferredSize}) wins via `super`.
