@@ -21,11 +21,40 @@ Pass a `description` to render a second line below the title, in a smaller, dimm
 Button({ text: 'Save document', description: 'Persist your changes to disk' });
 ```
 
-The subtitle stacks below the title inside the content row — a leading `glyph`, if present, stays beside the whole title/subtitle stack. Add or update it at runtime with `setDescription(text)`, read the subtitle [`Text`](/api/component/input/classes/Text) child with `getDescription()` (or `null` when none is set), and remove it with `clearDescription()`. Each re-syncs the button's auto-sized preferred size.
+The subtitle stacks below the title inside the content row. Add or update it at runtime with `setDescription(text)`, read the subtitle [`Text`](/api/component/input/classes/Text) child with `getDescription()` (or `null` when none is set), and remove it with `clearDescription()`. Each re-syncs the button's auto-sized preferred size.
 
-Setting a title and/or description also auto-attaches a hover [`Tooltip`](/components/Tooltip): the title alone when there is no description, or the title and description on separate lines when both are present. The tooltip stays in sync as `setText` / `setDescription` / `clearDescription` change the text.
+### Alignment relative to the glyph
 
-The subtitle's size, colour, and weight come from the `button.description.*` theme tokens — see [Theming](#theming).
+When the button has both a leading `glyph` and a description, `descriptionUnderGlyph` controls where the description aligns:
+
+- **`true` (default)** — the description spans the full content-row width *below* the glyph+title row, its left edge under the glyph.
+- **`false`** — the description indents under the title text, beside the glyph.
+
+```typescript
+// Description full-width under the glyph (default):
+Button({ text: 'Save document', description: 'Persist your changes to disk', glyph: 'floppy-disk' });
+
+// Description indented under the title, beside the glyph:
+Button({ text: 'Cancel', description: 'Discard your changes', glyph: 'xmark', descriptionUnderGlyph: false });
+```
+
+Flip it at runtime with `setDescriptionUnderGlyph(value)` / read it with `isDescriptionUnderGlyph()`. The option has no visible effect without both a glyph and a visible description.
+
+### Showing the description in the tooltip only
+
+`showDescription: false` hides the description on the button face — the button shows only its glyph and title — while still surfacing it in the hover tooltip:
+
+```typescript
+Button({ text: 'Delete', description: 'This action cannot be undone', showDescription: false });
+```
+
+The button renders compact (glyph + title), but hovering shows `Delete` / `This action cannot be undone`. Toggle at runtime with `setShowDescription(value)` / `isShowDescription()`. When `false`, the `descriptionUnderGlyph` alignment has no visible effect.
+
+### Tooltip
+
+Setting a title and/or description also auto-attaches a hover [`Tooltip`](/components/Tooltip): the title alone when there is no description, or the title and description on separate lines when both are present. The tooltip stays in sync as `setText` / `setDescription` / `clearDescription` change the text — and reflects the description even when `showDescription` is `false`.
+
+The subtitle's size, colour, and weight come from the `button.description.*` theme tokens — see [Theming](#theming). A leading glyph is auto-sized so its box height matches the title's line height; override it by sizing the glyph explicitly via `getGlyph().setPreferredSize(...)`.
 
 ## Theming
 
