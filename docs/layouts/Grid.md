@@ -25,7 +25,7 @@ keypad.setLayoutManager(Grid({ rows: 4, columns: 3 }));
 });
 ```
 
-[`GridOptions`](/api/layout/interfaces/GridOptions) accepts `rows`, `columns`, `spacing`, `stretching`, `columnTracks`, and `rowTracks` declaratively; the corresponding setters still work for runtime updates.
+[`GridOptions`](/api/layout/interfaces/GridOptions) accepts `rows`, `columns`, `spacing`, `defaultFill`, `defaultAnchor`, `baselineAlign`, `columnTracks`, and `rowTracks` declaratively; the corresponding setters still work for runtime updates.
 
 ## Auto-sizing
 
@@ -74,9 +74,24 @@ Explicitly-placed children (those declaring `col` and/or `row`) are reserved fir
 
 When a child's minimum size exceeds the cell block assigned to it (for example, a wide button in a narrow `"fixed"` column), the grid wraps the child in a cell-sized clip frame with `overflow: hidden`, so the child is clipped at the cell edge rather than spilling into neighbours — the child keeps its own (min-floored) box; the frame does the clipping. A child in a `"content"` track is never clipped — the track grows to fit it.
 
+## Per-child fill and anchor
+
+Every cell is sized by its tracks; how a child sits *inside* its cell is driven by `fill` and `anchor`. The grid supplies defaults — `defaultFill` (initially [`FillType.BOTH`](/api/layout/enumerations/FillType), so children fill their cells out of the box) and `defaultAnchor` (initially [`AnchorType.CENTER`](/api/layout/enumerations/AnchorType)) — and each child overrides them through its own [`GridConstraints`](/api/layout/classes/GridConstraints) `fill`/`anchor`:
+
+```typescript
+panel.setLayoutManager(Grid({ columns: 3 })); // defaultFill = FillType.BOTH
+
+const shrink = new GridConstraints();
+shrink.fill   = FillType.NONE;          // opt out of the grid default
+shrink.anchor = AnchorType.SOUTHEAST;   // park at the cell's SE corner
+panel.addComponent(Button("no fill"), shrink);
+```
+
+A child with `fill = FillType.NONE` shrinks to its preferred size and parks at its `anchor`; a child that leaves `fill` unset inherits `defaultFill`. Set `defaultFill: FillType.NONE` to flip the whole grid to preferred-size placement while still letting individual children opt back into filling.
+
 ## Per-child constraints
 
-[`LayoutConstraints`](/layouts/Constraints) — `fill` and `anchor` apply when a child's preferred size is smaller than its cell. [`GridConstraints`](/api/layout/classes/GridConstraints) additionally carries `col`/`row` (explicit placement) and `colSpan`/`rowSpan` (cell spanning).
+[`LayoutConstraints`](/layouts/Constraints) — `fill` and `anchor` (see above) override the grid's `defaultFill`/`defaultAnchor` per child. [`GridConstraints`](/api/layout/classes/GridConstraints) additionally carries `col`/`row` (explicit placement) and `colSpan`/`rowSpan` (cell spanning).
 
 ## Common methods
 
@@ -84,17 +99,19 @@ When a child's minimum size exceeds the cell block assigned to it (for example, 
 | --- | --- |
 | `setRows(n)` / `setColumns(n)` | Explicit grid dimensions. `0` = auto. |
 | `setComponentSpacing(px)` | Horizontal and vertical gap between cells. |
-| `setStretching(boolean)` | When `true` (default), every child fills its cell. When `false`, cells stay uniformly sized and the grid still fills the container, but children inside each cell use their preferred heights and are baseline-aligned within the row. |
+| `setDefaultFill(FillType)` | Grid-wide fill for children without their own `fill`. Default [`FillType.BOTH`](/api/layout/enumerations/FillType) (children fill their cells). |
+| `setDefaultAnchor(AnchorType)` | Grid-wide anchor for non-filling children without their own `anchor`. Default [`AnchorType.CENTER`](/api/layout/enumerations/AnchorType). |
+| `setBaselineAlign(boolean)` | When `true`, columns stay uniform-width but each row uses its children's preferred heights and baseline-aligns them. Default `false`. |
 | `setColumnTracks(tracks)` / `setRowTracks(tracks)` | Per-axis [`GridTrack`](/api/layout/interfaces/GridTrack) sizing (weight / fixed / content). |
 
 ## Baseline alignment
 
-By default, `Grid` makes every cell the same size and stretches children to fill them. Call `setStretching(false)` to keep the uniform cell grid (so the layout still fills its container) but let children inside each row use their preferred heights and baseline-align with each other — the same alignment rules as [`HBox`](/layouts/HBox#baseline-alignment).
+By default, `Grid` makes every cell the same size and (via `defaultFill = FillType.BOTH`) stretches children to fill them. Set `baselineAlign: true` to keep the uniform cell grid (so the layout still fills its container) but let children inside each row use their preferred heights and baseline-align with each other — the same alignment rules as [`HBox`](/layouts/HBox#baseline-alignment). This is orthogonal to `defaultFill`: baseline alignment owns the vertical axis while fill/anchor still drive the horizontal axis.
 
 ```typescript
 panel.setLayoutManager(Grid({
-    columns   : 2,
-    stretching: false, // per-row baseline alignment
+    columns      : 2,
+    baselineAlign: true, // per-row baseline alignment
 }));
 
 // Useful for label/field form grids:
@@ -106,10 +123,10 @@ panel.addComponent(NumberSpinner());
 
 ## When to use it
 
-- Calculator / numpad layouts (stretching mode).
-- Photo galleries / icon grids (stretching mode).
-- Form grids where each row should baseline-align label and input (non-stretching mode).
-- Any tabular UI where every cell is the same size (stretching mode).
+- Calculator / numpad layouts (default fill).
+- Photo galleries / icon grids (default fill).
+- Form grids where each row should baseline-align label and input (`baselineAlign: true`).
+- Any tabular UI where every cell is the same size (default fill).
 - Dashboards with mixed fixed / fluid / content columns and spanning tiles (track sizing).
 
 For variable column widths, use `columnTracks` / `rowTracks`, or build a [`Table`](/components/Table) for true tabular data.
