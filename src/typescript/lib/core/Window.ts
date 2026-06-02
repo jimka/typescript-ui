@@ -19,16 +19,6 @@ const SNAP_DOCK_GAP_PX:         number = 4;
 const DEFAULT_MIN_DOCK_WIDTH_PX: number = 200;
 
 /**
- * Sentinel Component used as the registration key for the window-wide
- * `mousedown` outside-click listener. The handler is a static (one per
- * `Window` namespace, not per instance), but `Event.addViewportListener`
- * requires a Component to bind to. Allocating one stable sentinel
- * preserves the existing install/uninstall lifecycle that's tied to
- * `Window.openWindows.size`, rather than to any individual window.
- */
-const _viewportListenerOwner: Component = new Component();
-
-/**
  * Lifecycle state for {@link Window}. The three values are mutually
  * exclusive — a window is always exactly one of:
  *
@@ -135,22 +125,7 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
  */
 class Window extends Panel<WindowOptions> implements DismissableLayer {
 
-    private static activeWindow: Window | null = null;
     private static openWindows: Set<Window> = new Set<Window>();
-
-    private static readonly deactivateIfOutside: (e: MouseEvent) => void = (evnt: MouseEvent) => {
-        for (const win of Window.openWindows) {
-            const el = win.getElement();
-            if (el && el.contains(evnt.target as Node)) {
-                return;
-            }
-        }
-
-        if (Window.activeWindow) {
-            Window.activeWindow._header.setActive(false);
-            Window.activeWindow = null;
-        }
-    };
 
     private _header: WindowHeader;
     private _borderComponents: {
@@ -394,14 +369,6 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         this.doLayout();
         this.bringToFront();
 
-        if (Window.openWindows.size === 0) {
-            Event.addViewportListener(
-                _viewportListenerOwner,
-                'mousedown',
-                Window.deactivateIfOutside
-            );
-        }
-
         Window.openWindows.add(this);
 
         document.documentElement.appendChild(el);
@@ -503,21 +470,11 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
      * the previously active window and this one.
      */
     bringToFront(): void {
-        const prev = Window.activeWindow;
-
-        if (prev && prev !== this) {
-            prev._header.setActive(false);
-        }
-
-        Window.activeWindow = this;
-
-        // Route the z-stamp through the manager so a window and any layers
-        // opened inside it ascend together within the Window band.
-        // bringToFront re-allocates and notifies onZIndexChanged, which
-        // mirrors the value via setZIndex.
+        // Route the raise through the manager: it re-allocates the z-stamp
+        // (mirrored back via onZIndexChanged) and marks this window active,
+        // which deactivates the previously-active window's title bar through
+        // onActivate. No local activeWindow / setActive bookkeeping is needed.
         LayerManager.bringToFront(this);
-
-        this._header.setActive(true);
     }
 
     // ----- DismissableLayer -----
@@ -533,13 +490,27 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
 
     /**
      * Returns the dismiss mode the document-level handlers consult. A window
-     * is never dismissed by an outside interaction, so it stays `"manual"`;
-     * Phase 2 wires its title-bar activation through {@link Window.onActivate}.
+     * is never dismissed by an outside interaction, so it stays `"manual"`.
+     * Activation (the title-bar highlight) is orthogonal to dismissal — the
+     * manager drives it through {@link Window.onActivate} for any mode.
      *
      * @returns The layer dismiss mode.
      */
     getDismissMode(): LayerDismissMode {
         return "manual";
+    }
+
+    /**
+     * Reflects the active state onto the title bar. The manager calls this
+     * with `true` when a pointer / focus interaction lands inside the window
+     * (or a layer opened inside it) and `false` when another layer takes over
+     * or an empty-viewport click deactivates everything. Replaces the bespoke
+     * `Window.deactivateIfOutside` viewport listener.
+     *
+     * @param active - True when this window is the active layer.
+     */
+    onActivate(active: boolean): void {
+        this._header.setActive(active);
     }
 
     /**
@@ -595,21 +566,9 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         this.detachViewportResizeListener();
         this.clearSnapTargetBorder();
 
-        if (Window.activeWindow === this) {
-            Window.activeWindow = null;
-        }
-
         LayerManager.unregister(this);
 
         Window.openWindows.delete(this);
-
-        if (Window.openWindows.size === 0) {
-            Event.removeViewportListener(
-                _viewportListenerOwner,
-                'mousedown',
-                Window.deactivateIfOutside
-            );
-        }
 
         // Re-layout the dock so any sibling minimized windows close any gap
         // this one's removal left behind.
