@@ -22,6 +22,11 @@ export const ModernTheme: Theme = {
         shadow    : 'none',
         padding   : '0',
         font      : { size: '12px' },
+        description: {
+            fontSize  : '11px',
+            foreground: 'rgb(110, 110, 110)',
+            weight    : 'normal',
+        },
         pressed   : {
             foreground: 'rgb(150, 150, 150)',
             background: 'linear-gradient(rgb(206, 210, 216), rgb(214, 217, 222))',

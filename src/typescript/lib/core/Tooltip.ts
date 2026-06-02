@@ -74,12 +74,17 @@ export class Tooltip extends Component {
 
     private static readonly H_PADDING: number = 16;
     private static readonly V_PADDING: number = 8;
-    private static readonly MIN_WIDTH: number = 80;
     private static readonly MAX_WIDTH: number = 300;
     private static readonly ITEM_HEIGHT: number = 20;
     private static readonly CURSOR_OFFSET: number = 14;
 
     private _text: Text;
+
+    // Number of `\n`-separated lines in the text currently shown. Cached by
+    // `show()` (which knows the raw string) and read by `doLayout()` (which
+    // only sees the committed size) so the label's height tracks the line
+    // count. 1 for a single-line tooltip — the unchanged legacy case.
+    private _lineCount: number = 1;
 
     /** Private — use the static methods; only one instance is ever created. */
     private constructor() {
@@ -99,7 +104,11 @@ export class Tooltip extends Component {
 
         this._text = new Text();
         this._text.setPointerEvents("none");
-        this._text.setWhiteSpace("nowrap");
+        // `pre-wrap` preserves explicit `\n` breaks as real lines *and* wraps
+        // a line that overflows the fixed width — `nowrap` would collapse the
+        // breaks onto one line. A single-line tooltip narrower than MAX_WIDTH
+        // renders identically to the old `nowrap` behaviour.
+        this._text.setWhiteSpace("pre-wrap");
         this.addComponent(this._text);
     }
 
@@ -133,11 +142,19 @@ export class Tooltip extends Component {
 
         inst._text.setText(text);
 
-        const tooltipWidth = Math.min(
-            Tooltip.MAX_WIDTH,
-            Math.max(Tooltip.MIN_WIDTH, Util.measureTextWidth(text) + Tooltip.H_PADDING)
-        );
-        const tooltipHeight = Tooltip.ITEM_HEIGHT + Tooltip.V_PADDING;
+        // Size width to the widest line and height to the line count so a
+        // `\n`-containing string renders as a multi-line block. A string with
+        // no `\n` yields a single line and the original single-line sizing.
+        const lines      = text.split("\n");
+        const widestLine = lines.reduce((max, line) => Math.max(max, Util.measureTextWidth(line)), 0);
+
+        inst._lineCount = lines.length;
+
+        // No minimum width — the tooltip hugs its content (widest line plus
+        // horizontal padding), capped at MAX_WIDTH. A min-width floor would
+        // pad short labels out to a fixed box wider than their text.
+        const tooltipWidth  = Math.min(Tooltip.MAX_WIDTH, widestLine + Tooltip.H_PADDING);
+        const tooltipHeight = lines.length * Tooltip.ITEM_HEIGHT + Tooltip.V_PADDING;
 
         inst.setWidth(tooltipWidth);
         inst.setHeight(tooltipHeight);
@@ -425,7 +442,7 @@ export class Tooltip extends Component {
         this._text.setX(Tooltip.H_PADDING / 2);
         this._text.setY(Tooltip.V_PADDING / 2);
         this._text.setWidth(Math.max(0, this.getWidth() - Tooltip.H_PADDING));
-        this._text.setHeight(Tooltip.ITEM_HEIGHT);
+        this._text.setHeight(this._lineCount * Tooltip.ITEM_HEIGHT);
 
         return this;
     }

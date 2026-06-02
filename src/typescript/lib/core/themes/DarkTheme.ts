@@ -19,6 +19,11 @@ export const DarkTheme: Theme = {
         shadow    : '1px 2px 5px 0 rgba(0, 0, 0, 0.5)',
         padding   : '0',
         font      : { size: '12px' },
+        description: {
+            fontSize  : '11px',
+            foreground: 'rgb(160, 160, 160)',
+            weight    : 'normal',
+        },
         pressed   : {
             foreground: 'rgb(180, 180, 180)',
             background: 'linear-gradient(rgb(35, 35, 35), rgb(48, 48, 48))',
