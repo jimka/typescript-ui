@@ -421,7 +421,12 @@ class Accordion extends LayoutManager {
     }
 
     /**
-     * Returns the minimum size: sum of all header heights (headers are always visible).
+     * Returns the minimum size: every header height (headers are always
+     * visible) plus the minimum heights of all open sections. Mirrors
+     * {@link getPreferredSize} but reads each open section's `getMinSize`
+     * rather than its preferred size, so a host can tell how far the accordion
+     * is genuinely allowed to shrink — the headers plus the open content's own
+     * floor — instead of assuming the open content can collapse to nothing.
      *
      * @returns The minimum size, or null if not attached.
      */
@@ -433,11 +438,36 @@ class Accordion extends LayoutManager {
         }
 
         const perimeterSize = container.getPerimiterSize();
-        const componentCount = container.getComponents().length;
+        const components = container.getComponents();
+        let totalHeight = perimeterSize.top + perimeterSize.bottom;
+        let maxWidth = 0;
+
+        for (let i = 0; i < components.length; i++) {
+            totalHeight += this._headerHeight;
+
+            // openState is populated lazily in doLayout; fall back to the
+            // constraint's initiallyOpen flag so getMinSize() is correct even
+            // before the first doLayout pass (matches getPreferredSize).
+            const isOpen = i < this._openState.length
+                ? this._openState[i]
+                : ((this.getLayoutConstraints(components[i]) as AccordionConstraints | undefined)?.initiallyOpen ?? false);
+
+            if (isOpen) {
+                const min = components[i].getMinSize();
+
+                if (min) {
+                    totalHeight += min.height;
+
+                    if (min.width > maxWidth) {
+                        maxWidth = min.width;
+                    }
+                }
+            }
+        }
 
         return {
-            width : perimeterSize.left + perimeterSize.right,
-            height: componentCount * this._headerHeight + perimeterSize.top + perimeterSize.bottom,
+            width : maxWidth + perimeterSize.left + perimeterSize.right,
+            height: totalHeight,
         };
     }
 
@@ -555,6 +585,11 @@ class Accordion extends LayoutManager {
             containerWidth = Math.max(containerWidth, totalMin.width);
         }
 
+        // Shrink-to-fit along the vertical axis: when the open sections'
+        // preferred heights overflow the container, shrink each toward its min
+        // so the accordion fits — see computeShrinkRatio for the full policy.
+        const shrinkRatio = this.computeShrinkRatio(components, containerSize);
+
         let y = insets.getTop();
 
         for (let i = 0; i < components.length; i++) {
@@ -571,14 +606,21 @@ class Accordion extends LayoutManager {
 
             y += this._headerHeight;
 
-            // The content keeps its preferred height in both open and closed
-            // states so the wrapper's `overflow: hidden` does the clipping during
-            // the close animation. If the content collapses to 0 instantly while
-            // the wrapper transitions N → 0, the close reads as the content
+            // Open sections take their preferred height, shrunk toward their min
+            // by the container-driven ratio so the accordion fits its host.
+            // Closed sections keep their content at preferred height so the
+            // wrapper's `overflow: hidden` does the clipping during the close
+            // animation — if the content collapsed to 0 instantly while the
+            // wrapper transitions N → 0, the close would read as the content
             // vanishing followed by an empty wrapper sliding shut.
             const preferred = component.getPreferredSize();
-            const contentHeight = preferred ? preferred.height : 100;
-            const panelHeight = isOpen ? contentHeight : 0;
+            const contentPref = preferred ? preferred.height : 100;
+            const min = component.getMinSize();
+            const contentMin = min ? min.height : 0;
+            const openHeight = contentPref - shrinkRatio * (contentPref - contentMin);
+
+            const panelHeight   = isOpen ? openHeight  : 0;
+            const contentHeight = isOpen ? openHeight  : contentPref;
 
             wrapper.setX(insets.getLeft());
             wrapper.setY(y);
@@ -593,6 +635,63 @@ class Accordion extends LayoutManager {
 
             y += panelHeight;
         }
+    }
+
+    /**
+     * Computes the vertical shrink ratio applied to every open section's
+     * content so the accordion fits its container, mirroring VBox's
+     * preferred-mode shrink. Headers are fixed and never shrink; only open
+     * sections contribute shrinkable content.
+     *
+     * Three cases:
+     *   1. The open sections already fit (`preferred <= budget`) → ratio `0`,
+     *      so every section renders at its preferred height.
+     *   2. They overflow but fit at their combined minimum
+     *      (`min <= budget < preferred`) → ratio
+     *      `(preferred - budget) / (preferred - min)`, clamped to `[0, 1]`, so
+     *      each section shrinks proportionally from preferred toward its min.
+     *   3. They overflow even at the combined minimum (`budget < min`) →
+     *      ratio `0`, falling back to preferred and letting the host clip. A
+     *      layout crammed below every section's min reads worse than a clean
+     *      overflow, so the manager declines to shrink past min.
+     *
+     * @param components - The container's content components, section-ordered.
+     * @param containerSize - The container's inner size; `null` short-circuits
+     *   to `0` (no shrink) since the budget is unknown.
+     * @returns The shrink ratio in `[0, 1]`.
+     */
+    private computeShrinkRatio(components: Component[], containerSize: Size | null): number {
+        if (!containerSize) {
+            return 0;
+        }
+
+        const headerTotal = components.length * this._headerHeight;
+        let openPreferred = 0;
+        let openMin = 0;
+
+        for (let i = 0; i < components.length; i++) {
+            if (!this._openState[i]) {
+                continue;
+            }
+
+            const pref = components[i].getPreferredSize();
+            const min = components[i].getMinSize();
+
+            openPreferred += pref ? pref.height : 100;
+            openMin += min ? min.height : 0;
+        }
+
+        const totalPreferred = headerTotal + openPreferred;
+        const totalMin = headerTotal + openMin;
+        const budget = containerSize.height;
+
+        if (totalPreferred <= budget || totalMin > budget) {
+            return 0;
+        }
+
+        const shrinkable = totalPreferred - totalMin;
+
+        return shrinkable > 0 ? (totalPreferred - budget) / shrinkable : 0;
     }
 
     /**
