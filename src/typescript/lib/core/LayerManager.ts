@@ -365,15 +365,22 @@ export namespace LayerManager {
             return;
         }
 
-        if (_activeLayer && _activeLayer.onActivate) {
-            _activeLayer.onActivate(false);
-        }
+        deactivateActive();
 
         _activeLayer = layer;
 
         if (layer.onActivate) {
             layer.onActivate(true);
         }
+    }
+
+    /** Deactivates the currently-active layer, if any. */
+    function deactivateActive(): void {
+        if (_activeLayer && _activeLayer.onActivate) {
+            _activeLayer.onActivate(false);
+        }
+
+        _activeLayer = null;
     }
 
     /**
@@ -387,17 +394,17 @@ export namespace LayerManager {
     function handleOutside(target: Node | null, focusOnly: boolean): void {
         // Snapshot top-down so requestClose-driven unregisters don't disturb
         // the walk; re-read containment against the live tree each step.
-        const snapshot = _stack.slice().reverse();
-        let activated  = false;
+        const snapshot  = _stack.slice().reverse();
+        let activated   = false;
+        let landedInside = false;
 
         for (const node of snapshot) {
             const mode = node.layer.getDismissMode();
 
             if (containsAcrossLayers(node.layer, target)) {
-                if (!activated) {
-                    markActive(node.layer);
-                    activated = true;
-                }
+                markActive(node.layer);
+                activated    = true;
+                landedInside = true;
 
                 break;
             }
@@ -405,6 +412,8 @@ export namespace LayerManager {
             const anchor = node.layer.getAnchorElement?.();
 
             if (anchor && target && anchor.contains(target)) {
+                landedInside = true;
+
                 break;
             }
 
@@ -415,6 +424,8 @@ export namespace LayerManager {
                 // Modal captures the interaction: an outside pointer/focus on a
                 // modal must not fall through to dismiss layers beneath it.
                 if (mode === "modal") {
+                    landedInside = true;
+
                     break;
                 }
 
@@ -422,6 +433,16 @@ export namespace LayerManager {
             }
 
             node.layer.requestClose();
+        }
+
+        // An interaction that landed outside every layer's subtree (and any
+        // anchor / modal capture) deactivates the active layer — e.g. an
+        // empty-viewport click that should drop a window's active title-bar
+        // highlight. A focus move to a non-layer element (focusOnly) does not
+        // deactivate, so tabbing through page chrome doesn't flicker the
+        // active window.
+        if (!activated && !landedInside && !focusOnly) {
+            deactivateActive();
         }
     }
 
