@@ -85,12 +85,6 @@ abstract class AbstractPickerField<
     protected _value:    TValue | null    = null;
     protected _invalid:  boolean          = false;
 
-    // The viewport listener is added and removed dynamically (when the
-    // dropdown opens / closes), so it needs a stable reference. The other
-    // listeners are registered once in the constructor and never removed,
-    // so they use inline `() => this.handler()` delegates to named methods.
-    protected readonly _onViewportPointerDown: (e: PointerEvent) => void;
-
     /**
      * @param options - Caller-supplied options bag.
      * @param subclassDefaults - Per-subclass default bag layered over this
@@ -127,8 +121,6 @@ abstract class AbstractPickerField<
         this._button.on("action", ()                => this.onButtonClick());
         // Suppress focus loss when clicking the button (it would blur the input).
         this._button.addPointerDownListener((e: PointerEvent) => this.onButtonPointerDown(e));
-
-        this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
     }
 
     /**
@@ -362,29 +354,6 @@ abstract class AbstractPickerField<
     }
 
     /**
-     * Viewport-level pointerdown handler: closes the dropdown when the click
-     * lands outside both the field and the dropdown's layer subtree. A click
-     * inside a descendant layer (e.g. a `ComboBoxDropdown` opened from inside
-     * the picker dropdown) counts as inside via
-     * {@link AnimatedDropdown.isTargetInsideLayer}, so the picker stays open.
-     *
-     * @param e - The pointerdown event from the viewport.
-     */
-    protected onViewportPointerDown(e: PointerEvent): void {
-        const target = e.target as Node;
-
-        if (this._dropdown && AnimatedDropdown.isTargetInsideLayer(this._dropdown, target)) {
-            return;
-        }
-
-        if (this.getElement()?.contains(target)) {
-            return;
-        }
-
-        this.closeDropdown();
-    }
-
-    /**
      * Syncs the internal value from the typed text on every input event and
      * toggles the invalid-border state based on whether the typed text
      * parses. Notifies change/binding listeners with the new value.
@@ -498,8 +467,14 @@ abstract class AbstractPickerField<
             return;
         }
 
+        // The manager closes the dropdown on an outside click via its
+        // "click-outside" mode; route that through the field's own
+        // closeDropdown and exclude the field root (the trigger) so the
+        // toggle click doesn't immediately re-close it.
+        dropdown.setCloseHandler(() => this.closeDropdown());
+        dropdown.setAnchorElement(this.getElement(true));
+
         this.showDropdown(dropdown, this._input.getElement(true), this._value);
-        Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
     }
 
     /**
@@ -507,7 +482,6 @@ abstract class AbstractPickerField<
      */
     protected closeDropdown(): void {
         if (this._dropdown && this._dropdown.isOpen()) {
-            Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
             this._dropdown.hideAnimated();
         }
     }

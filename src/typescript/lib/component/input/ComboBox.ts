@@ -106,7 +106,6 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
      */
     constructor(onSelect: (index: number) => void) {
         super(undefined, {
-            zIndex:          10050,
             layoutManager:   new Fit(),
             backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
             border:          "var(--ts-ui-input-border)",
@@ -472,7 +471,6 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     private _boundStore:           AbstractStore | null = null;
     /** Handler re-asserting selection + label after the inner list rebuilds from a store event. */
     private readonly _onStoreRefresh: () => void;
-    private readonly _onViewportPointerDown: (e: PointerEvent) => void;
 
     /**
      * @param options - Optional construction-time options.
@@ -531,8 +529,14 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         // and into `onRowSelected`.
         Event.addListener(this, "change", () => this.notifyChange(this.getValue()));
 
-        this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
-        this._onStoreRefresh        = () => this.onStoreRefresh();
+        // The manager closes the dropdown on an outside click via its
+        // "click-outside" mode; route that through closeDropdown. The anchor
+        // (the ComboBox surface, excluded so the toggle click doesn't
+        // re-close) is set lazily in toggleDropdown — `getElement(true)` must
+        // not run during construction.
+        this._dropdown.setCloseHandler(() => this.closeDropdown());
+
+        this._onStoreRefresh = () => this.onStoreRefresh();
 
         // Late-built state: store / items / selection were written pure to
         // `_options` by the super-time cascade. Dispatch them now that the
@@ -666,14 +670,18 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
             return;
         }
 
-        const list = this._dropdown.getList();
+        const surface = this.getElement(true);
+        const list    = this._dropdown.getList();
+
+        // Exclude the ComboBox surface from the manager's outside-click test.
+        this._dropdown.setAnchorElement(surface);
+
         // `showAt` re-applies the items / selectedIndex onto its own inner
         // list. Passing the list's current state round-trips harmlessly and
         // keeps the public `showAt` signature unchanged.
-        this._dropdown.showAt(this.getElement(true), list.getItems(), list.getSelectedIndex());
+        this._dropdown.showAt(surface, list.getItems(), list.getSelectedIndex());
         this.getAria().setExpanded(true);
         this.setCaretOpen(true);
-        Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
     }
 
     /**
@@ -701,29 +709,10 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      */
     private closeDropdown(): void {
         if (this._dropdown.isOpen()) {
-            Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
             this._dropdown.hideAnimated();
             this.getAria().setExpanded(false);
             this.setCaretOpen(false);
         }
-    }
-
-    /**
-     * Viewport-level pointerdown handler: closes the dropdown when the click
-     * lands outside both the ComboBox and the dropdown panel.
-     *
-     * @param e - The pointerdown event from the viewport.
-     */
-    private onViewportPointerDown(e: PointerEvent): void {
-        const target = e.target as Node;
-        const dropEl = this._dropdown.getElement();
-        if (dropEl?.contains(target)) {
-            return;
-        }
-        if (this.getElement()?.contains(target)) {
-            return;
-        }
-        this.closeDropdown();
     }
 
     /**

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
-import { Event } from "~/core/Event.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Fit } from "~/layout/Fit.js";
 import { List } from "~/component/list/List.js";
@@ -23,7 +22,6 @@ export interface AutoCompleteDropdownOptions extends AnimatedDropdownOptions {}
  * the final value, so any field the caller supplied wins.
  */
 const _defaultAutoCompleteDropdownOptions: Partial<AutoCompleteDropdownOptions> = {
-    zIndex:          10050,
     durationMs:      100,
     backgroundColor: "var(--ts-ui-autocomplete-bg, rgb(255, 255, 255))",
     border:          "var(--ts-ui-input-border)",
@@ -66,7 +64,6 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
     private readonly _list: List;
     private readonly _onSelect: (value: string) => void;
     private readonly _onHide: () => void;
-    private readonly _onViewportMouseDown: (e: MouseEvent) => void;
 
     /**
      * @param onSelect - Called with the selected suggestion string when the user picks an item.
@@ -116,12 +113,6 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
                 this._onSelect(value);
             }
         });
-
-        this._onViewportMouseDown = (e: MouseEvent) => {
-            if (!this.getElement()?.contains(e.target as Node)) {
-                this.hide();
-            }
-        };
     }
 
     /**
@@ -154,6 +145,10 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
 
         this.placeAnchored(rect);
 
+        // Exclude the anchored input from the manager's outside-click test so
+        // the keystroke that re-triggers the suggestions doesn't dismiss it.
+        this.setAnchorElement(anchorEl);
+
         this.showAnimated();
 
         // VBox-backed list positions rows via framework setters that no-op
@@ -162,17 +157,16 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
         // correct y offsets on first open.
         this.doLayout();
 
-        Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
-
         return this;
     }
 
     /**
-     * Hides the dropdown, detaches it from the DOM, and fires the `onHide` callback.
+     * Hides the dropdown, detaches it from the DOM, and fires the `onHide`
+     * callback (via {@link onHideComplete}). Outside-click dismissal is now
+     * driven by [`LayerManager`](/api/core/namespaces/LayerManager)'s
+     * `"click-outside"` mode rather than a per-dropdown viewport listener.
      */
     hide(): this {
-        Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
-
         this.hideAnimated();
 
         return this;

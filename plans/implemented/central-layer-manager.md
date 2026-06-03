@@ -114,8 +114,10 @@ No CSS custom properties. The z-index bands are plain module constants in `Layer
 |---|---|---|
 | `Z_BAND_WINDOW` | 9000 | `Window.zIndexCounter` base ([Window.ts:138](../src/typescript/lib/core/Window.ts#L138)) |
 | `Z_BAND_POPOVER` | 9800 | `Popover.setZIndex(9998)` ([Popover.ts:187](../src/typescript/lib/core/Popover.ts#L187)) |
-| `Z_BAND_DROPDOWN` | 10000 | `AnimatedDropdown` default `zIndex: 10050` ([AnimatedDropdown.ts:79](../src/typescript/lib/core/AnimatedDropdown.ts#L79)) |
-| `Z_BAND_DIALOG` | 11000 | `DIALOG_BASE_Z = 10101` ([Dialog.ts:399](../src/typescript/lib/core/Dialog.ts#L399)) |
+| `Z_BAND_DROPDOWN` | 10000 | `AnimatedDropdown` default `zIndex: 10050` ([AnimatedDropdown.ts:79](../src/typescript/lib/core/AnimatedDropdown.ts#L79)); also the explicit `zIndex: 10050` subclass overrides in `ComboBoxDropdown` ([ComboBox.ts:109](../src/typescript/lib/component/input/ComboBox.ts#L109)) and `_defaultAutoCompleteDropdownOptions` ([AutoCompleteDropdown.ts:26](../src/typescript/lib/component/input/AutoCompleteDropdown.ts#L26)), which must be dropped so the manager owns the stamp |
+| `Z_BAND_DIALOG` | 11000 | `DIALOG_BASE_Z = 10101` ([Dialog.ts:394](../src/typescript/lib/core/Dialog.ts#L394)) |
+
+> Drift note (verified against worktree baseline): cited line numbers drift by a few lines from the current source but every symbol, signature, and behaviour matches. `Popover`, `Window`, and `AutoCompleteDropdown` wire their existing dismiss listeners on `"mousedown"` (not `"pointerdown"`); only the three migrated dropdown hosts (`AbstractPickerField`, `ComboBox`, `DateTimeEditor`) use `"pointerdown"`, which is what the Phase-3 grep invariant targets. `Event.addViewportListener` takes no options argument and registers non-passive capture for non-PASSIVE types, so the manager's `pointerdown` / `keydown` handlers can `preventDefault`.
 
 Within a band the per-register `++counter` keeps insertion order; a nested child inherits its parent's band but always lands above it because it registers later.
 

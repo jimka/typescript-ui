@@ -3,6 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
+import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Position } from "~/primitive/Position.js";
@@ -53,11 +54,18 @@ export type PopoverPlacement = "top" | "bottom" | "left" | "right" | "auto";
 /**
  * Strategy used to dismiss a {@link Popover}:
  *
- * - `"click-outside"`: closes on a viewport `mousedown` outside both the
- *   popover and its anchor element (the anchor is excluded so the trigger
- *   click can re-open without immediate re-close).
- * - `"blur"`: closes when keyboard focus leaves the popover subtree.
+ * - `"click-outside"`: closes on a `pointerdown` outside both the popover and
+ *   its anchor element (the anchor is excluded so the trigger click can
+ *   re-open without immediate re-close).
+ * - `"blur"`: closes when focus or a pointer leaves the popover subtree —
+ *   including a portaled descendant layer such as a dropdown opened inside
+ *   the popover, which now keeps the popover open.
  * - `"manual"`: caller drives `hide()` explicitly.
+ *
+ * @remarks Dismissal is executed by {@link LayerManager}: the popover reports
+ * this mode from its {@link DismissableLayer.getDismissMode} and the manager's
+ * document-level handlers decide when to call `requestClose`. This is the
+ * public option name; it maps 1:1 onto {@link LayerDismissMode}.
  *
  * @category Core
  */
@@ -128,7 +136,7 @@ const _defaultPopoverOptions: Partial<PopoverOptions> = {
  *
  * @category Core
  */
-class Popover extends Panel<PopoverOptions> {
+class Popover extends Panel<PopoverOptions> implements DismissableLayer {
 
     // Option-backed fields use `declare` rather than initializers to dodge the
     // class-field super-cascade trap: an initializer runs *after* super()
@@ -149,8 +157,6 @@ class Popover extends Panel<PopoverOptions> {
     private _isOpen:            boolean = false;
     private _scrollAncestors:   HTMLElement[] = [];
 
-    private readonly _onViewportMouseDown: (e: MouseEvent) => void;
-    private readonly _onFocusOut:          (e: FocusEvent) => void;
     private readonly _onWindowResize:      () => void;
     private readonly _onScroll:            () => void;
 
@@ -175,9 +181,9 @@ class Popover extends Panel<PopoverOptions> {
         this.setBorderRadius("var(--ts-ui-popover-radius, 6px)");
         this.setShadow("var(--ts-ui-popover-shadow, 2px 4px 12px rgba(0, 0, 0, 0.18))");
 
-        // Overlay placement: top-level, viewport-fixed, above floating
-        // windows but below tooltips / notifications / dialogs.
-        this.setZIndex(9998);
+        // Overlay placement: top-level, viewport-fixed. The z-index is
+        // stamped from LayerManager's Popover band at show() time, so no
+        // static value is set here.
         this.setPosition(Position.FIXED);
         this.setVisible(false);
 
@@ -187,41 +193,6 @@ class Popover extends Panel<PopoverOptions> {
         this.setContain("layout");
         this.setOverflow("visible");
         this.getAria().setRole("dialog");
-
-        this._onViewportMouseDown = (e: MouseEvent) => {
-            const target = e.target as Node;
-            const el     = this.getElement();
-
-            if (el && el.contains(target)) {
-                return;
-            }
-
-            if (this._anchorElement && this._anchorElement.contains(target)) {
-                return;
-            }
-
-            this.hide();
-        };
-
-        this._onFocusOut = (e: FocusEvent) => {
-            const next = e.relatedTarget as Node | null;
-            const el   = this.getElement();
-
-            if (!next || !el) {
-                this.hide();
-                return;
-            }
-
-            if (el.contains(next)) {
-                return;
-            }
-
-            if (this._anchorElement && this._anchorElement.contains(next)) {
-                return;
-            }
-
-            this.hide();
-        };
 
         this._onWindowResize = () => this._reposition();
         this._onScroll       = () => this._reposition();
@@ -487,6 +458,11 @@ class Popover extends Panel<PopoverOptions> {
 
         this._isOpen = true;
 
+        // Join the central layer tree and mirror its band-based z-stamp so a
+        // popover opened from inside a window or dropdown stacks correctly.
+        LayerManager.register(this);
+        this.setZIndex(LayerManager.getZIndex(this));
+
         const el = this.getElement(true);
 
         if (!document.documentElement.contains(el)) {
@@ -503,7 +479,6 @@ class Popover extends Panel<PopoverOptions> {
 
         fadeShow(this, { durationMs: POPOVER_FADE_DURATION_MS });
 
-        this.attachDismissListeners();
         this.attachRepositionListeners();
 
         return this;
@@ -522,8 +497,9 @@ class Popover extends Panel<PopoverOptions> {
 
         this._isOpen = false;
 
-        this.detachDismissListeners();
         this.detachRepositionListeners();
+
+        LayerManager.unregister(this);
 
         fadeHideAndDetach(this, { durationMs: POPOVER_FADE_DURATION_MS });
 
@@ -537,6 +513,58 @@ class Popover extends Panel<PopoverOptions> {
      */
     isOpen(): boolean {
         return this._isOpen;
+    }
+
+    // ----- DismissableLayer -----
+
+    /**
+     * Returns the popover's root element for the central layer tree.
+     *
+     * @returns The popover's element, or null when not yet rendered.
+     */
+    getLayerElement(): HTMLElement | null {
+        return this.getElement();
+    }
+
+    /**
+     * Returns the dismiss mode the document-level handlers consult, mapping
+     * the public {@link PopoverDismissMode} directly onto the manager's
+     * vocabulary (the two share the `"click-outside"` / `"blur"` / `"manual"`
+     * names). The manager now executes dismissal; the `"blur"` mode works for
+     * a nested dropdown because the dropdown registers as the popover's child.
+     *
+     * @returns The layer dismiss mode.
+     */
+    getDismissMode(): LayerDismissMode {
+        return this._dismissOn;
+    }
+
+    /**
+     * Advisory close request from the manager — runs the standard
+     * {@link Popover.hide} teardown, which unregisters the layer.
+     */
+    requestClose(): void {
+        this.hide();
+    }
+
+    /**
+     * Returns the anchor element excluded from outside-interaction tests so a
+     * click on the trigger does not immediately re-close the popover.
+     *
+     * @returns The anchor element, or null when none is attached.
+     */
+    getAnchorElement(): HTMLElement | null {
+        return this._anchorElement;
+    }
+
+    /**
+     * Returns the popover's z-index band so an unrelated top-level popover
+     * stacks above windows but below dropdowns and dialogs.
+     *
+     * @returns The popover band base.
+     */
+    getBand(): number {
+        return LayerManager.Band.Popover;
     }
 
     /**
@@ -839,30 +867,6 @@ class Popover extends Panel<PopoverOptions> {
                 this._arrowComponent.setX(popoverW - half - border.left);
             }
         }
-    }
-
-    /**
-     * Wires the listener(s) that implement the active dismiss mode.
-     */
-    private attachDismissListeners(): void {
-        if (this._dismissOn === "click-outside") {
-            Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
-        } else if (this._dismissOn === "blur") {
-            // Focus must live inside the popover for focusout to fire when it
-            // leaves; ensure the root is focusable and focused on show.
-            this.getAria().setTabIndex(-1);
-            this.getElement(true).focus();
-
-            Event.addSubtreeListener(this, "focusout", this._onFocusOut);
-        }
-    }
-
-    /**
-     * Detaches every dismiss listener registered by {@link attachDismissListeners}.
-     */
-    private detachDismissListeners(): void {
-        Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
-        Event.removeSubtreeListener(this, "focusout", this._onFocusOut);
     }
 
     /**
