@@ -75,6 +75,13 @@ const _defaultTextOptions: Partial<TextOptions> = {
 // always has room to shrink the Text below its natural width.
 const TEXT_AUTO_MIN_WIDTH_CAP_PX = 100;
 
+// Default theme-tracking line-height rule: the control's own font size plus the
+// `--ts-ui-line-padding` leading, so the line box scales per font size. `1em`
+// resolves against the element's own font-size at both render and measure time.
+// `2px` is the shipped `--ts-ui-line-padding` default, used only if the var is
+// absent. A control overrides this with an explicit px via `setLineHeight`.
+const ADDITIVE_LINE_HEIGHT_RULE = "calc(1em + var(--ts-ui-line-padding, 2px))";
+
 /**
  * A text-displaying component with comprehensive font and layout controls.
  *
@@ -93,8 +100,8 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private _fontSizeCSSVar : string | null = "--ts-ui-font-size";
     private _fontSizeCSSRule: string | null = "var(--ts-ui-font-size, 14px)";
     private readonly _unsubscribeTheme: () => void;
-    private _lineHeightCSSVar : string | null = "--ts-ui-line-height";
-    private _lineHeightCSSRule: string | null = "var(--ts-ui-line-height, 1.2)";
+    private _lineHeightCSSVar : string | null = null;
+    private _lineHeightCSSRule: string | null = ADDITIVE_LINE_HEIGHT_RULE;
     private _measuredBaseline: number | null = null;
     private _measuredMinSize: Size | null = null;
     private _autoMeasure: boolean = true;
@@ -243,25 +250,36 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
-     * Reads the active theme's `--ts-ui-line-height` (a unitless multiplier)
-     * and resolves it to a pixel value relative to the current font size.
+     * Resolves this `Text`'s line box height in pixels under the additive
+     * leading model.
      *
-     * @returns The line height in pixels, or `fontSize * 1.2` as a fallback
-     * when the variable is missing or unparseable.
+     * @returns `Util.lineHeightPx(fontSize)` — the control's own font size plus
+     * the `--ts-ui-line-padding` leading — for the default theme-tracking case.
+     * A legacy custom line-height var binding resolves that var as a fixed line
+     * box instead, falling back to the additive value when it is unparseable.
+     *
+     * @remarks `_options.fontSize` is always a resolved px number here (a CSS
+     * var passed to `setFontSize` is resolved and stored as a number), so the
+     * leading scales with the control's actual font size — a 12px button title
+     * and a 14px label get proportionate line boxes from the one token. This is
+     * the same arithmetic `Util.lineHeightPx` applies for input box heights, so
+     * a `Text` measures and renders at the line height a sibling input expects.
      */
     private readThemeLineHeightPx(): number {
         const fs = (this._options.fontSize as number | undefined) ?? (this._defaultOptions.fontSize as number | undefined) ?? 14;
 
-        if (!this._lineHeightCSSVar) {
-            return fs;
+        if (this._lineHeightCSSVar) {
+            const raw    = getComputedStyle(document.documentElement)
+                               .getPropertyValue(this._lineHeightCSSVar)
+                               .trim();
+            const parsed = parseFloat(raw);
+
+            if (!isNaN(parsed)) {
+                return parsed;
+            }
         }
 
-        const raw    = getComputedStyle(document.documentElement)
-                           .getPropertyValue(this._lineHeightCSSVar)
-                           .trim();
-        const parsed = parseFloat(raw);
-
-        return isNaN(parsed) ? fs * 1.2 : fs * parsed;
+        return Util.lineHeightPx({ fontSizePx: fs });
     }
 
     /**
@@ -799,11 +817,10 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
-     * Sets the line height. Pass a number for an explicit pixel value (which
-     * stops tracking the theme), or a CSS variable name (e.g.
-     * `"--ts-ui-line-height"`) to bind to a theme token. Theme tokens are
-     * interpreted as unitless multipliers of the current font size, so they
-     * scale automatically when the font size changes.
+     * Sets the line height. Pass a number for an explicit fixed pixel value
+     * (which stops tracking the theme — this is the per-control override of the
+     * additive default), or a CSS variable name to bind the line box to a
+     * custom token, resolved as a fixed line box for measurement.
      *
      * @param value - Pixel value as a number, or a CSS custom property name as a string.
      *
@@ -817,7 +834,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             this.setElementCSSRule("lineHeight", value + "px");
         } else {
             this._lineHeightCSSVar    = value;
-            this._lineHeightCSSRule   = `var(${value}, 1.2)`;
+            this._lineHeightCSSRule   = `var(${value}, ${ADDITIVE_LINE_HEIGHT_RULE})`;
             this._options.lineHeight = this.readThemeLineHeightPx() as TOptions["lineHeight"];
             this.setElementCSSRule("lineHeight", this._lineHeightCSSRule);
         }
@@ -833,7 +850,8 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * text sits vertically centred in a fixed-height inline box.
      *
      * @param px - Pixel value matching the container's height, or `null` to
-     *             revert to the theme's `--ts-ui-line-height` multiplier.
+     *             revert to the theme's additive line box (font size +
+     *             `--ts-ui-line-padding`).
      *
      * @returns This component, for method chaining.
      *
@@ -845,7 +863,15 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      */
     centerInHeight(px: number | null): this {
         if (px === null) {
-            return this.setLineHeight("--ts-ui-line-height");
+            this._lineHeightCSSVar   = null;
+            this._lineHeightCSSRule  = ADDITIVE_LINE_HEIGHT_RULE;
+            this._options.lineHeight = this.readThemeLineHeightPx() as TOptions["lineHeight"];
+            this.setElementCSSRule("lineHeight", this._lineHeightCSSRule);
+
+            this._measurementDirty = true;
+            (this.getParentComponent() ?? this).scheduleLayout();
+
+            return this;
         }
 
         return this.setLineHeight(px);

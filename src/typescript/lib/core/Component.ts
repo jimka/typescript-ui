@@ -2265,7 +2265,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @remarks Adds `insets.top + border.top + padding.top` to `inner`. Use
      * when implementing `getBaseline()` on a composite component (delegating
      * to a child) or a CSS-rendered leaf (delegating to
-     * `Util.measureInputBaseline()`). Centralises the chrome arithmetic that
+     * `Util.measureTextBaseline()`). Centralises the chrome arithmetic that
      * would otherwise be repeated in every override.
      */
     protected wrapInnerBaseline(inner: number | null): number | null {

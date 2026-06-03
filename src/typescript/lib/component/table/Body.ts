@@ -10,6 +10,7 @@ import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js"
 import { Event } from "~/core/Event.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { Util } from "~/core/Util.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { Column } from "~/component/table/Column.js";
 import type { Header } from "~/component/table/Header.js";
@@ -102,21 +103,21 @@ class Body extends Component {
     }
 
     /**
-     * Derives the row height from the active theme's body font: one line-box
-     * (font-size × line-height) plus top+bottom cell padding.
+     * Derives the row height from the shared px line box plus top+bottom cell
+     * padding.
      *
      * @remarks `theme.table.cell.height` is intentionally ignored: a fixed pixel
-     * height ignores the active font size and clips text when the theme bumps
-     * `font.size`. Deriving here keeps row height in sync with whatever font
-     * the cells are actually rendered at.
+     * height ignores the active line box and clips text when the theme changes
+     * the leading. The line box is the additive `font-size + --ts-ui-line-padding`
+     * value `Util.lineHeightPx` derives at the root font size, keeping row
+     * height in sync with the line box the cells are actually rendered at.
      */
     private computeRowHeight(): number {
         const theme      = ThemeManager.getTheme();
-        const fontSize   = parseFloat(theme.font.size) || 14;
-        const lineHeight = theme.font.lineHeight       || 1.2;
-        const padding    = theme.table.cell.padding    ?? 2;
+        const lineHeight = Util.lineHeightPx();
+        const padding    = theme.table.cell.padding          ?? 2;
 
-        return Math.ceil(fontSize * lineHeight) + 2 * padding;
+        return lineHeight + 2 * padding;
     }
 
     /**

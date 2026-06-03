@@ -597,13 +597,25 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Recalculates preferred and maximum height from a probe input's measured size.
+     * Recalculates preferred and maximum height from the unified line box plus
+     * this control's own chrome.
      *
-     * Uses the same measurement helper as `Input`-based fields so a `ComboBox`
-     * placed next to a `TextField` matches its row height.
+     * @remarks Box height is `Util.lineHeightPx()` (the same line box every text
+     * control renders at) plus the ComboBox's own vertical insets, padding, and
+     * border — the identical sum `wrapInnerBaseline` re-adds — so a `ComboBox`
+     * placed next to a `TextField` shares its row height and baseline without a
+     * UA `<input>` probe.
      */
     protected updateHeight(): void {
-        const h = Util.measureInputHeight();
+        const insets  = this.getInsets();
+        const padding = this.getPadding();
+        const border  = this.getBorderSize();
+
+        const chrome = insets.getTop() + insets.getBottom()
+                     + (padding ? padding.getTop() + padding.getBottom() : 0)
+                     + border.top + border.bottom;
+
+        const h = Util.lineHeightPx() + chrome;
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
@@ -658,7 +670,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @returns The baseline offset in pixels.
      */
     getBaseline(): number | null {
-        return this.wrapInnerBaseline(Util.measureLabelBaseline());
+        return this.wrapInnerBaseline(Util.measureTextBaseline());
     }
 
     /**

@@ -239,12 +239,26 @@ abstract class AbstractPickerField<
     }
 
     /**
-     * Recalculates preferred and maximum height from the native input's
-     * measured size; preferred width comes from the subclass-supplied
+     * Recalculates preferred and maximum height from the unified line box plus
+     * this field's own chrome; preferred width comes from the subclass-supplied
      * {@link getPreferredWidth}.
+     *
+     * @remarks Box height is `Util.lineHeightPx()` plus the field root's own
+     * vertical insets, padding, and border — the same sum `wrapInnerBaseline`
+     * re-adds — so the picker shares its row height and baseline with a sibling
+     * `TextField`. `doLayout` stretches the inner input to this full height, so
+     * the root's chrome (not the inner input's) governs the box.
      */
     protected updateHeight(): void {
-        const h = Util.measureInputHeight();
+        const insets  = this.getInsets();
+        const padding = this.getPadding();
+        const border  = this.getBorderSize();
+
+        const chrome = insets.getTop() + insets.getBottom()
+                     + (padding ? padding.getTop() + padding.getBottom() : 0)
+                     + border.top + border.bottom;
+
+        const h = Util.lineHeightPx() + chrome;
 
         this.setPreferredSize(this.getPreferredWidth(), h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);

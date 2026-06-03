@@ -37,8 +37,18 @@ export interface TextMetrics {
 export namespace Util {
 
     let scrollBarWidth: number = -1;
-    let inputBaseline: number = -1;
-    let labelBaseline: number = -1;
+
+    // Cached text-metric results, invalidated together on theme change via
+    // `invalidateTextMetricsCache`. `-1` is the "not yet measured" sentinel
+    // (a real padding / font size / baseline / offset is always >= 0).
+    let linePaddingCache: number = -1;
+    let rootFontSizeCache: number = -1;
+    let textBaselineCache: number = -1;
+    let opticalOffsetCache: number = -1;
+
+    // Single off-screen canvas 2D context reused for every font-metric probe.
+    // Lazily created so a non-DOM import of this module doesn't touch the DOM.
+    let metricsCtx: CanvasRenderingContext2D | null = null;
 
     /**
      * Measures the rendered size of a text string using an off-screen probe `<span>`.
@@ -74,7 +84,7 @@ export namespace Util {
             fontStyle   = "normal",
             fontVariant = "normal",
             fontStretch = "normal",
-            lineHeight  = "50px",
+            lineHeight  = "calc(1em + var(--ts-ui-line-padding, 2px))",
         } = options;
 
         const probe    = document.createElement("span");
@@ -135,155 +145,208 @@ export namespace Util {
     }
 
     /**
-     * Measures the natural height of a native `<input>` element at the current theme font size.
+     * Returns the active theme's leading (`--ts-ui-line-padding`) in pixels.
      *
-     * Uses an off-screen probe element so that the result reflects the browser's actual
-     * default styling at whatever font size the theme specifies.
-     * Returns 20 as a safe fallback if the measurement fails.
-     *
-     * @returns The measured height in pixels, rounded up to the nearest integer.
+     * @returns The integer-pixel value of `--ts-ui-line-padding`, or `4` as a
+     * fallback when the variable is missing or unparseable.
      */
-    export function measureInputHeight(): number {
-        const probe = document.createElement("input");
-
-        probe.style.position   = "fixed";
-        probe.style.visibility = "hidden";
-        probe.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
-        probe.style.fontSize   = "var(--ts-ui-font-size, 14px)";
-
-        document.body.appendChild(probe);
-
-        const height = Math.ceil(probe.getBoundingClientRect().height);
-
-        document.body.removeChild(probe);
-
-        return height || 20;
-    }
-
-    /**
-     * Measures the offset from a native `<input>`'s **content-box** top to its
-     * inner-text baseline.
-     *
-     * @returns The content-relative baseline offset in pixels, rounded to the
-     * nearest integer.
-     *
-     * @remarks A native single-line `<input>` vertically centres its line box in
-     * the content area, so the baseline is modelled centre-anchored: the probe's
-     * UA-applied border/padding and box height are read to derive the content
-     * height, the line box (measured at `line-height: normal` to match the
-     * input's own rendering) is centred within it, and the text baseline is
-     * added — but the border/padding themselves are *not* folded into the
-     * result. The caller (`TextInput.getBaseline`) re-applies the component's
-     * real border + padding via `wrapInnerBaseline`, so this stays
-     * content-relative to avoid double-counting the chrome (which would drag
-     * baseline-aligned labels too low). Mirrors `measureLabelBaseline`. This
-     * also avoids relying on `vertical-align: baseline` against an `<input>`,
-     * which browsers inconsistently resolve to either the inner-text baseline or
-     * the element's bottom edge. The result is cached after the first
-     * measurement; call `invalidateInputBaselineCache` after a theme change to
-     * force re-measurement.
-     */
-    export function measureInputBaseline(): number {
-        if (inputBaseline >= 0) {
-            return inputBaseline;
+    function linePaddingPx(): number {
+        if (linePaddingCache >= 0) {
+            return linePaddingCache;
         }
 
-        return remeasureInputBaseline();
+        const raw    = getComputedStyle(document.documentElement)
+                           .getPropertyValue("--ts-ui-line-padding")
+                           .trim();
+        const parsed = parseFloat(raw);
+
+        // 2 mirrors the `--ts-ui-line-padding` default shipped by every theme
+        // (see ModernTheme/DarkTheme/ClassicTheme `font.linePadding: '2px'`);
+        // it only applies when the var is absent (e.g. pre-theme-apply probe).
+        linePaddingCache = isNaN(parsed) ? 2 : parsed;
+
+        return linePaddingCache;
     }
 
     /**
-     * Discards the cached `<input>` baseline measurement so the next call to
-     * `measureInputBaseline` re-probes the DOM.
+     * Returns the document root font size (`--ts-ui-font-size`) in pixels, the
+     * default font size for a control that doesn't override it.
      *
-     * @remarks Call this whenever the active theme's font size or family changes,
-     * since the cached value reflects the font in use at the time of the first
-     * measurement and would otherwise mis-align inputs against text after a theme swap.
+     * @returns The integer-pixel root font size, or `14` as a fallback.
      */
-    export function invalidateInputBaselineCache(): void {
-        inputBaseline = -1;
-    }
-
-    /**
-     * Measures the offset from the top of a bare text-bearing element (`<span>`,
-     * `<label>`) to its inner-text baseline at the active theme font.
-     *
-     * @returns The baseline offset in pixels.
-     *
-     * @remarks Mirrors `measureInputBaseline` but skips the `<input>` UA chrome
-     * probe — labels have no UA border or padding, so the baseline collapses to
-     * the typographic baseline reported by `measureTextMetrics`. Used by
-     * components that render a label (e.g. ComboBox) rather than a native input.
-     * The result is cached after the first measurement; call
-     * `invalidateLabelBaselineCache` after a theme change to force re-measurement.
-     */
-    export function measureLabelBaseline(): number {
-        if (labelBaseline >= 0) {
-            return labelBaseline;
+    function rootFontSizePx(): number {
+        if (rootFontSizeCache >= 0) {
+            return rootFontSizeCache;
         }
 
-        labelBaseline = measureTextMetrics("X", {
-            fontFamily: "var(--ts-ui-font-family, sans-serif)",
-            fontSize  : "var(--ts-ui-font-size, 14px)",
-            lineHeight: "var(--ts-ui-line-height, 1.2)",
-        }).baseline;
+        const raw    = getComputedStyle(document.documentElement)
+                           .getPropertyValue("--ts-ui-font-size")
+                           .trim();
+        const parsed = parseFloat(raw);
 
-        return labelBaseline;
+        rootFontSizeCache = isNaN(parsed) ? 14 : parsed;
+
+        return rootFontSizeCache;
     }
 
     /**
-     * Discards the cached label baseline measurement so the next call to
-     * `measureLabelBaseline` re-measures against the active theme font.
+     * Returns a vertical text metric in integer pixels: a control's font size,
+     * plus the theme leading (`--ts-ui-line-padding`) by default.
      *
-     * @remarks Call this whenever the active theme's font size or family changes,
-     * since the cached value reflects the font in use at the time of the first
-     * measurement and would otherwise mis-align labels against text after a theme swap.
+     * @param options - Measurement options.
+     * @param options.fontSizePx - The control's font size in pixels. Omit to use
+     * the document root font size (`--ts-ui-font-size`), which is what the
+     * native `<input>`-backed controls render at.
+     * @param options.linePadding - Controls the leading added to the font size:
+     * `true` (the default) adds the theme `--ts-ui-line-padding`, giving the
+     * full rendered line box (matching the `calc(1em + …)` line-height controls
+     * render at); `false` adds nothing, returning the bare font size to size a
+     * box from its font without leading; a number adds that exact pixel padding.
+     * @returns `round(fontSize + leading)`, where leading is the theme padding,
+     * `0`, or the given number.
+     *
+     * @remarks With the default leading the line box scales with font size, so
+     * 12px and 14px text get proportionate line boxes from the one token. Text
+     * components, table rows, and the baseline computation use the default so
+     * their measurement matches the rendered line box; the native input box
+     * heights pass `false` so the box hugs the font size plus their own chrome.
+     * The padding and root font size are cached; call
+     * {@link invalidateTextMetricsCache} after a theme change to force a
+     * re-read.
      */
-    export function invalidateLabelBaselineCache(): void {
-        labelBaseline = -1;
+    export function lineHeightPx(options: { fontSizePx?: number, linePadding?: boolean | number } = {}): number {
+        let fs = options.fontSizePx ?? rootFontSizePx();
+
+        const linePadding = options.linePadding ?? true;
+
+        if (linePadding === true) {
+            fs += linePaddingPx();
+        } else if (typeof linePadding === "number") {
+            fs += linePadding;
+        }
+
+        return Math.round(fs);
     }
 
     /**
-     * Performs the off-screen probe and updates the cached input baseline.
+     * Returns the content-relative text baseline for the unified line-height
+     * model: the offset from the top of the `lineHeightPx()` line box to the
+     * font baseline.
      *
-     * @returns The measured baseline offset in pixels.
+     * @returns The baseline offset in pixels, rounded to the nearest integer.
+     *
+     * @remarks Computed from the canvas 2D `measureText` font metrics rather
+     * than a DOM probe, so it is deterministic and UA-independent. A CSS line
+     * box centres the font's ascent+descent within `line-height`; this
+     * reproduces that centring with the known px line box —
+     * `round(lineGap / 2 + ascent)` where `lineGap = lineHeightPx - (ascent +
+     * descent)` — so the measured baseline matches where the browser paints the
+     * glyph in both a native `<input>` and a `Text`/`Label`. `fontBoundingBox*`
+     * (font-intrinsic, string-independent) is used in preference to
+     * `actualBoundingBox*` (glyph-ink specific) so the baseline does not shift
+     * per measured string; `"X"` is passed only to satisfy `measureText`. The
+     * result is cached; call {@link invalidateTextMetricsCache} after a theme
+     * change to force re-measurement.
      */
-    function remeasureInputBaseline(): number {
-        const probe = document.createElement("input");
-        probe.style.position   = "fixed";
-        probe.style.visibility = "hidden";
-        probe.style.fontFamily = "var(--ts-ui-font-family, sans-serif)";
-        probe.style.fontSize   = "var(--ts-ui-font-size, 14px)";
+    export function measureTextBaseline(): number {
+        if (textBaselineCache >= 0) {
+            return textBaselineCache;
+        }
 
-        document.body.appendChild(probe);
+        const m   = measureFontMetrics();
+        const gap = lineHeightPx() - (m.ascent + m.descent);
 
-        const computed      = getComputedStyle(probe);
-        const borderTop     = parseFloat(computed.borderTopWidth)    || 0;
-        const borderBottom  = parseFloat(computed.borderBottomWidth) || 0;
-        const paddingTop    = parseFloat(computed.paddingTop)        || 0;
-        const paddingBottom = parseFloat(computed.paddingBottom)     || 0;
-        const boxHeight     = probe.getBoundingClientRect().height;
+        textBaselineCache = Math.round(gap / 2 + m.ascent);
 
-        document.body.removeChild(probe);
+        return textBaselineCache;
+    }
 
-        const textMetrics = measureTextMetrics("X", {
-            fontFamily: "var(--ts-ui-font-family, sans-serif)",
-            fontSize  : "var(--ts-ui-font-size, 14px)",
-            lineHeight: "normal",
-        });
+    /**
+     * Returns the downward pixel offset that moves a single line of text from
+     * its line-box (geometric) centre to its optical (cap-height) centre.
+     *
+     * @returns The downward offset in pixels (`>= 0`), rounded to the nearest
+     * integer.
+     *
+     * @remarks A label's visible glyphs occupy cap-top→baseline; the descender
+     * band below the baseline is empty ink, so the ink's visual centre sits
+     * above the font box's geometric centre and a geometrically-centred label
+     * reads as too high. This returns roughly half the unused descender space —
+     * `round(boxMid - inkMid)` where `boxMid = (ascent - descent) / 2` and
+     * `inkMid = capTop / 2` with `capTop = actualBoundingBoxAscent` (the cap-top
+     * ink of `"X"`) — so a consumer ([`Button`](/api/component/button/classes/Button))
+     * can nudge single-line text down onto its true optical centre. Derived
+     * from the same cached canvas
+     * metrics as {@link measureTextBaseline}; cached and invalidated together
+     * via {@link invalidateTextMetricsCache}.
+     */
+    export function opticalCenterOffset(): number {
+        if (opticalOffsetCache >= 0) {
+            return opticalOffsetCache;
+        }
 
-        // Return the baseline relative to the input's *content box* top, not its
-        // outer top: the sole caller (`TextInput.getBaseline`) re-adds the
-        // component's real border + padding via `wrapInnerBaseline`. Folding the
-        // probe's border/padding in here as well would double-count the chrome
-        // and drag the baseline (and any label aligned to it) too low. Border
-        // and padding are still read — but only to derive the content height the
-        // line box is centred within, mirroring `measureLabelBaseline`.
-        const contentHeight = boxHeight - borderTop - borderBottom - paddingTop - paddingBottom;
-        const lineTop       = Math.max(0, (contentHeight - textMetrics.height) / 2);
+        const m      = measureFontMetrics();
+        const boxMid = (m.ascent - m.descent) / 2;
+        const inkMid = m.capTop / 2;
 
-        inputBaseline = Math.round(lineTop + textMetrics.baseline);
+        opticalOffsetCache = Math.max(0, Math.round(boxMid - inkMid));
 
-        return inputBaseline;
+        return opticalOffsetCache;
+    }
+
+    /**
+     * Discards every cached text metric (line box, baseline, optical offset) so
+     * the next read re-measures against the active theme font.
+     *
+     * @remarks Call this whenever the active theme's font size, family, or
+     * line-height changes, since the cached values reflect the font in use at
+     * the time of the first measurement and would otherwise mis-align controls
+     * against each other after a theme swap.
+     */
+    export function invalidateTextMetricsCache(): void {
+        linePaddingCache   = -1;
+        rootFontSizeCache  = -1;
+        textBaselineCache  = -1;
+        opticalOffsetCache = -1;
+    }
+
+    /**
+     * Reads the active theme font's intrinsic ascent, descent, and cap-top from
+     * a single canvas `measureText("X")` call.
+     *
+     * @returns `ascent`/`descent` (font-intrinsic box, from `fontBoundingBox*`)
+     * and `capTop` (cap-height ink, from `actualBoundingBoxAscent`), all in
+     * pixels.
+     *
+     * @remarks `ctx.font` does not accept `var(...)`, so the font shorthand is
+     * built from the *computed* `--ts-ui-font-*` values read off the document
+     * root, the same token resolution the line-box helpers use. Older engines
+     * exposed only `actualBoundingBox*`; when `fontBoundingBoxAscent` is absent
+     * the font box falls back to the `"X"` ink box, which is stable enough for
+     * Latin text.
+     */
+    function measureFontMetrics(): { ascent: number; descent: number; capTop: number } {
+        if (metricsCtx === null) {
+            metricsCtx = document.createElement("canvas").getContext("2d");
+        }
+
+        const ctx  = metricsCtx as CanvasRenderingContext2D;
+        const root = getComputedStyle(document.documentElement);
+
+        // 14px / system-ui mirror the `--ts-ui-font-*` defaults shipped by the
+        // themes; they only apply when the computed value is empty (pre-apply).
+        const family = root.getPropertyValue("--ts-ui-font-family").trim() || "system-ui, sans-serif";
+        const size   = root.getPropertyValue("--ts-ui-font-size").trim()   || "14px";
+
+        ctx.font = `normal normal ${size} ${family}`;
+
+        const m = ctx.measureText("X");
+
+        const hasFontBox = typeof m.fontBoundingBoxAscent === "number";
+        const ascent     = hasFontBox ? m.fontBoundingBoxAscent  : m.actualBoundingBoxAscent;
+        const descent    = hasFontBox ? m.fontBoundingBoxDescent : m.actualBoundingBoxDescent;
+
+        return { ascent, descent, capTop: m.actualBoundingBoxAscent };
     }
 
     /**

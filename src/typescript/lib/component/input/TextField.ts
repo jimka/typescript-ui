@@ -48,13 +48,25 @@ class TextField extends TextInput<TextFieldOptions> {
     }
 
     /**
-     * Recalculates preferred and maximum height from the native input's measured size.
+     * Recalculates preferred and maximum height from the unified line box plus
+     * this field's own chrome.
      *
+     * @remarks Box height is `Util.lineHeightPx()` plus the field's own vertical
+     * insets, padding, and border — the same sum `wrapInnerBaseline` re-adds —
+     * so the rendered input and its baseline match a sibling `Text`/`ComboBox`.
      * Called at construction time and after each theme change so that font-size
      * adjustments propagate to the layout hint automatically.
      */
     private updateHeight(): void {
-        const h = Util.measureInputHeight();
+        const insets  = this.getInsets();
+        const padding = this.getPadding();
+        const border  = this.getBorderSize();
+
+        const chrome = insets.getTop() + insets.getBottom()
+                     + (padding ? padding.getTop() + padding.getBottom() : 0)
+                     + border.top + border.bottom;
+
+        const h = Util.lineHeightPx() + chrome;
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);

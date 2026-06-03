@@ -12,7 +12,7 @@ import type { Theme } from '~/core/Theme.js';
  */
 export const ModernTheme: Theme = {
     colorScheme: 'light',
-    font       : { family: 'system-ui, sans-serif', size: '14px', lineHeight: 1.2 },
+    font       : { family: 'system-ui, sans-serif', size: '14px', linePadding: '2px' },
     text       : { color: 'rgb(0, 0, 0)' },
     body       : { background: 'rgb(255, 255, 255)' },
     border     : { color: 'black',                 radius: '4px' },
