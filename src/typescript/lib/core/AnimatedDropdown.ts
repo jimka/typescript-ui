@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
 import { Position } from "~/primitive/Position.js";
+import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { callable } from "~/core/Callable.js";
 
 /** Default fade duration in milliseconds. Matches `MENU_ANIM_DURATION_MS` from `Menu`. */
@@ -17,26 +18,6 @@ const DEFAULT_TRANSLATE_PX: number = 4;
  * never opts into the helper carries no extra state.
  */
 const _dismissingByComponent: WeakMap<Component, boolean> = new WeakMap();
-
-/**
- * Layer-stack registry of currently-open {@link AnimatedDropdown} instances.
- *
- * The stack is LIFO in open order; the `children` array on each entry tracks
- * the layers that were opened while this layer was the topmost open one. Hosts
- * that wire a viewport-pointerdown dismiss path (a picker field, a popover)
- * consult {@link AnimatedDropdown.isTargetInsideLayer} to decide whether a
- * click landed inside their own dropdown subtree or inside a descendant layer
- * (e.g. a `ComboBoxDropdown` opened from inside a picker dropdown). The
- * descendant case must count as "inside" so the host's dropdown stays open.
- */
-interface LayerEntry {
-    layer:    AnimatedDropdown;
-    children: AnimatedDropdown[];
-}
-
-const _openLayers: LayerEntry[] = [];
-
-const _entryByLayer: WeakMap<AnimatedDropdown, LayerEntry> = new WeakMap();
 
 /**
  * Construction-time options for {@link AnimatedDropdown}.
@@ -75,7 +56,6 @@ export interface FadeOptions {
  */
 const _defaultAnimatedDropdownOptions: Partial<AnimatedDropdownOptions> = {
     visible:     false,
-    zIndex:      10050,
     animated:    true,
     durationMs:  DEFAULT_DURATION_MS,
     translatePx: DEFAULT_TRANSLATE_PX,
@@ -105,7 +85,7 @@ const _defaultAnimatedDropdownOptions: Partial<AnimatedDropdownOptions> = {
  *
  * @category Core
  */
-class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdownOptions> extends Component<TOptions> {
+class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdownOptions> extends Component<TOptions> implements DismissableLayer {
 
     // Set true while a fade-out is in flight; reset to false either when the
     // fade completes (so the deferred detach runs) or when a fresh `showAnimated`
@@ -113,6 +93,18 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     // dropdown is back on screen).
     private _dismissing:  boolean = false;
     private _open:        boolean = false;
+
+    // Host-supplied close thunk invoked from `requestClose` instead of the
+    // bare `hideAnimated`, so the host (a picker field, a ComboBox) can run
+    // its own teardown (caret rotation, aria-expanded, commit) when the
+    // manager dismisses the layer on an outside click. Null until a host
+    // opts into the `"click-outside"` dismiss path.
+    private _closeHandler: (() => void) | null = null;
+
+    // Anchor element (the trigger) excluded from the manager's outside-click
+    // test so the click that toggles the dropdown does not immediately
+    // re-close it. Null for dropdowns whose host owns the toggle gating.
+    private _anchorElement: HTMLElement | null = null;
 
     /**
      * @param options - Optional construction-time options.
@@ -218,20 +210,14 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * show mid-dismiss keeps the panel on screen.
      */
     showAnimated(): this {
-        // Push onto the layer stack on first open. `_dismissing`-cancelled
-        // mid-fade re-shows already have an entry, so the guard prevents a
-        // duplicate push.
-        if (!_entryByLayer.has(this)) {
-            const parent = _openLayers[_openLayers.length - 1];
-            const entry: LayerEntry = { layer: this, children: [] };
+        // Register on the central layer tree. `LayerManager.register` is a
+        // no-op when this layer is already registered (a `_dismissing`-
+        // cancelled mid-fade re-show), so the tree never double-pushes.
+        LayerManager.register(this);
 
-            _openLayers.push(entry);
-            _entryByLayer.set(this, entry);
-
-            if (parent) {
-                parent.children.push(this);
-            }
-        }
+        // Mirror the manager's band-based z-stamp onto the element so the
+        // dropdown lands above its opener (which registered earlier).
+        this.setZIndex(LayerManager.getZIndex(this));
 
         this._dismissing = false;
         this._open       = true;
@@ -279,28 +265,9 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
             this.setVisible(false);
             this.removeElement();
 
-            // Pop from the layer stack. `onHideComplete` runs after this so a
-            // subclass override sees the layer as already-closed.
-            const entry = _entryByLayer.get(this);
-
-            if (entry) {
-                _entryByLayer.delete(this);
-
-                const idx = _openLayers.indexOf(entry);
-
-                if (idx > 0) {
-                    const parent = _openLayers[idx - 1];
-                    const ci     = parent.children.indexOf(this);
-
-                    if (ci >= 0) {
-                        parent.children.splice(ci, 1);
-                    }
-                }
-
-                if (idx >= 0) {
-                    _openLayers.splice(idx, 1);
-                }
-            }
+            // Pop from the central layer tree. `onHideComplete` runs after
+            // this so a subclass override sees the layer as already-closed.
+            LayerManager.unregister(this);
 
             this.onHideComplete();
         };
@@ -416,50 +383,95 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
         // default: no-op
     }
 
+    // ----- DismissableLayer -----
+
     /**
-     * Returns true when `target` is a descendant of `layer`'s element or any
-     * descendant layer's element. Hosts that wire a viewport-pointerdown
-     * dismiss path call this so a click inside a child layer (e.g. a
-     * `ComboBoxDropdown` opened from inside a picker dropdown) counts as
-     * inside the picker's layer and does not dismiss it.
+     * Returns the dropdown's root element for the central layer tree.
      *
-     * @param layer - The layer to test containment for.
-     * @param target - The DOM node receiving the click.
-     * @returns true when `target` is inside `layer` or any of its descendant layers.
+     * @returns The dropdown's element, or null when not yet rendered.
      */
-    static isTargetInsideLayer(layer: AnimatedDropdown, target: Node): boolean {
-        const el = layer.getElement();
-
-        if (el && el.contains(target)) {
-            return true;
-        }
-
-        const entry = _entryByLayer.get(layer);
-
-        if (!entry) {
-            return false;
-        }
-
-        for (const child of entry.children) {
-            if (AnimatedDropdown.isTargetInsideLayer(child, target)) {
-                return true;
-            }
-        }
-
-        return false;
+    getLayerElement(): HTMLElement | null {
+        return this.getElement();
     }
 
     /**
-     * Returns the topmost currently-open layer, or `null` when no layer is
-     * open. Exposed as a test seam — the bug fix does not consume it directly.
+     * Returns the dismiss mode the document-level handlers consult. The
+     * dropdown is `"click-outside"`: the manager closes it when a
+     * `pointerdown` lands outside both the dropdown's layer subtree and its
+     * anchor. A click inside a descendant layer counts as inside, so a nested
+     * dropdown keeps its opener open.
      *
-     * @returns The topmost open layer, or null when none is open.
+     * @returns The layer dismiss mode.
      */
-    static getTopLayer(): AnimatedDropdown | null {
-        const top = _openLayers[_openLayers.length - 1];
-
-        return top ? top.layer : null;
+    getDismissMode(): LayerDismissMode {
+        return "click-outside";
     }
+
+    /**
+     * Advisory close request from the manager. Runs the host-supplied close
+     * thunk when one is set (so the host can rotate a caret, clear
+     * aria-expanded, or commit), otherwise the standard exit fade + detach.
+     */
+    requestClose(): void {
+        if (this._closeHandler) {
+            this._closeHandler();
+
+            return;
+        }
+
+        this.hideAnimated();
+    }
+
+    /**
+     * Returns the anchor element excluded from the manager's outside-click
+     * test, or null when the host gates the toggle itself.
+     *
+     * @returns The anchor element, or null.
+     */
+    getAnchorElement(): HTMLElement | null {
+        return this._anchorElement;
+    }
+
+    /**
+     * Returns the dropdown's z-index band so an unrelated top-level dropdown
+     * stacks in the dropdown family.
+     *
+     * @returns The dropdown band base.
+     */
+    getBand(): number {
+        return LayerManager.Band.Dropdown;
+    }
+
+    /**
+     * Installs the close thunk the manager calls from {@link requestClose}
+     * when this dropdown is dismissed by an outside click. The host passes its
+     * own close routine so the dropdown's teardown and the host's UI state
+     * (caret, aria-expanded, commit) stay in lockstep.
+     *
+     * @param handler - The host's close routine, or null to fall back to
+     *   {@link hideAnimated}.
+     * @returns This dropdown, for method chaining.
+     */
+    setCloseHandler(handler: (() => void) | null): this {
+        this._closeHandler = handler;
+
+        return this;
+    }
+
+    /**
+     * Records the anchor (trigger) element excluded from the manager's
+     * outside-click test, so the gesture that opened the dropdown does not
+     * immediately re-close it.
+     *
+     * @param el - The anchor element, or null to clear it.
+     * @returns This dropdown, for method chaining.
+     */
+    setAnchorElement(el: HTMLElement | null): this {
+        this._anchorElement = el;
+
+        return this;
+    }
+
 }
 
 /**

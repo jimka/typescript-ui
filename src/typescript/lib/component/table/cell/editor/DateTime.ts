@@ -2,7 +2,7 @@
 
 import { TextInputCellEditor } from "~/component/table/cell/editor/TextInputCellEditor.js";
 import { Event } from "~/core/Event.js";
-import { AnimatedDropdown } from "~/core/AnimatedDropdown.js";
+import { LayerManager } from "~/core/LayerManager.js";
 import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
 
@@ -26,7 +26,6 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
     private _dropdown:    DateTimePickerDropdown | null = null;
     private _animated:    boolean = true;
     private _text:        string = "";
-    private readonly _onViewportPointerDown: (e: PointerEvent) => void;
 
     constructor(showSeconds: boolean = false) {
         super();
@@ -37,8 +36,6 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
         this.setBorder({ border: "0px solid transparent" });
         this.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-editor-border, rgba(30, 100, 200, 0.6))');
         this.setOutline('none');
-
-        this._onViewportPointerDown = (e: PointerEvent) => this.onViewportPointerDown(e);
 
         Event.addListener(this, "focus", ()             => this.openDropdown());
         Event.addListener(this, "blur",  (e: FocusEvent) => this.onEditorBlur(e));
@@ -62,8 +59,7 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
     retainsFocus(relatedTarget: Node | null): boolean {
         return this._dropdown !== null
             && this._dropdown.isOpen()
-            && relatedTarget !== null
-            && AnimatedDropdown.isTargetInsideLayer(this._dropdown, relatedTarget);
+            && LayerManager.containsAcrossLayers(this._dropdown, relatedTarget);
     }
 
     /**
@@ -169,9 +165,12 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
     }
 
     /**
-     * Opens the picker dropdown anchored to the input element, and starts
-     * watching for a pointerdown outside the editing surface so the edit can
-     * commit even when focus has moved into the embedded time field.
+     * Opens the picker dropdown anchored to the input element. The dropdown's
+     * own `"click-outside"` mode (driven by
+     * [`LayerManager`](/api/core/namespaces/LayerManager)) commits the edit
+     * when a pointerdown lands outside the editing surface — including when
+     * focus has moved into the embedded time field — via the close thunk
+     * installed here.
      */
     private openDropdown(): void {
         const dropdown = this.ensureDropdown();
@@ -184,19 +183,33 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
             return;
         }
 
+        // The manager dismisses the dropdown on an outside click; route that
+        // through the editor so it also commits. The editor input is excluded
+        // as the anchor so opening the editor doesn't immediately dismiss.
+        dropdown.setCloseHandler(() => this.onOutsideDismiss());
+        dropdown.setAnchorElement(el);
+
         dropdown.showAt(el, this._value);
-        Event.addViewportListener(this, "pointerdown", this._onViewportPointerDown);
     }
 
     /**
-     * Hides the picker dropdown if it is currently open and stops watching for
-     * outside pointerdowns.
+     * Hides the picker dropdown if it is currently open.
      */
     private closeDropdown(): void {
         if (this._dropdown?.isOpen()) {
-            Event.removeViewportListener(this, "pointerdown", this._onViewportPointerDown);
             this._dropdown.hideAnimated();
         }
+    }
+
+    /**
+     * Closes the dropdown and commits the edit when the manager reports an
+     * outside click. This is the path the editor's blur-commit can no longer
+     * cover once focus sits in the embedded time field rather than the
+     * editor's own input.
+     */
+    private onOutsideDismiss(): void {
+        this.closeDropdown();
+        this.requestCommit();
     }
 
     /**
@@ -213,29 +226,6 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
         }
 
         this.closeDropdown();
-    }
-
-    /**
-     * Commits the edit when a pointerdown lands outside the whole editing
-     * surface (the editor input plus the dropdown's layer tree). This is the
-     * path the blur-commit can no longer cover once focus sits in the embedded
-     * time field rather than the editor's own input.
-     *
-     * @param e - The viewport pointerdown event.
-     */
-    private onViewportPointerDown(e: PointerEvent): void {
-        const target = e.target as Node;
-
-        if (this._dropdown && AnimatedDropdown.isTargetInsideLayer(this._dropdown, target)) {
-            return;
-        }
-
-        if (this.getElement()?.contains(target)) {
-            return;
-        }
-
-        this.closeDropdown();
-        this.requestCommit();
     }
 
     /**

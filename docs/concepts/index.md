@@ -10,6 +10,7 @@ If you are new here, start with the [mental model](/guide/mental-model) in the G
 - [Layout system](/concepts/layout-system) — how `LayoutManager` resolves fill / anchor constraints.
 - [Sizing](/concepts/sizing) — preferred / min / max / fixed sizes.
 - [Events](/concepts/events) — `addListener` vs `addSubtreeListener`, hover quirks.
+- [Layering](/concepts/layering) — the runtime layer tree, z-index bands, and dismiss modes behind overlays.
 - [Theming](/concepts/theming) — design tokens, custom themes, theme-change listeners.
 - [Data binding](/concepts/data-binding) — Model / Store / Proxy / `Binding` overview.
 - [Accessibility](/concepts/accessibility) — ARIA, keyboard navigation, `RovingTabIndex`.

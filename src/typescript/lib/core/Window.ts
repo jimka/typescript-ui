@@ -6,6 +6,7 @@ import { WindowHeader } from "~/component/container/WindowHeader.js";
 import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
+import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { Fit } from "~/layout/Fit.js";
 import { FillType } from "~/layout/FillType.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
@@ -16,16 +17,6 @@ import { callable } from "~/core/Callable.js";
 const WINDOW_ANIM_DURATION_MS: number = 150;
 const SNAP_DOCK_GAP_PX:         number = 4;
 const DEFAULT_MIN_DOCK_WIDTH_PX: number = 200;
-
-/**
- * Sentinel Component used as the registration key for the window-wide
- * `mousedown` outside-click listener. The handler is a static (one per
- * `Window` namespace, not per instance), but `Event.addViewportListener`
- * requires a Component to bind to. Allocating one stable sentinel
- * preserves the existing install/uninstall lifecycle that's tied to
- * `Window.openWindows.size`, rather than to any individual window.
- */
-const _viewportListenerOwner: Component = new Component();
 
 /**
  * Lifecycle state for {@link Window}. The three values are mutually
@@ -132,25 +123,9 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
  *
  * @category Core
  */
-class Window extends Panel<WindowOptions> {
+class Window extends Panel<WindowOptions> implements DismissableLayer {
 
-    private static zIndexCounter: number = 9000;
-    private static activeWindow: Window | null = null;
     private static openWindows: Set<Window> = new Set<Window>();
-
-    private static readonly deactivateIfOutside: (e: MouseEvent) => void = (evnt: MouseEvent) => {
-        for (const win of Window.openWindows) {
-            const el = win.getElement();
-            if (el && el.contains(evnt.target as Node)) {
-                return;
-            }
-        }
-
-        if (Window.activeWindow) {
-            Window.activeWindow._header.setActive(false);
-            Window.activeWindow = null;
-        }
-    };
 
     private _header: WindowHeader;
     private _borderComponents: {
@@ -386,16 +361,13 @@ class Window extends Panel<WindowOptions> {
     show(): this {
         const el = this.getElement(true);
 
+        // Join the central layer tree before bringToFront so the manager has
+        // a node to re-stamp. A dropdown opened inside the window then
+        // registers as the window's child and stacks above it.
+        LayerManager.register(this);
+
         this.doLayout();
         this.bringToFront();
-
-        if (Window.openWindows.size === 0) {
-            Event.addViewportListener(
-                _viewportListenerOwner,
-                'mousedown',
-                Window.deactivateIfOutside
-            );
-        }
 
         Window.openWindows.add(this);
 
@@ -498,15 +470,90 @@ class Window extends Panel<WindowOptions> {
      * the previously active window and this one.
      */
     bringToFront(): void {
-        const prev = Window.activeWindow;
+        // Route the raise through the manager: it re-allocates the z-stamp
+        // (mirrored back via onZIndexChanged) and marks this window active,
+        // which deactivates the previously-active window's title bar through
+        // onActivate. No local activeWindow / setActive bookkeeping is needed.
+        LayerManager.bringToFront(this);
+    }
 
-        if (prev && prev !== this) {
-            prev._header.setActive(false);
-        }
+    // ----- DismissableLayer -----
 
-        Window.activeWindow = this;
-        this.setZIndex(++Window.zIndexCounter);
-        this._header.setActive(true);
+    /**
+     * Returns the window's root element for the central layer tree.
+     *
+     * @returns The window's element, or null when not yet rendered.
+     */
+    getLayerElement(): HTMLElement | null {
+        return this.getElement();
+    }
+
+    /**
+     * Returns the dismiss mode the document-level handlers consult. A window
+     * is never dismissed by an outside interaction, so it stays `"manual"`.
+     * Activation (the title-bar highlight) is orthogonal to dismissal — the
+     * manager drives it through {@link Window.onActivate} for any mode.
+     *
+     * @returns The layer dismiss mode.
+     */
+    getDismissMode(): LayerDismissMode {
+        return "manual";
+    }
+
+    /**
+     * Reflects the active state onto the title bar. The manager calls this
+     * with `true` when a pointer / focus interaction lands inside the window
+     * (or a layer opened inside it) and `false` when another layer takes over
+     * or an empty-viewport click deactivates everything. Replaces the bespoke
+     * window-wide outside-click viewport listener this class used to own.
+     *
+     * @param active - True when this window is the active layer.
+     */
+    onActivate(active: boolean): void {
+        this._header.setActive(active);
+    }
+
+    /**
+     * Advisory close request from the manager. A window owns its own close
+     * affordance (the title-bar exit button), so this routes to the same
+     * teardown.
+     */
+    requestClose(): void {
+        this.onExitAction();
+    }
+
+    /**
+     * Returns the window's z-index band so unrelated windows stack beneath
+     * popovers, dropdowns, and dialogs.
+     *
+     * @returns The window band base.
+     */
+    getBand(): number {
+        return LayerManager.Band.Window;
+    }
+
+    /**
+     * Windows are independent top-level peers, not layers opened from one
+     * another, so each registers as a tree root. This keeps raising one window
+     * from dragging another up with it: {@link LayerManager.bringToFront}
+     * re-stamps a node together with its descendants, which is correct for a
+     * dropdown nested inside a window but wrong for two sibling windows.
+     *
+     * @returns Always `true`.
+     */
+    isLayerRoot(): boolean {
+        return true;
+    }
+
+    /**
+     * Mirrors a manager-allocated z-index onto the element when the window
+     * (or a layer opened inside it) is raised via
+     * {@link LayerManager.bringToFront}.
+     *
+     * @param zIndex - The fresh z-index assigned by the manager.
+     */
+    onZIndexChanged(zIndex: number): void {
+        this.setZIndex(zIndex);
     }
 
     /**
@@ -532,19 +579,9 @@ class Window extends Panel<WindowOptions> {
         this.detachViewportResizeListener();
         this.clearSnapTargetBorder();
 
-        if (Window.activeWindow === this) {
-            Window.activeWindow = null;
-        }
+        LayerManager.unregister(this);
 
         Window.openWindows.delete(this);
-
-        if (Window.openWindows.size === 0) {
-            Event.removeViewportListener(
-                _viewportListenerOwner,
-                'mousedown',
-                Window.deactivateIfOutside
-            );
-        }
 
         // Re-layout the dock so any sibling minimized windows close any gap
         // this one's removal left behind.

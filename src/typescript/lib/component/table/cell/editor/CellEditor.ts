@@ -61,6 +61,11 @@ export abstract class CellEditor<T> extends Component {
      * with its own focusable field) override this to keep editing while focus
      * moves into that surface.
      *
+     * @remarks Overrides delegate the cross-portal answer ("did focus land
+     * inside my dropdown or any descendant layer?") to
+     * [`LayerManager.containsAcrossLayers`](/api/core/namespaces/LayerManager/functions/containsAcrossLayers)
+     * rather than walking a private layer stack themselves.
+     *
      * @param _relatedTarget - The node receiving focus, or null.
      * @returns True to suppress the blur-driven commit/close.
      */
