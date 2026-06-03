@@ -15,6 +15,12 @@ export interface TextMeasureOptions {
     fontVariant?: string;
     fontStretch?: string;
     lineHeight?: string
+    /**
+     * When set, the probe wraps at this pixel width (using `pre-wrap`) instead of
+     * measuring on a single `nowrap` line. The returned `height` then reflects the
+     * wrapped, multi-line box. Omit to measure the natural single-line size.
+     */
+    maxWidth?: number;
 }
 
 /**
@@ -85,6 +91,7 @@ export namespace Util {
             fontVariant = "normal",
             fontStretch = "normal",
             lineHeight  = "calc(1em + var(--ts-ui-line-padding, 2px))",
+            maxWidth,
         } = options;
 
         const probe    = document.createElement("span");
@@ -94,7 +101,11 @@ export namespace Util {
         probeBuf.setMany({
             position:    "fixed",
             visibility:  "hidden",
-            whiteSpace:  "nowrap",
+            // With a wrap width the probe must honour `\n` and soft-wrap so the
+            // measured height covers every visual line; otherwise stay on a
+            // single `nowrap` line for the natural-size measurement.
+            whiteSpace:  maxWidth === undefined ? "nowrap" : "pre-wrap",
+            width:       maxWidth === undefined ? "" : `${maxWidth}px`,
             fontFamily:  fontFamily,
             fontSize:    fontSize,
             fontWeight:  fontWeight,
