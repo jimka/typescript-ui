@@ -197,10 +197,26 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
     }
 
     /**
-     * Recalculates preferred and maximum height from the native input's measured size.
+     * Recalculates preferred and maximum height from the unified line box plus
+     * the inner input's padding and the spinner's own border.
+     *
+     * @remarks The borderless inner `TextField` keeps its default vertical
+     * padding, and its content must hold one `Util.lineHeightPx()` line box, so
+     * the spinner's outer box is that inner-input box plus the spinner's own
+     * vertical insets/padding/border. Reading the inner input's padding (rather
+     * than the spinner's, which is zero) keeps the spinner the same height as a
+     * standalone `TextField` in the same row.
      */
     private updateHeight(): void {
-        const h = Util.measureInputHeight();
+        const insets       = this.getInsets();
+        const border       = this.getBorderSize();
+        const inputPadding = this._input.getPadding();
+
+        const chrome = insets.getTop() + insets.getBottom()
+                     + (inputPadding ? inputPadding.getTop() + inputPadding.getBottom() : 0)
+                     + border.top + border.bottom;
+
+        const h = Util.lineHeightPx() + chrome;
 
         this.setPreferredSize(120, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);

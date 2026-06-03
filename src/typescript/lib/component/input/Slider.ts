@@ -437,13 +437,18 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
     }
 
     /**
-     * Returns `null` so HBox falls back to bottom-edge alignment — the bare
-     * slider has no inline text baseline.
+     * Returns a baseline near the bottom edge so the slider participates in
+     * baseline alignment — sitting with its bottom roughly on the surrounding
+     * text baseline — instead of being vertically centred in the row. The 2px
+     * lift matches the other graphical controls so it doesn't sit below the
+     * text descenders.
      *
-     * @returns `null`.
+     * @returns The preferred height minus 2, or `null` before a size is set.
      */
     getBaseline(): number | null {
-        return null;
+        const size = this.getPreferredSize();
+
+        return size ? size.height - 2 : null;
     }
 
     /**

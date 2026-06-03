@@ -121,12 +121,21 @@ class SpinButton extends Button<SpinButtonOptions> {
      * propagate to the layout hint automatically.
      */
     private updateSize(): void {
-        const fullHeight = Util.measureInputHeight();
+        // Mirror the host NumberSpinner's computed outer box (its own
+        // `updateHeight`): one `Util.lineHeightPx()` line box, plus the inner
+        // TextField's default 3 px top + bottom padding, plus the spinner's
+        // 1 px top + bottom border. SpinButton can't read the spinner it lives
+        // in, so the inner padding (6) and spinner border (2) are stated here as
+        // the host's known chrome.
+        const INNER_INPUT_VERTICAL_PADDING = 6;
+        const SPINNER_VERTICAL_BORDER      = 2;
+
+        const fullHeight = Util.lineHeightPx() + INNER_INPUT_VERTICAL_PADDING + SPINNER_VERTICAL_BORDER;
         // Subtract the host NumberSpinner's 1 px top + bottom border so two
         // stacked buttons fit inside the spinner's inner rect — without this,
         // an odd `fullHeight` produces `2 * floor(h/2) = h - 1` which exceeds
         // the inner height `h - 2` and clips the bottom button.
-        const halfHeight = Math.floor((fullHeight - 2) / 2);
+        const halfHeight = Math.floor((fullHeight - SPINNER_VERTICAL_BORDER) / 2);
 
         this.setPreferredSize(18, halfHeight);
         // Min = preferred = max so the parent's shrink-on-overallocation

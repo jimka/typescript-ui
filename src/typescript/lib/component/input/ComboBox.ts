@@ -410,18 +410,35 @@ class ComboBoxLabel extends Component {
  */
 class ComboBoxCaret extends Component {
     private _glyph: Glyph = new Glyph("chevron-down");
+    private _size:  number;
 
     constructor() {
         super({ tag: "span" });
-        // Lock the size at 16×16 via the typed min/max setters so the box
-        // stays square regardless of content (the glyph child is
-        // framework-absolute and contributes no intrinsic height).
-        this.setMinSize(16, 16);
-        this.setMaxSize(16, 16);
+        // Size the caret to the field's text font so the chevron matches the
+        // trigger icons of sibling fields (DateField/TimeField), whose
+        // Button-hosted glyphs already sync to the text line. A bare Glyph
+        // otherwise keeps its static 16×16 default and renders visibly larger
+        // than every other field icon. Lock min == max so the box stays square
+        // regardless of content (the glyph child contributes no intrinsic
+        // height); the glyph fills the box so it centres trivially.
+        this._size = Util.lineHeightPx({ linePadding: false });
+        this.setMinSize(this._size, this._size);
+        this.setMaxSize(this._size, this._size);
         this.setPointerEvents("none");
 
+        this._glyph.setPreferredSize(this._size, this._size);
         this._glyph.setPointerEvents("none");
         this.addComponent(this._glyph);
+    }
+
+    /**
+     * Returns the square caret box size in pixels (the field's text font size),
+     * so the owning {@link ComboBox}'s layout reserves a matching caret column.
+     *
+     * @returns The caret box edge length in pixels.
+     */
+    getCaretSize(): number {
+        return this._size;
     }
 
     /**
@@ -597,13 +614,25 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
-     * Recalculates preferred and maximum height from a probe input's measured size.
+     * Recalculates preferred and maximum height from the unified line box plus
+     * this control's own chrome.
      *
-     * Uses the same measurement helper as `Input`-based fields so a `ComboBox`
-     * placed next to a `TextField` matches its row height.
+     * @remarks Box height is `Util.lineHeightPx()` (the same line box every text
+     * control renders at) plus the ComboBox's own vertical insets, padding, and
+     * border — the identical sum `wrapInnerBaseline` re-adds — so a `ComboBox`
+     * placed next to a `TextField` shares its row height and baseline without a
+     * UA `<input>` probe.
      */
     protected updateHeight(): void {
-        const h = Util.measureInputHeight();
+        const insets  = this.getInsets();
+        const padding = this.getPadding();
+        const border  = this.getBorderSize();
+
+        const chrome = insets.getTop() + insets.getBottom()
+                     + (padding ? padding.getTop() + padding.getBottom() : 0)
+                     + border.top + border.bottom;
+
+        const h = Util.lineHeightPx() + chrome;
 
         this.setPreferredSize(200, h);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, h);
@@ -624,10 +653,11 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
         }
 
         // Layout constants. `gap` matches the prior `gap: 6px` on the
-        // `.ComboBox` class rule; `caretSize` matches the 16×16 `ComboBoxCaret`
-        // min/max box. The label fills the remaining width.
+        // `.ComboBox` class rule; `caretSize` reads the caret's own square box
+        // size (the field's text font size) so the reserved column tracks it.
+        // The label fills the remaining width.
         const gap       = 6;
-        const caretSize = 16;
+        const caretSize = this._caret.getCaretSize();
         const insets    = this.getInsets();
 
         const innerLeft = insets.getLeft();
@@ -658,7 +688,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
      * @returns The baseline offset in pixels.
      */
     getBaseline(): number | null {
-        return this.wrapInnerBaseline(Util.measureLabelBaseline());
+        return this.wrapInnerBaseline(Util.measureTextBaseline());
     }
 
     /**

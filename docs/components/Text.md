@@ -25,7 +25,7 @@ The constructor signature is `Text(text?, tag = "span")` — the second argument
 | `setFontFamily(value)` / `setFontSize(value)` / `setLineHeight(value)` | Font controls. |
 | `setFontWeight(value)` / `setFontStyle(value)` / `setFontVariant(value)` | Font style controls. |
 | `setTextAlign(value)` / `setTextShadow(value)` | Text appearance. |
-| `centerInHeight(px)` | Set line-height equal to a container's height so a single-line text sits vertically centred. Pass `null` to revert to the theme's line-height multiplier. |
+| `centerInHeight(px)` | Set line-height equal to a container's height so a single-line text sits vertically centred. Pass `null` to revert to the theme's additive line box (`font-size + --ts-ui-line-padding`). |
 | `dispose()` | Detach the theme-change listener — call this before removing a `Text` from the page so the listener doesn't leak. |
 
 ## Centring text in a fixed-height box
@@ -37,7 +37,7 @@ const label = Text('Cancel');
 label.centerInHeight(28);   // single-line label, centred in a 28px row
 ```
 
-Pass `null` to drop back to the theme's `--ts-ui-line-height` multiplier — useful when the text starts wrapping and you want the multiplier-based spacing back.
+Pass `null` to drop back to the theme's additive line box (`font-size + --ts-ui-line-padding`) — useful when the text starts wrapping and you want the theme's default line spacing back.
 
 ## Memory leaks
 

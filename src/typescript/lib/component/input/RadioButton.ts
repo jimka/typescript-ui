@@ -7,6 +7,7 @@ import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
 import { Text } from "~/component/input/Text.js";
+import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 import { circle } from "~/glyphs/solid/circle.js";
 
@@ -342,15 +343,22 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
     }
 
     /**
-     * Returns the offset from the top of the radio button to the inline
-     * label's text baseline, or `null` when the radio has no label (HBox
-     * falls back to bottom-edge alignment).
+     * Returns the offset from the top of the radio button to its inline label's
+     * text baseline, or — when there is no label — to the text baseline the dot
+     * would share with a label, so a label-less dot still sits on a row's
+     * baseline.
      *
-     * @returns The baseline offset in pixels, or `null`.
+     * @returns The baseline offset in pixels.
+     *
+     * @remarks A `null` baseline auto-centres the child within the row's
+     * text-line height, which floats a small dot to the row centre once a tall
+     * sibling (e.g. a `TextArea`) inflates the row's descent. Returning the
+     * text-line baseline keeps the dot aligned exactly as a labelled radio's
+     * dot would be.
      */
     getBaseline(): number | null {
         if (this._label === null) {
-            return null;
+            return this.wrapInnerBaseline(Util.measureTextBaseline());
         }
 
         return this.wrapInnerBaseline(this._label.getBaseline());

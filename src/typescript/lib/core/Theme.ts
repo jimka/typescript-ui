@@ -29,12 +29,15 @@ export interface Theme {
         family    : string;
         size      : string;
         /**
-         * Unitless multiplier of the current font size. CSS treats a unitless
-         * `line-height` as "this many times the element's own font-size", so
-         * the value scales automatically when the font size changes. Typical
-         * UI values are around 1.2 (compact) to 1.5 (loose).
+         * Extra vertical leading added to a control's own font size to form its
+         * line box, as a CSS length string, e.g. `"2px"`. The rendered line
+         * height is `font-size + linePadding` (via `calc(1em + …)`), so the
+         * leading scales with each control's font size instead of being a fixed
+         * value — 12px text and 14px text get proportionate line boxes from the
+         * one token. A control can still pin an explicit fixed line-height with
+         * `Text.setLineHeight(px)`.
          */
-        lineHeight: number;
+        linePadding: string;
     };
 
     text: {
@@ -554,7 +557,7 @@ function themeToVars(theme: Theme): Record<string, string> {
     return {
         '--ts-ui-font-family'                      : theme.font.family,
         '--ts-ui-font-size'                        : theme.font.size,
-        '--ts-ui-line-height'                      : String(theme.font.lineHeight),
+        '--ts-ui-line-padding'                     : String(theme.font.linePadding),
         '--ts-ui-text-color'                       : theme.text.color,
         '--ts-ui-body-bg'                          : theme.body.background,
         '--ts-ui-border-color'                     : theme.border.color,
@@ -811,12 +814,11 @@ export class ThemeManager {
         document.documentElement.style.color       = theme.text.color;
         document.documentElement.style.fontFamily  = theme.font.family;
         document.documentElement.style.fontSize    = theme.font.size;
-        document.documentElement.style.lineHeight  = String(theme.font.lineHeight);
+        document.documentElement.style.lineHeight  = `calc(1em + ${theme.font.linePadding})`;
         document.body.style.backgroundColor        = theme.body.background;
         document.body.style.color                  = theme.text.color;
 
-        Util.invalidateInputBaselineCache();
-        Util.invalidateLabelBaselineCache();
+        Util.invalidateTextMetricsCache();
 
         ThemeManager.themeListeners.forEach(l => l());
     }
