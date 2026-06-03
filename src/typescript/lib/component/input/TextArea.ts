@@ -3,6 +3,7 @@
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
+import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -203,18 +204,21 @@ class TextArea extends TextInput<TextAreaOptions> {
     }
 
     /**
-     * Returns `null` so a `TextArea` is treated as a graphical / replaced element
-     * by horizontal layouts.
+     * Returns the baseline of the text area's **first** line so it aligns its
+     * top line with sibling controls in a horizontal row; the box then extends
+     * downward below the baseline.
      *
-     * @returns Always `null`.
+     * @returns The first-line baseline offset in pixels.
      *
-     * @remarks A multi-line text area's box height is far larger than its first
-     * line of text, so participating in baseline alignment would drag every
-     * surrounding text label down by the area's vertical extent. Treating it as
-     * a baseline-less block lets the row keep its text labels in place.
+     * @remarks The first-line baseline (not the box bottom) is used so a tall
+     * text area does not dominate the row's ascent and drag every sibling down
+     * by its full height. This stays safe for surrounding graphics only because
+     * they expose their own (bottom-edge) baselines — a `null`-baseline sibling
+     * would be centred against this area's inflated descent and float to the
+     * row's middle.
      */
     getBaseline(): number | null {
-        return null;
+        return this.wrapInnerBaseline(Util.measureTextBaseline());
     }
 
     protected init(element?: HTMLElement): this {

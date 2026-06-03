@@ -146,6 +146,21 @@ class ProgressSpinner extends Component {
     }
 
     /**
+     * Returns a baseline near the bottom edge so the spinner participates in
+     * baseline alignment — sitting with its bottom roughly on the surrounding
+     * text baseline — instead of being vertically centred in the row. The 2px
+     * lift matches the other graphical controls so it doesn't sit below the
+     * text descenders.
+     *
+     * @returns The preferred height minus 2, or `null` before a size is set.
+     */
+    getBaseline(): number | null {
+        const size = this.getPreferredSize();
+
+        return size ? size.height - 2 : null;
+    }
+
+    /**
      * Sets a new arc diameter and updates the component's preferred size.
      *
      * @param size - Diameter in pixels.
