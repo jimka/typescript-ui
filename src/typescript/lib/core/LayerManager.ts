@@ -381,6 +381,28 @@ export namespace LayerManager {
     }
 
     /**
+     * Walks up the "opened-from" chain from `node` and returns the nearest
+     * ancestor-or-self layer that carries an activation affordance
+     * ({@link DismissableLayer.onActivate}), or `null` if none does. A layer
+     * opened inside a window resolves to that window, so the window stays
+     * active while its descendant holds focus — interacting with a child layer
+     * must not darken the title bar of the window that owns it.
+     */
+    function activatableAncestor(node: LayerNode): DismissableLayer | null {
+        let cur: LayerNode | null = node;
+
+        while (cur) {
+            if (cur.layer.onActivate) {
+                return cur.layer;
+            }
+
+            cur = cur.parent;
+        }
+
+        return null;
+    }
+
+    /**
      * Walks the stack top-down for a pointer / focus interaction at `target`,
      * dismissing each topmost layer whose dismiss mode and containment test
      * say the interaction landed outside it, and marking the topmost
@@ -399,7 +421,12 @@ export namespace LayerManager {
             const mode = node.layer.getDismissMode();
 
             if (containsAcrossLayers(node.layer, target)) {
-                markActive(node.layer);
+                // Activation belongs to the nearest activatable ancestor (the
+                // window a child layer was opened from), not the innermost
+                // containing layer; fall back to the layer itself when nothing
+                // up the chain carries an activation affordance, preserving the
+                // prior behaviour for standalone layers.
+                markActive(activatableAncestor(node) ?? node.layer);
                 activated    = true;
                 landedInside = true;
 
