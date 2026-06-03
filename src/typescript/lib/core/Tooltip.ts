@@ -87,7 +87,7 @@ export class Tooltip extends Component {
     private _lineCount: number = 1;
 
     // Resolved per-line pixel height of the tooltip text, set by `show()` from
-    // the live `--ts-ui-line-height` and read by `doLayout()`. Replaces the
+    // the live additive line box and read by `doLayout()`. Replaces the
     // fixed `ITEM_HEIGHT` multiplier, which over-allocated ~3px/line and left
     // a trailing empty line on multi-line tooltips.
     private _perLine: number = Tooltip.ITEM_HEIGHT;
@@ -448,17 +448,19 @@ export class Tooltip extends Component {
 
     /**
      * Resolves the tooltip text's rendered per-line height in pixels from the
-     * live `--ts-ui-line-height` (× the default font size), measured at hover
-     * time. Matches the `_text` label (a default `Text`: 14px font, theme
-     * line-height multiplier) so the box hugs the text vertically with no
-     * trailing gap, and tracks theme/font-size changes on the next hover.
+     * live additive line box, measured at hover time. Matches the `_text` label
+     * (a default `Text`: 14px font, theme leading) so the box hugs the text
+     * vertically with no trailing gap, and tracks theme/font changes on the next
+     * hover.
      *
      * @returns The per-line height in pixels, ceiled to a whole pixel.
+     *
+     * @remarks `measureTextMetrics` already defaults `lineHeight` to
+     * `calc(1em + var(--ts-ui-line-padding, 2px))`, so the line box is left to
+     * that default rather than passed explicitly.
      */
     private _perLineHeight(): number {
-        const { height } = Util.measureTextMetrics("X", {
-            lineHeight: "var(--ts-ui-line-height, 1.2)",
-        });
+        const { height } = Util.measureTextMetrics("X");
 
         return Math.ceil(height);
     }

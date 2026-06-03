@@ -16,6 +16,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
+import { Util } from "~/core/Util.js";
 
 /**
  * String-literal union of the events emitted by {@link Button}. A typed
@@ -241,11 +242,17 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
     /**
      * Bound theme-change handler. The auto-sizing pipeline reads font-size
-     * and glyph metrics that can shift with the active theme, so the
-     * recompute re-fires whenever the theme cascade flips. Held on the
-     * instance so a future `dispose` path can unregister it.
+     * and glyph metrics that can shift with the active theme, so the recompute
+     * re-fires whenever the theme cascade flips. `_rebuildContentRow` runs
+     * first so the single-line optical inset re-reads the freshly-invalidated
+     * `Util.opticalCenterOffset()` — `recomputePreferredSize` alone does not
+     * touch the content row. Held on the instance so a future `dispose` path
+     * can unregister it.
      */
-    private readonly _onThemeChange: () => void = () => this.recomputePreferredSize();
+    private readonly _onThemeChange: () => void = () => {
+        this._rebuildContentRow();
+        this.recomputePreferredSize();
+    };
 
     // Lazy `:active` rule. The slot is just a fast-path cache — the
     // `createStyleRule` builder on Component dedupes by selector suffix, so
@@ -654,6 +661,17 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             }
             this._content.addComponent(this._titleColumn);
         }
+
+        // Optically centre a single line of label text. The Fit/anchor centring
+        // centres the line box geometrically, but a label's ink occupies only
+        // cap-top→baseline, so the empty descender band makes the text read as
+        // too high. A top inset of `Util.opticalCenterOffset()` nudges it down
+        // onto its optical centre. Applies only to a non-empty single-line
+        // label: a two-line title+description block centres as a block (offset
+        // 0), and a glyph-only button (empty `_text`) is already box-centred.
+        const opticalOffset = (!renderDesc && this._text.getText().valueOf() !== "") ? Util.opticalCenterOffset() : 0;
+
+        this._content.setInsets(new Insets(opticalOffset, 0, 0, 0));
     }
 
     /**
@@ -662,8 +680,9 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * Glyph's static 16×16 default. The lever is `setPreferredSize`, not
      * `setFontSize` — a font-size token does not resize an SVG glyph's box.
      *
-     * Theme-reactive: it reads `_text.getLineHeight()` (button font-size ×
-     * `--ts-ui-line-height`) and runs from {@link recomputePreferredSize},
+     * Theme-reactive: it reads `_text.getLineHeight()` (the button title's
+     * additive line box, button font-size + `--ts-ui-line-padding`) and runs
+     * from {@link recomputePreferredSize},
      * which already re-fires on every theme change — so the glyph re-tracks the
      * title line height without an extra listener. Bails when the line height
      * isn't resolved yet (pre-measure) so it never writes a 0/NaN size.

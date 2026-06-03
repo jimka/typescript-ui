@@ -114,13 +114,15 @@ class Table extends LayoutManager {
         const footer = container.getFooter();
 
         if (container.isHeaderVisible() && header) {
-            // Header cells render their text at table.header.font.size, so match
-            // the row height to that font specifically — not the body font.
+            // Header cells render their text in the shared px line box, so the
+            // row height is that line box plus the cell padding.
             const theme        = ThemeManager.getTheme();
-            const headerFont   = parseFloat(theme.table.header.font.size) || 13;
-            const lineHeight   = theme.font.lineHeight                    || 1.2;
-            const padding      = theme.table.cell.padding                 ?? 2;
-            const columnHeight = Math.ceil(headerFont * lineHeight) + 2 * padding;
+            // Cells render at the root font size, so the line box is the
+            // additive `font-size + --ts-ui-line-padding` value `Util` derives
+            // (the same line box the cell text is laid out at).
+            const lineHeight   = Util.lineHeightPx();
+            const padding      = theme.table.cell.padding          ?? 2;
+            const columnHeight = lineHeight + 2 * padding;
 
             // Parent header row uses the same arithmetic — same font, same
             // padding — so a theme swap re-runs `doLayout` and the two
@@ -233,13 +235,14 @@ class Table extends LayoutManager {
         }
 
         if (container.isFooterVisible() && footer) {
-            // Footer cells use the default cell renderer (body font), not the
-            // header font, so size the footer row to the body font instead.
+            // Footer cells render their text in the shared px line box, so the
+            // row height is that line box plus the cell padding.
             const theme         = ThemeManager.getTheme();
-            const bodyFont      = parseFloat(theme.font.size) || 14;
-            const lineHeight    = theme.font.lineHeight       || 1.2;
-            const padding       = theme.table.cell.padding    ?? 2;
-            const columnHeight  = Math.ceil(bodyFont * lineHeight) + 2 * padding;
+            // Same additive line box as the header/body: the root font size plus
+            // the `--ts-ui-line-padding` leading, via `Util`.
+            const lineHeight    = Util.lineHeightPx();
+            const padding       = theme.table.cell.padding         ?? 2;
+            const columnHeight  = lineHeight + 2 * padding;
             const footerColumns = footer.getColumns();
 
             footer.setAutoCommitStyle(false);

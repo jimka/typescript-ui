@@ -91,7 +91,12 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
         // no longer need a class-level `applyStyle` override.
         this.setElementCSSRules({
             fontFamily: "var(--ts-ui-font-family, sans-serif)",
-            fontSize:   "var(--ts-ui-font-size, 12px)",
+            fontSize:   "var(--ts-ui-font-size, 14px)",
+            // Render the input's single line at the same px line box every text
+            // control measures against (`Util.lineHeightPx`), so the input no
+            // longer inherits the UA `line-height: normal` and its baseline
+            // coincides with a `Text`/`Label` in the same row.
+            lineHeight: "calc(1em + var(--ts-ui-line-padding, 2px))",
         });
 
         // Bridge the native `input` DOM event into AbstractInput's change /
@@ -361,8 +366,9 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
      *
      * @returns The baseline offset in pixels.
      *
-     * @remarks Adds the component's top border and CSS padding-top to the native
-     * input's intrinsic baseline. `insets` is layout-side metadata used only
+     * @remarks Adds the component's top border and CSS padding-top to the
+     * unified content-relative baseline ([`Util.measureTextBaseline`](/api/core/namespaces/Util/functions/measureTextBaseline)).
+     * `insets` is layout-side metadata used only
      * when sizing children; for a leaf input it does not visually push the
      * rendered element down, so it is excluded from the baseline. `padding` is
      * applied as real CSS padding (with `box-sizing: border-box`) and shifts
@@ -373,7 +379,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
      * and are treated as graphical elements by horizontal layouts.
      */
     getBaseline(): number | null {
-        return this.wrapInnerBaseline(Util.measureInputBaseline());
+        return this.wrapInnerBaseline(Util.measureTextBaseline());
     }
 
     /**
