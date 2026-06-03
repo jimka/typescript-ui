@@ -651,15 +651,27 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this._outerColumn.addComponent(this._innerRow);
             this._outerColumn.addComponent(this._description!);
             this._content.addComponent(this._outerColumn);
-        } else {
-            this._titleColumn.addComponent(this._text);
-            if (renderDesc) {
-                this._titleColumn.addComponent(this._description!);
-            }
+        } else if (renderDesc) {
+            // Title + description stack in the column so the description sits
+            // below the title; the glyph (if any) stays beside the whole stack.
             if (this._glyph) {
-                this._content.insertComponent(this._glyph, 0);
+                this._content.addComponent(this._glyph);
             }
+            this._titleColumn.addComponent(this._text);
+            this._titleColumn.addComponent(this._description!);
             this._content.addComponent(this._titleColumn);
+        } else {
+            // No description: place the title directly beside the glyph rather
+            // than wrapping it in `_titleColumn`. The column reports a null
+            // baseline (a plain VBox-backed Component), which would hide the
+            // title's baseline from `_content`'s HBox and leave the glyph
+            // centred; added directly, the title's baseline is visible so the
+            // glyph drops onto the text baseline — matching the description
+            // topology, where the title already sits directly in its inner row.
+            if (this._glyph) {
+                this._content.addComponent(this._glyph);
+            }
+            this._content.addComponent(this._text);
         }
 
         // Optically centre a single line of label text. The Fit/anchor centring
