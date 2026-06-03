@@ -17,6 +17,11 @@ import { callable } from "~/core/Callable.js";
 const WINDOW_ANIM_DURATION_MS: number = 150;
 const SNAP_DOCK_GAP_PX:         number = 4;
 const DEFAULT_MIN_DOCK_WIDTH_PX: number = 200;
+// Must-stay-visible slab of a window edge while dragging. The drag clamp keeps
+// at least this many pixels of the window inside the viewport so its header bar
+// can never be dropped fully off-screen and become ungrabbable. 24 px is wide
+// enough to grab with a cursor yet narrow enough not to feel restrictive.
+const EDGE_MARGIN_PX:            number = 24;
 
 /**
  * Lifecycle state for {@link Window}. The three values are mutually
@@ -1123,6 +1128,35 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     }
 
     /**
+     * Constrains the accumulated drag delta so the window's header stays
+     * grabbable inside the viewport. The window may travel off-screen until
+     * only an {@link EDGE_MARGIN_PX} strip of either side remains visible
+     * horizontally; vertically the whole header band is kept on-screen. Mutates
+     * `_dragDX`/`_dragDY` in place so both the live translate and the
+     * `onMouseUp` commit read the clamped values from one chokepoint.
+     */
+    private clampDragDelta(): void {
+        const w       = this.getWidth();
+        const headerH = this._header.getHeight() || 26;
+        const vw      = window.innerWidth;
+        const vh      = window.innerHeight;
+
+        const minX = EDGE_MARGIN_PX - w;
+        const maxX = vw - EDGE_MARGIN_PX;
+        const minY = 0;
+        const maxY = vh - headerH;
+
+        const targetX = this._dragStartLeft + this._dragDX;
+        const targetY = this._dragStartTop  + this._dragDY;
+
+        const clampedX = Math.min(Math.max(targetX, minX), maxX);
+        const clampedY = Math.min(Math.max(targetY, minY), maxY);
+
+        this._dragDX = clampedX - this._dragStartLeft;
+        this._dragDY = clampedY - this._dragStartTop;
+    }
+
+    /**
      * Moves the window by the mouse movement delta while dragging.
      *
      * @param e - The mouse event carrying the movement delta.
@@ -1132,6 +1166,8 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
 
         this._dragDX += e.movementX;
         this._dragDY += e.movementY;
+
+        this.clampDragDelta();
 
         // Compositor-only translate during drag; the cached left/top stay at the start
         // position so the field-DOM invariant holds (left === style.left throughout).
