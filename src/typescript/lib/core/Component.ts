@@ -2242,15 +2242,20 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The baseline offset in pixels, or `null` when this component has no
      * intrinsic baseline (e.g. graphical or non-text components).
      *
-     * @remarks The default implementation returns `null`. Subclasses with a
-     * meaningful baseline override this method, typically composing an inner
-     * baseline with the component's own chrome via `wrapInnerBaseline`. Used by
-     * horizontal layouts to align children of mixed heights so their text
-     * baselines coincide. Components that return `null` are treated as if their
-     * bottom edge were the baseline (CSS replaced-element behaviour).
+     * @remarks Subclasses with a meaningful baseline override this method,
+     * typically composing an inner baseline with the component's own chrome via
+     * `wrapInnerBaseline`. The default delegates to the layout manager's
+     * {@link LayoutManager.getContentBaseline} so a plain container laid out by
+     * a baseline-aware layout (e.g. an `HBox` of controls) aligns by its row's
+     * baseline rather than auto-centring; non-baseline layouts return `null`.
+     * Used by horizontal layouts to align children of mixed heights so their
+     * text baselines coincide. Components that return `null` are treated as if
+     * their bottom edge were the baseline (CSS replaced-element behaviour).
      */
     getBaseline(): number | null {
-        return null;
+        const inner = this.getLayoutManager().getContentBaseline();
+
+        return inner === null ? null : this.wrapInnerBaseline(inner);
     }
 
     /**

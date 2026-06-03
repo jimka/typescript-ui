@@ -560,5 +560,21 @@ export abstract class LayoutManager extends BaseObject {
         return result;
     }
 
+    /**
+     * Returns the container's own baseline, measured from its content-top
+     * (inside insets/border/padding), or `null` when this layout exposes no
+     * meaningful baseline.
+     *
+     * @returns The inner baseline offset in pixels, or `null`.
+     *
+     * @remarks The default is `null` (no baseline). Baseline-aware layouts
+     * override this so a container placed in a parent's baseline row aligns by
+     * its content's baseline instead of auto-centring. `Component.getBaseline`
+     * wraps the returned value with the container's chrome.
+     */
+    getContentBaseline(): number | null {
+        return null;
+    }
+
     abstract doLayout(): void;
 };
