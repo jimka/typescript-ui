@@ -298,7 +298,7 @@ class Glyph extends Component<GlyphOptions> {
     getBaseline(): number | null {
         const size = this.getPreferredSize();
 
-        return size ? size.height - 4 : null;
+        return size ? size.height - 3 : null;
     }
 
     /**
