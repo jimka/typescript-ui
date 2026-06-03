@@ -30,7 +30,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `colorScheme` | *(set directly as `color-scheme`)* | Browser rendering of native controls (checkboxes, scrollbars). Use `'light'` or `'dark'`. |
 | `font.family` | `--ts-ui-font-family` | Font family for the entire UI (cascades from `<html>`) |
 | `font.size` | `--ts-ui-font-size` | Base font size for the entire UI |
-| `font.lineHeight` | `--ts-ui-line-height` | Unitless line-height multiplier applied document-wide. Drives the row-height of `Text` components and the baseline alignment math in `HBox`/`Column`/`Grid` |
+| `font.linePadding` | `--ts-ui-line-padding` | Vertical leading (e.g. `"2px"`) added to a control's own font size to form its line box: the rendered line height is `calc(1em + var(--ts-ui-line-padding))`, so the leading scales per font size (12px and 14px text get proportionate line boxes from one token). Every text control renders **and** measures against this same arithmetic, so inputs, labels, and `Text` share one baseline. Drives the row-height of `Text`/tables and the baseline alignment math in `HBox`/`Column`/`Grid`. Override per control with `Text.setLineHeight(px)` for a fixed line-height |
 | `text.color` | `--ts-ui-text-color` | Default text color for all components |
 | `body.background` | `--ts-ui-body-bg` | Page background; also the background of [`Window`](/api/core/classes/Window) |
 | `border.color` | `--ts-ui-border-color` | Default border color for [`Window`](/api/core/classes/Window) and other bordered components |
