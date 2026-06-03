@@ -26,7 +26,7 @@ export interface GridOptions extends LayoutManagerOptions {
     /** Grid-wide anchor applied to non-filling children that don't set their own `anchor`. Default {@link AnchorType.CENTER}. */
     defaultAnchor?: AnchorType;
 
-    /** When `true`, children are baseline-aligned per row (columns stay uniform; children use preferred height). Default `false`. */
+    /** When `true`, children are baseline-aligned per row (column/row tracks still apply; children use preferred height). Default `false`. */
     baselineAlign?: boolean;
 
     /** Per-column sizing tracks; see {@link GridTrack}. */
@@ -160,9 +160,10 @@ class Grid extends LayoutManager {
     }
 
     /**
-     * Sets whether children are baseline-aligned per row. When `true`, columns
-     * stay uniform-width but each row uses the natural heights of its children
-     * and components are baseline-aligned within the row, mirroring
+     * Sets whether children are baseline-aligned per row. When `true`, the
+     * column/row tracks still size each cell (so a `"content"` column hugs its
+     * content), each row uses the natural heights of its children, and
+     * components are baseline-aligned within the row, mirroring
      * [`HBox`](/api/layout/classes/HBox)'s baseline-aware placement. Orthogonal
      * to {@link Grid.setDefaultFill} — baseline alignment owns the vertical axis
      * while fill/anchor still drive the horizontal axis.
@@ -585,10 +586,13 @@ class Grid extends LayoutManager {
      * ([`GridConstraints`](/api/layout/classes/GridConstraints)) falling back to
      * the grid's {@link Grid.setDefaultFill}/{@link Grid.setDefaultAnchor}
      * (default {@link FillType.BOTH}, so children fill their cells out of the
-     * box). When {@link Grid.setBaselineAlign} is enabled, columns stay
-     * uniform-width but each row uses the natural heights of its children and
-     * components are baseline-aligned within their row, mirroring
-     * [`HBox`](/api/layout/classes/HBox)'s baseline-aware placement.
+     * box). When {@link Grid.setBaselineAlign} is enabled, the column/row tracks
+     * still size each cell (a `"content"` column hugs its content), each row
+     * uses the natural heights of its children, and components are
+     * baseline-aligned within their row, mirroring
+     * [`HBox`](/api/layout/classes/HBox)'s baseline-aware placement. Baseline
+     * mode auto-flows by `colSpan`; explicit `col`/`row` and `rowSpan > 1` are
+     * not supported.
      */
     doLayout() {
         let container = this.getContainer();
@@ -619,74 +623,104 @@ class Grid extends LayoutManager {
             containerSize = { width: w, height: h };
         }
 
-        let totalHSpacing = Math.max(0, cols - 1) * spacing;
-        let totalVSpacing = Math.max(0, rows - 1) * spacing;
-        let columnWidth   = (containerSize.width  - totalHSpacing) / cols;
-        let columnHeight  = (containerSize.height - totalVSpacing) / rows;
-
         if (!this._baselineAlign) {
             this.layoutOccupancy(components, cols, rows, containerSize, containerInsets, spacing);
 
             return;
         }
 
+        // Baseline mode honours the same per-track column/row sizing as the
+        // occupancy path — so a "content" column hugs its titles instead of
+        // taking a uniform 1/cols share — plus colSpan auto-flow, then
+        // baseline-aligns each row's children within the row (mirroring HBox).
+        // Explicit col/row placement and rowSpan > 1 are not supported here.
+        const content    = this.measureContent(components, cols, rows);
+        const colExtents = this.resolveTracks(this._columnTracks, cols, containerSize.width,  spacing, content.columns);
+        const rowExtents = this.resolveTracks(this._rowTracks,    rows, containerSize.height, spacing, content.rows);
+
+        type BaselineCell = {
+            component: Component;
+            col:       number;
+            colSpan:   number;
+            height:    number;
+            baseline:  number | null;
+        };
+
+        const perRow: BaselineCell[][] = Array.from({ length: rows }, () => []);
+
+        let flowCol = 0;
+        let flowRow = 0;
+
+        for (const component of components) {
+            if (flowRow >= rows) {
+                break;
+            }
+
+            const cons    = this.getLayoutConstraints(component) as GridConstraints | undefined;
+            const colSpan = Math.min(Math.max(1, cons?.colSpan ?? 1), cols);
+            const size    = component.getPreferredSize();
+
+            perRow[flowRow].push({
+                component,
+                col:      flowCol,
+                colSpan,
+                height:   size ? size.height : 0,
+                baseline: component.getBaseline(),
+            });
+
+            flowCol += colSpan;
+
+            if (flowCol >= cols) {
+                flowCol = 0;
+                flowRow += 1;
+            }
+        }
+
         let y = containerInsets.getTop();
 
         for (let row = 0; row < rows; row += 1) {
-            const rowComponents: Component[] = [];
-            const rowHeights: number[] = [];
-            const rowBaselines: Array<number | null> = [];
+            const rowCells = perRow[row];
 
-            for (let col = 0; col < cols; col += 1) {
-                const idx = row * cols + col;
-                if (idx >= components.length) {
-                    break;
+            const { rowAscent, rowDescent } = this.computeRowMetrics(
+                rowCells.map(cell => cell.height),
+                rowCells.map(cell => cell.baseline),
+            );
+
+            for (const cell of rowCells) {
+                let x = containerInsets.getLeft();
+                for (let i = 0; i < cell.col; i += 1) {
+                    x += (colExtents[i] ?? 0) + spacing;
                 }
 
-                const component = components[idx];
-                const size = component.getPreferredSize();
-
-                rowComponents.push(component);
-                rowHeights.push(size ? size.height : 0);
-                rowBaselines.push(component.getBaseline());
-            }
-
-            const { rowAscent, rowDescent } = this.computeRowMetrics(rowHeights, rowBaselines);
-
-            let x = containerInsets.getLeft();
-
-            for (let i = 0; i < rowComponents.length; i += 1) {
-                const component = rowComponents[i];
-                const height = rowHeights[i];
+                let width = (cell.colSpan - 1) * spacing;
+                for (let i = cell.col; i < cell.col + cell.colSpan; i += 1) {
+                    width += colExtents[i] ?? 0;
+                }
 
                 let cellY: number;
 
                 if (rowAscent !== null) {
-                    const b = rowBaselines[i];
-
-                    if (b !== null) {
-                        cellY = y + (rowAscent - b);
-                    } else {
-                        cellY = y + this.nullChildY(height, rowAscent, rowDescent);
-                    }
+                    cellY = cell.baseline !== null
+                        ? y + (rowAscent - cell.baseline)
+                        : y + this.nullChildY(cell.height, rowAscent, rowDescent);
                 } else {
                     cellY = y;
                 }
 
                 this.placeComponent(
-                    component,
+                    cell.component,
                     x,
                     cellY,
-                    columnWidth,
-                    height,
+                    width,
+                    cell.height,
                     this._defaultFill,
                     this._defaultAnchor
                 );
-
-                x += columnWidth + spacing;
             }
 
-            y += columnHeight + spacing;
+            const baselineHeight = rowAscent !== null ? rowAscent + rowDescent : 0;
+
+            y += Math.max(rowExtents[row] ?? 0, baselineHeight) + spacing;
         }
     }
 
