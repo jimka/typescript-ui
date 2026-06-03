@@ -154,20 +154,31 @@ export class Tooltip extends Component {
         const lines      = text.split("\n");
         const widestLine = lines.reduce((max, line) => Math.max(max, Util.measureTextWidth(line)), 0);
 
-        inst._lineCount = lines.length;
-        inst._perLine   = inst._perLineHeight();
+        inst._perLine = inst._perLineHeight();
 
         // No minimum width — the tooltip hugs its content (widest line plus
         // horizontal padding), capped at MAX_WIDTH. A min-width floor would
         // pad short labels out to a fixed box wider than their text.
         const tooltipWidth  = Math.min(Tooltip.MAX_WIDTH, widestLine + Tooltip.H_PADDING);
 
+        // When the widest line is wider than the cap, the label soft-wraps at the
+        // available text width, so the visual line count exceeds the `\n`-split
+        // count. Measure the wrapped height at that width and derive the real line
+        // count; an uncapped tooltip never wraps, so the split count stands.
+        if (widestLine + Tooltip.H_PADDING > Tooltip.MAX_WIDTH) {
+            const availTextWidth = tooltipWidth - Tooltip.H_PADDING;
+            const wrappedHeight  = Util.measureTextMetrics(text, { maxWidth: availTextWidth }).height;
+            inst._lineCount      = Math.max(lines.length, Math.round(wrappedHeight / inst._perLine));
+        } else {
+            inst._lineCount = lines.length;
+        }
+
         // Height hugs the text: one resolved line height per line plus padding.
         // Floor the single-line case to the legacy ITEM_HEIGHT box so plain
         // one-line tooltips stay pixel-stable; only multi-line tooltips switch
         // to the tighter per-line height that removes the trailing gap.
-        let tooltipHeight = lines.length * inst._perLine + Tooltip.V_PADDING;
-        if (lines.length === 1) {
+        let tooltipHeight = inst._lineCount * inst._perLine + Tooltip.V_PADDING;
+        if (inst._lineCount === 1) {
             tooltipHeight = Math.max(tooltipHeight, Tooltip.ITEM_HEIGHT + Tooltip.V_PADDING);
         }
 
