@@ -533,6 +533,19 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     }
 
     /**
+     * Windows are independent top-level peers, not layers opened from one
+     * another, so each registers as a tree root. This keeps raising one window
+     * from dragging another up with it: {@link LayerManager.bringToFront}
+     * re-stamps a node together with its descendants, which is correct for a
+     * dropdown nested inside a window but wrong for two sibling windows.
+     *
+     * @returns Always `true`.
+     */
+    isLayerRoot(): boolean {
+        return true;
+    }
+
+    /**
      * Mirrors a manager-allocated z-index onto the element when the window
      * (or a layer opened inside it) is raised via
      * {@link LayerManager.bringToFront}.
