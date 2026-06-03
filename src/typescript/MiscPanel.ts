@@ -170,6 +170,48 @@ class MiscPanel extends Panel {
         });
         leftColumn.addComponent(buttonWindowImage);
 
+        // A window whose content opens another window. Each window registers
+        // with the central LayerManager as an independent tree root (see
+        // Window.isLayerRoot), so the child opens above the parent and takes
+        // focus rather than nesting beneath it; clicking either title bar
+        // raises that window. Exercises window-from-window stacking and
+        // activation.
+        let buttonWindowFromWindow = new Button("Show window that opens a window!");
+        buttonWindowFromWindow.on("action", function () {
+            const parentWin = new Window("Parent window");
+            parentWin.setX(150);
+            parentWin.setY(150);
+            parentWin.setWidth(360);
+            parentWin.setHeight(180);
+
+            parentWin.setContentFactory(() => {
+                const content = new Panel({ layoutManager: new VBox({ spacing: 12 }) });
+                content.addComponent(new Text("Open a child window — it should appear on top and take focus."));
+
+                let childCount = 0;
+                const openChild = new Button("Open child window");
+                openChild.on("action", function () {
+                    childCount++;
+
+                    const childWin = new Window("Child window " + childCount);
+                    childWin.setX(220 + childCount * 24);
+                    childWin.setY(220 + childCount * 24);
+                    childWin.setWidth(300);
+                    childWin.setHeight(130);
+
+                    childWin.setContentFactory(() => new Text("I opened from the parent window and gained focus. Click the parent's title bar to raise it instead."));
+
+                    childWin.show();
+                });
+                content.addComponent(openChild);
+
+                return content;
+            });
+
+            parentWin.show();
+        });
+        leftColumn.addComponent(buttonWindowFromWindow);
+
         let buttonWindowTable = new Button("Show window with table (slow)!");
         buttonWindowTable.on("action", function () {
             let win2 = new Window("blaah!");
