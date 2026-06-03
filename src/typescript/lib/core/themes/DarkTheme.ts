@@ -9,7 +9,7 @@ import type { Theme } from '~/core/Theme.js';
  */
 export const DarkTheme: Theme = {
     colorScheme: 'dark',
-    font       : { family: 'system-ui, sans-serif', size: '14px', lineHeight: 1.2 },
+    font       : { family: 'system-ui, sans-serif', size: '14px', linePadding: '2px' },
     text       : { color: 'rgb(220, 220, 220)' },
     body       : { background: 'rgb(30, 30, 30)' },
     border     : { color: 'rgb(90, 90, 90)',        radius: '4px' },

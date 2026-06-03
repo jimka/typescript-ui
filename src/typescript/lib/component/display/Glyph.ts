@@ -286,6 +286,22 @@ class Glyph extends Component<GlyphOptions> {
     }
 
     /**
+     * Returns a baseline near the bottom edge so the glyph participates in
+     * baseline alignment — sitting with its ink roughly on the surrounding text
+     * baseline when placed next to labels — instead of being vertically centred
+     * in the row. The anchor is 4px above the bottom edge (vs 2px on the
+     * bar-shaped controls), which drops a square icon slightly lower so its ink
+     * lands on the text baseline rather than floating above it.
+     *
+     * @returns The preferred height minus 4, or `null` before a size is set.
+     */
+    getBaseline(): number | null {
+        const size = this.getPreferredSize();
+
+        return size ? size.height - 3 : null;
+    }
+
+    /**
      * Returns the registry name this Glyph was constructed with.
      *
      * @returns The registry key supplied to the constructor.

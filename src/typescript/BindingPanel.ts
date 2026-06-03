@@ -150,6 +150,7 @@ class BindingPanel extends Panel {
 
         fieldSet.setLayoutManager(new Grid({
             rows:    FORM_ROW_COUNT,
+            baselineAlign: true,
             columns: 2,
             spacing: 8,
             columnTracks: [

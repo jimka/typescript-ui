@@ -231,13 +231,69 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
      * alignment).
      *
      * @returns The baseline offset in pixels, or `null`.
+     *
+     * @remarks The reported baseline includes {@link labelCenterOffset} because
+     * `doLayout` nudges the label down to sit concentric with the taller pill;
+     * the outer row must align the label at that lowered position so its text
+     * baseline still meets the row's.
      */
     getBaseline(): number | null {
-        if (this._label === null) {
+        const label = this._label;
+        if (label === null) {
             return null;
         }
 
-        return this.wrapInnerBaseline(this._label.getBaseline());
+        const baseline = label.getBaseline();
+        if (baseline === null) {
+            return null;
+        }
+
+        return this.wrapInnerBaseline(baseline + this.labelCenterOffset());
+    }
+
+    /**
+     * Pixels to push the inline label down so it sits centred on the pill.
+     *
+     * The 36×20 pill is taller than the text line, but the inner `HBox`
+     * top-aligns the shorter label against the row's text baseline — leaving the
+     * pill bottom-heavy, its extra height hanging entirely below the text. A
+     * same-height control (the 16×16 checkbox box) needs no correction because
+     * top-aligning it already centres it on the line; the taller pill does.
+     * Centring the label on the pill (and folding this into {@link getBaseline})
+     * makes the pill sit concentric with the text line instead.
+     *
+     * @returns Pixels to push the label down, or 0 when there is no label or it
+     * is at least as tall as the pill.
+     */
+    private labelCenterOffset(): number {
+        if (this._label === null) {
+            return 0;
+        }
+
+        const trackHeight = this._track.getPreferredSize()?.height ?? 0;
+        const labelHeight = this._label.getPreferredSize()?.height ?? trackHeight;
+
+        return Math.max(0, Math.round((trackHeight - labelHeight) / 2));
+    }
+
+    /**
+     * Lays out the pill and label, then nudges the label down by
+     * {@link labelCenterOffset} so it sits concentric with the taller pill. The
+     * inner `HBox` top-aligns the label to the row's text baseline on every
+     * pass, so re-reading its placed `y` here keeps the nudge idempotent.
+     *
+     * @returns This component, for method chaining.
+     */
+    doLayout(): this {
+        super.doLayout();
+
+        const label  = this._label;
+        const offset = this.labelCenterOffset();
+        if (label !== null && offset > 0) {
+            label.setY(label.getY() + offset);
+        }
+
+        return this;
     }
 
     /**
