@@ -79,6 +79,16 @@ export interface DismissableLayer {
      * opener's, so this only matters for top-level (unparented) registrations.
      */
     getBand?(): number;
+
+    /**
+     * Optional top-level hint. Returns `true` for a surface that is an
+     * independent peer rather than a layer opened from another — a window is
+     * not a child of whatever happened to be topmost when it appeared. Such a
+     * layer registers as a tree root, so raising it does not drag an unrelated
+     * peer up with it (see {@link LayerManager.bringToFront}). Omitted surfaces
+     * register under the current topmost layer (the opened-from edge).
+     */
+    isLayerRoot?(): boolean;
 }
 
 /**
@@ -180,10 +190,13 @@ export namespace LayerManager {
     }
 
     /**
-     * Pushes `layer` as a child of the current topmost layer, assigns its
-     * band-based z-index, and installs the document-level listeners on the
-     * first call. A duplicate register (e.g. a `showAnimated` that cancels an
-     * in-flight fade-out) is a no-op so the tree never double-pushes.
+     * Pushes `layer` as a child of the current topmost layer — unless it
+     * declares itself a top-level peer via
+     * {@link DismissableLayer.isLayerRoot}, in which case it registers as a
+     * tree root — assigns its band-based z-index, and installs the
+     * document-level listeners on the first call. A duplicate register (e.g. a
+     * `showAnimated` that cancels an in-flight fade-out) is a no-op so the tree
+     * never double-pushes.
      *
      * @param layer - The surface entering the layer tree.
      */
@@ -192,8 +205,9 @@ export namespace LayerManager {
             return;
         }
 
-        const parent = _stack.length > 0 ? _stack[_stack.length - 1] : null;
-        const band   = bandFor(parent, layer.getBand?.() ?? Z_BAND_DROPDOWN);
+        const topmost = _stack.length > 0 ? _stack[_stack.length - 1] : null;
+        const parent  = layer.isLayerRoot?.() ? null : topmost;
+        const band    = bandFor(parent, layer.getBand?.() ?? Z_BAND_DROPDOWN);
         const zIndex = band + (++_zCounter);
 
         const node: LayerNode = { layer, parent, children: [], band, zIndex };
