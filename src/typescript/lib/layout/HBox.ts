@@ -153,6 +153,37 @@ class HBox extends LayoutManager {
     }
 
     /**
+     * Returns the row's baseline (the maximum child text baseline) measured from
+     * the container's content-top, so a baseline-aware parent aligns this HBox
+     * container by the same baseline its own children align to — rather than
+     * auto-centring the whole container.
+     *
+     * @returns The inner baseline offset in pixels, or `null` while stretching
+     * (baseline alignment is disabled) or when no child reports a baseline.
+     */
+    getContentBaseline(): number | null {
+        if (this.isStretching()) {
+            return null;
+        }
+
+        const container = this.getContainer();
+        if (!container) {
+            return null;
+        }
+
+        const heights: number[] = [];
+        const baselines: Array<number | null> = [];
+
+        for (const component of container.getComponents()) {
+            const size = component.getPreferredSize();
+            heights.push(size ? size.height : 0);
+            baselines.push(component.getBaseline());
+        }
+
+        return this.computeRowMetrics(heights, baselines).rowAscent;
+    }
+
+    /**
      * Returns the current sizing mode along the horizontal axis.
      *
      * @returns Either `"preferred"` or `"equal"`.
