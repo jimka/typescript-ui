@@ -17,10 +17,12 @@ import { callable } from "~/core/Callable.js";
 const WINDOW_ANIM_DURATION_MS: number = 150;
 const SNAP_DOCK_GAP_PX:         number = 4;
 const DEFAULT_MIN_DOCK_WIDTH_PX: number = 200;
-// Must-stay-visible slab of a window edge while dragging. The drag clamp keeps
-// at least this many pixels of the window inside the viewport so its header bar
-// can never be dropped fully off-screen and become ungrabbable. 24 px is wide
-// enough to grab with a cursor yet narrow enough not to feel restrictive.
+// Must-stay-visible slab of a window edge, used only when constrainToViewport is
+// disabled: in that fallback the drag keeps at least this many pixels of the
+// window inside the viewport so its header bar can never be dropped fully
+// off-screen and become ungrabbable. The default, full-window containment never
+// consults this. 24 px is wide enough to grab with a cursor yet narrow enough
+// not to feel restrictive.
 const EDGE_MARGIN_PX:            number = 24;
 
 /**
@@ -981,6 +983,9 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
      * Attaches document-level move and mouseup listeners to begin dragging the window.
      *
      * @param e - The mousedown event whose pointer coordinate anchors the drag.
+     *
+     * @remarks Wired to the header's `mousedown`; the event argument is required —
+     * `e.clientX`/`e.clientY` seed the absolute-pointer drag origin read by `onDrag`.
      */
     onMouseDown(e: MouseEvent) {
         if (this.getWindowState() !== "normal") {
