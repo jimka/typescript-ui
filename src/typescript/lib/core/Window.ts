@@ -87,6 +87,7 @@ export interface WindowOptions extends PanelOptions {
     snapResizeEnabled?: boolean;
     snapThreshold?:     number;
     snapModifier?:      WindowSnapModifier;
+    constrainToViewport?: boolean;
 }
 
 /**
@@ -114,6 +115,7 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
     snapResizeEnabled: true,
     snapThreshold:     12,
     snapModifier:      "ctrl",
+    constrainToViewport: true,
 };
 
 /**
@@ -301,6 +303,8 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         if (opts.snapResizeEnabled !== undefined) this.setSnapResizeEnabled(opts.snapResizeEnabled);
         if (opts.snapThreshold     !== undefined) this.setSnapThreshold(opts.snapThreshold);
         if (opts.snapModifier      !== undefined) this.setSnapModifier(opts.snapModifier);
+
+        if (opts.constrainToViewport !== undefined) this.setConstrainToViewport(opts.constrainToViewport);
 
         return this;
     }
@@ -904,6 +908,31 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     }
 
     /**
+     * Controls how far a window may be dragged. When enabled (the default) the
+     * whole window is kept inside the viewport — every border stops at the
+     * viewport edge. When disabled the window may travel off-screen but its
+     * header stays grabbable, so it can never be dropped fully out of reach.
+     *
+     * @param value - True to keep the entire window inside the viewport.
+     *
+     * @returns This window, for method chaining.
+     */
+    setConstrainToViewport(value: boolean): this {
+        this._options.constrainToViewport = value;
+
+        return this;
+    }
+
+    /**
+     * Returns whether the whole window is constrained to the viewport while dragging.
+     *
+     * @returns True when the entire window is kept inside the viewport.
+     */
+    isConstrainToViewport(): boolean {
+        return this._options.constrainToViewport ?? true;
+    }
+
+    /**
      * Sets the cursor-to-edge distance (in pixels) under which a border strip
      * is treated as the snap target while the modifier key is held.
      *
@@ -1146,29 +1175,48 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     }
 
     /**
-     * Constrains the drag delta so the window's header stays
-     * grabbable inside the viewport. The window may travel off-screen until
-     * only an {@link EDGE_MARGIN_PX} strip of either side remains visible
-     * horizontally; vertically the whole header band is kept on-screen. Mutates
-     * `_dragDX`/`_dragDY` in place so both the live translate and the
-     * `onMouseUp` commit read the clamped values from one chokepoint.
+     * Constrains the drag delta so the window stays within the viewport. The
+     * bounds depend on {@link Window.isConstrainToViewport}: when enabled (the
+     * default) every border stops at the viewport edge; when disabled the window
+     * may travel off-screen until only an {@link EDGE_MARGIN_PX} strip remains
+     * visible horizontally and the header band stays on-screen vertically, so it
+     * can never be dropped fully out of reach. Mutates `_dragDX`/`_dragDY` in
+     * place so both the live translate and the `onMouseUp` commit read the
+     * clamped values from one chokepoint.
      */
     private clampDragDelta(): void {
-        const w       = this.getWidth();
-        const headerH = this._header.getHeight() || 26;
-        const vw      = window.innerWidth;
-        const vh      = window.innerHeight;
+        const w  = this.getWidth();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
 
-        const minX = EDGE_MARGIN_PX - w;
-        const maxX = vw - EDGE_MARGIN_PX;
+        let minX: number;
+        let maxX: number;
+        let maxY: number;
         const minY = 0;
-        const maxY = vh - headerH;
+
+        if (this.isConstrainToViewport()) {
+            // Whole window inside the viewport: every border stops at the edge.
+            minX = 0;
+            maxX = vw - w;
+            maxY = vh - this.getHeight();
+        } else {
+            // Header-reachable fallback: keep at least an EDGE_MARGIN_PX strip visible
+            // horizontally and the whole header band visible vertically.
+            const headerH = this._header.getHeight() || 26;
+
+            minX = EDGE_MARGIN_PX - w;
+            maxX = vw - EDGE_MARGIN_PX;
+            maxY = vh - headerH;
+        }
 
         const targetX = this._dragStartLeft + this._dragDX;
         const targetY = this._dragStartTop  + this._dragDY;
 
-        const clampedX = Math.min(Math.max(targetX, minX), maxX);
-        const clampedY = Math.min(Math.max(targetY, minY), maxY);
+        // Outer Math.max floors at the min so the top-left corner (and the header)
+        // stays visible when the window is larger than the viewport (max < min);
+        // the inner Math.min caps the far edge.
+        const clampedX = Math.max(Math.min(targetX, maxX), minX);
+        const clampedY = Math.max(Math.min(targetY, maxY), minY);
 
         this._dragDX = clampedX - this._dragStartLeft;
         this._dragDY = clampedY - this._dragStartTop;
