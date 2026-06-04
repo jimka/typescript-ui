@@ -301,4 +301,8 @@ export const DarkTheme: Theme = {
             color: 'rgb(80, 140, 240)',
         },
     },
+
+    scroll: {
+        shadowColor: 'rgba(0, 0, 0, 1)',
+    },
 };
