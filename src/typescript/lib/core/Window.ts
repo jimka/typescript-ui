@@ -159,6 +159,8 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     private _lastFlushTime: number = 0;
     private _dragStartLeft: number = 0;
     private _dragStartTop: number = 0;
+    private _dragOriginClientX: number = 0;
+    private _dragOriginClientY: number = 0;
     private _dragDX: number = 0;
     private _dragDY: number = 0;
     private _contentFactory: (() => Component) | null = null;
@@ -231,7 +233,7 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         // Resizable — size containment unsafe; layout containment scopes reflow to the window subtree.
         this.setContain("layout");
 
-        Event.addListener(this._header, "mousedown", () => this.onMouseDown());
+        Event.addListener(this._header, "mousedown", (e: MouseEvent) => this.onMouseDown(e));
         Event.addSubtreeListener(this, "mousedown", () => this.bringToFront());
 
         // Late-built state: glyph / contentFactory fields were written pure
@@ -948,16 +950,21 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
 
     /**
      * Attaches document-level move and mouseup listeners to begin dragging the window.
+     *
+     * @param e - The mousedown event whose pointer coordinate anchors the drag.
      */
-    onMouseDown() {
+    onMouseDown(e: MouseEvent) {
         if (this.getWindowState() !== "normal") {
             return;
         }
 
-        // Snapshot the current position so onDrag's accumulator runs from a fixed origin
-        // and onMouseUp can commit (origin + accumulated delta) back to left/top.
+        // Snapshot the start position and pointer origin so onDrag derives the move from
+        // (current pointer - origin) absolutely rather than accumulating per-move deltas,
+        // and onMouseUp can commit (start + delta) back to left/top.
         this._dragStartLeft = this.getX();
         this._dragStartTop  = this.getY();
+        this._dragOriginClientX = e.clientX;
+        this._dragOriginClientY = e.clientY;
         this._dragDX = 0;
         this._dragDY = 0;
 
@@ -1128,7 +1135,7 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     }
 
     /**
-     * Constrains the accumulated drag delta so the window's header stays
+     * Constrains the drag delta so the window's header stays
      * grabbable inside the viewport. The window may travel off-screen until
      * only an {@link EDGE_MARGIN_PX} strip of either side remains visible
      * horizontally; vertically the whole header band is kept on-screen. Mutates
@@ -1157,15 +1164,18 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     }
 
     /**
-     * Moves the window by the mouse movement delta while dragging.
+     * Moves the window to follow the pointer while dragging.
      *
-     * @param e - The mouse event carrying the movement delta.
+     * @param e - The mouse event carrying the absolute pointer coordinate.
      */
     onDrag(e: MouseEvent) {
         e.preventDefault();
 
-        this._dragDX += e.movementX;
-        this._dragDY += e.movementY;
+        // Derive the delta from the absolute pointer offset (not accumulated movementX)
+        // so clampDragDelta's writeback can't drift: when the window is pinned at an edge
+        // the over-travel is absorbed and the window re-attaches to the cursor on reverse.
+        this._dragDX = e.clientX - this._dragOriginClientX;
+        this._dragDY = e.clientY - this._dragOriginClientY;
 
         this.clampDragDelta();
 
