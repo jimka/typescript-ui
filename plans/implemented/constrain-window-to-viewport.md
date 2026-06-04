@@ -115,8 +115,14 @@ private clampDragDelta(): void {
 
 ---
 
+## Follow-up extensions (post-plan)
+
+After the original move-only clamp shipped, two interaction bugs surfaced and a follow-up request extended the scope; all three landed as separate commits on this branch:
+
+- **Drag detach at the edge (fix).** The header drag accumulated `e.movementX` into `_dragDX`, and the new `clampDragDelta` writeback discarded the over-travel at an edge, so reversing direction left a permanent cursor↔window offset. Fixed by switching the drag to the absolute pointer-origin model the resize path already uses: `onMouseDown` captures `_dragOriginClientX/Y`, and `onDrag` recomputes the delta from `clientX/clientY − origin` each move instead of accumulating, so the clamp can't drift.
+- **Resize off-screen (now handled).** `flushResize` caps each dragged edge with a viewport-derived `Math.min` before `setWidth`/`setHeight` apply their own min/max — east/south can't pass the far viewport edge, west/north can't pass zero. The cap is on the *size* so the existing WEST/NORTH position re-derivation stays consistent. This supersedes the original "Resize off-screen" Non-Goal below.
+
 ## Non-Goals
 
-- **Resize off-screen.** A border drag can still resize a window such that an edge leaves the viewport. The user scoped this to *moving*; the resize path (`onResize`/`flushResize`) writes `setX`/`setY` through a different chokepoint and is intentionally left alone to avoid coupling move-clamp policy into resize geometry.
 - **Re-clamping on browser-window resize.** A window already on-screen could be left off-screen if the viewport shrinks afterward. Handling this would require a global `resize` listener for `"normal"`-state windows (the existing `onViewportResize` only fires while maximized) plus a re-clamp pass — added complexity beyond "can't drag it off-screen," so it is out of scope.
 - **Configurable margin.** The 24 px slab is a fixed internal constant; no `WindowOptions`/setter is added.
