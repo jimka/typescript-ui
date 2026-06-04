@@ -522,6 +522,16 @@ export interface Theme {
             color: string;
         };
     };
+
+    scroll: {
+        /**
+         * Start colour of the edge-fade gradient a scrolling {@link Panel}
+         * paints on each side where hidden content can still be scrolled into
+         * view. Each fade runs from this colour to `transparent`; the fade
+         * depth is a framework constant, so only the colour is themed.
+         */
+        shadowColor: string;
+    };
 }
 
 export { ClassicTheme, DarkTheme, ModernTheme };
@@ -757,6 +767,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-drag-feedback-invalid-bg'         : theme.drag.feedback.invalid.background,
         '--ts-ui-drag-feedback-invalid-border'     : theme.drag.feedback.invalid.border,
         '--ts-ui-drag-reorder-color'               : theme.drag.reorderIndicator.color,
+        '--ts-ui-scroll-shadow-color'              : theme.scroll.shadowColor,
     };
 }
 
