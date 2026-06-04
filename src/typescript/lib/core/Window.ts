@@ -17,6 +17,13 @@ import { callable } from "~/core/Callable.js";
 const WINDOW_ANIM_DURATION_MS: number = 150;
 const SNAP_DOCK_GAP_PX:         number = 4;
 const DEFAULT_MIN_DOCK_WIDTH_PX: number = 200;
+// Must-stay-visible slab of a window edge, used only when constrainToViewport is
+// disabled: in that fallback the drag keeps at least this many pixels of the
+// window inside the viewport so its header bar can never be dropped fully
+// off-screen and become ungrabbable. The default, full-window containment never
+// consults this. 24 px is wide enough to grab with a cursor yet narrow enough
+// not to feel restrictive.
+const EDGE_MARGIN_PX:            number = 24;
 
 /**
  * Lifecycle state for {@link Window}. The three values are mutually
@@ -82,6 +89,7 @@ export interface WindowOptions extends PanelOptions {
     snapResizeEnabled?: boolean;
     snapThreshold?:     number;
     snapModifier?:      WindowSnapModifier;
+    constrainToViewport?: boolean;
 }
 
 /**
@@ -109,6 +117,7 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
     snapResizeEnabled: true,
     snapThreshold:     12,
     snapModifier:      "ctrl",
+    constrainToViewport: true,
 };
 
 /**
@@ -154,6 +163,8 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     private _lastFlushTime: number = 0;
     private _dragStartLeft: number = 0;
     private _dragStartTop: number = 0;
+    private _dragOriginClientX: number = 0;
+    private _dragOriginClientY: number = 0;
     private _dragDX: number = 0;
     private _dragDY: number = 0;
     private _contentFactory: (() => Component) | null = null;
@@ -226,7 +237,7 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         // Resizable — size containment unsafe; layout containment scopes reflow to the window subtree.
         this.setContain("layout");
 
-        Event.addListener(this._header, "mousedown", () => this.onMouseDown());
+        Event.addListener(this._header, "mousedown", (e: MouseEvent) => this.onMouseDown(e));
         Event.addSubtreeListener(this, "mousedown", () => this.bringToFront());
 
         // Late-built state: glyph / contentFactory fields were written pure
@@ -294,6 +305,8 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         if (opts.snapResizeEnabled !== undefined) this.setSnapResizeEnabled(opts.snapResizeEnabled);
         if (opts.snapThreshold     !== undefined) this.setSnapThreshold(opts.snapThreshold);
         if (opts.snapModifier      !== undefined) this.setSnapModifier(opts.snapModifier);
+
+        if (opts.constrainToViewport !== undefined) this.setConstrainToViewport(opts.constrainToViewport);
 
         return this;
     }
@@ -897,6 +910,31 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     }
 
     /**
+     * Controls how far a window may be dragged. When enabled (the default) the
+     * whole window is kept inside the viewport — every border stops at the
+     * viewport edge. When disabled the window may travel off-screen but its
+     * header stays grabbable, so it can never be dropped fully out of reach.
+     *
+     * @param value - True to keep the entire window inside the viewport.
+     *
+     * @returns This window, for method chaining.
+     */
+    setConstrainToViewport(value: boolean): this {
+        this._options.constrainToViewport = value;
+
+        return this;
+    }
+
+    /**
+     * Returns whether the whole window is constrained to the viewport while dragging.
+     *
+     * @returns True when the entire window is kept inside the viewport.
+     */
+    isConstrainToViewport(): boolean {
+        return this._options.constrainToViewport ?? true;
+    }
+
+    /**
      * Sets the cursor-to-edge distance (in pixels) under which a border strip
      * is treated as the snap target while the modifier key is held.
      *
@@ -943,16 +981,24 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
 
     /**
      * Attaches document-level move and mouseup listeners to begin dragging the window.
+     *
+     * @param e - The mousedown event whose pointer coordinate anchors the drag.
+     *
+     * @remarks Wired to the header's `mousedown`; the event argument is required —
+     * `e.clientX`/`e.clientY` seed the absolute-pointer drag origin read by `onDrag`.
      */
-    onMouseDown() {
+    onMouseDown(e: MouseEvent) {
         if (this.getWindowState() !== "normal") {
             return;
         }
 
-        // Snapshot the current position so onDrag's accumulator runs from a fixed origin
-        // and onMouseUp can commit (origin + accumulated delta) back to left/top.
+        // Snapshot the start position and pointer origin so onDrag derives the move from
+        // (current pointer - origin) absolutely rather than accumulating per-move deltas,
+        // and onMouseUp can commit (start + delta) back to left/top.
         this._dragStartLeft = this.getX();
         this._dragStartTop  = this.getY();
+        this._dragOriginClientX = e.clientX;
+        this._dragOriginClientY = e.clientY;
         this._dragDX = 0;
         this._dragDY = 0;
 
@@ -1072,47 +1118,58 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         const originRight  = this._resizeOriginX + this._resizeOriginW;
         const originBottom = this._resizeOriginY + this._resizeOriginH;
 
+        // Viewport size caps so a dragged edge can't leave the screen. Each is the
+        // largest size that keeps the moving edge inside the viewport given the fixed
+        // opposite edge: east/south grow toward the far viewport edge, west/north grow
+        // toward 0. Applied as an extra Math.min before setWidth/setHeight clamp to
+        // their own min/max, so the WEST/NORTH position re-derivation below stays
+        // consistent with the clamped size.
+        const eastWidthCap   = window.innerWidth  - this._resizeOriginX;
+        const westWidthCap   = originRight;
+        const southHeightCap = window.innerHeight - this._resizeOriginY;
+        const northHeightCap = originBottom;
+
         this.setAutoCommitStyle(false);
         switch (border.getDirection()) {
             case Direction.NORTHWEST:
-                this.setWidth(this._resizeOriginW - offsetX);
-                this.setHeight(this._resizeOriginH - offsetY);
+                this.setWidth(Math.min(this._resizeOriginW - offsetX, westWidthCap));
+                this.setHeight(Math.min(this._resizeOriginH - offsetY, northHeightCap));
                 this.setX(originRight - this.getWidth());
                 this.setY(originBottom - this.getHeight());
 
                 break;
             case Direction.NORTH:
-                this.setHeight(this._resizeOriginH - offsetY);
+                this.setHeight(Math.min(this._resizeOriginH - offsetY, northHeightCap));
                 this.setY(originBottom - this.getHeight());
 
                 break;
             case Direction.NORTHEAST:
-                this.setWidth(this._resizeOriginW + offsetX);
-                this.setHeight(this._resizeOriginH - offsetY);
+                this.setWidth(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
+                this.setHeight(Math.min(this._resizeOriginH - offsetY, northHeightCap));
                 this.setY(originBottom - this.getHeight());
 
                 break;
             case Direction.EAST:
-                this.setWidth(this._resizeOriginW + offsetX);
+                this.setWidth(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
 
                 break;
             case Direction.SOUTHEAST:
-                this.setWidth(this._resizeOriginW + offsetX);
-                this.setHeight(this._resizeOriginH + offsetY);
+                this.setWidth(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
+                this.setHeight(Math.min(this._resizeOriginH + offsetY, southHeightCap));
 
                 break;
             case Direction.SOUTH:
-                this.setHeight(this._resizeOriginH + offsetY);
+                this.setHeight(Math.min(this._resizeOriginH + offsetY, southHeightCap));
 
                 break;
             case Direction.SOUTHWEST:
-                this.setWidth(this._resizeOriginW - offsetX);
-                this.setHeight(this._resizeOriginH + offsetY);
+                this.setWidth(Math.min(this._resizeOriginW - offsetX, westWidthCap));
+                this.setHeight(Math.min(this._resizeOriginH + offsetY, southHeightCap));
                 this.setX(originRight - this.getWidth());
 
                 break;
             case Direction.WEST:
-                this.setWidth(this._resizeOriginW - offsetX);
+                this.setWidth(Math.min(this._resizeOriginW - offsetX, westWidthCap));
                 this.setX(originRight - this.getWidth());
 
                 break;
@@ -1123,15 +1180,68 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     }
 
     /**
-     * Moves the window by the mouse movement delta while dragging.
+     * Constrains the drag delta so the window stays within the viewport. The
+     * bounds depend on {@link Window.isConstrainToViewport}: when enabled (the
+     * default) every border stops at the viewport edge; when disabled the window
+     * may travel off-screen until only an {@link EDGE_MARGIN_PX} strip remains
+     * visible horizontally and the header band stays on-screen vertically, so it
+     * can never be dropped fully out of reach. Mutates `_dragDX`/`_dragDY` in
+     * place so both the live translate and the `onMouseUp` commit read the
+     * clamped values from one chokepoint.
+     */
+    private clampDragDelta(): void {
+        const w  = this.getWidth();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        let minX: number;
+        let maxX: number;
+        let maxY: number;
+        const minY = 0;
+
+        if (this.isConstrainToViewport()) {
+            // Whole window inside the viewport: every border stops at the edge.
+            minX = 0;
+            maxX = vw - w;
+            maxY = vh - this.getHeight();
+        } else {
+            // Header-reachable fallback: keep at least an EDGE_MARGIN_PX strip visible
+            // horizontally and the whole header band visible vertically.
+            const headerH = this._header.getHeight() || 26;
+
+            minX = EDGE_MARGIN_PX - w;
+            maxX = vw - EDGE_MARGIN_PX;
+            maxY = vh - headerH;
+        }
+
+        const targetX = this._dragStartLeft + this._dragDX;
+        const targetY = this._dragStartTop  + this._dragDY;
+
+        // Outer Math.max floors at the min so the top-left corner (and the header)
+        // stays visible when the window is larger than the viewport (max < min);
+        // the inner Math.min caps the far edge.
+        const clampedX = Math.max(Math.min(targetX, maxX), minX);
+        const clampedY = Math.max(Math.min(targetY, maxY), minY);
+
+        this._dragDX = clampedX - this._dragStartLeft;
+        this._dragDY = clampedY - this._dragStartTop;
+    }
+
+    /**
+     * Moves the window to follow the pointer while dragging.
      *
-     * @param e - The mouse event carrying the movement delta.
+     * @param e - The mouse event carrying the absolute pointer coordinate.
      */
     onDrag(e: MouseEvent) {
         e.preventDefault();
 
-        this._dragDX += e.movementX;
-        this._dragDY += e.movementY;
+        // Derive the delta from the absolute pointer offset (not accumulated movementX)
+        // so clampDragDelta's writeback can't drift: when the window is pinned at an edge
+        // the over-travel is absorbed and the window re-attaches to the cursor on reverse.
+        this._dragDX = e.clientX - this._dragOriginClientX;
+        this._dragDY = e.clientY - this._dragOriginClientY;
+
+        this.clampDragDelta();
 
         // Compositor-only translate during drag; the cached left/top stay at the start
         // position so the field-DOM invariant holds (left === style.left throughout).
