@@ -1084,47 +1084,58 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         const originRight  = this._resizeOriginX + this._resizeOriginW;
         const originBottom = this._resizeOriginY + this._resizeOriginH;
 
+        // Viewport size caps so a dragged edge can't leave the screen. Each is the
+        // largest size that keeps the moving edge inside the viewport given the fixed
+        // opposite edge: east/south grow toward the far viewport edge, west/north grow
+        // toward 0. Applied as an extra Math.min before setWidth/setHeight clamp to
+        // their own min/max, so the WEST/NORTH position re-derivation below stays
+        // consistent with the clamped size.
+        const eastWidthCap   = window.innerWidth  - this._resizeOriginX;
+        const westWidthCap   = originRight;
+        const southHeightCap = window.innerHeight - this._resizeOriginY;
+        const northHeightCap = originBottom;
+
         this.setAutoCommitStyle(false);
         switch (border.getDirection()) {
             case Direction.NORTHWEST:
-                this.setWidth(this._resizeOriginW - offsetX);
-                this.setHeight(this._resizeOriginH - offsetY);
+                this.setWidth(Math.min(this._resizeOriginW - offsetX, westWidthCap));
+                this.setHeight(Math.min(this._resizeOriginH - offsetY, northHeightCap));
                 this.setX(originRight - this.getWidth());
                 this.setY(originBottom - this.getHeight());
 
                 break;
             case Direction.NORTH:
-                this.setHeight(this._resizeOriginH - offsetY);
+                this.setHeight(Math.min(this._resizeOriginH - offsetY, northHeightCap));
                 this.setY(originBottom - this.getHeight());
 
                 break;
             case Direction.NORTHEAST:
-                this.setWidth(this._resizeOriginW + offsetX);
-                this.setHeight(this._resizeOriginH - offsetY);
+                this.setWidth(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
+                this.setHeight(Math.min(this._resizeOriginH - offsetY, northHeightCap));
                 this.setY(originBottom - this.getHeight());
 
                 break;
             case Direction.EAST:
-                this.setWidth(this._resizeOriginW + offsetX);
+                this.setWidth(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
 
                 break;
             case Direction.SOUTHEAST:
-                this.setWidth(this._resizeOriginW + offsetX);
-                this.setHeight(this._resizeOriginH + offsetY);
+                this.setWidth(Math.min(this._resizeOriginW + offsetX, eastWidthCap));
+                this.setHeight(Math.min(this._resizeOriginH + offsetY, southHeightCap));
 
                 break;
             case Direction.SOUTH:
-                this.setHeight(this._resizeOriginH + offsetY);
+                this.setHeight(Math.min(this._resizeOriginH + offsetY, southHeightCap));
 
                 break;
             case Direction.SOUTHWEST:
-                this.setWidth(this._resizeOriginW - offsetX);
-                this.setHeight(this._resizeOriginH + offsetY);
+                this.setWidth(Math.min(this._resizeOriginW - offsetX, westWidthCap));
+                this.setHeight(Math.min(this._resizeOriginH + offsetY, southHeightCap));
                 this.setX(originRight - this.getWidth());
 
                 break;
             case Direction.WEST:
-                this.setWidth(this._resizeOriginW - offsetX);
+                this.setWidth(Math.min(this._resizeOriginW - offsetX, westWidthCap));
                 this.setX(originRight - this.getWidth());
 
                 break;
