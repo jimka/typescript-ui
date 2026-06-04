@@ -87,6 +87,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `notification.warning.border` | `--ts-ui-notification-warning-border` | Border color of `'warning'` notifications |
 | `notification.error.background` | `--ts-ui-notification-error-bg` | Background of `'error'` notifications |
 | `notification.error.border` | `--ts-ui-notification-error-border` | Border color of `'error'` notifications |
+| `scroll.shadowColor` | `--ts-ui-scroll-shadow-color` | Start colour of the position-aware edge fade a scrolling [`Panel`](/api/core/classes/Panel) paints on each side that can still be scrolled toward (fades to `transparent`). The fade depth is a framework constant; only the colour is themed. Suppress per panel with `scrollShadows: false` |
 
 ::: tip Background tokens accept gradients
 `button.background`, `button.pressed.background`, `button.hover.background`, and `toggle.selected.background` accept either a plain colour (`rgb(200, 200, 200)`) or any CSS `background-image` value (`linear-gradient(...)`, `radial-gradient(...)`, etc.). The framework applies the token to both `background-color` and `background-image`; CSS's "invalid at computed-value time" rule routes the value to whichever property it is valid for.
