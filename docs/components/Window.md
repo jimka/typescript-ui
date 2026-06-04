@@ -41,6 +41,7 @@ win.show();
 | `snapResizeEnabled` | `boolean` | Enable Ctrl-snap resize detection. Default `true`. |
 | `snapThreshold`     | `number` | Cursor-to-edge distance (pixels) under which a border becomes the snap target. Default `12`. |
 | `snapModifier`      | `"ctrl" \| "meta" \| "alt" \| "shift"` | Modifier key that activates snap-resize detection. Default `"ctrl"`. |
+| `constrainToViewport` | `boolean` | Keep the whole window inside the viewport while dragging — every border stops at the edge. When `false`, the window may travel off-screen but its header stays grabbable. Default `true`. |
 
 Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields. Geometry defaults mean `Window(title).show()` produces a 400 × 300 window at `(50, 50)` without further setters.
 
