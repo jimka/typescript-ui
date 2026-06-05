@@ -34,8 +34,8 @@ export type { NotificationType } from '~/core/Notification.js';
 export { Dialog, DialogTitleBar, DialogButtons } from '~/core/Dialog.js';
 export type { DialogConfig, DialogButtonConfig, DialogResult } from '~/core/Dialog.js';
 
-export { ThemeManager, ClassicTheme, DarkTheme, ModernTheme } from '~/core/Theme.js';
-export type { Theme } from '~/core/Theme.js';
+export { ThemeManager, BaseTheme, ClassicTheme, DarkTheme, ModernTheme, defineTheme } from '~/core/Theme.js';
+export type { Theme, DeepPartial } from '~/core/Theme.js';
 
 export { StyleTarget, StyleRule, InlineStyle } from '~/core/StyleTarget.js';
 export type { StyleRuleScope, StyleRuleSpec } from '~/core/StyleTarget.js';
