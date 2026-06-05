@@ -312,4 +312,8 @@ export const ModernTheme: Theme = {
             color: 'rgb(30, 100, 200)',
         },
     },
+
+    scroll: {
+        shadowColor: 'rgba(0, 0, 0, 1)',
+    },
 };
