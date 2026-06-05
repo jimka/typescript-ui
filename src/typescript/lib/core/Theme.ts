@@ -859,8 +859,8 @@ function themeToVars(theme: Theme): Record<string, string> {
 
 /**
  * The Manrope subsets to register, pairing each bundled `.woff2` asset URL with
- * the `unicode-range` it covers. The URLs and ranges mirror
- * @fontsource-variable/manrope's `index.css`; the ranges are carried here
+ * the `unicode-range` it covers. The URLs and ranges mirror the `index.css`
+ * shipped by `@fontsource-variable/manrope`; the ranges are carried here
  * verbatim because the framework injects the `@font-face` rules from JS (see
  * {@link ensureFontLoaded}) rather than importing the package's stylesheet. Only
  * the Latin and Latin-Ext subsets are bundled — `unicode-range` still routes
@@ -882,9 +882,10 @@ let _fontInjected = false;
  * Idempotent — guarded by the module-level `_fontInjected` flag, mirroring
  * `Glyph.ts`'s keyframe injection. The face registers as `'Manrope Variable'`
  * (the value carried by the `font.family` theme token), spans the full 200–800
- * weight axis, and uses `font-display: swap` so text stays visible during the
- * load. Each subset's `.woff2` is a Vite-bundled asset, so the font self-hosts
- * from the consumer's origin with no external request.
+ * weight axis (Manrope's variable-font axis bounds, carried verbatim from the
+ * package's `@font-face`), and uses `font-display: swap` so text stays visible
+ * during the load. Each subset's `.woff2` is a Vite-bundled asset, so the font
+ * self-hosts from the consumer's origin with no external request.
  */
 function ensureFontLoaded(): void {
     if (_fontInjected) {
