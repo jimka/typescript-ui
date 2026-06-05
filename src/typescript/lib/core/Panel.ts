@@ -22,11 +22,22 @@ import { callable } from "~/core/Callable.js";
 const SCROLL_SHADOW_EXTENT_PX = 12;
 
 /**
- * Per-edge on/off state for a panel's scroll shadows. Cached so the per-scroll
- * update only writes a custom property when an edge actually crosses its
- * threshold, never on every scroll frame.
+ * Distance in pixels over which an edge's shadow ramps from none to full as the
+ * scroll position moves away from that edge's extreme. The strength is
+ * `clamp(distanceFromExtreme / this, 0, 1)`, so the shadow fades in smoothly
+ * just after leaving an edge and fades out as the opposite edge is approached,
+ * instead of popping on/off at a single-pixel threshold. `40px` gives a visible
+ * fade without staying faint through a meaningful amount of overflow.
  */
-type ScrollShadowEdges = { top: boolean; bottom: boolean; left: boolean; right: boolean };
+const SCROLL_SHADOW_RAMP_PX = 40;
+
+/**
+ * Per-edge shadow strength for a panel's scroll shadows, cached as a whole
+ * percentage (0–100). The per-scroll update only rewrites a custom property
+ * when an edge's quantised strength actually changes, so a scroll that doesn't
+ * move the visible strength costs nothing here.
+ */
+type ScrollShadowEdges = { top: number; bottom: number; left: number; right: number };
 
 /**
  * Selects the per-axis scroll behaviour for a {@link Panel}.
@@ -123,7 +134,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
     // Runtime-only: never touched during the super cascade (the overlay only
     // exists post-render), so a plain initialiser is safe here.
     private _shadowOverlayStyle: InlineStyle       = new InlineStyle();
-    private _shadowEdges:        ScrollShadowEdges = { top: false, bottom: false, left: false, right: false };
+    private _shadowEdges:        ScrollShadowEdges = { top: 0, bottom: 0, left: 0, right: 0 };
 
     /**
      * Creates a panel with 4-pixel insets on all sides by default.
@@ -580,15 +591,15 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
             this._shadowOverlayStyle = new InlineStyle();
         }
 
-        this._shadowEdges = { top: false, bottom: false, left: false, right: false };
+        this._shadowEdges = { top: 0, bottom: 0, left: 0, right: 0 };
     }
 
     /**
-     * Sizes the overlay to the live viewport and recomputes which edges show a
-     * fade. `sticky` handles the positioning, so the per-scroll path only
-     * re-asserts the viewport size (a no-op write unless it changed) and
-     * toggles a custom property when an edge crosses its threshold — no
-     * positioning work runs here.
+     * Sizes the overlay to the live viewport and recomputes each edge's shadow
+     * strength from its distance to that extreme. `sticky` handles the
+     * positioning, so the per-scroll path only re-asserts the viewport size (a
+     * no-op write unless it changed) and rescales the edges — no positioning
+     * work runs here.
      *
      * @param element - Optional. The panel element; falls back to the rendered
      *   element. Passed explicitly from `init`, where `getElement` is not yet
@@ -609,32 +620,47 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
             height: clientHeight + "px",
         });
 
-        // `- 1` epsilon: some browsers report `scrollOffset + clientSize` a
-        // sub-pixel short of `scrollSize` at the true extreme, which would
-        // otherwise light a phantom trailing-edge fade.
-        this.setShadowEdge("top",    "--ts-ss-top",    scrollTop  > 0);
-        this.setShadowEdge("bottom", "--ts-ss-bottom", scrollTop  + clientHeight < scrollHeight - 1);
-        this.setShadowEdge("left",   "--ts-ss-left",   scrollLeft > 0);
-        this.setShadowEdge("right",  "--ts-ss-right",  scrollLeft + clientWidth  < scrollWidth  - 1);
+        const maxTop  = scrollHeight - clientHeight;
+        const maxLeft = scrollWidth  - clientWidth;
+
+        // Ramp an edge in by its distance past that extreme. The `- 1` folds in
+        // a sub-pixel epsilon: within 1px of an extreme the strength is 0, so a
+        // fractional scrollSize/clientSize mismatch can't leave a phantom fade.
+        const ramp = (distance: number): number => {
+            return Math.max(0, Math.min(1, (distance - 1) / SCROLL_SHADOW_RAMP_PX));
+        };
+
+        this.setShadowEdge("top",    "--ts-ss-top",    ramp(scrollTop));
+        this.setShadowEdge("bottom", "--ts-ss-bottom", ramp(maxTop  - scrollTop));
+        this.setShadowEdge("left",   "--ts-ss-left",   ramp(scrollLeft));
+        this.setShadowEdge("right",  "--ts-ss-right",  ramp(maxLeft - scrollLeft));
     }
 
     /**
-     * Toggles a single edge's fade by flipping its local custom property
-     * between the theme shadow colour and unset (which falls back to
-     * `transparent`). Skips the write when the edge state is unchanged so a
-     * scroll that doesn't cross a threshold costs nothing here.
+     * Sets a single edge's shadow strength by scaling the theme shadow colour
+     * toward transparent. Strength is quantised to a whole percent so an
+     * in-ramp scroll only repaints when the visible strength actually changes
+     * (and never sub-pixel-thrashes); at zero the property is unset so the
+     * `box-shadow` layer falls back to `transparent`.
      *
-     * @param edge - The edge whose cached state this updates.
-     * @param property - The overlay custom property backing that edge's layer.
-     * @param on - Whether the edge should currently show its fade.
+     * @param edge - The edge whose cached strength this updates.
+     * @param property - The overlay custom property backing that edge's shadow.
+     * @param strength - The target strength in the range 0–1.
      */
-    private setShadowEdge(edge: keyof ScrollShadowEdges, property: string, on: boolean): void {
-        if (this._shadowEdges[edge] === on) {
+    private setShadowEdge(edge: keyof ScrollShadowEdges, property: string, strength: number): void {
+        const percent = Math.round(strength * 100);   // quantise: 0–1 → 0–100%
+
+        if (this._shadowEdges[edge] === percent) {
             return;
         }
 
-        this._shadowEdges[edge] = on;
-        this._shadowOverlayStyle.set(property, on ? "var(--ts-ui-scroll-shadow-color)" : null);
+        this._shadowEdges[edge] = percent;
+        this._shadowOverlayStyle.set(
+            property,
+            percent === 0
+                ? null
+                : `color-mix(in srgb, var(--ts-ui-scroll-shadow-color) ${percent}%, transparent)`,
+        );
     }
 }
 
