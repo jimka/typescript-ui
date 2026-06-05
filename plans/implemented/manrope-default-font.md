@@ -4,7 +4,7 @@
 
 The default UI font is defined as `'system-ui, sans-serif'` by the single shared `font.family` token in [`BaseTheme.ts:18`](../src/typescript/lib/core/themes/BaseTheme.ts#L18) (the structural scaffold every built-in theme inherits via `defineTheme(BaseTheme, …)`); the three concrete themes no longer declare `font` at all. It flows into the live document through [`Theme.ts`](../src/typescript/lib/core/Theme.ts): `themeToVars` emits it as `--ts-ui-font-family` ([`Theme.ts:638`](../src/typescript/lib/core/Theme.ts#L638)) and `ThemeManager.setTheme` writes it to `document.documentElement.style.fontFamily` ([`Theme.ts:896`](../src/typescript/lib/core/Theme.ts#L896)). There is currently **no** `@font-face` / web-font infrastructure anywhere — no fonts directory, no font-face CSS, and glyphs render as inline SVG (not an icon font), so this plan introduces font loading from scratch.
 
-This change does two things: (1) flip the `font.family` token in each theme to `'Manrope', sans-serif`, and (2) make the **library itself** self-host and inject the Manrope `@font-face` so that any consumer who renders a framework theme gets the font with zero extra setup. The injection is triggered from the same library-owned code path that already activates the default theme — `ThemeManager.setTheme`, which is called unconditionally from the `Body` singleton constructor ([`Body.ts:39`](../src/typescript/lib/core/Body.ts#L39)). The mechanism mirrors the existing precedent in [`Glyph.ts`](../src/typescript/lib/component/display/Glyph.ts) (line 176), where the library mounts a shared DOM asset once, guarded by a module-level flag.
+This change does two things: (1) flip the `font.family` token in each theme to `'Manrope Variable', sans-serif`, and (2) make the **library itself** self-host and inject the Manrope `@font-face` so that any consumer who renders a framework theme gets the font with zero extra setup. The injection is triggered from the same library-owned code path that already activates the default theme — `ThemeManager.setTheme`, which is called unconditionally from the `Body` singleton constructor ([`Body.ts:39`](../src/typescript/lib/core/Body.ts#L39)). The mechanism mirrors the existing precedent in [`Glyph.ts`](../src/typescript/lib/component/display/Glyph.ts) (line 176), where the library mounts a shared DOM asset once, guarded by a module-level flag.
 
 ---
 
@@ -16,7 +16,7 @@ Add `@fontsource-variable/manrope` as a runtime `dependency`. It ships the OFL M
 
 ### Variable font, single file, weights 200–800
 
-Use the **variable** font (`@fontsource-variable/manrope`), not static weights. Manrope's variable file covers its entire weight axis (200–800) in one `.woff2`, which is smaller than shipping the 2–3 static weights the UI actually uses (normal ~400, button/header ~500–600) and future-proofs any theme that wants a different weight without adding assets. One asset, full range — minimal and complete.
+Use the **variable** font (`@fontsource-variable/manrope`), not static weights. Manrope's variable file covers its entire weight axis (200–800) in one `.woff2`, which is smaller than shipping the 2–3 static weights the UI actually uses (normal ~400, button/header ~500–600) and future-proofs any theme that wants a different weight without adding assets. One asset, full range — minimal and complete. **Family name:** the package registers its `@font-face` as `font-family: 'Manrope Variable'` (the variable-font convention), so the token value must be `'Manrope Variable'`, not `'Manrope'` — a plain `'Manrope'` would not match the bundled face and would fall straight through to `sans-serif`.
 
 ### Library owns the load — injected once from `setTheme`, not from the demo `index.html`
 
@@ -24,7 +24,7 @@ The requirement is that **merely using a framework theme pulls in the font**, fo
 
 ### Fallback stack preserved
 
-The shared `font.family` token in `BaseTheme` becomes `'Manrope', sans-serif` (all three themes inherit it). The generic `sans-serif` tail is retained so first paint (before the `.woff2` finishes loading) and any environment where the asset 404s still render with a sane fallback. `system-ui` is intentionally dropped: since the library bundles Manrope it effectively always loads, so the only fallback window is the brief load flash — not worth a third entry. `font-display: swap` (the `@fontsource` default) ensures no invisible-text flash.
+The shared `font.family` token in `BaseTheme` becomes `'Manrope Variable', sans-serif` (all three themes inherit it). The generic `sans-serif` tail is retained so first paint (before the `.woff2` finishes loading) and any environment where the asset 404s still render with a sane fallback. `system-ui` is intentionally dropped: since the library bundles Manrope it effectively always loads, so the only fallback window is the brief load flash — not worth a third entry. `font-display: swap` (the `@fontsource` default) ensures no invisible-text flash.
 
 ### No new theme token
 
@@ -38,7 +38,7 @@ No new CSS custom properties. The existing `--ts-ui-font-family` (emitted at [`T
 
 | CSS Custom Property | Old Value | New Value | Purpose |
 |---|---|---|---|
-| `--ts-ui-font-family` | `system-ui, sans-serif` | `'Manrope', sans-serif` | UI font with generic fallback |
+| `--ts-ui-font-family` | `system-ui, sans-serif` | `'Manrope Variable', sans-serif` | UI font with generic fallback |
 
 Same string is also written to `document.documentElement.style.fontFamily` at [`Theme.ts:896`](../src/typescript/lib/core/Theme.ts#L896) (unchanged code — it reads `theme.font.family`).
 
@@ -86,13 +86,13 @@ function ensureFontLoaded(): void {
 
 1. **Add the dependency.** `npm install @fontsource-variable/manrope` (this adds it to `dependencies` in [`package.json`](../package.json)). Verify it appears under `dependencies`, not `devDependencies` — it is a runtime asset shipped to consumers. Confirm `node_modules/@fontsource-variable/manrope/index.css` and a `.woff2` exist.
 
-2. **Flip the shared token in `BaseTheme`.** Change `family: 'system-ui, sans-serif'` to `family: "'Manrope', sans-serif"` in [`BaseTheme.ts:18`](../src/typescript/lib/core/themes/BaseTheme.ts#L18) — the single source of truth all three themes inherit. Surgical: only the `family` value changes; leave `size`/`linePadding` untouched. (Post-refactor the concrete themes no longer declare `font`, so this one edit covers Classic, Modern, and Dark.)
+2. **Flip the shared token in `BaseTheme`.** Change `family: 'system-ui, sans-serif'` to `family: "'Manrope Variable', sans-serif"` in [`BaseTheme.ts:18`](../src/typescript/lib/core/themes/BaseTheme.ts#L18) — the single source of truth all three themes inherit. Surgical: only the `family` value changes; leave `size`/`linePadding` untouched. (Post-refactor the concrete themes no longer declare `font`, so this one edit covers Classic, Modern, and Dark.)
 
 3. **Add the side-effecting import + guard to `Theme.ts`.** Insert the `import '@fontsource-variable/manrope';` and the `_fontEnsured` flag near the existing imports; add `ensureFontLoaded()` per _Internal Structure_; call it as the first statement of `ThemeManager.setTheme` ([`Theme.ts:887`](../src/typescript/lib/core/Theme.ts#L887)). Follow the JSDoc + blank-line conventions in [CODE_CONVENTIONS.md](../CODE_CONVENTIONS.md).
 
 4. **Checkpoint — no external font refs:** `grep -rn "fonts.googleapis\|fonts.gstatic\|<link[^>]*font" src/ index.html` — expect zero matches.
 
-5. **Checkpoint — token applied:** `grep -rn "family" src/typescript/lib/core/themes/` — expect the lone `font.family` in `BaseTheme.ts` to read `'Manrope', sans-serif` and zero remaining `system-ui` in any family value.
+5. **Checkpoint — token applied:** `grep -rn "family" src/typescript/lib/core/themes/` — expect the lone `font.family` in `BaseTheme.ts` to read `'Manrope Variable', sans-serif` and zero remaining `system-ui` in any family value.
 
 6. **Docs site (secondary).** VitePress docs (`docs/`) render their own pages, not the framework `Body`, so they do not auto-inherit the library font. This is acceptable — the primary requirement is the library. If parity is wanted, add `import '@fontsource-variable/manrope';` to a VitePress theme entry and set `--vp-font-family-base`; note this is **out of scope unless requested** (see Non-Goals).
 
@@ -118,7 +118,7 @@ No files created or deleted.
 - **Typecheck:** `npm run build` (or `tsc`) passes — the side-effect import has no type surface, so this only confirms the module still compiles.
 - **Grep invariants:**
   - `grep -rn "fonts.googleapis\|fonts.gstatic" .` (excluding `node_modules`/`dist`) — zero matches (no CDN).
-  - `grep -rn "'Manrope'" src/typescript/lib/core/themes/` — one match, in `BaseTheme.ts` (the shared token all three themes inherit).
+  - `grep -rn "Manrope" src/typescript/lib/core/themes/` — one match, in `BaseTheme.ts` (the shared `'Manrope Variable'` token all three themes inherit).
 - **Lib build asset:** after the library build, a Manrope `.woff2` exists under `dist/` and is referenced by the emitted bundle (confirms self-hosting/bundling).
 - **Manual smoke (dev app, `npm run dev`, http://localhost:8015):** open the **Misc.** demo screen; computed `font-family` on body text resolves to Manrope (DevTools → Computed → `font-family` shows `Manrope`; Rendered Fonts panel lists Manrope, not the system fallback). Toggle through Classic → Modern → Dark via the MiscPanel theme cycler ([`MiscPanel.ts:471`](../src/typescript/MiscPanel.ts#L471)) — all three render Manrope.
 - **Network panel:** no request to `fonts.googleapis.com` / `fonts.gstatic.com`; the `.woff2` loads from the local/dev origin.
