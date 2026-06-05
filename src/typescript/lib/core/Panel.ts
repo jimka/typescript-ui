@@ -4,7 +4,40 @@ import { Component, ComponentOptions } from "~/core/Component";
 import { Insets } from "~/primitive/Insets";
 import { LayoutManager } from "~/layout/LayoutManager.js";
 import { Util } from "~/core/Util.js";
+import { Event } from "~/core/Event.js";
+import { InlineStyle } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * Reach in pixels of each scroll-edge shadow — used as the inset shadow's
+ * offset, blur, and (negative) spread, so each edge's fade hugs its border and
+ * dies out roughly this far inward.
+ *
+ * Fixed framework-side rather than themed, for the same reason the keyboard
+ * focus indicator fixes its `2px` width (see `Theme.indicator.focus`): the
+ * colour is the only part a theme needs to vary, and a constant keeps the
+ * overlay's four-shadow geometry simple. `12px` reads as a soft edge cue
+ * without masking a meaningful strip of content.
+ */
+const SCROLL_SHADOW_EXTENT_PX = 12;
+
+/**
+ * Distance in pixels over which an edge's shadow ramps from none to full as the
+ * scroll position moves away from that edge's extreme. The strength is
+ * `clamp(distanceFromExtreme / this, 0, 1)`, so the shadow fades in smoothly
+ * just after leaving an edge and fades out as the opposite edge is approached,
+ * instead of popping on/off at a single-pixel threshold. `40px` gives a visible
+ * fade without staying faint through a meaningful amount of overflow.
+ */
+const SCROLL_SHADOW_RAMP_PX = 40;
+
+/**
+ * Per-edge shadow strength for a panel's scroll shadows, cached as a whole
+ * percentage (0–100). The per-scroll update only rewrites a custom property
+ * when an edge's quantised strength actually changes, so a scroll that doesn't
+ * move the visible strength costs nothing here.
+ */
+type ScrollShadowEdges = { top: number; bottom: number; left: number; right: number };
 
 /**
  * Selects the per-axis scroll behaviour for a {@link Panel}.
@@ -45,6 +78,15 @@ export interface PanelOptions extends ComponentOptions {
      * `overflow: hidden` behaviour).
      */
     autoScroll?: AutoScrollMode;
+
+    /**
+     * When `true` (the default), an `autoScroll` panel paints a fading edge
+     * shadow on each side where hidden content can still be scrolled into
+     * view — a cue that the content continues past the viewport border rather
+     * than ending there. Set `false` to suppress the shadows. Ignored while
+     * `autoScroll === "none"` (a non-scrolling panel never shows them).
+     */
+    scrollShadows?: boolean;
 }
 
 /**
@@ -79,6 +121,20 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
     // dispatches `setAutoScroll`, so the field gets seeded there.
     declare private _autoScroll:      AutoScrollMode;
     declare private _scrollbarGutter: { right: number; bottom: number };
+
+    // Scroll-shadow state. `_scrollShadows`, `_shadowOverlay` and `_shadowScrollHandler`
+    // are written by `setScrollShadows` / `setAutoScroll` during the super-time
+    // options cascade, so they are `declare`d (no initialiser) and seeded in
+    // `applyOptions` to dodge the class-field super-cascade trap — an
+    // initialiser would run after super() and clobber the seeded value.
+    declare private _scrollShadows:       boolean;
+    declare private _shadowOverlay:       HTMLElement | null;
+    declare private _shadowScrollHandler: (() => void) | null;   // cached bound scroll handler — wired once
+
+    // Runtime-only: never touched during the super cascade (the overlay only
+    // exists post-render), so a plain initialiser is safe here.
+    private _shadowOverlayStyle: InlineStyle       = new InlineStyle();
+    private _shadowEdges:        ScrollShadowEdges = { top: 0, bottom: 0, left: 0, right: 0 };
 
     /**
      * Creates a panel with 4-pixel insets on all sides by default.
@@ -120,6 +176,16 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
         // dodges the class-field super-cascade trap that would bite a
         // `= "none"` initialiser.
         this.setAutoScroll(opts.autoScroll ?? "none");
+
+        // Seed the `declare`d overlay/handler fields before `setScrollShadows`
+        // dispatches — the setter's teardown branch reads them, and the
+        // `declare` leaves them `undefined` until first written.
+        this._shadowOverlay        = null;
+        this._shadowScrollHandler  = null;
+
+        // Always dispatch (default on) so the backing field is seeded through
+        // the setter, mirroring the `setAutoScroll` cascade above.
+        this.setScrollShadows(opts.scrollShadows ?? true);
 
         return this;
     }
@@ -185,6 +251,11 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
 
         this.getLayoutManager()?.setOverflowing(x, y);
 
+        // Re-evaluate the shadows for the new mode: a transition into `"none"`
+        // tears the overlay down, a transition into a scrolling mode installs
+        // it. No-op before the element exists (creation is deferred to `init`).
+        this.refreshScrollShadows();
+
         return this;
     }
 
@@ -221,6 +292,34 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
      */
     clearAutoScroll(): this {
         return this.setAutoScroll("none");
+    }
+
+    /**
+     * Enables or disables the position-aware edge shadows on a scrolling
+     * panel. When enabled (the default), each side that can still be scrolled
+     * toward fades its content into the viewport border; the shadows are
+     * suppressed entirely while `autoScroll === "none"` or when content does
+     * not overflow.
+     *
+     * @param enabled - `true` to paint the edge shadows, `false` to suppress them.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setScrollShadows(enabled: boolean): this {
+        this._scrollShadows = enabled;
+
+        this.refreshScrollShadows();
+
+        return this;
+    }
+
+    /**
+     * Returns whether the panel's scroll edge shadows are enabled.
+     *
+     * @returns The cached `scrollShadows` flag; `true` unless explicitly disabled.
+     */
+    getScrollShadows(): boolean {
+        return this._scrollShadows;
     }
 
     /**
@@ -268,7 +367,50 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
         this.commitElementStyle();
         this.measureScrollbarGutter();
 
+        // Re-pin the overlay and recompute edge state against the freshly
+        // committed geometry (content-size or scrollbar-gutter changes can
+        // flip which edges overflow). The preceding `commitElementStyle`
+        // guarantees the reads see this frame's dimensions.
+        this.updateScrollShadows();
+
         return this;
+    }
+
+    /**
+     * Initialises the panel element, then installs the scroll-shadow overlay
+     * if the panel is a scroll-shadow candidate. Overlay creation is deferred
+     * to here (rather than `applyOptions`) because the element only exists
+     * once rendered.
+     *
+     * @param element - Optional. The element to initialise; falls back to the rendered element.
+     *
+     * @returns This panel, for method chaining.
+     */
+    protected init(element?: HTMLElement): this {
+        super.init(element);
+
+        // `getElement()` is still undefined inside `init` (the base assigns
+        // `_element` only after `render` returns), so hand the resolved
+        // element straight to the installer instead of re-reading it.
+        const resolved = element ?? this.getElement();
+        if (resolved && this._scrollShadows && this._autoScroll !== "none") {
+            this.installScrollShadows(resolved);
+            this.updateScrollShadows(resolved);
+        }
+
+        return this;
+    }
+
+    /**
+     * Removes the cached scroll listener before the base destructor detaches
+     * the element. The overlay is a child of that element, so it is removed
+     * with it; only the window-level listener registration needs explicit
+     * cleanup.
+     */
+    protected destructor(): void {
+        this.removeScrollShadows();
+
+        super.destructor();
     }
 
     /**
@@ -336,6 +478,189 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
 
         this.setScrollbarGutter(newRight, newBottom);
         this.scheduleLayout();
+    }
+
+    /**
+     * Brings the scroll-shadow overlay into the state implied by the current
+     * `scrollShadows` / `autoScroll` settings: torn down when disabled or
+     * non-scrolling, otherwise installed and refreshed. No-op before the
+     * element exists — `init` performs the first install once rendered.
+     */
+    private refreshScrollShadows(): void {
+        if (!this._scrollShadows || this._autoScroll === "none") {
+            this.removeScrollShadows();
+
+            return;
+        }
+
+        const element = this.getElement();
+        if (!element) {
+            return;
+        }
+
+        this.installScrollShadows(element);
+        this.updateScrollShadows(element);
+    }
+
+    /**
+     * Creates the overlay and wires the scroll listener if they are not
+     * already present. Idempotent: the `_shadowOverlay` / `_shadowScrollHandler` guards
+     * keep it from stacking a duplicate overlay or listener across repeated
+     * calls (the "wire once" rule).
+     *
+     * @param element - The rendered panel element to append the overlay to.
+     */
+    private installScrollShadows(element: HTMLElement): void {
+        if (!this._shadowOverlay) {
+            this.createScrollShadowOverlay(element);
+        }
+
+        if (!this._shadowScrollHandler) {
+            const handler = (): void => {
+                this.updateScrollShadows();
+            };
+
+            this._shadowScrollHandler = handler;
+            Event.addListener(this, "scroll", handler);
+        }
+    }
+
+    /**
+     * Builds the non-interactive shadow overlay: an id-less, listener-free
+     * presentational sheath (mirroring the clip/content frames) carrying four
+     * blurred inset edge shadows, one per side. Each shadow's colour is a local
+     * custom property defaulting to `transparent`, so the per-scroll path only
+     * flips a property to light an edge rather than rebuilding the shadow.
+     *
+     * @param element - The panel element the overlay is appended to.
+     */
+    private createScrollShadowOverlay(element: HTMLElement): void {
+        const overlay = document.createElement("div");
+        const extent  = SCROLL_SHADOW_EXTENT_PX + "px";
+
+        this._shadowOverlayStyle.attach(overlay);
+        this._shadowOverlayStyle.setMany({
+            // `sticky` pins the overlay to the scroll-port viewport on the
+            // compositor: the browser keeps it at the `top: 0` / `left: 0`
+            // edge as the content scrolls underneath, so it tracks the
+            // viewport without any per-scroll JS write (no transform repin, no
+            // main-thread flicker). It also does not extend the scrollable
+            // region, since it stays inside the viewport box.
+            position:      "sticky",
+            left:          "0px",
+            top:           "0px",
+            pointerEvents: "none",
+            // Paint above the content frame: `setContentFrame` re-appends that
+            // frame as the element's last child during layout, so DOM order
+            // alone would let it cover an overlay appended here at `init`.
+            zIndex:        "1",
+            // Four blurred inset shadows — one per edge — each gated by a local
+            // custom property defaulting to `transparent` (flipped to the theme
+            // colour by `setShadowEdge`). The `-extent` spread keeps each
+            // shadow hugging its own edge while the equal blur fades it inward
+            // over `extent`px, so the edge reads as a soft cast shadow rather
+            // than the hard-terminated band a `linear-gradient` would paint.
+            boxShadow:
+                `inset 0 ${extent} ${extent} -${extent} var(--ts-ss-top, transparent),` +
+                `inset 0 -${extent} ${extent} -${extent} var(--ts-ss-bottom, transparent),` +
+                `inset ${extent} 0 ${extent} -${extent} var(--ts-ss-left, transparent),` +
+                `inset -${extent} 0 ${extent} -${extent} var(--ts-ss-right, transparent)`,
+        });
+
+        element.appendChild(overlay);
+        this._shadowOverlay = overlay;
+    }
+
+    /**
+     * Tears the overlay down and unwires the scroll listener, resetting the
+     * cached edge state. Each step is guarded so this is safe to call before
+     * the overlay was ever created (e.g. during the construction cascade).
+     */
+    private removeScrollShadows(): void {
+        if (this._shadowScrollHandler) {
+            Event.removeListener(this, "scroll", this._shadowScrollHandler);
+            this._shadowScrollHandler = null;
+        }
+
+        if (this._shadowOverlay) {
+            this._shadowOverlay.remove();
+            this._shadowOverlay = null;
+
+            // The buffer was bound to the now-removed overlay; a fresh one is
+            // needed for any future re-install (mirrors `disposeFrame`).
+            this._shadowOverlayStyle = new InlineStyle();
+        }
+
+        this._shadowEdges = { top: 0, bottom: 0, left: 0, right: 0 };
+    }
+
+    /**
+     * Sizes the overlay to the live viewport and recomputes each edge's shadow
+     * strength from its distance to that extreme. `sticky` handles the
+     * positioning, so the per-scroll path only re-asserts the viewport size (a
+     * no-op write unless it changed) and rescales the edges — no positioning
+     * work runs here.
+     *
+     * @param element - Optional. The panel element; falls back to the rendered
+     *   element. Passed explicitly from `init`, where `getElement` is not yet
+     *   populated.
+     */
+    private updateScrollShadows(element?: HTMLElement): void {
+        const el = element ?? this.getElement();
+        if (!el || !this._shadowOverlay) {
+            return;
+        }
+
+        const { scrollTop, scrollLeft, scrollWidth, scrollHeight, clientWidth, clientHeight } = el;
+
+        // Size the overlay to the viewport box; `position: sticky` keeps it
+        // pinned there as the content scrolls, so no transform is needed.
+        this._shadowOverlayStyle.setMany({
+            width:  clientWidth  + "px",
+            height: clientHeight + "px",
+        });
+
+        const maxTop  = scrollHeight - clientHeight;
+        const maxLeft = scrollWidth  - clientWidth;
+
+        // Ramp an edge in by its distance past that extreme. The `- 1` folds in
+        // a sub-pixel epsilon: within 1px of an extreme the strength is 0, so a
+        // fractional scrollSize/clientSize mismatch can't leave a phantom fade.
+        const ramp = (distance: number): number => {
+            return Math.max(0, Math.min(1, (distance - 1) / SCROLL_SHADOW_RAMP_PX));
+        };
+
+        this.setShadowEdge("top",    "--ts-ss-top",    ramp(scrollTop));
+        this.setShadowEdge("bottom", "--ts-ss-bottom", ramp(maxTop  - scrollTop));
+        this.setShadowEdge("left",   "--ts-ss-left",   ramp(scrollLeft));
+        this.setShadowEdge("right",  "--ts-ss-right",  ramp(maxLeft - scrollLeft));
+    }
+
+    /**
+     * Sets a single edge's shadow strength by scaling the theme shadow colour
+     * toward transparent. Strength is quantised to a whole percent so an
+     * in-ramp scroll only repaints when the visible strength actually changes
+     * (and never sub-pixel-thrashes); at zero the property is unset so the
+     * `box-shadow` layer falls back to `transparent`.
+     *
+     * @param edge - The edge whose cached strength this updates.
+     * @param property - The overlay custom property backing that edge's shadow.
+     * @param strength - The target strength in the range 0–1.
+     */
+    private setShadowEdge(edge: keyof ScrollShadowEdges, property: string, strength: number): void {
+        const percent = Math.round(strength * 100);   // quantise: 0–1 → 0–100%
+
+        if (this._shadowEdges[edge] === percent) {
+            return;
+        }
+
+        this._shadowEdges[edge] = percent;
+        this._shadowOverlayStyle.set(
+            property,
+            percent === 0
+                ? null
+                : `color-mix(in srgb, var(--ts-ui-scroll-shadow-color) ${percent}%, transparent)`,
+        );
     }
 }
 

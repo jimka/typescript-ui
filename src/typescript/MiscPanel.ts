@@ -986,6 +986,40 @@ class MiscPanel extends Panel {
             autoScrollRow.addComponent(button);
         }
 
+        // The autoScroll windows above show the position-aware edge shadows by
+        // default; this button opens the same overflowing panel with
+        // `scrollShadows: false` so the suppressed state can be compared.
+        const noShadowButton = new Button("autoScroll: both (no shadows)");
+        noShadowButton.on("action", () => {
+            const win = new Window("scrollShadows: false");
+            win.setX(280);
+            win.setY(240);
+            win.setWidth(360);
+            win.setHeight(240);
+
+            win.setContentFactory(() => {
+                const oversized = new Component({
+                    preferredSize  : { width: 800, height: 600 },
+                    minSize        : { width: 800, height: 600 },
+                    maxSize        : { width: 800, height: 600 },
+                    backgroundColor: "lightsteelblue",
+                });
+
+                const scrollPanel: Panel = new Panel({
+                    layoutManager: new Absolute(),
+                    autoScroll:    "both",
+                    scrollShadows: false,
+                });
+
+                scrollPanel.addComponent(oversized);
+
+                return scrollPanel;
+            });
+
+            win.show();
+        });
+        autoScrollRow.addComponent(noShadowButton);
+
         leftColumn.addComponent(autoScrollRow);
 
         // ── Popover demo ──
