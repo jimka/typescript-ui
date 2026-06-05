@@ -527,7 +527,13 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
 
         this._shadowOverlayStyle.attach(overlay);
         this._shadowOverlayStyle.setMany({
-            position:      "absolute",
+            // `sticky` pins the overlay to the scroll-port viewport on the
+            // compositor: the browser keeps it at the `top: 0` / `left: 0`
+            // edge as the content scrolls underneath, so it tracks the
+            // viewport without any per-scroll JS write (no transform repin, no
+            // main-thread flicker). It also does not extend the scrollable
+            // region, since it stays inside the viewport box.
+            position:      "sticky",
             left:          "0px",
             top:           "0px",
             pointerEvents: "none",
@@ -535,9 +541,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
             // frame as the element's last child during layout, so DOM order
             // alone would let it cover an overlay appended here at `init`.
             zIndex:        "1",
-            // Permanent scroll-mirror target (one per scrollable panel) — the
-            // documented will-change budget exception for compositor pinning.
-            willChange:    "transform",
             backgroundRepeat: "no-repeat",
             backgroundImage:
                 "linear-gradient(to bottom, var(--ts-ss-top, transparent), transparent)," +
@@ -576,10 +579,11 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
     }
 
     /**
-     * Pins the overlay over the live viewport and recomputes which edges show
-     * a fade. Cheap enough for the per-scroll path: it writes one transform
-     * (plus the viewport size) and toggles a custom property only when an edge
-     * crosses its threshold.
+     * Sizes the overlay to the live viewport and recomputes which edges show a
+     * fade. `sticky` handles the positioning, so the per-scroll path only
+     * re-asserts the viewport size (a no-op write unless it changed) and
+     * toggles a custom property when an edge crosses its threshold — no
+     * positioning work runs here.
      *
      * @param element - Optional. The panel element; falls back to the rendered
      *   element. Passed explicitly from `init`, where `getElement` is not yet
@@ -593,14 +597,11 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
 
         const { scrollTop, scrollLeft, scrollWidth, scrollHeight, clientWidth, clientHeight } = el;
 
-        // Pin to the viewport: the overlay is an absolute child of the scroll
-        // port, so without this it would scroll away with the content. Its far
-        // edge is always `scrollOffset + clientSize <= scrollSize`, so it never
-        // grows the scrollable region (no feedback with `scrollWidth/Height`).
+        // Size the overlay to the viewport box; `position: sticky` keeps it
+        // pinned there as the content scrolls, so no transform is needed.
         this._shadowOverlayStyle.setMany({
-            width:     clientWidth  + "px",
-            height:    clientHeight + "px",
-            transform: `translate(${scrollLeft}px, ${scrollTop}px)`,
+            width:  clientWidth  + "px",
+            height: clientHeight + "px",
         });
 
         // `- 1` epsilon: some browsers report `scrollOffset + clientSize` a
