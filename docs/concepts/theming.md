@@ -20,6 +20,7 @@ Three built-in themes ship with the package: `ModernTheme` — a flat, gradient-
 1. **Writes each token as a CSS custom property on `:root`** (e.g. `--ts-ui-body-bg`). Because CSS variables cascade, any component that references a variable in its style rule updates automatically — no re-render needed.
 2. **Sets `color-scheme` on `:root`** so the browser renders native form elements (checkboxes, scrollbars, `<select>`) in the matching light or dark style.
 3. **Sets `color` and `background-color` on both `<html>` and `<body>`.** The `<html>` target is necessary because [`Window`](/api/core/classes/Window) components are appended to `document.documentElement` rather than `document.body`, so text inside floating windows must inherit from `<html>`.
+4. **Injects the bundled Manrope `@font-face` on first call.** The library self-hosts the Manrope variable font (Latin + Latin-Ext subsets, weight axis 200–800) and injects its `@font-face` rules into `<head>` the first time `setTheme` runs. So merely rendering a framework theme pulls in the font — no Google Fonts `<link>`, no external request, no extra setup. Because [`Body`](/api/core/classes/Body) calls `setTheme` on construction, any app that mounts the framework gets Manrope automatically. The font registers as `'Manrope Variable'`; text outside the Latin/Latin-Ext ranges falls back to `sans-serif`.
 
 ## Theme keys
 
@@ -28,7 +29,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | Key path | CSS variable | Affects |
 | --- | --- | --- |
 | `colorScheme` | *(set directly as `color-scheme`)* | Browser rendering of native controls (checkboxes, scrollbars). Use `'light'` or `'dark'`. |
-| `font.family` | `--ts-ui-font-family` | Font family for the entire UI (cascades from `<html>`) |
+| `font.family` | `--ts-ui-font-family` | Font family for the entire UI (cascades from `<html>`). Defaults to the bundled, self-hosted Manrope — `'Manrope Variable', sans-serif` — injected on first `setTheme` (see [How it works](#how-it-works)) |
 | `font.size` | `--ts-ui-font-size` | Base font size for the entire UI |
 | `font.linePadding` | `--ts-ui-line-padding` | Vertical leading (e.g. `"2px"`) added to a control's own font size to form its line box: the rendered line height is `calc(1em + var(--ts-ui-line-padding))`, so the leading scales per font size (12px and 14px text get proportionate line boxes from one token). Every text control renders **and** measures against this same arithmetic, so inputs, labels, and `Text` share one baseline. Drives the row-height of `Text`/tables and the baseline alignment math in `HBox`/`Column`/`Grid`. Override per control with `Text.setLineHeight(px)` for a fixed line-height |
 | `text.color` | `--ts-ui-text-color` | Default text color for all components |
