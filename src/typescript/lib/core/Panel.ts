@@ -9,13 +9,15 @@ import { InlineStyle } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 
 /**
- * Depth in pixels of each scroll-edge fade gradient.
+ * Reach in pixels of each scroll-edge shadow — used as the inset shadow's
+ * offset, blur, and (negative) spread, so each edge's fade hugs its border and
+ * dies out roughly this far inward.
  *
  * Fixed framework-side rather than themed, for the same reason the keyboard
  * focus indicator fixes its `2px` width (see `Theme.indicator.focus`): the
  * colour is the only part a theme needs to vary, and a constant keeps the
- * overlay's four-layer gradient geometry simple. `12px` reads as a soft edge
- * cue without masking a meaningful strip of content.
+ * overlay's four-shadow geometry simple. `12px` reads as a soft edge cue
+ * without masking a meaningful strip of content.
  */
 const SCROLL_SHADOW_EXTENT_PX = 12;
 
@@ -514,10 +516,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
 
     /**
      * Builds the non-interactive shadow overlay: an id-less, listener-free
-     * presentational sheath (mirroring the clip/content frames) carrying all
-     * four edge-fade gradient layers. Each layer's start colour is a local
+     * presentational sheath (mirroring the clip/content frames) carrying four
+     * blurred inset edge shadows, one per side. Each shadow's colour is a local
      * custom property defaulting to `transparent`, so the per-scroll path only
-     * flips a property to light an edge rather than rebuilding the image.
+     * flips a property to light an edge rather than rebuilding the shadow.
      *
      * @param element - The panel element the overlay is appended to.
      */
@@ -541,14 +543,17 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
             // frame as the element's last child during layout, so DOM order
             // alone would let it cover an overlay appended here at `init`.
             zIndex:        "1",
-            backgroundRepeat: "no-repeat",
-            backgroundImage:
-                "linear-gradient(to bottom, var(--ts-ss-top, transparent), transparent)," +
-                "linear-gradient(to top, var(--ts-ss-bottom, transparent), transparent)," +
-                "linear-gradient(to right, var(--ts-ss-left, transparent), transparent)," +
-                "linear-gradient(to left, var(--ts-ss-right, transparent), transparent)",
-            backgroundSize:     `100% ${extent}, 100% ${extent}, ${extent} 100%, ${extent} 100%`,
-            backgroundPosition: "top, bottom, left, right",
+            // Four blurred inset shadows — one per edge — each gated by a local
+            // custom property defaulting to `transparent` (flipped to the theme
+            // colour by `setShadowEdge`). The `-extent` spread keeps each
+            // shadow hugging its own edge while the equal blur fades it inward
+            // over `extent`px, so the edge reads as a soft cast shadow rather
+            // than the hard-terminated band a `linear-gradient` would paint.
+            boxShadow:
+                `inset 0 ${extent} ${extent} -${extent} var(--ts-ss-top, transparent),` +
+                `inset 0 -${extent} ${extent} -${extent} var(--ts-ss-bottom, transparent),` +
+                `inset ${extent} 0 ${extent} -${extent} var(--ts-ss-left, transparent),` +
+                `inset -${extent} 0 ${extent} -${extent} var(--ts-ss-right, transparent)`,
         });
 
         element.appendChild(overlay);
