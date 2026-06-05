@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { BaseTheme } from '~/core/themes/BaseTheme.js';
+import { defineTheme } from '~/core/Theme.js';
 import type { Theme } from '~/core/Theme.js';
 
 /**
@@ -7,24 +9,24 @@ import type { Theme } from '~/core/Theme.js';
  * buttons. The original default look, retained as an opt-in alternative now
  * that {@link ModernTheme} is the preselected theme.
  *
+ * Authored as `defineTheme(BaseTheme, …)`: it declares only its palette (and
+ * `colorScheme`); every structural token is inherited from {@link BaseTheme}.
+ * Classic carries no structural override — its `header.padding` and
+ * `tab.underBorderFullWidth` already match the base majority.
+ *
  * @category Theme
  */
-export const ClassicTheme: Theme = {
+export const ClassicTheme: Theme = defineTheme(BaseTheme, {
     colorScheme: 'light',
-    font       : { family: 'system-ui, sans-serif', size: '14px', linePadding: '2px' },
     text       : { color: 'rgb(0, 0, 0)' },
     body       : { background: 'rgb(255, 255, 255)' },
-    border     : { color: 'black',                 radius: '4px' },
+    border     : { color: 'black' },
     button     : {
         background: 'linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))',
         border    : 'rgb(200, 200, 200)',
         shadow    : '1px 2px 5px 0 rgba(0, 0, 0, 0.2)',
-        padding   : '0',
-        font      : { size: '12px' },
         description: {
-            fontSize  : '11px',
             foreground: 'rgb(110, 110, 110)',
-            weight    : 'normal',
         },
         pressed   : {
             foreground: 'rgb(150, 150, 150)',
@@ -59,29 +61,22 @@ export const ClassicTheme: Theme = {
             trackOffBackground: 'rgb(200, 200, 200)',
             trackOnBackground : 'rgb(30, 100, 200)',
             thumbBackground   : 'rgb(255, 255, 255)',
-            width             : '36px',
-            height            : '20px',
         },
         slider  : {
             trackBackground      : 'rgb(220, 220, 220)',
             trackActiveBackground: 'rgb(30, 100, 200)',
             thumbBackground      : 'rgb(255, 255, 255)',
-            thumbSize            : '16px',
-            trackThickness       : '4px',
         },
         checkbox: {
             background             : 'rgb(255, 255, 255)',
             selectedBackground     : 'rgb(30, 100, 200)',
             indeterminateBackground: 'rgb(160, 160, 160)',
             checkColor             : 'rgb(255, 255, 255)',
-            size                   : '16px',
-            radius                 : '3px',
         },
         radio   : {
             background        : 'rgb(255, 255, 255)',
             selectedBackground: 'rgb(30, 100, 200)',
             dotColor          : 'rgb(255, 255, 255)',
-            size              : '16px',
         },
     },
     gutter: { background: '#AAAAAA' },
@@ -95,7 +90,6 @@ export const ClassicTheme: Theme = {
         indicator: { color: 'rgb(100,100,100)' },
     },
     tab   : {
-        underBorderFullWidth: true,
         toolbar: { background: '#eee',     border: '#e1e1e8' },
         button : {
             background: 'linear-gradient(rgb(208, 208, 216), rgb(185, 185, 196))',
@@ -103,20 +97,17 @@ export const ClassicTheme: Theme = {
             hover     : { background: 'linear-gradient(rgb(220, 220, 227), rgb(198, 198, 208))', border: 'none' },
             selected  : { background: 'linear-gradient(rgb(255, 255, 255), rgb(235, 235, 240))', border: 'none' },
         },
-        indicator: { color: '#1a73e8', thickness: '2px' },
+        indicator: { color: '#1a73e8' },
     },
     window: {
         shadow      : '3px 3px 2px rgba(0, 0, 0, 0.4)',
         snapGlow    : '0 0 0 2px rgba(30, 100, 200, 0.7)',
-        minDockWidth: '200px',
     },
-    header: { font: { size: '12px' }, padding: 5 },
     table : {
         header: {
             background: 'linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))',
             border: 'black',
-            font  : { size: '13px' },
-            glyph : { gap: '4px', color: 'currentColor' },
+            glyph : { color: 'currentColor' },
         },
         row   : {
             selected      : 'rgba(30, 100, 200, 0.15)',
@@ -125,8 +116,6 @@ export const ClassicTheme: Theme = {
             dirty         : 'rgba(255, 165, 0, 0.15)',
         },
         cell  : {
-            height            : '22px',
-            padding           : 2,
             background        : 'transparent',
             readonlyBackground: 'rgba(0, 0, 0, 0.04)',
             color             : 'inherit',
@@ -134,14 +123,11 @@ export const ClassicTheme: Theme = {
             editorBorderColor : 'rgba(30, 100, 200, 0.6)',
         },
         resizeHandle: {
-            width : '5px',
             color : 'rgba(0, 0, 0, 0.2)',
-            cursor: 'ew-resize',
         },
         sortBadge: {
             background: 'rgba(0, 0, 0, 0.15)',
             color     : 'inherit',
-            fontSize  : '10px',
         },
     },
     contextMenu: {
@@ -166,7 +152,6 @@ export const ClassicTheme: Theme = {
             background: 'rgb(255, 255, 255)',
             border    : 'rgb(200, 200, 200)',
             shadow    : '2px 4px 8px rgba(0, 0, 0, 0.15)',
-            minWidth  : '160px',
         },
         item          : {
             hoverBackground: 'rgba(30, 100, 200, 0.12)',
@@ -179,14 +164,10 @@ export const ClassicTheme: Theme = {
         background: 'transparent',
         color     : 'rgb(60, 60, 60)',
         border    : 'rgb(220, 220, 220)',
-        height    : '22px',
-        padding   : '6px',
     },
     toolBar: {
         background    : 'transparent',
         border        : 'rgb(220, 220, 220)',
-        padding       : '4px',
-        gap           : '4px',
         separatorColor: 'rgb(220, 220, 220)',
     },
     tooltip: {
@@ -200,9 +181,6 @@ export const ClassicTheme: Theme = {
         color     : 'rgb(0, 0, 0)',
         border    : 'rgb(200, 200, 200)',
         shadow    : '2px 4px 12px rgba(0, 0, 0, 0.18)',
-        radius    : '6px',
-        padding   : '12px',
-        arrowSize : '8px',
     },
     notification: {
         shadow : '2px 4px 8px rgba(0, 0, 0, 0.15)',
@@ -249,9 +227,6 @@ export const ClassicTheme: Theme = {
             separator         : 'transparent',
         },
     },
-    dropdown: {
-        fade: { duration: '120ms', translate: '4px' },
-    },
     indicator: {
         focus    : 'rgb(30, 100, 200)',
         selection: '1px dashed rgb(120, 170, 240)',
@@ -274,30 +249,22 @@ export const ClassicTheme: Theme = {
         affirm  : { background: 'rgba(30, 180, 80, 0.15)',  foreground: 'rgb(30, 180, 80)'  },
     },
     spinner: {
-        buttonWidth : '18px',
         dividerColor: 'rgb(180, 180, 180)',
     },
     progressBar: {
-        track        : { background: 'rgb(220, 220, 220)', borderRadius: '4px' },
+        track        : { background: 'rgb(220, 220, 220)' },
         fill         : { background: 'rgb(30, 100, 200)' },
         indeterminate: { background: 'rgb(30, 100, 200)' },
     },
     progressSpinner: {
         color   : 'rgb(30, 100, 200)',
         backdrop: 'rgba(255, 255, 255, 0.6)',
-        size    : '32px',
-    },
-    glyph: {
-        spinDuration : '2000ms',
-        pulseDuration: '1000ms',
-        beatDuration : '1000ms',
     },
     drag: {
         ghost: {
             background: 'rgba(200, 200, 200, 0.9)',
             border    : 'rgb(150, 150, 150)',
             shadow    : '2px 4px 12px rgba(0, 0, 0, 0.25)',
-            opacity   : '0.85',
         },
         feedback: {
             valid  : { background: 'rgba(30, 180, 80, 0.12)', border: 'rgb(30, 180, 80)'  },
@@ -307,8 +274,7 @@ export const ClassicTheme: Theme = {
             color: 'rgb(30, 100, 200)',
         },
     },
-
     scroll: {
         shadowColor: 'rgba(0, 0, 0, 1)',
     },
-};
+});

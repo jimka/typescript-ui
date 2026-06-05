@@ -1,28 +1,30 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { BaseTheme } from '~/core/themes/BaseTheme.js';
+import { defineTheme } from '~/core/Theme.js';
 import type { Theme } from '~/core/Theme.js';
 
 /**
  * Dark-mode theme using dark backgrounds and light text.
  *
+ * Authored as `defineTheme(BaseTheme, …)`: it declares only its palette,
+ * `colorScheme: 'dark'`, and the single structural divergence
+ * `header.padding: 4` (the base majority is `5`). Every other structural token
+ * is inherited from {@link BaseTheme}.
+ *
  * @category Theme
  */
-export const DarkTheme: Theme = {
+export const DarkTheme: Theme = defineTheme(BaseTheme, {
     colorScheme: 'dark',
-    font       : { family: 'system-ui, sans-serif', size: '14px', linePadding: '2px' },
     text       : { color: 'rgb(220, 220, 220)' },
     body       : { background: 'rgb(30, 30, 30)' },
-    border     : { color: 'rgb(90, 90, 90)',        radius: '4px' },
+    border     : { color: 'rgb(90, 90, 90)' },
     button     : {
         background: 'linear-gradient(rgb(70, 70, 70), rgb(50, 50, 50))',
         border    : 'rgb(80, 80, 80)',
         shadow    : '1px 2px 5px 0 rgba(0, 0, 0, 0.5)',
-        padding   : '0',
-        font      : { size: '12px' },
         description: {
-            fontSize  : '11px',
             foreground: 'rgb(160, 160, 160)',
-            weight    : 'normal',
         },
         pressed   : {
             foreground: 'rgb(180, 180, 180)',
@@ -57,29 +59,22 @@ export const DarkTheme: Theme = {
             trackOffBackground: 'rgb(70, 70, 70)',
             trackOnBackground : 'rgb(120, 170, 240)',
             thumbBackground   : 'rgb(230, 230, 230)',
-            width             : '36px',
-            height            : '20px',
         },
         slider  : {
             trackBackground      : 'rgb(70, 70, 70)',
             trackActiveBackground: 'rgb(120, 170, 240)',
             thumbBackground      : 'rgb(230, 230, 230)',
-            thumbSize            : '16px',
-            trackThickness       : '4px',
         },
         checkbox: {
             background             : 'rgb(40, 40, 40)',
             selectedBackground     : 'rgb(120, 170, 240)',
             indeterminateBackground: 'rgb(100, 100, 100)',
             checkColor             : 'rgb(20, 20, 20)',
-            size                   : '16px',
-            radius                 : '3px',
         },
         radio   : {
             background        : 'rgb(40, 40, 40)',
             selectedBackground: 'rgb(120, 170, 240)',
             dotColor          : 'rgb(20, 20, 20)',
-            size              : '16px',
         },
     },
     gutter: { background: '#555' },
@@ -93,7 +88,6 @@ export const DarkTheme: Theme = {
         indicator: { color: 'rgb(160,160,160)' },
     },
     tab   : {
-        underBorderFullWidth: true,
         toolbar: { background: '#2a2a2a', border: '#444' },
         button : {
             background: '#3a3a3a',
@@ -101,20 +95,18 @@ export const DarkTheme: Theme = {
             hover     : { background: '#454545',          border: 'none' },
             selected  : { background: 'rgb(30, 30, 30)', border: 'none' },
         },
-        indicator: { color: '#4a9eff', thickness: '2px' },
+        indicator: { color: '#4a9eff' },
     },
     window    : {
         shadow      : '3px 3px 2px rgba(0, 0, 0, 0.6)',
         snapGlow    : '0 0 0 2px rgba(80, 150, 240, 0.8)',
-        minDockWidth: '200px',
     },
-    header    : { font: { size: '12px' }, padding: 4 },
+    header    : { padding: 4 },
     table     : {
         header: {
             background: 'linear-gradient(rgb(70, 70, 70), rgb(50, 50, 50))',
             border: '#555',
-            font  : { size: '13px' },
-            glyph : { gap: '4px', color: 'currentColor' },
+            glyph : { color: 'currentColor' },
         },
         row   : {
             selected      : 'rgba(30, 100, 200, 0.25)',
@@ -123,8 +115,6 @@ export const DarkTheme: Theme = {
             dirty         : 'rgba(255, 165, 0, 0.2)',
         },
         cell  : {
-            height            : '22px',
-            padding           : 2,
             background        : 'transparent',
             readonlyBackground: 'rgba(255, 255, 255, 0.04)',
             color             : 'inherit',
@@ -132,14 +122,11 @@ export const DarkTheme: Theme = {
             editorBorderColor : 'rgba(30, 100, 200, 0.8)',
         },
         resizeHandle: {
-            width : '5px',
             color : 'rgba(255, 255, 255, 0.25)',
-            cursor: 'ew-resize',
         },
         sortBadge: {
             background: 'rgba(255, 255, 255, 0.2)',
             color     : 'inherit',
-            fontSize  : '10px',
         },
     },
     contextMenu: {
@@ -164,7 +151,6 @@ export const DarkTheme: Theme = {
             background: 'rgb(45, 45, 45)',
             border    : 'rgb(80, 80, 80)',
             shadow    : '2px 4px 8px rgba(0, 0, 0, 0.5)',
-            minWidth  : '160px',
         },
         item          : {
             hoverBackground: 'rgba(100, 140, 220, 0.2)',
@@ -177,14 +163,10 @@ export const DarkTheme: Theme = {
         background: 'transparent',
         color     : 'rgb(200, 200, 200)',
         border    : 'rgb(70, 70, 70)',
-        height    : '22px',
-        padding   : '6px',
     },
     toolBar: {
         background    : 'transparent',
         border        : 'rgb(70, 70, 70)',
-        padding       : '4px',
-        gap           : '4px',
         separatorColor: 'rgb(70, 70, 70)',
     },
     tooltip: {
@@ -198,9 +180,6 @@ export const DarkTheme: Theme = {
         color     : 'rgb(230, 230, 235)',
         border    : 'rgb(90, 90, 100)',
         shadow    : '2px 4px 12px rgba(0, 0, 0, 0.55)',
-        radius    : '6px',
-        padding   : '12px',
-        arrowSize : '8px',
     },
     notification: {
         shadow : '2px 4px 8px rgba(0, 0, 0, 0.4)',
@@ -244,9 +223,6 @@ export const DarkTheme: Theme = {
             separator         : 'transparent',
         },
     },
-    dropdown: {
-        fade: { duration: '120ms', translate: '4px' },
-    },
     indicator: {
         focus    : 'rgb(120, 170, 240)',
         selection: '1px dashed rgb(120, 170, 240)',
@@ -268,30 +244,22 @@ export const DarkTheme: Theme = {
         affirm  : { background: 'rgba(80, 200, 110, 0.25)', foreground: 'rgb(80, 200, 110)' },
     },
     spinner: {
-        buttonWidth : '18px',
         dividerColor: 'rgb(80, 80, 80)',
     },
     progressBar: {
-        track        : { background: 'rgb(55, 55, 55)',  borderRadius: '4px' },
+        track        : { background: 'rgb(55, 55, 55)' },
         fill         : { background: 'rgb(60, 130, 220)' },
         indeterminate: { background: 'rgb(60, 130, 220)' },
     },
     progressSpinner: {
         color   : 'rgb(60, 130, 220)',
         backdrop: 'rgba(20, 20, 20, 0.6)',
-        size    : '32px',
-    },
-    glyph: {
-        spinDuration : '2000ms',
-        pulseDuration: '1000ms',
-        beatDuration : '1000ms',
     },
     drag: {
         ghost: {
             background: 'rgba(60, 60, 60, 0.9)',
             border    : 'rgb(100, 100, 100)',
             shadow    : '2px 4px 12px rgba(0, 0, 0, 0.6)',
-            opacity   : '0.85',
         },
         feedback: {
             valid  : { background: 'rgba(30, 180, 80, 0.2)',  border: 'rgb(30, 180, 80)'  },
@@ -301,8 +269,7 @@ export const DarkTheme: Theme = {
             color: 'rgb(80, 140, 240)',
         },
     },
-
     scroll: {
         shadowColor: 'rgba(0, 0, 0, 1)',
     },
-};
+});

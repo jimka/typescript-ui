@@ -7,6 +7,7 @@ import { Util } from '~/core/Util.js';
 // `ModernTheme`, and re-exported below so existing
 // `import { ClassicTheme } from '~/core/Theme.js'` paths and the core barrel
 // keep resolving unchanged.
+import { BaseTheme } from '~/core/themes/BaseTheme.js';
 import { ClassicTheme } from '~/core/themes/ClassicTheme.js';
 import { DarkTheme } from '~/core/themes/DarkTheme.js';
 import { ModernTheme } from '~/core/themes/ModernTheme.js';
@@ -534,7 +535,76 @@ export interface Theme {
     };
 }
 
-export { ClassicTheme, DarkTheme, ModernTheme };
+export { BaseTheme, ClassicTheme, DarkTheme, ModernTheme };
+
+/**
+ * Recursively-optional view of a type: every property optional at every depth,
+ * recursing into plain object properties. Used for the partial overrides bag
+ * passed to {@link defineTheme}.
+ */
+export type DeepPartial<T> = {
+    [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
+};
+
+/**
+ * Narrows a value to a plain object — an object that is neither `null` nor an
+ * array. Used by {@link defineTheme}'s merge to decide recurse-vs-replace.
+ *
+ * @param value - The value to test.
+ * @returns `true` when `value` is a non-null, non-array object.
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Recursively merges `overrides` onto `base`: recurse into plain objects,
+ * replace primitive/array leaves wholesale, and skip `undefined` override
+ * values so an absent override key never blanks a base value.
+ *
+ * @param base - The value being layered onto.
+ * @param overrides - The value layered on top.
+ * @returns The merged value — a new object when both sides are plain objects, otherwise `overrides`.
+ */
+function deepMerge(base: unknown, overrides: unknown): unknown {
+    if (!isPlainObject(base) || !isPlainObject(overrides)) {
+        return overrides;
+    }
+
+    const result: Record<string, unknown> = { ...base };
+
+    for (const key of Object.keys(overrides)) {
+        const ov = overrides[key];
+
+        if (ov === undefined) {
+            continue;
+        }
+
+        result[key] = key in base ? deepMerge(base[key], ov) : ov;
+    }
+
+    return result;
+}
+
+/**
+ * Produces a fully-resolved {@link Theme} by deep-merging `overrides` onto `base`.
+ *
+ * `base` is typically {@link BaseTheme} (the structural scaffold), but may be any
+ * full `Theme` to deliberately derive one theme from another (e.g.
+ * `defineTheme(ClassicTheme, { …dark palette… })`). The caller is responsible for
+ * `base` + `overrides` together covering every `Theme` key; completeness is
+ * enforced by the theme regression test, not the type system.
+ *
+ * Merge rule: recurse into plain objects, replace primitive/array leaves wholesale,
+ * skip `undefined` override values.
+ *
+ * @param base - The scaffold or full theme to layer onto.
+ * @param overrides - Tokens that differ from `base`.
+ * @returns A complete, resolved `Theme`.
+ */
+export function defineTheme(base: DeepPartial<Theme>, overrides: DeepPartial<Theme>): Theme {
+    return deepMerge(base, overrides) as Theme;
+}
 
 /**
  * Emits the four per-side tab-button border custom properties for one state,
