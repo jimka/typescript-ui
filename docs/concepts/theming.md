@@ -11,7 +11,7 @@ ThemeManager.setTheme(ClassicTheme); // classic gradient light
 ThemeManager.setTheme(DarkTheme);    // dark
 ```
 
-Three built-in themes ship with the package: `ModernTheme` — a flat, gradient-free light theme that is **preselected by default** — alongside `ClassicTheme` (the original gradient light look) and `DarkTheme`. Custom themes are created by spreading one of them and overriding tokens — see [Custom themes](#custom-themes) below.
+Three built-in themes ship with the package: `ModernTheme` — a flat, gradient-free light theme that is **preselected by default** — alongside `ClassicTheme` (the original gradient light look) and `DarkTheme`. Custom themes are created with [`defineTheme`](/api/core/functions/defineTheme), which deep-merges your tokens onto [`BaseTheme`](/api/core/variables/BaseTheme) or a built-in theme — see [Custom themes](#custom-themes) below.
 
 ## How it works
 
@@ -23,7 +23,7 @@ Three built-in themes ship with the package: `ModernTheme` — a flat, gradient-
 
 ## Theme keys
 
-The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped by component. All keys are required; spread `DefaultTheme` and override only what you need (see [Custom themes](#custom-themes) below).
+The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped by component. All keys are required, but [`defineTheme`](/api/core/functions/defineTheme) deep-merges your overrides onto a base so you only declare the ones you change (see [Custom themes](#custom-themes) below).
 
 | Key path | CSS variable | Affects |
 | --- | --- | --- |
@@ -95,22 +95,39 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 
 ## Custom themes
 
-Implement the [`Theme`](/api/core/interfaces/Theme) interface and pass it to `setTheme`. Spread a built-in theme (here `ModernTheme`) and override only the keys you care about:
+Build a theme with [`defineTheme`](/api/core/functions/defineTheme), which deep-merges your overrides onto a base and returns a complete [`Theme`](/api/core/interfaces/Theme) ready for `setTheme`. The recommended base is [`BaseTheme`](/api/core/variables/BaseTheme) — the structural scaffold shared by all three built-ins (sizes, paddings, radii, durations, font sizes). You supply the palette and `colorScheme`; the structure is inherited:
 
 ```typescript
-import { Theme, ThemeManager, ModernTheme } from '@jimka/typescript-ui/core';
-const MyTheme: Theme = {
-    ...ModernTheme,
+import { defineTheme, BaseTheme, ThemeManager } from '@jimka/typescript-ui/core';
+const MyTheme = defineTheme(BaseTheme, {
+    colorScheme: 'light',
     body: { background: 'rgb(240, 248, 255)' },
     text: { color: 'rgb(10, 30, 60)' },
     button: {
-        ...ModernTheme.button,
         background: 'linear-gradient(rgb(200, 220, 255), rgb(160, 190, 240))',
     },
-};
+    // …the remaining palette tokens…
+});
 
 ThemeManager.setTheme(MyTheme);
 ```
+
+Because the merge recurses into nested objects, overriding a single leaf no longer means spreading its whole bucket: `table: { header: { background: '…' } }` replaces just that one token and leaves every sibling intact. This is the win over the old `...ModernTheme` spread, where forgetting an inner `...ModernTheme.button` spread silently dropped the rest of the bucket.
+
+`BaseTheme` is a scaffold, not a usable theme on its own — it carries no palette, so always wrap it. `defineTheme` does not check completeness at compile time (the overrides are a deep-partial), so a palette token you forget surfaces at runtime as a CSS variable resolving to `undefined`.
+
+### Deriving one theme from another
+
+`defineTheme`'s base may be any full theme, not just `BaseTheme`. Pass a built-in theme to deliberately derive a "same structure, swapped scheme" variant — e.g. a blue-tinted Classic that inherits Classic's whole palette and changes only the button:
+
+```typescript
+import { defineTheme, ClassicTheme } from '@jimka/typescript-ui/core';
+const BlueClassic = defineTheme(ClassicTheme, {
+    button: { background: 'linear-gradient(rgb(80, 130, 220), rgb(60, 100, 180))' },
+});
+```
+
+Reach for this only when you genuinely want to inherit another theme's *palette* too; the default path for a fresh theme is `defineTheme(BaseTheme, …)`.
 
 Components that need a theme value at construction time (rather than via a CSS variable) can call `ThemeManager.getTheme()` to read the currently active theme.
 
