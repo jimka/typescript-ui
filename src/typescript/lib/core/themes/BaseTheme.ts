@@ -15,7 +15,7 @@ import type { DeepPartial, Theme } from '~/core/Theme.js';
  */
 export const BaseTheme: DeepPartial<Theme> = {
     font: {
-        family     : 'system-ui, sans-serif',
+        family     : "'Manrope Variable', sans-serif",
         size       : '14px',
         linePadding: '2px',
     },

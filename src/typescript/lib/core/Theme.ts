@@ -1,5 +1,21 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+// The OFL Manrope variable font (weight axis 200–800), shipped by
+// @fontsource-variable/manrope as unicode-range subsets. We bundle the Latin
+// and Latin-Ext subsets (the framework's Western chrome plus extended-Latin
+// coverage); each .woff2 is imported as a URL so Vite emits it as a build asset
+// served from the consumer's own origin — no Google Fonts <link>, no runtime
+// external request. Vite library mode inlines these assets as base64, so the
+// other subsets (Cyrillic, Greek, Vietnamese) are deliberately omitted to keep
+// the eagerly-bundled font payload small; text outside Latin/Latin-Ext falls
+// back to `sans-serif`. The matching @font-face rules are injected at runtime by
+// ensureFontLoaded() (see below) rather than via a CSS import, because the
+// framework ships no stylesheet: like Glyph's keyframes, shared assets are
+// injected from JS so they survive the library build, where a CSS side-effect
+// import would be extracted to an orphaned file the bundle never loads.
+import manropeLatinExtUrl from '@fontsource-variable/manrope/files/manrope-latin-ext-wght-normal.woff2';
+import manropeLatinUrl    from '@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2';
+
 import { InlineStyle } from '~/core/StyleTarget.js';
 import { Util } from '~/core/Util.js';
 // The three built-in theme literals live in their own files under
@@ -842,6 +858,59 @@ function themeToVars(theme: Theme): Record<string, string> {
 }
 
 /**
+ * The Manrope subsets to register, pairing each bundled `.woff2` asset URL with
+ * the `unicode-range` it covers. The URLs and ranges mirror the `index.css`
+ * shipped by `@fontsource-variable/manrope`; the ranges are carried here
+ * verbatim because the framework injects the `@font-face` rules from JS (see
+ * {@link ensureFontLoaded}) rather than importing the package's stylesheet. Only
+ * the Latin and Latin-Ext subsets are bundled — `unicode-range` still routes
+ * each glyph to the right face, and codepoints outside these ranges fall back to
+ * `sans-serif`.
+ */
+const MANROPE_SUBSETS: ReadonlyArray<{ url: string; unicodeRange: string }> = [
+    { url: manropeLatinExtUrl, unicodeRange: 'U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF' },
+    { url: manropeLatinUrl,    unicodeRange: 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD' },
+];
+
+// Module-level guard so the @font-face block is injected exactly once, no matter
+// how many times setTheme runs. Mirrors Glyph.ts's _keyframesInjected pattern.
+let _fontInjected = false;
+
+/**
+ * Injects the bundled Manrope `@font-face` rules into `<head>` on first call.
+ *
+ * Idempotent — guarded by the module-level `_fontInjected` flag, mirroring
+ * `Glyph.ts`'s keyframe injection. The face registers as `'Manrope Variable'`
+ * (the value carried by the `font.family` theme token), spans the full 200–800
+ * weight axis (Manrope's variable-font axis bounds, carried verbatim from the
+ * package's `@font-face`), and uses `font-display: swap` so text stays visible
+ * during the load. Each subset's `.woff2` is a Vite-bundled asset, so the font
+ * self-hosts from the consumer's origin with no external request.
+ */
+function ensureFontLoaded(): void {
+    if (_fontInjected) {
+        return;
+    }
+
+    _fontInjected = true;
+
+    const rules = MANROPE_SUBSETS.map(subset =>
+        `@font-face{`
+        + `font-family:'Manrope Variable';`
+        + `font-style:normal;`
+        + `font-display:swap;`
+        + `font-weight:200 800;`
+        + `src:url(${subset.url}) format('woff2-variations');`
+        + `unicode-range:${subset.unicodeRange}`
+        + `}`
+    ).join('');
+
+    const style = document.createElement('style');
+    style.textContent = rules;
+    document.head.appendChild(style);
+}
+
+/**
  * Singleton manager that applies a theme by writing CSS custom properties and
  * inline styles onto the document root and body elements.
  *
@@ -885,6 +954,8 @@ export class ThemeManager {
      * from `<html>`.
      */
     static setTheme(theme: Theme): void {
+        ensureFontLoaded();
+
         ThemeManager.current = theme;
 
         const rootStyle = new InlineStyle();
