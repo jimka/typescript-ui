@@ -7,6 +7,7 @@ import {
     Component,
     DarkTheme,
     Dialog,
+    Drawer,
     Event,
     Menu,
     ModernTheme,
@@ -17,8 +18,8 @@ import {
     Tooltip,
     Window
 } from '@jimka/typescript-ui/core';
-import type { AutoScrollMode } from '@jimka/typescript-ui/core';
-import { Insets } from '@jimka/typescript-ui/primitive';
+import type { AutoScrollMode, DrawerEdge } from '@jimka/typescript-ui/core';
+import { Insets, Placement } from '@jimka/typescript-ui/primitive';
 import {
     Absolute,
     Fit,
@@ -575,6 +576,44 @@ class MiscPanel extends Panel {
             win.show();
         });
         leftColumn.addComponent(buttonTree);
+
+        // Drawer demo — opens an edge-anchored sliding panel. Each drawer is a
+        // bare content host, so we stack a heading and a Close button into it
+        // via a VBox. The four modal buttons exercise all four geometries; the
+        // last button shows a non-modal drawer that leaves the app interactive.
+        const openDemoDrawer = (edge: DrawerEdge, modal: boolean, label: string): void => {
+            const drawer = new Drawer({ edge, modal, layoutManager: new VBox({ stretching: true }) });
+
+            const heading = new Text((modal ? "Modal" : "Non-modal") + " drawer — " + label);
+            heading.setFontWeight("bold");
+            heading.setPreferredSize(0, 28);
+
+            const closeButton = new Button("Close");
+            closeButton.setPreferredSize(0, 32);
+            closeButton.on("action", () => drawer.close());
+
+            drawer.addComponent(heading);
+            drawer.addComponent(closeButton);
+
+            drawer.open();
+        };
+
+        const drawerEdges: Array<[string, DrawerEdge]> = [
+            ["left",   Placement.WEST],
+            ["right",  Placement.EAST],
+            ["top",    Placement.NORTH],
+            ["bottom", Placement.SOUTH],
+        ];
+
+        for (const [label, edge] of drawerEdges) {
+            const drawerButton = new Button("Modal drawer from " + label);
+            drawerButton.on("action", () => openDemoDrawer(edge, true, label));
+            leftColumn.addComponent(drawerButton);
+        }
+
+        const nonModalDrawerButton = new Button("Non-modal drawer (left)");
+        nonModalDrawerButton.on("action", () => openDemoDrawer(Placement.WEST, false, "left"));
+        leftColumn.addComponent(nonModalDrawerButton);
 
         const spacer = new Spacer({ flex: true });
         leftColumn.addComponent(spacer);
