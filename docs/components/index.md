@@ -13,6 +13,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Body`](/api/core/classes/Body) | Singleton wrapping `document.body`; bootstraps the framework |
 | [`Window`](/api/core/classes/Window) | Floating, draggable, resizable window |
 | [`Dialog`](/api/core/classes/Dialog) | Modal dialog with async result |
+| [`Drawer`](/components/Drawer) | Edge-anchored panel that slides in from a viewport edge; modal or non-modal |
 | [`Tooltip`](/api/core/classes/Tooltip) | Singleton hover hint, attach via `Tooltip.attach(component, text)` |
 | [`Popover`](/components/Popover) | Anchored, non-modal floating bubble with arrow tail and dismiss modes |
 | [`Notification`](/api/core/classes/Notification) | Static toast — `Notification.show(message, type, duration?)` |

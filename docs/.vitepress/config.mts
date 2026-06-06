@@ -57,6 +57,7 @@ export default defineConfig({
                     { text: 'Body',             link: '/components/Body' },
                     { text: 'Window',           link: '/components/Window' },
                     { text: 'Dialog',           link: '/components/Dialog' },
+                    { text: 'Drawer',           link: '/components/Drawer' },
                     { text: 'Tooltip',          link: '/components/Tooltip' },
                     { text: 'Popover',          link: '/components/Popover' },
                     { text: 'Notification',     link: '/components/Notification' },
