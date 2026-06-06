@@ -14,10 +14,10 @@ class BorderPanel extends Panel {
 
         let headerText = new Text("Header!");
         headerText.setPreferredSize(20, 100);
-        this.addComponent(headerText, { placement: Placement.NORTH });
+        this.addComponent(headerText, { placement: Placement.NORTH, collapsible: true });
 
         let list = new List();
-        this.addComponent(list, { placement: Placement.WEST });
+        this.addComponent(list, { placement: Placement.WEST, collapsible: true });
 
         list.addItem("One");
         list.addItem("Two");
@@ -38,7 +38,7 @@ class BorderPanel extends Panel {
 
         let footerText = new Text("Footer!1!!!");
         footerText.setPreferredSize(20, 50);
-        this.addComponent(footerText, { placement: Placement.SOUTH });
+        this.addComponent(footerText, { placement: Placement.SOUTH, collapsible: true });
 
         let eastComponent = new Component();
         eastComponent.setLayoutManager(new BorderLayout());
@@ -61,6 +61,12 @@ class BorderPanel extends Panel {
 
         eastComponent.addComponent(numberedList, { placement: Placement.SOUTH });
 
+        // Collapsing is opt-in: the north, south, and west regions above pass
+        // `collapsible: true`, so each shows a single chevron handle whose
+        // double-click toggles collapse/restore — the region's gutter slides to
+        // the outer edge and becomes the opaque strip, and slides back on
+        // restore. The east region and the center opt out simply by not asking,
+        // so they show no chevron.
         this.addComponent(eastComponent, { placement: Placement.EAST });
     }
 }

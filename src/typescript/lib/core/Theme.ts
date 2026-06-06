@@ -191,6 +191,19 @@ export interface Theme {
         background: string;
     };
 
+    collapse: {
+        strip: {
+            /** Background fill of a collapsed pane/region's tucked strip. */
+            background: string;
+            /** Strip thickness along its short axis (CSS length). */
+            size: string;
+        };
+        button: {
+            /** Colour of the collapse/restore chevron glyph. */
+            color: string;
+        };
+    };
+
     tab: {
         /**
          * Whether the tab strip draws the edge-to-edge 1px rule under the toolbar.
@@ -704,6 +717,9 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-radio-dot-color'                  : theme.form.radio.dotColor,
         '--ts-ui-radio-size'                       : theme.form.radio.size,
         '--ts-ui-gutter-bg'                        : theme.gutter.background,
+        '--ts-ui-collapse-strip-bg'                : theme.collapse.strip.background,
+        '--ts-ui-collapse-strip-size'              : theme.collapse.strip.size,
+        '--ts-ui-collapse-button-color'            : theme.collapse.button.color,
         '--ts-ui-accordion-header-bg'              : theme.accordion.header.background,
         '--ts-ui-accordion-header-border'          : theme.accordion.header.border,
         '--ts-ui-accordion-header-color'           : theme.accordion.header.color,

@@ -3,10 +3,28 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js"
 import { Component } from "~/core/Component.js"
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import { SplitGutter } from "~/component/container/SplitGutter.js";
+import { CollapseDirection } from "~/component/container/CollapseButton.js";
 import { FillType } from "~/layout/FillType.js";
 import { Placement } from "~/primitive/Placement.js";
 import { Size } from "~/primitive/Size.js";
+import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
+
+// Pixel thickness of a region's transparent collapse track in its expanded
+// state — just enough to carry the (overflowing) chevron at the region's inner
+// edge. Mirrors `Split`'s GUTTER_SIZE so the two managers' divider tracks match.
+const TRACK_SIZE = 4;
+
+// The way each region's chevron points (and the gutter travels) when collapsing
+// — toward the region's outer edge. The restore heading is its opposite,
+// handled by the gutter's `setOpaque`.
+const COLLAPSE_CHEVRON: Record<string, CollapseDirection> = {
+    [Placement.NORTH]: "north",
+    [Placement.SOUTH]: "south",
+    [Placement.WEST]:  "west",
+    [Placement.EAST]:  "east",
+};
 
 /**
  * Construction-time options for the {@link Border} layout manager.
@@ -39,6 +57,24 @@ class Border extends LayoutManager {
     private _eastComponent: Component | null = null;
     private _centerComponent: Component | null = null;
     private _gap: number = 5;
+
+    // Per-region collapse state, keyed by placement. `_collapsed` and
+    // `_collapsible` both default to false: collapsing is opt-in per region
+    // (`collapsible: true` on the constraint), so a plain Border — including
+    // the ones Header, Dialog, and the table panels use internally — never
+    // sprouts collapse affordances. `_gutters` holds one lazily-created fixed
+    // gutter per collapsible edge region — a transparent track carrying the
+    // chevron when expanded, the opaque strip when collapsed. The child
+    // component stays unaware it is collapsible — this is layout geometry, so
+    // it lives here.
+    private _collapsed: Map<Placement, boolean> = new Map<Placement, boolean>();
+    private _collapsible: Map<Placement, boolean> = new Map<Placement, boolean>();
+    private _gutters: Map<Placement, SplitGutter> = new Map<Placement, SplitGutter>();
+
+    // Canceller for the in-flight region collapse/restore animation, or null
+    // when idle. Calling it stops the rAF loop in place so a rapid re-toggle
+    // re-snapshots and retargets without two loops fighting.
+    private _collapseAnimation: (() => void) | null = null;
 
     constructor(options?: BorderOptions) {
         super();
@@ -102,6 +138,14 @@ class Border extends LayoutManager {
                 break;
         }
 
+        // The center is never collapsible; every edge region defaults to
+        // non-collapsible and opts in via `collapsible: true`.
+        if (constraints.placement === Placement.CENTER) {
+            this._collapsible.set(Placement.CENTER, false);
+        } else {
+            this._collapsible.set(constraints.placement, constraints.collapsible ?? false);
+        }
+
         return super.setLayoutConstraints(component, constraints);
     }
 
@@ -123,6 +167,280 @@ class Border extends LayoutManager {
         this._gap = gap;
 
         return this;
+    }
+
+    /**
+     * Returns the component currently registered in the given region slot.
+     *
+     * @param placement - The region to look up.
+     * @returns The region's component, or `null` if the slot is empty.
+     */
+    private getRegionComponent(placement: Placement): Component | null {
+        switch (placement) {
+            case Placement.NORTH:  return this._northComponent;
+            case Placement.SOUTH:  return this._southComponent;
+            case Placement.WEST:   return this._westComponent;
+            case Placement.EAST:   return this._eastComponent;
+            case Placement.CENTER: return this._centerComponent;
+        }
+    }
+
+    /**
+     * Returns whether the given region is collapsed.
+     *
+     * @param placement - The region to query.
+     * @returns True when the region is collapsed.
+     */
+    isRegionCollapsed(placement: Placement): boolean {
+        return this._collapsed.get(placement) ?? false;
+    }
+
+    /**
+     * Collapses or restores an edge region, animating the change. The region's
+     * gutter slides from its inner edge to its outer edge and widens into the
+     * opaque collapse strip (cross-fading its fill) while the region keeps its
+     * full size and reveals via a clip-path; the center grows into the reclaimed
+     * space. The whole pass is one coordinated animation: the toggled region
+     * clip-reveals while the center and the gutter interpolate their geometry —
+     * re-laying out their contents each frame — in lockstep (see
+     * `CollapseSupport.runCollapse`). The center cannot be collapsed and a
+     * non-collapsible region ignores a collapse request.
+     *
+     * @param placement - The region to collapse or restore.
+     * @param collapsed - True to collapse, false to restore.
+     * @returns This layout manager, for method chaining.
+     */
+    setRegionCollapsed(placement: Placement, collapsed: boolean): this {
+        if (placement === Placement.CENTER || !this.isRegionCollapsible(placement)) {
+            return this;
+        }
+
+        const component = this.getRegionComponent(placement);
+        if (!component) {
+            return this;
+        }
+
+        const current = this._collapsed.get(placement) ?? false;
+        if (current === collapsed) {
+            return this;
+        }
+
+        this._collapsed.set(placement, collapsed);
+
+        const container = this.getContainer();
+        if (!container) {
+            return this;
+        }
+
+        // Materialise the region's gutter so it joins the participant list.
+        this.ensureGutter(placement);
+
+        // Every box that moves: the regions (content re-laid-out each frame) and
+        // the gutters (geometry only). The toggled region is among them and also
+        // clip-reveals; `runCollapse` coordinates the whole pass.
+        const regions = [this._northComponent, this._southComponent, this._westComponent, this._eastComponent, this._centerComponent]
+            .filter((c): c is Component => c != null);
+
+        const participants: CollapseParticipant[] = [
+            ...regions.map(region => ({ component: region, relayout: true })),
+            ...[...this._gutters.values()].map(gutter => ({ component: gutter, relayout: false })),
+        ];
+
+        this._collapseAnimation = runCollapse(container, component, participants, this._collapseAnimation, () => {
+            this._collapseAnimation = null;
+        });
+
+        return this;
+    }
+
+    /**
+     * Returns whether the given region may be collapsed. The center is never
+     * collapsible; edge regions are non-collapsible unless they opt in with
+     * `collapsible: true` on their constraint.
+     *
+     * @param placement - The region to query.
+     * @returns True when the region may be collapsed.
+     */
+    isRegionCollapsible(placement: Placement): boolean {
+        if (placement === Placement.CENTER) {
+            return false;
+        }
+
+        return this._collapsible.get(placement) ?? false;
+    }
+
+    /**
+     * Sets whether an edge region may be collapsed. Hides the collapse chevron
+     * when set false; the center is always non-collapsible regardless.
+     *
+     * @param placement - The region to configure.
+     * @param value - True to allow collapsing, false to opt out.
+     * @returns This layout manager, for method chaining.
+     */
+    setRegionCollapsible(placement: Placement, value: boolean): this {
+        if (placement === Placement.CENTER) {
+            return this;
+        }
+
+        this._collapsible.set(placement, value);
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the existing fixed gutter for a region, creating and wiring it on
+     * first use. The gutter is non-movable, transparent in its divider state,
+     * and carries the chevron pointing toward the region's outer edge; its
+     * double-click collapses the region.
+     *
+     * @param placement - The region the gutter collapses.
+     * @returns The region's gutter.
+     */
+    private ensureGutter(placement: Placement): SplitGutter {
+        let gutter = this._gutters.get(placement);
+        if (gutter) {
+            return gutter;
+        }
+
+        const container = this.getContainer()!;
+        const vertical  = placement === Placement.NORTH || placement === Placement.SOUTH;
+
+        gutter = new SplitGutter(vertical ? "vertical" : "horizontal", {
+            movable:            false,
+            opaque:             false,
+            collapseDirection:  COLLAPSE_CHEVRON[placement],
+            expandedBackground: "transparent",
+            listeners:          { collapse: () => this.setRegionCollapsed(placement, !this.isRegionCollapsed(placement)) },
+        });
+
+        gutter.setVisible(false);
+
+        container.getElement().appendChild(gutter.getElement(true)!);
+
+        this._gutters.set(placement, gutter);
+
+        return gutter;
+    }
+
+    /**
+     * Returns a region's effective edge extent: the strip thickness when the
+     * region is collapsed, otherwise the region's own preferred main-axis size.
+     *
+     * @param placement - The edge region.
+     * @param preferred - The region's preferred main-axis extent (width for
+     *   west/east, height for north/south).
+     * @returns The extent to reserve for the region in `doLayout`.
+     */
+    private regionExtent(placement: Placement, preferred: number): number {
+        return this.isRegionCollapsed(placement) ? COLLAPSE_STRIP_SIZE : preferred;
+    }
+
+    /**
+     * Clips a region's element toward its outer edge for the current collapse
+     * state. The component is always laid out at its full size; collapsing
+     * progressively clips it away (animated via a `clip-path` transition) so the
+     * region visibly retreats into the strip rather than vanishing instantly,
+     * mirroring the expand. Expanded, the clip is cleared. `clip-path` also
+     * suppresses pointer events on the clipped-away area, so the hidden region
+     * doesn't intercept clicks meant for the grown centre.
+     *
+     * @param component - The region's component.
+     * @param placement - The edge region, which fixes the clip direction.
+     */
+    private applyRegionClip(component: Component, placement: Placement): void {
+        // Never clip a region that can't collapse: `clip-path` establishes a
+        // stacking context and a containing block for fixed descendants, which
+        // could disturb a plain region's popovers. Only collapsible regions —
+        // which need `inset(0)` as the transition's expanded keyframe — get it.
+        if (!this.isRegionCollapsible(placement)) {
+            return;
+        }
+
+        if (!this.isRegionCollapsed(placement)) {
+            component.setClipPath("inset(0 0 0 0)");
+
+            return;
+        }
+
+        switch (placement) {
+            case Placement.WEST:  component.setClipPath("inset(0 100% 0 0)"); break;
+            case Placement.EAST:  component.setClipPath("inset(0 0 0 100%)"); break;
+            case Placement.NORTH: component.setClipPath("inset(0 0 100% 0)"); break;
+            case Placement.SOUTH: component.setClipPath("inset(100% 0 0 0)"); break;
+        }
+    }
+
+    /**
+     * Positions a region's single gutter for the region's current state: a
+     * transparent track at the inner edge (carrying the chevron) when expanded,
+     * the opaque strip filling the region's strip-sized rect when collapsed. The
+     * region component is hidden while collapsed. No gutter is shown for a
+     * non-collapsible region.
+     *
+     * @param placement - The edge region.
+     * @param x - The region's left position.
+     * @param y - The region's top position.
+     * @param width - The region's width (strip-sized when collapsed).
+     * @param height - The region's height (strip-sized when collapsed for north/south).
+     */
+    private updateRegionGutter(placement: Placement, x: number, y: number, width: number, height: number): void {
+        const component = this.getRegionComponent(placement);
+        if (!component) {
+            return;
+        }
+
+        if (!this.isRegionCollapsible(placement)) {
+            component.setVisible(true);
+            this._gutters.get(placement)?.setVisible(false);
+
+            return;
+        }
+
+        const collapsed = this.isRegionCollapsed(placement);
+        const gutter    = this.ensureGutter(placement);
+
+        // The region stays visible and laid out at full size; `applyRegionClip`
+        // clips it away while collapsed (it can't shrink past its min-size), so
+        // the gutter strip is what reads as the collapsed region.
+        component.setVisible(true);
+
+        gutter.setOpaque(collapsed);
+        gutter.setVisible(true);
+
+        // Collapsed: the gutter fills the region's strip-sized rect. Expanded:
+        // a thin transparent track in the gap just past the region's
+        // center-facing edge, where the chevron reads naturally.
+        const rect = collapsed ? { x, y, width, height } : this.innerEdgeTrack(placement, x, y, width, height);
+
+        gutter.setX(rect.x);
+        gutter.setY(rect.y);
+        gutter.setWidth(rect.width);
+        gutter.setHeight(rect.height);
+    }
+
+    /**
+     * Computes the thin transparent track rect in the gap just past a region's
+     * center-facing edge, where the expanded gutter parks its chevron. The
+     * track sits flush against the region's outer edge of the gap rather than
+     * overlapping the region's own content.
+     *
+     * @param placement - The edge region.
+     * @param x - The region's left position.
+     * @param y - The region's top position.
+     * @param width - The region's width.
+     * @param height - The region's height.
+     * @returns The track rect.
+     */
+    private innerEdgeTrack(placement: Placement, x: number, y: number, width: number, height: number): { x: number; y: number; width: number; height: number } {
+        switch (placement) {
+            case Placement.NORTH: return { x, y: y + height,     width, height: TRACK_SIZE };
+            case Placement.SOUTH: return { x, y: y - TRACK_SIZE, width, height: TRACK_SIZE };
+            case Placement.WEST:  return { x: x + width,     y, width: TRACK_SIZE, height };
+            case Placement.EAST:  return { x: x - TRACK_SIZE, y, width: TRACK_SIZE, height };
+            default:              return { x, y, width, height };
+        }
     }
 
     /**
@@ -151,7 +469,7 @@ class Border extends LayoutManager {
             let size = this._northComponent.getPreferredSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
-                innerHeight += size.height;
+                innerHeight += this.isRegionCollapsed(Placement.NORTH) ? COLLAPSE_STRIP_SIZE : size.height;
             }
         }
 
@@ -159,14 +477,14 @@ class Border extends LayoutManager {
             let size = this._southComponent.getPreferredSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
-                innerHeight += size.height;
+                innerHeight += this.isRegionCollapsed(Placement.SOUTH) ? COLLAPSE_STRIP_SIZE : size.height;
             }
         }
 
         if (this._westComponent) {
             let size = this._westComponent.getPreferredSize();
             if (size) {
-                middleWidth += size.width;
+                middleWidth += this.isRegionCollapsed(Placement.WEST) ? COLLAPSE_STRIP_SIZE : size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
@@ -182,7 +500,7 @@ class Border extends LayoutManager {
         if (this._eastComponent) {
             let size = this._eastComponent.getPreferredSize();
             if (size) {
-                middleWidth += size.width;
+                middleWidth += this.isRegionCollapsed(Placement.EAST) ? COLLAPSE_STRIP_SIZE : size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
@@ -222,7 +540,7 @@ class Border extends LayoutManager {
             let size = this._northComponent.getMinSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
-                innerHeight += size.height;
+                innerHeight += this.isRegionCollapsed(Placement.NORTH) ? COLLAPSE_STRIP_SIZE : size.height;
             }
         }
 
@@ -230,14 +548,14 @@ class Border extends LayoutManager {
             let size = this._southComponent.getMinSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
-                innerHeight += size.height;
+                innerHeight += this.isRegionCollapsed(Placement.SOUTH) ? COLLAPSE_STRIP_SIZE : size.height;
             }
         }
 
         if (this._westComponent) {
             let size = this._westComponent.getMinSize();
             if (size) {
-                middleWidth += size.width;
+                middleWidth += this.isRegionCollapsed(Placement.WEST) ? COLLAPSE_STRIP_SIZE : size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
@@ -253,7 +571,7 @@ class Border extends LayoutManager {
         if (this._eastComponent) {
             let size = this._eastComponent.getMinSize();
             if (size) {
-                middleWidth += size.width;
+                middleWidth += this.isRegionCollapsed(Placement.EAST) ? COLLAPSE_STRIP_SIZE : size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
@@ -363,17 +681,25 @@ class Border extends LayoutManager {
         // Horizontal regions contribute to width; vertical regions contribute
         // to height. Each inter-region gap is added only when both adjacent
         // regions exist so single-region layouts (only center, for instance)
-        // don't gain phantom gap pixels.
-        const hRegions = [westMin, centerMin, eastMin].filter(s => s != null);
-        const vRegions = [northMin, centerMin, southMin].filter(s => s != null);
+        // don't gain phantom gap pixels. A collapsed edge region contributes
+        // only the strip thickness along its collapse axis.
+        const hContribs: number[] = [];
+        if (westMin)   { hContribs.push(this.isRegionCollapsed(Placement.WEST) ? COLLAPSE_STRIP_SIZE : westMin.width); }
+        if (centerMin) { hContribs.push(centerMin.width); }
+        if (eastMin)   { hContribs.push(this.isRegionCollapsed(Placement.EAST) ? COLLAPSE_STRIP_SIZE : eastMin.width); }
+
+        const vContribs: number[] = [];
+        if (northMin)  { vContribs.push(this.isRegionCollapsed(Placement.NORTH) ? COLLAPSE_STRIP_SIZE : northMin.height); }
+        if (centerMin) { vContribs.push(centerMin.height); }
+        if (southMin)  { vContribs.push(this.isRegionCollapsed(Placement.SOUTH) ? COLLAPSE_STRIP_SIZE : southMin.height); }
 
         let width  = 0;
         let height = 0;
 
-        for (const r of hRegions) {
-            width += r!.width;
+        for (const w of hContribs) {
+            width += w;
         }
-        width += Math.max(0, hRegions.length - 1) * this._gap;
+        width += Math.max(0, hContribs.length - 1) * this._gap;
 
         // For width we also need to ensure the height-region's own width is
         // honoured: the center column may need at least the wider of
@@ -385,10 +711,10 @@ class Border extends LayoutManager {
             width = Math.max(width, southMin.width);
         }
 
-        for (const r of vRegions) {
-            height += r!.height;
+        for (const h of vContribs) {
+            height += h;
         }
-        height += Math.max(0, vRegions.length - 1) * this._gap;
+        height += Math.max(0, vContribs.length - 1) * this._gap;
 
         return { width, height };
     }
@@ -444,16 +770,28 @@ class Border extends LayoutManager {
                 throw new Error("Unable to determine preferred size for north component.");
             }
 
-            middleY = preferredSize.height + (constraints.ignoreParentInsets ? containerInsets.getTop() : 0);
+            let northHeight = this.regionExtent(Placement.NORTH, preferredSize.height);
+            let northX = constraints.ignoreParentInsets ? 0 : containerInsets.getLeft();
+            let northY = constraints.ignoreParentInsets ? 0 : containerInsets.getTop();
+            let northWidth = width + (constraints.ignoreParentInsets ? containerInsets.getLeft() + containerInsets.getRight() : 0);
+            let northInsetTop = constraints.ignoreParentInsets ? containerInsets.getTop() : 0;
 
+            middleY = northHeight + northInsetTop;
+
+            // The region is always laid out at full size and clipped toward its
+            // outer edge while collapsed; the centre and gutter use the strip
+            // extent (`middleY`) so they grow into the reclaimed space.
             this.placeComponent(
                 this._northComponent,
-                constraints.ignoreParentInsets ? 0 : containerInsets.getLeft(),
-                constraints.ignoreParentInsets ? 0 : containerInsets.getTop(),
-                width + (constraints.ignoreParentInsets ? containerInsets.getLeft() + containerInsets.getRight() : 0),
-                middleY,
+                northX,
+                northY,
+                northWidth,
+                preferredSize.height + northInsetTop,
                 FillType.BOTH
             );
+            this.applyRegionClip(this._northComponent, Placement.NORTH);
+
+            this.updateRegionGutter(Placement.NORTH, northX, northY, northWidth, middleY);
 
             if (this._westComponent || this._centerComponent || this._eastComponent || this._southComponent) {
                 middleY += this._gap;
@@ -469,17 +807,28 @@ class Border extends LayoutManager {
                 throw new Error("Unable to determine preferred size for south component.");
             }
 
+            let southHeight = this.regionExtent(Placement.SOUTH, preferredSize.height);
+            let southX = containerInsets.getLeft();
+            let southY = containerInsets.getTop() + height - southHeight;
+
             middleHeight -= this._gap;
-            middleHeight -= preferredSize.height;
+            middleHeight -= southHeight;
+
+            // Full-size and bottom-anchored, clipped toward the bottom while
+            // collapsed; the gutter uses the strip rect (`southY`/`southHeight`).
+            let southFullY = containerInsets.getTop() + height - preferredSize.height;
 
             this.placeComponent(
                 this._southComponent,
-                containerInsets.getLeft(),
-                containerInsets.getTop() + height - preferredSize.height,
+                southX,
+                southFullY,
                 width,
                 preferredSize.height,
                 FillType.BOTH
             );
+            this.applyRegionClip(this._southComponent, Placement.SOUTH);
+
+            this.updateRegionGutter(Placement.SOUTH, southX, southY, width, southHeight);
         }
 
         // Reserve east's preferred width up front so west can be clamped
@@ -488,12 +837,14 @@ class Border extends LayoutManager {
         // title is wider than the available space between the icon and
         // the trailing buttons).
         let eastPreferredWidth = 0;
+        let eastFullWidth = 0;
         if (this._eastComponent) {
             let eastPreferred = this._eastComponent.getPreferredSize();
             if (!eastPreferred) {
                 throw new Error("Unable to determine preferred size for east component.");
             }
-            eastPreferredWidth = eastPreferred.width;
+            eastFullWidth = eastPreferred.width;
+            eastPreferredWidth = this.regionExtent(Placement.EAST, eastPreferred.width);
         }
 
         if (this._westComponent) {
@@ -502,17 +853,27 @@ class Border extends LayoutManager {
                 throw new Error("Unable to determine preferred size for west component.");
             }
 
-            let westWidth = Math.max(0, Math.min(preferredSize.width, width - eastPreferredWidth));
+            let westWidth = Math.max(0, Math.min(this.regionExtent(Placement.WEST, preferredSize.width), width - eastPreferredWidth));
+            let westX = containerInsets.getLeft();
+            let westY = containerInsets.getTop() + middleY;
+
             centerX = westWidth;
+
+            // Full-size and left-anchored, clipped toward the left while
+            // collapsed; the centre and gutter use the strip extent (`westWidth`).
+            let westFullWidth = Math.max(0, Math.min(preferredSize.width, width - eastPreferredWidth));
 
             this.placeComponent(
                 this._westComponent,
-                containerInsets.getLeft(),
-                containerInsets.getTop() + middleY,
-                westWidth,
+                westX,
+                westY,
+                westFullWidth,
                 middleHeight,
                 FillType.BOTH
             );
+            this.applyRegionClip(this._westComponent, Placement.WEST);
+
+            this.updateRegionGutter(Placement.WEST, westX, westY, westWidth, middleHeight);
 
             if (this._centerComponent) {
                 centerX += this._gap;
@@ -527,14 +888,24 @@ class Border extends LayoutManager {
             centerWidth -= this._gap;
             centerWidth -= eastPreferredWidth;
 
+            let eastX = containerInsets.getLeft() + width - eastPreferredWidth;
+            let eastY = containerInsets.getTop() + middleY;
+
+            // Full-size and right-anchored, clipped toward the right while
+            // collapsed; the gutter uses the strip rect (`eastX`/`eastPreferredWidth`).
+            let eastFullX = containerInsets.getLeft() + width - eastFullWidth;
+
             this.placeComponent(
                 this._eastComponent,
-                containerInsets.getLeft() + width - eastPreferredWidth,
-                containerInsets.getTop() + middleY,
-                eastPreferredWidth,
+                eastFullX,
+                eastY,
+                eastFullWidth,
                 middleHeight,
                 FillType.BOTH
             );
+            this.applyRegionClip(this._eastComponent, Placement.EAST);
+
+            this.updateRegionGutter(Placement.EAST, eastX, eastY, eastPreferredWidth, middleHeight);
         }
 
         if (this._centerComponent) {
@@ -546,6 +917,25 @@ class Border extends LayoutManager {
                 FillType.BOTH
             );
         }
+    }
+
+    /**
+     * Detaches from the container, removing every lazily-created collapse gutter
+     * from the DOM and tearing down its event listeners so a layout-manager swap
+     * leaves no orphaned affordances.
+     */
+    detach(): this {
+        super.detach();
+
+        for (const gutter of this._gutters.values()) {
+            const element = gutter.getElement();
+            element?.parentNode?.removeChild(element);
+            gutter.destroy();
+        }
+
+        this._gutters.clear();
+
+        return this;
     }
 }
 

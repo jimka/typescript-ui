@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { CollapseButton, CollapseDirection } from "~/component/container/CollapseButton.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
+import { Tooltip } from "~/core/Tooltip.js";
 import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 
@@ -11,7 +13,20 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type SplitGutterEvent = "dragstart" | "drag";
+export type SplitGutterEvent = "dragstart" | "drag" | "collapse";
+
+/**
+ * Maps each chevron direction to its opposite, used to flip the single
+ * collapse chevron between its collapse heading (toward the pane/region's
+ * outer edge) and its restore heading (back toward the centre) when the gutter
+ * toggles between divider and strip state.
+ */
+const OPPOSITE_DIRECTION: Record<CollapseDirection, CollapseDirection> = {
+    west:  "east",
+    east:  "west",
+    north: "south",
+    south: "north",
+};
 
 /**
  * Construction-time options for {@link SplitGutter}.
@@ -20,6 +35,31 @@ export type SplitGutterEvent = "dragstart" | "drag";
  */
 export interface SplitGutterOptions extends ComponentOptions {
     orientation?: string;
+    /** Whether the gutter carries a collapse chevron. Defaults to `true`. */
+    collapsible?: boolean;
+    /**
+     * Whether the gutter wires drag-to-resize listeners. `Split` leaves this
+     * `true`; `Border` passes `false` for a fixed, non-draggable gutter.
+     * Defaults to `true`. Read once at construction.
+     */
+    movable?: boolean;
+    /**
+     * Whether the gutter paints the opaque collapse-strip fill (collapsed
+     * state) or its expanded background (divider state). Defaults to `false`.
+     */
+    opaque?: boolean;
+    /**
+     * The chevron's collapse heading — the way it points (and the way the
+     * gutter travels) when collapsing. The restore heading is its opposite.
+     * Defaults to `west` for a horizontal gutter, `north` for a vertical one.
+     */
+    collapseDirection?: CollapseDirection;
+    /**
+     * The background painted in the expanded (divider) state, restored when
+     * {@link SplitGutter.setOpaque} is cleared. Defaults to the gutter token;
+     * `Border` passes `"transparent"` for its minimal-until-collapsed look.
+     */
+    expandedBackground?: string;
     /**
      * Multi-event listener bag dispatched to {@link SplitGutter.on} at
      * construction time.
@@ -27,37 +67,55 @@ export interface SplitGutterOptions extends ComponentOptions {
     listeners?: {
         dragstart?: (position: number) => void;
         drag?:      (position: number) => void;
+        collapse?:  () => void;
     };
 }
 
 /**
  * Class-level defaults. `orientation` rides the cascade so the `declare`-d
  * `_direction` backing field is seeded by `setDirection` during super(),
- * dodging the class-field super-cascade trap.
+ * dodging the class-field super-cascade trap; `collapsible` and `movable`
+ * likewise seed their backing fields through their setters.
  */
 const _defaultSplitGutterOptions: Partial<SplitGutterOptions> = {
     orientation: "horizontal",
+    collapsible: true,
+    movable:     true,
 };
 
 /**
- * A draggable gutter component used to resize split panels.
+ * A gutter component shared by [`Split`](/api/layout/classes/Split) and the
+ * [`Border`](/api/layout/classes/Border) layout that doubles as both a divider
+ * and a collapsed strip.
  *
- * Listens for mouse/touch drag events on the viewport and notifies registered drag
- * listeners with the absolute pointer coordinate (`clientX`/`clientY`) in the gutter's
- * drag axis on each move. Disables body pointer events during a drag to prevent text
- * selection.
+ * In the **divider** state it is the thin bar between two panes (draggable when
+ * `movable`) or a transparent track at a region's inner edge, carrying a single
+ * collapse chevron. In the **strip** state (`opaque`) it is the opaque
+ * collapse-strip the pane/region tucks into, the same chevron now pointing the
+ * restore way. The owning manager animates the gutter between the two by
+ * writing its geometry; the gutter is the only thing that moves.
+ *
+ * When `movable`, it listens for mouse/touch drag events on the viewport and
+ * notifies registered drag listeners with the absolute pointer coordinate
+ * (`clientX`/`clientY`) in the gutter's drag axis on each move, disabling body
+ * pointer events during a drag to prevent text selection.
  *
  * @category Components
  */
 class SplitGutter extends Component<SplitGutterOptions> {
 
     declare private _direction: String;
+    declare private _collapsible: boolean;
+    declare private _movable: boolean;
+    declare private _collapseButton: CollapseButton;
+    private _opaque: boolean = false;
+    private _collapseDirection: CollapseDirection = "west";
+    private _expandedBackground: string = "var(--ts-ui-gutter-bg, #AAAAAA)";
+    private _tooltipText: string = "";
     private _listeners: ListenerBag<SplitGutterEvent> = new ListenerBag<SplitGutterEvent>();
 
     constructor(direction: String, options?: SplitGutterOptions) {
         super(options, _defaultSplitGutterOptions);
-
-        this.setBackgroundColor("var(--ts-ui-gutter-bg, #AAAAAA)");
 
         // Pre-migration the trailing applyOptions(options) ran *after* the
         // body's positional assignment, so a caller-supplied `orientation`
@@ -68,12 +126,45 @@ class SplitGutter extends Component<SplitGutterOptions> {
             this._direction = direction;
         }
 
-        Event.addListener(this, 'mousedown', this.onDragStart);
+        // The expanded fill is the gutter token by default; Border passes a
+        // transparent value so its divider state shows only the chevron.
+        this._expandedBackground = options?.expandedBackground ?? "var(--ts-ui-gutter-bg, #AAAAAA)";
+        this.setBackgroundColor(this._expandedBackground);
 
-        // Listener wiring runs here — NOT inside `applyOptions` — because
-        // Component's constructor calls `applyOptions` from inside super(),
-        // before the class-field `_listeners` initializer has run. Wiring
-        // after super() guarantees `_listeners` exists.
+        // The chevron's collapse heading points the way the gutter travels on
+        // collapse — toward the pane/region's outer edge. Defaults from the
+        // axis (Split's leading pane is west/north); Border overrides per
+        // placement. The restore heading is its opposite, applied by setOpaque.
+        this._collapseDirection = options?.collapseDirection ?? (this._direction === "horizontal" ? "west" : "north");
+
+        this._collapseButton = new CollapseButton({
+            direction: this._collapseDirection,
+            listeners: { collapse: () => this.emit("collapse") },
+        });
+
+        this._collapseButton.setVisible(this._collapsible);
+
+        if (options?.opaque) {
+            this.setOpaque(true);
+        }
+
+        // A fixed gutter (Border) never resizes, so its body should not swallow
+        // pointer events — the transparent track must let clicks reach the
+        // region behind it, and the opaque strip has nothing behind to click.
+        // The chevron child keeps its own `pointer-events: auto`, so it stays
+        // clickable regardless.
+        if (!this._movable) {
+            this.setPointerEvents("none");
+        }
+
+        // Drag wiring lives here, gated on `movable`, NOT in `applyOptions`:
+        // Component's constructor runs applyOptions from inside super(), and
+        // the listener machinery (`_listeners`) is only live after super().
+        // Border's fixed gutters pass `movable: false` and skip the wiring.
+        if (this._movable) {
+            Event.addListener(this, 'mousedown', this.onDragStart);
+        }
+
         if (options?.listeners?.dragstart !== undefined) {
             this.on("dragstart", options.listeners.dragstart);
         }
@@ -81,6 +172,57 @@ class SplitGutter extends Component<SplitGutterOptions> {
         if (options?.listeners?.drag !== undefined) {
             this.on("drag", options.listeners.drag);
         }
+
+        if (options?.listeners?.collapse !== undefined) {
+            this.on("collapse", options.listeners.collapse);
+        }
+
+        // Seed the expanded-state hover hint (setOpaque already refreshes it
+        // when an opaque gutter is constructed).
+        this.updateTooltip();
+    }
+
+    /**
+     * Appends the collapse button's element to the gutter element once the DOM
+     * node exists.
+     *
+     * @param element - Optional element passed from the framework init chain.
+     */
+    protected init(element?: HTMLElement): this {
+        super.init(element);
+
+        const el = element || this.getElement();
+
+        if (!el) {
+            return this;
+        }
+
+        el.appendChild(this._collapseButton.getElement(true)!);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the gutter carries a collapse chevron.
+     *
+     * @returns True when the collapse button is shown.
+     */
+    isCollapsible(): boolean {
+        return this._collapsible;
+    }
+
+    /**
+     * Shows or hides the gutter's collapse chevron.
+     *
+     * @param value - True to show the collapse button, false to hide it.
+     * @returns This gutter, for method chaining.
+     */
+    setCollapsible(value: boolean): this {
+        this._collapsible = value;
+
+        this._collapseButton?.setVisible(value);
+
+        return this;
     }
 
     /**
@@ -98,7 +240,143 @@ class SplitGutter extends Component<SplitGutterOptions> {
             this.setDirection(opts.orientation);
         }
 
+        if (opts.collapsible !== undefined) {
+            this.setCollapsible(opts.collapsible);
+        }
+
+        if (opts.movable !== undefined) {
+            this.setMovable(opts.movable);
+        }
+
         return this;
+    }
+
+    /**
+     * Returns whether the gutter wires drag-to-resize.
+     *
+     * @returns True when the gutter is draggable.
+     */
+    isMovable(): boolean {
+        return this._movable;
+    }
+
+    /**
+     * Records whether the gutter is draggable. The actual `mousedown` drag
+     * wiring is established once in the constructor from this flag (a fixed
+     * Border gutter never wires it); this setter seeds the cached value during
+     * the options cascade.
+     *
+     * @param value - True for a draggable gutter, false for a fixed one.
+     * @returns This gutter, for method chaining.
+     */
+    setMovable(value: boolean): this {
+        this._movable = value;
+
+        return this;
+    }
+
+    /**
+     * Returns whether the gutter is painting the opaque collapse-strip fill.
+     *
+     * @returns True in the collapsed strip state.
+     */
+    isOpaque(): boolean {
+        return this._opaque;
+    }
+
+    /**
+     * Toggles the gutter between its divider and collapsed-strip appearance.
+     * `true` paints the opaque collapse-strip fill and flips the chevron to the
+     * restore heading; `false` restores the expanded background and the
+     * collapse heading.
+     *
+     * @param value - True for the collapsed strip state, false for the divider state.
+     * @returns This gutter, for method chaining.
+     */
+    setOpaque(value: boolean): this {
+        this._opaque = value;
+
+        if (value) {
+            // Collapsed: the strip reads as a themed button surface (the same
+            // fill and border the framework's buttons use), inviting a click to
+            // restore. `--ts-ui-button-bg` is a solid colour in some themes and
+            // a gradient in others, so set both background properties to it —
+            // the browser ignores whichever is type-invalid for the given theme.
+            this.setBackgroundColor("var(--ts-ui-button-bg, #e8e8e8)");
+            this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
+            this.setBorder("1px solid var(--ts-ui-button-border, #c8c8c8)");
+            this._collapseButton?.setDirection(OPPOSITE_DIRECTION[this._collapseDirection]);
+        } else {
+            this.clearBackgroundImage();
+            this.clearBorder();
+            this.setBackgroundColor(this._expandedBackground);
+            this._collapseButton?.setDirection(this._collapseDirection);
+        }
+
+        // Collapsed, the restore handle fills the strip's full width; expanded,
+        // it shrinks back to the narrow grip.
+        this._collapseButton?.setStripMode(value);
+
+        // The collapsed strip cannot be dragged (see `onDragStart`), so it must
+        // not advertise a resize cursor either.
+        this.applyCursor();
+
+        // The hover hint flips between "collapse" and "expand".
+        this.updateTooltip();
+
+        return this;
+    }
+
+    /**
+     * Returns the chevron's collapse heading.
+     *
+     * @returns The direction the chevron points (and the gutter travels) on collapse.
+     */
+    getCollapseDirection(): CollapseDirection {
+        return this._collapseDirection;
+    }
+
+    /**
+     * Sets the chevron's collapse heading — the way it points in the divider
+     * state and the way the gutter travels on collapse. The restore heading is
+     * its opposite. Re-applies the chevron for the current opaque state.
+     *
+     * @param direction - The collapse heading.
+     * @returns This gutter, for method chaining.
+     */
+    setCollapseDirection(direction: CollapseDirection): this {
+        this._collapseDirection = direction;
+
+        this._collapseButton?.setDirection(this._opaque ? OPPOSITE_DIRECTION[direction] : direction);
+        this.updateTooltip();
+
+        return this;
+    }
+
+    /**
+     * Refreshes the hover tooltip on the gutter and its chevron to describe the
+     * double-click action for the current state: which way the gutter will
+     * collapse when expanded, or that it will expand back when collapsed. Both
+     * the gutter body (hovered on a draggable `Split` divider) and the chevron
+     * handle (the always-visible grip) carry it. No-op when the text is
+     * unchanged so repeated layouts don't re-wire the hover listeners.
+     */
+    private updateTooltip(): void {
+        const action    = this._opaque ? "expand" : "collapse";
+        const direction = this._opaque ? OPPOSITE_DIRECTION[this._collapseDirection] : this._collapseDirection;
+        const text      = `Double-click to ${action} ${direction}ward`;
+
+        if (text === this._tooltipText) {
+            return;
+        }
+
+        this._tooltipText = text;
+
+        Tooltip.attach(this, text);
+
+        if (this._collapseButton) {
+            Tooltip.attach(this._collapseButton, text);
+        }
     }
 
     /**
@@ -131,13 +409,15 @@ class SplitGutter extends Component<SplitGutterOptions> {
      * @param event - `"dragstart"` fires on mousedown, receiving the absolute
      *   pointer coordinate (`clientX`/`clientY`) in the gutter's drag axis at
      *   the moment the drag begins; `"drag"` fires on each mousemove/touchmove
-     *   during a drag, receiving the absolute pointer coordinate in that axis.
+     *   during a drag, receiving the absolute pointer coordinate in that axis;
+     *   `"collapse"` fires when the gutter's chevron is double-clicked.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This gutter, for method chaining.
      */
     on(event: "dragstart",       listener: (position: number) => void): this;
     on(event: "drag",            listener: (position: number) => void): this;
+    on(event: "collapse",        listener: () => void): this;
     on(event: SplitGutterEvent,  listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -168,15 +448,18 @@ class SplitGutter extends Component<SplitGutterOptions> {
      */
     protected emit(event: "dragstart",       position: number): void;
     protected emit(event: "drag",            position: number): void;
+    protected emit(event: "collapse"): void;
     protected emit(event: SplitGutterEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
 
     /**
-     * Removes the mousedown listener.
+     * Removes the mousedown listener and tears down the collapse button.
      */
     destroy() {
         Event.removeListener(this, 'mousedown', this.onDragStart);
+
+        this._collapseButton?.destroy();
     }
 
     /**
@@ -199,6 +482,12 @@ class SplitGutter extends Component<SplitGutterOptions> {
      *   drag origin in the gutter's axis.
      */
     onDragStart(evnt: MouseEvent) {
+        // A gutter in its collapsed strip state is not a resize handle — the
+        // pane behind it is hidden, so a drag would corrupt its stored size.
+        if (this._opaque) {
+            return;
+        }
+
         const position = this._direction === "horizontal" ? evnt.clientX : evnt.clientY;
 
         this.emit("dragstart", position);
@@ -243,6 +532,20 @@ class SplitGutter extends Component<SplitGutterOptions> {
     }
 
     /**
+     * Applies the hover cursor for the gutter's current state. Only a movable
+     * gutter in its divider state shows the axis resize cursor; a fixed Border
+     * gutter, or a gutter in its collapsed strip state (which cannot be
+     * dragged), shows the default cursor so it doesn't invite a resize.
+     */
+    private applyCursor(): void {
+        if (this._movable && !this._opaque) {
+            this.setCursor(this._direction == "horizontal" ? "ew-resize" : "ns-resize");
+        } else {
+            this.setCursor("default");
+        }
+    }
+
+    /**
      * Renders the gutter element and sets the appropriate resize cursor.
      *
      * @returns The created element with the correct resize cursor applied.
@@ -250,7 +553,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
     render() {
         let element = super.render();
 
-        this.setCursor(this._direction == "horizontal" ? "ew-resize" : "ns-resize");
+        this.applyCursor();
 
         return element;
     }
