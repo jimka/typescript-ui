@@ -1445,6 +1445,25 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Sets the CSS `clip-path` on the component's own element — the box stays at
+     * its full layout size while the painted (and hit-tested) area is clipped to
+     * the given shape. Pass `null` to remove the clip. A layout manager can
+     * transition this to visually collapse an element that refuses to shrink
+     * below its min-size. Unlike {@link setClipFrame} this clips the element's
+     * own box rather than interposing a wrapper, so a `clip-path` transition
+     * animates in place.
+     *
+     * @param clipPath - A CSS `clip-path` value (e.g. `"inset(0 100% 0 0)"`), or `null` to clear.
+     *
+     * @returns This component, for method chaining.
+     */
+    setClipPath(clipPath: string | null): this {
+        this.setElementCSSRule("clipPath", clipPath);
+
+        return this;
+    }
+
+    /**
      * Returns the foreground (text) color, or null if inherited.
      *
      * @returns The CSS color string, or null if none is set.
@@ -3262,7 +3281,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._styleRule.set("position", this._position);
 
         if (opts.visible != null) {
-            this._styleRule.set("visibility", opts.visible ? "visible" : "hidden");
+            // `true` resolves to `inherit`, not `visible`, so an explicitly-shown
+            // component still hides when an ancestor hides (e.g. a Tab panel that
+            // is switched away). This mirrors the live `setVisible` setter, which
+            // also writes `inherit` for `true`; writing `visible` here would pin
+            // the element on screen and defeat ancestor-based hiding.
+            this._styleRule.set("visibility", opts.visible ? "inherit" : "hidden");
         } else {
             this._styleRule.set("visibility", "inherit");
         }

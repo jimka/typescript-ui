@@ -47,6 +47,36 @@ The constraint is `{ region: Placement }` — see [`Placement`](/api/primitive/e
 
 If you omit `region`, the child goes to `CENTER` by default.
 
+## Collapsible regions
+
+Collapsing is **opt-in**: a plain Border adds no collapse affordances (so the
+Border layouts used internally by `Header`, `Window`, `Dialog`, and the table
+panels stay clean). Opt an edge region (north, south, east, west) in with
+`collapsible: true` on its constraint; the centre can never collapse. A
+collapsible region shows a single chevron handle on a transparent track at its
+inner edge (the layout stays divider-less until you use it) — **double-click**
+it and the track slides to the region's outer edge and widens into an opaque strip
+(cross-fading its fill in), while the region keeps its full size and reveals away
+under a clip-path and the centre grows into the reclaimed space. The whole pass is
+one coordinated animation — the toggled region clip-reveals while the centre and
+the gutter interpolate their geometry together, re-laying out their contents each
+frame so nothing snaps — mirroring the [`Accordion`](/layouts/Accordion). Double-clicking the same chevron slides it
+back and restores the region. Only a `dblclick` collapses, never a single click.
+Collapsed state is in-memory only.
+
+```typescript
+app.addComponent(sidebar, { placement: Placement.WEST, collapsible: true }); // opt in
+
+app.getLayoutManager().setRegionCollapsed(Placement.WEST, true);   // collapse west
+app.getLayoutManager().isRegionCollapsed(Placement.WEST);          // → true
+app.getLayoutManager().setRegionCollapsible(Placement.SOUTH, false); // hide its chevron
+```
+
+Each region's affordance is a fixed [`SplitGutter`](/api/component/container/classes/SplitGutter)
+carrying a [`CollapseButton`](/api/component/container/classes/CollapseButton); the
+strip fill and chevron colour are themed via the `collapse` tokens — see
+[Theming](/concepts/theming#theme-keys).
+
 ## Notes
 
 - The classic desktop-app shell pattern. Most "app frame" layouts (toolbar + sidebar + content + status bar) are a single Border layout.

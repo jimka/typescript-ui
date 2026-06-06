@@ -26,6 +26,8 @@ export { AccordionHeader } from '~/component/container/AccordionHeader.js';
 export type { AccordionHeaderOptions } from '~/component/container/AccordionHeader.js';
 export { AccordionIndicator } from '~/component/container/AccordionIndicator.js';
 export type { AccordionIndicatorOptions } from '~/component/container/AccordionIndicator.js';
+export { CollapseButton } from '~/component/container/CollapseButton.js';
+export type { CollapseButtonOptions, CollapseButtonEvent, CollapseDirection } from '~/component/container/CollapseButton.js';
 export { TabPanel } from '~/component/container/TabPanel.js';
 export type { TabPanelOptions, TabEntryConfig } from '~/component/container/TabPanel.js';
 export { AccordionPanel } from '~/component/container/AccordionPanel.js';
