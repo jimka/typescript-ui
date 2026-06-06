@@ -247,6 +247,11 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         info    : { background: 'rgba(30, 100, 200, 0.25)', foreground: 'rgb(60, 130, 220)' },
         affirm  : { background: 'rgba(80, 200, 110, 0.25)', foreground: 'rgb(80, 200, 110)' },
     },
+    drawer: {
+        background: 'var(--ts-ui-body-bg)',
+        shadow    : '4px 0 24px rgba(0, 0, 0, 0.55)',
+        border    : 'rgb(70, 70, 70)',
+    },
     spinner: {
         dividerColor: 'rgb(80, 80, 80)',
     },
