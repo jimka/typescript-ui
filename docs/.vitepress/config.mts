@@ -94,6 +94,7 @@ export default defineConfig({
                     { text: 'IconText',        link: '/components/IconText' },
                     { text: 'IconLabel',       link: '/components/IconLabel' },
                     { text: 'FieldSet',        link: '/components/FieldSet' },
+                    { text: 'FormFieldSet',    link: '/components/FormFieldSet' },
                     { text: 'Legend',          link: '/components/Legend' },
                     { text: 'ProgressBar',     link: '/components/ProgressBar' },
                     { text: 'ProgressSpinner', link: '/components/ProgressSpinner' },
