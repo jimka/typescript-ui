@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Binding, callable, Component, Notification, Panel } from '@jimka/typescript-ui/core';
-import { Grid, GridConstraints, HBox, VBox } from '@jimka/typescript-ui/layout';
+import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Checkbox, ComboBox, DateField, Text, TextField, TimeField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
-import { FieldSet } from '@jimka/typescript-ui/component/container';
+import { FormFieldSet } from '@jimka/typescript-ui/component/container';
 class BindingPanel extends Panel {
 
     constructor() {
-        super();
+        super({ autoScroll: "auto" });
 
         // The panel stacks a single fieldset; width-stretching lets the
         // fieldset fill the available width up to its 600px cap.
@@ -133,57 +133,9 @@ class BindingPanel extends Panel {
 
         // ── Layout ───────────────────────────────────────────────────────────
 
-        // Group the bound fields in a labelled fieldset, capped at 600px wide
+        // Group the bound fields in a labelled fieldset, capped at 400px wide
         // so the form lines stay a comfortable reading length on wide screens.
         const FIELDSET_MAX_WIDTH = 400;
-
-        const fieldSet = new FieldSet("Information");
-        fieldSet.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
-
-        // Two-column form grid inside the fieldset: six labelled fields plus a
-        // status line and a button bar that each span both columns — eight rows
-        // in all (hence FORM_ROW_COUNT; bump it if a field is added). The left
-        // column sizes to its content (the titles); the right column takes the
-        // slack so the inputs share a common right edge. Every row sizes to its
-        // content so inputs keep their natural height.
-        const FORM_ROW_COUNT = 8;
-
-        fieldSet.setLayoutManager(new Grid({
-            rows:    FORM_ROW_COUNT,
-            baselineAlign: true,
-            columns: 2,
-            spacing: 8,
-            columnTracks: [
-                { mode: "content" },
-                { mode: "weight", value: 1 },
-            ],
-            rowTracks: Array.from({ length: FORM_ROW_COUNT }, () => ({ mode: "content" as const })),
-        }));
-
-        // Each call fills one grid row: title into the content column, input
-        // into the weight column.
-        const addField = (title: string, input: Component): void => {
-            fieldSet.addComponent(new Text(title));
-            fieldSet.addComponent(input);
-        };
-
-        addField("Record",        recordCombo);
-        addField("Name",          nameField);
-        addField("Active",        activeCheck);
-        addField("Role",          roleCombo);
-        addField("Birth date",    birthDateField);
-        addField("Reminder time", reminderTimeField);
-
-        // The status line and button bar each occupy a full row across both
-        // columns.
-        const spanBothColumns = (): GridConstraints => {
-            const cons = new GridConstraints();
-            cons.colSpan = 2;
-
-            return cons;
-        };
-
-        fieldSet.addComponent(statusText, spanBothColumns());
 
         const buttonRow = new Component();
         buttonRow.setLayoutManager(new HBox());
@@ -193,9 +145,45 @@ class BindingPanel extends Panel {
 
         buttonRow.addComponent(commitButton);
         buttonRow.addComponent(rejectButton);
-        fieldSet.addComponent(buttonRow, spanBothColumns());
+
+        // A single-column FormFieldSet formalises the labelled-form pattern: each
+        // row is one title/field pair (titles hug their text, inputs take the
+        // slack), and the status line and button bar each span the full width.
+        const fieldSet = new FormFieldSet("Information", {
+            rows: [
+                [{ title: "Record",        component: recordCombo }],
+                [{ title: "Name",          component: nameField }],
+                [{ title: "Active",        component: activeCheck }],
+                [{ title: "Role",          component: roleCombo }],
+                [{ title: "Birth date",    component: birthDateField }],
+                [{ title: "Reminder time", component: reminderTimeField }],
+                { component: statusText, fullWidth: true },
+                { component: buttonRow,  fullWidth: true },
+            ],
+        });
+        fieldSet.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
 
         this.addComponent(fieldSet);
+
+        // A two-column FormFieldSet (unbound) demonstrating the multi-column
+        // layout: pairs flow across two logical columns that line up row-by-row,
+        // a short row leaves its trailing column empty, and a note spans the full
+        // width. Capped wider than the single-column form to fit two columns.
+        const WIDE_FIELDSET_MAX_WIDTH = 600;
+
+        const addressForm = new FormFieldSet("Address (2-column demo)", {
+            columns: 2,
+            rows: [
+                [{ title: "First",   component: new TextField()             }, { title: "Last",    component: new TextField() }],
+                [{ title: "Street address 1",    component: new TextField() }, { title: "Postal",  component: new TextField() }],
+                [{ title: "Street address 2", component: new TextField()    }, { title: "City",    component: new TextField() }],
+                [{ title: "Country", component: new TextField()             }],
+                { component: new Text("Rows line up across both columns; the short row leaves a gap."), fullWidth: true },
+            ],
+        });
+        addressForm.setMaxSize(WIDE_FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
+
+        this.addComponent(addressForm);
 
         // ── Wire up interactions ─────────────────────────────────────────────
 
