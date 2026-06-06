@@ -64,6 +64,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`IconText`](/components/IconText) | Glyph + standalone [`Text`](/api/component/input/classes/Text), horizontal flow |
 | [`IconLabel`](/components/IconLabel) | Glyph + form-control [`Label`](/api/component/input/classes/Label), horizontal flow |
 | [`FieldSet`](/api/component/container/classes/FieldSet) | Grouped form section with optional [`Legend`](/api/component/container/classes/Legend) |
+| [`FormFieldSet`](/components/FormFieldSet) | [`FieldSet`](/api/component/container/classes/FieldSet) of baseline-aligned title/field rows in one or more columns |
 | [`ProgressBar`](/components/ProgressBar) | Horizontal progress indicator (determinate or indeterminate) |
 | [`ProgressSpinner`](/components/ProgressSpinner) | Circular loading spinner; supports inline and overlay use |
 | [`PaginationBar`](/components/PaginationBar) | First / prev / next / last navigation for a paginated [`Store`](/api/data/classes/Store) |
