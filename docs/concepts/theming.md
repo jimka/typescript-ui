@@ -55,6 +55,9 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `indicator.focus` | `--ts-ui-indicator-focus` | Colour for the keyboard-focus indicator. Used through both `border: 2px solid var(...)` on pseudo-element overlays (composites + list) and `box-shadow: inset 0 0 0 2px var(...)` on `<input>` elements (which don't render pseudo-elements). Same visual placement across both code paths |
 | `indicator.selection` | `--ts-ui-indicator-selection` | Complete CSS outline shorthand reserved for outline-shaped selection marks distinct from background-tint selection. Provisioned; no current consumers |
 | `gutter.background` | `--ts-ui-gutter-bg` | Background of the [`Split`](/api/layout/classes/Split) drag gutter; also used as the scrollbar track color |
+| `collapse.strip.background` | `--ts-ui-collapse-strip-bg` | Opaque fill of a collapsed [`Split`](/api/layout/classes/Split) pane / [`Border`](/api/layout/classes/Border) region gutter in its strip state |
+| `collapse.strip.size` | `--ts-ui-collapse-strip-size` | Collapsed strip thickness (mirrors the layout constant; thickness is driven in code) |
+| `collapse.button.color` | `--ts-ui-collapse-button-color` | Colour of the collapse / restore chevron glyph |
 | `tab.toolbar.background` | `--ts-ui-tab-toolbar-bg` | Background of the tab button toolbar in the [`Tab`](/api/layout/classes/Tab) layout |
 | `tab.toolbar.border` | `--ts-ui-tab-toolbar-border` | Bottom border of the tab button toolbar |
 | `tab.underBorderFullWidth` | — | Boolean (read from the theme object, not a CSS variable): whether the [`Tab`](/api/layout/classes/Tab) strip draws the edge-to-edge 1px rule under the toolbar. `false` for Modern, `true` for Classic/Dark. An explicit `tabUnderBorderFullWidth` layout option overrides it |
