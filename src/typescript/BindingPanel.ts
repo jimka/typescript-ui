@@ -9,7 +9,7 @@ import { FormFieldSet } from '@jimka/typescript-ui/component/container';
 class BindingPanel extends Panel {
 
     constructor() {
-        super();
+        super({ autoScroll: "auto" });
 
         // The panel stacks a single fieldset; width-stretching lets the
         // fieldset fill the available width up to its 600px cap.
@@ -164,6 +164,26 @@ class BindingPanel extends Panel {
         fieldSet.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
 
         this.addComponent(fieldSet);
+
+        // A two-column FormFieldSet (unbound) demonstrating the multi-column
+        // layout: pairs flow across two logical columns that line up row-by-row,
+        // a short row leaves its trailing column empty, and a note spans the full
+        // width. Capped wider than the single-column form to fit two columns.
+        const WIDE_FIELDSET_MAX_WIDTH = 600;
+
+        const addressForm = new FormFieldSet("Address (2-column demo)", {
+            columns: 2,
+            rows: [
+                [{ title: "First",   component: new TextField()             }, { title: "Last",    component: new TextField() }],
+                [{ title: "Street address 1",    component: new TextField() }, { title: "Postal",  component: new TextField() }],
+                [{ title: "Street address 2", component: new TextField()    }, { title: "City",    component: new TextField() }],
+                [{ title: "Country", component: new TextField()             }],
+                { component: new Text("Rows line up across both columns; the short row leaves a gap."), fullWidth: true },
+            ],
+        });
+        addressForm.setMaxSize(WIDE_FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
+
+        this.addComponent(addressForm);
 
         // ── Wire up interactions ─────────────────────────────────────────────
 
