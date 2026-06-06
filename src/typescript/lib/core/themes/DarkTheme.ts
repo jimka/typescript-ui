@@ -78,6 +78,10 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         },
     },
     gutter: { background: '#555' },
+    collapse: {
+        strip:  { background: '#555', size: '18px' },
+        button: { color: 'rgb(160,160,160)' },
+    },
     accordion: {
         header   : {
             background: 'linear-gradient(rgb(60,60,60),rgb(45,45,45))',

@@ -80,6 +80,10 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
         },
     },
     gutter: { background: '#AAAAAA' },
+    collapse: {
+        strip:  { background: '#AAAAAA', size: '18px' },
+        button: { color: 'rgb(100,100,100)' },
+    },
     accordion: {
         header   : {
             background: 'linear-gradient(rgb(230,230,230),rgb(210,210,210))',

@@ -56,7 +56,9 @@ class SplitPanel extends Panel {
         slider.on("action", () => {
             sliderText.setText(slider.getValue().toString() + "%");
         });
-        southComponent.addComponent(slider);
+        // The slider is the last pane, so it has no trailing gutter; collapsing
+        // it toward the end (east) lets it tuck into its leading gutter's strip.
+        southComponent.addComponent(slider, { collapseDirection: "east" });
     }
 }
 
