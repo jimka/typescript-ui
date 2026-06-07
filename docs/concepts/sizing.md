@@ -48,11 +48,22 @@ A `0` value for either width or height is conventionally a "don't care" — the 
 
 ## The size invariant
 
-The three hints satisfy `min ≤ preferred ≤ max` on each axis. When you set them in conflict, the framework resolves on read with **min winning**: a preferred below the minimum is lifted to the minimum, and a minimum above the maximum still wins (the maximum is treated as at least the minimum). So `setMinSize(120, 0)` followed by `setPreferredSize(0, 0)` reports a preferred width of 120, not 0 — and a laid-out component is never committed outside its `[min, max]` range, even when its minimum comes from its layout manager rather than an explicit `setMinSize`.
+The three hints satisfy `min ≤ preferred ≤ max` on each axis. When you set them in conflict, the framework resolves on read with **min winning**: a preferred below the minimum is lifted to the minimum, and a minimum above the maximum still wins (the maximum is treated as at least the minimum). So `setMinSize(120, 0)` followed by `setPreferredSize(0, 0)` reports a preferred width of 120, not 0. How that range binds the *committed* size — and whether the binding minimum is your explicit one or one derived from the component's children — depends on the component; see [Content size vs. allocated size](#content-size-vs-allocated-size) below.
+
+## Content size vs. allocated size
+
+A container reports an *effective* minimum and maximum: the merger of its own `setMinSize` / `setMaxSize` and the minimum/maximum its layout manager derives from its children. This effective range is what the component reports **upward** so its parent can size it and decide whether to scroll. Whether the component then holds *itself* to that range depends on its type:
+
+- A **general component** clamps its committed size to its *effective* `[min, max]`. It never collapses below the size its children need to render — so a custom container you build keeps a content-based minimum. If its parent hands it less room than that, it overflows its parent, and an ancestor scroll host carries the overflow.
+- A [**`Panel`**](/api/core/classes/Panel) clamps only to its *own explicit* `setMinSize` / `setMaxSize`. It fits whatever space its parent allocates and lets the overflow **clip, or scroll** when [`setAutoScroll`](/api/core/classes/Panel#setautoscroll) is configured, rather than inflating itself back up to its content size. This is what lets a tall form sit inside a short scrolling panel.
+
+In both cases an explicit `setMinSize` / `setMaxSize` is a hard floor and ceiling.
 
 ## When a layout can't honour the minimum
 
-If a layout manager is handed less room than a child's minimum, the child is **not** squeezed below that minimum. Instead the manager renders the child at its *preferred* size and clips the overflow to the available space — showing the content at its intended size up to the clip edge rather than reflowing into a cramped minimum that would be clipped anyway. [`Grid`](/layouts/Grid) clips an oversized cell this way; [`HBox`](/layouts/HBox) and [`VBox`](/layouts/VBox) let a scrollable host scroll the overflow, controlled by their `overflowSizing` option (`"preferred"` by default, or `"min"` to pack at the minimum and scroll from there). A child that reports no preferred size falls back to its minimum.
+A layout manager gives each child the space available in its cell or track, capped to the child's maximum, and **does not itself inflate the child back up to the child's content minimum** — it leaves the minimum to the child. A general child then holds its content minimum (overflowing the cell, for an ancestor scroll host to scroll); a [`Panel`](/api/core/classes/Panel) child fits the cell and scrolls or clips its own overflow.
+
+[`Grid`](/layouts/Grid) goes further for a cell whose child genuinely cannot shrink to it — an explicit minimum wider or taller than the cell: it clips the child to a cell-sized frame, honouring the grid's fill/anchor on whichever axis the child *does* fit and rendering the child at its natural extent (its preferred size, falling back to its minimum) on the overflowing axis. [`HBox`](/layouts/HBox) and [`VBox`](/layouts/VBox) size each child to the available cross-axis space and let the child's own clamp and any scroll host handle a shortfall; their `overflowSizing` option (`"preferred"` by default, or `"min"`) tunes how the *main* axis packs when a scrollable host scrolls the row or column.
 
 ## When sizes change
 
