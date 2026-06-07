@@ -1,41 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { BoxLayout, BoxLayoutOptions } from "~/layout/BoxLayout.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
-
-/**
- * Sizing strategy along an {@link HBox} or {@link VBox}'s main axis.
- *
- * - `"preferred"` — each child gets its preferred width (height for VBox);
- *   `weight`-constrained children split the remaining space; an overflow
- *   shrinks non-weighted children proportionally toward their min sizes.
- * - `"equal"` — children split the container's inner extent equally; the
- *   per-cell floor is `max(child.minSize.width)` (height for VBox);
- *   `weight` constraints are ignored.
- *
- * @category Layouts
- */
-export type BoxMode = "preferred" | "equal";
-
-/**
- * How an `"equal"`-mode {@link HBox}/{@link VBox} sizes its cells when the
- * row/column overflows the host's inner extent and the host has opted into
- * scrolling (`Panel.setAutoScroll`).
- *
- * - `"preferred"` (the default) — every cell takes the widest/tallest child's
- *   preferred extent, so cells keep their preferred size and the host scrolls.
- * - `"min"` — every cell stays at the min floor (`max(child.minSize)`), so the
- *   row/column scrolls at the minimum cell size instead of growing.
- *
- * Has no effect outside `"equal"` mode, nor when the cells fit (the equal share
- * clears the min floor), nor when the host does not scroll (cells always clamp
- * to the min floor and the host's `overflow: hidden` clips the surplus).
- *
- * @category Layouts
- */
-export type BoxOverflowSizing = "preferred" | "min";
 
 /**
  * Construction-time options for {@link HBox}.
@@ -49,12 +17,7 @@ export type BoxOverflowSizing = "preferred" | "min";
  *
  * @category Layouts
  */
-export interface HBoxOptions extends LayoutManagerOptions {
-    spacing?:         number;
-    stretching?:      boolean;
-    mode?:            BoxMode;
-    overflowSizing?:  BoxOverflowSizing;
-}
+export interface HBoxOptions extends BoxLayoutOptions {}
 
 /**
  * A layout manager that places children in a single horizontal row. The
@@ -63,94 +26,9 @@ export interface HBoxOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-class HBox extends LayoutManager {
+class HBox extends BoxLayout {
 
-    private _spacing: number = 5;
-    private _stretching: boolean = false;
-    private _mode: BoxMode = "preferred";
-    private _overflowSizing: BoxOverflowSizing = "preferred";
     private _defaultComponentWidth: number = 100;
-
-    constructor(options?: HBoxOptions) {
-        super();
-
-        if (options) {
-            this.applyOptions(options);
-        }
-    }
-
-    /**
-     * Applies an {@link HBoxOptions} bag, dispatching mode, spacing, and
-     * stretching after the inherited LayoutManager defaults.
-     *
-     * @param options - The options bag carrying the values to apply.
-     *
-     * @remarks `mode` is dispatched before `stretching` so the
-     * mode-dependent stretching default (`true` for `"equal"`, `false` for
-     * `"preferred"`) can be resolved when the options bag does not pass
-     * an explicit `stretching` value.
-     */
-    protected applyOptions(options: HBoxOptions): void {
-        super.applyOptions(options);
-
-        if (options.mode !== undefined) {
-            this.setMode(options.mode);
-        }
-
-        if (options.spacing !== undefined) {
-            this.setComponentSpacing(options.spacing);
-        }
-
-        if (options.stretching !== undefined) {
-            this.setStretching(options.stretching);
-        } else if (options.mode === "equal") {
-            this.setStretching(true);
-        }
-
-        if (options.overflowSizing !== undefined) {
-            this.setOverflowSizing(options.overflowSizing);
-        }
-    }
-
-    /**
-     * Returns the pixel spacing between child components.
-     *
-     * @returns The current spacing in pixels.
-     */
-    getComponentSpacing() {
-        return this._spacing || 0;
-    }
-
-    /**
-     * Sets the pixel spacing between child components.
-     *
-     * @param spacing - Spacing in pixels.
-     */
-    setComponentSpacing(spacing: number) : this {
-        this._spacing = spacing || 0;
-
-        return this;
-    }
-
-    /**
-     * Returns whether children stretch to fill the container height.
-     *
-     * @returns `true` if stretching is enabled.
-     */
-    isStretching() {
-        return this._stretching || false;
-    }
-
-    /**
-     * Sets whether children stretch to fill the container height.
-     *
-     * @param stretching - Pass `true` to enable height stretching.
-     */
-    setStretching(stretching: boolean) : this {
-        this._stretching = stretching;
-
-        return this;
-    }
 
     /**
      * Returns the row's baseline (the maximum child text baseline) measured from
@@ -181,51 +59,6 @@ class HBox extends LayoutManager {
         }
 
         return this.computeRowMetrics(heights, baselines).rowAscent;
-    }
-
-    /**
-     * Returns the current sizing mode along the horizontal axis.
-     *
-     * @returns Either `"preferred"` or `"equal"`.
-     */
-    getMode(): BoxMode {
-        return this._mode;
-    }
-
-    /**
-     * Sets the sizing mode along the horizontal axis.
-     *
-     * @param mode - `"preferred"` honours each child's preferred width;
-     *   `"equal"` divides the container width equally among children.
-     */
-    setMode(mode: BoxMode): this {
-        this._mode = mode;
-
-        return this;
-    }
-
-    /**
-     * Returns the cell-sizing strategy used when an `"equal"`-mode row
-     * overflows a scrolling host.
-     *
-     * @returns Either `"preferred"` or `"min"`.
-     */
-    getOverflowSizing(): BoxOverflowSizing {
-        return this._overflowSizing;
-    }
-
-    /**
-     * Sets the cell-sizing strategy used when an `"equal"`-mode row overflows a
-     * scrolling host.
-     *
-     * @param overflowSizing - `"preferred"` grows every cell to the widest
-     *   child's preferred width and scrolls; `"min"` keeps cells at the min
-     *   floor and scrolls at the minimum cell size. See {@link BoxOverflowSizing}.
-     */
-    setOverflowSizing(overflowSizing: BoxOverflowSizing): this {
-        this._overflowSizing = overflowSizing;
-
-        return this;
     }
 
     /**
