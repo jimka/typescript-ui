@@ -257,6 +257,11 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
         info    : { background: 'rgba(30, 100, 200, 0.15)', foreground: 'rgb(30, 100, 200)' },
         affirm  : { background: 'rgba(30, 180, 80, 0.15)',  foreground: 'rgb(30, 180, 80)'  },
     },
+    drawer: {
+        background: 'var(--ts-ui-body-bg)',
+        shadow    : '4px 0 24px rgba(0, 0, 0, 0.25)',
+        border    : 'rgb(220, 220, 220)',
+    },
     spinner: {
         dividerColor: 'rgb(180, 180, 180)',
     },

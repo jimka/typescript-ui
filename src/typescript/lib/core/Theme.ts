@@ -422,6 +422,12 @@ export interface Theme {
         };
     };
 
+    drawer: {
+        background: string;
+        shadow:     string;
+        border:     string;
+    };
+
     accordion: {
         header: {
             background: string;
@@ -848,6 +854,9 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-dialog-info-fg'                   : theme.dialog.info.foreground,
         '--ts-ui-dialog-affirm-bg'                 : theme.dialog.affirm.background,
         '--ts-ui-dialog-affirm-fg'                 : theme.dialog.affirm.foreground,
+        '--ts-ui-drawer-bg'                        : theme.drawer.background,
+        '--ts-ui-drawer-shadow'                    : theme.drawer.shadow,
+        '--ts-ui-drawer-border'                    : theme.drawer.border,
         '--ts-ui-spinner-btn-width'                : theme.spinner.buttonWidth,
         '--ts-ui-spinner-divider'                  : theme.spinner.dividerColor,
         '--ts-ui-progress-track-bg'                : theme.progressBar.track.background,
