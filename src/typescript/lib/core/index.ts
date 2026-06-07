@@ -33,6 +33,8 @@ export { Notification } from '~/core/Notification.js';
 export type { NotificationType } from '~/core/Notification.js';
 export { Dialog, DialogTitleBar, DialogButtons } from '~/core/Dialog.js';
 export type { DialogConfig, DialogButtonConfig, DialogResult } from '~/core/Dialog.js';
+export { Drawer } from '~/core/Drawer.js';
+export type { DrawerOptions, DrawerEdge, DrawerEvent, DrawerCloseController } from '~/core/Drawer.js';
 
 export { ThemeManager, BaseTheme, ClassicTheme, DarkTheme, ModernTheme, defineTheme } from '~/core/Theme.js';
 export type { Theme, DeepPartial } from '~/core/Theme.js';
