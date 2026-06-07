@@ -46,6 +46,14 @@ sidebar.setMaxSize(360, 0);
 
 A `0` value for either width or height is conventionally a "don't care" — the layout manager treats it as unbounded.
 
+## The size invariant
+
+The three hints satisfy `min ≤ preferred ≤ max` on each axis. When you set them in conflict, the framework resolves on read with **min winning**: a preferred below the minimum is lifted to the minimum, and a minimum above the maximum still wins (the maximum is treated as at least the minimum). So `setMinSize(120, 0)` followed by `setPreferredSize(0, 0)` reports a preferred width of 120, not 0 — and a laid-out component is never committed outside its `[min, max]` range, even when its minimum comes from its layout manager rather than an explicit `setMinSize`.
+
+## When a layout can't honour the minimum
+
+If a layout manager is handed less room than a child's minimum, the child is **not** squeezed below that minimum. Instead the manager renders the child at its *preferred* size and clips the overflow to the available space — showing the content at its intended size up to the clip edge rather than reflowing into a cramped minimum that would be clipped anyway. [`Grid`](/layouts/Grid) clips an oversized cell this way; [`HBox`](/layouts/HBox) and [`VBox`](/layouts/VBox) let a scrollable host scroll the overflow, controlled by their `overflowSizing` option (`"preferred"` by default, or `"min"` to pack at the minimum and scroll from there). A child that reports no preferred size falls back to its minimum.
+
 ## When sizes change
 
 Setting any size hint schedules a layout pass on the parent. The framework's rAF coalescing means multiple changes in the same frame produce one pass. Setting `setSize` directly is how the layout manager writes the assigned value back; user code rarely calls it.
