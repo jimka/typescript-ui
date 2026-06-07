@@ -268,16 +268,9 @@ class VBox extends BoxLayout {
     }
 
     /**
-     * Places children top-to-bottom. In `"preferred"` mode each child takes
-     * its preferred height (with `weight` cells dividing the remainder).
-     * In `"equal"` mode the container height is divided equally among
-     * children, clamped to the largest child's min height.
-     *
-     * @remarks When `stretching` is enabled, each child's width is clamped
-     * to its max size rather than its preferred size. Children without a
-     * preferred size fall back to `defaultComponentHeight` (preferred mode
-     * only). `weight` constraints are honoured only in `"preferred"` mode;
-     * `"equal"` mode silently ignores them.
+     * Lays out the children top-to-bottom, dispatching to `layoutEqualMode` or
+     * `layoutPreferredMode` per the sizing mode after inflating the working
+     * size for any scroll-enabled axis.
      */
     doLayout(): void {
         const container = this.getContainer();
