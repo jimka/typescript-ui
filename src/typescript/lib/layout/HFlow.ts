@@ -263,9 +263,12 @@ class HFlow extends LayoutManager {
     }
 
     /**
-     * Returns the maximum size: the sum of the children's preferred widths
-     * (or `count * columnWidth` in a `uniform` width mode) plus item spacing,
-     * and the smallest of their max heights.
+     * Returns the maximum size the flow can usefully occupy: with every child on
+     * one line the width is the sum of the children's *maximum* widths (or
+     * `count * columnWidth` in a `uniform` width mode) plus item spacing, and the
+     * height is the *largest* child maximum — the tallest a single row can grow
+     * to. A child whose maximum is `null` or at the unbounded sentinel makes that
+     * axis unbounded (`Number.MAX_SAFE_INTEGER`).
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
@@ -281,21 +284,33 @@ class HFlow extends LayoutManager {
         const extents = uniformWidth ? this.computeUniformExtents(components) : { width: 0, height: 0 };
 
         let width = perimiterSize.left + perimiterSize.right;
-        let height = Number.MAX_SAFE_INTEGER;
+        let height = 0;
+        let widthUnbounded = false;
+        let heightUnbounded = false;
 
         for (const component of components) {
-            if (!uniformWidth) {
-                const pref = component.getPreferredSize();
+            const max = component.getMaxSize();
 
-                if (pref) {
-                    width += pref.width;
+            if (!max) {
+                if (!uniformWidth) {
+                    widthUnbounded = true;
+                }
+                heightUnbounded = true;
+                continue;
+            }
+
+            if (!uniformWidth) {
+                if (max.width >= Number.MAX_SAFE_INTEGER) {
+                    widthUnbounded = true;
+                } else {
+                    width += max.width;
                 }
             }
 
-            const max = component.getMaxSize();
-
-            if (max) {
-                height = Math.min(height, max.height);
+            if (max.height >= Number.MAX_SAFE_INTEGER) {
+                heightUnbounded = true;
+            } else {
+                height = Math.max(height, max.height);
             }
         }
 
@@ -307,8 +322,8 @@ class HFlow extends LayoutManager {
         height += perimiterSize.top + perimiterSize.bottom;
 
         return {
-            width: width,
-            height: height
+            width:  widthUnbounded  ? Number.MAX_SAFE_INTEGER : width,
+            height: heightUnbounded ? Number.MAX_SAFE_INTEGER : height
         };
     }
 

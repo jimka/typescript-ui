@@ -152,10 +152,13 @@ class VBox extends BoxLayout {
     }
 
     /**
-     * Returns the maximum size. In `"preferred"` mode width is the narrowest
-     * child maximum width and height is the sum of child maximum heights
-     * plus spacing. In `"equal"` mode height is
-     * `count * (minChildMaxHeight + spacing) - spacing`.
+     * Returns the maximum size the column can usefully occupy. Along the main
+     * axis (height) it sums the children's *maximum* heights plus spacing; in
+     * `"equal"` mode it is `count * maxChildMaxHeight` plus spacing, since every
+     * cell shares the tallest child's allowance. The cross axis (width) takes
+     * the *largest* child maximum — the widest a child permits the column to
+     * grow to. A child whose maximum is `null` or at the unbounded sentinel
+     * makes that axis unbounded (`Number.MAX_SAFE_INTEGER`).
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
@@ -167,47 +170,68 @@ class VBox extends BoxLayout {
 
         let perimiterSize = container.getPerimiterSize();
         let components = container.getComponents();
+        let width = 0;
+        let height = perimiterSize.top + perimiterSize.bottom;
+        let widthUnbounded = false;
+        let heightUnbounded = false;
 
         if (this._mode === "equal") {
-            let innerWidth = Number.MAX_SAFE_INTEGER;
-            let innerHeight = Number.MAX_SAFE_INTEGER;
+            let maxChildMaxHeight = 0;
 
-            for (let idx in components) {
-                let component = components[idx];
-                let size = component.getMaxSize();
+            for (const component of components) {
+                const size = component.getMaxSize();
 
-                if (size) {
-                    innerWidth  = Math.min(innerWidth,  size.width);
-                    innerHeight = Math.min(innerHeight, size.height);
+                if (!size) {
+                    widthUnbounded = true;
+                    heightUnbounded = true;
+                    continue;
+                }
+
+                if (size.width >= Number.MAX_SAFE_INTEGER) {
+                    widthUnbounded = true;
+                } else {
+                    width = Math.max(width, size.width);
+                }
+
+                if (size.height >= Number.MAX_SAFE_INTEGER) {
+                    heightUnbounded = true;
+                } else {
+                    maxChildMaxHeight = Math.max(maxChildMaxHeight, size.height);
                 }
             }
 
-            const width  = innerWidth + perimiterSize.left + perimiterSize.right;
-            const height = components.length * (innerHeight + this._spacing) - this._spacing
-                         + perimiterSize.top + perimiterSize.bottom;
+            height += components.length * maxChildMaxHeight + this._spacing * Math.max(0, components.length - 1);
+        } else {
+            for (const component of components) {
+                const size = component.getMaxSize();
 
-            return { width, height };
-        }
+                if (!size) {
+                    widthUnbounded = true;
+                    heightUnbounded = true;
+                    continue;
+                }
 
-        let width = Number.MAX_SAFE_INTEGER;
-        let height = perimiterSize.top + perimiterSize.bottom;
+                if (size.width >= Number.MAX_SAFE_INTEGER) {
+                    widthUnbounded = true;
+                } else {
+                    width = Math.max(width, size.width);
+                }
 
-        for (let idx in components) {
-            let component = components[idx];
-            let size = component.getMaxSize();
-
-            if (size) {
-                width = Math.min(width, size.width);
-                height += size.height;
+                if (size.height >= Number.MAX_SAFE_INTEGER) {
+                    heightUnbounded = true;
+                } else {
+                    height += size.height;
+                }
             }
+
+            height += this._spacing * Math.max(0, components.length - 1);
         }
 
         width += perimiterSize.left + perimiterSize.right;
-        height += this._spacing * (components.length - 1);
 
         return {
-            width: width,
-            height: height
+            width:  widthUnbounded  ? Number.MAX_SAFE_INTEGER : width,
+            height: heightUnbounded ? Number.MAX_SAFE_INTEGER : height
         };
     }
 
@@ -407,12 +431,28 @@ class VBox extends BoxLayout {
 
             const height = this.resolveChildHeight(size, minSize, maxSize, weight, totalWeight, remainingHeight, shrinkRatio);
 
+            // Cross-axis (width): give the child the column's available width —
+            // the full inner width when stretching or sizeless, otherwise its
+            // preferred width capped to the column. Cap to the child's maximum,
+            // but do NOT floor to its minimum: enforcing the minimum here would
+            // dogmatically inflate a child back up to its content size even when
+            // the column is narrower, defeating a scrolling/clipping child. The
+            // child's own setWidth → clampWidth applies its minimum (its content
+            // minimum for a general component, or nothing for a Panel, which fits
+            // its allocation and scrolls). When the host opts into horizontal
+            // scroll, `containerSize` is already inflated to the content extent
+            // upstream, so `min(pref, containerSize)` still yields the full width
+            // without a floor here.
             let width: number;
 
             if (!size || this.isStretching()) {
-                width = maxSize ? Math.min(maxSize.width, containerSize.width) : containerSize.width;
+                width = containerSize.width;
             } else {
                 width = Math.min(size.width, containerSize.width);
+            }
+
+            if (maxSize) {
+                width = Math.min(width, maxSize.width);
             }
 
             this.placeComponent(component, x, y, width, height, FillType.BOTH);

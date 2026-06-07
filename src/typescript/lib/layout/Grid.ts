@@ -440,7 +440,13 @@ class Grid extends LayoutManager {
     }
 
     /**
-     * Returns the maximum size: the minimum child maximum size multiplied by the computed row/column counts, plus inter-cell spacing.
+     * Returns the maximum size the grid can usefully occupy: the sum of the
+     * per-track maxima plus inter-cell spacing and the container perimeter. A
+     * `fixed` track contributes its pixel value, a `content` track its measured
+     * content, and a `weight` track is unbounded — so any weight track makes the
+     * whole axis unbounded (the grid can absorb arbitrary slack there). With no
+     * tracks on an axis the fallback is `cols * maxChildMax` (the uniform-cell
+     * estimate), where a child's `null`/sentinel maximum counts as unbounded.
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
@@ -457,31 +463,90 @@ class Grid extends LayoutManager {
 
         let components = container.getComponents();
 
-        let innerWidth = Number.MAX_SAFE_INTEGER;
-        let innerHeight = Number.MAX_SAFE_INTEGER;
+        let colRowCount = this.getColRowCount();
+        let cols = colRowCount ? colRowCount.width  : 1;
+        let rows = colRowCount ? colRowCount.height : 1;
+        let spacing = this.getComponentSpacing();
 
-        for (let idx in components) {
-            let component = components[idx];
-            let size = component.getMaxSize();
+        const content = this.measureContent(components, cols, rows);
 
-            if (size) {
-                innerWidth = Math.min(innerWidth, size.width);
-                innerHeight = Math.min(innerHeight, size.height);
+        const innerWidth = this._columnTracks.length > 0
+            ? this.trackAxisMax(this._columnTracks, cols, content.columns)
+            : cols * this.maxChildExtent(components, true);
+
+        const innerHeight = this._rowTracks.length > 0
+            ? this.trackAxisMax(this._rowTracks, rows, content.rows)
+            : rows * this.maxChildExtent(components, false);
+
+        const saturate = (value: number): number => Math.min(value, Number.MAX_SAFE_INTEGER);
+
+        return {
+            width:  saturate(innerWidth  + Math.max(0, cols - 1) * spacing + outerWidth),
+            height: saturate(innerHeight + Math.max(0, rows - 1) * spacing + outerHeight)
+        };
+    }
+
+    /**
+     * Sums the per-track maxima along one axis: a `fixed` track contributes its
+     * pixel value, a `content` track its measured content size, and a `weight`
+     * track is unbounded — the first weight track saturates the axis to
+     * `Number.MAX_SAFE_INTEGER`, since a flex track can grow without limit. A
+     * missing track defaults to `weight`, matching {@link trackAxisExtent}.
+     *
+     * @param tracks - The declared tracks for this axis.
+     * @param count - The number of columns (or rows) to size.
+     * @param contentSizes - Measured content maxima per track.
+     * @returns The summed maximum extent for the axis, excluding spacing.
+     */
+    private trackAxisMax(tracks: GridTrack[], count: number, contentSizes: number[]): number {
+        let total = 0;
+
+        for (let i = 0; i < count; i += 1) {
+            const track = tracks[i] ?? { mode: "weight" as const, value: 1 };
+
+            if (track.mode === "fixed") {
+                total += track.value ?? 0;
+            } else if (track.mode === "content") {
+                total += contentSizes[i] ?? 0;
+            } else {
+                return Number.MAX_SAFE_INTEGER;
             }
         }
 
-        let colRowCount = this.getColRowCount();
-        let spacing = this.getComponentSpacing();
+        return total;
+    }
 
-        if (colRowCount) {
-            innerWidth = innerWidth * colRowCount.width + Math.max(0, colRowCount.width - 1) * spacing;
-            innerHeight = innerHeight * colRowCount.height + Math.max(0, colRowCount.height - 1) * spacing;
+    /**
+     * Returns the largest per-child maximum extent across all children on one
+     * axis, for the uniform-cell (no-track) fallback. A child whose maximum is
+     * `null` or at the unbounded sentinel makes the whole axis unbounded, so the
+     * result saturates to `Number.MAX_SAFE_INTEGER`.
+     *
+     * @param components - The grid's children.
+     * @param horizontal - `true` to read each child's max width, `false` for height.
+     * @returns The largest child maximum, or `Number.MAX_SAFE_INTEGER` when any
+     *   child is unbounded.
+     */
+    private maxChildExtent(components: Component[], horizontal: boolean): number {
+        let largest = 0;
+
+        for (const component of components) {
+            const max = component.getMaxSize();
+
+            if (!max) {
+                return Number.MAX_SAFE_INTEGER;
+            }
+
+            const extent = horizontal ? max.width : max.height;
+
+            if (extent >= Number.MAX_SAFE_INTEGER) {
+                return Number.MAX_SAFE_INTEGER;
+            }
+
+            largest = Math.max(largest, extent);
         }
 
-        return {
-            width: innerWidth + outerWidth,
-            height: innerHeight + outerHeight
-        };
+        return largest;
     }
 
     /**
@@ -900,15 +965,24 @@ class Grid extends LayoutManager {
 
             if (min && (min.width > w || min.height > h)) {
                 // The child's own `min-width` / `min-height` keep its box from
-                // shrinking to the cell, so it can never fit regardless of
-                // fill/anchor — clip it with a cell-sized frame: the frame
-                // takes the cell rect and clips, the child parks at (0, 0)
-                // inside it at its (min-floored) natural size. (A `BOTH`-fill
-                // child resolves to the cell size, masking the overflow, so the
-                // clip decision reads the min directly rather than the resolved
-                // box.)
+                // shrinking to the cell on the overflowing axis, so clip it with
+                // a cell-sized frame. Honour the grid's fill/anchor on whichever
+                // axis the child *does* fit — `resolveBounds` yields the
+                // fill/anchor-placed box — and override only the overflowing axis
+                // to the child's natural extent (its preferred size, falling back
+                // to min) so the content renders at full size up to the clip edge
+                // rather than at a cramped preferred that drops fill. The frame is
+                // anchored at the cell; the child commits at the resolved offset
+                // within it (0 on an overflowing axis, since `resolveBounds`
+                // applies no anchor displacement when the child exceeds the cell).
+                const resolved = this.resolveBounds(component, x, y, w, h, this._defaultFill, this._defaultAnchor);
+                const pref = component.getPreferredSize();
+
+                const childWidth  = min.width  > w ? (pref ? pref.width  : min.width)  : resolved.width;
+                const childHeight = min.height > h ? (pref ? pref.height : min.height) : resolved.height;
+
                 component.setClipFrame(x, y, w, h);
-                this.commitBounds(component, 0, 0, w, h);
+                this.commitBounds(component, resolved.x - x, resolved.y - y, childWidth, childHeight);
             } else {
                 // The child fits: resolve its bounds honouring its own
                 // fill/anchor over the grid defaults, then commit the result so
