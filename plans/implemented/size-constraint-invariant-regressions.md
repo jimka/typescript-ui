@@ -1,5 +1,20 @@
 # Size-Constraint Invariant Regressions — Corrective Implementation Plan
 
+## Implementation outcome — as built
+
+The shipped change diverged from the corrective design described below. Rather than keeping the merged-min commit clamp and fixing each leaf's `min > preferred` inversion, the final model separates **what a component reports upward** from **what it imposes on itself**:
+
+- **Reports stay merged.** `getMinSize`/`getMaxSize` still fold the component's own constraints with the layout-manager-derived ones. `getMaxSize` now merges with `Math.min` (the *tighter* bound) so an explicit `setMaxSize` cap actually binds — which surfaced and required fixing latent `getMaxSize` bugs in **Grid, HBox, VBox, Border, and HFlow** (they summed child *min* widths, took `Math.min` on the cross axis, or — in Border — dropped the centre row entirely; all masked before because the old `Math.max` merge never tightened anything).
+- **Self-clamp splits on component type (the key decision).** `clampWidth`/`clampHeight` clamp a *general* component to its **merged** `[min, max]` (it adheres to its content size), but a **`Panel`** clamps only to its **own explicit** constraints — it fits whatever space it is allocated and clips or scrolls the overflow. Implemented as a protected `Component.clampsToContentSize()` (default `true`), overridden to `false` in `Panel`.
+- **`getPreferredSize` stays own-scoped.** It clamps to the component's own explicit `[min, max]`, not the merged range: clamping it to the merged max would make the layout-gathering recursion re-entrant through `Grid.measureContent` and exponential in tree depth.
+- **The box cross-axis min-floor was removed.** The original edits (3)/(4) `Math.max(height, minSize.height)` floor dogmatically inflated a child back up to its content minimum even when its row/column was shorter, defeating a scrolling/clipping child. The box now assigns the available cross-axis space capped to the child's max and delegates the minimum to the child's own clamp.
+- **Grid clip now honours fill/anchor.** The clip-at-preferred branch resolves fill/anchor on the axis that fits and overrides only the overflowing axis to the child's natural extent.
+- **Leaf inversions were NOT fixed as planned, and the `clipSizing` knob was NOT shipped.** Button/Header/Table were left untouched (the report-vs-self-limit split makes their derived mins harmless); the only leaf source-fix kept is the WindowHeader trailing-button insets, which were genuinely wrong. Grid's clip stays unconditional, now fill/anchor-aware — no `clipSizing` / `GridClipSizing` public surface was added.
+
+The user-facing model is documented in [`docs/concepts/sizing.md`](../docs/concepts/sizing.md) ("Content size vs. allocated size"). The sections below are retained for historical context but describe the superseded "fix the leaves + clipSizing knob" approach.
+
+---
+
 ## Overview
 
 The already-committed `feature/size-constraint-invariant` work (commit [34b7eeb1](../src/typescript/lib/core/Component.ts), docs [d7ba8128](../docs/concepts/sizing.md)) began enforcing `min ≤ preferred ≤ max` honestly: [`Component.getPreferredSize`](../src/typescript/lib/core/Component.ts#L1927) now clamps its resolved size into the **merged** `getMinSize()`/`getMaxSize()`, and [`clampWidth`](../src/typescript/lib/core/Component.ts#L2479)/[`clampHeight`](../src/typescript/lib/core/Component.ts#L2538) re-point from `_options.minSize` to the same merged range. The merged minimum folds in the layout-manager-**derived** minimum ([`Component.getMinSize`](../src/typescript/lib/core/Component.ts#L2005) merges `layoutManager.getMinSize()` via `Math.max`). The codebase carries pre-existing `min > preferred` inversions in those derived minimums that master tolerated only because nothing enforced the floor downward. Enforcing them inflates components (the window header doubled 26→52px) and over-aggressive-min-enforcement breaks the scroll/overflow/clip machinery across six demo panels.
