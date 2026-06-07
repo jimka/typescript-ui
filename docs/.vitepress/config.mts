@@ -151,6 +151,7 @@ export default defineConfig({
                     { text: 'Border',    link: '/layouts/Border' },
                     { text: 'HBox',      link: '/layouts/HBox' },
                     { text: 'VBox',      link: '/layouts/VBox' },
+                    { text: 'HFlow',     link: '/layouts/HFlow' },
                     { text: 'Grid',      link: '/layouts/Grid' },
                     { text: 'Card',      link: '/layouts/Card' },
                     { text: 'Tab',       link: '/layouts/Tab' },
