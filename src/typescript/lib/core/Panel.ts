@@ -285,6 +285,21 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
     }
 
     /**
+     * Overrides {@link Component.clampsToContentSize} to `false`: a panel fits
+     * whatever space its parent's layout manager allocates rather than inflating
+     * itself up to its content-derived minimum. When the laid-out children spill
+     * past that allocation, the overflow clips or — with {@link setAutoScroll}
+     * configured — scrolls. Only an explicit {@link setMinSize} /
+     * {@link setMaxSize} remains a hard floor or ceiling on a panel.
+     *
+     * @returns `false`, so {@link clampWidth} / {@link clampHeight} clamp to the
+     *   panel's own explicit constraints only.
+     */
+    protected clampsToContentSize(): boolean {
+        return false;
+    }
+
+    /**
      * Resets the panel's scroll mode to `"none"`, restoring the inherited
      * `overflow: hidden` clipping behaviour.
      *

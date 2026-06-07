@@ -72,7 +72,7 @@ Explicitly-placed children (those declaring `col` and/or `row`) are reserved fir
 
 ## Clip instead of spill
 
-When a child's minimum size exceeds the cell block assigned to it (for example, a wide button in a narrow `"fixed"` column), the grid wraps the child in a cell-sized clip frame with `overflow: hidden`, so the child is clipped at the cell edge rather than spilling into neighbours — the child keeps its own (min-floored) box; the frame does the clipping. A child in a `"content"` track is never clipped — the track grows to fit it.
+When a child's minimum size exceeds the cell block assigned to it (for example, a wide button in a narrow `"fixed"` column), the grid wraps the child in a cell-sized clip frame with `overflow: hidden`, so the child is clipped at the cell edge rather than spilling into neighbours. The clip is per-axis: on the axis that overflows, the child renders at its natural extent (its preferred size, falling back to its minimum) so the content shows at full size up to the clip edge; on the axis that still fits, the child keeps its normal [fill/anchor](#per-child-fill-and-anchor) placement — so a `FillType.BOTH` child clipped horizontally still fills its cell vertically. A child in a `"content"` track is never clipped — the track grows to fit it.
 
 ## Per-child fill and anchor
 
