@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size } from "~/primitive/Size.js";
-import { BoxMode, BoxOverflowSizing } from "~/layout/HBox.js";
+import { Insets } from "~/primitive/Insets.js";
+import { Component } from "~/core/Component.js";
+import { BoxLayout, BoxLayoutOptions } from "~/layout/BoxLayout.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -18,12 +19,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Layouts
  */
-export interface VBoxOptions extends LayoutManagerOptions {
-    spacing?:         number;
-    stretching?:      boolean;
-    mode?:            BoxMode;
-    overflowSizing?:  BoxOverflowSizing;
-}
+export interface VBoxOptions extends BoxLayoutOptions {}
 
 /**
  * A layout manager that places children in a single vertical column. The
@@ -32,139 +28,9 @@ export interface VBoxOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-class VBox extends LayoutManager {
+class VBox extends BoxLayout {
 
-    private _spacing: number = 5;
-    private _stretching: boolean = false;
-    private _mode: BoxMode = "preferred";
-    private _overflowSizing: BoxOverflowSizing = "preferred";
     private _defaultComponentHeight: number = 100;
-
-    constructor(options?: VBoxOptions) {
-        super();
-
-        if (options) {
-            this.applyOptions(options);
-        }
-    }
-
-    /**
-     * Applies a {@link VBoxOptions} bag, dispatching mode, spacing, and
-     * stretching after the inherited LayoutManager defaults.
-     *
-     * @param options - The options bag carrying the values to apply.
-     *
-     * @remarks `mode` is dispatched before `stretching` so the
-     * mode-dependent stretching default (`true` for `"equal"`, `false` for
-     * `"preferred"`) can be resolved when the options bag does not pass
-     * an explicit `stretching` value.
-     */
-    protected applyOptions(options: VBoxOptions): void {
-        super.applyOptions(options);
-
-        if (options.mode !== undefined) {
-            this.setMode(options.mode);
-        }
-
-        if (options.spacing !== undefined) {
-            this.setComponentSpacing(options.spacing);
-        }
-
-        if (options.stretching !== undefined) {
-            this.setStretching(options.stretching);
-        } else if (options.mode === "equal") {
-            this.setStretching(true);
-        }
-
-        if (options.overflowSizing !== undefined) {
-            this.setOverflowSizing(options.overflowSizing);
-        }
-    }
-
-    /**
-     * Returns the pixel spacing between child components.
-     *
-     * @returns The current spacing in pixels.
-     */
-    getComponentSpacing() {
-        return this._spacing || 0;
-    }
-
-    /**
-     * Sets the pixel spacing between child components.
-     *
-     * @param spacing - Spacing in pixels.
-     */
-    setComponentSpacing(spacing: number) : this {
-        this._spacing = spacing;
-
-        return this;
-    }
-
-    /**
-     * Returns whether children stretch to fill the container width.
-     *
-     * @returns `true` if stretching is enabled.
-     */
-    isStretching() {
-        return this._stretching || false;
-    }
-
-    /**
-     * Sets whether children stretch to fill the container width.
-     *
-     * @param stretching - Pass `true` to enable width stretching.
-     */
-    setStretching(stretching: boolean) : this {
-        this._stretching = !!stretching;
-
-        return this;
-    }
-
-    /**
-     * Returns the current sizing mode along the vertical axis.
-     *
-     * @returns Either `"preferred"` or `"equal"`.
-     */
-    getMode(): BoxMode {
-        return this._mode;
-    }
-
-    /**
-     * Sets the sizing mode along the vertical axis.
-     *
-     * @param mode - `"preferred"` honours each child's preferred height;
-     *   `"equal"` divides the container height equally among children.
-     */
-    setMode(mode: BoxMode): this {
-        this._mode = mode;
-
-        return this;
-    }
-
-    /**
-     * Returns the cell-sizing strategy used when an `"equal"`-mode column
-     * overflows a scrolling host.
-     *
-     * @returns Either `"preferred"` or `"min"`.
-     */
-    getOverflowSizing(): BoxOverflowSizing {
-        return this._overflowSizing;
-    }
-
-    /**
-     * Sets the cell-sizing strategy used when an `"equal"`-mode column overflows
-     * a scrolling host.
-     *
-     * @param overflowSizing - `"preferred"` grows every cell to the tallest
-     *   child's preferred height and scrolls; `"min"` keeps cells at the min
-     *   floor and scrolls at the minimum cell size. See {@link BoxOverflowSizing}.
-     */
-    setOverflowSizing(overflowSizing: BoxOverflowSizing): this {
-        this._overflowSizing = overflowSizing;
-
-        return this;
-    }
 
     /**
      * Returns the preferred size. In `"preferred"` mode this is the widest
@@ -402,192 +268,146 @@ class VBox extends LayoutManager {
     }
 
     /**
-     * Places children top-to-bottom. In `"preferred"` mode each child takes
-     * its preferred height (with `weight` cells dividing the remainder).
-     * In `"equal"` mode the container height is divided equally among
-     * children, clamped to the largest child's min height.
-     *
-     * @remarks When `stretching` is enabled, each child's width is clamped
-     * to its max size rather than its preferred size. Children without a
-     * preferred size fall back to `defaultComponentHeight` (preferred mode
-     * only). `weight` constraints are honoured only in `"preferred"` mode;
-     * `"equal"` mode silently ignores them.
+     * Lays out the children top-to-bottom, dispatching to `layoutEqualMode` or
+     * `layoutPreferredMode` per the sizing mode after inflating the working
+     * size for any scroll-enabled axis.
      */
-    doLayout() {
-        let container = this.getContainer();
+    doLayout(): void {
+        const container = this.getContainer();
         if (!container) {
             return;
         }
 
-        let containerSize = container.getInnerSize();
-        if (!containerSize) {
+        const innerSize = container.getInnerSize();
+        if (!innerSize) {
             return;
         }
 
-        // Real inner size, captured before the overflow inflation below may
-        // replace `containerSize` with the (larger) min total. Equal mode needs
-        // the true viewport to decide whether the column actually overflows.
-        const innerSize = containerSize;
+        const components      = container.getComponents();
+        const containerInsets = container.getContentInsets();
+        const spacing         = this.getComponentSpacing();
 
-        let containerInsets = container.getContentInsets();
-        let components = container.getComponents();
-        let spacing = this.getComponentSpacing();
-
-        // Universal scroll: see HBox.doLayout for the rationale. Inflates the
-        // working size to the children's combined minSize on the axes the host
-        // has marked as overflowing so trailing children can land past
-        // `innerSize` and trigger the host's CSS `overflow: auto`.
-        if (this.isOverflowingX() || this.isOverflowingY()) {
-            const totalMin = this.computeTotalMinSize();
-            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
-            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
-
-            containerSize = { width: w, height: h };
-        }
+        // Universal scroll: when the host has opted into per-axis overflow, lay
+        // out against the children's combined minSize so trailing children land
+        // past the viewport and the host's CSS `overflow: auto` scrolls.
+        // `innerSize` stays the real viewport for equal mode's overflow test.
+        const containerSize = this.inflateForOverflow(innerSize);
 
         if (this._mode === "equal") {
-            // Equal-mode: divide the container height equally among children,
-            // clamped to a per-cell floor. The tallest child's min height and
-            // preferred height drive that floor (see the cases below).
-            let maxChildMinHeight = 0;
-            let maxChildPreferredHeight = 0;
-
-            for (const component of components) {
-                const min = component.getMinSize();
-                if (min) {
-                    maxChildMinHeight = Math.max(maxChildMinHeight, min.height);
-                }
-
-                const pref = component.getPreferredSize();
-                if (pref) {
-                    maxChildPreferredHeight = Math.max(maxChildPreferredHeight, pref.height);
-                }
-            }
-
-            // Measure the equal share against the *real* viewport — the working
-            // `containerSize` may have been inflated to the min total above.
-            const equalShare = (innerSize.height - spacing * (components.length - 1)) / components.length;
-
-            // Three cases (see HBox.doLayout for the full rationale):
-            //   1. Share clears the min floor → the column fits; divide equally.
-            //   2. Share below the min floor (overflow), host opted into
-            //      scrolling, and `overflowSizing` is `"preferred"` → tallest
-            //      child's preferred height so cells regain preferred size
-            //      instead of sticking at min when scrolling.
-            //   3. Otherwise (no scroll, or `overflowSizing` is `"min"`) → clamp
-            //      to the min floor; with no scroll the host clips the surplus.
-            const rowHeight = equalShare >= maxChildMinHeight
-                ? equalShare
-                : this.isOverflowingY() && this._overflowSizing === "preferred"
-                    ? Math.max(maxChildMinHeight, maxChildPreferredHeight)
-                    : maxChildMinHeight;
-            const rowWidth  = containerSize.width;
-
-            const x = containerInsets.getLeft();
-            let y = containerInsets.getTop();
-
-            for (let idx in components) {
-                let component = components[idx];
-
-                this.placeComponent(
-                    component,
-                    x,
-                    y,
-                    rowWidth,
-                    rowHeight,
-                    FillType.BOTH
-                );
-
-                y += rowHeight + spacing;
-            }
-
-            this.reserveContentFrame();
-
-            return;
-        }
-
-        // Preferred-mode: each child takes its preferred height; weight cells
-        // split the remainder; non-weighted children shrink proportionally
-        // toward their min sizes when the column overflows.
-        let totalWeight = 0;
-        let fixedPreferredHeight = spacing * (components.length - 1);
-        let fixedMinHeight       = spacing * (components.length - 1);
-
-        for (let idx in components) {
-            let component = components[idx];
-            let constraints = this.getLayoutConstraints(component);
-            let weight = constraints?.weight ?? 0;
-
-            if (weight > 0) {
-                totalWeight += weight;
-            } else {
-                let size = component.getPreferredSize();
-                let minSize = component.getMinSize();
-                // See HBox for the `??` rationale: a component with an
-                // explicit preferred height of 0 must contribute 0, not fall
-                // through to `_defaultComponentHeight`. The minSize.height>0
-                // guard prevents `LayoutManager._defaultMinSize = {0,0}` from
-                // short-circuiting the fallback (which would land children
-                // like a layout-managed Table on a 0 height because the
-                // managers's default minSize technically satisfies `??`).
-                const pref = (size ? size.height : undefined)
-                    ?? (minSize && minSize.height > 0 ? minSize.height : undefined)
-                    ?? this._defaultComponentHeight;
-                const min  = minSize ? minSize.height : 0;
-                fixedPreferredHeight += pref;
-                fixedMinHeight       += min;
-            }
-        }
-
-        // See HBox.doLayout — when non-weighted children's preferred heights
-        // sum past the container's inner height, shrink each toward its
-        // min size proportionally so the last child's bottom lands inside
-        // the container. When the host has opted into vertical overflow
-        // (`Panel.setAutoScroll`), the working `containerSize.height` was
-        // already inflated above; children should land at their preferred
-        // heights so the host's CSS `overflow: auto` engages — skip the
-        // shrink in that case.
-        let shrinkRatio = 0;
-        let remainingHeight: number;
-
-        if (fixedPreferredHeight <= containerSize.height || this.isOverflowingY()) {
-            remainingHeight = Math.max(0, containerSize.height - fixedPreferredHeight);
+            this.layoutEqualMode(components, innerSize, containerSize, containerInsets, spacing);
         } else {
-            remainingHeight = 0;
-            const excess     = fixedPreferredHeight - containerSize.height;
-            const shrinkable = fixedPreferredHeight - fixedMinHeight;
-            shrinkRatio = shrinkable > 0 ? Math.min(1, excess / shrinkable) : 1;
+            this.layoutPreferredMode(components, containerSize, containerInsets, spacing);
         }
 
-        let x = containerInsets.getLeft();
-        let y = containerInsets.getTop();
+        this.reserveContentFrame();
+    }
 
-        for (let idx in components) {
-            let component = components[idx];
-            let constraints = this.getLayoutConstraints(component);
-            let weight = constraints?.weight ?? 0;
+    /**
+     * Places children in equal-height cells stacked top-to-bottom. Every cell
+     * takes the same height (see {@link VBox.computeEqualCellHeight}) and the
+     * full container width.
+     *
+     * @param components - The children to place, in order.
+     * @param innerSize - The host's real inner size (pre-inflation), used to
+     *   measure the equal share against the true viewport.
+     * @param containerSize - The working size, possibly inflated for overflow.
+     * @param insets - The container's content insets.
+     * @param spacing - Inter-child spacing in pixels.
+     */
+    private layoutEqualMode(components: Component[], innerSize: Size, containerSize: Size, insets: Insets, spacing: number): void {
+        const cellHeight = this.computeEqualCellHeight(components, innerSize.height, spacing);
+        const cellWidth  = containerSize.width;
 
-            let size = component.getPreferredSize();
-            let minSize = component.getMinSize();
-            let maxSize = component.getMaxSize();
+        const x = insets.getLeft();
+        let y = insets.getTop();
+
+        for (const component of components) {
+            this.placeComponent(component, x, y, cellWidth, cellHeight, FillType.BOTH);
+
+            y += cellHeight + spacing;
+        }
+    }
+
+    /**
+     * Computes the shared cell height for equal mode: the equal share of the
+     * inner height, floored at the tallest child's min height.
+     *
+     * @param components - The children sharing the column.
+     * @param innerHeight - The host's real inner height (pre-inflation).
+     * @param spacing - Inter-child spacing in pixels.
+     * @returns The height every equal-mode cell receives.
+     *
+     * @remarks Three cases drive the floor: (1) the share clears the tallest
+     * child's min height → the column fits, divide equally; (2) the share is
+     * below the min floor, the host scrolls on this axis, and `overflowSizing`
+     * is `"preferred"` → every cell takes the tallest child's preferred height
+     * so cells regain preferred size instead of sticking at min while
+     * scrolling; (3) otherwise → clamp to the min floor (a non-scrolling host's
+     * `overflow: hidden` clips the surplus).
+     */
+    private computeEqualCellHeight(components: Component[], innerHeight: number, spacing: number): number {
+        let maxChildMinHeight = 0;
+        let maxChildPreferredHeight = 0;
+
+        for (const component of components) {
+            const min = component.getMinSize();
+            if (min) {
+                maxChildMinHeight = Math.max(maxChildMinHeight, min.height);
+            }
+
+            const pref = component.getPreferredSize();
+            if (pref) {
+                maxChildPreferredHeight = Math.max(maxChildPreferredHeight, pref.height);
+            }
+        }
+
+        const equalShare = (innerHeight - spacing * (components.length - 1)) / components.length;
+
+        if (equalShare >= maxChildMinHeight) {
+            return equalShare;
+        }
+
+        if (this.isOverflowingY() && this._overflowSizing === "preferred") {
+            return Math.max(maxChildMinHeight, maxChildPreferredHeight);
+        }
+
+        return maxChildMinHeight;
+    }
+
+    /**
+     * Places children at their preferred heights stacked top-to-bottom. Weight
+     * cells split the space left after the non-weighted children; when the
+     * column overflows, the non-weighted children shrink proportionally toward
+     * their min heights. Children keep their preferred width, or fill the
+     * container width when stretching.
+     *
+     * @param components - The children to place, in order.
+     * @param containerSize - The working size, possibly inflated for overflow.
+     * @param insets - The container's content insets.
+     * @param spacing - Inter-child spacing in pixels.
+     */
+    private layoutPreferredMode(components: Component[], containerSize: Size, insets: Insets, spacing: number): void {
+        const { totalWeight, fixedPreferred, fixedMin } = this.measureFixedHeights(components, spacing);
+
+        const { remaining: remainingHeight, shrinkRatio } = this.computeShrink(
+            fixedPreferred,
+            fixedMin,
+            containerSize.height,
+            this.isOverflowingY()
+        );
+
+        const x = insets.getLeft();
+        let y = insets.getTop();
+
+        for (const component of components) {
+            const weight  = this.getLayoutConstraints(component)?.weight ?? 0;
+            const size    = component.getPreferredSize();
+            const minSize = component.getMinSize();
+            const maxSize = component.getMaxSize();
+
+            const height = this.resolveChildHeight(size, minSize, maxSize, weight, totalWeight, remainingHeight, shrinkRatio);
 
             let width: number;
-            let height: number;
-
-            if (weight > 0 && totalWeight > 0) {
-                height = (weight / totalWeight) * remainingHeight;
-            } else {
-                // See the fixed-total loop above for why `??` and the
-                // `minSize.height > 0` guard.
-                const pref = (size ? size.height : undefined)
-                    ?? (minSize && minSize.height > 0 ? minSize.height : undefined)
-                    ?? this._defaultComponentHeight;
-                const min  = minSize ? minSize.height : 0;
-                height = pref - shrinkRatio * (pref - min);
-            }
-
-            if (minSize) height = Math.max(height, minSize.height);
-            if (maxSize) height = Math.min(height, maxSize.height);
 
             if (!size || this.isStretching()) {
                 width = maxSize ? Math.min(maxSize.width, containerSize.width) : containerSize.width;
@@ -595,20 +415,101 @@ class VBox extends LayoutManager {
                 width = Math.min(size.width, containerSize.width);
             }
 
-            this.placeComponent(
-                component,
-                x,
-                y,
-                width,
-                height,
-                FillType.BOTH
-            );
+            this.placeComponent(component, x, y, width, height, FillType.BOTH);
 
             y += component.getHeight();
             y += spacing;
         }
+    }
 
-        this.reserveContentFrame();
+    /**
+     * Sums the non-weighted children's preferred and minimum heights (each
+     * including inter-child spacing) and the total weight of the weight cells.
+     *
+     * @param components - The children sharing the column.
+     * @param spacing - Inter-child spacing in pixels.
+     * @returns `totalWeight` of the weight cells, plus the `fixedPreferred` and
+     *   `fixedMin` height totals of the non-weighted children.
+     */
+    private measureFixedHeights(components: Component[], spacing: number): { totalWeight: number; fixedPreferred: number; fixedMin: number } {
+        let totalWeight = 0;
+        let fixedPreferred = spacing * (components.length - 1);
+        let fixedMin       = spacing * (components.length - 1);
+
+        for (const component of components) {
+            const weight = this.getLayoutConstraints(component)?.weight ?? 0;
+
+            if (weight > 0) {
+                totalWeight += weight;
+            } else {
+                const size    = component.getPreferredSize();
+                const minSize = component.getMinSize();
+
+                fixedPreferred += this.preferredChildHeight(size, minSize);
+                fixedMin       += minSize ? minSize.height : 0;
+            }
+        }
+
+        return { totalWeight, fixedPreferred, fixedMin };
+    }
+
+    /**
+     * Resolves a non-weighted child's preferred height, falling back through min
+     * height to `_defaultComponentHeight`.
+     *
+     * @param size - The child's preferred size, or `null`.
+     * @param minSize - The child's minimum size, or `null`.
+     * @returns The height the child contributes before shrinking.
+     *
+     * @remarks Nullish-coalesce, not `||`: a component with an explicit
+     * preferred height of 0 must contribute 0, not fall through to
+     * `_defaultComponentHeight`. The `minSize.height > 0` guard prevents
+     * `LayoutManager._defaultMinSize = {0,0}` from short-circuiting the chain
+     * into a 0 height (which would land a layout-managed Table on a 0 height
+     * even though no preferred size was set).
+     */
+    private preferredChildHeight(size: Size | null, minSize: Size | null): number {
+        return (size ? size.height : undefined)
+            ?? (minSize && minSize.height > 0 ? minSize.height : undefined)
+            ?? this._defaultComponentHeight;
+    }
+
+    /**
+     * Resolves a child's final height within the column, clamped to its
+     * min/max. Weight cells take a share of `remainingHeight`; non-weighted
+     * children take their preferred height reduced by the shrink ratio toward
+     * their min height.
+     *
+     * @param size - The child's preferred size, or `null`.
+     * @param minSize - The child's minimum size, or `null`.
+     * @param maxSize - The child's maximum size, or `null`.
+     * @param weight - The child's weight constraint (0 when non-weighted).
+     * @param totalWeight - The summed weight of all weight cells.
+     * @param remainingHeight - The space available to weight cells.
+     * @param shrinkRatio - How far (0–1) non-weighted children shrink to min.
+     * @returns The child's height.
+     */
+    private resolveChildHeight(size: Size | null, minSize: Size | null, maxSize: Size | null, weight: number, totalWeight: number, remainingHeight: number, shrinkRatio: number): number {
+        let height: number;
+
+        if (weight > 0 && totalWeight > 0) {
+            height = (weight / totalWeight) * remainingHeight;
+        } else {
+            const pref = this.preferredChildHeight(size, minSize);
+            const min  = minSize ? minSize.height : 0;
+
+            height = pref - shrinkRatio * (pref - min);
+        }
+
+        if (minSize) {
+            height = Math.max(height, minSize.height);
+        }
+
+        if (maxSize) {
+            height = Math.min(height, maxSize.height);
+        }
+
+        return height;
     }
 }
 
