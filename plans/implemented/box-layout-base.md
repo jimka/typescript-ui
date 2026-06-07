@@ -63,10 +63,13 @@ export interface BoxLayoutOptions extends LayoutManagerOptions {
 }
 
 export abstract class BoxLayout extends LayoutManager {
-    private _spacing: number = 5;
-    private _stretching: boolean = false;
-    private _mode: BoxMode = "preferred";
-    private _overflowSizing: BoxOverflowSizing = "preferred";
+    // `protected`, not `private`: the subclasses' geometric methods read these
+    // fields directly (`this._mode === "equal"`, `this._spacing`, etc.), so the
+    // backing fields must be visible to HBox/VBox.
+    protected _spacing: number = 5;
+    protected _stretching: boolean = false;
+    protected _mode: BoxMode = "preferred";
+    protected _overflowSizing: BoxOverflowSizing = "preferred";
 
     constructor(options?: BoxLayoutOptions);
 
