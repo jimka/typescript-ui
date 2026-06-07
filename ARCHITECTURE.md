@@ -53,6 +53,35 @@ If a layout manager can't express what a component needs:
 
 No other values are exposed on the `Position` enum. `relative` / `sticky` / `initial` / `inherit` are deliberately absent.
 
+## Size constraints: who is responsible for what
+
+Every `Component` carries three size hints per axis — minimum, preferred, maximum — bound by the invariant `min ≤ preferred ≤ max`. Three distinct responsibilities keep them honest; conflating them is what historically produced "mysteriously collapsed" or "won't scroll" layouts. The consumer-facing version is [`docs/concepts/sizing.md`](docs/concepts/sizing.md).
+
+- **Reporting — the layout manager's job.** A container's effective min/preferred/max is *derived from its children* by its `LayoutManager`'s `getMinSize` / `getPreferredSize` / `getMaxSize`. `Component` merges the manager's result with the component's own explicit `setMinSize` / `setMaxSize`: `Math.max` for the minimum, `Math.min` for the maximum — the tighter bound on each side. These reports flow *upward* — a parent reads them to size the child and to decide whether to scroll. The aggregation contract a manager must follow: **sum** child extents along its main axis, take the **max** along its cross axis, treat a `null` or sentinel child extent as **unbounded**, and saturate an unbounded axis rather than letting the sentinel overflow.
+- **Self-clamping — the `Component`'s job.** `setWidth` / `setHeight` run `clampWidth` / `clampHeight`, the single place a component refuses a size outside its bounds. *Which* bounds bind depends on whether it is a `Panel` (see below).
+- **Placement — the layout manager's job.** `doLayout` assigns each child a position and size within the space the parent gave it, honouring the per-component constraints (`fill`, `anchor`, `weight`, …).
+
+### The rules
+
+1. A component must never allow itself to be sized outside of its bounds.
+2. A container must provide accurate min/preferred/max sizes derived from how its child components are laid out; when it uses a layout manager, the manager is responsible for calculating these sizes.
+3. A layout manager that does not report accurate min/preferred/max sizes is a **bug** — fixed at the manager, never papered over downstream.
+4. A layout manager lays out its components according to its own function and the per-component layout constraints.
+5. A layout manager must never stretch a component beyond its max size (see rule 1).
+6. A layout manager must never compress a component below its min size (see rule 1) — subject to the panel carve-out below.
+7. If a component's minimum size is larger than the space its layout manager can assign it, the component's size is set to its preferred size and the component clips so it doesn't spill over; if it has no preferred size, the layout manager sizes it sensibly, to the best of its ability.
+
+### General component vs. `Panel`
+
+Rules 1 and 6 turn on *which* minimum binds a component's committed size — and that is the one place the two kinds diverge:
+
+- A **general `Component`** clamps itself to its **merged, content-derived** `[min, max]`. It never collapses below the size its children need to render — a custom container you build keeps a content-based minimum. If its parent gives it less room, it overflows, and an ancestor scroll host carries the overflow.
+- A **`Panel`** clamps only to its **own explicit** `setMinSize` / `setMaxSize`. It fits whatever space its parent allocates and lets the overflow clip — or scroll, when `setAutoScroll` is configured — rather than inflating back to its content size. This is the carve-out that lets a tall form sit inside a short scrolling panel.
+
+The switch is the protected `Component.clampsToContentSize()` — `true` by default, overridden to `false` in `Panel`. In both cases an explicit `setMinSize` / `setMaxSize` remains a hard floor and ceiling; the difference is only whether the *layout-derived* minimum also binds.
+
+One consequence for rules 6 and 7: because a manager may legitimately hand a `Panel` less than its content-minimum (the panel scrolls or clips), a manager must **not** itself floor a child up to that content-minimum. It assigns the available space, capped to the child's maximum, and leaves the minimum to the child's own clamp — which applies it for a general child and skips it for a panel.
+
 ## Minimize direct DOM access
 
 Before `element.style.*`, `document.createElement`, or `element.addEventListener`, check for a Component setter or `Event` API. Raw DOM is for things the framework has no API for.
