@@ -463,11 +463,33 @@ class HBox extends BoxLayout {
 
             widths.push(this.resolveChildWidth(size, minSize, maxSize, weight, totalWeight, remainingWidth, shrinkRatio));
 
+            let height: number;
+
             if (!size || this.isStretching()) {
-                heights.push(maxSize ? Math.min(maxSize.height, containerSize.height) : containerSize.height);
+                height = maxSize ? Math.min(maxSize.height, containerSize.height) : containerSize.height;
             } else {
-                heights.push(Math.min(size.height, containerSize.height));
+                height = Math.min(size.height, containerSize.height);
             }
+
+            // Cross-axis floor: the container cap above can drop the height below
+            // the child's own minimum. Under the clip-at-preferred rule, when the
+            // row overflows vertically and overflowSizing is "preferred" (the
+            // default), lift to the child's PREFERRED height (null-preferred
+            // falls back to min); otherwise lift to the min floor (the "min"
+            // escape hatch and the non-overflowing path). Re-apply max last so it
+            // always caps.
+            if (this.isOverflowingY() && this._overflowSizing === "preferred") {
+                const floor = size ? size.height : (minSize ? minSize.height : 0);
+                height = Math.max(height, floor);
+            } else if (minSize) {
+                height = Math.max(height, minSize.height);
+            }
+
+            if (maxSize) {
+                height = Math.min(height, maxSize.height);
+            }
+
+            heights.push(height);
 
             baselines.push(component.getBaseline());
         }

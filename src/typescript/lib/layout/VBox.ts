@@ -415,6 +415,24 @@ class VBox extends BoxLayout {
                 width = Math.min(size.width, containerSize.width);
             }
 
+            // Cross-axis floor: the container cap above can drop the width below
+            // the child's own minimum. Under the clip-at-preferred rule, when the
+            // column overflows horizontally and overflowSizing is "preferred" (the
+            // default), lift to the child's PREFERRED width (null-preferred falls
+            // back to min); otherwise lift to the min floor (the "min" escape
+            // hatch and the non-overflowing path). Re-apply max last so it always
+            // caps.
+            if (this.isOverflowingX() && this._overflowSizing === "preferred") {
+                const floor = size ? size.width : (minSize ? minSize.width : 0);
+                width = Math.max(width, floor);
+            } else if (minSize) {
+                width = Math.max(width, minSize.width);
+            }
+
+            if (maxSize) {
+                width = Math.min(width, maxSize.width);
+            }
+
             this.placeComponent(component, x, y, width, height, FillType.BOTH);
 
             y += component.getHeight();
