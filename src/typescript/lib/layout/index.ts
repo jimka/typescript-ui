@@ -22,6 +22,8 @@ export { HBox } from '~/layout/HBox.js';
 export type { HBoxOptions } from '~/layout/HBox.js';
 export { VBox } from '~/layout/VBox.js';
 export type { VBoxOptions } from '~/layout/VBox.js';
+export { HFlow } from '~/layout/HFlow.js';
+export type { HFlowOptions, FlowUniformity } from '~/layout/HFlow.js';
 export { Grid } from '~/layout/Grid.js';
 export type { GridOptions } from '~/layout/Grid.js';
 export { GridConstraints } from '~/layout/GridConstraints.js';
