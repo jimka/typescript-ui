@@ -297,16 +297,9 @@ class HBox extends BoxLayout {
     }
 
     /**
-     * Places children left-to-right. In `"preferred"` mode each child takes
-     * its preferred width (with `weight` cells dividing the remainder).
-     * In `"equal"` mode the container width is divided equally among
-     * children, clamped to the largest child's min width.
-     *
-     * @remarks When `stretching` is enabled, each child's height is clamped
-     * to its max size rather than its preferred size. Children without a
-     * preferred size fall back to `defaultComponentWidth` (preferred mode
-     * only). `weight` constraints are honoured only in `"preferred"` mode;
-     * `"equal"` mode silently ignores them.
+     * Lays out the children left-to-right, dispatching to `layoutEqualMode` or
+     * `layoutPreferredMode` per the sizing mode after inflating the working
+     * size for any scroll-enabled axis.
      */
     doLayout(): void {
         const container = this.getContainer();
