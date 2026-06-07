@@ -285,7 +285,10 @@ export abstract class LayoutManager extends BaseObject {
         let height: number;
 
         fill = ((layoutConstraints ? layoutConstraints.fill : undefined) || fill || FillType.NONE) as FillType;
-        anchor = ((layoutConstraints ? layoutConstraints.anchor : undefined) || anchor || AnchorType.CENTER) as AnchorType;
+        // `??`, not `||`: AnchorType.NORTHWEST is 0, which `||` would discard as
+        // falsy and silently fall through to CENTER. Only null/undefined should
+        // mean "unset" here.
+        anchor = ((layoutConstraints ? layoutConstraints.anchor : undefined) ?? anchor ?? AnchorType.CENTER) as AnchorType;
 
         if (fill == FillType.BOTH) {
             width = maxWidth;
