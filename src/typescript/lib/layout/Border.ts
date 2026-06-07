@@ -586,7 +586,14 @@ class Border extends LayoutManager {
     }
 
     /**
-     * Computes the maximum size from the occupied border regions.
+     * Computes the maximum size the border layout can usefully occupy. The five
+     * regions stack as three rows that share one width: north (full width), the
+     * middle row of west + center + east (summed across, tallest of the three
+     * down), and south (full width). The width is capped to the narrowest row
+     * that exists — a region cannot usefully widen the border past where its own
+     * row stops growing — and the height is the sum of the three row heights.
+     * An absent region imposes no constraint; an unbounded region contributes
+     * the `Number.MAX_SAFE_INTEGER` sentinel.
      *
      * @returns The maximum `{width, height}` or `null` if no container is attached.
      */
@@ -601,58 +608,45 @@ class Border extends LayoutManager {
         let outerWidth = perimiterSize.left + perimiterSize.right;
         let outerHeight = perimiterSize.top + perimiterSize.bottom;
 
-        let innerWidth = Number.MAX_SAFE_INTEGER;
-        let innerHeight = Number.MAX_SAFE_INTEGER;
+        const INF = Number.MAX_SAFE_INTEGER;
+        const maxOf = (component: Component | null): Size | null =>
+            component ? (component.getMaxSize() ?? { width: INF, height: INF }) : null;
 
+        const north  = maxOf(this._northComponent);
+        const south  = maxOf(this._southComponent);
+        const west   = maxOf(this._westComponent);
+        const center = maxOf(this._centerComponent);
+        const east   = maxOf(this._eastComponent);
+
+        // Middle row: west / center / east sit side by side — widths sum, the
+        // row height is the tallest region.
         let middleWidth = 0;
         let middleHeight = 0;
+        let hasMiddle = false;
 
-        if (this._northComponent) {
-            let size = this._northComponent.getMaxSize();
-            if (size) {
-                innerWidth = Math.min(innerWidth, size.width);
-                innerHeight += size.height;
+        for (const region of [west, center, east]) {
+            if (region) {
+                hasMiddle = true;
+                middleWidth += region.width;
+                middleHeight = Math.max(middleHeight, region.height);
             }
         }
 
-        if (this._southComponent) {
-            let size = this._southComponent.getMaxSize();
-            if (size) {
-                innerWidth = Math.min(innerWidth, size.width);
-                innerHeight += size.height;
-            }
-        }
+        // Width is shared by every row; cap to the narrowest existing row.
+        let innerWidth = INF;
+        if (north)     { innerWidth = Math.min(innerWidth, north.width); }
+        if (south)     { innerWidth = Math.min(innerWidth, south.width); }
+        if (hasMiddle) { innerWidth = Math.min(innerWidth, middleWidth); }
 
-        if (this._westComponent) {
-            let size = this._westComponent.getMaxSize();
-            if (size) {
-                middleWidth += size.width;
-                middleHeight += Math.min(middleHeight, size.height);
-            }
-        }
-
-        if (this._centerComponent) {
-            let size = this._centerComponent.getMaxSize();
-            if (size) {
-                middleWidth += size.width;
-                middleHeight += Math.min(middleHeight, size.height);
-            }
-        }
-
-        if (this._eastComponent) {
-            let size = this._eastComponent.getMaxSize();
-            if (size) {
-                middleWidth += size.width;
-                middleHeight += Math.min(middleHeight, size.height);
-            }
-        }
-
-        innerWidth = Math.min(innerWidth, middleWidth);
-        innerHeight += middleHeight;
+        // Height stacks the three rows.
+        let innerHeight = 0;
+        if (north)     { innerHeight += north.height; }
+        if (hasMiddle) { innerHeight += middleHeight; }
+        if (south)     { innerHeight += south.height; }
 
         return {
-            width: innerWidth + outerWidth,
-            height: innerHeight + outerHeight
+            width:  Math.min(innerWidth  + outerWidth,  INF),
+            height: Math.min(innerHeight + outerHeight, INF)
         };
     }
 

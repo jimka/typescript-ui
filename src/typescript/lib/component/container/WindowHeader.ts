@@ -85,9 +85,9 @@ class WindowHeader extends Header {
             { suffix: ":active",             styles: { backgroundColor: "var(--ts-ui-titlebar-btn-active-bg, rgba(0, 0, 0, 0.16))" } },
         ];
 
-        this._minimizeButton = new Button({ glyph: "window-minimize", chromeless: true, styleRules: trailingButtonStyleRules });
-        this._maximizeButton = new Button({ glyph: "window-maximize", chromeless: true, styleRules: trailingButtonStyleRules });
-        this._exitButton     = new Button({ glyph: "xmark",           chromeless: true, styleRules: trailingButtonStyleRules });
+        this._minimizeButton = new Button({ glyph: "window-minimize", chromeless: true, styleRules: trailingButtonStyleRules, insets: new Insets(2,2,2,2) });
+        this._maximizeButton = new Button({ glyph: "window-maximize", chromeless: true, styleRules: trailingButtonStyleRules, insets: new Insets(2,2,2,2) });
+        this._exitButton     = new Button({ glyph: "xmark",           chromeless: true, styleRules: trailingButtonStyleRules, insets: new Insets(2,2,2,2) });
 
         this._trailingRow = new Component();
         this._trailingRow.setLayoutManager(new HBox({ spacing: 2 }));

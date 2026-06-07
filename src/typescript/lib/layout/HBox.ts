@@ -187,9 +187,13 @@ class HBox extends BoxLayout {
     }
 
     /**
-     * Returns the maximum size. In `"preferred"` mode width is the sum of
-     * child widths plus spacing, height is the minimum of child max heights.
-     * In `"equal"` mode width is `count * (minChildMaxWidth + spacing) - spacing`.
+     * Returns the maximum size the row can usefully occupy. Along the main axis
+     * (width) it sums the children's *maximum* widths plus spacing; in `"equal"`
+     * mode it is `count * maxChildMaxWidth` plus spacing, since every cell shares
+     * the widest child's allowance. The cross axis (height) takes the *largest*
+     * child maximum — the tallest a child permits the row to grow to. A child
+     * whose maximum is `null` or at the unbounded sentinel makes that axis
+     * unbounded (`Number.MAX_SAFE_INTEGER`).
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
@@ -202,41 +206,67 @@ class HBox extends BoxLayout {
         let perimiterSize = container.getPerimiterSize();
         let components = container.getComponents();
         let width = perimiterSize.left + perimiterSize.right;
-        let height = Number.MAX_SAFE_INTEGER;
+        let height = 0;
+        let widthUnbounded = false;
+        let heightUnbounded = false;
 
         if (this._mode === "equal") {
-            let minChildMaxWidth = Number.MAX_SAFE_INTEGER;
+            let maxChildMaxWidth = 0;
 
-            for (let idx in components) {
-                let component = components[idx];
-                let size = component.getMaxSize();
+            for (const component of components) {
+                const size = component.getMaxSize();
 
-                if (size) {
-                    minChildMaxWidth = Math.min(minChildMaxWidth, size.width);
-                    height = Math.min(height, size.height);
+                if (!size) {
+                    widthUnbounded = true;
+                    heightUnbounded = true;
+                    continue;
+                }
+
+                if (size.width >= Number.MAX_SAFE_INTEGER) {
+                    widthUnbounded = true;
+                } else {
+                    maxChildMaxWidth = Math.max(maxChildMaxWidth, size.width);
+                }
+
+                if (size.height >= Number.MAX_SAFE_INTEGER) {
+                    heightUnbounded = true;
+                } else {
+                    height = Math.max(height, size.height);
                 }
             }
 
-            width += components.length * (minChildMaxWidth + this._spacing) - this._spacing;
+            width += components.length * maxChildMaxWidth + this._spacing * Math.max(0, components.length - 1);
         } else {
-            for (let idx in components) {
-                let component = components[idx];
-                let size = component.getMinSize();
+            for (const component of components) {
+                const size = component.getMaxSize();
 
-                if (size) {
+                if (!size) {
+                    widthUnbounded = true;
+                    heightUnbounded = true;
+                    continue;
+                }
+
+                if (size.width >= Number.MAX_SAFE_INTEGER) {
+                    widthUnbounded = true;
+                } else {
                     width += size.width;
-                    height = Math.min(height, size.height);
+                }
+
+                if (size.height >= Number.MAX_SAFE_INTEGER) {
+                    heightUnbounded = true;
+                } else {
+                    height = Math.max(height, size.height);
                 }
             }
 
-            width += this._spacing * (components.length - 1);
+            width += this._spacing * Math.max(0, components.length - 1);
         }
 
         height += perimiterSize.top + perimiterSize.bottom;
 
         return {
-            width: width,
-            height: height
+            width:  widthUnbounded  ? Number.MAX_SAFE_INTEGER : width,
+            height: heightUnbounded ? Number.MAX_SAFE_INTEGER : height
         };
     }
 
@@ -463,26 +493,24 @@ class HBox extends BoxLayout {
 
             widths.push(this.resolveChildWidth(size, minSize, maxSize, weight, totalWeight, remainingWidth, shrinkRatio));
 
+            // Cross-axis (height): give the child the row's available height —
+            // the full inner height when stretching or sizeless, otherwise its
+            // preferred height capped to the row. Cap to the child's maximum, but
+            // do NOT floor to its minimum: enforcing the minimum here would
+            // dogmatically inflate a child back up to its content size even when
+            // the row is shorter, defeating a scrolling/clipping child. The
+            // child's own setHeight → clampHeight applies its minimum (its
+            // content minimum for a general component, or nothing for a Panel,
+            // which fits its allocation and scrolls). When the host opts into
+            // vertical scroll, `containerSize` is already inflated to the content
+            // extent upstream, so `min(pref, containerSize)` still yields the full
+            // height without a floor here.
             let height: number;
 
             if (!size || this.isStretching()) {
-                height = maxSize ? Math.min(maxSize.height, containerSize.height) : containerSize.height;
+                height = containerSize.height;
             } else {
                 height = Math.min(size.height, containerSize.height);
-            }
-
-            // Cross-axis floor: the container cap above can drop the height below
-            // the child's own minimum. Under the clip-at-preferred rule, when the
-            // row overflows vertically and overflowSizing is "preferred" (the
-            // default), lift to the child's PREFERRED height (null-preferred
-            // falls back to min); otherwise lift to the min floor (the "min"
-            // escape hatch and the non-overflowing path). Re-apply max last so it
-            // always caps.
-            if (this.isOverflowingY() && this._overflowSizing === "preferred") {
-                const floor = size ? size.height : (minSize ? minSize.height : 0);
-                height = Math.max(height, floor);
-            } else if (minSize) {
-                height = Math.max(height, minSize.height);
             }
 
             if (maxSize) {
