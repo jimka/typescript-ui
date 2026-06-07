@@ -326,18 +326,10 @@ class HBox extends BoxLayout {
         let components = container.getComponents();
         let spacing = this.getComponentSpacing();
 
-        // Universal scroll: when the host enabled per-axis overflow and the
-        // children's combined minSize exceeds the host's inner rect on that
-        // axis, lay out against the minSize total instead of clamping. The
-        // trailing children then land past `innerSize` and the host's CSS
-        // `overflow: auto` produces the scrollbar.
-        if (this.isOverflowingX() || this.isOverflowingY()) {
-            const totalMin = this.computeTotalMinSize();
-            const w = this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width;
-            const h = this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height;
-
-            containerSize = { width: w, height: h };
-        }
+        // Universal scroll: when the host has opted into per-axis overflow, lay
+        // out against the children's combined minSize so trailing children land
+        // past the viewport and the host's CSS `overflow: auto` scrolls.
+        containerSize = this.inflateForOverflow(containerSize);
 
         if (this._mode === "equal") {
             // Equal-mode: divide the container width equally among children,
@@ -490,27 +482,17 @@ class HBox extends BoxLayout {
             }
         }
 
-        // When non-weighted children's preferred widths sum past the
-        // container's inner width, shrink each non-weighted child toward its
-        // min size proportionally — preserves visual balance and ensures the
-        // last child's right edge lands inside the container (so a trailing
-        // child's own scrollbar isn't clipped by an `overflow: hidden`
-        // ancestor). Weighted children get whatever is left over. When the
-        // host has opted into horizontal overflow (`Panel.setAutoScroll`),
-        // the working `containerSize.width` was already inflated above;
-        // children should land at their preferred widths so the host's CSS
-        // `overflow: auto` engages — skip the shrink in that case.
-        let shrinkRatio = 0;
-        let remainingWidth: number;
-
-        if (fixedPreferredWidth <= containerSize.width || this.isOverflowingX()) {
-            remainingWidth = Math.max(0, containerSize.width - fixedPreferredWidth);
-        } else {
-            remainingWidth = 0;
-            const excess     = fixedPreferredWidth - containerSize.width;
-            const shrinkable = fixedPreferredWidth - fixedMinWidth;
-            shrinkRatio = shrinkable > 0 ? Math.min(1, excess / shrinkable) : 1;
-        }
+        // Non-weighted children shrink toward their min widths when their
+        // preferred widths overflow the row, so the last child's right edge
+        // lands inside the container; weighted children share the remainder.
+        // The shrink is skipped when the host scrolls on this axis (the working
+        // width was already inflated above). See BoxLayout.computeShrink.
+        const { remaining: remainingWidth, shrinkRatio } = this.computeShrink(
+            fixedPreferredWidth,
+            fixedMinWidth,
+            containerSize.width,
+            this.isOverflowingX()
+        );
 
         const widths: number[] = [];
         const heights: number[] = [];
