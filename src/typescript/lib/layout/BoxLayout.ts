@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { Size } from "~/primitive/Size.js";
 
 /**
  * Sizing strategy along an {@link HBox} or {@link VBox}'s main axis.
@@ -206,5 +207,68 @@ export abstract class BoxLayout extends LayoutManager {
         this._overflowSizing = overflowSizing;
 
         return this;
+    }
+
+    /**
+     * Computes the children's combined minSize along this manager's geometry.
+     * Implemented per-axis by each subclass; consumed here by
+     * {@link BoxLayout.inflateForOverflow}.
+     *
+     * @returns The total min-size of the children.
+     */
+    protected abstract computeTotalMinSize(): Size;
+
+    /**
+     * Inflates a working container size to the children's combined minSize on
+     * whichever axes the host has marked as overflowing (`Panel.setAutoScroll`),
+     * so trailing children land past the host's inner rect and its CSS
+     * `overflow: auto` produces the scrollbar. Axes the host has not opted into
+     * keep the original extent and clamp as before.
+     *
+     * @param containerSize - The host's real inner size.
+     * @returns The working size to lay out against — the original when neither
+     *   axis overflows, otherwise inflated to the min total on the active axes.
+     */
+    protected inflateForOverflow(containerSize: Size): Size {
+        if (!this.isOverflowingX() && !this.isOverflowingY()) {
+            return containerSize;
+        }
+
+        const totalMin = this.computeTotalMinSize();
+
+        return {
+            width:  this.isOverflowingX() ? Math.max(containerSize.width,  totalMin.width)  : containerSize.width,
+            height: this.isOverflowingY() ? Math.max(containerSize.height, totalMin.height) : containerSize.height,
+        };
+    }
+
+    /**
+     * Resolves how much main-axis space the weight cells share and how hard the
+     * non-weighted children must shrink. When the non-weighted children's
+     * preferred extents fit (or the host scrolls on this axis), nothing shrinks
+     * and the leftover is the weight remainder. Otherwise the children shrink
+     * proportionally toward their min extents so the last child's far edge lands
+     * inside the container.
+     *
+     * @param fixedPreferred - Summed preferred main-axis extent of the
+     *   non-weighted children, including inter-child spacing.
+     * @param fixedMin - Summed minimum main-axis extent of the same children,
+     *   including spacing.
+     * @param available - The working container's inner extent on the main axis.
+     * @param overflowing - Whether the host has opted into scrolling on this
+     *   axis; when `true` the shrink is skipped so the host's CSS overflow
+     *   engages instead.
+     * @returns `remaining` — the main-axis space left for weight cells — and
+     *   `shrinkRatio` — `0` (no shrink) through `1` (shrink fully to min).
+     */
+    protected computeShrink(fixedPreferred: number, fixedMin: number, available: number, overflowing: boolean): { remaining: number; shrinkRatio: number } {
+        if (fixedPreferred <= available || overflowing) {
+            return { remaining: Math.max(0, available - fixedPreferred), shrinkRatio: 0 };
+        }
+
+        const excess     = fixedPreferred - available;
+        const shrinkable = fixedPreferred - fixedMin;
+
+        return { remaining: 0, shrinkRatio: shrinkable > 0 ? Math.min(1, excess / shrinkable) : 1 };
     }
 }
