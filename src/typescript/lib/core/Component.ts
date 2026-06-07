@@ -1940,18 +1940,29 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return null;
         }
 
-        return this.clampPreferredToConstraints(preferredSize, this.getMinSize(), this.getMaxSize());
+        // Clamp against the component's *own* explicit constraints only — not the
+        // merged {@link getMinSize} / {@link getMaxSize}. `getPreferredSize` is a
+        // hot path in the layout-gathering recursion, and the merged maximum runs
+        // {@link Grid.measureContent}, which itself calls children's
+        // `getPreferredSize`; clamping to it here would make the recursion
+        // re-entrant and exponential in tree depth. The merged `[min, max]`
+        // envelope is enforced instead on the committed size, in
+        // {@link clampWidth} / {@link clampHeight}.
+        const ownMin = (this._options.minSize ?? this._defaultOptions.minSize) ?? null;
+        const ownMax = (this._options.maxSize ?? this._defaultOptions.maxSize) ?? null;
+
+        return this.clampPreferredToConstraints(preferredSize, ownMin, ownMax);
     }
 
     /**
-     * Clamps a resolved preferred size into the effective `[min, max]` range on
+     * Clamps a resolved preferred size into the supplied `[min, max]` range on
      * each axis. `min` wins over a smaller `max` (a degenerate `min > max`
      * constraint) and over a smaller `preferred`, because the floor is applied
      * last among the pair — so an explicit minimum is always honoured.
      *
      * @param preferred - The resolved preferred size to clamp.
-     * @param min - The effective minimum size, or null when unconstrained.
-     * @param max - The effective maximum size, or null when unconstrained.
+     * @param min - The minimum size to floor to, or null when unconstrained.
+     * @param max - The maximum size to cap to, or null when unconstrained.
      *
      * @returns The preferred size clamped into `[min, max]` per axis.
      */
@@ -2067,9 +2078,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Returns the effective maximum size: the larger of the component and layout manager maximums.
+     * Returns the effective maximum size: the *tighter* (smaller) of the
+     * component's own maximum and its layout manager's maximum, per axis. A
+     * component may exceed neither its own `setMaxSize` nor the ceiling its
+     * layout manager imposes, so the binding constraint is the smaller of the
+     * two — mirroring how {@link getMinSize} takes the larger (tighter) minimum.
      *
-     * @returns A Size object whose width and height are the element-wise maximums of the component and layout manager maximums.
+     * @returns A Size object whose width and height are the element-wise minimums of the component and layout manager maximums.
      */
     getMaxSize(): Size | null {
         let componentMaxSize = (this._options.maxSize ?? this._defaultOptions.maxSize) ?? null;
@@ -2086,8 +2101,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         if (componentMaxSize) {
             if (layoutMaxSize) {
-                width = Math.max(componentMaxSize.width, layoutMaxSize.width);
-                height = Math.max(componentMaxSize.height, layoutMaxSize.height);
+                width = Math.min(componentMaxSize.width, layoutMaxSize.width);
+                height = Math.min(componentMaxSize.height, layoutMaxSize.height);
             } else {
                 width = componentMaxSize.width;
                 height = componentMaxSize.height;
@@ -2469,20 +2484,45 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Clamps a width value to this component's effective `[minSize.width,
-     * maxSize.width]` range — the merged {@link getMinSize} / {@link getMaxSize},
-     * which folds in the layout manager's own minimum/maximum, not just the
-     * component's `_options`. Used by {@link setWidth}, {@link setHeight}, and
-     * {@link setSize} so that callers cannot drive `_width` / `_height` past the
-     * constraint a subclass or its layout manager declared.
+     * Whether {@link clampWidth} / {@link clampHeight} clamp the committed size to
+     * the merged, layout-calculated {@link getMinSize} / {@link getMaxSize} — the
+     * size derived from this component's children — or only to its own explicit
+     * {@link setMinSize} / {@link setMaxSize}.
+     *
+     * The default is `true`: most components adhere to their content-derived
+     * size, so they never collapse below what their children need to render.
+     * {@link Panel} overrides this to `false` — a panel fits whatever space its
+     * parent allocates and lets the overflow clip or scroll (when `autoScroll`
+     * is configured) instead of inflating itself back up to its content size.
+     * For a panel only an explicit {@link setMinSize} / {@link setMaxSize}
+     * remains a hard floor or ceiling.
+     *
+     * @returns `true` to clamp to the merged constraints; `false` for the
+     *   component's own explicit constraints only.
+     */
+    protected clampsToContentSize(): boolean {
+        return true;
+    }
+
+    /**
+     * Clamps a width value to this component's `[minSize.width, maxSize.width]`
+     * range so {@link setWidth}, {@link setHeight}, and {@link setSize} cannot
+     * drive `_width` / `_height` outside it. The bounding constraints are the
+     * merged {@link getMinSize} / {@link getMaxSize} when
+     * {@link clampsToContentSize} is `true` (the default — adhere to the
+     * content-derived size), or the component's own explicit `_options` (or
+     * default) constraints when it is `false` ({@link Panel}, which fits its
+     * allocation and scrolls).
      */
     private clampWidth(width: number): number {
-        const maxSize = this.getMaxSize();
+        const toContent = this.clampsToContentSize();
+
+        const maxSize = toContent ? this.getMaxSize() : (this._options.maxSize ?? this._defaultOptions.maxSize ?? null);
         if (maxSize && width > maxSize.width) {
             width = maxSize.width;
         }
 
-        const minSize = this.getMinSize();
+        const minSize = toContent ? this.getMinSize() : (this._options.minSize ?? this._defaultOptions.minSize ?? null);
         if (minSize && width < minSize.width) {
             width = minSize.width;
         }
@@ -2531,17 +2571,21 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Clamps a height value to this component's effective `[minSize.height,
-     * maxSize.height]` range — the merged {@link getMinSize} / {@link getMaxSize}.
-     * Mirror of {@link clampWidth}; see that method for the rationale.
+     * Clamps a height value to this component's `[minSize.height,
+     * maxSize.height]` range. Mirror of {@link clampWidth}; the bounding
+     * constraints are the merged {@link getMinSize} / {@link getMaxSize} or the
+     * component's own explicit constraints depending on
+     * {@link clampsToContentSize}. See {@link clampWidth} for the rationale.
      */
     private clampHeight(height: number): number {
-        const maxSize = this.getMaxSize();
+        const toContent = this.clampsToContentSize();
+
+        const maxSize = toContent ? this.getMaxSize() : (this._options.maxSize ?? this._defaultOptions.maxSize ?? null);
         if (maxSize && height > maxSize.height) {
             height = maxSize.height;
         }
 
-        const minSize = this.getMinSize();
+        const minSize = toContent ? this.getMinSize() : (this._options.minSize ?? this._defaultOptions.minSize ?? null);
         if (minSize && height < minSize.height) {
             height = minSize.height;
         }
