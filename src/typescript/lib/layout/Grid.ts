@@ -901,14 +901,18 @@ class Grid extends LayoutManager {
             if (min && (min.width > w || min.height > h)) {
                 // The child's own `min-width` / `min-height` keep its box from
                 // shrinking to the cell, so it can never fit regardless of
-                // fill/anchor — clip it with a cell-sized frame: the frame
-                // takes the cell rect and clips, the child parks at (0, 0)
-                // inside it at its (min-floored) natural size. (A `BOTH`-fill
-                // child resolves to the cell size, masking the overflow, so the
-                // clip decision reads the min directly rather than the resolved
-                // box.)
+                // fill/anchor — clip it with a cell-sized frame: the frame takes
+                // the cell rect and clips, the child parks at (0, 0) inside it.
+                // Size the inner child to its PREFERRED extent (falling back to
+                // min per axis when preferred is null) so the content renders at
+                // its intended size up to the clip edge rather than at a cramped
+                // min that would be clipped anyway.
+                const pref = component.getPreferredSize();
+                const childWidth  = pref ? pref.width  : min.width;
+                const childHeight = pref ? pref.height : min.height;
+
                 component.setClipFrame(x, y, w, h);
-                this.commitBounds(component, 0, 0, w, h);
+                this.commitBounds(component, 0, 0, childWidth, childHeight);
             } else {
                 // The child fits: resolve its bounds honouring its own
                 // fill/anchor over the grid defaults, then commit the result so

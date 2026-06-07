@@ -1936,7 +1936,43 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             preferredSize = layoutManager.getPreferredSize();
         }
 
-        return preferredSize;
+        if (!preferredSize) {
+            return null;
+        }
+
+        return this.clampPreferredToConstraints(preferredSize, this.getMinSize(), this.getMaxSize());
+    }
+
+    /**
+     * Clamps a resolved preferred size into the effective `[min, max]` range on
+     * each axis. `min` wins over a smaller `max` (a degenerate `min > max`
+     * constraint) and over a smaller `preferred`, because the floor is applied
+     * last among the pair — so an explicit minimum is always honoured.
+     *
+     * @param preferred - The resolved preferred size to clamp.
+     * @param min - The effective minimum size, or null when unconstrained.
+     * @param max - The effective maximum size, or null when unconstrained.
+     *
+     * @returns The preferred size clamped into `[min, max]` per axis.
+     */
+    private clampPreferredToConstraints(preferred: Size, min: Size | null, max: Size | null): Size {
+        let width = preferred.width;
+        let height = preferred.height;
+
+        if (max) {
+            width = Math.min(width, max.width);
+            height = Math.min(height, max.height);
+        }
+
+        if (min) {
+            width = Math.max(width, min.width);
+            height = Math.max(height, min.height);
+        }
+
+        return {
+            width: width,
+            height: height
+        };
     }
 
     /**
@@ -2433,18 +2469,20 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Clamps a width value to this component's own `[minSize.width,
-     * maxSize.width]` range. Used by {@link setWidth}, {@link setHeight}, and
-     * {@link setSize} so that callers cannot drive `_width` / `_height` past
-     * the constraint a subclass declared via {@link setMinSize} / {@link setMaxSize}.
+     * Clamps a width value to this component's effective `[minSize.width,
+     * maxSize.width]` range — the merged {@link getMinSize} / {@link getMaxSize},
+     * which folds in the layout manager's own minimum/maximum, not just the
+     * component's `_options`. Used by {@link setWidth}, {@link setHeight}, and
+     * {@link setSize} so that callers cannot drive `_width` / `_height` past the
+     * constraint a subclass or its layout manager declared.
      */
     private clampWidth(width: number): number {
-        const maxSize = this._options.maxSize ?? this._defaultOptions.maxSize;
+        const maxSize = this.getMaxSize();
         if (maxSize && width > maxSize.width) {
             width = maxSize.width;
         }
 
-        const minSize = this._options.minSize ?? this._defaultOptions.minSize;
+        const minSize = this.getMinSize();
         if (minSize && width < minSize.width) {
             width = minSize.width;
         }
@@ -2493,17 +2531,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Clamps a height value to this component's own `[minSize.height,
-     * maxSize.height]` range. Mirror of {@link clampWidth}; see that method
-     * for the rationale.
+     * Clamps a height value to this component's effective `[minSize.height,
+     * maxSize.height]` range — the merged {@link getMinSize} / {@link getMaxSize}.
+     * Mirror of {@link clampWidth}; see that method for the rationale.
      */
     private clampHeight(height: number): number {
-        const maxSize = this._options.maxSize ?? this._defaultOptions.maxSize;
+        const maxSize = this.getMaxSize();
         if (maxSize && height > maxSize.height) {
             height = maxSize.height;
         }
 
-        const minSize = this._options.minSize ?? this._defaultOptions.minSize;
+        const minSize = this.getMinSize();
         if (minSize && height < minSize.height) {
             height = minSize.height;
         }
