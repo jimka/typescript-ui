@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size } from "~/primitive/Size.js";
-import { BoxMode, BoxOverflowSizing } from "~/layout/HBox.js";
+import { BoxLayout, BoxLayoutOptions } from "~/layout/BoxLayout.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -18,12 +17,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Layouts
  */
-export interface VBoxOptions extends LayoutManagerOptions {
-    spacing?:         number;
-    stretching?:      boolean;
-    mode?:            BoxMode;
-    overflowSizing?:  BoxOverflowSizing;
-}
+export interface VBoxOptions extends BoxLayoutOptions {}
 
 /**
  * A layout manager that places children in a single vertical column. The
@@ -32,139 +26,9 @@ export interface VBoxOptions extends LayoutManagerOptions {
  *
  * @category Layouts
  */
-class VBox extends LayoutManager {
+class VBox extends BoxLayout {
 
-    private _spacing: number = 5;
-    private _stretching: boolean = false;
-    private _mode: BoxMode = "preferred";
-    private _overflowSizing: BoxOverflowSizing = "preferred";
     private _defaultComponentHeight: number = 100;
-
-    constructor(options?: VBoxOptions) {
-        super();
-
-        if (options) {
-            this.applyOptions(options);
-        }
-    }
-
-    /**
-     * Applies a {@link VBoxOptions} bag, dispatching mode, spacing, and
-     * stretching after the inherited LayoutManager defaults.
-     *
-     * @param options - The options bag carrying the values to apply.
-     *
-     * @remarks `mode` is dispatched before `stretching` so the
-     * mode-dependent stretching default (`true` for `"equal"`, `false` for
-     * `"preferred"`) can be resolved when the options bag does not pass
-     * an explicit `stretching` value.
-     */
-    protected applyOptions(options: VBoxOptions): void {
-        super.applyOptions(options);
-
-        if (options.mode !== undefined) {
-            this.setMode(options.mode);
-        }
-
-        if (options.spacing !== undefined) {
-            this.setComponentSpacing(options.spacing);
-        }
-
-        if (options.stretching !== undefined) {
-            this.setStretching(options.stretching);
-        } else if (options.mode === "equal") {
-            this.setStretching(true);
-        }
-
-        if (options.overflowSizing !== undefined) {
-            this.setOverflowSizing(options.overflowSizing);
-        }
-    }
-
-    /**
-     * Returns the pixel spacing between child components.
-     *
-     * @returns The current spacing in pixels.
-     */
-    getComponentSpacing() {
-        return this._spacing || 0;
-    }
-
-    /**
-     * Sets the pixel spacing between child components.
-     *
-     * @param spacing - Spacing in pixels.
-     */
-    setComponentSpacing(spacing: number) : this {
-        this._spacing = spacing;
-
-        return this;
-    }
-
-    /**
-     * Returns whether children stretch to fill the container width.
-     *
-     * @returns `true` if stretching is enabled.
-     */
-    isStretching() {
-        return this._stretching || false;
-    }
-
-    /**
-     * Sets whether children stretch to fill the container width.
-     *
-     * @param stretching - Pass `true` to enable width stretching.
-     */
-    setStretching(stretching: boolean) : this {
-        this._stretching = !!stretching;
-
-        return this;
-    }
-
-    /**
-     * Returns the current sizing mode along the vertical axis.
-     *
-     * @returns Either `"preferred"` or `"equal"`.
-     */
-    getMode(): BoxMode {
-        return this._mode;
-    }
-
-    /**
-     * Sets the sizing mode along the vertical axis.
-     *
-     * @param mode - `"preferred"` honours each child's preferred height;
-     *   `"equal"` divides the container height equally among children.
-     */
-    setMode(mode: BoxMode): this {
-        this._mode = mode;
-
-        return this;
-    }
-
-    /**
-     * Returns the cell-sizing strategy used when an `"equal"`-mode column
-     * overflows a scrolling host.
-     *
-     * @returns Either `"preferred"` or `"min"`.
-     */
-    getOverflowSizing(): BoxOverflowSizing {
-        return this._overflowSizing;
-    }
-
-    /**
-     * Sets the cell-sizing strategy used when an `"equal"`-mode column overflows
-     * a scrolling host.
-     *
-     * @param overflowSizing - `"preferred"` grows every cell to the tallest
-     *   child's preferred height and scrolls; `"min"` keeps cells at the min
-     *   floor and scrolls at the minimum cell size. See {@link BoxOverflowSizing}.
-     */
-    setOverflowSizing(overflowSizing: BoxOverflowSizing): this {
-        this._overflowSizing = overflowSizing;
-
-        return this;
-    }
 
     /**
      * Returns the preferred size. In `"preferred"` mode this is the widest
