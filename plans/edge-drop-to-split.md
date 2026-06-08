@@ -2,7 +2,7 @@
 depends-on:
   - size-constraint-invariant.md
   - component-move-helper.md
-  - tab-drag-reorder-detach.md
+  - tab-detach-redock.md
 touches-shared:
   - src/typescript/lib/layout/Split.ts
   - src/typescript/lib/core/Theme.ts
@@ -16,7 +16,7 @@ Wire the existing drag engine into a reusable **edge-drop-to-split** gesture: wh
 
 This plan **owns** three things: (1) the drop-zone *geometry* — dividing a target region's box into four edge bands + a center hit-region given the cursor position; (2) the drop-zone *visual overlay* — a lightweight `DropZoneOverlay` component that paints the five zones and highlights the hovered one; and (3) the *split-mutation* logic on drop — wrapping a region in a new `Split` or inserting a pane into an existing `Split`, then moving the panel in.
 
-It **reuses** without re-planning: [`DragManager.makeDropTarget`](../src/typescript/lib/core/DragManager.ts#L182) (drives the zones via `accepts`/`onDragOver`/`onDragLeave`/`onDrop`), [`Component.moveComponent`](component-move-helper.md) from plan #1 (re-homes the panel), and the [`TabDragData`](tab-drag-reorder-detach.md) payload from plan #2 (the `accepts` discriminator). The work lives in a new `DockRegion` wiring class plus a new `DropZoneOverlay` overlay, a handful of new public `Split` methods, and theme tokens.
+It **reuses** without re-planning: [`DragManager.makeDropTarget`](../src/typescript/lib/core/DragManager.ts#L182) (drives the zones via `accepts`/`onDragOver`/`onDragLeave`/`onDrop`), [`Component.moveComponent`](component-move-helper.md) from plan #1 (re-homes the panel), and the [`TabDragData`](tab-detach-redock.md) payload from plan #2 (the `accepts` discriminator). The work lives in a new `DockRegion` wiring class plus a new `DropZoneOverlay` overlay, a handful of new public `Split` methods, and theme tokens.
 
 ---
 
@@ -58,7 +58,7 @@ getPaneSize(pane: Component): number | undefined;   // reads the stored main-axi
 
 ### `accepts` predicate reuses plan #2's `TabDragData`, does not invent a competing shape
 
-`DockRegion`'s `accepts` tests `detail.dragData.tabDrag === true` — the exact discriminator plan #2 ([`tab-drag-reorder-detach.md`](tab-drag-reorder-detach.md)) defines on its `TabDragData` payload. The dragged panel's live `Component` is resolved through plan #2's module-level `tabDragRegistry` (`componentId → Component`) — this plan imports/reads that registry rather than building a second one. A panel dragged from a `Tab` is therefore droppable onto a split edge with no new drag-data plumbing. `accepts` additionally rejects a self-drop (the dragged panel is already the region's only content and the edge would create a degenerate split): compare `detail.dragData.componentId` against the region's sole child id. Reconciling with #2 is mandatory — if #2's field names shift, this plan tracks them; it never forks the payload.
+`DockRegion`'s `accepts` tests `detail.dragData.tabDrag === true` — the exact discriminator plan #2 ([`tab-detach-redock.md`](tab-detach-redock.md)) defines on its `TabDragData` payload. The dragged panel's live `Component` is resolved through plan #2's module-level `tabDragRegistry` (`componentId → Component`) — this plan imports/reads that registry rather than building a second one. A panel dragged from a `Tab` is therefore droppable onto a split edge with no new drag-data plumbing. `accepts` additionally rejects a self-drop (the dragged panel is already the region's only content and the edge would create a degenerate split): compare `detail.dragData.componentId` against the region's sole child id. Reconciling with #2 is mandatory — if #2's field names shift, this plan tracks them; it never forks the payload.
 
 ### Re-splitting stresses sizing — the size-constraint invariant is the load-bearing prerequisite
 
@@ -291,7 +291,7 @@ Key invariants the implementer must preserve: all re-parents go through `moveCom
 - [`src/typescript/lib/core/Theme.ts`](../src/typescript/lib/core/Theme.ts) — `drag` interface block (546), `themeToVars` drag rows (872-880).
 - [`src/typescript/lib/core/themes/BaseTheme.ts`](../src/typescript/lib/core/themes/BaseTheme.ts#L100) / [`DarkTheme.ts`](../src/typescript/lib/core/themes/DarkTheme.ts#L267) / [`ClassicTheme.ts`](../src/typescript/lib/core/themes/ClassicTheme.ts#L272) / [`ModernTheme.ts`](../src/typescript/lib/core/themes/ModernTheme.ts#L277) — where the `dropzone` block goes (mirror the existing `drag.feedback` placement).
 - [`plans/component-move-helper.md`](component-move-helper.md) — `moveComponent` (every re-parent in this plan).
-- [`plans/tab-drag-reorder-detach.md`](tab-drag-reorder-detach.md) — `TabDragData` (the `accepts` contract), `tabDragRegistry` (panel resolution), the Tab dock path (center-as-tab routing).
+- [`plans/tab-detach-redock.md`](tab-detach-redock.md) — `TabDragData` (the `accepts` contract), `tabDragRegistry` (panel resolution), the Tab dock path (center-as-tab routing).
 - [`plans/size-constraint-invariant.md`](size-constraint-invariant.md) — the blocking sizing prerequisite.
 
 ---
@@ -311,4 +311,4 @@ Key invariants the implementer must preserve: all re-parents go through `moveCom
 
 ## Blocking Prerequisite
 
-[`plans/size-constraint-invariant.md`](size-constraint-invariant.md) must land first. Every edge drop synchronously constructs new `Split` geometry and re-lays-out two new containers whose children's `min ≤ preferred ≤ max` relationship is exercised for the first time in that configuration. Of all five dock-manager plans this one is the most sensitive to the invariant because it *creates* geometry on drop rather than re-flowing a stable tree — an unfixed cross-axis `BOTH`-branch clamp (the exact gap that plan fixes in `HBox`/`VBox`/`Split`) would place a brand-new pane below its minimum on its very first layout, producing a visibly broken split. Referenced as an ordering dependency only; its contents are not re-planned here. Plan #1 ([`component-move-helper.md`](component-move-helper.md)) and plan #2 ([`tab-drag-reorder-detach.md`](tab-drag-reorder-detach.md)) are hard code dependencies (`moveComponent`; `TabDragData` + `tabDragRegistry`).
+[`plans/size-constraint-invariant.md`](size-constraint-invariant.md) must land first. Every edge drop synchronously constructs new `Split` geometry and re-lays-out two new containers whose children's `min ≤ preferred ≤ max` relationship is exercised for the first time in that configuration. Of all five dock-manager plans this one is the most sensitive to the invariant because it *creates* geometry on drop rather than re-flowing a stable tree — an unfixed cross-axis `BOTH`-branch clamp (the exact gap that plan fixes in `HBox`/`VBox`/`Split`) would place a brand-new pane below its minimum on its very first layout, producing a visibly broken split. Referenced as an ordering dependency only; its contents are not re-planned here. Plan #1 ([`component-move-helper.md`](component-move-helper.md)) and plan #2 ([`tab-detach-redock.md`](tab-detach-redock.md)) are hard code dependencies (`moveComponent`; `TabDragData` + `tabDragRegistry`).
