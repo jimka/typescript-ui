@@ -105,6 +105,16 @@ panel.removeComponent(button);
 
 Detaches the component from the parent's child list. Future layout passes ignore it. The DOM element is removed; future calls to `getElement()` would re-create it from scratch.
 
+## Moving between parents
+
+```typescript
+newPanel.moveComponent(button);        // append to a different parent
+newPanel.moveComponent(button, 0);     // insert at an index
+panel.moveComponent(button, 0);        // reorder within the same parent
+```
+
+`moveComponent` detaches a child from its current parent (if any) and attaches it to the destination in a single call, so you don't have to pair `removeComponent` with `addComponent` yourself. It is a method on the *destination* container, matching the rest of the `addComponent` / `insertComponent` / `removeComponent` family. Omitting the index appends; supplying one inserts (and clamps to `[0, children.length]`). Both the source and destination re-layout. The child's [`LayoutConstraints`](/api/layout/classes/LayoutConstraints) are carried across unless you pass an explicit override — useful when the new container's layout vocabulary differs. The element is detached and re-attached, so any in-flight CSS transition on it is reset by the move.
+
 ## Subclass hooks
 
 If you write your own component subclass, override these in addition to whatever public surface you expose:
