@@ -2,7 +2,7 @@
 depends-on:
   - size-constraint-invariant.md
   - component-move-helper.md
-  - tab-drag-reorder-detach.md
+  - tab-detach-redock.md
   - edge-drop-to-split.md
   - layout-serialization.md
 touches-shared:
@@ -14,7 +14,7 @@ touches-shared:
 
 ## Overview
 
-The capstone — **plan #5 of 5** — assembles the four foundational primitives into one user-facing component, `Dock`, that lets users freely rearrange panels: drag tabs to reorder, tear panels out to floating [`Window`](../src/typescript/lib/core/Window.ts#L135)s, drop panels on region edges to split, and save/restore the whole arrangement. It is **glue, not new mechanics**: every move goes through [`Component.moveComponent`](component-move-helper.md) (#1), tab drag/tear-off is owned by [`Tab`'s `reorderable` wiring](tab-drag-reorder-detach.md) (#2), edge-split-on-drop is owned by [`DockRegion`](edge-drop-to-split.md) (#3), and persistence is owned by [`serializeLayout`/`restoreLayout`](layout-serialization.md) (#4). `Dock` *orchestrates* those across its whole region tree.
+The capstone — **plan #5 of 5** — assembles the four foundational primitives into one user-facing component, `Dock`, that lets users freely rearrange panels: drag tabs to reorder, tear panels out to floating [`Window`](../src/typescript/lib/core/Window.ts#L135)s, drop panels on region edges to split, and save/restore the whole arrangement. It is **glue, not new mechanics**: every move goes through [`Component.moveComponent`](component-move-helper.md) (#1), tab drag/tear-off is owned by [`Tab`'s `reorderable` wiring](tab-detach-redock.md) (#2), edge-split-on-drop is owned by [`DockRegion`](edge-drop-to-split.md) (#3), and persistence is owned by [`serializeLayout`/`restoreLayout`](layout-serialization.md) (#4). `Dock` *orchestrates* those across its whole region tree.
 
 `Dock` lives in **`src/typescript/lib/core/Dock.ts`** beside [`Window.ts`](../src/typescript/lib/core/Window.ts), [`Drawer.ts`](../src/typescript/lib/core/Drawer.ts), and [`LayerManager.ts`](../src/typescript/lib/core/LayerManager.ts) — it is an app-root-level container, not a layout manager, so it belongs in the `core` band (exported from [`src/typescript/lib/core/index.ts`](../src/typescript/lib/core/index.ts)), not the `layout` band. It is a [`Panel`](../src/typescript/lib/core/Panel.ts) subclass whose single child is the **root region** of a tree of `Split`/`Tab` containers. It owns three things the primitives can't own alone: (1) the **panel registry** (`panelId → Component | factory`) shared with #4's `LayoutFactory`; (2) **DnD lifecycle wiring** — making every `Tab` it creates `reorderable` and wrapping every dockable region in a `DockRegion`, *including regions created on the fly by an edge-split*; and (3) the **public façade** (`addPanel`, `getLayoutState`/`setLayoutState`) that delegates to #4.
 
@@ -244,7 +244,7 @@ No deletions. No `Tab`/`Split`/`Window`/`DragManager` changes — all needed sur
 - [`src/typescript/main.ts`](../src/typescript/main.ts#L29) — how the app root composes a top-level container today (where a `Dock` would sit in a real app).
 - [`src/typescript/MiscPanel.ts`](../src/typescript/MiscPanel.ts) — demo home (Drawer/Window demo blocks to mirror; `setLayoutManager(new HBox)` at 152).
 - [`plans/component-move-helper.md`](component-move-helper.md) — `moveComponent` (every re-parent + the both-ends-schedule-layout guarantee the sweep relies on).
-- [`plans/tab-drag-reorder-detach.md`](tab-drag-reorder-detach.md) — `Tab.setReorderable`, `TabDragData`, `tabDragRegistry`, the tear-off `Window` path.
+- [`plans/tab-detach-redock.md`](tab-detach-redock.md) — `Tab.setReorderable`, `TabDragData`, `tabDragRegistry`, the tear-off `Window` path.
 - [`plans/edge-drop-to-split.md`](edge-drop-to-split.md) — `DockRegion(region)` / `destroy()`, the wrap-vs-extend mutation, `Split.setPaneSize`.
 - [`plans/layout-serialization.md`](layout-serialization.md) — `serializeLayout`/`restoreLayout`, `LayoutState`, `LayoutFactory`, the window-plane capture (`Window.getOpenWindows`).
 - [`docs/.vitepress/config.mts`](../docs/.vitepress/config.mts) — Core sidebar group (lines 56–64).
@@ -258,7 +258,7 @@ The five plans land in dependency order; `Dock` is last because it calls all fou
 ```
 size-constraint-invariant.md            (blocking prerequisite — sane min ≤ preferred ≤ max)
   └─> #1 component-move-helper.md        (the moveComponent primitive)
-        ├─> #2 tab-drag-reorder-detach.md   ─┐  (#2 and #4 are independent of each other;
+        ├─> #2 tab-detach-redock.md   ─┐  (#2 and #4 are independent of each other;
         └─> #4 layout-serialization.md      ─┤   can land in parallel after #1)
               #2 ─> #3 edge-drop-to-split.md │  (#3 needs #1 + #2's TabDragData + #4 size accessors)
                           └──────────────────┴─> #5 dock-tab-manager.md  (THIS — composes all four)
