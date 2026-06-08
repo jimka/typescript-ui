@@ -506,10 +506,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
     protected init(element?: HTMLElement): this {
         super.init(element);
 
-        const el = element || this.getElement();
-        if (el) {
-            el.style.touchAction = "none";
-        }
+        this.setTouchAction("none");
 
         return this;
     }
@@ -804,6 +801,9 @@ class Scrollbar extends Component<ScrollbarOptions> {
         Event.addViewportListener(this, "touchend",    this._onDragEnd);
         Event.addViewportListener(this, "touchcancel", this._onDragEnd);
 
+        // Suppresses pointer events on document.body (not a Component) for the
+        // duration of the drag so the cursor can't snag on other elements.
+        // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
         Util.select("body").style.pointerEvents = "none";
     };
 
@@ -839,6 +839,8 @@ class Scrollbar extends Component<ScrollbarOptions> {
         Event.removeViewportListener(this, "touchend",    this._onDragEnd);
         Event.removeViewportListener(this, "touchcancel", this._onDragEnd);
 
+        // Restores pointer events on document.body (not a Component) once the drag ends.
+        // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
         Util.select("body").style.pointerEvents = "";
     };
 

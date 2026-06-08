@@ -498,6 +498,9 @@ class SplitGutter extends Component<SplitGutterOptions> {
         Event.addViewportListener(this, 'mousemove', this.onDrag);
         Event.addViewportListener(this, 'touchmove', this.onDrag);
 
+        // Suppresses pointer events on document.body (not a Component) for the
+        // duration of the drag so the cursor can't snag on other elements.
+        // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
         Util.select("body").style.pointerEvents = "none";
     }
 
@@ -511,6 +514,8 @@ class SplitGutter extends Component<SplitGutterOptions> {
         Event.removeViewportListener(this, 'mousemove', this.onDrag);
         Event.removeViewportListener(this, 'touchmove', this.onDrag);
 
+        // Restores pointer events on document.body (not a Component) once the drag ends.
+        // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
         Util.select("body").style.pointerEvents = "";
     }
 

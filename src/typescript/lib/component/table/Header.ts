@@ -265,6 +265,10 @@ class Header extends Component {
      */
     getScrollbarCover(): HTMLDivElement {
         if (this._scrollbarCover === null) {
+            // `cover` is a raw presentational `<div>` owned by this header, not a
+            // Component, so the Component style setters don't apply and direct
+            // `.style` writes are correct here.
+            /* eslint-disable local/no-element-style */
             const cover = document.createElement("div");
             cover.style.position        = "absolute";
             cover.style.top             = "0";
@@ -285,6 +289,7 @@ class Header extends Component {
             // reads as a visual continuation of the column separators
             // rather than a seam in the gradient.
             cover.style.borderLeft      = "1px solid var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))";
+            /* eslint-enable local/no-element-style */
             this.getElement(true).appendChild(cover);
             this._scrollbarCover = cover;
         }

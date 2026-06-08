@@ -4,6 +4,11 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
 
+// VirtualScroller is a plain helper, not a Component: it owns and lays out raw
+// `clipBox` / `rowsContainer` `HTMLElement`s it creates directly, so the
+// Component style setters don't apply and direct `.style` writes are correct.
+/* eslint-disable local/no-element-style */
+
 /**
  * Callback fired by {@link VirtualScroller} whenever the scroll position
  * changes via user input (wheel, touch, momentum, scrollbar). The owner

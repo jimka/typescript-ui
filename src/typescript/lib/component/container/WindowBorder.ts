@@ -232,6 +232,9 @@ class WindowBorder extends Component<WindowBorderOptions> {
         Event.addViewportListener(this, 'mousemove', this._fireDragListener);
         Event.addViewportListener(this, 'touchmove', this._fireDragListener);
 
+        // Suppresses pointer events on document.body (not a Component) for the
+        // duration of the drag so the cursor can't snag on other elements.
+        // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
         Util.select("body").style.pointerEvents = "none";
     }
 
@@ -245,6 +248,8 @@ class WindowBorder extends Component<WindowBorderOptions> {
         Event.removeViewportListener(this, 'mousemove', this._fireDragListener);
         Event.removeViewportListener(this, 'touchmove', this._fireDragListener);
 
+        // Restores pointer events on document.body (not a Component) once the drag ends.
+        // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
         Util.select("body").style.pointerEvents = "";
 
         // Drop the snap-target highlight (if any) once the drag commits, so a

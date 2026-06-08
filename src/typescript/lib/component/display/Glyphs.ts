@@ -112,10 +112,14 @@ export function ensureGlyphSprite(): void {
     const sprite = document.createElementNS(SVG_NS, "svg");
     sprite.setAttribute("aria-hidden", "true");
     sprite.setAttribute("focusable", "false");
+    // `sprite` is a raw off-screen SVG element mounted directly on document.body,
+    // not a Component, so the Component style setters don't apply here.
+    /* eslint-disable local/no-element-style */
     sprite.style.position = "absolute";
     sprite.style.width    = "0";
     sprite.style.height   = "0";
     sprite.style.overflow = "hidden";
+    /* eslint-enable local/no-element-style */
 
     document.body.appendChild(sprite);
 

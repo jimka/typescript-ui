@@ -417,6 +417,9 @@ class HeaderCell extends DefaultCell {
         Event.addViewportListener(this, 'mousemove', this.onResizeDrag);
         Event.addViewportListener(this, 'mouseup', this.onResizeDragStop);
 
+        // Suppresses pointer events on document.body (not a Component) for the
+        // duration of the column resize so the cursor can't snag on other cells.
+        // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
         Util.select('body').style.pointerEvents = 'none';
     }
 
@@ -428,6 +431,8 @@ class HeaderCell extends DefaultCell {
         Event.removeViewportListener(this, 'mousemove', this.onResizeDrag);
         Event.removeViewportListener(this, 'mouseup', this.onResizeDragStop);
 
+        // Restores pointer events on document.body (not a Component) once the resize ends.
+        // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
         Util.select('body').style.pointerEvents = '';
 
         this._resizeHandle.dragEnd();
