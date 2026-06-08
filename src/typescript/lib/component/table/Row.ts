@@ -177,6 +177,11 @@ class Row extends Component {
             return;
         }
 
+        // Per-record ephemeral tint on a pooled row re-bound to a new record on
+        // every render. Going through a cached Component setter (setBackgroundColor)
+        // would persist this into _options and replay it onto the next record bound
+        // to this reused row, so write/remove the inline style directly instead.
+        /* eslint-disable local/no-element-style */
         if (this._data?.isNew()) {
             el.style.setProperty('background-color', 'var(--ts-ui-table-row-new, rgba(70, 200, 70, 0.15))');
         } else if (this._data?.isDirty()) {
@@ -184,6 +189,7 @@ class Row extends Component {
         } else {
             el.style.removeProperty('background-color');
         }
+        /* eslint-enable local/no-element-style */
     }
 
     /**

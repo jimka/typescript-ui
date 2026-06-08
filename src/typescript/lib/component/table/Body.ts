@@ -1130,6 +1130,11 @@ class Body extends Component {
         const rowEl = row.getElement() as HTMLElement;
         const isSelected = this._selectedRecords.has(record);
 
+        // Per-record ephemeral selection highlight on a pooled row re-bound to a
+        // different record on every render. Routing this through cached Component
+        // setters would persist it into _options and replay it onto the next record
+        // bound to this reused row, so write/remove the inline styles directly.
+        /* eslint-disable local/no-element-style */
         if (isSelected) {
             rowEl.style.setProperty('background-color', 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))');
             rowEl.style.setProperty('box-shadow', 'var(--ts-ui-table-row-selected-border, none)');
@@ -1137,6 +1142,7 @@ class Body extends Component {
             rowEl.style.removeProperty('box-shadow');
             row.updateVisualState();
         }
+        /* eslint-enable local/no-element-style */
 
         row.getAria().setSelected(isSelected);
     }
@@ -1183,12 +1189,18 @@ class Body extends Component {
      * for consumer use.
      */
     protected _updateFocusStyle(): void {
+        // Per-cell ephemeral focus outline on pooled cells re-bound to different
+        // records on every render. Routing this through cached Component setters
+        // would persist it into _options and replay it onto the next record bound
+        // to the reused cell, so write/remove the inline styles directly.
         for (const row of this._rowPool) {
             for (const cell of row.getComponents()) {
                 const el = cell.getElement() as HTMLElement | null;
 
                 if (el) {
+                    /* eslint-disable-next-line local/no-element-style -- pooled-cell ephemeral focus style; see note above */
                     el.style.removeProperty("outline");
+                    /* eslint-disable-next-line local/no-element-style -- pooled-cell ephemeral focus style; see note above */
                     el.style.removeProperty("outline-offset");
                 }
             }
@@ -1228,8 +1240,11 @@ class Body extends Component {
             const el = cell.getElement() as HTMLElement | null;
 
             if (el) {
+                // Pooled-cell ephemeral focus style; see note at method top.
+                /* eslint-disable local/no-element-style */
                 el.style.setProperty("outline", "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))");
                 el.style.setProperty("outline-offset", "-1px");
+                /* eslint-enable local/no-element-style */
             }
         }
     }

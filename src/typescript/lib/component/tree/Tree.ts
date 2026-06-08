@@ -578,6 +578,12 @@ class Tree extends Component<TreeOptions> {
             const isSelected = node !== null && this._selectedNodes.has(node!);
             const isFocused = node !== null && node === this._focusNode;
 
+            // Per-node ephemeral selection/focus styling on a pooled row re-bound
+            // to a different node on every render. Routing this through cached
+            // Component setters would persist it into _options and replay it onto
+            // the next node bound to this reused row, so write/remove the inline
+            // styles directly instead.
+            /* eslint-disable local/no-element-style */
             if (isSelected) {
                 rowEl.style.setProperty("background-color", SELECTED_BG);
             } else {
@@ -591,6 +597,7 @@ class Tree extends Component<TreeOptions> {
                 rowEl.style.removeProperty("outline");
                 rowEl.style.removeProperty("outline-offset");
             }
+            /* eslint-enable local/no-element-style */
 
             row.getAria().setSelected(isSelected);
         }

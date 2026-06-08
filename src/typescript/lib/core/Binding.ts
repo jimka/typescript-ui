@@ -17,7 +17,6 @@ import { applyRule } from '~/validation/Validator.js';
 export type BindingEvent = "change" | "commit" | "reject" | "beforerecord";
 
 interface BoundEntry {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     accessors: BindingAccessors<any>;
     active: boolean;
 }
@@ -94,7 +93,6 @@ export class Binding extends BaseObject {
     bind<T>(fieldName: string, component: Bindable<T> | object, accessors?: BindingAccessors<T>): this {
         this.unbind(fieldName);
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const acc: BindingAccessors<any> = accessors ?? {
             get:    () => (component as Bindable<T>).getValue(),
             set:    (v: T) => (component as Bindable<T>).setValue(v),
