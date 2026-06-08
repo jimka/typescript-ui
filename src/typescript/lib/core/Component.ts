@@ -3640,6 +3640,59 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Atomically moves a child from its current parent (if any) to this container, at an optional
+     * index, in a single call.
+     *
+     * Detaches `child` from its present parent and attaches it here, expressed entirely through the
+     * existing {@link removeComponent} / {@link insertComponent} mutators, so subclass overrides of
+     * those methods are honoured and the `already has a parent` guard stays armed for the genuine
+     * two-parents error. When `index` is omitted the child is appended (mirroring
+     * {@link addComponent}); when supplied it is clamped to `[0, children.length]`.
+     *
+     * @param child - The component to move into this container.
+     * @param index - Optional. Zero-based destination index. Omitted appends; values outside
+     *   `[0, children.length]` are clamped.
+     * @param constraints - Optional. Layout constraints for the destination. When omitted, the
+     *   constraints held by the old parent are carried across.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks
+     * Both the source and destination containers schedule a layout, because `removeComponent` and
+     * `insertComponent` each call `scheduleLayout`; the two schedules collapse to a single
+     * `requestAnimationFrame` flush. The child's DOM element is detached from the old parent and
+     * re-attached under this container, so any in-flight CSS transition on the element or its
+     * descendants is reset by the move. Constraints are carried from the old parent by default but
+     * an explicit `constraints` argument always wins — carrying an old layout manager's constraints
+     * into an incompatible new manager (e.g. a [`LayoutConstraints`](/api/layout/classes/LayoutConstraints)
+     * shaped for a different region) is the caller's responsibility. Moving into a container whose
+     * `addComponent` / `removeComponent` narrow the accepted child type is likewise the caller's
+     * responsibility, as this base-class primitive accepts any {@link Component}.
+     */
+    moveComponent(child: Component, index?: number, constraints?: LayoutConstraints): this {
+        const oldParent = child.getParentComponent();
+
+        // True no-op: already here and no reorder requested.
+        if (oldParent === this && index === undefined) {
+            return this;
+        }
+
+        // Detach from the present parent, capturing its layout constraints so they can be carried
+        // unless the caller overrides them. removeComponent clears child._parent to null, which
+        // satisfies insertComponent's parent guard and disarms its same-parent early-return, so an
+        // intra-parent reorder is honoured rather than silently dropped.
+        const carried = oldParent ? oldParent.removeComponent(child) : undefined;
+
+        // Computed after removeComponent has spliced child out, so the append index reflects the
+        // post-detach length in the same-parent reorder case.
+        const targetIndex = index ?? this._components.length;
+
+        this.insertComponent(child, targetIndex, constraints ?? carried ?? undefined);
+
+        return this;
+    }
+
+    /**
      * Removes a child component by instance or index, detaches its element, and triggers layout.
      *
      * @param component - The Component instance to remove, or a Number index into the children array.
