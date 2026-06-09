@@ -111,11 +111,13 @@ class TabDemoPanel extends Component {
         // tool button pinned opposite the tabs and within-strip reorder enabled.
         this.tabPanel = new TabPanel({
             preferredSize: { width: 0, height: 300 },
-            tabWidthMode: "equal",
-            tabMaxWidth: 160,
-            tabFixedWidth: 120,
-            reorderable: true,
-            tabTools: [addToolBtn],
+            tabOptions: {
+                widthMode: "equal",
+                maxWidth: 160,
+                fixedWidth: 120,
+                reorderable: true,
+                tools: [addToolBtn],
+            },
             tabs: [
                 { label: "Alpha", component: this.buildContent("Alpha") },
                 { label: "Beta",  component: this.buildContent("Beta"),  closeable: true },
@@ -146,11 +148,11 @@ class TabDemoPanel extends Component {
         });
 
         compactBtn.on("action", () => {
-            this.tabPanel.setCompact(!this.tabPanel.isCompact());
+            this.tabPanel.setTabCompact(!this.tabPanel.isTabCompact());
         });
 
         reorderBtn.on("action", () => {
-            this.tabPanel.setReorderable(!this.tabPanel.isReorderable());
+            this.tabPanel.setTabReorderable(!this.tabPanel.isTabReorderable());
         });
 
         // --- Wire width controls ---
