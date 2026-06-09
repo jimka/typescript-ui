@@ -3,7 +3,7 @@
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
-import { Tab, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation } from "~/layout/Tab.js";
+import { Tab, TabOptions, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation } from "~/layout/Tab.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -33,28 +33,12 @@ export interface TabPanelOptions extends PanelOptions {
      * button. Receives the closed tab's content component.
      */
     onTabClose?: (component: Component) => void;
-    /** Tab-button width strategy; defaults to `"fill"`. */
-    tabWidthMode?: TabWidthMode;
-    /** Per-tab maximum width in px for `"content"` / `"equal"` modes; `null` (the default) leaves tabs uncapped. */
-    tabMaxWidth?: number | null;
-    /** Per-tab width in px for `"fixed"` mode; defaults to `120`. */
-    tabFixedWidth?: number;
-    /** Whether the 1px strip under-border runs edge-to-edge; defaults to `true`. */
-    tabUnderBorderFullWidth?: boolean;
-    /** Which edge the tab strip sits on; defaults to `"north"`. */
-    tabSide?: TabSide;
-    /** Main-axis alignment of the tab-button group; defaults to `"start"`. */
-    tabAlign?: TabAlign;
-    /** Text orientation on the vertical sides; defaults to `"horizontal"`. */
-    tabOrientation?: TabOrientation;
-    /** Whether an overflowing strip scrolls instead of compressing; defaults to `false`. */
-    tabScrollable?: boolean;
-    /** Tool buttons pinned at the far end of the strip, opposite the tabs. */
-    tabTools?: Component[];
-    /** Reduce tab-button insets for a denser strip; defaults to `false`. */
-    compact?: boolean;
-    /** Enable within-strip header drag-reorder; defaults to `false`. */
-    reorderable?: boolean;
+    /**
+     * Construction-time options for the wrapped {@link Tab} manager (strip
+     * placement, width mode, scrolling, tools, compact, reorder, …). Passed
+     * straight to the manager's constructor.
+     */
+    tabOptions?: TabOptions;
 }
 
 /**
@@ -93,54 +77,9 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
 
         // Set the layout manager unconditionally — even if the caller passed
         // `layoutManager` via the options bag, `TabPanel`'s identity is the
-        // `Tab` manager. Override-by-options would defeat the class.
-        this.setLayoutManager(new Tab());
-
-        if (options?.tabWidthMode !== undefined) {
-            this.setTabWidthMode(options.tabWidthMode);
-        }
-
-        if (options?.tabMaxWidth !== undefined) {
-            this.setTabMaxWidth(options.tabMaxWidth);
-        }
-
-        if (options?.tabFixedWidth !== undefined) {
-            this.setTabFixedWidth(options.tabFixedWidth);
-        }
-
-        if (options?.tabUnderBorderFullWidth !== undefined) {
-            this.setTabUnderBorderFullWidth(options.tabUnderBorderFullWidth);
-        }
-
-        if (options?.tabSide !== undefined) {
-            this.setTabSide(options.tabSide);
-        }
-
-        if (options?.tabAlign !== undefined) {
-            this.setTabAlign(options.tabAlign);
-        }
-
-        if (options?.tabOrientation !== undefined) {
-            this.setTabOrientation(options.tabOrientation);
-        }
-
-        if (options?.tabScrollable !== undefined) {
-            this.setTabScrollable(options.tabScrollable);
-        }
-
-        if (options?.compact !== undefined) {
-            this.setCompact(options.compact);
-        }
-
-        if (options?.reorderable !== undefined) {
-            this.setReorderable(options.reorderable);
-        }
-
-        if (options?.tabTools) {
-            for (const tool of options.tabTools) {
-                this.addTabTool(tool);
-            }
-        }
+        // `Tab` manager. Override-by-options would defeat the class. The strip
+        // configuration rides in as the manager's own options bag.
+        this.setLayoutManager(new Tab(options?.tabOptions));
 
         if (options?.tabs) {
             for (const entry of options.tabs) {
@@ -232,7 +171,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabMaxWidth(px: number | null): this {
-        this.getTabManager().setTabMaxWidth(px);
+        this.getTabManager().setMaxWidth(px);
 
         return this;
     }
@@ -243,7 +182,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns The cap in px, or `null` when tabs are uncapped.
      */
     getTabMaxWidth(): number | null {
-        return this.getTabManager().getTabMaxWidth();
+        return this.getTabManager().getMaxWidth();
     }
 
     /**
@@ -255,7 +194,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabWidthMode(mode: TabWidthMode): this {
-        this.getTabManager().setTabWidthMode(mode);
+        this.getTabManager().setWidthMode(mode);
 
         return this;
     }
@@ -266,7 +205,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns The active {@link TabWidthMode}.
      */
     getTabWidthMode(): TabWidthMode {
-        return this.getTabManager().getTabWidthMode();
+        return this.getTabManager().getWidthMode();
     }
 
     /**
@@ -278,7 +217,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabFixedWidth(px: number): this {
-        this.getTabManager().setTabFixedWidth(px);
+        this.getTabManager().setFixedWidth(px);
 
         return this;
     }
@@ -289,7 +228,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns The fixed width in px.
      */
     getTabFixedWidth(): number {
-        return this.getTabManager().getTabFixedWidth();
+        return this.getTabManager().getFixedWidth();
     }
 
     /**
@@ -301,7 +240,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabUnderBorderFullWidth(full: boolean): this {
-        this.getTabManager().setTabUnderBorderFullWidth(full);
+        this.getTabManager().setUnderBorderFullWidth(full);
 
         return this;
     }
@@ -312,7 +251,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns `true` when the full-width under-border is drawn.
      */
     isTabUnderBorderFullWidth(): boolean {
-        return this.getTabManager().isTabUnderBorderFullWidth();
+        return this.getTabManager().isUnderBorderFullWidth();
     }
 
     /**
@@ -324,7 +263,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabSide(side: TabSide): this {
-        this.getTabManager().setTabSide(side);
+        this.getTabManager().setSide(side);
 
         return this;
     }
@@ -335,7 +274,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns The active [`TabSide`](/api/layout/type-aliases/TabSide).
      */
     getTabSide(): TabSide {
-        return this.getTabManager().getTabSide();
+        return this.getTabManager().getSide();
     }
 
     /**
@@ -348,7 +287,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabAlign(align: TabAlign): this {
-        this.getTabManager().setTabAlign(align);
+        this.getTabManager().setAlign(align);
 
         return this;
     }
@@ -359,7 +298,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns The active [`TabAlign`](/api/layout/type-aliases/TabAlign).
      */
     getTabAlign(): TabAlign {
-        return this.getTabManager().getTabAlign();
+        return this.getTabManager().getAlign();
     }
 
     /**
@@ -372,7 +311,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabOrientation(orientation: TabOrientation): this {
-        this.getTabManager().setTabOrientation(orientation);
+        this.getTabManager().setOrientation(orientation);
 
         return this;
     }
@@ -383,7 +322,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns The active [`TabOrientation`](/api/layout/type-aliases/TabOrientation).
      */
     getTabOrientation(): TabOrientation {
-        return this.getTabManager().getTabOrientation();
+        return this.getTabManager().getOrientation();
     }
 
     /**
@@ -395,7 +334,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabScrollable(value: boolean): this {
-        this.getTabManager().setTabScrollable(value);
+        this.getTabManager().setScrollable(value);
 
         return this;
     }
@@ -406,7 +345,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns `true` when the strip scrolls on overflow.
      */
     isTabScrollable(): boolean {
-        return this.getTabManager().isTabScrollable();
+        return this.getTabManager().isScrollable();
     }
 
     /**
@@ -417,7 +356,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      *
      * @returns This panel, for method chaining.
      */
-    setCompact(value: boolean): this {
+    setTabCompact(value: boolean): this {
         this.getTabManager().setCompact(value);
 
         return this;
@@ -428,7 +367,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      *
      * @returns `true` when compact.
      */
-    isCompact(): boolean {
+    isTabCompact(): boolean {
         return this.getTabManager().isCompact();
     }
 
@@ -440,7 +379,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      *
      * @returns This panel, for method chaining.
      */
-    setReorderable(value: boolean): this {
+    setTabReorderable(value: boolean): this {
         this.getTabManager().setReorderable(value);
 
         return this;
@@ -451,7 +390,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      *
      * @returns `true` when reorderable.
      */
-    isReorderable(): boolean {
+    isTabReorderable(): boolean {
         return this.getTabManager().isReorderable();
     }
 
@@ -464,7 +403,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     addTabTool(button: Component): this {
-        this.getTabManager().addTabTool(button);
+        this.getTabManager().addTool(button);
 
         return this;
     }
@@ -478,7 +417,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     removeTabTool(button: Component): this {
-        this.getTabManager().removeTabTool(button);
+        this.getTabManager().removeTool(button);
 
         return this;
     }

@@ -44,10 +44,10 @@ export type TabEvent = "tabclose";
  * Tab-button width strategy for the {@link Tab} strip.
  *
  * - `"fill"` — tabs split the strip equally and stretch to fill it.
- * - `"content"` — each tab takes its own content width, capped at `tabMaxWidth`.
+ * - `"content"` — each tab takes its own content width, capped at `maxWidth`.
  * - `"equal"` — every tab takes the width of the widest tab, capped at
- *   `tabMaxWidth` (default).
- * - `"fixed"` — every tab takes `tabFixedWidth`.
+ *   `maxWidth` (default).
+ * - `"fixed"` — every tab takes `fixedWidth`.
  *
  * Every mode except `"fill"` leaves the strip full-width with the tabs
  * left-aligned and any leftover space empty.
@@ -161,39 +161,39 @@ export interface TabOptions extends LayoutManagerOptions {
     };
 
     /** Tab-button width strategy; defaults to `"equal"`. */
-    tabWidthMode?: TabWidthMode;
+    widthMode?: TabWidthMode;
 
     /** Per-tab maximum width in px for `"content"` / `"equal"` modes; `null` (the default) leaves tabs uncapped. */
-    tabMaxWidth?: number | null;
+    maxWidth?: number | null;
 
     /** Per-tab width in px for `"fixed"` mode; defaults to `120`. */
-    tabFixedWidth?: number;
+    fixedWidth?: number;
 
     /**
      * Whether the 1px strip under-border runs edge-to-edge. When omitted, follows
      * the active theme's `tab.underBorderFullWidth` (Modern `false`, Classic/Dark
      * `true`); setting it explicitly pins the value and stops it tracking the theme.
      */
-    tabUnderBorderFullWidth?: boolean;
+    underBorderFullWidth?: boolean;
 
     /** Which edge the tab strip sits on; defaults to `"north"`. */
-    tabSide?: TabSide;
+    side?: TabSide;
 
     /** Main-axis alignment of the tab-button group; defaults to `"start"`. */
-    tabAlign?: TabAlign;
+    align?: TabAlign;
 
     /** Text orientation on the vertical sides; defaults to `"horizontal"`. */
-    tabOrientation?: TabOrientation;
+    orientation?: TabOrientation;
 
     /**
      * Whether an overflowing strip scrolls (leading/trailing arrow buttons,
      * tabs kept at preferred size) instead of compressing the tabs to fit.
      * Defaults to `false`.
      */
-    tabScrollable?: boolean;
+    scrollable?: boolean;
 
     /** Tool buttons pinned at the far end of the strip, opposite the tabs. */
-    tabTools?: Component[];
+    tools?: Component[];
 
     /** Reduce tab-button insets for a denser strip. Defaults to `false`. */
     compact?: boolean;
@@ -453,18 +453,18 @@ class Tab extends LayoutManager {
     private _lastFadedTabIndex: number = -1;
     private _listeners: ListenerBag<TabEvent> = new ListenerBag<TabEvent>();
 
-    private _tabWidthMode: TabWidthMode = "equal";
-    private _tabMaxWidth: number | null = null;
-    private _tabFixedWidth: number = 120;
+    private _widthMode: TabWidthMode = "equal";
+    private _maxWidth: number | null = null;
+    private _fixedWidth: number = 120;
     private _underBorderFullWidth: boolean = true;
     private _underBorderFromTheme: boolean = true;
     private _themeCleanup: (() => void) | null = null;
     private _indicator: TabIndicator = new TabIndicator();
 
-    private _tabSide: TabSide = "north";
-    private _tabAlign: TabAlign = "start";
-    private _tabOrientation: TabOrientation = "horizontal";
-    private _tabScrollable: boolean = false;
+    private _side: TabSide = "north";
+    private _align: TabAlign = "start";
+    private _orientation: TabOrientation = "horizontal";
+    private _scrollable: boolean = false;
     private _compact: boolean = false;
 
     // Tool buttons pinned at the far end of the strip. Held in a hand-positioned
@@ -472,13 +472,13 @@ class Tab extends LayoutManager {
     // the indicator, rather than enrolled as toolbar box children — so the tab
     // wrappers stay the toolbar's only box children and their indices line up
     // 1:1 with `_tabs` for the reorder/indicator/close-button math.
-    private _tabTools: Component[] = [];
+    private _tools: Component[] = [];
     // Also a Panel so it fills its reserved slot rather than clamping to the
     // tool buttons' content max (same reason as `_toolbar`).
     private _toolGroup: Panel = new Panel();
 
     // Overflow "arrows" chrome: leading/trailing scroll buttons, hidden when the
-    // strip fits. Built lazily the first time `tabScrollable` is enabled.
+    // strip fits. Built lazily the first time `scrollable` is enabled.
     private _scrollLeadButton: Button | null = null;
     private _scrollTrailButton: Button | null = null;
     // Scroll position (px) for a scrollable strip: baked into the clip frame's
@@ -488,7 +488,7 @@ class Tab extends LayoutManager {
     private _scrollOffset: number = 0;
     private _scrollMax: number = 0;
     // One-shot: scroll the selected tab into view on the next layout. Set when
-    // scrolling first becomes active (enabling `tabScrollable`, or a side switch
+    // scrolling first becomes active (enabling `scrollable`, or a side switch
     // while scrollable), so the selected tab isn't left clipped off-screen.
     private _scrollToSelected: boolean = false;
 
@@ -572,10 +572,10 @@ class Tab extends LayoutManager {
         // content: bottom for north, top for south, right for west, left for
         // east. The other three edges stay borderless.
         this._toolbar.setBorder({
-            borderTop:    this._tabSide === "south" ? rule : "none",
-            borderBottom: this._tabSide === "north" ? rule : "none",
-            borderLeft:   this._tabSide === "east"  ? rule : "none",
-            borderRight:  this._tabSide === "west"  ? rule : "none",
+            borderTop:    this._side === "south" ? rule : "none",
+            borderBottom: this._side === "north" ? rule : "none",
+            borderLeft:   this._side === "east"  ? rule : "none",
+            borderRight:  this._side === "west"  ? rule : "none",
         });
     }
 
@@ -592,36 +592,36 @@ class Tab extends LayoutManager {
             this.on("tabclose", options.listeners.tabclose);
         }
 
-        if (options.tabWidthMode !== undefined) {
-            this.setTabWidthMode(options.tabWidthMode);
+        if (options.widthMode !== undefined) {
+            this.setWidthMode(options.widthMode);
         }
 
-        if (options.tabMaxWidth !== undefined) {
-            this.setTabMaxWidth(options.tabMaxWidth);
+        if (options.maxWidth !== undefined) {
+            this.setMaxWidth(options.maxWidth);
         }
 
-        if (options.tabFixedWidth !== undefined) {
-            this.setTabFixedWidth(options.tabFixedWidth);
+        if (options.fixedWidth !== undefined) {
+            this.setFixedWidth(options.fixedWidth);
         }
 
-        if (options.tabUnderBorderFullWidth !== undefined) {
-            this.setTabUnderBorderFullWidth(options.tabUnderBorderFullWidth);
+        if (options.underBorderFullWidth !== undefined) {
+            this.setUnderBorderFullWidth(options.underBorderFullWidth);
         }
 
-        if (options.tabSide !== undefined) {
-            this.setTabSide(options.tabSide);
+        if (options.side !== undefined) {
+            this.setSide(options.side);
         }
 
-        if (options.tabAlign !== undefined) {
-            this.setTabAlign(options.tabAlign);
+        if (options.align !== undefined) {
+            this.setAlign(options.align);
         }
 
-        if (options.tabOrientation !== undefined) {
-            this.setTabOrientation(options.tabOrientation);
+        if (options.orientation !== undefined) {
+            this.setOrientation(options.orientation);
         }
 
-        if (options.tabScrollable !== undefined) {
-            this.setTabScrollable(options.tabScrollable);
+        if (options.scrollable !== undefined) {
+            this.setScrollable(options.scrollable);
         }
 
         if (options.compact !== undefined) {
@@ -632,9 +632,9 @@ class Tab extends LayoutManager {
             this.setReorderable(options.reorderable);
         }
 
-        if (options.tabTools !== undefined) {
-            for (const tool of options.tabTools) {
-                this.addTabTool(tool);
+        if (options.tools !== undefined) {
+            for (const tool of options.tools) {
+                this.addTool(tool);
             }
         }
     }
@@ -647,8 +647,8 @@ class Tab extends LayoutManager {
      *
      * @returns This layout manager, for chaining.
      */
-    setTabWidthMode(mode: TabWidthMode): this {
-        this._tabWidthMode = mode;
+    setWidthMode(mode: TabWidthMode): this {
+        this._widthMode = mode;
 
         this.getContainer()?.scheduleLayout();
 
@@ -660,8 +660,8 @@ class Tab extends LayoutManager {
      *
      * @returns The active {@link TabWidthMode}.
      */
-    getTabWidthMode(): TabWidthMode {
-        return this._tabWidthMode;
+    getWidthMode(): TabWidthMode {
+        return this._widthMode;
     }
 
     /**
@@ -672,8 +672,8 @@ class Tab extends LayoutManager {
      *
      * @returns This layout manager, for chaining.
      */
-    setTabMaxWidth(px: number | null): this {
-        this._tabMaxWidth = px;
+    setMaxWidth(px: number | null): this {
+        this._maxWidth = px;
 
         this.getContainer()?.scheduleLayout();
 
@@ -685,8 +685,8 @@ class Tab extends LayoutManager {
      *
      * @returns The cap in px, or `null` when tabs are uncapped.
      */
-    getTabMaxWidth(): number | null {
-        return this._tabMaxWidth;
+    getMaxWidth(): number | null {
+        return this._maxWidth;
     }
 
     /**
@@ -697,8 +697,8 @@ class Tab extends LayoutManager {
      *
      * @returns This layout manager, for chaining.
      */
-    setTabFixedWidth(px: number): this {
-        this._tabFixedWidth = px;
+    setFixedWidth(px: number): this {
+        this._fixedWidth = px;
 
         this.getContainer()?.scheduleLayout();
 
@@ -710,8 +710,8 @@ class Tab extends LayoutManager {
      *
      * @returns The fixed width in px.
      */
-    getTabFixedWidth(): number {
-        return this._tabFixedWidth;
+    getFixedWidth(): number {
+        return this._fixedWidth;
     }
 
     /**
@@ -737,7 +737,7 @@ class Tab extends LayoutManager {
             // Rotated label runs along the cell, ending where it stops reading:
             // the bottom for clockwise (top-to-bottom) text, the top for
             // counter-clockwise (bottom-to-top). Reserve the ✕ clearance there.
-            return this._tabOrientation === "vertical-ccw"
+            return this._orientation === "vertical-ccw"
                 ? new Insets(closeReserve + pad * 2, pad * 2, pad * 2, pad * 2)
                 : new Insets(pad * 2, pad * 2, closeReserve + pad * 2, pad * 2);
         }
@@ -801,7 +801,7 @@ class Tab extends LayoutManager {
      * @returns `true` for west/east with a vertical text orientation.
      */
     private isRotatedText(): boolean {
-        return this.isVertical() && this._tabOrientation !== "horizontal";
+        return this.isVertical() && this._orientation !== "horizontal";
     }
 
     /**
@@ -851,7 +851,7 @@ class Tab extends LayoutManager {
      * when `compact`); west/east grow from that seed to the widest button (or tool)
      * cross extent so horizontal-text vertical strips fit their longest label,
      * never shrinking below it. In `"fixed"` width mode with *upright* text the
-     * vertical strip's thickness is instead pinned to `tabFixedWidth` — there the
+     * vertical strip's thickness is instead pinned to `fixedWidth` — there the
      * fixed "width" is the bar's thickness (the horizontal text run). Rotated text
      * reads along the main axis, so fixed sizes its height and the thickness stays
      * content-derived.
@@ -865,8 +865,8 @@ class Tab extends LayoutManager {
             return base;
         }
 
-        if (this._tabWidthMode === "fixed" && !this.isRotatedText()) {
-            return Math.max(base, this._tabFixedWidth);
+        if (this._widthMode === "fixed" && !this.isRotatedText()) {
+            return Math.max(base, this._fixedWidth);
         }
 
         let maxCross = base;
@@ -875,7 +875,7 @@ class Tab extends LayoutManager {
             maxCross = Math.max(maxCross, this.buttonCrossExtent(entry.button));
         }
 
-        const toolSize = this._tabTools.length > 0 ? this._toolGroup.getPreferredSize() : null;
+        const toolSize = this._tools.length > 0 ? this._toolGroup.getPreferredSize() : null;
 
         if (toolSize) {
             maxCross = Math.max(maxCross, toolSize.width);
@@ -889,7 +889,7 @@ class Tab extends LayoutManager {
      * active {@link TabWidthMode}, or `0` when the mode imposes none (`"fill"`,
      * or before the buttons have reported a preferred size). `"equal"` and
      * `"fixed"` return one uniform value across all tabs; `"content"` returns the
-     * per-tab natural extent capped at `tabMaxWidth`. Shared by the overflow and
+     * per-tab natural extent capped at `maxWidth`. Shared by the overflow and
      * non-overflow paths so a strip keeps its width-mode sizing when overflow
      * scrolling is enabled instead of collapsing to raw content width.
      *
@@ -898,14 +898,14 @@ class Tab extends LayoutManager {
      * @returns The target main-axis extent in px, or `0` for no fixed target.
      */
     private tabModeExtent(button: ToggleButton): number {
-        switch (this._tabWidthMode) {
+        switch (this._widthMode) {
             case "fixed":
                 // Fixed sizes the extent in the text's reading direction. For
                 // upright text on west/east that direction is the bar *thickness*
                 // (handled in `stripThickness`), so the main axis stays content-
                 // sized (return 0). North/south and rotated (vertical) text read
                 // along the main axis, so they pin the main extent.
-                return (this.isVertical() && !this.isRotatedText()) ? 0 : this._tabFixedWidth;
+                return (this.isVertical() && !this.isRotatedText()) ? 0 : this._fixedWidth;
             case "equal": {
                 let widest = 0;
 
@@ -913,10 +913,10 @@ class Tab extends LayoutManager {
                     widest = Math.max(widest, this.buttonMainExtent(entry.button));
                 }
 
-                return Math.min(widest, this._tabMaxWidth ?? Number.MAX_VALUE);
+                return Math.min(widest, this._maxWidth ?? Number.MAX_VALUE);
             }
             case "content":
-                return Math.min(this.buttonMainExtent(button), this._tabMaxWidth ?? Number.MAX_VALUE);
+                return Math.min(this.buttonMainExtent(button), this._maxWidth ?? Number.MAX_VALUE);
             default:
                 return 0;
         }
@@ -927,12 +927,12 @@ class Tab extends LayoutManager {
      * wrapper, generalised to the strip's main axis (width for north/south,
      * height for west/east). Called from `doLayout` before the toolbar lays out.
      *
-     * @remarks When `tabScrollable` is set the `"equal"`→`"fill"` collapse
+     * @remarks When `scrollable` is set the `"equal"`→`"fill"` collapse
      * is skipped: the box is switched to `"preferred"` and marked overflowing on
      * the main axis so buttons keep their preferred extent and the strip scrolls
      * instead of compressing. Otherwise `"fill"` uses the box's `equal` mode
      * (tabs share the strip); `"content"` caps the natural extent at
-     * `tabMaxWidth`; `"equal"`/`"fixed"` pin every wrapper to one uniform extent,
+     * `maxWidth`; `"equal"`/`"fixed"` pin every wrapper to one uniform extent,
      * with `"equal"` collapsing to fill when that extent would overflow.
      *
      * @param available - The strip's inner main-axis extent (px) the tabs must
@@ -940,7 +940,7 @@ class Tab extends LayoutManager {
      */
     private applyTabWidths(available: number): void {
         const box = this._clipFrame.getLayoutManager() as BoxLayout;
-        const overflow = this._tabScrollable;
+        const overflow = this._scrollable;
 
         // Scroll-on-overflow: keep tabs at their width-mode extent and let the
         // strip's own overflow carry the surplus, rather than compressing to fit.
@@ -970,7 +970,7 @@ class Tab extends LayoutManager {
 
         box.setOverflowing(false, false);
 
-        if (this._tabWidthMode === "fill") {
+        if (this._widthMode === "fill") {
             box.setMode("equal");
 
             for (const entry of this._tabs) {
@@ -982,8 +982,8 @@ class Tab extends LayoutManager {
 
         box.setMode("preferred");
 
-        if (this._tabWidthMode === "content") {
-            const cap = this._tabMaxWidth ?? Number.MAX_VALUE;
+        if (this._widthMode === "content") {
+            const cap = this._maxWidth ?? Number.MAX_VALUE;
 
             for (const entry of this._tabs) {
                 // Rotated text: pin each wrapper to its derived natural main
@@ -1017,7 +1017,7 @@ class Tab extends LayoutManager {
         // "equal" shrinks to fit: when the uniform extent can't fit the strip,
         // collapse to fill so the tabs share the available space instead of
         // overflowing. "fixed" stays rigid (overflow is the consumer's intent).
-        if (this._tabWidthMode === "equal" && this._tabs.length > 0 && extent * this._tabs.length > available) {
+        if (this._widthMode === "equal" && this._tabs.length > 0 && extent * this._tabs.length > available) {
             box.setMode("equal");
 
             for (const entry of this._tabs) {
@@ -1041,7 +1041,7 @@ class Tab extends LayoutManager {
      *
      * @returns This layout manager, for chaining.
      */
-    setTabUnderBorderFullWidth(full: boolean): this {
+    setUnderBorderFullWidth(full: boolean): this {
         this._underBorderFromTheme = false;
         this._underBorderFullWidth = full;
 
@@ -1057,7 +1057,7 @@ class Tab extends LayoutManager {
      *
      * @returns `true` when the full-width under-border is drawn.
      */
-    isTabUnderBorderFullWidth(): boolean {
+    isUnderBorderFullWidth(): boolean {
         return this._underBorderFullWidth;
     }
 
@@ -1071,14 +1071,14 @@ class Tab extends LayoutManager {
      *
      * @returns This layout manager, for chaining.
      */
-    setTabSide(side: TabSide): this {
-        this._tabSide = side;
+    setSide(side: TabSide): this {
+        this._side = side;
 
         // The scroll axis flips with the side, so start the new side unscrolled,
         // then bring the selected tab into view if the new axis is scrollable.
         this._scrollOffset = 0;
 
-        if (this._tabScrollable) {
+        if (this._scrollable) {
             this._scrollToSelected = true;
         }
 
@@ -1094,8 +1094,8 @@ class Tab extends LayoutManager {
      *
      * @returns The active {@link TabSide}.
      */
-    getTabSide(): TabSide {
-        return this._tabSide;
+    getSide(): TabSide {
+        return this._side;
     }
 
     /**
@@ -1106,8 +1106,8 @@ class Tab extends LayoutManager {
      *
      * @returns This layout manager, for chaining.
      */
-    setTabAlign(align: TabAlign): this {
-        this._tabAlign = align;
+    setAlign(align: TabAlign): this {
+        this._align = align;
 
         this.getContainer()?.scheduleLayout();
 
@@ -1119,8 +1119,8 @@ class Tab extends LayoutManager {
      *
      * @returns The active {@link TabAlign}.
      */
-    getTabAlign(): TabAlign {
-        return this._tabAlign;
+    getAlign(): TabAlign {
+        return this._align;
     }
 
     /**
@@ -1133,8 +1133,8 @@ class Tab extends LayoutManager {
      *
      * @returns This layout manager, for chaining.
      */
-    setTabOrientation(orientation: TabOrientation): this {
-        this._tabOrientation = orientation;
+    setOrientation(orientation: TabOrientation): this {
+        this._orientation = orientation;
 
         this.getContainer()?.scheduleLayout();
 
@@ -1146,8 +1146,8 @@ class Tab extends LayoutManager {
      *
      * @returns The active {@link TabOrientation}.
      */
-    getTabOrientation(): TabOrientation {
-        return this._tabOrientation;
+    getOrientation(): TabOrientation {
+        return this._orientation;
     }
 
     /**
@@ -1159,14 +1159,14 @@ class Tab extends LayoutManager {
      *
      * @returns This layout manager, for chaining.
      */
-    setTabScrollable(value: boolean): this {
+    setScrollable(value: boolean): this {
         // Enabling from a non-scrolling state: reveal the selected tab on the next
         // layout rather than starting at offset 0 (it may be off-screen).
-        if (value && !this._tabScrollable) {
+        if (value && !this._scrollable) {
             this._scrollToSelected = true;
         }
 
-        this._tabScrollable = value;
+        this._scrollable = value;
 
         this.getContainer()?.scheduleLayout();
 
@@ -1178,8 +1178,8 @@ class Tab extends LayoutManager {
      *
      * @returns `true` when the strip scrolls on overflow.
      */
-    isTabScrollable(): boolean {
-        return this._tabScrollable;
+    isScrollable(): boolean {
+        return this._scrollable;
     }
 
     /**
@@ -1198,7 +1198,7 @@ class Tab extends LayoutManager {
         // Compact changes every tab's width, which can leave the selected tab
         // partly clipped at the current scroll offset; nudge it back into view
         // (a no-op when it already fits, so the scroll position is otherwise kept).
-        if (this._tabScrollable) {
+        if (this._scrollable) {
             this._scrollToSelected = true;
         }
 
@@ -1263,8 +1263,8 @@ class Tab extends LayoutManager {
      *
      * @returns This layout manager, for chaining.
      */
-    addTabTool(button: Component): this {
-        this._tabTools.push(button);
+    addTool(button: Component): this {
+        this._tools.push(button);
         this._toolGroup.addComponent(button);
 
         this.getContainer()?.scheduleLayout();
@@ -1279,14 +1279,14 @@ class Tab extends LayoutManager {
      *
      * @returns This layout manager, for chaining.
      */
-    removeTabTool(button: Component): this {
-        const idx = this._tabTools.indexOf(button);
+    removeTool(button: Component): this {
+        const idx = this._tools.indexOf(button);
 
         if (idx < 0) {
             return this;
         }
 
-        this._tabTools.splice(idx, 1);
+        this._tools.splice(idx, 1);
         this._toolGroup.removeComponent(button);
 
         this.getContainer()?.scheduleLayout();
@@ -1301,7 +1301,7 @@ class Tab extends LayoutManager {
      * @returns `true` for west/east, `false` for north/south.
      */
     private isVertical(): boolean {
-        return this._tabSide === "west" || this._tabSide === "east";
+        return this._side === "west" || this._side === "east";
     }
 
     /**
@@ -1866,7 +1866,7 @@ class Tab extends LayoutManager {
      * @returns The per-end arrow gutter in px.
      */
     private computeArrowReserve(mainInner: number, toolExtent: number): number {
-        if (!this._tabScrollable) {
+        if (!this._scrollable) {
             return 0;
         }
 
@@ -1893,7 +1893,7 @@ class Tab extends LayoutManager {
      * @param mainInner - The strip's main-axis inner extent in px.
      */
     private positionClipFrame(toolExtent: number, arrowReserve: number, endGap: number, scrollShift: number, thickness: number, mainInner: number): void {
-        const toolsLead = this._tabAlign === "end";
+        const toolsLead = this._align === "end";
         const leadChrome = (toolsLead ? toolExtent : 0) + arrowReserve;
         const trailChrome = (toolsLead ? 0 : toolExtent) + arrowReserve;
         const mainSize = mainInner - leadChrome - trailChrome;
@@ -1918,7 +1918,7 @@ class Tab extends LayoutManager {
      * Re-derives every tab button's insets from `_compact` and applies the
      * `writing-mode` for the current orientation (cleared on horizontal sides),
      * and tightens the tool buttons' insets to match, so `setCompact` /
-     * `setTabOrientation` take effect on the next pass without the setters
+     * `setOrientation` take effect on the next pass without the setters
      * touching the DOM. Run before the width pass so the insets feed the buttons'
      * measured extents.
      */
@@ -1928,8 +1928,8 @@ class Tab extends LayoutManager {
         // counter-clockwise (reads bottom-to-top). The `vertical-rl`/`vertical-lr`
         // pair only differs in line-stacking, which is invisible on a one-line
         // label, so both used to look identical.
-        const writingMode = this._tabOrientation === "vertical-cw" ? "sideways-rl"
-            : this._tabOrientation === "vertical-ccw" ? "sideways-lr"
+        const writingMode = this._orientation === "vertical-cw" ? "sideways-rl"
+            : this._orientation === "vertical-ccw" ? "sideways-lr"
             : null;
 
         for (const entry of this._tabs) {
@@ -1944,7 +1944,7 @@ class Tab extends LayoutManager {
 
         const toolInsets = this.computeToolButtonInsets();
 
-        for (const tool of this._tabTools) {
+        for (const tool of this._tools) {
             tool.setInsets(toolInsets);
         }
     }
@@ -1964,7 +1964,7 @@ class Tab extends LayoutManager {
      * @returns The leading gap in px, clamped to `0`.
      */
     private endAlignGap(available: number): number {
-        if (this._tabAlign !== "end" || this._tabWidthMode === "fill" || this._tabs.length === 0) {
+        if (this._align !== "end" || this._widthMode === "fill" || this._tabs.length === 0) {
             return 0;
         }
 
@@ -1980,7 +1980,7 @@ class Tab extends LayoutManager {
      * @param thickness - The strip's cross-axis thickness in px.
      */
     private positionToolGroup(mainInner: number, toolExtent: number, thickness: number): void {
-        if (this._tabTools.length === 0 || toolExtent <= 0) {
+        if (this._tools.length === 0 || toolExtent <= 0) {
             this._toolGroup.setVisible(false);
 
             return;
@@ -1988,7 +1988,7 @@ class Tab extends LayoutManager {
 
         this._toolGroup.setVisible(true);
 
-        const mainPos = this._tabAlign === "end" ? 0 : mainInner - toolExtent;
+        const mainPos = this._align === "end" ? 0 : mainInner - toolExtent;
 
         if (this.isVertical()) {
             this._toolGroup.setX(0);
@@ -2025,7 +2025,7 @@ class Tab extends LayoutManager {
 
         const mainPos = vertical ? wrapper.getY() : wrapper.getX();
 
-        this._indicator.slideTo(mainPos, mainExtent, this._tabSide);
+        this._indicator.slideTo(mainPos, mainExtent, this._side);
     }
 
     /**
@@ -2053,7 +2053,7 @@ class Tab extends LayoutManager {
                 // of the reading flow: the bottom for clockwise (top-to-bottom)
                 // text, the top for counter-clockwise (bottom-to-top).
                 closeButton.setX(Math.round((entry.wrapper.getWidth() - CLOSE_BUTTON_SIZE) / 2));
-                closeButton.setY(this._tabOrientation === "vertical-ccw"
+                closeButton.setY(this._orientation === "vertical-ccw"
                     ? 2
                     : entry.wrapper.getHeight() - CLOSE_BUTTON_SIZE - 2);
             } else {
@@ -2076,7 +2076,7 @@ class Tab extends LayoutManager {
     private layoutOverflowChrome(mainInner: number, toolExtent: number, thickness: number, arrowReserve: number): void {
         this._toolbar.setOverflow("hidden");
 
-        if (this._tabScrollable && arrowReserve > 0) {
+        if (this._scrollable && arrowReserve > 0) {
             this.layoutOverflowArrows(mainInner, toolExtent, thickness, arrowReserve);
         } else {
             this.hideOverflowArrows();
@@ -2151,7 +2151,7 @@ class Tab extends LayoutManager {
         // The arrows sit in the gutters at the ends of the tab region, which
         // excludes the tool-group slot: tools trail the tabs in `"start"`
         // alignment and lead them in `"end"` alignment.
-        const toolsLead = this._tabAlign === "end";
+        const toolsLead = this._align === "end";
         const leadPos = toolsLead ? toolExtent : 0;
         const trailPos = (toolsLead ? mainInner : mainInner - toolExtent) - arrowReserve;
 
@@ -2219,7 +2219,7 @@ class Tab extends LayoutManager {
      * @returns The scroll shift in px to subtract from the leading inset.
      */
     private resolveScrollShift(available: number): number {
-        if (!this._tabScrollable) {
+        if (!this._scrollable) {
             this._scrollOffset = 0;
             this._scrollMax = 0;
             this._scrollToSelected = false;
@@ -2252,7 +2252,7 @@ class Tab extends LayoutManager {
 
         this._scrollToSelected = false;
 
-        if (!this._tabScrollable) {
+        if (!this._scrollable) {
             return false;
         }
 
@@ -2409,7 +2409,7 @@ class Tab extends LayoutManager {
         let contentW = cs.width;
         let contentH = cs.height;
 
-        switch (this._tabSide) {
+        switch (this._side) {
             case "north":
                 contentY = baseY + thickness;
                 contentH = cs.height - thickness;
@@ -2442,7 +2442,7 @@ class Tab extends LayoutManager {
 
         // Size the clip frame to the tab region (between the chrome), then size
         // the tabs in that space.
-        const toolExtent = this._tabTools.length > 0 ? this.toolGroupMainExtent() : 0;
+        const toolExtent = this._tools.length > 0 ? this.toolGroupMainExtent() : 0;
         const mainInner = this.isVertical() ? toolbarH : toolbarW;
 
         // Place the clip frame between the tool slot and — when a scrollable strip
