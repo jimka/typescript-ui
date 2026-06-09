@@ -5,6 +5,7 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Size } from "~/primitive/Size.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { Component } from "~/core/Component.js";
+import { Panel } from "~/core/Panel.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
@@ -14,10 +15,23 @@ import { ButtonGroup } from "~/core/ButtonGroup.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
 import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
+import { VBox } from "~/layout/VBox.js";
+import { BoxLayout } from "~/layout/BoxLayout.js";
+import { Button } from "~/component/button/Button.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { angle_left } from "~/glyphs/solid/angle_left.js";
+import { angle_right } from "~/glyphs/solid/angle_right.js";
+import { angle_up } from "~/glyphs/solid/angle_up.js";
+import { angle_down } from "~/glyphs/solid/angle_down.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
+import { DragManager, DragEventDetail } from "~/core/DragManager.js";
 import { callable } from "~/core/Callable.js";
+
+// Register the overflow scroll-arrow glyphs so the arrows render regardless of
+// which glyphs the consumer has imported (mirrors TabCloseButton's xmark seed).
+Glyph.register(angle_left, angle_right, angle_up, angle_down);
 
 /**
  * String-literal union of the events emitted by {@link Tab}.
@@ -43,6 +57,49 @@ export type TabEvent = "tabclose";
 export type TabWidthMode = "fill" | "content" | "equal" | "fixed";
 
 /**
+ * Which edge of the content area the {@link Tab} strip sits on.
+ *
+ * - `"north"` — strip on top, content below (the default).
+ * - `"south"` — strip on the bottom, content above.
+ * - `"west"` — strip on the left (fixed width), content to the right.
+ * - `"east"` — strip on the right, content to the left.
+ *
+ * @category Layouts
+ */
+export type TabSide = "north" | "south" | "west" | "east";
+
+/**
+ * Main-axis alignment of the tab-button group within the {@link Tab} strip.
+ *
+ * - `"start"` — tabs hug the strip's leading edge (left for north/south, top
+ *   for west/east); the tool group, if any, sits at the trailing edge.
+ * - `"end"` — tabs hug the trailing edge; the tool group sits at the leading
+ *   edge.
+ *
+ * Alignment is a no-op in `"fill"` width mode (and in `"equal"` once it
+ * collapses to fill), where the tabs span the whole strip.
+ *
+ * @category Layouts
+ */
+export type TabAlign = "start" | "end";
+
+/**
+ * Text orientation for tab buttons on the vertical sides (west/east). Ignored
+ * for north/south, where tab text is always horizontal.
+ *
+ * - `"horizontal"` — buttons stack vertically but text stays upright.
+ * - `"vertical-cw"` — text rotated 90° clockwise (`writing-mode: vertical-rl`).
+ * - `"vertical-ccw"` — text rotated the other way (`writing-mode: vertical-lr`).
+ *
+ * @remarks Implemented with CSS `writing-mode` rather than `transform: rotate`
+ * so the browser reports the rotated box through `getBoundingClientRect`,
+ * keeping preferred-size measurement and hit-testing correct.
+ *
+ * @category Layouts
+ */
+export type TabOrientation = "horizontal" | "vertical-cw" | "vertical-ccw";
+
+/**
  * Duration (ms) shared by the cross-tab content fade-in and the selection
  * indicator's slide. Matches `AnimatedDropdown`'s default so tabs and the
  * ComboBox caret animate at the same pace.
@@ -54,6 +111,40 @@ const CLOSE_BUTTON_SIZE = 16;
 
 /** Side length (px) of the ✕ glyph inside the close button (half the hit box). */
 const CLOSE_GLYPH_SIZE = 8;
+
+/**
+ * Breathing room (px) added to each tab button's insets on top of the close-
+ * button reservation. The historic value the strip was tuned against; reduced
+ * to {@link TAB_BUTTON_INSET_COMPACT} when the strip is `compact`.
+ */
+const TAB_BUTTON_INSET = 4;
+
+/** Reduced per-tab breathing room (px) used when the strip is `compact`. */
+const TAB_BUTTON_INSET_COMPACT = 2;
+
+/**
+ * Strip thickness (px) on the cross axis — the toolbar's height for north/south
+ * and its width for west/east. Matches the legacy `setPreferredSize(0, 30)`
+ * seed the top-only strip was tuned against. Reduced to
+ * {@link STRIP_THICKNESS_COMPACT} when the strip is `compact`.
+ */
+const STRIP_THICKNESS = 30;
+
+/** Reduced cross-axis strip thickness (px) used when the strip is `compact`. */
+const STRIP_THICKNESS_COMPACT = 24;
+
+/**
+ * Main-axis length (px) of each overflow scroll-arrow button — square against
+ * the strip thickness. Wide enough to be an easy click target, matching the
+ * default tab height.
+ */
+const SCROLL_ARROW_SIZE = 24;
+
+/**
+ * Pixels the strip scrolls per overflow-arrow click. One roughly-tab-width
+ * nudge so repeated clicks page through the tabs without overshooting.
+ */
+const SCROLL_ARROW_STEP = 80;
 
 /**
  * Construction-time options for {@link Tab}.
@@ -84,6 +175,31 @@ export interface TabOptions extends LayoutManagerOptions {
      * `true`); setting it explicitly pins the value and stops it tracking the theme.
      */
     tabUnderBorderFullWidth?: boolean;
+
+    /** Which edge the tab strip sits on; defaults to `"north"`. */
+    tabSide?: TabSide;
+
+    /** Main-axis alignment of the tab-button group; defaults to `"start"`. */
+    tabAlign?: TabAlign;
+
+    /** Text orientation on the vertical sides; defaults to `"horizontal"`. */
+    tabOrientation?: TabOrientation;
+
+    /**
+     * Whether an overflowing strip scrolls (leading/trailing arrow buttons,
+     * tabs kept at preferred size) instead of compressing the tabs to fit.
+     * Defaults to `false`.
+     */
+    tabScrollable?: boolean;
+
+    /** Tool buttons pinned at the far end of the strip, opposite the tabs. */
+    tabTools?: Component[];
+
+    /** Reduce tab-button insets for a denser strip. Defaults to `false`. */
+    compact?: boolean;
+
+    /** Enable within-strip header drag-reorder. Defaults to `false`. */
+    reorderable?: boolean;
 }
 
 /**
@@ -128,28 +244,32 @@ interface TabEntry {
 }
 
 /**
- * The single shared selection bar that slides under the active tab. Styles
- * itself entirely from theme tokens; {@link Tab} drives its horizontal position
- * and width via {@link slideTo} on each layout pass.
+ * The single shared selection bar that slides along the active tab. Styles
+ * itself entirely from theme tokens; {@link Tab} drives its position and extent
+ * via {@link slideTo} on each layout pass.
  *
  * @remarks Lives as a raw-appended overlay inside the tab toolbar's element
- * rather than a laid-out child, so the toolbar's `HBox` never allocates it a
- * tab-cell slot.
+ * rather than a laid-out child, so the toolbar's box never allocates it a
+ * tab-cell slot. The bar pins to the strip's *inner* edge (bottom for north,
+ * top for south, right for west, left for east) and slides along the strip's
+ * main axis (X for north/south, Y for west/east).
  */
 class TabIndicator extends Component {
-    private _barLeft: number = 0;
+    private _mainPos: number = 0;
+    private _mainExtent: number = 0;
+    private _side: TabSide = "north";
 
     /**
-     * Builds the indicator. Colour and the fade transition go through the
+     * Builds the indicator. Colour and the slide transition go through the
      * framework-tracked setters so they survive `applyStyle`'s inline-style
-     * wipe; the token-driven bottom/height geometry is re-applied in the
-     * `applyStyle` override below, which the base setters don't know about.
+     * wipe; the token-driven edge geometry is re-applied in the `applyStyle`
+     * override below, which the base setters don't know about.
      */
     constructor() {
         super();
 
         this.setBackgroundColor("var(--ts-ui-tab-indicator-color, #1a73e8)");
-        this.setTransition(`transform ${TAB_FADE_DURATION_MS}ms ease, width ${TAB_FADE_DURATION_MS}ms ease`);
+        this.setTransition(`transform ${TAB_FADE_DURATION_MS}ms ease, width ${TAB_FADE_DURATION_MS}ms ease, height ${TAB_FADE_DURATION_MS}ms ease`);
         this.setPointerEvents("none");
         // Raw-appended before any tab wrapper exists, so it sits first in DOM
         // order; lift it above the opaque tab buttons that would otherwise
@@ -158,18 +278,20 @@ class TabIndicator extends Component {
     }
 
     /**
-     * Positions the bar over the active tab cell. `width` routes through the
-     * tracked `setWidth` (replayed by `applyStyle`); the horizontal offset is
-     * cached and written as a `transform` via {@link applyBarGeometry}.
+     * Positions the bar over the active tab cell along the strip's main axis.
      *
-     * @param left - The active tab cell's left offset within the strip, in px.
-     * @param width - The active tab cell's width, in px.
+     * @param mainPos - The active cell's main-axis offset within the strip (X
+     *   for north/south, Y for west/east), in px.
+     * @param mainExtent - The active cell's main-axis extent (width for
+     *   north/south, height for west/east), in px.
+     * @param side - The active {@link TabSide}, selecting the pinned inner edge.
      *
      * @returns This indicator, for chaining.
      */
-    slideTo(left: number, width: number): this {
-        this._barLeft = left;
-        this.setWidth(width);
+    slideTo(mainPos: number, mainExtent: number, side: TabSide): this {
+        this._mainPos = mainPos;
+        this._mainExtent = mainExtent;
+        this._side = side;
 
         if (this.getElement()) {
             this.applyBarGeometry();
@@ -194,18 +316,109 @@ class TabIndicator extends Component {
     }
 
     /**
-     * Writes the absolute bottom-edge placement, token thickness, and current
-     * horizontal transform — the styles the base `applyStyle` doesn't replay.
+     * Writes the inner-edge placement, token thickness, main-axis extent, and
+     * current slide transform — the styles the base `applyStyle` doesn't replay.
+     * North/south draw a horizontal bar on the bottom/top edge sized by `width`
+     * and slid with `translateX`; west/east draw a vertical bar on the right/left
+     * edge sized by `height` and slid with `translateY`.
      *
      * @returns This indicator, for chaining.
      */
     private applyBarGeometry(): this {
+        const thickness = "var(--ts-ui-tab-indicator-thickness, 2px)";
+        const vertical = this._side === "west" || this._side === "east";
+
+        if (vertical) {
+            return this.setElementStyles({
+                top      : "0",
+                bottom   : "auto",
+                left     : this._side === "east" ? "0" : "auto",
+                right    : this._side === "west" ? "0" : "auto",
+                width    : thickness,
+                height   : this._mainExtent + "px",
+                transform: `translateY(${this._mainPos}px)`,
+            });
+        }
+
         return this.setElementStyles({
             left     : "0",
-            bottom   : "0",
-            height   : "var(--ts-ui-tab-indicator-thickness, 2px)",
-            transform: `translateX(${this._barLeft}px)`,
+            right    : "auto",
+            top      : this._side === "south" ? "0" : "auto",
+            bottom   : this._side === "north" ? "0" : "auto",
+            width    : this._mainExtent + "px",
+            height   : thickness,
+            transform: `translateX(${this._mainPos}px)`,
         });
+    }
+}
+
+/**
+ * The insertion rule shown during a within-strip tab drag-reorder. Like
+ * {@link TabIndicator} it is a raw-appended overlay inside the toolbar element
+ * (so the box never allocates it a cell) and is driven entirely by {@link Tab}.
+ * Unlike the indicator it is main-axis-aware: a thin vertical rule for
+ * north/south strips, a thin horizontal rule for west/east strips.
+ *
+ * @remarks Geometry is written through the framework-tracked `setX` / `setY` /
+ * `setWidth` / `setHeight` / `setVisible` setters, all of which the base
+ * `applyStyle` replays, so no custom replay override is needed.
+ */
+class TabReorderBar extends Component {
+
+    /** Insertion-rule thickness (px) along the strip's main axis. */
+    private static readonly THICKNESS = 2;
+
+    /**
+     * Builds the rule: the shared drag-reorder colour, no pointer events, lifted
+     * above the opaque tab buttons, hidden until a drag positions it.
+     */
+    constructor() {
+        super();
+
+        this.setBackgroundColor("var(--ts-ui-drag-reorder-color, #1a73e8)");
+        this.setPointerEvents("none");
+        this.setZIndex(2);
+        this.setVisible(false);
+    }
+
+    /**
+     * Positions the rule at a slot boundary and shows it.
+     *
+     * @param mainCoord - The boundary's leading-edge offset on the strip's main
+     *   axis (X for north/south, Y for west/east), in px.
+     * @param crossExtent - The strip's cross-axis thickness the rule spans, in px.
+     * @param vertical - `true` for west/east strips (a horizontal rule), `false`
+     *   for north/south strips (a vertical rule).
+     *
+     * @returns This reorder bar, for chaining.
+     */
+    placeAt(mainCoord: number, crossExtent: number, vertical: boolean): this {
+        if (vertical) {
+            this.setX(0);
+            this.setY(mainCoord);
+            this.setWidth(crossExtent);
+            this.setHeight(TabReorderBar.THICKNESS);
+        } else {
+            this.setX(mainCoord);
+            this.setY(0);
+            this.setWidth(TabReorderBar.THICKNESS);
+            this.setHeight(crossExtent);
+        }
+
+        this.setVisible(true);
+
+        return this;
+    }
+
+    /**
+     * Hides the insertion rule (drag left the strip, or the drop completed).
+     *
+     * @returns This reorder bar, for chaining.
+     */
+    hide(): this {
+        this.setVisible(false);
+
+        return this;
     }
 }
 
@@ -219,7 +432,17 @@ class TabIndicator extends Component {
  */
 class Tab extends LayoutManager {
 
-    private _toolbar: Component = new Component();
+    // A Panel (not a bare Component) so the strip fills its allocated edge:
+    // Panel.clampsToContentSize() is false, so setWidth/setHeight accept the
+    // full container extent instead of shrinking to the tab buttons' content max.
+    private _toolbar: Panel = new Panel();
+    // Clips the tab region. Holds the tab wrappers (its box children), the
+    // selection indicator, and the reorder bar; positioned to the scrollable tab
+    // region between the chrome (tool group + arrows) and set to overflow:hidden,
+    // so a scrolled tab — and its overlaid ✕ — is clipped at the region edge
+    // instead of bleeding over the tool buttons. The chrome lives on `_toolbar`,
+    // outside this frame.
+    private _clipFrame: Panel = new Panel();
     private _tabs: Array<TabEntry> = [];
     private _buttonGroup: ButtonGroup = new ButtonGroup();
     private _rovingTabIndex: RovingTabIndex = new RovingTabIndex();
@@ -238,6 +461,44 @@ class Tab extends LayoutManager {
     private _themeCleanup: (() => void) | null = null;
     private _indicator: TabIndicator = new TabIndicator();
 
+    private _tabSide: TabSide = "north";
+    private _tabAlign: TabAlign = "start";
+    private _tabOrientation: TabOrientation = "horizontal";
+    private _tabScrollable: boolean = false;
+    private _compact: boolean = false;
+
+    // Tool buttons pinned at the far end of the strip. Held in a hand-positioned
+    // overlay (its own inner box) raw-appended to the toolbar element next to
+    // the indicator, rather than enrolled as toolbar box children — so the tab
+    // wrappers stay the toolbar's only box children and their indices line up
+    // 1:1 with `_tabs` for the reorder/indicator/close-button math.
+    private _tabTools: Component[] = [];
+    // Also a Panel so it fills its reserved slot rather than clamping to the
+    // tool buttons' content max (same reason as `_toolbar`).
+    private _toolGroup: Panel = new Panel();
+
+    // Overflow "arrows" chrome: leading/trailing scroll buttons, hidden when the
+    // strip fits. Built lazily the first time `tabScrollable` is enabled.
+    private _scrollLeadButton: Button | null = null;
+    private _scrollTrailButton: Button | null = null;
+    // Scroll position (px) for a scrollable strip: baked into the clip frame's
+    // leading inset, so the wrappers and indicator scroll together while the
+    // chrome (arrows, tool group) stays fixed outside the frame. `_scrollMax` caps
+    // it to the last page.
+    private _scrollOffset: number = 0;
+    private _scrollMax: number = 0;
+    // One-shot: scroll the selected tab into view on the next layout. Set when
+    // scrolling first becomes active (enabling `tabScrollable`, or a side switch
+    // while scrollable), so the selected tab isn't left clipped off-screen.
+    private _scrollToSelected: boolean = false;
+
+    // Within-strip drag-reorder wiring (see installTabDnD / teardownTabDnD).
+    private _reorderable: boolean = false;
+    private _reorderBar: TabReorderBar = new TabReorderBar();
+    private _dndTeardowns: Array<() => void> = [];
+    private _dragMouseTarget: EventTarget | null = null;
+    private _dragInsertIndex: number = -1;
+
     /**
      * Creates a Tab layout manager with an empty toolbar.
      *
@@ -252,7 +513,29 @@ class Tab extends LayoutManager {
         this._toolbar.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
         this._toolbar.clearInsets();
         this.applyUnderBorder();
-        this._toolbar.setPreferredSize(0, 30);
+        this._toolbar.setPreferredSize(0, STRIP_THICKNESS);
+
+        // The tab wrappers live in the clip frame (its box lays them out), not on
+        // the toolbar directly. Transparent so the toolbar's strip background and
+        // under-border show through; overflow:hidden clips scrolled tabs (and
+        // their close overlays) at the tab-region edge. Hand-positioned in
+        // `doLayout`, so it is raw-appended (not a toolbar box child).
+        this._clipFrame.setLayoutManager(new HBox({ mode: "equal", spacing: 0 }));
+        this._clipFrame.setBackgroundColor("transparent");
+        this._clipFrame.clearInsets();
+        this._clipFrame.setOverflow("hidden");
+
+        // The tool group is a hand-positioned overlay (not a toolbar box child);
+        // it runs its own box to lay its buttons out along the strip's main axis,
+        // stretching them across the strip thickness (the box's cross axis).
+        this._toolGroup.setLayoutManager(new HBox({ spacing: 0, stretching: true }));
+        // Opaque strip background (not transparent) so scrolled tabs slide behind
+        // the tool group rather than showing through it.
+        this._toolGroup.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
+        this._toolGroup.clearInsets();
+        // Lift the tool group above the tab wrappers (which are appended later in
+        // DOM order) so its buttons stay clickable in their reserved slot.
+        this._toolGroup.setZIndex(1);
 
         // Follow the active theme's under-border default until a consumer pins
         // it explicitly. Torn down in detach().
@@ -276,11 +559,24 @@ class Tab extends LayoutManager {
      * full-width 1px rule when set, no border when cleared.
      */
     private applyUnderBorder(): void {
-        if (this._underBorderFullWidth) {
-            this._toolbar.setBorder({ border: "1px solid var(--ts-ui-tab-toolbar-border, #e1e1e8)" });
-        } else {
+        if (!this._underBorderFullWidth) {
             this._toolbar.clearBorder();
+
+            return;
         }
+
+        const rule = "1px solid var(--ts-ui-tab-toolbar-border, #e1e1e8)";
+
+        // The under-border is the single rule between the strip and the content
+        // area, so it sits on the strip's *inner* edge — the one adjacent to the
+        // content: bottom for north, top for south, right for west, left for
+        // east. The other three edges stay borderless.
+        this._toolbar.setBorder({
+            borderTop:    this._tabSide === "south" ? rule : "none",
+            borderBottom: this._tabSide === "north" ? rule : "none",
+            borderLeft:   this._tabSide === "east"  ? rule : "none",
+            borderRight:  this._tabSide === "west"  ? rule : "none",
+        });
     }
 
     /**
@@ -310,6 +606,36 @@ class Tab extends LayoutManager {
 
         if (options.tabUnderBorderFullWidth !== undefined) {
             this.setTabUnderBorderFullWidth(options.tabUnderBorderFullWidth);
+        }
+
+        if (options.tabSide !== undefined) {
+            this.setTabSide(options.tabSide);
+        }
+
+        if (options.tabAlign !== undefined) {
+            this.setTabAlign(options.tabAlign);
+        }
+
+        if (options.tabOrientation !== undefined) {
+            this.setTabOrientation(options.tabOrientation);
+        }
+
+        if (options.tabScrollable !== undefined) {
+            this.setTabScrollable(options.tabScrollable);
+        }
+
+        if (options.compact !== undefined) {
+            this.setCompact(options.compact);
+        }
+
+        if (options.reorderable !== undefined) {
+            this.setReorderable(options.reorderable);
+        }
+
+        if (options.tabTools !== undefined) {
+            for (const tool of options.tabTools) {
+                this.addTabTool(tool);
+            }
         }
     }
 
@@ -389,94 +715,320 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Applies the active {@link TabWidthMode} to the toolbar layout and every
-     * tab wrapper. Called from `doLayout` before the toolbar lays out so the
-     * widths are in place when the strip positions its tabs.
+     * Derives a tab button's insets from the current `_compact` flag. The label
+     * gets two `pad` units of breathing room per side (`pad` shrinks when
+     * compact); closeable tabs additionally reserve {@link CLOSE_BUTTON_SIZE} on
+     * the edge where {@link positionCloseButtons} pins the ✕ — the right for
+     * upright text (north/south and west/east horizontal), the bottom or top for
+     * rotated cw / ccw text — so the label never runs under it. The
+     * close reservation is fixed; only the breathing pad shrinks, so the glyph
+     * keeps its clearance even in the dense strip.
      *
-     * @remarks `"fill"` uses the toolbar's `equal` HBox (tabs stretch to share
-     * the strip). Every other mode switches to `preferred` (tabs left-aligned,
-     * leftover empty) and pins each wrapper's width: `"content"` caps the
-     * natural width at `tabMaxWidth`; `"equal"` and `"fixed"` clamp min and max
-     * to a single uniform width so every tab matches. `"equal"` additionally
-     * collapses to `"fill"` when its uniform width would overflow `available`,
-     * so the tabs shrink to share the strip rather than spilling past it.
+     * @param constraints - The tab's layout constraints; `constraints.closeable`
+     *   adds the close-button reservation.
      *
-     * @param available - The strip's inner content width (px) the tabs must fit within.
+     * @returns The insets to apply to the tab button.
+     */
+    private computeTabButtonInsets(constraints?: LayoutConstraints): Insets {
+        const pad = this._compact ? TAB_BUTTON_INSET_COMPACT : TAB_BUTTON_INSET;
+        const closeReserve = constraints?.closeable ? CLOSE_BUTTON_SIZE : 0;
+
+        if (this.isRotatedText()) {
+            // Rotated label runs along the cell, ending where it stops reading:
+            // the bottom for clockwise (top-to-bottom) text, the top for
+            // counter-clockwise (bottom-to-top). Reserve the ✕ clearance there.
+            return this._tabOrientation === "vertical-ccw"
+                ? new Insets(closeReserve + pad * 2, pad * 2, pad * 2, pad * 2)
+                : new Insets(pad * 2, pad * 2, closeReserve + pad * 2, pad * 2);
+        }
+
+        if (this.isVertical()) {
+            // West/east upright text: ✕ to the right of the label, with vertical
+            // breathing so the stacked tabs aren't cramped.
+            return new Insets(pad * 2, closeReserve + pad * 2, pad * 2, pad * 2);
+        }
+
+        // North/south: ✕ to the right; the strip thickness supplies the cross-
+        // axis (vertical) room, so no top/bottom inset.
+        return new Insets(0, closeReserve + pad * 2, 0, pad * 2);
+    }
+
+    /**
+     * Derives a tool button's insets from the current `_compact` flag — the same
+     * breathing pad as the tab buttons (no close reservation), so tools shrink in
+     * lockstep when the strip goes compact. The cross-axis inset is zeroed (the
+     * strip thickness supplies that dimension and the stretching tool group fills
+     * the button to it), so only the main-axis pad — and thus the tool's width on
+     * north/south, height on west/east — tightens in compact mode.
+     *
+     * @returns The insets to apply to each tool button.
+     */
+    private computeToolButtonInsets(): Insets {
+        const pad = this._compact ? TAB_BUTTON_INSET_COMPACT : TAB_BUTTON_INSET;
+
+        if (this.isVertical()) {
+            return new Insets(pad * 2, 0, pad * 2, 0);
+        }
+
+        return new Insets(0, pad * 2, 0, pad * 2);
+    }
+
+    /**
+     * Clamps a wrapper's extent on the strip's *main* axis (width for
+     * north/south, height for west/east) to `[min, max]`, leaving the cross axis
+     * unbounded so the box stretches it to the strip thickness.
+     *
+     * @param wrapper - The tab wrapper to clamp.
+     * @param min - The main-axis minimum in px.
+     * @param max - The main-axis maximum in px (`Number.MAX_VALUE` for unbounded).
+     */
+    private clampWrapperMain(wrapper: Component, min: number, max: number): void {
+        if (this.isVertical()) {
+            wrapper.setMinSize(0, min);
+            wrapper.setMaxSize(Number.MAX_VALUE, max);
+        } else {
+            wrapper.setMinSize(min, 0);
+            wrapper.setMaxSize(max, Number.MAX_VALUE);
+        }
+    }
+
+    /**
+     * Reports whether the strip paints rotated text — a west/east side with a
+     * `vertical-cw` / `vertical-ccw` orientation (rendered via `sideways-rl` /
+     * `sideways-lr`). Used to place the ✕ along the cell and pin the rotated
+     * label's natural extent.
+     *
+     * @returns `true` for west/east with a vertical text orientation.
+     */
+    private isRotatedText(): boolean {
+        return this.isVertical() && this._tabOrientation !== "horizontal";
+    }
+
+    /**
+     * Reads a tab button's preferred extent on the strip's **main** axis (width
+     * for north/south, height for west/east). The button's preferred size already
+     * reflects the rotated text run — rotated labels report a tall, narrow size —
+     * so the main axis is simply the vertical strip's height or the horizontal
+     * strip's width, with no per-orientation swap here.
+     *
+     * @param button - The tab button to measure.
+     *
+     * @returns The main-axis extent in px, or 0 before the button has reported a
+     *   preferred size.
+     */
+    private buttonMainExtent(button: ToggleButton): number {
+        const preferred = button.getPreferredSize();
+
+        if (!preferred) {
+            return 0;
+        }
+
+        return this.isVertical() ? preferred.height : preferred.width;
+    }
+
+    /**
+     * Reads a tab button's preferred extent on the strip's **cross** axis (the
+     * strip's thickness contribution) — the complement of
+     * {@link buttonMainExtent}.
+     *
+     * @param button - The tab button to measure.
+     *
+     * @returns The cross-axis extent in px, or 0 before measurement.
+     */
+    private buttonCrossExtent(button: ToggleButton): number {
+        const preferred = button.getPreferredSize();
+
+        if (!preferred) {
+            return 0;
+        }
+
+        return this.isVertical() ? preferred.width : preferred.height;
+    }
+
+    /**
+     * Computes the strip's thickness (px) on its cross axis. North/south keep the
+     * base {@link STRIP_THICKNESS} seed (the smaller {@link STRIP_THICKNESS_COMPACT}
+     * when `compact`); west/east grow from that seed to the widest button (or tool)
+     * cross extent so horizontal-text vertical strips fit their longest label,
+     * never shrinking below it. In `"fixed"` width mode with *upright* text the
+     * vertical strip's thickness is instead pinned to `tabFixedWidth` — there the
+     * fixed "width" is the bar's thickness (the horizontal text run). Rotated text
+     * reads along the main axis, so fixed sizes its height and the thickness stays
+     * content-derived.
+     *
+     * @returns The strip thickness in px.
+     */
+    private stripThickness(): number {
+        const base = this._compact ? STRIP_THICKNESS_COMPACT : STRIP_THICKNESS;
+
+        if (!this.isVertical()) {
+            return base;
+        }
+
+        if (this._tabWidthMode === "fixed" && !this.isRotatedText()) {
+            return Math.max(base, this._tabFixedWidth);
+        }
+
+        let maxCross = base;
+
+        for (const entry of this._tabs) {
+            maxCross = Math.max(maxCross, this.buttonCrossExtent(entry.button));
+        }
+
+        const toolSize = this._tabTools.length > 0 ? this._toolGroup.getPreferredSize() : null;
+
+        if (toolSize) {
+            maxCross = Math.max(maxCross, toolSize.width);
+        }
+
+        return maxCross;
+    }
+
+    /**
+     * Resolves a tab's fixed target extent on the strip's main axis for the
+     * active {@link TabWidthMode}, or `0` when the mode imposes none (`"fill"`,
+     * or before the buttons have reported a preferred size). `"equal"` and
+     * `"fixed"` return one uniform value across all tabs; `"content"` returns the
+     * per-tab natural extent capped at `tabMaxWidth`. Shared by the overflow and
+     * non-overflow paths so a strip keeps its width-mode sizing when overflow
+     * scrolling is enabled instead of collapsing to raw content width.
+     *
+     * @param button - The tab button to measure (used only by `"content"`).
+     *
+     * @returns The target main-axis extent in px, or `0` for no fixed target.
+     */
+    private tabModeExtent(button: ToggleButton): number {
+        switch (this._tabWidthMode) {
+            case "fixed":
+                // Fixed sizes the extent in the text's reading direction. For
+                // upright text on west/east that direction is the bar *thickness*
+                // (handled in `stripThickness`), so the main axis stays content-
+                // sized (return 0). North/south and rotated (vertical) text read
+                // along the main axis, so they pin the main extent.
+                return (this.isVertical() && !this.isRotatedText()) ? 0 : this._tabFixedWidth;
+            case "equal": {
+                let widest = 0;
+
+                for (const entry of this._tabs) {
+                    widest = Math.max(widest, this.buttonMainExtent(entry.button));
+                }
+
+                return Math.min(widest, this._tabMaxWidth ?? Number.MAX_VALUE);
+            }
+            case "content":
+                return Math.min(this.buttonMainExtent(button), this._tabMaxWidth ?? Number.MAX_VALUE);
+            default:
+                return 0;
+        }
+    }
+
+    /**
+     * Applies the active {@link TabWidthMode} to the toolbar box and every tab
+     * wrapper, generalised to the strip's main axis (width for north/south,
+     * height for west/east). Called from `doLayout` before the toolbar lays out.
+     *
+     * @remarks When `tabScrollable` is set the `"equal"`→`"fill"` collapse
+     * is skipped: the box is switched to `"preferred"` and marked overflowing on
+     * the main axis so buttons keep their preferred extent and the strip scrolls
+     * instead of compressing. Otherwise `"fill"` uses the box's `equal` mode
+     * (tabs share the strip); `"content"` caps the natural extent at
+     * `tabMaxWidth`; `"equal"`/`"fixed"` pin every wrapper to one uniform extent,
+     * with `"equal"` collapsing to fill when that extent would overflow.
+     *
+     * @param available - The strip's inner main-axis extent (px) the tabs must
+     *   fit within (already net of the tool-group reservation).
      */
     private applyTabWidths(available: number): void {
-        const hbox = this._toolbar.getLayoutManager() as HBox;
+        const box = this._clipFrame.getLayoutManager() as BoxLayout;
+        const overflow = this._tabScrollable;
 
-        if (this._tabWidthMode === "fill") {
-            hbox.setMode("equal");
+        // Scroll-on-overflow: keep tabs at their width-mode extent and let the
+        // strip's own overflow carry the surplus, rather than compressing to fit.
+        // The strip scrolls instead of collapsing, so the `"equal"`→`"fill"`
+        // shrink is skipped — but the width mode's sizing is still honoured, so a
+        // strip doesn't snap to raw content width the moment overflow is enabled.
+        if (overflow) {
+            box.setMode("preferred");
+            box.setOverflowing(!this.isVertical(), this.isVertical());
 
             for (const entry of this._tabs) {
-                entry.wrapper.setMinSize(0, 0);
-                entry.wrapper.setMaxSize(Number.MAX_VALUE, Number.MAX_VALUE);
+                const extent = this.tabModeExtent(entry.button);
+
+                if (extent > 0) {
+                    this.clampWrapperMain(entry.wrapper, extent, extent);
+                } else {
+                    // "fill" / pre-measurement: keep each tab's own preferred
+                    // extent. Rotated text floors to the derived main extent (the
+                    // box would otherwise read the un-rotated size and clip).
+                    const floor = this.isRotatedText() ? this.buttonMainExtent(entry.button) : 0;
+                    this.clampWrapperMain(entry.wrapper, floor, Number.MAX_VALUE);
+                }
             }
 
             return;
         }
 
-        hbox.setMode("preferred");
+        box.setOverflowing(false, false);
+
+        if (this._tabWidthMode === "fill") {
+            box.setMode("equal");
+
+            for (const entry of this._tabs) {
+                this.clampWrapperMain(entry.wrapper, 0, Number.MAX_VALUE);
+            }
+
+            return;
+        }
+
+        box.setMode("preferred");
 
         if (this._tabWidthMode === "content") {
             const cap = this._tabMaxWidth ?? Number.MAX_VALUE;
 
             for (const entry of this._tabs) {
-                entry.wrapper.setMinSize(0, 0);
-                entry.wrapper.setMaxSize(cap, Number.MAX_VALUE);
-            }
-
-            return;
-        }
-
-        // "equal" / "fixed": pin every wrapper to a single uniform width.
-        let width: number;
-
-        if (this._tabWidthMode === "fixed") {
-            width = this._tabFixedWidth;
-        } else {
-            let widest = 0;
-
-            for (const entry of this._tabs) {
-                const preferred = entry.button.getPreferredSize();
-
-                if (preferred) {
-                    widest = Math.max(widest, preferred.width);
+                // Rotated text: pin each wrapper to its derived natural main
+                // extent (capped), since the box can't read the rotated extent
+                // from the analytic preferred size. Upright text lets the box use
+                // the wrapper's preferred main extent, capped at `cap`.
+                if (this.isRotatedText()) {
+                    const extent = Math.min(this.buttonMainExtent(entry.button), cap);
+                    this.clampWrapperMain(entry.wrapper, extent, extent);
+                } else {
+                    this.clampWrapperMain(entry.wrapper, 0, cap);
                 }
             }
 
-            width = Math.min(widest, this._tabMaxWidth ?? Number.MAX_VALUE);
+            return;
         }
 
-        // Pre-measurement guard: fall back to natural widths until the tab
+        // "equal" / "fixed": pin every wrapper to a single uniform extent.
+        const extent = this._tabs.length > 0 ? this.tabModeExtent(this._tabs[0].button) : 0;
+
+        // Pre-measurement guard: fall back to natural extents until the tab
         // buttons have reported a real preferred size.
-        if (width <= 0) {
+        if (extent <= 0) {
             for (const entry of this._tabs) {
-                entry.wrapper.setMinSize(0, 0);
-                entry.wrapper.setMaxSize(Number.MAX_VALUE, Number.MAX_VALUE);
+                this.clampWrapperMain(entry.wrapper, 0, Number.MAX_VALUE);
             }
 
             return;
         }
 
-        // "equal" shrinks to fit: when the uniform width can't fit the strip,
-        // collapse to fill so the tabs share the available width instead of
+        // "equal" shrinks to fit: when the uniform extent can't fit the strip,
+        // collapse to fill so the tabs share the available space instead of
         // overflowing. "fixed" stays rigid (overflow is the consumer's intent).
-        if (this._tabWidthMode === "equal" && this._tabs.length > 0 && width * this._tabs.length > available) {
-            hbox.setMode("equal");
+        if (this._tabWidthMode === "equal" && this._tabs.length > 0 && extent * this._tabs.length > available) {
+            box.setMode("equal");
 
             for (const entry of this._tabs) {
-                entry.wrapper.setMinSize(0, 0);
-                entry.wrapper.setMaxSize(Number.MAX_VALUE, Number.MAX_VALUE);
+                this.clampWrapperMain(entry.wrapper, 0, Number.MAX_VALUE);
             }
 
             return;
         }
 
         for (const entry of this._tabs) {
-            entry.wrapper.setMinSize(width, 0);
-            entry.wrapper.setMaxSize(width, Number.MAX_VALUE);
+            this.clampWrapperMain(entry.wrapper, extent, extent);
         }
     }
 
@@ -507,6 +1059,249 @@ class Tab extends LayoutManager {
      */
     isTabUnderBorderFullWidth(): boolean {
         return this._underBorderFullWidth;
+    }
+
+    /**
+     * Selects which edge of the content area the tab strip sits on and re-lays
+     * out. Caches the value only — the orientation swap and placement happen in
+     * the next `doLayout` (this may run during `super()` before the toolbar
+     * element exists).
+     *
+     * @param side - The {@link TabSide} to place the strip on.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setTabSide(side: TabSide): this {
+        this._tabSide = side;
+
+        // The scroll axis flips with the side, so start the new side unscrolled,
+        // then bring the selected tab into view if the new axis is scrollable.
+        this._scrollOffset = 0;
+
+        if (this._tabScrollable) {
+            this._scrollToSelected = true;
+        }
+
+        this.applyUnderBorder();
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the edge the tab strip currently sits on.
+     *
+     * @returns The active {@link TabSide}.
+     */
+    getTabSide(): TabSide {
+        return this._tabSide;
+    }
+
+    /**
+     * Sets the main-axis alignment of the tab-button group within the strip and
+     * re-lays out.
+     *
+     * @param align - The {@link TabAlign} to apply.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setTabAlign(align: TabAlign): this {
+        this._tabAlign = align;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the current tab-button-group alignment.
+     *
+     * @returns The active {@link TabAlign}.
+     */
+    getTabAlign(): TabAlign {
+        return this._tabAlign;
+    }
+
+    /**
+     * Sets the tab-button text orientation for the vertical sides and re-lays
+     * out. Caches the value only; `doLayout` re-applies the `writing-mode` to
+     * every tab button each pass (no DOM work in the setter — the buttons may
+     * not exist when `applyOptions` runs during `super()`).
+     *
+     * @param orientation - The {@link TabOrientation} to apply.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setTabOrientation(orientation: TabOrientation): this {
+        this._tabOrientation = orientation;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the current vertical-side tab text orientation.
+     *
+     * @returns The active {@link TabOrientation}.
+     */
+    getTabOrientation(): TabOrientation {
+        return this._tabOrientation;
+    }
+
+    /**
+     * Sets whether an overflowing strip scrolls (leading/trailing arrow buttons,
+     * tabs kept at preferred size) instead of compressing the tabs to fit, and
+     * re-lays out.
+     *
+     * @param value - `true` to scroll on overflow, `false` to compress.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setTabScrollable(value: boolean): this {
+        // Enabling from a non-scrolling state: reveal the selected tab on the next
+        // layout rather than starting at offset 0 (it may be off-screen).
+        if (value && !this._tabScrollable) {
+            this._scrollToSelected = true;
+        }
+
+        this._tabScrollable = value;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns whether an overflowing strip scrolls instead of compressing.
+     *
+     * @returns `true` when the strip scrolls on overflow.
+     */
+    isTabScrollable(): boolean {
+        return this._tabScrollable;
+    }
+
+    /**
+     * Toggles reduced tab-button insets (a denser strip) and re-lays out.
+     * Caches the value only; `doLayout` re-derives every button's insets from
+     * `_compact` each pass, so this must not touch the DOM (the buttons may not
+     * exist when `applyOptions` runs during `super()`).
+     *
+     * @param value - `true` for compact insets, `false` for the default.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setCompact(value: boolean): this {
+        this._compact = value;
+
+        // Compact changes every tab's width, which can leave the selected tab
+        // partly clipped at the current scroll offset; nudge it back into view
+        // (a no-op when it already fits, so the scroll position is otherwise kept).
+        if (this._tabScrollable) {
+            this._scrollToSelected = true;
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns whether the strip uses reduced (compact) tab-button insets.
+     *
+     * @returns `true` when compact.
+     */
+    isCompact(): boolean {
+        return this._compact;
+    }
+
+    /**
+     * Enables or disables within-strip drag-reorder of tab headers. Unlike the
+     * pure-placement setters this one installs / tears down the drag sources and
+     * the toolbar drop target — but only when the toolbar element already exists
+     * (it is created in `attach`). When called during `super()` it just caches
+     * the flag; `attach` performs the install if `_reorderable` is set.
+     *
+     * @param value - `true` to enable header drag-reorder.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setReorderable(value: boolean): this {
+        if (this._reorderable === value) {
+            return this;
+        }
+
+        this._reorderable = value;
+
+        if (!this._toolbar.getElement()) {
+            return this;
+        }
+
+        if (value) {
+            this.installTabDnD();
+        } else {
+            this.teardownTabDnD();
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether within-strip header drag-reorder is enabled.
+     *
+     * @returns `true` when reorderable.
+     */
+    isReorderable(): boolean {
+        return this._reorderable;
+    }
+
+    /**
+     * Adds a tool button at the far end of the strip, opposite the tab buttons.
+     *
+     * @param button - The tool component to add.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    addTabTool(button: Component): this {
+        this._tabTools.push(button);
+        this._toolGroup.addComponent(button);
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Removes a previously-added tool button.
+     *
+     * @param button - The tool component to remove.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    removeTabTool(button: Component): this {
+        const idx = this._tabTools.indexOf(button);
+
+        if (idx < 0) {
+            return this;
+        }
+
+        this._tabTools.splice(idx, 1);
+        this._toolGroup.removeComponent(button);
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Reports whether the strip is on a vertical side (west/east), where the
+     * toolbar stacks tabs in a `VBox` and the main axis is Y.
+     *
+     * @returns `true` for west/east, `false` for north/south.
+     */
+    private isVertical(): boolean {
+        return this._tabSide === "west" || this._tabSide === "east";
     }
 
     /**
@@ -541,15 +1336,27 @@ class Tab extends LayoutManager {
         let element = this._toolbar.getElement(true);
         container.getElement(true).appendChild(element);
 
-        // Raw-append the selection indicator as an overlay inside the toolbar
-        // element. Going through `addComponent` would enrol it in the toolbar's
-        // `HBox`, which would then allocate it a tab-cell slot and shrink the
-        // real buttons; the indicator must be positioned manually instead.
-        element.appendChild(this._indicator.getElement(true));
+        // The clip frame (which holds the tab wrappers) and the tool group are
+        // raw-appended overlays on the toolbar — positioned manually in `doLayout`
+        // rather than enrolled in the toolbar's box. The selection indicator and
+        // reorder bar go *inside* the clip frame so they share the wrappers'
+        // coordinate space (and clip with them) rather than the toolbar's.
+        element.appendChild(this._clipFrame.getElement(true));
+        element.appendChild(this._toolGroup.getElement(true));
+
+        const clip = this._clipFrame.getElement(true);
+        clip.appendChild(this._indicator.getElement(true));
+        clip.appendChild(this._reorderBar.getElement(true));
 
         this._toolbar.getAria().setRole("tablist");
 
         Event.addSubtreeListener(this._toolbar, "keydown", (e: KeyboardEvent) => this.onToolbarKeyDown(e));
+
+        // The reorder option may have been set during `super()` before the
+        // toolbar element existed; perform the deferred install now.
+        if (this._reorderable) {
+            this.installTabDnD();
+        }
 
         return this;
     }
@@ -564,6 +1371,8 @@ class Tab extends LayoutManager {
             this._themeCleanup();
             this._themeCleanup = null;
         }
+
+        this.teardownTabDnD();
 
         this._toolbar.getElement().remove();
 
@@ -609,108 +1418,61 @@ class Tab extends LayoutManager {
      * @returns The preferred `{width, height}`, or `null` if there is no container or visible component.
      */
     getPreferredSize(): Size | null {
-        let container = this.getContainer();
-        if (!container) {
-            return null;
-        }
-
-        let perimiterSize = container.getPerimiterSize();
-
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
-
-        let visibleComponent = this.getVisibleComponent();
-        if (!visibleComponent) {
-            return null;
-        }
-
-        let size = visibleComponent.getPreferredSize();
-        if (!size) {
-            return null;
-        }
-
-        let toolbarSize = this._toolbar.getPreferredSize();
-        if (!toolbarSize) {
-            return null;
-        }
-
-        return {
-            width: size.width + outerWidth,
-            height: size.height + toolbarSize.height + outerHeight
-        };
+        return this.composeSize(this.getVisibleComponent()?.getPreferredSize());
     }
 
     /**
-     * Returns the minimum size: the visible component's minimum size plus the toolbar minimum height.
+     * Returns the minimum size: the visible component's minimum size plus the
+     * strip thickness on the strip's axis.
      *
      * @returns The minimum `{width, height}`, or `null` if there is no container or visible component.
      */
     getMinSize(): Size | null {
-        let container = this.getContainer();
-        if (!container) {
-            return null;
-        }
-
-        let perimiterSize = container.getPerimiterSize();
-
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
-
-        let visibleComponent = this.getVisibleComponent();
-        if (!visibleComponent) {
-            return null;
-        }
-
-        let size = visibleComponent.getMinSize();
-        if (!size) {
-            return null;
-        }
-
-        let toolbarSize = this._toolbar.getMinSize();
-        if (!toolbarSize) {
-            return null;
-        }
-
-        return {
-            width: size.width + outerWidth,
-            height: size.height + toolbarSize.height + outerHeight
-        };
+        return this.composeSize(this.getVisibleComponent()?.getMinSize());
     }
 
     /**
-     * Returns the maximum size: the visible component's maximum size plus the toolbar maximum height.
+     * Returns the maximum size: the visible component's maximum size plus the
+     * strip thickness on the strip's axis.
      *
      * @returns The maximum `{width, height}`, or `null` if there is no container or visible component.
      */
     getMaxSize(): Size | null {
-        let container = this.getContainer();
-        if (!container) {
+        return this.composeSize(this.getVisibleComponent()?.getMaxSize());
+    }
+
+    /**
+     * Adds the strip thickness and the container perimeter to a visible-content
+     * size, on the axis the strip occupies for the current side: height for
+     * north/south, width for west/east.
+     *
+     * @param content - The visible component's preferred/min/max size, or
+     *   `null`/`undefined` when unavailable.
+     *
+     * @returns The composed size, or `null` when there is no container or content.
+     */
+    private composeSize(content: Size | null | undefined): Size | null {
+        const container = this.getContainer();
+
+        if (!container || !content) {
             return null;
         }
 
-        let perimiterSize = container.getPerimiterSize();
+        const perimiter = container.getPerimiterSize();
+        const outerWidth = perimiter.left + perimiter.right;
+        const outerHeight = perimiter.top + perimiter.bottom;
+        const thickness = this.stripThickness();
 
-        let outerWidth = perimiterSize.left + perimiterSize.right;
-        let outerHeight = perimiterSize.top + perimiterSize.bottom;
-
-        let visibleComponent = this.getVisibleComponent();
-        if (!visibleComponent) {
-            return null;
-        }
-
-        let size = visibleComponent.getMaxSize();
-        if (!size) {
-            return null;
-        }
-
-        let toolbarSize = this._toolbar.getMaxSize();
-        if (!toolbarSize) {
-            return null;
+        if (this.isVertical()) {
+            return {
+                width:  content.width + thickness + outerWidth,
+                height: content.height + outerHeight,
+            };
         }
 
         return {
-            width: size.width + outerWidth,
-            height: size.height + toolbarSize.height + outerHeight
+            width:  content.width + outerWidth,
+            height: content.height + thickness + outerHeight,
         };
     }
 
@@ -766,13 +1528,7 @@ class Tab extends LayoutManager {
             borderLeft:   "var(--ts-ui-tab-button-selected-border-left,   var(--ts-ui-tab-button-selected-border, none))",
         });
 
-        // Reserve room on the right for the overlaid close button on closeable
-        // tabs so a long label doesn't run under the ✕. The label's own 4px
-        // horizontal breathing room is folded into the button's insets here
-        // (left 4 + 4, right rightInset + 4) since the inner label is no
-        // longer directly reachable.
-        const rightInset = constraints?.closeable ? CLOSE_BUTTON_SIZE + 4 : 4;
-        tabButton.setInsets(new Insets(0, rightInset + 4, 0, 8));
+        tabButton.setInsets(this.computeTabButtonInsets(constraints));
 
         tabButton.on("action", () => this.onTabPressed(tabButton));
 
@@ -847,10 +1603,16 @@ class Tab extends LayoutManager {
 
         this._buttonGroup.addButton(tabButton);
         this._rovingTabIndex.add(tabButton);
-        this._toolbar.addComponent(wrapper);
+        this._clipFrame.addComponent(wrapper);
 
         tabButton.getAria().setRole("tab");
         tabButton.getAria().setSelected(isSelected);
+
+        // A tab added while reorder is live (and the strip is attached) needs its
+        // own drag source; tabs added before `attach` are wired by installTabDnD.
+        if (this._reorderable && this._toolbar.getElement()) {
+            this._dndTeardowns.push(this.makeTabDragSource(entry));
+        }
 
         return entry;
     }
@@ -1020,11 +1782,524 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Computes the children's combined minSize along this manager's geometry:
-     * width is `max(toolbar.preferredWidth, visibleChild.minWidth)`; height
-     * is `toolbar.preferredHeight + visibleChild.minHeight`. Used by
-     * `doLayout` to inflate the content area's working size when the host
-     * has opted into `setOverflowing`; the toolbar's geometry is unaffected.
+     * Swaps the toolbar's inner box (and the tool group's) between `HBox` and
+     * `VBox` to match the current side, only when the orientation actually
+     * differs. North/south stack tabs in an `HBox`; west/east in a `VBox`. Both
+     * stretch on the cross axis so wrappers fill the strip thickness.
+     */
+    private syncToolbarOrientation(): void {
+        const wantVertical = this.isVertical();
+
+        if ((this._clipFrame.getLayoutManager() instanceof VBox) !== wantVertical) {
+            this._clipFrame.setLayoutManager(wantVertical
+                ? new VBox({ spacing: 0, stretching: true })
+                : new HBox({ spacing: 0, stretching: true }));
+        }
+
+        if ((this._toolGroup.getLayoutManager() instanceof VBox) !== wantVertical) {
+            this._toolGroup.setLayoutManager(wantVertical
+                ? new VBox({ spacing: 0, stretching: true })
+                : new HBox({ spacing: 0, stretching: true }));
+        }
+    }
+
+    /**
+     * Reads the tool group's preferred extent along the strip's main axis (width
+     * for north/south, height for west/east).
+     *
+     * @returns The tool-group main extent in px, or 0 when there are no tools.
+     */
+    private toolGroupMainExtent(): number {
+        const pref = this._toolGroup.getPreferredSize();
+
+        if (!pref) {
+            return 0;
+        }
+
+        return this.isVertical() ? pref.height : pref.width;
+    }
+
+    /**
+     * Predicts the strip's combined main-axis tab extent before layout, used to
+     * decide whether the "arrows" overflow chrome (and its gutter reservation) is
+     * needed. Mirrors {@link applyTabWidths}: each tab is summed at its width-mode
+     * extent ({@link tabModeExtent}) when the mode imposes one, else its own
+     * preferred extent — so the prediction matches the width the tabs are actually
+     * laid out at, not their raw content width.
+     *
+     * @returns The predicted combined main-axis extent of all tabs in px.
+     */
+    private predictTabsExtent(): number {
+        let total = 0;
+
+        for (const entry of this._tabs) {
+            total += this.predictedTabExtent(entry.button);
+        }
+
+        return total;
+    }
+
+    /**
+     * Predicts one tab's main-axis extent before layout — its width-mode extent
+     * ({@link tabModeExtent}) when the mode imposes one, else its own preferred
+     * extent. The per-tab unit summed by {@link predictTabsExtent} and used to
+     * locate the selected tab for {@link resolveScrollShift}'s scroll-into-view.
+     *
+     * @param button - The tab button to measure.
+     *
+     * @returns The predicted main-axis extent in px.
+     */
+    private predictedTabExtent(button: ToggleButton): number {
+        const extent = this.tabModeExtent(button);
+
+        return extent > 0 ? extent : this.buttonMainExtent(button);
+    }
+
+    /**
+     * Returns the scroll-arrow gutter (px) reserved at *each* end of the tab
+     * region: {@link SCROLL_ARROW_SIZE} when a scrollable strip is overflowing,
+     * else 0.
+     *
+     * @param mainInner - The strip's main-axis inner extent in px.
+     * @param toolExtent - The reserved tool-group main extent in px.
+     *
+     * @returns The per-end arrow gutter in px.
+     */
+    private computeArrowReserve(mainInner: number, toolExtent: number): number {
+        if (!this._tabScrollable) {
+            return 0;
+        }
+
+        // `+ 1` slop so a strip that exactly fits doesn't flicker the arrows.
+        return this.predictTabsExtent() > mainInner - toolExtent + 1 ? SCROLL_ARROW_SIZE : 0;
+    }
+
+    /**
+     * Positions and sizes the clip frame to the scrollable tab region — the strip
+     * band between the fixed chrome: the tool group at the end opposite the tabs
+     * (leading for `"end"` alignment, trailing otherwise) and a scroll-arrow
+     * gutter at each end when `arrowReserve` is non-zero. The frame's
+     * overflow:hidden then clips any tab (and its ✕ overlay) that scrolls past the
+     * region edge. The leading inset folds two offsets into the frame's own
+     * layout — the `"end"`-align gap (trailing-aligns the tabs) minus the
+     * `scrollShift` (slides the tabs toward the start) — so both survive an
+     * independent clip-frame relayout that a post-layout wrapper shift would lose.
+     *
+     * @param toolExtent - The tool group's main-axis extent in px.
+     * @param arrowReserve - The per-end scroll-arrow gutter in px (0 when no arrows).
+     * @param endGap - The leading gap that trailing-aligns `"end"` tabs (0 otherwise).
+     * @param scrollShift - The "arrows" scroll offset to slide the tabs by (0 otherwise).
+     * @param thickness - The strip's cross-axis thickness in px.
+     * @param mainInner - The strip's main-axis inner extent in px.
+     */
+    private positionClipFrame(toolExtent: number, arrowReserve: number, endGap: number, scrollShift: number, thickness: number, mainInner: number): void {
+        const toolsLead = this._tabAlign === "end";
+        const leadChrome = (toolsLead ? toolExtent : 0) + arrowReserve;
+        const trailChrome = (toolsLead ? 0 : toolExtent) + arrowReserve;
+        const mainSize = mainInner - leadChrome - trailChrome;
+        const leadInset = endGap - scrollShift;
+
+        if (this.isVertical()) {
+            this._clipFrame.setX(0);
+            this._clipFrame.setY(leadChrome);
+            this._clipFrame.setWidth(thickness);
+            this._clipFrame.setHeight(mainSize);
+            this._clipFrame.setInsets(new Insets(leadInset, 0, 0, 0));
+        } else {
+            this._clipFrame.setX(leadChrome);
+            this._clipFrame.setY(0);
+            this._clipFrame.setWidth(mainSize);
+            this._clipFrame.setHeight(thickness);
+            this._clipFrame.setInsets(new Insets(0, 0, 0, leadInset));
+        }
+    }
+
+    /**
+     * Re-derives every tab button's insets from `_compact` and applies the
+     * `writing-mode` for the current orientation (cleared on horizontal sides),
+     * and tightens the tool buttons' insets to match, so `setCompact` /
+     * `setTabOrientation` take effect on the next pass without the setters
+     * touching the DOM. Run before the width pass so the insets feed the buttons'
+     * measured extents.
+     */
+    private applyTabButtonStyles(): void {
+        // `sideways-rl`/`sideways-lr` rotate the whole run a quarter turn in
+        // opposite directions — clockwise (reads top-to-bottom) and
+        // counter-clockwise (reads bottom-to-top). The `vertical-rl`/`vertical-lr`
+        // pair only differs in line-stacking, which is invisible on a one-line
+        // label, so both used to look identical.
+        const writingMode = this._tabOrientation === "vertical-cw" ? "sideways-rl"
+            : this._tabOrientation === "vertical-ccw" ? "sideways-lr"
+            : null;
+
+        for (const entry of this._tabs) {
+            entry.button.setInsets(this.computeTabButtonInsets(entry.constraints));
+
+            if (this.isVertical() && writingMode) {
+                entry.button.setWritingMode(writingMode);
+            } else {
+                entry.button.clearWritingMode();
+            }
+        }
+
+        const toolInsets = this.computeToolButtonInsets();
+
+        for (const tool of this._tabTools) {
+            tool.setInsets(toolInsets);
+        }
+    }
+
+    /**
+     * Computes the leading gap (px) that pushes `"end"`-aligned tabs to the
+     * trailing edge of their region. Folded into the clip frame's leading inset
+     * (see {@link positionClipFrame}) so the inner box lays the tabs out at the
+     * trailing edge natively — surviving any independent relayout, unlike a
+     * post-layout wrapper shift. Zero for `"start"` alignment, `"fill"` width mode
+     * (where the tabs already span the strip), and whenever the tabs fill or
+     * overflow the region.
+     *
+     * @param available - The strip's inner main-axis extent net of tool and arrow
+     *   reservations (px) — the region the tabs occupy.
+     *
+     * @returns The leading gap in px, clamped to `0`.
+     */
+    private endAlignGap(available: number): number {
+        if (this._tabAlign !== "end" || this._tabWidthMode === "fill" || this._tabs.length === 0) {
+            return 0;
+        }
+
+        return Math.max(0, available - this.predictTabsExtent());
+    }
+
+    /**
+     * Places the tool-group overlay in its reserved slot (the strip end opposite
+     * the tabs) and lays out its buttons, or hides it when there are no tools.
+     *
+     * @param mainInner - The strip's main-axis inner extent in px.
+     * @param toolExtent - The tool-group main extent in px.
+     * @param thickness - The strip's cross-axis thickness in px.
+     */
+    private positionToolGroup(mainInner: number, toolExtent: number, thickness: number): void {
+        if (this._tabTools.length === 0 || toolExtent <= 0) {
+            this._toolGroup.setVisible(false);
+
+            return;
+        }
+
+        this._toolGroup.setVisible(true);
+
+        const mainPos = this._tabAlign === "end" ? 0 : mainInner - toolExtent;
+
+        if (this.isVertical()) {
+            this._toolGroup.setX(0);
+            this._toolGroup.setY(mainPos);
+            this._toolGroup.setWidth(thickness);
+            this._toolGroup.setHeight(toolExtent);
+        } else {
+            this._toolGroup.setX(mainPos);
+            this._toolGroup.setY(0);
+            this._toolGroup.setWidth(toolExtent);
+            this._toolGroup.setHeight(thickness);
+        }
+
+        this._toolGroup.doLayout();
+    }
+
+    /**
+     * Slides the selection indicator over the active tab cell along the strip's
+     * main axis, pinned to the strip's inner edge per side.
+     */
+    private positionIndicator(): void {
+        const wrapper = this._tabs[this._selectedTabIndex]?.wrapper;
+
+        if (!wrapper) {
+            return;
+        }
+
+        const vertical = this.isVertical();
+        const mainExtent = vertical ? wrapper.getHeight() : wrapper.getWidth();
+
+        if (mainExtent <= 0) {
+            return;
+        }
+
+        const mainPos = vertical ? wrapper.getY() : wrapper.getX();
+
+        this._indicator.slideTo(mainPos, mainExtent, this._tabSide);
+    }
+
+    /**
+     * Pins each closeable tab's overlaid ✕ to the end of its label's reading
+     * flow: the right edge (vertically centred) for upright text — north/south
+     * and west/east horizontal orientation — and, for rotated text (horizontally
+     * centred), the bottom edge for clockwise (top-to-bottom) or the top edge for
+     * counter-clockwise (bottom-to-top).
+     */
+    private positionCloseButtons(): void {
+        const rotated = this.isRotatedText();
+
+        for (const entry of this._tabs) {
+            const closeButton = entry.closeButton;
+
+            if (!closeButton || entry.wrapper.getWidth() <= 0) {
+                continue;
+            }
+
+            closeButton.setWidth(CLOSE_BUTTON_SIZE);
+            closeButton.setHeight(CLOSE_BUTTON_SIZE);
+
+            if (rotated) {
+                // Centre the ✕ across the strip thickness and pin it to the end
+                // of the reading flow: the bottom for clockwise (top-to-bottom)
+                // text, the top for counter-clockwise (bottom-to-top).
+                closeButton.setX(Math.round((entry.wrapper.getWidth() - CLOSE_BUTTON_SIZE) / 2));
+                closeButton.setY(this._tabOrientation === "vertical-ccw"
+                    ? 2
+                    : entry.wrapper.getHeight() - CLOSE_BUTTON_SIZE - 2);
+            } else {
+                closeButton.setX(entry.wrapper.getWidth() - CLOSE_BUTTON_SIZE - 2);
+                closeButton.setY(Math.round((entry.wrapper.getHeight() - CLOSE_BUTTON_SIZE) / 2));
+            }
+        }
+    }
+
+    /**
+     * Applies the overflow chrome to the toolbar: the toolbar always clips, and a
+     * scrollable strip additionally shows the leading/trailing scroll buttons
+     * while overflowing.
+     *
+     * @param mainInner - The strip's main-axis inner extent in px.
+     * @param toolExtent - The reserved tool-group main extent in px.
+     * @param thickness - The strip's cross-axis thickness in px.
+     * @param arrowReserve - The per-end scroll-arrow gutter in px (0 when not overflowing).
+     */
+    private layoutOverflowChrome(mainInner: number, toolExtent: number, thickness: number, arrowReserve: number): void {
+        this._toolbar.setOverflow("hidden");
+
+        if (this._tabScrollable && arrowReserve > 0) {
+            this.layoutOverflowArrows(mainInner, toolExtent, thickness, arrowReserve);
+        } else {
+            this.hideOverflowArrows();
+        }
+    }
+
+    /**
+     * Lazily builds the two scroll-arrow buttons and raw-appends them to the
+     * toolbar element next to the other overlays.
+     */
+    private ensureScrollArrows(): void {
+        if (this._scrollLeadButton && this._scrollTrailButton) {
+            return;
+        }
+
+        const lead = new Button({ glyph: "angle-left" });
+        const trail = new Button({ glyph: "angle-right" });
+
+        for (const button of [lead, trail]) {
+            button.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
+            button.setBackgroundImage("none");
+            button.clearBorder();
+            button.clearShadow();
+            button.setBorderRadius("0");
+            // Drop the default button insets so the glyph fits the narrow gutter.
+            button.clearInsets();
+            // Above the tab wrappers so the arrows stay clickable at the strip
+            // ends; the indicator (z 2) sits below, the arrows above it.
+            button.setZIndex(3);
+        }
+
+        lead.on("action", () => this.scrollStrip(-SCROLL_ARROW_STEP));
+        trail.on("action", () => this.scrollStrip(SCROLL_ARROW_STEP));
+
+        const element = this._toolbar.getElement(true);
+        element.appendChild(lead.getElement(true));
+        element.appendChild(trail.getElement(true));
+
+        this._scrollLeadButton = lead;
+        this._scrollTrailButton = trail;
+    }
+
+    /**
+     * Shows and positions the scroll arrows in their reserved gutters — fixed in
+     * place, spanning the strip thickness — and disables (rather than hides) each
+     * at its scroll limit, so the chrome stays put while the tabs scroll between
+     * them. Called only when overflowing (`arrowReserve > 0`).
+     *
+     * @param mainInner - The strip's main-axis inner extent in px.
+     * @param toolExtent - The reserved tool-group main extent in px.
+     * @param thickness - The strip's cross-axis thickness in px.
+     * @param arrowReserve - The per-end arrow gutter (the arrows' main-axis size) in px.
+     */
+    private layoutOverflowArrows(mainInner: number, toolExtent: number, thickness: number, arrowReserve: number): void {
+        this.ensureScrollArrows();
+
+        const lead = this._scrollLeadButton as Button;
+        const trail = this._scrollTrailButton as Button;
+        const vertical = this.isVertical();
+
+        lead.setGlyph(vertical ? "angle-up" : "angle-left");
+        trail.setGlyph(vertical ? "angle-down" : "angle-right");
+
+        lead.setVisible(true);
+        trail.setVisible(true);
+
+        // Disable (not hide) each arrow at its scroll limit so the chrome layout
+        // never shifts and the first/last tab stays fully in view.
+        lead.setEnabled(this._scrollOffset > 0);
+        trail.setEnabled(this._scrollOffset < this._scrollMax);
+
+        // The arrows sit in the gutters at the ends of the tab region, which
+        // excludes the tool-group slot: tools trail the tabs in `"start"`
+        // alignment and lead them in `"end"` alignment.
+        const toolsLead = this._tabAlign === "end";
+        const leadPos = toolsLead ? toolExtent : 0;
+        const trailPos = (toolsLead ? mainInner : mainInner - toolExtent) - arrowReserve;
+
+        for (const button of [lead, trail]) {
+            if (vertical) {
+                // Pin the main-axis (height) to the gutter; fill the thickness.
+                button.setMinSize(0, arrowReserve);
+                button.setMaxSize(Number.MAX_VALUE, arrowReserve);
+                button.setX(0);
+                button.setWidth(thickness);
+                button.setHeight(arrowReserve);
+            } else {
+                button.setMinSize(arrowReserve, 0);
+                button.setMaxSize(arrowReserve, Number.MAX_VALUE);
+                button.setY(0);
+                button.setHeight(thickness);
+                button.setWidth(arrowReserve);
+            }
+        }
+
+        if (vertical) {
+            lead.setY(leadPos);
+            trail.setY(trailPos);
+        } else {
+            lead.setX(leadPos);
+            trail.setX(trailPos);
+        }
+    }
+
+    /**
+     * Hides the scroll arrows if they have been built.
+     */
+    private hideOverflowArrows(): void {
+        this._scrollLeadButton?.setVisible(false);
+        this._scrollTrailButton?.setVisible(false);
+    }
+
+    /**
+     * Scrolls the strip along the main axis by `delta` px (used by the overflow
+     * arrow buttons). Bumps `_scrollOffset` and re-lays out; `applyScrollOffset`
+     * clamps it and applies it as the clip frame's native scroll on the next pass,
+     * while the arrows and tool group stay fixed.
+     *
+     * @param delta - Signed pixel amount to scroll (negative = toward the start).
+     */
+    private scrollStrip(delta: number): void {
+        this._scrollOffset += delta;
+
+        this.getContainer()?.scheduleLayout();
+    }
+
+    /**
+     * Clamps `_scrollOffset` to the current last page and returns the main-axis
+     * shift (px) to bake into the clip frame's leading inset (see
+     * {@link positionClipFrame}) for a scrollable strip. Applying the
+     * scroll through the frame's layout — rather than a post-layout wrapper shift
+     * — means the offset, and the selection indicator's alignment under the
+     * scrolled tab, survive an independent clip-frame relayout (e.g. a
+     * `compact`-driven inset change) that a post-layout shift would lose. `_scrollMax`
+     * is derived from the predicted (not yet laid-out) tab extent so the clamp is
+     * correct before the box runs. Returns 0 (and resets) when not scrollable.
+     *
+     * @param available - The tab region's main-axis extent (px) net of chrome.
+     *
+     * @returns The scroll shift in px to subtract from the leading inset.
+     */
+    private resolveScrollShift(available: number): number {
+        if (!this._tabScrollable) {
+            this._scrollOffset = 0;
+            this._scrollMax = 0;
+            this._scrollToSelected = false;
+
+            return 0;
+        }
+
+        this._scrollMax = Math.max(0, this.predictTabsExtent() - available);
+        this._scrollOffset = Math.max(0, Math.min(this._scrollOffset, this._scrollMax));
+
+        return this._scrollOffset;
+    }
+
+    /**
+     * When a scroll-into-view was requested (enabling scrolling, a side switch, or
+     * a `compact` toggle), nudges `_scrollOffset` the minimum amount needed to
+     * bring the selected tab fully within the visible region, measured from the
+     * *laid-out* DOM rects — so it is accurate even when the same pass changed the
+     * tab widths (which a pre-layout prediction can't see). Runs after
+     * `clipFrame.doLayout`; returns `true` when the offset changed, signalling the
+     * caller to re-bake and re-lay the clip frame. One-shot: clears the request so
+     * it never fights the user's own scrolling.
+     *
+     * @returns `true` if `_scrollOffset` was adjusted (a relayout is needed).
+     */
+    private revealSelectedIfRequested(): boolean {
+        if (!this._scrollToSelected) {
+            return false;
+        }
+
+        this._scrollToSelected = false;
+
+        if (!this._tabScrollable) {
+            return false;
+        }
+
+        const selected = this._tabs[this._selectedTabIndex];
+        const clipElement = this._clipFrame.getElement();
+        const wrapperElement = selected?.wrapper.getElement();
+
+        if (!clipElement || !wrapperElement) {
+            return false;
+        }
+
+        const vertical = this.isVertical();
+        const clip = clipElement.getBoundingClientRect();
+        const wrap = wrapperElement.getBoundingClientRect();
+
+        const clipStart = vertical ? clip.top : clip.left;
+        const clipEnd = vertical ? clip.bottom : clip.right;
+        const wrapStart = vertical ? wrap.top : wrap.left;
+        const wrapEnd = vertical ? wrap.bottom : wrap.right;
+
+        let delta = 0;
+
+        if (wrapStart < clipStart) {
+            delta = wrapStart - clipStart;
+        } else if (wrapEnd > clipEnd) {
+            delta = wrapEnd - clipEnd;
+        }
+
+        if (delta === 0) {
+            return false;
+        }
+
+        const corrected = Math.max(0, Math.min(this._scrollMax, this._scrollOffset + delta));
+
+        if (corrected === this._scrollOffset) {
+            return false;
+        }
+
+        this._scrollOffset = corrected;
+
+        return true;
+    }
+
+    /**
+     * Computes the tab strip's working content size on the strip's axis: the
+     * visible child's min size plus the strip thickness on the side the strip
+     * occupies. Used to inflate the content area when the host opts into scroll.
      *
      * @returns The total min-size; `{ width: 0, height: 0 }` when the
      *   container is absent.
@@ -1035,19 +2310,18 @@ class Tab extends LayoutManager {
             return { width: 0, height: 0 };
         }
 
-        const toolbarSize = this._toolbar.getPreferredSize();
-        const toolbarW = toolbarSize ? toolbarSize.width  : 0;
-        const toolbarH = toolbarSize ? toolbarSize.height : 0;
+        const thickness = this.stripThickness();
 
         const visible = this.getVisibleComponent() ?? container.getComponents()[0];
         const childMin = visible?.getMinSize();
         const childMinW = childMin ? childMin.width  : 0;
         const childMinH = childMin ? childMin.height : 0;
 
-        return {
-            width:  Math.max(toolbarW, childMinW),
-            height: toolbarH + childMinH,
-        };
+        if (this.isVertical()) {
+            return { width: thickness + childMinW, height: childMinH };
+        }
+
+        return { width: childMinW, height: thickness + childMinH };
     }
 
     /**
@@ -1116,44 +2390,88 @@ class Tab extends LayoutManager {
             component = components[0];
         }
 
-        let toolbarSize = this._toolbar.getPreferredSize();
-        let toolbarHeight = toolbarSize ? toolbarSize.height : 0;
+        this.syncToolbarOrientation();
+        this.applyTabButtonStyles();
 
-        this._toolbar.setX(containerInsets.getLeft());
-        this._toolbar.setY(containerInsets.getTop());
-        this._toolbar.setWidth(containerSize ? containerSize.width : 0);
-        this._toolbar.setHeight(toolbarHeight);
+        const cs = containerSize ?? { width: 0, height: 0 };
+        const baseX = containerInsets.getLeft();
+        const baseY = containerInsets.getTop();
+        const thickness = this.stripThickness();
 
-        // Inner width available to the tab strip: toolbar width minus its own
-        // horizontal border (the under-border, when present, draws all four sides).
-        const toolbarBorder = this._toolbar.getBorderSize();
-        const available     = (containerSize ? containerSize.width : 0) - toolbarBorder.left - toolbarBorder.right;
+        // Toolbar + content rectangles per side: the strip occupies a
+        // `thickness`-deep band on the chosen edge; the content fills the rest.
+        let toolbarX = baseX;
+        let toolbarY = baseY;
+        let toolbarW = cs.width;
+        let toolbarH = thickness;
+        let contentX = baseX;
+        let contentY = baseY;
+        let contentW = cs.width;
+        let contentH = cs.height;
+
+        switch (this._tabSide) {
+            case "north":
+                contentY = baseY + thickness;
+                contentH = cs.height - thickness;
+                break;
+
+            case "south":
+                toolbarY = baseY + cs.height - thickness;
+                contentH = cs.height - thickness;
+                break;
+
+            case "west":
+                toolbarW = thickness;
+                toolbarH = cs.height;
+                contentX = baseX + thickness;
+                contentW = cs.width - thickness;
+                break;
+
+            case "east":
+                toolbarX = baseX + cs.width - thickness;
+                toolbarW = thickness;
+                toolbarH = cs.height;
+                contentW = cs.width - thickness;
+                break;
+        }
+
+        this._toolbar.setX(toolbarX);
+        this._toolbar.setY(toolbarY);
+        this._toolbar.setWidth(toolbarW);
+        this._toolbar.setHeight(toolbarH);
+
+        // Size the clip frame to the tab region (between the chrome), then size
+        // the tabs in that space.
+        const toolExtent = this._tabTools.length > 0 ? this.toolGroupMainExtent() : 0;
+        const mainInner = this.isVertical() ? toolbarH : toolbarW;
+
+        // Place the clip frame between the tool slot and — when a scrollable strip
+        // is overflowing — a scroll-arrow gutter at each end, so the tabs lay out
+        // (and scroll, clipped) strictly within it rather than behind the chrome.
+        // An "end"-align leading gap is folded in as a frame inset too, so the box
+        // trailing-aligns the tabs natively — surviving an independent relayout
+        // that a post-layout wrapper shift would not.
+        const arrowReserve = this.computeArrowReserve(mainInner, toolExtent);
+        const available = mainInner - toolExtent - 2 * arrowReserve;
+        const endGap = this.endAlignGap(available);
+        const scrollShift = this.resolveScrollShift(available);
+        this.positionClipFrame(toolExtent, arrowReserve, endGap, scrollShift, thickness, mainInner);
 
         this.applyTabWidths(available);
-        this._toolbar.doLayout();
+        this._clipFrame.doLayout();
 
-        // Slide the selection bar over the active tab cell. The HBox has just
-        // positioned every wrapper, so the active wrapper's left/width are
-        // valid; guard against the pre-render pass where the cell has no width.
-        const activeWrapper = this._tabs[this._selectedTabIndex]?.wrapper;
-
-        if (activeWrapper && activeWrapper.getWidth() > 0) {
-            this._indicator.slideTo(activeWrapper.getX(), activeWrapper.getWidth());
+        // Scroll-into-view (enabling scrolling, side switch, compact toggle) is
+        // resolved here, against the now-laid-out wrapper rects, then re-baked —
+        // a prediction before the box runs can't see a same-pass width change.
+        if (this.revealSelectedIfRequested()) {
+            this.positionClipFrame(toolExtent, arrowReserve, endGap, this._scrollOffset, thickness, mainInner);
+            this._clipFrame.doLayout();
         }
 
-        // Pin each close button to the right edge of its (now-sized) tab cell,
-        // vertically centred. It overlays the tab button rather than sharing a
-        // layout row, so it is positioned by hand here.
-        for (const entry of this._tabs) {
-            const closeButton = entry.closeButton;
-
-            if (closeButton && entry.wrapper.getWidth() > 0) {
-                closeButton.setWidth(CLOSE_BUTTON_SIZE);
-                closeButton.setHeight(CLOSE_BUTTON_SIZE);
-                closeButton.setX(entry.wrapper.getWidth() - CLOSE_BUTTON_SIZE - 2);
-                closeButton.setY(Math.round((entry.wrapper.getHeight() - CLOSE_BUTTON_SIZE) / 2));
-            }
-        }
+        this.positionToolGroup(mainInner, toolExtent, thickness);
+        this.positionIndicator();
+        this.positionCloseButtons();
+        this.layoutOverflowChrome(mainInner, toolExtent, thickness, arrowReserve);
 
         if (!component) {
             return;
@@ -1162,29 +2480,29 @@ class Tab extends LayoutManager {
         component.setVisible(true);
         component.getAria().setHidden(false);
 
-        // Universal scroll: only the content area honours the overflow flags;
-        // the toolbar always renders at the container's original width so its
-        // own internal `ToolBar` overflow mechanism stays in charge of long
-        // tab lists (see plan's Non-Goals).
-        let contentWidth  = containerSize ? containerSize.width                 : 0;
-        let contentHeight = containerSize ? containerSize.height - toolbarHeight : 0;
+        // Universal scroll: the content area honours the host's overflow flags
+        // (Panel.setAutoScroll) independently of the tab strip's own overflow.
+        let contentWidth  = contentW;
+        let contentHeight = contentH;
 
-        if (containerSize && (this.isOverflowingX() || this.isOverflowingY())) {
-            const totalMin = this.computeTotalMinSize();
-            if (this.isOverflowingX()) {
-                contentWidth  = Math.max(contentWidth,  totalMin.width);
-            }
-            if (this.isOverflowingY()) {
-                // totalMin.height already includes toolbarH; subtract it to
-                // get the content-area's own minimum.
-                contentHeight = Math.max(contentHeight, totalMin.height - toolbarHeight);
+        if (this.isOverflowingX() || this.isOverflowingY()) {
+            const childMin = component.getMinSize();
+
+            if (childMin) {
+                if (this.isOverflowingX()) {
+                    contentWidth = Math.max(contentWidth, childMin.width);
+                }
+
+                if (this.isOverflowingY()) {
+                    contentHeight = Math.max(contentHeight, childMin.height);
+                }
             }
         }
 
         this.placeComponent(
             component,
-            containerInsets.getLeft(),
-            containerInsets.getTop() + toolbarHeight,
+            contentX,
+            contentY,
             contentWidth,
             contentHeight,
             FillType.BOTH
@@ -1210,6 +2528,231 @@ class Tab extends LayoutManager {
                 });
             }
         }
+    }
+
+    /**
+     * Installs the within-strip drag-reorder wiring: one toolbar-wide mousedown
+     * capture (so a press on a ✕ can veto the drag), a drag source per tab
+     * wrapper, and a single toolbar drop target. Idempotent — clears any prior
+     * wiring first. Called from `attach` (when `_reorderable`) and from
+     * `setReorderable(true)`.
+     */
+    private installTabDnD(): void {
+        this.teardownTabDnD();
+
+        // One subtree mousedown capture records the pressed element so
+        // `onDragStart` can veto a drag that began on a close button
+        // (DragEventDetail carries no DOM target).
+        const recordMouseTarget = (e: MouseEvent): void => {
+            this._dragMouseTarget = e.target;
+        };
+
+        Event.addSubtreeListener(this._toolbar, "mousedown", recordMouseTarget);
+        this._dndTeardowns.push(() => Event.removeSubtreeListener(this._toolbar, "mousedown", recordMouseTarget));
+
+        for (const entry of this._tabs) {
+            this._dndTeardowns.push(this.makeTabDragSource(entry));
+        }
+
+        this._dndTeardowns.push(this.makeTabDropTarget());
+    }
+
+    /**
+     * Registers a drag source on one tab wrapper, vetoing the gesture when the
+     * press began inside that tab's close button.
+     *
+     * @param entry - The tab entry whose wrapper becomes a drag source.
+     *
+     * @returns The source teardown closure.
+     */
+    private makeTabDragSource(entry: TabEntry): () => void {
+        return DragManager.makeDragSource(entry.wrapper, {
+            dragData: { tabReorder: true },
+            onDragStart: (): boolean | void => {
+                const target = this._dragMouseTarget;
+                this._dragMouseTarget = null;
+
+                const closeElement = entry.closeButton?.getElement();
+
+                if (closeElement && target instanceof Node && closeElement.contains(target)) {
+                    return false;
+                }
+            },
+        });
+    }
+
+    /**
+     * Registers the single toolbar drop target that drives the insertion bar and
+     * commits the reorder. `onDragOver` returns `null` to suppress the drag
+     * manager's own horizontal reorder indicator in favour of the main-axis
+     * {@link TabReorderBar}.
+     *
+     * @returns The target teardown closure.
+     */
+    private makeTabDropTarget(): () => void {
+        return DragManager.makeDropTarget(this._clipFrame, {
+            accepts: (detail: DragEventDetail): boolean => this.isTabReorderDrag(detail),
+            onDragOver: (detail: DragEventDetail): number | null => {
+                this.updateReorderSlot(detail);
+
+                return null;
+            },
+            onDragLeave: (): void => {
+                this._reorderBar.hide();
+            },
+            onDrop: (detail: DragEventDetail): void => {
+                this.dropReorder(detail);
+            },
+        });
+    }
+
+    /**
+     * Tests whether a drag is a header reorder originating from this strip.
+     *
+     * @param detail - The drag event detail.
+     *
+     * @returns `true` when the drag carries the reorder marker and its source is
+     *   one of this strip's tab wrappers.
+     */
+    private isTabReorderDrag(detail: DragEventDetail): boolean {
+        return detail.dragData["tabReorder"] === true
+            && this._tabs.some(entry => entry.wrapper.getId() === detail.sourceId);
+    }
+
+    /**
+     * Computes the insertion slot from the cursor's main-axis position, caches it
+     * in `_dragInsertIndex`, and places the insertion bar at the slot boundary.
+     *
+     * @param detail - The drag event detail (carries the viewport cursor).
+     */
+    private updateReorderSlot(detail: DragEventDetail): void {
+        const element = this._clipFrame.getElement();
+
+        if (!element) {
+            return;
+        }
+
+        const rect = element.getBoundingClientRect();
+        const vertical = this.isVertical();
+        const cursorMain = vertical ? detail.clientY - rect.top : detail.clientX - rect.left;
+
+        let insertIndex = this._tabs.length;
+
+        for (let i = 0; i < this._tabs.length; i++) {
+            const wrapper = this._tabs[i].wrapper;
+            const start = vertical ? wrapper.getY() : wrapper.getX();
+            const extent = vertical ? wrapper.getHeight() : wrapper.getWidth();
+
+            if (cursorMain < start + extent / 2) {
+                insertIndex = i;
+
+                break;
+            }
+        }
+
+        this._dragInsertIndex = insertIndex;
+
+        const boundary = this.slotBoundary(insertIndex, vertical);
+        const thickness = vertical ? this._clipFrame.getWidth() : this._clipFrame.getHeight();
+
+        this._reorderBar.placeAt(boundary, thickness, vertical);
+    }
+
+    /**
+     * Resolves the main-axis coordinate of a slot boundary: the leading edge of
+     * the wrapper at `insertIndex`, or the trailing edge of the last wrapper for
+     * an append.
+     *
+     * @param insertIndex - The slot index in `[0, tabs.length]`.
+     * @param vertical - Whether the strip's main axis is Y.
+     *
+     * @returns The boundary's main-axis coordinate in px.
+     */
+    private slotBoundary(insertIndex: number, vertical: boolean): number {
+        if (insertIndex < this._tabs.length) {
+            const wrapper = this._tabs[insertIndex].wrapper;
+
+            return vertical ? wrapper.getY() : wrapper.getX();
+        }
+
+        if (this._tabs.length > 0) {
+            const wrapper = this._tabs[this._tabs.length - 1].wrapper;
+
+            return vertical ? wrapper.getY() + wrapper.getHeight() : wrapper.getX() + wrapper.getWidth();
+        }
+
+        return 0;
+    }
+
+    /**
+     * Commits a header reorder drop: hides the bar, maps the drag source back to
+     * its tab, and moves it to the cached insertion slot.
+     *
+     * @param detail - The drag event detail (carries the source id).
+     */
+    private dropReorder(detail: DragEventDetail): void {
+        this._reorderBar.hide();
+
+        const fromIdx = this._tabs.findIndex(entry => entry.wrapper.getId() === detail.sourceId);
+
+        if (fromIdx < 0 || this._dragInsertIndex < 0) {
+            return;
+        }
+
+        this.reorderTab(fromIdx, this._dragInsertIndex);
+        this._dragInsertIndex = -1;
+    }
+
+    /**
+     * Moves a tab from `fromIdx` to the insertion slot `toIdx`, keeping the
+     * formerly-selected tab selected by identity. Reorders the wrapper among the
+     * toolbar's children via `moveComponent`.
+     *
+     * @param fromIdx - The dragged tab's current index.
+     * @param toIdx - The insertion slot in `[0, tabs.length]`.
+     */
+    private reorderTab(fromIdx: number, toIdx: number): void {
+        if (fromIdx < 0 || fromIdx >= this._tabs.length) {
+            return;
+        }
+
+        // An insertion slot past the source collapses by one once the source is
+        // spliced out; clamp into the post-removal index range.
+        let dest = toIdx > fromIdx ? toIdx - 1 : toIdx;
+        dest = Math.max(0, Math.min(dest, this._tabs.length - 1));
+
+        if (dest === fromIdx) {
+            return;
+        }
+
+        const entry = this._tabs[fromIdx];
+        const selectedEntry = this._tabs[this._selectedTabIndex];
+
+        this._tabs.splice(fromIdx, 1);
+        this._tabs.splice(dest, 0, entry);
+
+        this._clipFrame.moveComponent(entry.wrapper, dest);
+
+        const newSelected = this._tabs.indexOf(selectedEntry);
+
+        if (newSelected >= 0) {
+            this._selectedTabIndex = newSelected;
+        }
+
+        this.getContainer()?.scheduleLayout();
+    }
+
+    /**
+     * Tears down all drag sources, the drop target, and the mousedown capture,
+     * and hides the insertion bar. Called from `detach` and `setReorderable(false)`.
+     */
+    private teardownTabDnD(): void {
+        for (const teardown of this._dndTeardowns) {
+            teardown();
+        }
+
+        this._dndTeardowns = [];
+        this._reorderBar.hide();
     }
 
     /**
@@ -1276,7 +2819,7 @@ class Tab extends LayoutManager {
         this._buttonGroup.removeButton(entry.button);
         this._rovingTabIndex.remove(entry.button);
         this._tabs.splice(entryIndex, 1);
-        this._toolbar.removeComponent(entry.wrapper);
+        this._clipFrame.removeComponent(entry.wrapper);
 
         if (contentComponent) {
             container.removeComponent(contentComponent);

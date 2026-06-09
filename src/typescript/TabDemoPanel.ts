@@ -2,7 +2,7 @@
 
 import { callable, Component } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
-import { Fit, HBox, VBox, TabWidthMode } from '@jimka/typescript-ui/layout';
+import { Fit, HBox, VBox, TabWidthMode, TabSide, TabAlign, TabOrientation } from '@jimka/typescript-ui/layout';
 import { Text, ComboBox, NumberSpinner } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { TabPanel } from '@jimka/typescript-ui/component/container';
@@ -63,15 +63,59 @@ class TabDemoPanel extends Component {
 
         this.addComponent(widthRow);
 
+        // --- Placement / orientation experimentation row ---
+        // `side` moves the strip to any edge; `align` hugs the tab group to the
+        // leading or trailing edge; `orientation` rotates the text on the
+        // vertical sides; `scroll` toggles a long strip between compress and
+        // arrow-scrolling. `compact` / `reorder` toggle live.
+        const placeRow = new Component();
+        placeRow.setLayoutManager(new HBox());
+
+        const sideModes: TabSide[] = ["north", "south", "west", "east"];
+        const sideCombo = new ComboBox({ items: sideModes, selectedIndex: 0 });
+
+        const alignModes: TabAlign[] = ["start", "end"];
+        const alignCombo = new ComboBox({ items: alignModes, selectedIndex: 0 });
+
+        const orientationModes: TabOrientation[] = ["horizontal", "vertical-cw", "vertical-ccw"];
+        const orientationCombo = new ComboBox({ items: orientationModes, selectedIndex: 0 });
+
+        const scrollBtn = new Button("Toggle Scroll");
+        const compactBtn = new Button("Toggle Compact");
+        const reorderBtn = new Button("Toggle Reorder");
+
+        // Tool button pinned at the far end of the strip; adds a new tab.
+        const addToolBtn = new Button({ glyph: "plus" });
+        addToolBtn.on("action", () => {
+            this.tabCounter += 1;
+            const label = `Tab ${this.tabCounter}`;
+            this.tabPanel.addTab(this.buildContent(label), label);
+        });
+
+        placeRow.addComponent(new Text("Side:", { preferredSize: { width: 36, height: 28 } }));
+        placeRow.addComponent(sideCombo);
+        placeRow.addComponent(new Text("Align:", { preferredSize: { width: 44, height: 28 } }));
+        placeRow.addComponent(alignCombo);
+        placeRow.addComponent(new Text("Orient:", { preferredSize: { width: 48, height: 28 } }));
+        placeRow.addComponent(orientationCombo);
+        placeRow.addComponent(scrollBtn);
+        placeRow.addComponent(compactBtn);
+        placeRow.addComponent(reorderBtn);
+
+        this.addComponent(placeRow);
+
         // --- TabPanel ---
         // Starts in `content` mode at Max 160 so the sliding selection
         // indicator is easy to see as it travels between capped, left-aligned
-        // tabs; the row above switches strategy and values live.
+        // tabs; the row above switches strategy and values live. Ships with a
+        // tool button pinned opposite the tabs and within-strip reorder enabled.
         this.tabPanel = new TabPanel({
             preferredSize: { width: 0, height: 300 },
             tabWidthMode: "equal",
             tabMaxWidth: 160,
             tabFixedWidth: 120,
+            reorderable: true,
+            tabTools: [addToolBtn],
             tabs: [
                 { label: "Alpha", component: this.buildContent("Alpha") },
                 { label: "Beta",  component: this.buildContent("Beta"),  closeable: true },
@@ -79,11 +123,35 @@ class TabDemoPanel extends Component {
             ],
             onTabClose: (component: Component) => {
                 this.logText.setText(`Closed: ${component.getId()}`);
-                this.doLayout();
             },
         });
 
         this.addComponent(this.tabPanel);
+
+        // --- Wire placement controls ---
+        sideCombo.on("change", () => {
+            this.tabPanel.setTabSide(sideModes[sideCombo.getSelectedIndex()]);
+        });
+
+        alignCombo.on("change", () => {
+            this.tabPanel.setTabAlign(alignModes[alignCombo.getSelectedIndex()]);
+        });
+
+        orientationCombo.on("change", () => {
+            this.tabPanel.setTabOrientation(orientationModes[orientationCombo.getSelectedIndex()]);
+        });
+
+        scrollBtn.on("action", () => {
+            this.tabPanel.setTabScrollable(!this.tabPanel.isTabScrollable());
+        });
+
+        compactBtn.on("action", () => {
+            this.tabPanel.setCompact(!this.tabPanel.isCompact());
+        });
+
+        reorderBtn.on("action", () => {
+            this.tabPanel.setReorderable(!this.tabPanel.isReorderable());
+        });
 
         // --- Wire width controls ---
         // The ComboBox keys plain string items by index, so its `getValue()`
@@ -91,17 +159,14 @@ class TabDemoPanel extends Component {
         // the mode rather than reading the value.
         modeCombo.on("change", () => {
             this.tabPanel.setTabWidthMode(widthModes[modeCombo.getSelectedIndex()]);
-            this.doLayout();
         });
 
         maxSpinner.on("change", () => {
             this.tabPanel.setTabMaxWidth(maxSpinner.getValue());
-            this.doLayout();
         });
 
         fixedSpinner.on("change", () => {
             this.tabPanel.setTabFixedWidth(fixedSpinner.getValue());
-            this.doLayout();
         });
 
         // --- Log row ---
@@ -120,14 +185,12 @@ class TabDemoPanel extends Component {
             this.tabCounter += 1;
             const label = `Tab ${this.tabCounter}`;
             this.tabPanel.addTab(this.buildContent(label), label);
-            this.doLayout();
         });
 
         addCloseableBtn.on("action", () => {
             this.tabCounter += 1;
             const label = `Tab ${this.tabCounter}`;
             this.tabPanel.addTab(this.buildContent(label), label, { closeable: true });
-            this.doLayout();
         });
 
         toggleBorderBtn.on("action", () => {
