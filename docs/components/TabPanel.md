@@ -11,21 +11,24 @@ import { TabPanel } from '@jimka/typescript-ui/component/container';
 
 const tabs = new TabPanel({
     tabs: [
-        { label: 'Alpha', component: alphaPanel },
+        { label: 'Alpha', component: alphaPanel, glyph: 'star' },
         { label: 'Beta',  component: betaPanel, closeable: true },
     ],
     onTabClose: component => console.log("Closed", component.getId()),
 });
 ```
 
-`tabs` is the construction-time shortcut. Each entry maps to one [`addTab`](/api/component/container/classes/TabPanel#addtab) call.
+`tabs` is the construction-time shortcut. Each entry maps to one [`addTab`](/api/component/container/classes/TabPanel#addtab) call. An entry's optional `glyph` is a registered glyph name rendered leading the tab button's label.
 
 ## Adding tabs after construction
 
 ```typescript
 tabs.addTab(extraPanel, "Gamma");
 tabs.addTab(closeableExtra, "Delta", { closeable: true });
+tabs.addTab(staredPanel, "Epsilon", { glyph: "star" });
 ```
+
+Both `addTab` and `addLazyTab` accept `{ closeable?, glyph? }`.
 
 ## Lazy tabs
 
@@ -46,6 +49,10 @@ tabs.on("tabclose", component => store.removeBinding(component));
 ```
 
 The callback fires after the tab is removed; the closed component is passed in so callers can dispose any external state.
+
+## Right-click context menu
+
+Right-clicking any tab button opens a context menu that switches to another tab or closes the right-clicked one (the Close item is enabled only when that tab is `closeable`). This comes from the wrapped [`Tab`](/layouts/Tab#right-click-context-menu) manager and needs no wiring — closing through the menu fires `tabclose` just like the close button does.
 
 ## Tab strip styling
 
@@ -102,6 +109,7 @@ const tabs = new TabPanel({
         side: "west",               // "north" | "south" | "west" | "east"
         align: "end",               // "start" | "end"
         orientation: "vertical-cw", // "horizontal" | "vertical-cw" | "vertical-ccw"
+        textAlign: "start",         // "start" | "center" | "end" (flow-relative label justification)
         scrollable: true,           // scroll on overflow instead of compressing
         compact: true,              // denser tab insets
         reorderable: true,          // within-strip header drag-reorder
@@ -113,6 +121,7 @@ const tabs = new TabPanel({
 tabs.setTabSide("south");
 tabs.setTabAlign("start");
 tabs.setTabOrientation("horizontal");
+tabs.setTabTextAlign("center");
 tabs.setTabScrollable(true);
 tabs.setTabCompact(false);
 tabs.setTabReorderable(false);
@@ -124,6 +133,7 @@ option names); each has a matching prefixed runtime forwarder on the panel —
 [`setTabSide`](/api/component/container/classes/TabPanel#settabside),
 [`setTabAlign`](/api/component/container/classes/TabPanel#settabalign),
 [`setTabOrientation`](/api/component/container/classes/TabPanel#settaborientation),
+[`setTabTextAlign`](/api/component/container/classes/TabPanel#settabtextalign),
 [`setTabScrollable`](/api/component/container/classes/TabPanel#settabscrollable),
 [`setTabCompact`](/api/component/container/classes/TabPanel#settabcompact),
 [`setTabReorderable`](/api/component/container/classes/TabPanel#settabreorderable), and

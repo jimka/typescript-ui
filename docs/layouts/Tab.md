@@ -35,6 +35,7 @@ tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 | --- | --- |
 | `name` | Tab button label. Defaults to the component's ID. |
 | `closeable` | When `true`, render a [`TabCloseButton`](/components/TabCloseButton) inside the tab button. |
+| `glyph` | Optional registry glyph name shown leading the tab button's label (dispatched to the button's `setGlyph`). |
 
 ## Selecting a tab
 
@@ -95,6 +96,44 @@ layout.setSide("west");
 layout.setOrientation("vertical-cw");
 layout.setAlign("end");
 ```
+
+## Tab-label justification
+
+[`setTextAlign`](/api/layout/classes/Tab#settextalign) sets the strip-wide
+justification of every tab button's label
+([`TabTextAlign`](/api/layout/type-aliases/TabTextAlign) — `"start"`,
+`"center"` (default), or `"end"`). The values are flow-relative — `"start"` /
+`"end"` are the left / right edges on a horizontal strip and the top / bottom
+edges on a rotated west/east strip — matching the `"start"` / `"end"` of
+[`setAlign`](/api/layout/classes/Tab#setalign). It is only visible when a tab
+cell is wider than its content: the `"fill"`, `"equal"`, and `"fixed"` width
+modes pad the cells out, so the label can shift within them; `"content"` mode
+hugs the text, so justification has no visible effect there.
+
+```typescript
+layout.setTextAlign("start");
+```
+
+## Tab glyphs
+
+Set [`LayoutConstraints.glyph`](/api/layout/classes/LayoutConstraints) to a
+registered glyph name to render a leading icon in a tab button. The glyph
+dispatches to the button's own [`setGlyph`](/components/Button), so it auto-sizes
+to the label's line height and inherits the button's `writing-mode` on rotated
+west/east strips.
+
+```typescript
+tabbed.addComponent(generalPanel, { name: 'General', glyph: 'gear' });
+```
+
+## Right-click context menu
+
+Right-clicking any tab button opens a context menu listing every tab — clicking
+an entry switches to that tab (the right-clicked tab is shown inert) — followed
+by a **Close** action for the right-clicked tab. The Close item is enabled only
+when that tab is `closeable`. The menu reuses the strip's own selection and
+close paths, so switching materializes a lazy tab exactly as a left-click would
+and closing fires `tabclose`.
 
 ## Tab tools
 
