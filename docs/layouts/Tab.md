@@ -74,15 +74,15 @@ When the selected tab changes, the newly-visible child fades in over 120 ms via 
 ## Strip placement, alignment & orientation
 
 The tab strip can sit on any edge of the content area via
-[`setTabSide`](/api/layout/classes/Tab#settabside) — `"north"` (default),
+[`setSide`](/api/layout/classes/Tab#setside) — `"north"` (default),
 `"south"`, `"west"`, or `"east"` ([`TabSide`](/api/layout/type-aliases/TabSide)).
-Within the strip, [`setTabAlign`](/api/layout/classes/Tab#settabalign) hugs the
+Within the strip, [`setAlign`](/api/layout/classes/Tab#setalign) hugs the
 tab-button group to the strip's leading (`"start"`, default) or trailing
 (`"end"`) edge ([`TabAlign`](/api/layout/type-aliases/TabAlign)); alignment is a
 no-op in `"fill"` width mode, where the tabs already span the strip.
 
 On the vertical sides (`"west"` / `"east"`),
-[`setTabOrientation`](/api/layout/classes/Tab#settaborientation) selects the tab
+[`setOrientation`](/api/layout/classes/Tab#setorientation) selects the tab
 text flow ([`TabOrientation`](/api/layout/type-aliases/TabOrientation)):
 `"horizontal"` keeps labels upright (the strip widens to the longest label),
 while `"vertical-cw"` / `"vertical-ccw"` rotate the text a quarter turn (via CSS
@@ -91,24 +91,24 @@ top-to-bottom with the ✕ at the bottom, `"vertical-ccw"` reads bottom-to-top
 with the ✕ at the top. Orientation is ignored on north/south.
 
 ```typescript
-layout.setTabSide("west");
-layout.setTabOrientation("vertical-cw");
-layout.setTabAlign("end");
+layout.setSide("west");
+layout.setOrientation("vertical-cw");
+layout.setAlign("end");
 ```
 
 ## Tab tools
 
-[`addTabTool(button)`](/api/layout/classes/Tab#addtabtool) pins a button at the
+[`addTool(button)`](/api/layout/classes/Tab#addtool) pins a button at the
 far end of the strip, opposite the tab buttons — a natural home for a
 "new tab" or overflow-menu control. Tools always sit at the extreme opposite the
 tabs, so they move to the leading edge when the tabs are `"end"`-aligned.
-[`removeTabTool`](/api/layout/classes/Tab#removetabtool) takes one back out, or
-pass an initial set via the `tabTools` option.
+[`removeTool`](/api/layout/classes/Tab#removetool) takes one back out, or
+pass an initial set via the `tools` option.
 
 ## Overflow scrolling
 
 By default a strip with more tabs than fit compresses them to share the space.
-[`setTabScrollable(true)`](/api/layout/classes/Tab#settabscrollable) changes
+[`setScrollable(true)`](/api/layout/classes/Tab#setscrollable) changes
 that: the strip keeps the tabs at their preferred size, clips the overflow, and
 shows leading/trailing scroll-arrow buttons. The arrows and the tool group stay
 fixed while the tabs scroll between them; each arrow is *disabled* (not hidden)
@@ -117,7 +117,7 @@ strip-local scrolling is independent of the content area's own
 [`setAutoScroll`](/api/core/classes/Panel#setautoscroll).
 
 When a change could leave the selected tab clipped off-screen — enabling
-scrolling, changing [`setTabSide`](/api/layout/classes/Tab#settabside) (the
+scrolling, changing [`setSide`](/api/layout/classes/Tab#setside) (the
 scroll axis flips with the side), or toggling
 [`setCompact`](/api/layout/classes/Tab#setcompact) (every tab's width changes) —
 the strip scrolls the minimum amount needed to bring the selected tab back into
