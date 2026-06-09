@@ -1388,6 +1388,14 @@ class Tab extends LayoutManager {
             this._selectedTabIndex = idx;
             this._rovingTabIndex.moveTo(idx);
 
+            // Bring the newly-selected tab into view on the next pass. A
+            // left-click targets an already-visible tab (a no-op reveal), but a
+            // programmatic switch — the context menu or keyboard arrow nav — can
+            // select a tab scrolled out of the strip's visible range.
+            if (this._scrollable) {
+                this._scrollToSelected = true;
+            }
+
             const entry = this._tabs[idx];
             if (entry.state === "lazy") {
                 this.materializeAsync(idx);
