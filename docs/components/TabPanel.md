@@ -78,12 +78,49 @@ chooses the tab-button width strategy:
   [`tabMaxWidth`](/api/component/container/classes/TabPanel#settabmaxwidth).
 - `"equal"` — every tab matches the widest tab, capped at `tabMaxWidth`.
 - `"fixed"` — every tab takes
-  [`tabFixedWidth`](/api/component/container/classes/TabPanel#settabfixedwidth).
+  [`tabFixedWidth`](/api/component/container/classes/TabPanel#settabfixedwidth)
+  along the text's reading direction: the tab width for horizontal text
+  (north/south, or upright west/east — where it sets the bar thickness), and the
+  tab height for rotated west/east text.
 
 Every mode except `"fill"` leaves the strip full-width with the tabs
 left-aligned. [`setTabUnderBorderFullWidth`](/api/component/container/classes/TabPanel#settabunderborderfullwidth)
 toggles the edge-to-edge rule drawn under the strip. All forward to the wrapped
 [`Tab`](/api/layout/classes/Tab) manager.
+
+## Placement, tools, overflow, compact & reorder
+
+`TabPanel` forwards the strip-placement and behaviour surface of the wrapped
+`Tab` manager — see [Tab](/layouts/Tab) for the full description of each:
+
+```typescript
+const tabs = new TabPanel({
+    tabSide: "west",               // "north" | "south" | "west" | "east"
+    tabAlign: "end",               // "start" | "end"
+    tabOrientation: "vertical-cw", // "horizontal" | "vertical-cw" | "vertical-ccw"
+    tabScrollable: true,           // scroll on overflow instead of compressing
+    compact: true,                 // denser tab insets
+    reorderable: true,             // within-strip header drag-reorder
+    tabTools: [newTabButton],      // buttons pinned opposite the tabs
+    tabs: [/* … */],
+});
+
+tabs.setTabSide("south");
+tabs.setTabAlign("start");
+tabs.setTabOrientation("horizontal");
+tabs.setTabScrollable(true);
+tabs.setCompact(false);
+tabs.setReorderable(false);
+tabs.addTabTool(menuButton);
+```
+
+These map 1:1 to [`setTabSide`](/api/layout/classes/Tab#settabside),
+[`setTabAlign`](/api/layout/classes/Tab#settabalign),
+[`setTabOrientation`](/api/layout/classes/Tab#settaborientation),
+[`setTabScrollable`](/api/layout/classes/Tab#settabscrollable),
+[`setCompact`](/api/layout/classes/Tab#setcompact),
+[`setReorderable`](/api/layout/classes/Tab#setreorderable), and
+[`addTabTool`](/api/layout/classes/Tab#addtabtool) on the manager.
 
 ## Accessing the underlying `Tab` manager
 
