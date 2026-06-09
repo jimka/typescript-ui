@@ -14,6 +14,12 @@ import { CollapseDirection } from "~/component/container/CollapseButton";
 export class LayoutConstraints {
     name?: string | null = null;
     description?: string | null = null;
+    /**
+     * Optional registry glyph name shown leading a tab button's label. Read by
+     * the [`Tab`](/api/layout/classes/Tab) manager into the button's `setGlyph`;
+     * ignored by other layout managers.
+     */
+    glyph?: string | null = null;
     fill?: FillType | null = null;
     anchor?: AnchorType | null = null;
     placement?: Placement;

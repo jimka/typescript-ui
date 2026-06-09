@@ -13,7 +13,7 @@ export { Accordion } from '~/layout/Accordion.js';
 export type { AccordionOptions, AccordionEvent, SectionToggleCallback } from '~/layout/Accordion.js';
 export { AccordionConstraints } from '~/layout/AccordionConstraints.js';
 export { Tab } from '~/layout/Tab.js';
-export type { TabOptions, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation } from '~/layout/Tab.js';
+export type { TabOptions, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign } from '~/layout/Tab.js';
 export { Border } from '~/layout/Border.js';
 export type { BorderOptions } from '~/layout/Border.js';
 export { BoxLayout } from '~/layout/BoxLayout.js';

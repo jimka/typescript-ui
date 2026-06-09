@@ -3,7 +3,7 @@
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
-import { Tab, TabOptions, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation } from "~/layout/Tab.js";
+import { Tab, TabOptions, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign } from "~/layout/Tab.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -18,6 +18,8 @@ export interface TabEntryConfig {
     component:  Component;
     /** When `true`, a close button appears on the tab button. */
     closeable?: boolean;
+    /** Optional registry glyph name shown leading the tab button's label. */
+    glyph?:     string;
 }
 
 /**
@@ -83,7 +85,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
 
         if (options?.tabs) {
             for (const entry of options.tabs) {
-                this.addTab(entry.component, entry.label, { closeable: entry.closeable });
+                this.addTab(entry.component, entry.label, { closeable: entry.closeable, glyph: entry.glyph });
             }
         }
 
@@ -97,14 +99,15 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      *
      * @param component - The content shown when this tab is selected.
      * @param label - The tab button's label.
-     * @param options - Optional. Currently supports `{ closeable: true }`.
+     * @param options - Optional. Supports `{ closeable: true }` and a leading `glyph` name.
      *
      * @returns This panel, for method chaining.
      */
-    addTab(component: Component, label: string, options?: { closeable?: boolean }): this {
+    addTab(component: Component, label: string, options?: { closeable?: boolean; glyph?: string }): this {
         const constraints = new LayoutConstraints();
         constraints.name      = label;
         constraints.closeable = options?.closeable ?? false;
+        constraints.glyph     = options?.glyph ?? null;
 
         this.addComponent(component, constraints);
 
@@ -118,14 +121,15 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      *
      * @param factory - Builds the content component on first activation.
      * @param label - The tab button's label.
-     * @param options - Optional. Currently supports `{ closeable: true }`.
+     * @param options - Optional. Supports `{ closeable: true }` and a leading `glyph` name.
      *
      * @returns This panel, for method chaining.
      */
-    addLazyTab(factory: () => Component, label: string, options?: { closeable?: boolean }): this {
+    addLazyTab(factory: () => Component, label: string, options?: { closeable?: boolean; glyph?: string }): this {
         const constraints = new LayoutConstraints();
         constraints.name      = label;
         constraints.closeable = options?.closeable ?? false;
+        constraints.glyph     = options?.glyph ?? null;
 
         this.getTabManager().addLazyTab(factory, label, constraints);
 
@@ -323,6 +327,30 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      */
     getTabOrientation(): TabOrientation {
         return this.getTabManager().getOrientation();
+    }
+
+    /**
+     * Sets the strip-wide tab-label justification, forwarding to the wrapped
+     * {@link Tab} manager. See
+     * [`TabTextAlign`](/api/layout/type-aliases/TabTextAlign).
+     *
+     * @param align - The justification to apply.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabTextAlign(align: TabTextAlign): this {
+        this.getTabManager().setTextAlign(align);
+
+        return this;
+    }
+
+    /**
+     * Returns the current tab-label justification.
+     *
+     * @returns The active [`TabTextAlign`](/api/layout/type-aliases/TabTextAlign).
+     */
+    getTabTextAlign(): TabTextAlign {
+        return this.getTabManager().getTextAlign();
     }
 
     /**
