@@ -2,10 +2,16 @@
 
 import { callable, Component } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
-import { Fit, HBox, VBox, TabWidthMode, TabSide, TabAlign, TabOrientation } from '@jimka/typescript-ui/layout';
+import { Fit, HBox, VBox, TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign } from '@jimka/typescript-ui/layout';
 import { Text, ComboBox, NumberSpinner } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { TabPanel } from '@jimka/typescript-ui/component/container';
+import { Glyph } from '@jimka/typescript-ui/component/display';
+// Per-glyph subpath import (not the `glyphs/solid` barrel) so dev mode doesn't
+// fetch all ~2,000 glyph modules — see MenuBarPanel for the rationale.
+import { star } from '@jimka/typescript-ui/glyphs/solid/star';
+
+Glyph.register(star);
 
 /**
  * Demonstrates the framework {@link TabPanel} (a Panel subclass that wraps
@@ -80,6 +86,13 @@ class TabDemoPanel extends Component {
         const orientationModes: TabOrientation[] = ["horizontal", "vertical-cw", "vertical-ccw"];
         const orientationCombo = new ComboBox({ items: orientationModes, selectedIndex: 0 });
 
+        // Justification only shows when cells are wider than their content —
+        // visible in `fill`/`equal`/`fixed` modes, not `content`. `start`/`end`
+        // are flow-relative (left/right on a horizontal strip, top/bottom on a
+        // rotated west/east strip).
+        const alignTextModes: TabTextAlign[] = ["start", "center", "end"];
+        const alignTextCombo = new ComboBox({ items: alignTextModes, selectedIndex: 1 });
+
         const scrollBtn = new Button("Toggle Scroll");
         const compactBtn = new Button("Toggle Compact");
         const reorderBtn = new Button("Toggle Reorder");
@@ -98,11 +111,20 @@ class TabDemoPanel extends Component {
         placeRow.addComponent(alignCombo);
         placeRow.addComponent(new Text("Orient:", { preferredSize: { width: 48, height: 28 } }));
         placeRow.addComponent(orientationCombo);
+        placeRow.addComponent(new Text("Justify:", { preferredSize: { width: 50, height: 28 } }));
+        placeRow.addComponent(alignTextCombo);
         placeRow.addComponent(scrollBtn);
         placeRow.addComponent(compactBtn);
         placeRow.addComponent(reorderBtn);
 
         this.addComponent(placeRow);
+
+        // Right-click any tab button to open a context menu that switches to any
+        // tab or closes the right-clicked one (when closeable).
+        this.addComponent(new Text(
+            "Tip: right-click a tab to switch tabs or close it.",
+            { preferredSize: { width: 0, height: 24 } },
+        ));
 
         // --- TabPanel ---
         // Starts in `content` mode at Max 160 so the sliding selection
@@ -119,7 +141,7 @@ class TabDemoPanel extends Component {
                 tools: [addToolBtn],
             },
             tabs: [
-                { label: "Alpha", component: this.buildContent("Alpha") },
+                { label: "Alpha", component: this.buildContent("Alpha"), glyph: "star" },
                 { label: "Beta",  component: this.buildContent("Beta"),  closeable: true },
                 { label: "Gamma", component: this.buildContent("Gamma"), closeable: true },
             ],
@@ -141,6 +163,10 @@ class TabDemoPanel extends Component {
 
         orientationCombo.on("change", () => {
             this.tabPanel.setTabOrientation(orientationModes[orientationCombo.getSelectedIndex()]);
+        });
+
+        alignTextCombo.on("change", () => {
+            this.tabPanel.setTabTextAlign(alignTextModes[alignTextCombo.getSelectedIndex()]);
         });
 
         scrollBtn.on("action", () => {
