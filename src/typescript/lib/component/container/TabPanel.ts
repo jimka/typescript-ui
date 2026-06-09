@@ -3,7 +3,7 @@
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
-import { Tab, TabEvent, TabWidthMode } from "~/layout/Tab.js";
+import { Tab, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation } from "~/layout/Tab.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -41,6 +41,20 @@ export interface TabPanelOptions extends PanelOptions {
     tabFixedWidth?: number;
     /** Whether the 1px strip under-border runs edge-to-edge; defaults to `true`. */
     tabUnderBorderFullWidth?: boolean;
+    /** Which edge the tab strip sits on; defaults to `"north"`. */
+    tabSide?: TabSide;
+    /** Main-axis alignment of the tab-button group; defaults to `"start"`. */
+    tabAlign?: TabAlign;
+    /** Text orientation on the vertical sides; defaults to `"horizontal"`. */
+    tabOrientation?: TabOrientation;
+    /** Whether an overflowing strip scrolls instead of compressing; defaults to `false`. */
+    tabScrollable?: boolean;
+    /** Tool buttons pinned at the far end of the strip, opposite the tabs. */
+    tabTools?: Component[];
+    /** Reduce tab-button insets for a denser strip; defaults to `false`. */
+    compact?: boolean;
+    /** Enable within-strip header drag-reorder; defaults to `false`. */
+    reorderable?: boolean;
 }
 
 /**
@@ -96,6 +110,36 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
 
         if (options?.tabUnderBorderFullWidth !== undefined) {
             this.setTabUnderBorderFullWidth(options.tabUnderBorderFullWidth);
+        }
+
+        if (options?.tabSide !== undefined) {
+            this.setTabSide(options.tabSide);
+        }
+
+        if (options?.tabAlign !== undefined) {
+            this.setTabAlign(options.tabAlign);
+        }
+
+        if (options?.tabOrientation !== undefined) {
+            this.setTabOrientation(options.tabOrientation);
+        }
+
+        if (options?.tabScrollable !== undefined) {
+            this.setTabScrollable(options.tabScrollable);
+        }
+
+        if (options?.compact !== undefined) {
+            this.setCompact(options.compact);
+        }
+
+        if (options?.reorderable !== undefined) {
+            this.setReorderable(options.reorderable);
+        }
+
+        if (options?.tabTools) {
+            for (const tool of options.tabTools) {
+                this.addTabTool(tool);
+            }
         }
 
         if (options?.tabs) {
@@ -269,6 +313,174 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      */
     isTabUnderBorderFullWidth(): boolean {
         return this.getTabManager().isTabUnderBorderFullWidth();
+    }
+
+    /**
+     * Selects which edge the tab strip sits on, forwarding to the wrapped
+     * {@link Tab} manager. See [`TabSide`](/api/layout/type-aliases/TabSide).
+     *
+     * @param side - The side to place the strip on.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabSide(side: TabSide): this {
+        this.getTabManager().setTabSide(side);
+
+        return this;
+    }
+
+    /**
+     * Returns the edge the tab strip sits on.
+     *
+     * @returns The active [`TabSide`](/api/layout/type-aliases/TabSide).
+     */
+    getTabSide(): TabSide {
+        return this.getTabManager().getTabSide();
+    }
+
+    /**
+     * Sets the main-axis alignment of the tab-button group, forwarding to the
+     * wrapped {@link Tab} manager. See
+     * [`TabAlign`](/api/layout/type-aliases/TabAlign).
+     *
+     * @param align - The alignment to apply.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabAlign(align: TabAlign): this {
+        this.getTabManager().setTabAlign(align);
+
+        return this;
+    }
+
+    /**
+     * Returns the current tab-button-group alignment.
+     *
+     * @returns The active [`TabAlign`](/api/layout/type-aliases/TabAlign).
+     */
+    getTabAlign(): TabAlign {
+        return this.getTabManager().getTabAlign();
+    }
+
+    /**
+     * Sets the vertical-side tab text orientation, forwarding to the wrapped
+     * {@link Tab} manager. See
+     * [`TabOrientation`](/api/layout/type-aliases/TabOrientation).
+     *
+     * @param orientation - The orientation to apply.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabOrientation(orientation: TabOrientation): this {
+        this.getTabManager().setTabOrientation(orientation);
+
+        return this;
+    }
+
+    /**
+     * Returns the current vertical-side tab text orientation.
+     *
+     * @returns The active [`TabOrientation`](/api/layout/type-aliases/TabOrientation).
+     */
+    getTabOrientation(): TabOrientation {
+        return this.getTabManager().getTabOrientation();
+    }
+
+    /**
+     * Sets whether an overflowing strip scrolls instead of compressing the tabs,
+     * forwarding to the wrapped {@link Tab} manager.
+     *
+     * @param value - `true` to scroll on overflow, `false` to compress.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabScrollable(value: boolean): this {
+        this.getTabManager().setTabScrollable(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether an overflowing strip scrolls instead of compressing.
+     *
+     * @returns `true` when the strip scrolls on overflow.
+     */
+    isTabScrollable(): boolean {
+        return this.getTabManager().isTabScrollable();
+    }
+
+    /**
+     * Toggles reduced (compact) tab-button insets, forwarding to the wrapped
+     * {@link Tab} manager.
+     *
+     * @param value - `true` for compact insets, `false` for the default.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setCompact(value: boolean): this {
+        this.getTabManager().setCompact(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the strip uses reduced (compact) tab-button insets.
+     *
+     * @returns `true` when compact.
+     */
+    isCompact(): boolean {
+        return this.getTabManager().isCompact();
+    }
+
+    /**
+     * Enables or disables within-strip header drag-reorder, forwarding to the
+     * wrapped {@link Tab} manager.
+     *
+     * @param value - `true` to enable header drag-reorder.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setReorderable(value: boolean): this {
+        this.getTabManager().setReorderable(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether within-strip header drag-reorder is enabled.
+     *
+     * @returns `true` when reorderable.
+     */
+    isReorderable(): boolean {
+        return this.getTabManager().isReorderable();
+    }
+
+    /**
+     * Adds a tool button at the far end of the strip, opposite the tabs,
+     * forwarding to the wrapped {@link Tab} manager.
+     *
+     * @param button - The tool component to add.
+     *
+     * @returns This panel, for method chaining.
+     */
+    addTabTool(button: Component): this {
+        this.getTabManager().addTabTool(button);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously-added tool button, forwarding to the wrapped
+     * {@link Tab} manager.
+     *
+     * @param button - The tool component to remove.
+     *
+     * @returns This panel, for method chaining.
+     */
+    removeTabTool(button: Component): this {
+        this.getTabManager().removeTabTool(button);
+
+        return this;
     }
 
     /**
