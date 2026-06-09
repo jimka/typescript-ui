@@ -435,7 +435,30 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             this.calculateSize();
         }
 
-        return super.getPreferredSize();
+        const size = super.getPreferredSize();
+
+        // `measureTextMetrics` always measures the run horizontally. A vertical
+        // writing mode rotates it onto the block axis, so the natural text length
+        // becomes the height and the line box becomes the width — swap to report
+        // the on-screen extents.
+        if (size && this.isVerticalWritingMode()) {
+            return { width: size.height, height: size.width };
+        }
+
+        return size;
+    }
+
+    /**
+     * Whether the active {@link Component.setWritingMode | writing mode} rotates
+     * the text run onto the block (vertical) axis, so the measured horizontal
+     * extents must be swapped to describe the on-screen size.
+     *
+     * @returns `true` for a `vertical-*` or `sideways-*` writing mode.
+     */
+    private isVerticalWritingMode(): boolean {
+        const mode = this.getWritingMode();
+
+        return mode !== null && (mode.startsWith("vertical") || mode.startsWith("sideways"));
     }
 
     /**
@@ -466,6 +489,20 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
         if (!measured) {
             return base;
+        }
+
+        // Vertical writing mode: the one-line floor guards the line *thickness*,
+        // which is now the width rather than the height (the length runs down the
+        // block axis and stays freely compressible).
+        if (this.isVerticalWritingMode()) {
+            if (!base) {
+                return { width: measured.height, height: 0 };
+            }
+
+            return {
+                width:  Math.max(base.width, measured.height),
+                height: base.height,
+            };
         }
 
         if (!base) {

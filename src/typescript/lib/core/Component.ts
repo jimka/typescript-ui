@@ -127,6 +127,7 @@ export interface ComponentOptions {
     opacity?:         number;
     overflow?:        string;
     pointerEvents?:   string;
+    writingMode?:     string;
     touchAction?:     string;
     layoutManager?:   LayoutManager;
     id?:              string;
@@ -405,6 +406,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.opacity         !== undefined) this.setOpacity(opts.opacity);
         if (opts.overflow        !== undefined) this.setOverflow(opts.overflow);
         if (opts.pointerEvents   !== undefined) this.setPointerEvents(opts.pointerEvents);
+        if (opts.writingMode     !== undefined) this.setWritingMode(opts.writingMode);
         if (opts.touchAction     !== undefined) this.setTouchAction(opts.touchAction);
 
         if (opts.attributes !== undefined) {
@@ -3137,6 +3139,51 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the inline `writing-mode` value last passed to
+     * {@link setWritingMode}, or `null` if not set.
+     *
+     * @returns The writing-mode string, or null.
+     */
+    getWritingMode(): string | null {
+        return this._options.writingMode ?? null;
+    }
+
+    /**
+     * Sets the CSS `writing-mode` property on the element. Unlike a
+     * `transform: rotate`, `writing-mode` rotates the element's *layout box*,
+     * so `getBoundingClientRect` reports the rotated width/height — used by the
+     * vertical tab strip so measurement and hit-testing stay correct.
+     *
+     * @param value - A CSS writing-mode value (e.g. "vertical-rl", "vertical-lr").
+     *
+     * @returns This component, for method chaining.
+     */
+    setWritingMode(value: string): this {
+        this._options.writingMode = value;
+
+        this.setElementStyle("writingMode", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the inline `writing-mode` property from the element, restoring the
+     * default horizontal text flow.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearWritingMode(): this {
+        if (this._options.writingMode === undefined) {
+            return this;
+        }
+
+        this._options.writingMode = undefined;
+        this.setElementStyle("writingMode", null);
+
+        return this;
+    }
+
+    /**
      * Returns the opacity value last passed to {@link setOpacity}, or `null` if
      * no opacity has been set.
      *
@@ -3451,6 +3498,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         if (opts.pointerEvents) {
             this._inlineStyle.set("pointerEvents", opts.pointerEvents);
+        }
+
+        if (opts.writingMode) {
+            this._inlineStyle.set("writingMode", opts.writingMode);
         }
 
         if (opts.zIndex) {
