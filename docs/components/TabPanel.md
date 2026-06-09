@@ -54,14 +54,17 @@ newly-selected tab on each selection change; its colour and thickness come from
 the `--ts-ui-tab-indicator-color` / `--ts-ui-tab-indicator-thickness` theme
 tokens.
 
-Construction-time options (each with a matching setter) tune the strip:
+Construction-time strip settings nest under `tabOptions` (the wrapped manager's
+own options bag); each has a matching prefixed runtime forwarder on the panel:
 
 ```typescript
 const tabs = new TabPanel({
-    tabWidthMode: "equal",         // "fill" | "content" | "equal" | "fixed"
-    tabMaxWidth: 160,              // width cap for "content" / "equal"; null = uncapped
-    tabFixedWidth: 120,            // per-tab width for "fixed" mode
-    tabUnderBorderFullWidth: true, // 1px rule under the whole strip (the default)
+    tabOptions: {
+        widthMode: "equal",         // "fill" | "content" | "equal" | "fixed"
+        maxWidth: 160,              // width cap for "content" / "equal"; null = uncapped
+        fixedWidth: 120,            // per-tab width for "fixed" mode
+        underBorderFullWidth: true, // 1px rule under the whole strip (the default)
+    },
     tabs: [/* … */],
 });
 
@@ -75,15 +78,57 @@ chooses the tab-button width strategy:
 
 - `"fill"` (default) — tabs split the strip equally and stretch to fill it.
 - `"content"` — each tab takes its own content width, capped at
-  [`tabMaxWidth`](/api/component/container/classes/TabPanel#settabmaxwidth).
-- `"equal"` — every tab matches the widest tab, capped at `tabMaxWidth`.
+  [`maxWidth`](/api/component/container/classes/TabPanel#settabmaxwidth).
+- `"equal"` — every tab matches the widest tab, capped at `maxWidth`.
 - `"fixed"` — every tab takes
-  [`tabFixedWidth`](/api/component/container/classes/TabPanel#settabfixedwidth).
+  [`fixedWidth`](/api/component/container/classes/TabPanel#settabfixedwidth)
+  along the text's reading direction: the tab width for horizontal text
+  (north/south, or upright west/east — where it sets the bar thickness), and the
+  tab height for rotated west/east text.
 
 Every mode except `"fill"` leaves the strip full-width with the tabs
 left-aligned. [`setTabUnderBorderFullWidth`](/api/component/container/classes/TabPanel#settabunderborderfullwidth)
 toggles the edge-to-edge rule drawn under the strip. All forward to the wrapped
 [`Tab`](/api/layout/classes/Tab) manager.
+
+## Placement, tools, overflow, compact & reorder
+
+`TabPanel` forwards the strip-placement and behaviour surface of the wrapped
+`Tab` manager — see [Tab](/layouts/Tab) for the full description of each:
+
+```typescript
+const tabs = new TabPanel({
+    tabOptions: {
+        side: "west",               // "north" | "south" | "west" | "east"
+        align: "end",               // "start" | "end"
+        orientation: "vertical-cw", // "horizontal" | "vertical-cw" | "vertical-ccw"
+        scrollable: true,           // scroll on overflow instead of compressing
+        compact: true,              // denser tab insets
+        reorderable: true,          // within-strip header drag-reorder
+        tools: [newTabButton],      // buttons pinned opposite the tabs
+    },
+    tabs: [/* … */],
+});
+
+tabs.setTabSide("south");
+tabs.setTabAlign("start");
+tabs.setTabOrientation("horizontal");
+tabs.setTabScrollable(true);
+tabs.setTabCompact(false);
+tabs.setTabReorderable(false);
+tabs.addTabTool(menuButton);
+```
+
+Construction settings nest under `tabOptions` (unprefixed, the manager's own
+option names); each has a matching prefixed runtime forwarder on the panel —
+[`setTabSide`](/api/component/container/classes/TabPanel#settabside),
+[`setTabAlign`](/api/component/container/classes/TabPanel#settabalign),
+[`setTabOrientation`](/api/component/container/classes/TabPanel#settaborientation),
+[`setTabScrollable`](/api/component/container/classes/TabPanel#settabscrollable),
+[`setTabCompact`](/api/component/container/classes/TabPanel#settabcompact),
+[`setTabReorderable`](/api/component/container/classes/TabPanel#settabreorderable), and
+[`addTabTool`](/api/component/container/classes/TabPanel#addtabtool) — all
+forwarding to the wrapped [`Tab`](/layouts/Tab) manager.
 
 ## Accessing the underlying `Tab` manager
 

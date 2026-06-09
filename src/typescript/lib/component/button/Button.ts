@@ -486,6 +486,51 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * Applies a writing mode to the button and propagates it to the inner label
+     * (and description) so their measured preferred size reflects the rotated
+     * text run — a label-only `getWritingMode` would otherwise stay horizontal
+     * even while inheriting the vertical mode through CSS, and report the wrong
+     * extents. Re-syncs the auto-sized preferred size after the labels swap.
+     *
+     * @param value - A CSS `writing-mode` value (e.g. `vertical-rl`).
+     *
+     * @returns This component, for method chaining.
+     */
+    setWritingMode(value: string): this {
+        super.setWritingMode(value);
+
+        // `writingMode` is a Component option, so this can fire from
+        // `applyOptions` during `super()` — before the constructor assigns
+        // `_text`. Forward (and resize) only once the labels exist; the Tab sets
+        // the mode post-construction, so its labels are always present.
+        if (this._text) {
+            this._text.setWritingMode(value);
+            this._description?.setWritingMode(value);
+            this.recomputePreferredSize();
+        }
+
+        return this;
+    }
+
+    /**
+     * Clears the writing mode from the button and its inner label (and
+     * description), restoring horizontal text measurement.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearWritingMode(): this {
+        super.clearWritingMode();
+
+        if (this._text) {
+            this._text.clearWritingMode();
+            this._description?.clearWritingMode();
+            this.recomputePreferredSize();
+        }
+
+        return this;
+    }
+
+    /**
      * Sets the button's subtitle, shown on a line below the title in a
      * smaller, dimmer style. The subtitle label is created lazily on the
      * first call (mirroring {@link setGlyph}) so a button with no description

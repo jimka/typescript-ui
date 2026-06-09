@@ -3,7 +3,7 @@
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
-import { Tab, TabEvent, TabWidthMode } from "~/layout/Tab.js";
+import { Tab, TabOptions, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation } from "~/layout/Tab.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -33,14 +33,12 @@ export interface TabPanelOptions extends PanelOptions {
      * button. Receives the closed tab's content component.
      */
     onTabClose?: (component: Component) => void;
-    /** Tab-button width strategy; defaults to `"fill"`. */
-    tabWidthMode?: TabWidthMode;
-    /** Per-tab maximum width in px for `"content"` / `"equal"` modes; `null` (the default) leaves tabs uncapped. */
-    tabMaxWidth?: number | null;
-    /** Per-tab width in px for `"fixed"` mode; defaults to `120`. */
-    tabFixedWidth?: number;
-    /** Whether the 1px strip under-border runs edge-to-edge; defaults to `true`. */
-    tabUnderBorderFullWidth?: boolean;
+    /**
+     * Construction-time options for the wrapped {@link Tab} manager (strip
+     * placement, width mode, scrolling, tools, compact, reorder, …). Passed
+     * straight to the manager's constructor.
+     */
+    tabOptions?: TabOptions;
 }
 
 /**
@@ -79,24 +77,9 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
 
         // Set the layout manager unconditionally — even if the caller passed
         // `layoutManager` via the options bag, `TabPanel`'s identity is the
-        // `Tab` manager. Override-by-options would defeat the class.
-        this.setLayoutManager(new Tab());
-
-        if (options?.tabWidthMode !== undefined) {
-            this.setTabWidthMode(options.tabWidthMode);
-        }
-
-        if (options?.tabMaxWidth !== undefined) {
-            this.setTabMaxWidth(options.tabMaxWidth);
-        }
-
-        if (options?.tabFixedWidth !== undefined) {
-            this.setTabFixedWidth(options.tabFixedWidth);
-        }
-
-        if (options?.tabUnderBorderFullWidth !== undefined) {
-            this.setTabUnderBorderFullWidth(options.tabUnderBorderFullWidth);
-        }
+        // `Tab` manager. Override-by-options would defeat the class. The strip
+        // configuration rides in as the manager's own options bag.
+        this.setLayoutManager(new Tab(options?.tabOptions));
 
         if (options?.tabs) {
             for (const entry of options.tabs) {
@@ -188,7 +171,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabMaxWidth(px: number | null): this {
-        this.getTabManager().setTabMaxWidth(px);
+        this.getTabManager().setMaxWidth(px);
 
         return this;
     }
@@ -199,7 +182,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns The cap in px, or `null` when tabs are uncapped.
      */
     getTabMaxWidth(): number | null {
-        return this.getTabManager().getTabMaxWidth();
+        return this.getTabManager().getMaxWidth();
     }
 
     /**
@@ -211,7 +194,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabWidthMode(mode: TabWidthMode): this {
-        this.getTabManager().setTabWidthMode(mode);
+        this.getTabManager().setWidthMode(mode);
 
         return this;
     }
@@ -222,7 +205,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns The active {@link TabWidthMode}.
      */
     getTabWidthMode(): TabWidthMode {
-        return this.getTabManager().getTabWidthMode();
+        return this.getTabManager().getWidthMode();
     }
 
     /**
@@ -234,7 +217,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabFixedWidth(px: number): this {
-        this.getTabManager().setTabFixedWidth(px);
+        this.getTabManager().setFixedWidth(px);
 
         return this;
     }
@@ -245,7 +228,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns The fixed width in px.
      */
     getTabFixedWidth(): number {
-        return this.getTabManager().getTabFixedWidth();
+        return this.getTabManager().getFixedWidth();
     }
 
     /**
@@ -257,7 +240,7 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns This panel, for method chaining.
      */
     setTabUnderBorderFullWidth(full: boolean): this {
-        this.getTabManager().setTabUnderBorderFullWidth(full);
+        this.getTabManager().setUnderBorderFullWidth(full);
 
         return this;
     }
@@ -268,7 +251,175 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      * @returns `true` when the full-width under-border is drawn.
      */
     isTabUnderBorderFullWidth(): boolean {
-        return this.getTabManager().isTabUnderBorderFullWidth();
+        return this.getTabManager().isUnderBorderFullWidth();
+    }
+
+    /**
+     * Selects which edge the tab strip sits on, forwarding to the wrapped
+     * {@link Tab} manager. See [`TabSide`](/api/layout/type-aliases/TabSide).
+     *
+     * @param side - The side to place the strip on.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabSide(side: TabSide): this {
+        this.getTabManager().setSide(side);
+
+        return this;
+    }
+
+    /**
+     * Returns the edge the tab strip sits on.
+     *
+     * @returns The active [`TabSide`](/api/layout/type-aliases/TabSide).
+     */
+    getTabSide(): TabSide {
+        return this.getTabManager().getSide();
+    }
+
+    /**
+     * Sets the main-axis alignment of the tab-button group, forwarding to the
+     * wrapped {@link Tab} manager. See
+     * [`TabAlign`](/api/layout/type-aliases/TabAlign).
+     *
+     * @param align - The alignment to apply.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabAlign(align: TabAlign): this {
+        this.getTabManager().setAlign(align);
+
+        return this;
+    }
+
+    /**
+     * Returns the current tab-button-group alignment.
+     *
+     * @returns The active [`TabAlign`](/api/layout/type-aliases/TabAlign).
+     */
+    getTabAlign(): TabAlign {
+        return this.getTabManager().getAlign();
+    }
+
+    /**
+     * Sets the vertical-side tab text orientation, forwarding to the wrapped
+     * {@link Tab} manager. See
+     * [`TabOrientation`](/api/layout/type-aliases/TabOrientation).
+     *
+     * @param orientation - The orientation to apply.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabOrientation(orientation: TabOrientation): this {
+        this.getTabManager().setOrientation(orientation);
+
+        return this;
+    }
+
+    /**
+     * Returns the current vertical-side tab text orientation.
+     *
+     * @returns The active [`TabOrientation`](/api/layout/type-aliases/TabOrientation).
+     */
+    getTabOrientation(): TabOrientation {
+        return this.getTabManager().getOrientation();
+    }
+
+    /**
+     * Sets whether an overflowing strip scrolls instead of compressing the tabs,
+     * forwarding to the wrapped {@link Tab} manager.
+     *
+     * @param value - `true` to scroll on overflow, `false` to compress.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabScrollable(value: boolean): this {
+        this.getTabManager().setScrollable(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether an overflowing strip scrolls instead of compressing.
+     *
+     * @returns `true` when the strip scrolls on overflow.
+     */
+    isTabScrollable(): boolean {
+        return this.getTabManager().isScrollable();
+    }
+
+    /**
+     * Toggles reduced (compact) tab-button insets, forwarding to the wrapped
+     * {@link Tab} manager.
+     *
+     * @param value - `true` for compact insets, `false` for the default.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabCompact(value: boolean): this {
+        this.getTabManager().setCompact(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the strip uses reduced (compact) tab-button insets.
+     *
+     * @returns `true` when compact.
+     */
+    isTabCompact(): boolean {
+        return this.getTabManager().isCompact();
+    }
+
+    /**
+     * Enables or disables within-strip header drag-reorder, forwarding to the
+     * wrapped {@link Tab} manager.
+     *
+     * @param value - `true` to enable header drag-reorder.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabReorderable(value: boolean): this {
+        this.getTabManager().setReorderable(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether within-strip header drag-reorder is enabled.
+     *
+     * @returns `true` when reorderable.
+     */
+    isTabReorderable(): boolean {
+        return this.getTabManager().isReorderable();
+    }
+
+    /**
+     * Adds a tool button at the far end of the strip, opposite the tabs,
+     * forwarding to the wrapped {@link Tab} manager.
+     *
+     * @param button - The tool component to add.
+     *
+     * @returns This panel, for method chaining.
+     */
+    addTabTool(button: Component): this {
+        this.getTabManager().addTool(button);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously-added tool button, forwarding to the wrapped
+     * {@link Tab} manager.
+     *
+     * @param button - The tool component to remove.
+     *
+     * @returns This panel, for method chaining.
+     */
+    removeTabTool(button: Component): this {
+        this.getTabManager().removeTool(button);
+
+        return this;
     }
 
     /**
