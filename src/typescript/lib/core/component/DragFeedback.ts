@@ -68,24 +68,46 @@ class DragFeedback extends Component {
     }
 
     /**
-     * Mirrors the target component's bounds onto this overlay and
-     * appends the overlay element to the target. Skips the work if
-     * already attached to the same target.
+     * Sizes this overlay to cover the drop target and appends it to the DOM.
      *
-     * @param target - The drop target whose body the tint should cover.
+     * With no `host`, the tint is a child of the target, covering its body. When
+     * a `host` is given, the tint instead lives in that (non-scrolling) layer,
+     * sized to the target's box within it — so a target that scrolls its own
+     * content (a Tab strip's clip frame) gets a tint over the *viewport* that
+     * stays put instead of riding the scroll.
+     *
+     * @param target - The drop target whose box the tint should cover.
+     * @param host - Optional non-scrolling layer to host the tint (see
+     *   {@link DropTargetOptions.feedbackHost}). Defaults to the target.
      */
-    attachTo(target: Component): void {
-        const targetEl = target.getElement(true);
-        const myEl     = this.getElement(true);
+    attachTo(target: Component, host?: Component): void {
+        const myEl = this.getElement(true);
 
-        if (myEl.parentElement === targetEl) {
-            this.mirrorBounds(target);
+        if (host && host !== target) {
+            // Overlay the target's box from within the host layer.
+            this.setX(target.getX());
+            this.setY(target.getY());
+            this.setWidth(target.getWidth());
+            this.setHeight(target.getHeight());
+
+            const hostEl = host.getElement(true);
+            if (myEl.parentElement !== hostEl) {
+                hostEl.appendChild(myEl);
+            }
 
             return;
         }
 
-        this.mirrorBounds(target);
-        targetEl.appendChild(myEl);
+        // Cover the target's own body as a child of it.
+        this.setX(0);
+        this.setY(0);
+        this.setWidth(target.getWidth());
+        this.setHeight(target.getHeight());
+
+        const targetEl = target.getElement(true);
+        if (myEl.parentElement !== targetEl) {
+            targetEl.appendChild(myEl);
+        }
     }
 
     /**
@@ -93,25 +115,6 @@ class DragFeedback extends Component {
      */
     detach(): void {
         this.removeElement();
-    }
-
-    /**
-     * Mirrors the target's box onto this overlay so the tint covers the
-     * full target body.
-     *
-     * @remarks The overlay is appended into the target, so when the target
-     * scrolls its content natively (a `Tab` strip clips and scrolls its tab row
-     * via `scrollLeft`) a left/top of `0` rides the scroll out of view. Offset
-     * by the target's scroll position so the tint stays pinned over the visible
-     * viewport; both terms are `0` for a non-scrolling target.
-     */
-    private mirrorBounds(target: Component): void {
-        const el = target.getElement(true);
-
-        this.setX(el.scrollLeft);
-        this.setY(el.scrollTop);
-        this.setWidth(target.getWidth());
-        this.setHeight(target.getHeight());
     }
 
     /**

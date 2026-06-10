@@ -2771,6 +2771,10 @@ class Tab extends LayoutManager {
      */
     private makeTabDropTarget(): () => void {
         return DragManager.makeDropTarget(this._clipFrame, {
+            // Host the validity tint in the (non-scrolling) toolbar layer, over
+            // the clip frame's box, so it overlays the visible tab viewport and
+            // stays put while the tabs scroll inside the clip frame.
+            feedbackHost: this._toolbar,
             accepts: (detail: DragEventDetail): boolean => this.isTabReorderDrag(detail),
             onDragOver: (detail: DragEventDetail): number | null => {
                 this.updateReorderSlot(detail);
