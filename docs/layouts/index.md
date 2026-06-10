@@ -18,6 +18,10 @@ A [`LayoutManager`](/api/layout/classes/LayoutManager) is attached to a containe
 | [`VBox`](/api/layout/classes/VBox) | Vertical stack; `mode: "preferred"` honours per-child heights, `mode: "equal"` divides the column into equal cells |
 | [`HFlow`](/api/layout/classes/HFlow) | Wrapping horizontal stack; packs children left-to-right and wraps to new lines, scrolling vertically on overflow |
 
+## Serializing arrangements
+
+[Layout serialization](/layouts/LayoutSerialization) captures the `Split` / `Tab` / `Window` arrangement of a container tree to a plain object and restores it — including switching between saved layouts at runtime while preserving each panel's state.
+
 ## Attach a layout
 
 ```typescript
