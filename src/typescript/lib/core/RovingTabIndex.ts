@@ -22,6 +22,18 @@ export class RovingTabIndex {
 
     private _items: Component[] = [];
     private _activeIndex: number = 0;
+    private readonly _preventScroll: boolean;
+
+    /**
+     * @param options.preventScroll - When `true`, {@link moveTo} focuses the
+     *   active item without the browser scrolling it into view. Use it when the
+     *   group's host owns its own scroll offset (e.g. the {@link Tab} strip's
+     *   inset-shift scroll), so native focus-scroll cannot desync that model.
+     *   Defaults to `false` — the standard focus-reveals-the-item behaviour.
+     */
+    constructor(options: { preventScroll?: boolean } = {}) {
+        this._preventScroll = options.preventScroll ?? false;
+    }
 
     /**
      * Returns all items currently managed by this roving group.
@@ -110,7 +122,7 @@ export class RovingTabIndex {
 
         if (next) {
             next.getAria().setTabIndex(0);
-            next.focus();
+            next.focus(this._preventScroll);
         }
     }
 
