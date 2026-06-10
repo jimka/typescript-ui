@@ -32,3 +32,5 @@ export { Split } from '~/layout/Split.js';
 export type { SplitOptions } from '~/layout/Split.js';
 export { Card } from '~/layout/Card.js';
 export type { CardOptions } from '~/layout/Card.js';
+export { serializeLayout, restoreLayout } from '~/layout/LayoutSerialization.js';
+export type { LayoutState, LayoutNode, PanelNode, SplitNode, TabNode, WindowNode, SerializedRect, LayoutFactory } from '~/layout/LayoutSerialization.js';

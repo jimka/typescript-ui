@@ -1411,6 +1411,48 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Returns the zero-based index of the currently active tab. Captures the
+     * active selection for serialization.
+     *
+     * @returns The active tab index.
+     */
+    getActiveTabIndex(): number {
+        return this._selectedTabIndex;
+    }
+
+    /**
+     * Activates the tab at the given index programmatically — clamped to the
+     * valid range — driving the same selection sync a click does: the button
+     * group's pressed state, the roving tabindex, lazy materialization of the
+     * target, and a re-layout. Used by layout restore to reinstate the saved
+     * active tab.
+     *
+     * @param index - Zero-based tab index; clamped to `[0, tabCount - 1]`.
+     * @returns This layout manager, for method chaining.
+     */
+    setActiveTabIndex(index: number): this {
+        if (this._tabs.length === 0) {
+            return this;
+        }
+
+        const clamped = Math.max(0, Math.min(index, this._tabs.length - 1));
+        const button  = this._tabs[clamped].button;
+
+        // Mirror the explicit button-group sync a programmatic switch needs (as
+        // `openTabMenu` / `selectNextTab` do): a left-click drives the pressed
+        // state through the group, but a programmatic activation must set it by
+        // hand or the target's content moves while its button never looks
+        // pressed. `onTabPressed` then updates the index, roving focus, lazy
+        // materialization, and schedules layout.
+        this._tabs.forEach(entry => entry.button.setSelected(false));
+        button.setSelected(true);
+
+        this.onTabPressed(button);
+
+        return this;
+    }
+
+    /**
      * Opens the shared context menu for a right-clicked tab. Lists every tab
      * (click to switch, the currently-active tab shown inert) followed by a
      * `Close` action gated on the tab's `closeable` constraint. Reuses the

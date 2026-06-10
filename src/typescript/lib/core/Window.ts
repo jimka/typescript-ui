@@ -645,6 +645,58 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     }
 
     /**
+     * Returns a snapshot array of every currently-open window. Used by layout
+     * serialization to capture the floating-window plane, which is mounted on
+     * `document.documentElement` rather than inside any container tree.
+     *
+     * @returns The open windows, in insertion order.
+     */
+    static getOpenWindows(): Window[] {
+        return Array.from(Window.openWindows);
+    }
+
+    /**
+     * Returns the window's current rectangle in viewport pixels. The public form
+     * of the internal current-rect read, for layout serialization.
+     *
+     * @returns The `{ x, y, width, height }` the window currently occupies.
+     */
+    getRect(): { x: number; y: number; width: number; height: number } {
+        return this.currentRect();
+    }
+
+    /**
+     * Applies a rectangle captured by {@link getRect}, in viewport pixels.
+     * `setWidth`/`setHeight` clamp against the window's minimum size and the
+     * position is constrained to the viewport on the next layout, so a saved
+     * rect from a larger or differently-shaped screen is pulled back into view.
+     *
+     * @param rect - The `{ x, y, width, height }` to apply.
+     * @returns This window, for method chaining.
+     */
+    applyRect(rect: { x: number; y: number; width: number; height: number }): this {
+        this.setX(rect.x);
+        this.setY(rect.y);
+        this.setWidth(rect.width);
+        this.setHeight(rect.height);
+
+        return this;
+    }
+
+    /**
+     * Returns the cached normal-state rectangle a minimized or maximized window
+     * un-collapses to, or `null` when the window is in its normal state.
+     * Captured by serialization so a window serialized while minimized or
+     * maximized round-trips back to the right normal geometry — on restore the
+     * normal rect is applied first and `setWindowState` re-caches it.
+     *
+     * @returns The restore rect, or `null`.
+     */
+    getRestoreRect(): { x: number; y: number; width: number; height: number } | null {
+        return this._restoreRect;
+    }
+
+    /**
      * Sets the lifecycle state. Tweens geometry between the current rect and
      * the rect implied by the target state over `WINDOW_ANIM_DURATION_MS`.
      * Under `prefers-reduced-motion: reduce` the tween collapses to a single
