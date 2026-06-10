@@ -158,6 +158,9 @@ export default defineConfig({
                     { text: 'Split',     link: '/layouts/Split' },
                     { text: 'Accordion', link: '/layouts/Accordion' },
                 ] },
+                { text: 'Serialization', collapsed: false, items: [
+                    { text: 'Layout serialization', link: '/layouts/LayoutSerialization' },
+                ] },
             ],
             '/data/': [
                 { text: 'Data layer', items: [

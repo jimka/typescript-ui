@@ -102,3 +102,4 @@ strip fill and chevron colour are themed via the `collapse` tokens — see
 - [API: Split](/api/layout/classes/Split)
 - [`SplitGutter`](/api/component/container/classes/SplitGutter) — the drag handle
 - [`Border`](/layouts/Border) — fixed dividers
+- [Layout serialization](/layouts/LayoutSerialization) — capture and restore pane ratios

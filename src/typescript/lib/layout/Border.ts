@@ -150,6 +150,32 @@ class Border extends LayoutManager {
     }
 
     /**
+     * Clears the region slot a component occupied when it is removed from the
+     * container. Without this the region reference goes stale: a component moved
+     * out of a `Border` container (e.g. a window's content panel re-homed
+     * elsewhere) would still be held as that region's child and re-sized by this
+     * manager on its next `doLayout`, fighting its new parent's layout.
+     *
+     * @param component - The component being removed.
+     * @returns The removed constraints, or `undefined` if none were stored.
+     */
+    delLayoutConstraints(component: Component): LayoutConstraints | undefined {
+        if (this._northComponent === component) {
+            this._northComponent = null;
+        } else if (this._southComponent === component) {
+            this._southComponent = null;
+        } else if (this._westComponent === component) {
+            this._westComponent = null;
+        } else if (this._eastComponent === component) {
+            this._eastComponent = null;
+        } else if (this._centerComponent === component) {
+            this._centerComponent = null;
+        }
+
+        return super.delLayoutConstraints(component);
+    }
+
+    /**
      * Returns the pixel gap between adjacent border regions.
      *
      * @returns The current gap in pixels.

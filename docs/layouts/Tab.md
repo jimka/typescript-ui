@@ -196,3 +196,4 @@ reuses the `drag.reorderIndicator.color` token.
 - [API: Tab](/api/layout/classes/Tab)
 - [`Card`](/layouts/Card) — same one-at-a-time semantics, no toolbar
 - [`TabCloseButton`](/components/TabCloseButton)
+- [Layout serialization](/layouts/LayoutSerialization) — capture and restore tab order and active index

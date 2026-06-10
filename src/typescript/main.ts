@@ -20,6 +20,7 @@ import { TabDemoPanel } from "./TabDemoPanel.js";
 import { MenuBarPanel } from "./MenuBarPanel.js";
 import { ToolBarPanel } from "./ToolBarPanel.js";
 import { MultiSelectListPanel } from "./MultiSelectListPanel.js";
+import { LayoutSerializationPanel } from "./LayoutSerializationPanel.js";
 
 import { Benchmark } from "./perf/Benchmark.js";
 import { BaselinePanel } from "./BaselinePanel.js";
@@ -50,6 +51,7 @@ layoutManager.addLazyTab(() => new MenuBarPanel(),         "MenuBar"    );
 layoutManager.addLazyTab(() => new ToolBarPanel(),         "ToolBar"    );
 layoutManager.addLazyTab(() => new MultiSelectListPanel(), "MultiSelect");
 layoutManager.addLazyTab(() => new BaselinePanel(),        "Baseline"   );
+layoutManager.addLazyTab(() => new LayoutSerializationPanel(), "Layout I/O" );
 
 const PersonModel = new Model([
     { name: 'id',   type: 'number'                  },
