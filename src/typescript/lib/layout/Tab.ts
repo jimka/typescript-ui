@@ -479,11 +479,11 @@ class Tab extends LayoutManager {
     private _clipFrame: Panel = new Panel();
     private _tabs: Array<TabEntry> = [];
     private _buttonGroup: ButtonGroup = new ButtonGroup();
-    // The strip scrolls via a leading-inset shift (see `positionClipFrame`),
-    // keeping the clip frame's native scroll at 0. Focus the active tab without
-    // the browser scrolling its `overflow:hidden` clip frame into view, or that
-    // native scroll desyncs the inset model — leaving the scroll arrows' enabled
-    // state (driven by `_scrollOffset`) stale against the real position.
+    // The strip owns the clip frame's native scroll explicitly (arrow clicks and
+    // `revealSelectedIfRequested` are the only writers). Focus the active tab
+    // without the browser also scrolling its `overflow:hidden` clip frame into
+    // view, so that single scroll path stays authoritative — `revealSelectedIfRequested`
+    // brings a programmatically-selected tab into view either way.
     private _rovingTabIndex: RovingTabIndex = new RovingTabIndex({ preventScroll: true });
     private _selectedTabIndex: number = 0;
     // Last tab index that was faded in during a doLayout pass. Compared
@@ -527,12 +527,11 @@ class Tab extends LayoutManager {
     // strip fits. Built lazily the first time `scrollable` is enabled.
     private _scrollLeadButton: Button | null = null;
     private _scrollTrailButton: Button | null = null;
-    // Scroll position (px) for a scrollable strip: baked into the clip frame's
-    // leading inset, so the wrappers and indicator scroll together while the
-    // chrome (arrows, tool group) stays fixed outside the frame. `_scrollMax` caps
-    // it to the last page.
-    private _scrollOffset: number = 0;
-    private _scrollMax: number = 0;
+    // Scroll position for a scrollable strip is the clip frame element's own
+    // native `scrollLeft`/`scrollTop` — a single source of truth read/written
+    // through `clipScroll`/`setClipScroll`. The content frame (installed by the
+    // box layout when overflowing) gives the host the scroll extent; the arrows
+    // and `revealSelectedIfRequested` just move that native offset.
     // One-shot: scroll the selected tab into view on the next layout. Set when
     // scrolling first becomes active (enabling `scrollable`, or a side switch
     // while scrollable), so the selected tab isn't left clipped off-screen.
@@ -1126,7 +1125,8 @@ class Tab extends LayoutManager {
 
         // The scroll axis flips with the side, so start the new side unscrolled,
         // then bring the selected tab into view if the new axis is scrollable.
-        this._scrollOffset = 0;
+        this._clipFrame.setScrollLeft(0);
+        this._clipFrame.setScrollTop(0);
 
         if (this._scrollable) {
             this._scrollToSelected = true;
@@ -1985,8 +1985,8 @@ class Tab extends LayoutManager {
     /**
      * Predicts one tab's main-axis extent before layout — its width-mode extent
      * ({@link tabModeExtent}) when the mode imposes one, else its own preferred
-     * extent. The per-tab unit summed by {@link predictTabsExtent} and used to
-     * locate the selected tab for {@link resolveScrollShift}'s scroll-into-view.
+     * extent. The per-tab unit summed by {@link predictTabsExtent}, used pre-layout
+     * to decide whether the strip overflows (and so reserves the arrow gutters).
      *
      * @param button - The tab button to measure.
      *
@@ -2023,24 +2023,22 @@ class Tab extends LayoutManager {
      * (leading for `"end"` alignment, trailing otherwise) and a scroll-arrow
      * gutter at each end when `arrowReserve` is non-zero. The frame's
      * overflow:hidden then clips any tab (and its ✕ overlay) that scrolls past the
-     * region edge. The leading inset folds two offsets into the frame's own
-     * layout — the `"end"`-align gap (trailing-aligns the tabs) minus the
-     * `scrollShift` (slides the tabs toward the start) — so both survive an
-     * independent clip-frame relayout that a post-layout wrapper shift would lose.
+     * region edge — and carries the strip's scroll natively via `scrollLeft`/
+     * `scrollTop`. The leading inset is just the `"end"`-align gap, which
+     * trailing-aligns the tabs and survives an independent clip-frame relayout.
      *
      * @param toolExtent - The tool group's main-axis extent in px.
      * @param arrowReserve - The per-end scroll-arrow gutter in px (0 when no arrows).
      * @param endGap - The leading gap that trailing-aligns `"end"` tabs (0 otherwise).
-     * @param scrollShift - The "arrows" scroll offset to slide the tabs by (0 otherwise).
      * @param thickness - The strip's cross-axis thickness in px.
      * @param mainInner - The strip's main-axis inner extent in px.
      */
-    private positionClipFrame(toolExtent: number, arrowReserve: number, endGap: number, scrollShift: number, thickness: number, mainInner: number): void {
+    private positionClipFrame(toolExtent: number, arrowReserve: number, endGap: number, thickness: number, mainInner: number): void {
         const toolsLead = this._align === "end";
         const leadChrome = (toolsLead ? toolExtent : 0) + arrowReserve;
         const trailChrome = (toolsLead ? 0 : toolExtent) + arrowReserve;
         const mainSize = mainInner - leadChrome - trailChrome;
-        const leadInset = endGap - scrollShift;
+        const leadInset = endGap;
 
         if (this.isVertical()) {
             this._clipFrame.setX(0);
@@ -2292,9 +2290,9 @@ class Tab extends LayoutManager {
         trail.setVisible(true);
 
         // Disable (not hide) each arrow at its scroll limit so the chrome layout
-        // never shifts and the first/last tab stays fully in view.
-        lead.setEnabled(this._scrollOffset > 0);
-        trail.setEnabled(this._scrollOffset < this._scrollMax);
+        // never shifts and the first/last tab stays fully in view. Derived from
+        // the live native scroll position.
+        this.refreshScrollArrows();
 
         // The arrows sit in the gutters at the ends of the tab region, which
         // excludes the tool-group slot: tools trail the tabs in `"start"`
@@ -2338,70 +2336,94 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Reads the clip frame's native scroll offset on the strip's main axis — the
+     * single source of truth for the scroll position.
+     *
+     * @returns The current main-axis scroll offset in px (0 when no element).
+     */
+    private clipScroll(): number {
+        return this.isVertical()
+            ? this._clipFrame.getScrollTop()
+            : this._clipFrame.getScrollLeft();
+    }
+
+    /**
+     * Returns the clip frame's maximum native scroll offset on the main axis (the
+     * overflow past the viewport), derived live from the laid-out content frame.
+     *
+     * @returns The last-page scroll offset in px (0 when nothing overflows).
+     */
+    private clipScrollMax(): number {
+        return this.isVertical()
+            ? this._clipFrame.getMaxScrollTop()
+            : this._clipFrame.getMaxScrollLeft();
+    }
+
+    /**
+     * Writes the clip frame's native main-axis scroll offset. The browser clamps
+     * to the scrollable range; the cross axis is left untouched.
+     *
+     * @param value - The desired main-axis scroll offset in px.
+     */
+    private setClipScroll(value: number): void {
+        if (this.isVertical()) {
+            this._clipFrame.setScrollTop(value);
+        } else {
+            this._clipFrame.setScrollLeft(value);
+        }
+    }
+
+    /**
+     * Re-derives the overflow arrows' enabled state from the live native scroll
+     * position: the leading arrow is dead at the start, the trailing arrow at the
+     * last page. Called wherever the scroll moves (arrow click, reveal, layout).
+     */
+    private refreshScrollArrows(): void {
+        const lead = this._scrollLeadButton;
+        const trail = this._scrollTrailButton;
+
+        if (!lead || !trail) {
+            return;
+        }
+
+        const scroll = this.clipScroll();
+
+        lead.setEnabled(scroll > 0);
+        // 1px slop so a strip scrolled flush to the end still disables cleanly
+        // despite sub-pixel rounding in scrollWidth/clientWidth.
+        trail.setEnabled(scroll < this.clipScrollMax() - 1);
+    }
+
+    /**
      * Scrolls the strip along the main axis by `delta` px (used by the overflow
-     * arrow buttons). Bumps `_scrollOffset` and re-lays out; `applyScrollOffset`
-     * clamps it and applies it as the clip frame's native scroll on the next pass,
-     * while the arrows and tool group stay fixed.
+     * arrow buttons) through the clip frame's native scroll, then refreshes the
+     * arrows. No relayout: native scroll moves the wrappers, indicator, and
+     * reorder bar (all children of the clip frame) together for free.
      *
      * @param delta - Signed pixel amount to scroll (negative = toward the start).
      */
     private scrollStrip(delta: number): void {
-        this._scrollOffset += delta;
-
-        this.getContainer()?.scheduleLayout();
-    }
-
-    /**
-     * Clamps `_scrollOffset` to the current last page and returns the main-axis
-     * shift (px) to bake into the clip frame's leading inset (see
-     * {@link positionClipFrame}) for a scrollable strip. Applying the
-     * scroll through the frame's layout — rather than a post-layout wrapper shift
-     * — means the offset, and the selection indicator's alignment under the
-     * scrolled tab, survive an independent clip-frame relayout (e.g. a
-     * `compact`-driven inset change) that a post-layout shift would lose. `_scrollMax`
-     * is derived from the predicted (not yet laid-out) tab extent so the clamp is
-     * correct before the box runs. Returns 0 (and resets) when not scrollable.
-     *
-     * @param available - The tab region's main-axis extent (px) net of chrome.
-     *
-     * @returns The scroll shift in px to subtract from the leading inset.
-     */
-    private resolveScrollShift(available: number): number {
-        if (!this._scrollable) {
-            this._scrollOffset = 0;
-            this._scrollMax = 0;
-            this._scrollToSelected = false;
-
-            return 0;
-        }
-
-        this._scrollMax = Math.max(0, this.predictTabsExtent() - available);
-        this._scrollOffset = Math.max(0, Math.min(this._scrollOffset, this._scrollMax));
-
-        return this._scrollOffset;
+        this.setClipScroll(this.clipScroll() + delta);
+        this.refreshScrollArrows();
     }
 
     /**
      * When a scroll-into-view was requested (enabling scrolling, a side switch, or
-     * a `compact` toggle), nudges `_scrollOffset` the minimum amount needed to
+     * a `compact` toggle), nudges the native scroll the minimum amount needed to
      * bring the selected tab fully within the visible region, measured from the
      * *laid-out* DOM rects — so it is accurate even when the same pass changed the
      * tab widths (which a pre-layout prediction can't see). Runs after
-     * `clipFrame.doLayout`; returns `true` when the offset changed, signalling the
-     * caller to re-bake and re-lay the clip frame. One-shot: clears the request so
-     * it never fights the user's own scrolling.
-     *
-     * @returns `true` if `_scrollOffset` was adjusted (a relayout is needed).
+     * `clipFrame.doLayout`; one-shot, so it never fights the user's own scrolling.
      */
-    private revealSelectedIfRequested(): boolean {
+    private revealSelectedIfRequested(): void {
         if (!this._scrollToSelected) {
-            return false;
+            return;
         }
 
         this._scrollToSelected = false;
 
         if (!this._scrollable) {
-            return false;
+            return;
         }
 
         const selected = this._tabs[this._selectedTabIndex];
@@ -2409,7 +2431,7 @@ class Tab extends LayoutManager {
         const wrapperElement = selected?.wrapper.getElement();
 
         if (!clipElement || !wrapperElement) {
-            return false;
+            return;
         }
 
         const vertical = this.isVertical();
@@ -2429,19 +2451,11 @@ class Tab extends LayoutManager {
             delta = wrapEnd - clipEnd;
         }
 
-        if (delta === 0) {
-            return false;
+        // `getBoundingClientRect` already reflects the current scroll, so `delta`
+        // is the screen-space correction; apply it to the native offset.
+        if (delta !== 0) {
+            this.setClipScroll(this.clipScroll() + delta);
         }
-
-        const corrected = Math.max(0, Math.min(this._scrollMax, this._scrollOffset + delta));
-
-        if (corrected === this._scrollOffset) {
-            return false;
-        }
-
-        this._scrollOffset = corrected;
-
-        return true;
     }
 
     /**
@@ -2602,19 +2616,16 @@ class Tab extends LayoutManager {
         const arrowReserve = this.computeArrowReserve(mainInner, toolExtent);
         const available = mainInner - toolExtent - 2 * arrowReserve;
         const endGap = this.endAlignGap(available);
-        const scrollShift = this.resolveScrollShift(available);
-        this.positionClipFrame(toolExtent, arrowReserve, endGap, scrollShift, thickness, mainInner);
+        this.positionClipFrame(toolExtent, arrowReserve, endGap, thickness, mainInner);
 
         this.applyTabWidths(available);
         this._clipFrame.doLayout();
 
-        // Scroll-into-view (enabling scrolling, side switch, compact toggle) is
-        // resolved here, against the now-laid-out wrapper rects, then re-baked —
-        // a prediction before the box runs can't see a same-pass width change.
-        if (this.revealSelectedIfRequested()) {
-            this.positionClipFrame(toolExtent, arrowReserve, endGap, this._scrollOffset, thickness, mainInner);
-            this._clipFrame.doLayout();
-        }
+        // Scroll-into-view (enabling scrolling, side switch, compact toggle) moves
+        // the clip frame's native scroll against the now-laid-out wrapper rects —
+        // a prediction before the box runs can't see a same-pass width change. No
+        // relayout: native scroll shifts the content without re-running the box.
+        this.revealSelectedIfRequested();
 
         this.positionToolGroup(mainInner, toolExtent, thickness);
         this.positionIndicator();
@@ -2739,6 +2750,10 @@ class Tab extends LayoutManager {
      */
     private makeTabDropTarget(): () => void {
         return DragManager.makeDropTarget(this._clipFrame, {
+            // Host the validity tint in the (non-scrolling) toolbar layer, over
+            // the clip frame's box, so it overlays the visible tab viewport and
+            // stays put while the tabs scroll inside the clip frame.
+            feedbackHost: this._toolbar,
             accepts: (detail: DragEventDetail): boolean => this.isTabReorderDrag(detail),
             onDragOver: (detail: DragEventDetail): number | null => {
                 this.updateReorderSlot(detail);
@@ -2783,14 +2798,12 @@ class Tab extends LayoutManager {
         const rect = element.getBoundingClientRect();
         const vertical = this.isVertical();
 
-        // The clip frame scrolls its content natively via scrollLeft/scrollTop,
-        // but `rect` is the border box, which ignores that scroll. The wrappers'
-        // getX()/getY() are in the scrolled content space, so add the scroll
-        // offset to land the cursor in the same space — otherwise a scrolled
-        // strip maps the cursor to the wrong slot.
-        const cursorMain = vertical
-            ? detail.clientY - rect.top + element.scrollTop
-            : detail.clientX - rect.left + element.scrollLeft;
+        // The clip frame scrolls its content natively, but `rect` is the border
+        // box, which ignores that scroll. The wrappers' getX()/getY() are in the
+        // scrolled content space, so add the scroll offset to land the cursor in
+        // the same space — otherwise a scrolled strip maps it to the wrong slot.
+        const cursorMain = (vertical ? detail.clientY - rect.top : detail.clientX - rect.left)
+            + this.clipScroll();
 
         let insertIndex = this._tabs.length;
 
