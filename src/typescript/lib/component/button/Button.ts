@@ -497,6 +497,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     setWritingMode(value: string): this {
+        const previousOrientation = this._contentOrientation();
+
         super.setWritingMode(value);
 
         // `writingMode` is a Component option, so this can fire from
@@ -506,10 +508,84 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (this._text) {
             this._text.setWritingMode(value);
             this._description?.setWritingMode(value);
+
+            // Re-lay the content row when the reading direction flips, but only
+            // when a glyph or description is present — a lone label is a single
+            // child whose container axis is irrelevant, so plain-text tabs keep
+            // their exact prior layout.
+            if (this._contentOrientation() !== previousOrientation && (this._glyph || this._description)) {
+                this._rebuildContentRow();
+            }
+
             this.recomputePreferredSize();
         }
 
         return this;
+    }
+
+    /**
+     * Justifies the button's title (and leading glyph) within a button wider
+     * than its content. Forwards the value to the inner
+     * [`Text`](/api/component/input/classes/Text)'s CSS `text-align` and
+     * re-anchors the whole content row in the Fit layout — `"left"` / `"right"`
+     * track the start / end of the label's reading direction, so they map to the
+     * vertical edges on a rotated (west/east) label. `"center"` is the default.
+     *
+     * @param align - A CSS `text-align` value (`"left"`, `"center"`, `"right"`).
+     *
+     * @returns This component, for method chaining.
+     */
+    setTextAlign(align: string): this {
+        // `setTextAlign` can be driven post-construction (the Tab strip sets it
+        // each layout pass), but a future option-bag dispatch could fire from
+        // `applyOptions` during `super()` — before the constructor assigns
+        // `_text`. Guard like `setWritingMode` does.
+        if (this._text) {
+            this._text.setTextAlign(align);
+
+            // CSS text-align only nudges glyphs inside the label's own
+            // content-hugging box; to justify the whole glyph+label block
+            // within a button wider than its content, re-anchor the content row
+            // in the Fit layout along the (possibly rotated) reading axis.
+            const constraints = this.getLayoutConstraints(this._content);
+
+            if (constraints) {
+                constraints.anchor = this._anchorForTextAlign(align);
+                this.scheduleLayout();
+            }
+        }
+
+        return this;
+    }
+
+    /**
+     * Maps a `text-align` value to the {@link AnchorType} that positions the
+     * content row at the matching edge of a button wider than its content.
+     * Accepts both physical (`"left"` / `"right"`) and flow-relative (`"start"`
+     * / `"end"`) values; either way they track the start / end of the label's
+     * reading direction, so on a rotated label they map to the vertical edges
+     * (`NORTH` / `SOUTH`) — reversed between clockwise and counter-clockwise.
+     *
+     * @param align - A `text-align` value (`"left"`/`"start"`, `"center"`, `"right"`/`"end"`).
+     *
+     * @returns The anchor that justifies the content row accordingly.
+     */
+    private _anchorForTextAlign(align: string): AnchorType {
+        const leading  = align === "left"  || align === "start";
+        const trailing = align === "right" || align === "end";
+        const orient   = this._contentOrientation();
+
+        if (orient === "cw") {
+            // Reads top→bottom: leading is the top edge, trailing the bottom.
+            return leading ? AnchorType.NORTH : trailing ? AnchorType.SOUTH : AnchorType.CENTER;
+        }
+
+        if (orient === "ccw") {
+            // Reads bottom→top: leading is the bottom edge, trailing the top.
+            return leading ? AnchorType.SOUTH : trailing ? AnchorType.NORTH : AnchorType.CENTER;
+        }
+
+        return leading ? AnchorType.WEST : trailing ? AnchorType.EAST : AnchorType.CENTER;
     }
 
     /**
@@ -519,11 +595,20 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns This component, for method chaining.
      */
     clearWritingMode(): this {
+        const previousOrientation = this._contentOrientation();
+
         super.clearWritingMode();
 
         if (this._text) {
             this._text.clearWritingMode();
             this._description?.clearWritingMode();
+
+            // Restoring horizontal flow flips the reading direction back; re-lay
+            // the content row for glyph/description buttons (see setWritingMode).
+            if (this._contentOrientation() !== previousOrientation && (this._glyph || this._description)) {
+                this._rebuildContentRow();
+            }
+
             this.recomputePreferredSize();
         }
 
@@ -637,6 +722,58 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * Classifies the active writing mode into the orientation the content row
+     * must follow. The Tab strip rotates west/east labels with `sideways-rl`
+     * (clockwise, reads top→bottom) and `sideways-lr` (counter-clockwise, reads
+     * bottom→top); every other value — including none — lays out horizontally.
+     *
+     * @returns `"cw"`, `"ccw"`, or `"horizontal"`.
+     */
+    private _contentOrientation(): "horizontal" | "cw" | "ccw" {
+        const wm = this.getWritingMode();
+
+        if (wm === "sideways-rl") {
+            return "cw";
+        }
+
+        if (wm === "sideways-lr") {
+            return "ccw";
+        }
+
+        return "horizontal";
+    }
+
+    /**
+     * Swaps `container`'s box layout to the given axis and spacing so a content
+     * row follows the label's reading direction (`"h"` → `HBox`, `"v"` → `VBox`).
+     *
+     * @param container - The content container to re-lay out.
+     * @param axis - `"h"` for a horizontal row, `"v"` for a vertical stack.
+     * @param spacing - Inter-child spacing in px.
+     */
+    private _orientBox(container: Component, axis: "h" | "v", spacing: number): void {
+        container.setLayoutManager(axis === "v" ? new VBox({ spacing }) : new HBox({ spacing }));
+    }
+
+    /**
+     * Adds `children` to `container` in reading order, reversing when the axis
+     * runs against the document order (a counter-clockwise inline run or a
+     * clockwise block run), so the leading glyph / title stays first in the
+     * rotated flow.
+     *
+     * @param container - The container to populate.
+     * @param children - The children in their logical (unrotated) order.
+     * @param reversed - Whether to add them in reverse.
+     */
+    private _addContentChildren(container: Component, children: Component[], reversed: boolean): void {
+        const ordered = reversed ? [...children].reverse() : children;
+
+        for (const child of ordered) {
+            container.addComponent(child);
+        }
+    }
+
+    /**
      * Rebuilds `_content`'s child tree from the current `_glyph` / `_text` /
      * `_description` instances and the `descriptionUnderGlyph` /
      * `showDescription` flags. The single point that (re)parents those shared
@@ -677,46 +814,62 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // stays alive for the tooltip.
         const renderDesc = this._description !== null && this._isShowDescription();
 
+        // The label's writing mode rotates both the inline (glyph→text) and the
+        // block (title→description) reading directions; the content boxes have
+        // to follow it, or a leading glyph lands beside vertical text instead of
+        // before it. The inline run becomes a VBox and the block stack an HBox.
+        // `sideways-rl` (cw) reads top→bottom with blocks running right→left;
+        // `sideways-lr` (ccw) reads bottom→top with blocks running left→right —
+        // hence the opposite reversals on the two axes.
+        const orient   = this._contentOrientation();
+        const vertical = orient !== "horizontal";
+
+        const inlineAxis: "h" | "v" = vertical ? "v" : "h";
+        const blockAxis:  "h" | "v" = vertical ? "h" : "v";
+        const inlineReversed = orient === "ccw";
+        const blockReversed  = orient === "cw";
+
         if (renderDesc && this._glyph && this._isDescriptionUnderGlyph()) {
             if (!this._innerRow) {
                 this._innerRow = new Component();
-                this._innerRow.setLayoutManager(new HBox({ spacing: 2 }));
                 this._innerRow.setInsets(new Insets(0, 0, 0, 0));
                 this._innerRow.setPointerEvents("none");
             }
             if (!this._outerColumn) {
                 this._outerColumn = new Component();
-                this._outerColumn.setLayoutManager(new VBox({ spacing: 0 }));
                 this._outerColumn.setInsets(new Insets(0, 0, 0, 0));
                 this._outerColumn.setPointerEvents("none");
             }
 
-            this._innerRow.addComponent(this._glyph);
-            this._innerRow.addComponent(this._text);
-            this._outerColumn.addComponent(this._innerRow);
-            this._outerColumn.addComponent(this._description!);
+            this._orientBox(this._content,     inlineAxis, 2);
+            this._orientBox(this._innerRow,    inlineAxis, 2);
+            this._orientBox(this._outerColumn, blockAxis,  0);
+
+            this._addContentChildren(this._innerRow,    [this._glyph, this._text],            inlineReversed);
+            this._addContentChildren(this._outerColumn, [this._innerRow, this._description!], blockReversed);
             this._content.addComponent(this._outerColumn);
         } else if (renderDesc) {
-            // Title + description stack in the column so the description sits
-            // below the title; the glyph (if any) stays beside the whole stack.
-            if (this._glyph) {
-                this._content.addComponent(this._glyph);
-            }
-            this._titleColumn.addComponent(this._text);
-            this._titleColumn.addComponent(this._description!);
-            this._content.addComponent(this._titleColumn);
+            // Title + description stack in the column so the description trails
+            // the title; the glyph (if any) leads the whole stack on the inline
+            // axis.
+            this._orientBox(this._content,     inlineAxis, 2);
+            this._orientBox(this._titleColumn, blockAxis,  0);
+
+            this._addContentChildren(this._titleColumn, [this._text, this._description!], blockReversed);
+
+            const inlineChildren = this._glyph ? [this._glyph, this._titleColumn] : [this._titleColumn];
+            this._addContentChildren(this._content, inlineChildren, inlineReversed);
         } else {
-            // No description: place the title directly beside the glyph rather
-            // than wrapping it in `_titleColumn`. The column reports a null
-            // baseline (a plain VBox-backed Component), which would hide the
-            // title's baseline from `_content`'s HBox and leave the glyph
-            // centred; added directly, the title's baseline is visible so the
-            // glyph drops onto the text baseline — matching the description
-            // topology, where the title already sits directly in its inner row.
-            if (this._glyph) {
-                this._content.addComponent(this._glyph);
-            }
-            this._content.addComponent(this._text);
+            // No description: place the title directly beside (or before) the
+            // glyph rather than wrapping it in `_titleColumn`. The column reports
+            // a null baseline (a plain VBox-backed Component), which would hide
+            // the title's baseline from `_content` and leave the glyph centred;
+            // added directly, the title's baseline is visible so the glyph drops
+            // onto the text baseline — matching the description topology.
+            this._orientBox(this._content, inlineAxis, 2);
+
+            const inlineChildren = this._glyph ? [this._glyph, this._text] : [this._text];
+            this._addContentChildren(this._content, inlineChildren, inlineReversed);
         }
 
         // Optically centre a single line of label text. The Fit/anchor centring
@@ -724,9 +877,10 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // cap-top→baseline, so the empty descender band makes the text read as
         // too high. A top inset of `Util.opticalCenterOffset()` nudges it down
         // onto its optical centre. Applies only to a non-empty single-line
-        // label: a two-line title+description block centres as a block (offset
-        // 0), and a glyph-only button (empty `_text`) is already box-centred.
-        const opticalOffset = (!renderDesc && this._text.getText().valueOf() !== "") ? Util.opticalCenterOffset() : 0;
+        // horizontal label: a two-line title+description block centres as a
+        // block (offset 0), a glyph-only button (empty `_text`) is already
+        // box-centred, and a rotated label has no horizontal descender band.
+        const opticalOffset = (!vertical && !renderDesc && this._text.getText().valueOf() !== "") ? Util.opticalCenterOffset() : 0;
 
         this._content.setInsets(new Insets(opticalOffset, 0, 0, 0));
     }
