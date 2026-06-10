@@ -2777,7 +2777,15 @@ class Tab extends LayoutManager {
 
         const rect = element.getBoundingClientRect();
         const vertical = this.isVertical();
-        const cursorMain = vertical ? detail.clientY - rect.top : detail.clientX - rect.left;
+
+        // The clip frame scrolls its content natively via scrollLeft/scrollTop,
+        // but `rect` is the border box, which ignores that scroll. The wrappers'
+        // getX()/getY() are in the scrolled content space, so add the scroll
+        // offset to land the cursor in the same space — otherwise a scrolled
+        // strip maps the cursor to the wrong slot.
+        const cursorMain = vertical
+            ? detail.clientY - rect.top + element.scrollTop
+            : detail.clientX - rect.left + element.scrollLeft;
 
         let insertIndex = this._tabs.length;
 
