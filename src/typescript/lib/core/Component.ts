@@ -207,6 +207,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _height               : number                  = NaN;
     private _translateX           : number                  = 0;
     private _translateY           : number                  = 0;
+    private _scrollLeft           : number                  = 0;
+    private _scrollTop            : number                  = 0;
     private _willChange          : string | null           = null;
     private _transition           : string | null           = null;
 
@@ -2659,6 +2661,96 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.setElementStyle("top", this._top + "px");
 
         return this;
+    }
+
+    /**
+     * Returns the element's horizontal scroll offset from the cached value, so
+     * reads never touch the DOM (mirroring {@link getX}). The cache is the value
+     * last written through {@link setScrollLeft}; it is authoritative as long as
+     * the scroll is driven through these setters (the host owns it — e.g. a `Tab`
+     * strip's clip frame, which the browser never scrolls on its own).
+     *
+     * @returns The cached `scrollLeft` in pixels.
+     */
+    getScrollLeft(): number {
+        return this._scrollLeft;
+    }
+
+    /**
+     * Returns the element's cached vertical scroll offset. See {@link getScrollLeft}.
+     *
+     * @returns The cached `scrollTop` in pixels.
+     */
+    getScrollTop(): number {
+        return this._scrollTop;
+    }
+
+    /**
+     * Sets the element's native horizontal scroll offset and caches it for
+     * {@link getScrollLeft}. The value is read back after the write so the cache
+     * holds the browser-clamped result, not the raw request (clamped to
+     * `[0, getMaxScrollLeft()]`).
+     *
+     * @param value - The desired `scrollLeft` in pixels.
+     *
+     * @returns This component, for method chaining.
+     */
+    setScrollLeft(value: number): this {
+        const element = this.getElement();
+
+        if (element) {
+            element.scrollLeft = value;
+            this._scrollLeft = element.scrollLeft;
+        } else {
+            this._scrollLeft = value;
+        }
+
+        return this;
+    }
+
+    /**
+     * Sets the element's native vertical scroll offset and caches it. See
+     * {@link setScrollLeft}.
+     *
+     * @param value - The desired `scrollTop` in pixels.
+     *
+     * @returns This component, for method chaining.
+     */
+    setScrollTop(value: number): this {
+        const element = this.getElement();
+
+        if (element) {
+            element.scrollTop = value;
+            this._scrollTop = element.scrollTop;
+        } else {
+            this._scrollTop = value;
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the maximum horizontal scroll offset — the content's overflow past
+     * the element's viewport (`scrollWidth - clientWidth`).
+     *
+     * @returns The last-page `scrollLeft` in pixels, or 0 when nothing overflows.
+     */
+    getMaxScrollLeft(): number {
+        const element = this.getElement();
+
+        return element ? element.scrollWidth - element.clientWidth : 0;
+    }
+
+    /**
+     * Returns the maximum vertical scroll offset — the content's overflow past
+     * the element's viewport (`scrollHeight - clientHeight`).
+     *
+     * @returns The last-page `scrollTop` in pixels, or 0 when nothing overflows.
+     */
+    getMaxScrollTop(): number {
+        const element = this.getElement();
+
+        return element ? element.scrollHeight - element.clientHeight : 0;
     }
 
     /**

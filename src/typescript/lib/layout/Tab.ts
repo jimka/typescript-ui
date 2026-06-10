@@ -1125,11 +1125,8 @@ class Tab extends LayoutManager {
 
         // The scroll axis flips with the side, so start the new side unscrolled,
         // then bring the selected tab into view if the new axis is scrollable.
-        const clipEl = this._clipFrame.getElement();
-        if (clipEl) {
-            clipEl.scrollLeft = 0;
-            clipEl.scrollTop = 0;
-        }
+        this._clipFrame.setScrollLeft(0);
+        this._clipFrame.setScrollTop(0);
 
         if (this._scrollable) {
             this._scrollToSelected = true;
@@ -2345,13 +2342,9 @@ class Tab extends LayoutManager {
      * @returns The current main-axis scroll offset in px (0 when no element).
      */
     private clipScroll(): number {
-        const el = this._clipFrame.getElement();
-
-        if (!el) {
-            return 0;
-        }
-
-        return this.isVertical() ? el.scrollTop : el.scrollLeft;
+        return this.isVertical()
+            ? this._clipFrame.getScrollTop()
+            : this._clipFrame.getScrollLeft();
     }
 
     /**
@@ -2361,36 +2354,22 @@ class Tab extends LayoutManager {
      * @returns The last-page scroll offset in px (0 when nothing overflows).
      */
     private clipScrollMax(): number {
-        const el = this._clipFrame.getElement();
-
-        if (!el) {
-            return 0;
-        }
-
         return this.isVertical()
-            ? el.scrollHeight - el.clientHeight
-            : el.scrollWidth - el.clientWidth;
+            ? this._clipFrame.getMaxScrollTop()
+            : this._clipFrame.getMaxScrollLeft();
     }
 
     /**
-     * Writes the clip frame's native main-axis scroll offset, clamped to the
-     * scrollable range. The cross axis is left untouched.
+     * Writes the clip frame's native main-axis scroll offset. The browser clamps
+     * to the scrollable range; the cross axis is left untouched.
      *
      * @param value - The desired main-axis scroll offset in px.
      */
     private setClipScroll(value: number): void {
-        const el = this._clipFrame.getElement();
-
-        if (!el) {
-            return;
-        }
-
-        const clamped = Math.max(0, Math.min(value, this.clipScrollMax()));
-
         if (this.isVertical()) {
-            el.scrollTop = clamped;
+            this._clipFrame.setScrollTop(value);
         } else {
-            el.scrollLeft = clamped;
+            this._clipFrame.setScrollLeft(value);
         }
     }
 
@@ -2819,14 +2798,12 @@ class Tab extends LayoutManager {
         const rect = element.getBoundingClientRect();
         const vertical = this.isVertical();
 
-        // The clip frame scrolls its content natively via scrollLeft/scrollTop,
-        // but `rect` is the border box, which ignores that scroll. The wrappers'
-        // getX()/getY() are in the scrolled content space, so add the scroll
-        // offset to land the cursor in the same space — otherwise a scrolled
-        // strip maps the cursor to the wrong slot.
-        const cursorMain = vertical
-            ? detail.clientY - rect.top + element.scrollTop
-            : detail.clientX - rect.left + element.scrollLeft;
+        // The clip frame scrolls its content natively, but `rect` is the border
+        // box, which ignores that scroll. The wrappers' getX()/getY() are in the
+        // scrolled content space, so add the scroll offset to land the cursor in
+        // the same space — otherwise a scrolled strip maps it to the wrong slot.
+        const cursorMain = (vertical ? detail.clientY - rect.top : detail.clientX - rect.left)
+            + this.clipScroll();
 
         let insertIndex = this._tabs.length;
 
