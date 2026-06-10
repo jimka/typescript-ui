@@ -98,10 +98,18 @@ class DragFeedback extends Component {
     /**
      * Mirrors the target's box onto this overlay so the tint covers the
      * full target body.
+     *
+     * @remarks The overlay is appended into the target, so when the target
+     * scrolls its content natively (a `Tab` strip clips and scrolls its tab row
+     * via `scrollLeft`) a left/top of `0` rides the scroll out of view. Offset
+     * by the target's scroll position so the tint stays pinned over the visible
+     * viewport; both terms are `0` for a non-scrolling target.
      */
     private mirrorBounds(target: Component): void {
-        this.setX(0);
-        this.setY(0);
+        const el = target.getElement(true);
+
+        this.setX(el.scrollLeft);
+        this.setY(el.scrollTop);
         this.setWidth(target.getWidth());
         this.setHeight(target.getHeight());
     }
