@@ -271,6 +271,114 @@ class Split extends LayoutManager {
     }
 
     /**
+     * Returns the stored pane sizes normalised to sum 1.0, in container child
+     * order. Captures the user's split ratios for serialization; ratios are
+     * viewport-independent, so they survive a restore into a differently-sized
+     * container (`Split` rescales px against the live extent on the next layout).
+     *
+     * @returns One ratio per pane in child order, summing to ~1.0; an equal
+     *   split when no sizes are stored yet, or `[]` when detached.
+     */
+    getPaneRatios(): number[] {
+        const container = this.getContainer();
+        if (!container) {
+            return [];
+        }
+
+        const components = container.getComponents();
+        if (components.length === 0) {
+            return [];
+        }
+
+        const sizes = components.map(component => this._sizes.get(component) ?? 0);
+        const sum   = sizes.reduce((total, size) => total + size, 0);
+
+        return sum > 0 ? sizes.map(size => size / sum) : components.map(() => 1 / components.length);
+    }
+
+    /**
+     * Writes pane ratios captured by {@link getPaneRatios} back onto the live
+     * panes, by container child order. The input is treated as relative weights
+     * (re-normalised internally), so a caller that dropped a pane on restore can
+     * pass a short or non-unit array without skewing the result.
+     *
+     * @remarks Stored sizes are px, so the ratios are seeded against a positive
+     * base extent: the live inner main-axis extent when the container is already
+     * sized (no rescale needed next layout), else a unit base that
+     * `recalculateSizes` scales up on the first connected layout. `_lastAvailableMain`
+     * is reset to that same base so the next layout does not double-rescale the
+     * freshly-written sizes.
+     *
+     * @param ratios - Relative pane weights in child order.
+     * @returns This layout manager, for method chaining.
+     */
+    applyPaneRatios(ratios: number[]): this {
+        const container = this.getContainer();
+        if (!container) {
+            return this;
+        }
+
+        const components = container.getComponents();
+        const count      = components.length;
+        if (count === 0) {
+            return this;
+        }
+
+        const weights = components.map((_, idx) => Math.max(0, ratios[idx] ?? 0));
+        const sum     = weights.reduce((total, weight) => total + weight, 0);
+        const norm    = sum > 0 ? weights.map(weight => weight / sum) : components.map(() => 1 / count);
+
+        // Seed the stored px against a positive base. When the container is laid
+        // out, use its real net-of-gutters main extent so the next layout needs
+        // no rescale; otherwise use 1 and let `recalculateSizes` scale the
+        // ratio-invariant sizes up on the first connected layout.
+        const innerSize = container.getInnerSize();
+        const main      = innerSize ? (this._direction === "horizontal" ? innerSize.width : innerSize.height) : 0;
+        const available = Math.max(0, main - this.gutterTotal(count));
+        const base      = available > 0 ? available : 1;
+
+        components.forEach((component, idx) => {
+            this._sizes.set(component, norm[idx] * base);
+        });
+
+        this._lastAvailableMain = base;
+
+        container.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Collapses or restores the pane at the given index **without animating** —
+     * the geometry change lands on the next layout pass. Unlike
+     * {@link setPaneCollapsed} (which runs a coordinated rAF animation), this is
+     * for bulk restore, where N concurrent collapse animations would fight over
+     * geometry. Sets the collapsed flag directly; `doLayout` substitutes the
+     * strip thickness for a collapsed pane that has a serving gutter.
+     *
+     * @param index - Zero-based pane index.
+     * @param collapsed - True to collapse, false to expand.
+     * @returns This layout manager, for method chaining.
+     */
+    setPaneCollapsedImmediate(index: number, collapsed: boolean): this {
+        const container = this.getContainer();
+        if (!container) {
+            return this;
+        }
+
+        const pane = container.getComponents()[index];
+        if (!pane) {
+            return this;
+        }
+
+        this._collapsed.set(pane, collapsed);
+
+        container.scheduleLayout();
+
+        return this;
+    }
+
+    /**
      * Captures the drag origin when a gutter's drag begins: the absolute
      * pointer coordinate and the current sizes of the two adjacent panels.
      * Subsequent `drag` events derive the new sizes from these origins so
