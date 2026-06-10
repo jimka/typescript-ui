@@ -27,9 +27,10 @@ export class RovingTabIndex {
     /**
      * @param options.preventScroll - When `true`, {@link moveTo} focuses the
      *   active item without the browser scrolling it into view. Use it when the
-     *   group's host owns its own scroll offset (e.g. the {@link Tab} strip's
-     *   inset-shift scroll), so native focus-scroll cannot desync that model.
-     *   Defaults to `false` — the standard focus-reveals-the-item behaviour.
+     *   group's host owns its own scroll offset (e.g. the
+     *   [`Tab`](/api/layout/classes/Tab) strip's native clip-frame scroll), so a
+     *   browser focus-scroll cannot fight or desync it. Defaults to `false` —
+     *   the standard focus-reveals-the-item behaviour.
      */
     constructor(options: { preventScroll?: boolean } = {}) {
         this._preventScroll = options.preventScroll ?? false;
