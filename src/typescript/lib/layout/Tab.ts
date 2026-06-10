@@ -19,6 +19,8 @@ import { VBox } from "~/layout/VBox.js";
 import { BoxLayout } from "~/layout/BoxLayout.js";
 import { Button } from "~/component/button/Button.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
+import { Menu } from "~/core/Menu.js";
+import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { angle_left } from "~/glyphs/solid/angle_left.js";
@@ -98,6 +100,19 @@ export type TabAlign = "start" | "end";
  * @category Layouts
  */
 export type TabOrientation = "horizontal" | "vertical-cw" | "vertical-ccw";
+
+/**
+ * Justification of the tab-button label along its reading direction. `"start"`
+ * and `"end"` are flow-relative (the left/right edges on a horizontal strip,
+ * the top/bottom edges on a rotated west/east strip), matching the `"start"` /
+ * `"end"` vocabulary of {@link TabAlign}. Only visible when a tab cell is wider
+ * than its content (the `"fill"`, `"equal"`, and `"fixed"` width modes pad cells
+ * out; `"content"` mode hugs the text, so justification has no visible effect
+ * there).
+ *
+ * @category Layouts
+ */
+export type TabTextAlign = "start" | "center" | "end";
 
 /**
  * Duration (ms) shared by the cross-tab content fade-in and the selection
@@ -200,6 +215,9 @@ export interface TabOptions extends LayoutManagerOptions {
 
     /** Enable within-strip header drag-reorder. Defaults to `false`. */
     reorderable?: boolean;
+
+    /** Tab-label justification (strip-wide); defaults to `"center"`. */
+    textAlign?: TabTextAlign;
 }
 
 /**
@@ -239,8 +257,24 @@ interface TabEntry {
     component: Component | null;
     factory: (() => Component) | null;
     constraints?: LayoutConstraints;
+    /**
+     * The tab's display label — the same `name` the button was built with.
+     * Held here so the context menu (and any other entry-level consumer) reads
+     * the real label regardless of load state, rather than falling back to a
+     * component id (loaded) or empty string (lazy) when `constraints.name` is
+     * unset.
+     */
+    name: string;
     spinner: Component | null;
     state: TabEntryState;
+    /**
+     * The wrapper's `contextmenu` subtree listener, retained so `closeTab` can
+     * remove it. Subtree listeners are keyed by component id in a module-level
+     * map (see {@link Event.addSubtreeListener}); removing the wrapper's element
+     * does not purge that map, so the listener must be torn down explicitly or
+     * it (and the entry it closes over) leaks across open/close churn.
+     */
+    contextMenuListener: (e: MouseEvent) => void;
 }
 
 /**
@@ -466,6 +500,13 @@ class Tab extends LayoutManager {
     private _orientation: TabOrientation = "horizontal";
     private _scrollable: boolean = false;
     private _compact: boolean = false;
+    private _textAlign: TabTextAlign = "center";
+
+    // Shared rebuild-mode context menu reused across right-clicks, mirroring
+    // Table's column-header menu. Rebuild-mode menus only attach to the DOM
+    // during `show()` and self-dismiss on outside mousedown / `hide()`, so no
+    // detach teardown is needed.
+    private _contextMenu: Menu = new Menu();
 
     // Tool buttons pinned at the far end of the strip. Held in a hand-positioned
     // overlay (its own inner box) raw-appended to the toolbar element next to
@@ -630,6 +671,10 @@ class Tab extends LayoutManager {
 
         if (options.reorderable !== undefined) {
             this.setReorderable(options.reorderable);
+        }
+
+        if (options.textAlign !== undefined) {
+            this.setTextAlign(options.textAlign);
         }
 
         if (options.tools !== undefined) {
@@ -1151,6 +1196,33 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Sets the strip-wide tab-label justification and re-lays out. Caches the
+     * value only; `doLayout` re-applies the `text-align` to every tab button
+     * each pass (no DOM work in the setter — the buttons may not exist when
+     * `applyOptions` runs during `super()`).
+     *
+     * @param align - The {@link TabTextAlign} to apply.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setTextAlign(align: TabTextAlign): this {
+        this._textAlign = align;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the current tab-label justification.
+     *
+     * @returns The active {@link TabTextAlign}.
+     */
+    getTextAlign(): TabTextAlign {
+        return this._textAlign;
+    }
+
+    /**
      * Sets whether an overflowing strip scrolls (leading/trailing arrow buttons,
      * tabs kept at preferred size) instead of compressing the tabs to fit, and
      * re-lays out.
@@ -1316,6 +1388,14 @@ class Tab extends LayoutManager {
             this._selectedTabIndex = idx;
             this._rovingTabIndex.moveTo(idx);
 
+            // Bring the newly-selected tab into view on the next pass. A
+            // left-click targets an already-visible tab (a no-op reveal), but a
+            // programmatic switch — the context menu or keyboard arrow nav — can
+            // select a tab scrolled out of the strip's visible range.
+            if (this._scrollable) {
+                this._scrollToSelected = true;
+            }
+
             const entry = this._tabs[idx];
             if (entry.state === "lazy") {
                 this.materializeAsync(idx);
@@ -1323,6 +1403,46 @@ class Tab extends LayoutManager {
         }
 
         this.getContainer()?.scheduleLayout();
+    }
+
+    /**
+     * Opens the shared context menu for a right-clicked tab. Lists every tab
+     * (click to switch, the currently-active tab shown inert) followed by a
+     * `Close` action gated on the tab's `closeable` constraint. Reuses the
+     * manager's own {@link onTabPressed} / `closeTab`, so no activation or
+     * close logic is duplicated.
+     *
+     * @param entry - The tab entry that was right-clicked.
+     * @param x - Horizontal viewport coordinate of the click.
+     * @param y - Vertical viewport coordinate of the click.
+     */
+    private openTabMenu(entry: TabEntry, x: number, y: number): void {
+        const activeEntry = this._tabs[this._selectedTabIndex];
+
+        const configs: MenuItemConfig[] = this._tabs.map(t => ({
+            text:    t.name,
+            // Disable only the tab that's already showing — switching to it is a
+            // no-op — so a right-click on any other tab can still switch to it.
+            enabled: t !== activeEntry,
+            // A real left-click drives the button's selected state through the
+            // ButtonGroup; a programmatic switch must set it explicitly, exactly
+            // as `onToolbarKeyDown` / `selectNextTab` do, or the target tab's
+            // content and indicator move but its button never looks pressed.
+            action:  () => {
+                this._tabs.forEach(e => e.button.setSelected(false));
+                t.button.setSelected(true);
+                this.onTabPressed(t.button);
+            },
+        }));
+
+        configs.push({ separator: true });
+        configs.push({
+            text:    "Close",
+            enabled: entry.constraints?.closeable === true,
+            action:  () => this.closeTab(entry),
+        });
+
+        this._contextMenu.show(x, y, configs);
     }
 
     /**
@@ -1530,6 +1650,10 @@ class Tab extends LayoutManager {
 
         tabButton.setInsets(this.computeTabButtonInsets(constraints));
 
+        if (constraints?.glyph) {
+            tabButton.setGlyph(constraints.glyph);
+        }
+
         tabButton.on("action", () => this.onTabPressed(tabButton));
 
         // The tab button fills the whole cell (Fit) so its per-state background
@@ -1578,6 +1702,16 @@ class Tab extends LayoutManager {
             wrapper.getElement(true).appendChild(closeButton.getElement(true));
         }
 
+        // Subtree listener so a right-click on the label, the glyph, or the
+        // close ✕ all reach one handler that opens the tab context menu. Named
+        // and stored on the entry so `closeTab` can remove it (the closure over
+        // `entry`, resolved at call time, is safe because right-clicks only
+        // fire after the entry is fully built).
+        const onContextMenu = (e: MouseEvent): void => {
+            e.preventDefault();
+            this.openTabMenu(entry, e.clientX, e.clientY);
+        };
+
         const entry: TabEntry = {
             wrapper,
             button: tabButton,
@@ -1585,13 +1719,17 @@ class Tab extends LayoutManager {
             component: null,
             factory: null,
             constraints,
+            name,
             spinner: null,
-            state: "lazy"
+            state: "lazy",
+            contextMenuListener: onContextMenu
         };
 
         if (closeButton) {
             closeButton.on("action", () => this.closeTab(entry));
         }
+
+        Event.addSubtreeListener(wrapper, "contextmenu", onContextMenu);
 
         this._tabs.push(entry);
 
@@ -1935,11 +2073,16 @@ class Tab extends LayoutManager {
         for (const entry of this._tabs) {
             entry.button.setInsets(this.computeTabButtonInsets(entry.constraints));
 
+            // Writing mode before text-align: the label justification maps to a
+            // content anchor along the reading axis, so the button must already
+            // know its orientation when setTextAlign resolves the anchor.
             if (this.isVertical() && writingMode) {
                 entry.button.setWritingMode(writingMode);
             } else {
                 entry.button.clearWritingMode();
             }
+
+            entry.button.setTextAlign(this._textAlign);
         }
 
         const toolInsets = this.computeToolButtonInsets();
@@ -2814,12 +2957,21 @@ class Tab extends LayoutManager {
             return;
         }
 
+        // Capture before the splice mutates the array: only a closed *active*
+        // tab forces a selection move; closing a background tab keeps it.
+        const wasSelected = this._selectedTabIndex === entryIndex;
+
         const contentComponent = entry.component;
 
         this._buttonGroup.removeButton(entry.button);
         this._rovingTabIndex.remove(entry.button);
         this._tabs.splice(entryIndex, 1);
         this._clipFrame.removeComponent(entry.wrapper);
+
+        // Removing the wrapper's element does not purge the module-level subtree
+        // listener map (keyed by component id), so the contextmenu listener —
+        // and the entry it closes over — must be torn down explicitly.
+        Event.removeSubtreeListener(entry.wrapper, "contextmenu", entry.contextMenuListener);
 
         if (contentComponent) {
             container.removeComponent(contentComponent);
@@ -2829,20 +2981,34 @@ class Tab extends LayoutManager {
             this.emit("tabclose", contentComponent);
         }
 
-        this.selectNextTab(entryIndex);
+        this.selectNextTab(entryIndex, wasSelected);
         this.getContainer()?.scheduleLayout();
     }
 
     /**
-     * Selects an appropriate tab after the tab at `closedIndex` has been removed.
+     * Re-selects after the tab at `closedIndex` has been spliced out. When the
+     * closed tab was the active one, falls back to its left neighbour;
+     * otherwise the active tab stays selected and only its stored index shifts
+     * left when the removed tab sat to its left.
      *
-     * @param closedIndex - The index that was just spliced out.
+     * @param closedIndex - The pre-splice index of the removed tab.
+     * @param closedWasSelected - Whether the removed tab was the active one.
      */
-    private selectNextTab(closedIndex: number): void {
+    private selectNextTab(closedIndex: number, closedWasSelected: boolean): void {
         const count = this._tabs.length;
 
         if (count === 0) {
             this._selectedTabIndex = 0;
+
+            return;
+        }
+
+        if (!closedWasSelected) {
+            // The active tab survives; its button keeps its selected state and
+            // only its index moves when the closed tab was to its left.
+            if (this._selectedTabIndex > closedIndex) {
+                this._selectedTabIndex -= 1;
+            }
 
             return;
         }
