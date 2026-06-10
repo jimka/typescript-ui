@@ -3441,9 +3441,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @param preventScroll - When `true`, suppresses the browser's
      *   scroll-the-focused-element-into-view behaviour. Set this when the host
-     *   manages its own scroll offset (e.g. the {@link Tab} strip scrolls via a
-     *   leading-inset shift, so a native focus-scroll of its `overflow:hidden`
-     *   clip frame would silently desync that model).
+     *   manages its own scroll offset (e.g. the [`Tab`](/api/layout/classes/Tab)
+     *   strip owns its clip frame's native scroll explicitly, so a browser
+     *   focus-scroll of that `overflow:hidden` frame would fight it and silently
+     *   desync the strip's scroll bookkeeping).
      *
      * @returns This component, for method chaining.
      */
