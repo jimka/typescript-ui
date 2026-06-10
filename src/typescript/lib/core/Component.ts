@@ -3347,16 +3347,22 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Moves browser focus to this component's DOM element.
      *
+     * @param preventScroll - When `true`, suppresses the browser's
+     *   scroll-the-focused-element-into-view behaviour. Set this when the host
+     *   manages its own scroll offset (e.g. the {@link Tab} strip scrolls via a
+     *   leading-inset shift, so a native focus-scroll of its `overflow:hidden`
+     *   clip frame would silently desync that model).
+     *
      * @returns This component, for method chaining.
      */
-    focus(): this {
+    focus(preventScroll: boolean = false): this {
         let element = this.getElement();
         if (!element) {
             //console.warn("Component #" + this.id + " is not yet in the DOM, unable to focus.");
             return this;
         }
 
-        element.focus();
+        element.focus({ preventScroll });
 
         return this;
     }

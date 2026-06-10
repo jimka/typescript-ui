@@ -479,7 +479,12 @@ class Tab extends LayoutManager {
     private _clipFrame: Panel = new Panel();
     private _tabs: Array<TabEntry> = [];
     private _buttonGroup: ButtonGroup = new ButtonGroup();
-    private _rovingTabIndex: RovingTabIndex = new RovingTabIndex();
+    // The strip scrolls via a leading-inset shift (see `positionClipFrame`),
+    // keeping the clip frame's native scroll at 0. Focus the active tab without
+    // the browser scrolling its `overflow:hidden` clip frame into view, or that
+    // native scroll desyncs the inset model — leaving the scroll arrows' enabled
+    // state (driven by `_scrollOffset`) stale against the real position.
+    private _rovingTabIndex: RovingTabIndex = new RovingTabIndex({ preventScroll: true });
     private _selectedTabIndex: number = 0;
     // Last tab index that was faded in during a doLayout pass. Compared
     // against `selectedTabIndex` so the cross-tab fade fires only on actual
