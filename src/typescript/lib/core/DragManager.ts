@@ -77,6 +77,13 @@ export interface DropTargetOptions {
     onDragLeave? : (detail: DragEventDetail) => void;
     /** Optional drop callback — return `false` to suppress the `drop` event. */
     onDrop?      : (detail: DragEventDetail) => boolean | void;
+    /**
+     * Optional non-scrolling layer to host the validity tint, sized to the
+     * target's box within it. Pass it when the target scrolls its own content
+     * (e.g. a Tab strip's clip frame) so the tint overlays the *viewport* and
+     * stays put instead of riding the scroll. Defaults to the target itself.
+     */
+    feedbackHost?: Component;
 }
 
 interface DragSourceRecord {
@@ -385,7 +392,7 @@ function enterNewTarget(session: DragSession, target: DropTargetRecord, detail: 
 
     if (session.feedback) {
         session.feedback.setValid(accepted);
-        session.feedback.attachTo(target.component);
+        session.feedback.attachTo(target.component, target.options.feedbackHost);
     }
 
     if (!accepted) {
