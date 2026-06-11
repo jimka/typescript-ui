@@ -182,8 +182,59 @@ insertion bar at the slot boundary (a vertical rule for north/south, a
 horizontal one for west/east) and, on release, moves the tab and keeps it
 selected. A press that begins on a closeable tab's ✕ closes it rather than
 starting a drag. Reorder works on all four sides. Dragging a tab *out* of its
-strip (tear-off / re-dock) is a separate capability layered on top of this
-reorder wiring.
+strip is the separate [tear-off & re-dock](#tear-off-re-dock) capability,
+layered on top of this same reorder wiring.
+
+## Tear-off & re-dock
+
+The same `setReorderable(true)` flag also enables cross-container gestures —
+turning a strip reorderable enables reorder, tear-off, and re-dock together:
+
+- **Tear-off** — release a header drag over empty space (not over any strip) and
+  the tab detaches into a floating
+  [`Window`](/api/core/classes/Window) opened at the cursor, hosting the tab's
+  **live** content. The window title is the tab label.
+- **Cross-strip dock** — release a header drag over another reorderable strip and
+  the live content docks there as a new tab at the insertion slot. Same-strip
+  releases stay [reorders](#reorderable-tabs).
+
+All of these *move* the content rather than copying it: the source tab is
+removed, the content is re-parented through
+[`Component.moveComponent`](/api/core/classes/Component#movecomponent) so its
+state survives, and **no `tabclose` event fires** (the tab is relocated, not
+closed). Because the content is re-parented, in-flight CSS transitions on it
+reset — a torn-off or docked panel snaps into place rather than animating.
+
+### Re-docking a floating window
+
+`setDetachWindowMode(mode)` (option `detachWindowMode`) selects how a tear-off
+window hosts its content, and so how it is re-docked:
+
+- **`"strip"`** (default) — the window hosts a one-tab reorderable strip. Drag
+  that tab out onto another strip to re-dock it; the emptied window closes
+  itself.
+- **`"bare"`** — the content fills the window body directly. **Shift-drag** the
+  window title bar onto a strip to re-dock it (a plain drag still moves the
+  window; a Shift-drag released over empty space is a no-op). Shift keeps the
+  gesture clear of the Ctrl snap-resize affordance. The window closes once the
+  dock empties it.
+
+Holding **Shift** while tearing a tab off forces a `"bare"` window regardless of
+the mode. The window opens at the release point, clamped to stay inside the
+viewport.
+
+A non-closeable tab keeps its contract in window form: the tear-off window's
+close button is disabled while any tab it holds is non-closeable, so the content
+can only be re-docked, never destroyed by the title-bar close.
+
+On [`TabPanel`](/api/component/container/classes/TabPanel) the option is
+`tabOptions: { detachWindowMode }` or `setTabDetachWindowMode(mode)`.
+
+The drag is carried by the
+[`TabDragData`](/api/core/interfaces/TabDragData) payload — the cross-container
+contract `{ tabDrag, sourceTabId, componentId, label }`. `sourceTabId`
+distinguishes a within-strip reorder from a dock from elsewhere; `componentId`
+resolves the live content. Downstream docking consumers read this same contract.
 
 ## Theming
 
@@ -194,6 +245,7 @@ reuses the `drag.reorderIndicator.color` token.
 ## See also
 
 - [API: Tab](/api/layout/classes/Tab)
+- [`TabDragData`](/api/core/interfaces/TabDragData) — the tear-off / re-dock drag contract
 - [`Card`](/layouts/Card) — same one-at-a-time semantics, no toolbar
 - [`TabCloseButton`](/components/TabCloseButton)
 - [Layout serialization](/layouts/LayoutSerialization) — capture and restore tab order and active index
