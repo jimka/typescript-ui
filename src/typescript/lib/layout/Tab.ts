@@ -6,6 +6,7 @@ import { Size } from "~/primitive/Size.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { Component } from "~/core/Component.js";
 import { Panel } from "~/core/Panel.js";
+import { Window } from "~/core/Window.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
@@ -28,7 +29,7 @@ import { angle_right } from "~/glyphs/solid/angle_right.js";
 import { angle_up } from "~/glyphs/solid/angle_up.js";
 import { angle_down } from "~/glyphs/solid/angle_down.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
-import { DragManager, DragEventDetail } from "~/core/DragManager.js";
+import { DragManager, DragEventDetail, DragData, TabDragData, tabDragRegistry } from "~/core/DragManager.js";
 import { callable } from "~/core/Callable.js";
 
 // Register the overflow scroll-arrow glyphs so the arrows render regardless of
@@ -41,6 +42,26 @@ Glyph.register(angle_left, angle_right, angle_up, angle_down);
  * @category Layouts
  */
 export type TabEvent = "tabclose";
+
+/**
+ * How a torn-off tab's floating window hosts its content.
+ *
+ * - `"strip"` (default) — the window hosts a one-tab reorderable strip; the
+ *   tab re-docks onto another strip by dragging it out, and the emptied window
+ *   closes itself.
+ * - `"bare"` — the live content fills the window body directly; it re-docks by
+ *   Ctrl-dragging the window header onto a strip.
+ *
+ * @category Layouts
+ */
+export type TabDetachWindowMode = "bare" | "strip";
+
+// Default size of the floating window a torn-off tab opens into. A tab has no
+// inherent window size, so we open at a comfortable working area rather than the
+// content's current extent (which spans the full tab body and would spawn an
+// oversized window); the user can resize from there.
+const DETACH_WINDOW_WIDTH:  number = 480;
+const DETACH_WINDOW_HEIGHT: number = 360;
 
 /**
  * Tab-button width strategy for the {@link Tab} strip.
@@ -215,6 +236,13 @@ export interface TabOptions extends LayoutManagerOptions {
 
     /** Enable within-strip header drag-reorder. Defaults to `false`. */
     reorderable?: boolean;
+
+    /**
+     * How a torn-off tab's floating window hosts its content — a one-tab strip
+     * (`"strip"`, the default) or the bare content (`"bare"`). Defaults to
+     * `"strip"`. See {@link TabDetachWindowMode}.
+     */
+    detachWindowMode?: TabDetachWindowMode;
 
     /** Tab-label justification (strip-wide); defaults to `"center"`. */
     textAlign?: TabTextAlign;
@@ -542,7 +570,19 @@ class Tab extends LayoutManager {
     private _reorderBar: TabReorderBar = new TabReorderBar();
     private _dndTeardowns: Array<() => void> = [];
     private _dragMouseTarget: EventTarget | null = null;
+
+    // Whether Shift was held at the press that began a tab drag — captured at
+    // mousedown (the drag callbacks get no key state) and read at tear-off to
+    // force a bare detach window regardless of `_detachWindowMode`.
+    private _dragShiftHeld: boolean = false;
     private _dragInsertIndex: number = -1;
+
+    // How a torn-off tab's window hosts its content — consulted at tear-off time.
+    private _detachWindowMode: TabDetachWindowMode = "strip";
+
+    // Set only on the inner strip a `"strip"`-mode tear-off builds inside a
+    // window, so that strip (and only it) closes its host window when emptied.
+    private _closeHostWindowWhenEmpty: boolean = false;
 
     /**
      * Creates a Tab layout manager with an empty toolbar.
@@ -675,6 +715,10 @@ class Tab extends LayoutManager {
 
         if (options.reorderable !== undefined) {
             this.setReorderable(options.reorderable);
+        }
+
+        if (options.detachWindowMode !== undefined) {
+            this.setDetachWindowMode(options.detachWindowMode);
         }
 
         if (options.textAlign !== undefined) {
@@ -1334,6 +1378,30 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Sets how a torn-off tab's floating window hosts its content. The mode is
+     * consulted at the next tear-off, so this just caches the value — no layout
+     * work, unlike {@link setReorderable}.
+     *
+     * @param mode - `"strip"` for a one-tab strip in the window, `"bare"` for the content directly.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setDetachWindowMode(mode: TabDetachWindowMode): this {
+        this._detachWindowMode = mode;
+
+        return this;
+    }
+
+    /**
+     * Returns the tear-off window content mode.
+     *
+     * @returns The active {@link TabDetachWindowMode}.
+     */
+    getDetachWindowMode(): TabDetachWindowMode {
+        return this._detachWindowMode;
+    }
+
+    /**
      * Adds a tool button at the far end of the strip, opposite the tab buttons.
      *
      * @param button - The tool component to add.
@@ -1843,6 +1911,10 @@ class Tab extends LayoutManager {
         entry.state = "ready";
 
         this.wireComponentAria(entry, component);
+
+        // A tab added to a tear-off window's strip may be non-closeable; keep the
+        // host window's close button in step.
+        this.syncHostWindowCloseable();
     }
 
     /**
@@ -2743,9 +2815,11 @@ class Tab extends LayoutManager {
 
         // One subtree mousedown capture records the pressed element so
         // `onDragStart` can veto a drag that began on a close button
-        // (DragEventDetail carries no DOM target).
+        // (DragEventDetail carries no DOM target), plus the Shift state so a
+        // tear-off can force a bare window.
         const recordMouseTarget = (e: MouseEvent): void => {
             this._dragMouseTarget = e.target;
+            this._dragShiftHeld = e.shiftKey;
         };
 
         Event.addSubtreeListener(this._toolbar, "mousedown", recordMouseTarget);
@@ -2768,7 +2842,20 @@ class Tab extends LayoutManager {
      */
     private makeTabDragSource(entry: TabEntry): () => void {
         return DragManager.makeDragSource(entry.wrapper, {
-            dragData: { tabReorder: true },
+            dragData: (): DragData => {
+                const content = entry.component;
+
+                const data: TabDragData = {
+                    tabDrag:     true,
+                    sourceTabId: this.stripId(),
+                    componentId: content ? content.getId() : "",
+                    label:       entry.name,
+                };
+
+                // Spread to an anonymous object literal: a typed interface value
+                // is not assignable to DragData's index signature, but a literal is.
+                return { ...data };
+            },
             onDragStart: (): boolean | void => {
                 const target = this._dragMouseTarget;
                 this._dragMouseTarget = null;
@@ -2778,7 +2865,14 @@ class Tab extends LayoutManager {
                 if (closeElement && target instanceof Node && closeElement.contains(target)) {
                     return false;
                 }
+
+                // Register the live content so a drop target can resolve it from
+                // the id-only drag data. Skipped for a still-lazy tab (null content).
+                if (entry.state === "ready" && entry.component) {
+                    tabDragRegistry.set(entry.component.getId(), entry.component);
+                }
             },
+            onDragEnd: (detail: DragEventDetail, dropped: boolean): void => this.onTabDragEnd(entry, detail, dropped),
         });
     }
 
@@ -2796,7 +2890,7 @@ class Tab extends LayoutManager {
             // the clip frame's box, so it overlays the visible tab viewport and
             // stays put while the tabs scroll inside the clip frame.
             feedbackHost: this._toolbar,
-            accepts: (detail: DragEventDetail): boolean => this.isTabReorderDrag(detail),
+            accepts: (detail: DragEventDetail): boolean => this.isTabHeaderDrag(detail),
             onDragOver: (detail: DragEventDetail): number | null => {
                 this.updateReorderSlot(detail);
 
@@ -2806,22 +2900,291 @@ class Tab extends LayoutManager {
                 this._reorderBar.hide();
             },
             onDrop: (detail: DragEventDetail): void => {
-                this.dropReorder(detail);
+                this.dropTabHeader(detail);
             },
         });
     }
 
     /**
-     * Tests whether a drag is a header reorder originating from this strip.
+     * Tests whether a drag is a tab-header drag — either a within-strip reorder
+     * or a dock from another strip. The source-strip discrimination moves to
+     * {@link dropTabHeader}, so this strip accepts foreign sources too (that is
+     * the dock path); the predicate only checks the header discriminator.
      *
      * @param detail - The drag event detail.
      *
-     * @returns `true` when the drag carries the reorder marker and its source is
-     *   one of this strip's tab wrappers.
+     * @returns `true` when the drag carries the tab-header marker.
      */
-    private isTabReorderDrag(detail: DragEventDetail): boolean {
-        return detail.dragData["tabReorder"] === true
-            && this._tabs.some(entry => entry.wrapper.getId() === detail.sourceId);
+    private isTabHeaderDrag(detail: DragEventDetail): boolean {
+        return detail.dragData["tabDrag"] === true;
+    }
+
+    /**
+     * Routes a tab-header drop: a drag from this strip reorders within it; a drag
+     * from another strip docks the live content here as a new tab at the slot
+     * {@link updateReorderSlot} computed.
+     *
+     * @param detail - The drag event detail (carries the source strip id and the dragged component id).
+     */
+    private dropTabHeader(detail: DragEventDetail): void {
+        if (detail.dragData["sourceTabId"] === this.stripId()) {
+            this.dropReorder(detail);
+
+            return;
+        }
+
+        const content = tabDragRegistry.get(detail.dragData["componentId"] as string);
+
+        if (content) {
+            this.dockComponent(content, this._dragInsertIndex);
+        }
+
+        this._reorderBar.hide();
+        this._dragInsertIndex = -1;
+    }
+
+    /**
+     * The strip's stable identity, stamped into {@link TabDragData.sourceTabId}
+     * and compared by {@link dropTabHeader} to tell a within-strip reorder from a
+     * dock from elsewhere. Uses the toolbar id — one per strip, stable for the
+     * strip's lifetime.
+     *
+     * @returns The toolbar component's id.
+     */
+    private stripId(): string {
+        return this._toolbar.getId();
+    }
+
+    /**
+     * Source-side end of a header gesture. A release over empty space tears the
+     * tab off into a floating window; a release that an accepting strip consumed
+     * (`dropped`) means the content was either reordered within this strip — in
+     * which case it stays — or docked into another strip, leaving this strip's
+     * entry orphaned, so it is dropped here. The registry entry is cleared either
+     * way. Lazy tabs (null content) are a no-op.
+     *
+     * @param entry - The dragged tab entry.
+     * @param detail - The drag event detail (carries the release point).
+     * @param dropped - `true` iff an accepting strip consumed the drop.
+     */
+    private onTabDragEnd(entry: TabEntry, detail: DragEventDetail, dropped: boolean): void {
+        const content = entry.component;
+
+        if (content) {
+            tabDragRegistry.delete(content.getId());
+        }
+
+        if (entry.state !== "ready" || !content) {
+            return;
+        }
+
+        if (!dropped) {
+            this.detachTabToWindow(entry, detail.clientX, detail.clientY, this._dragShiftHeld);
+
+            return;
+        }
+
+        // Docked into another strip moves the content out of this container; a
+        // within-strip reorder leaves it here. Only the former orphans the entry.
+        const stillMine = this.getContainer()?.getComponents().includes(content) ?? false;
+
+        if (!stillMine) {
+            this.removeEntryKeepingContent(entry);
+        }
+    }
+
+    /**
+     * Tears a tab off the strip into a floating {@link Window} hosting its live
+     * content, opened at the release point. The content is re-parented with
+     * [`moveComponent`](/api/core/classes/Component#movecomponent) — not closed —
+     * so its state survives, and the now-empty strip entry is removed without
+     * emitting `tabclose`.
+     *
+     * @param entry - The tab entry to tear off.
+     * @param clientX - Viewport X of the release point.
+     * @param clientY - Viewport Y of the release point.
+     * @param forceBare - When `true`, a bare window is opened regardless of `detachWindowMode` (Shift held during the drag).
+     */
+    private detachTabToWindow(entry: TabEntry, clientX: number, clientY: number, forceBare: boolean): void {
+        if (entry.state !== "ready" || !entry.component) {
+            return;
+        }
+
+        const content = entry.component;
+
+        // The window inherits the tab's closeable state: a non-closeable tab's
+        // window has no close button, so the user can only re-dock it (never
+        // destroy the content via the title-bar X), honouring the tab's contract.
+        const win = new Window(entry.name, { closeable: entry.constraints?.closeable === true });
+        win.setX(clientX);
+        win.setY(clientY);
+        win.setSize({ width: DETACH_WINDOW_WIDTH, height: DETACH_WINDOW_HEIGHT });
+
+        // Keep the window on-screen when released past the viewport edge — size is
+        // set first since the clamp depends on it.
+        win.clampPositionToViewport();
+
+        // Position/size set before show() so the window does not flash at its
+        // default spot first. Holding Shift forces a bare window regardless of mode.
+        if (!forceBare && this._detachWindowMode === "strip") {
+            this.fillWindowWithStrip(win, content);
+        } else {
+            // Bare: the live content fills the window body (Border CENTER).
+            win.moveComponent(content);
+            win.show();
+        }
+
+        this.removeEntryKeepingContent(entry);
+    }
+
+    /**
+     * Builds a one-tab reorderable {@link Tab} strip inside `win` hosting
+     * `content` — the `"strip"` tear-off mode. The inner strip is flagged to
+     * close `win` once its tab is dragged out (or closed), so the float
+     * disappears when emptied, and `win` is marked so the Ctrl-drag header
+     * re-dock source stays inert over it (its body is the strip, not a panel).
+     *
+     * @param win - The freshly-constructed (not yet shown) host window.
+     * @param content - The live content to host in the strip's single tab.
+     */
+    private fillWindowWithStrip(win: Window, content: Component): void {
+        const innerTab = new Tab({ reorderable: true });
+
+        // Same-class private write: only this auto-created strip closes its host.
+        innerTab._closeHostWindowWhenEmpty = true;
+
+        const strip = new Panel();
+        strip.setLayoutManager(innerTab);
+
+        win.moveComponent(strip);
+        win.setTearOffStripBody(true);
+
+        // Re-parent the content into the strip's container, then build its tab —
+        // mirroring dockComponent's moveComponent-then-createTab order.
+        strip.moveComponent(content);
+        innerTab.createTab(content);
+
+        win.show();
+    }
+
+    /**
+     * Docks a live content component dragged from another strip (or torn off into
+     * a window) into this strip as a new, selected tab at `slot`. The content is
+     * re-homed with [`moveComponent`](/api/core/classes/Component#movecomponent),
+     * which carries its original layout constraints, so {@link createTab}
+     * reproduces the tab faithfully (label, closeable, glyph).
+     *
+     * @param content - The live content component to dock.
+     * @param slot - The strip insertion slot {@link updateReorderSlot} computed.
+     */
+    private dockComponent(content: Component, slot: number): void {
+        const container = this.getContainer();
+
+        if (!container) {
+            return;
+        }
+
+        container.moveComponent(content, slot);
+        this.createTab(content);
+
+        // createTab appends the entry; move it to the drop slot so it lands where
+        // the insertion bar showed rather than at the end of the strip.
+        const appendedIndex = this._tabs.length - 1;
+        const dest = Math.max(0, Math.min(slot, appendedIndex));
+
+        if (dest !== appendedIndex) {
+            const entry = this._tabs[appendedIndex];
+
+            this._tabs.splice(appendedIndex, 1);
+            this._tabs.splice(dest, 0, entry);
+            this._clipFrame.moveComponent(entry.wrapper, dest);
+        }
+
+        this.setActiveTabIndex(dest);
+        container.scheduleLayout();
+    }
+
+    /**
+     * Removes a tab entry from the strip while leaving its content component
+     * alone — the teardown {@link closeTab} performs minus the
+     * `container.removeComponent` (the content has been moved elsewhere, not
+     * destroyed) and minus the `tabclose` emit (the tab is relocated, not closed).
+     *
+     * @param entry - The tab entry to remove.
+     */
+    private removeEntryKeepingContent(entry: TabEntry): void {
+        const idx = this._tabs.indexOf(entry);
+
+        if (idx < 0) {
+            return;
+        }
+
+        const wasSelected = this._selectedTabIndex === idx;
+
+        this._buttonGroup.removeButton(entry.button);
+        this._rovingTabIndex.remove(entry.button);
+        this._tabs.splice(idx, 1);
+        this._clipFrame.removeComponent(entry.wrapper);
+
+        // Subtree listeners are keyed by component id in a module-level map;
+        // removing the wrapper's element does not purge it, so tear it down (as
+        // closeTab does) or it and the entry it closes over leak.
+        Event.removeSubtreeListener(entry.wrapper, "contextmenu", entry.contextMenuListener);
+
+        this.selectNextTab(idx, wasSelected);
+        this.getContainer()?.scheduleLayout();
+        this.syncHostWindowCloseable();
+        this.closeHostWindowIfEmpty();
+    }
+
+    /**
+     * The {@link Window} this strip lives in, but only for the auto-created
+     * one-tab strip a `"strip"`-mode tear-off builds (which sets
+     * `_closeHostWindowWhenEmpty`). A general strip that merely sits inside a
+     * window returns `null`, so the host-window helpers are cheap no-ops for it.
+     *
+     * @returns The owning tear-off window, or `null`.
+     */
+    private hostWindow(): Window | null {
+        if (!this._closeHostWindowWhenEmpty) {
+            return null;
+        }
+
+        let ancestor = this.getContainer()?.getParentComponent() ?? null;
+
+        while (ancestor && !(ancestor instanceof Window)) {
+            ancestor = ancestor.getParentComponent();
+        }
+
+        return ancestor instanceof Window ? ancestor : null;
+    }
+
+    /**
+     * Closes this strip's host window once it has emptied (its last tab was
+     * dragged out or closed).
+     */
+    private closeHostWindowIfEmpty(): void {
+        if (this._tabs.length > 0) {
+            return;
+        }
+
+        this.hostWindow()?.requestClose();
+    }
+
+    /**
+     * Keeps the host window's close button in step with the strip's contents: it
+     * is closeable only while *every* tab is closeable, so a non-closeable tab
+     * docked into the window disables the title-bar close (the window X would
+     * otherwise destroy that tab's content). A no-op outside a tear-off window.
+     */
+    private syncHostWindowCloseable(): void {
+        const win = this.hostWindow();
+
+        if (!win) {
+            return;
+        }
+
+        win.setCloseable(this._tabs.every(e => e.constraints?.closeable === true));
     }
 
     /**
@@ -3051,6 +3414,8 @@ class Tab extends LayoutManager {
 
         this.selectNextTab(entryIndex, wasSelected);
         this.getContainer()?.scheduleLayout();
+        this.syncHostWindowCloseable();
+        this.closeHostWindowIfEmpty();
     }
 
     /**

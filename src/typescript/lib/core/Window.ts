@@ -13,6 +13,7 @@ import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { Placement } from "~/primitive/Placement.js";
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { callable } from "~/core/Callable.js";
+import { DragManager, DragData, DragEventDetail, TabDragData, tabDragRegistry } from "~/core/DragManager.js";
 
 const WINDOW_ANIM_DURATION_MS: number = 150;
 const SNAP_DOCK_GAP_PX:         number = 4;
@@ -82,6 +83,7 @@ export interface WindowOptions extends PanelOptions {
     height?:            number;
     contentFactory?:    () => Component;
     onReady?:           (component: Component) => void;
+    closeable?:         boolean;
     minimizable?:       boolean;
     maximizable?:       boolean;
     maximizeBounds?:    WindowMaximizeBounds;
@@ -110,6 +112,7 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
     borderRadius:      "var(--ts-ui-border-radius, 4px)",
     shadow:            "var(--ts-ui-window-shadow, 3px 3px 2px rgba(0, 0, 0, 0.4))",
     backgroundColor:   "var(--ts-ui-body-bg, rgb(241, 241, 241))",
+    closeable:         true,
     minimizable:       true,
     maximizable:       true,
     maximizeBounds:    "viewport",
@@ -191,6 +194,18 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     private readonly _boundOnViewportResize: () => void                = () => this.onViewportResize();
     private readonly _boundOnSnapBlur:       () => void                = () => this.clearSnapState();
 
+    // Shift-drag re-dock: a header press with Shift held starts a tab-dock drag
+    // instead of a window move. Shift (not Ctrl) so it never collides with the
+    // Ctrl snap-resize affordance. `_headerDragShift` captures the modifier at
+    // press (the drag-source callbacks get no key state); `_headerDragComponentId`
+    // stashes the registered content id so onDragEnd can clean the registry after
+    // the dock already moved the content out; `_tearOffStripBody` keeps the source
+    // inert for a `"strip"`-mode tear-off window (its body is a strip, not a panel).
+    private _headerDragShift: boolean = false;
+    private _headerDragComponentId: string = "";
+    private _tearOffStripBody: boolean = false;
+    private readonly _boundCaptureHeaderShift: (e: MouseEvent) => void = (e: MouseEvent) => this.captureHeaderShift(e);
+
     constructor(headerText: string, options?: WindowOptions) {
         super(options, _defaultWindowOptions);
 
@@ -240,6 +255,18 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         Event.addListener(this._header, "mousedown", (e: MouseEvent) => this.onMouseDown(e));
         Event.addSubtreeListener(this, "mousedown", () => this.bringToFront());
 
+        // Shift-drag the header to re-dock the window's body content onto a Tab
+        // strip. The capture listener records the modifier (registered before the
+        // drag source so it runs first); the drag source vetoes a plain (no-Shift)
+        // press so the normal window move runs, and a strip-mode window's source
+        // is inert because its body is a strip wrapper, not a dockable panel.
+        Event.addListener(this._header, "mousedown", this._boundCaptureHeaderShift);
+        DragManager.makeDragSource(this._header, {
+            dragData: (): DragData => this.buildHeaderDragData(),
+            onDragStart: (): boolean | void => this.onHeaderDragStart(),
+            onDragEnd: (_detail: DragEventDetail, dropped: boolean): void => this.onHeaderDragEnd(dropped),
+        });
+
         // Late-built state: glyph / contentFactory fields were written pure
         // to `_options` by the super-time cascade. Dispatch them now that
         // `this.header` and the `contentFactory` field exist.
@@ -254,6 +281,7 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         // header's button visibility (minimizable / maximizable) or trigger
         // a tween (windowState), so they must run after `this._header` is
         // wired and the geometry fields are initialised.
+        if (this._options.closeable      !== undefined) this.setCloseable(this._options.closeable);
         if (this._options.minimizable    !== undefined) this.setMinimizable(this._options.minimizable);
         if (this._options.maximizable    !== undefined) this.setMaximizable(this._options.maximizable);
         if (this._options.maximizeBounds !== undefined) this.setMaximizeBounds(this._options.maximizeBounds);
@@ -297,6 +325,7 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         // dispatched late from the constructor body — the corresponding
         // setters need `this._header` (minimizable / maximizable) or geometry
         // (windowState) which only exist after super.
+        if (opts.closeable         !== undefined) this._options.closeable         = opts.closeable;
         if (opts.minimizable       !== undefined) this._options.minimizable       = opts.minimizable;
         if (opts.maximizable       !== undefined) this._options.maximizable       = opts.maximizable;
         if (opts.maximizeBounds    !== undefined) this._options.maximizeBounds    = opts.maximizeBounds;
@@ -858,6 +887,32 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
     }
 
     /**
+     * Enables or disables the title-bar close (exit) button. When disabled the
+     * button greys out and the window can no longer be torn down by the user —
+     * only programmatically via {@link requestClose} — so its content cannot be
+     * destroyed by a stray click. Minimize / maximize are unaffected.
+     *
+     * @param value - True to enable the close button.
+     *
+     * @returns This window, for method chaining.
+     */
+    setCloseable(value: boolean): this {
+        this._options.closeable = value;
+        this._header.setCloseable(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the close button is enabled.
+     *
+     * @returns True when the close button is enabled.
+     */
+    isCloseable(): boolean {
+        return this._options.closeable ?? true;
+    }
+
+    /**
      * Toggles whether the minimize button is visible in the title bar.
      *
      * @param value - True to show the minimize button.
@@ -1040,6 +1095,13 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
      * `e.clientX`/`e.clientY` seed the absolute-pointer drag origin read by `onDrag`.
      */
     onMouseDown(e: MouseEvent) {
+        // Shift+drag on the header is a re-dock gesture (handled by the header
+        // drag source), not a window move — don't start the move. (Ctrl is left
+        // free for the snap-resize affordance.)
+        if (e.shiftKey) {
+            return;
+        }
+
         if (this.getWindowState() !== "normal") {
             return;
         }
@@ -1064,6 +1126,94 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
         // one at construction), which would prevent document-level handlers from firing.
         Event.addViewportListener(this, 'mouseup', this._boundOnMouseUp);
         Event.addViewportListener(this, 'mousemove', this._boundOnDrag);
+    }
+
+    /**
+     * Records whether Shift was held at the header press, so the header drag
+     * source — whose callbacks receive no key state — can tell a re-dock gesture
+     * from a plain window move.
+     *
+     * @param e - The header `mousedown` event.
+     */
+    private captureHeaderShift(e: MouseEvent): void {
+        this._headerDragShift = e.shiftKey;
+    }
+
+    /**
+     * Builds the tab-dock payload for a Shift-drag of the header. `sourceTabId` is
+     * the window's own id — never a strip's, so a drop target treats it as a
+     * foreign dock rather than a same-strip reorder.
+     *
+     * @returns The {@link TabDragData} payload for the window's body content.
+     */
+    private buildHeaderDragData(): DragData {
+        const content = this.findBodyHost();
+
+        const data: TabDragData = {
+            tabDrag:     true,
+            sourceTabId: this.getId(),
+            componentId: content ? content.getId() : "",
+            label:       String(this._header.getText().getText()),
+        };
+
+        return { ...data };
+    }
+
+    /**
+     * Vetoes the header drag unless Shift was held, the window has body content,
+     * and the body is a real panel (not a `"strip"`-mode tear-off wrapper). When
+     * it proceeds, it registers the live content so the destination strip can
+     * resolve it from the id-only drag data.
+     *
+     * @returns `false` to veto (plain move / nothing to dock); otherwise `void`.
+     */
+    private onHeaderDragStart(): boolean | void {
+        const shift = this._headerDragShift;
+        this._headerDragShift = false;
+
+        const content = this.findBodyHost();
+
+        if (!shift || !content || this.isTearOffStripBody()) {
+            return false;
+        }
+
+        this._headerDragComponentId = content.getId();
+        tabDragRegistry.set(content.getId(), content);
+    }
+
+    /**
+     * Cleans up the registry entry once the gesture ends and, when the drop
+     * docked the content elsewhere (so the window has emptied), closes the window.
+     *
+     * @param dropped - `true` iff an accepting strip consumed the drop.
+     */
+    private onHeaderDragEnd(dropped: boolean): void {
+        tabDragRegistry.delete(this._headerDragComponentId);
+        this._headerDragComponentId = "";
+
+        if (dropped && this.findBodyHost() === null) {
+            this.requestClose();
+        }
+    }
+
+    /**
+     * Marks whether this window's body is a managed tear-off strip — set by
+     * `Tab`'s `"strip"`-mode detach. A strip-body window's header drag source
+     * stays inert (its body is the strip wrapper, not a dockable panel).
+     *
+     * @param value - `true` when the body is a tear-off strip.
+     */
+    setTearOffStripBody(value: boolean): void {
+        this._tearOffStripBody = value;
+    }
+
+    /**
+     * Returns whether this window's body is a managed tear-off strip.
+     *
+     * @returns `true` when the body is a tear-off strip.
+     */
+    isTearOffStripBody(): boolean {
+        return this._tearOffStripBody;
     }
 
     /**
@@ -1241,30 +1391,34 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
      * place so both the live translate and the `onMouseUp` commit read the
      * clamped values from one chokepoint.
      */
-    private clampDragDelta(): void {
+    /**
+     * The min/max top-left position that keeps the window inside the viewport,
+     * honouring {@link isConstrainToViewport} (whole window in view) or the
+     * header-reachable fallback (at least an `EDGE_MARGIN_PX` strip and the full
+     * header band visible). Shared by drag clamping and {@link clampPositionToViewport}.
+     *
+     * @returns The position bounds in viewport pixels.
+     */
+    private viewportPositionBounds(): { minX: number; maxX: number; minY: number; maxY: number } {
         const w  = this.getWidth();
         const vw = window.innerWidth;
         const vh = window.innerHeight;
 
-        let minX: number;
-        let maxX: number;
-        let maxY: number;
-        const minY = 0;
-
         if (this.isConstrainToViewport()) {
             // Whole window inside the viewport: every border stops at the edge.
-            minX = 0;
-            maxX = vw - w;
-            maxY = vh - this.getHeight();
-        } else {
-            // Header-reachable fallback: keep at least an EDGE_MARGIN_PX strip visible
-            // horizontally and the whole header band visible vertically.
-            const headerH = this._header.getHeight() || 26;
-
-            minX = EDGE_MARGIN_PX - w;
-            maxX = vw - EDGE_MARGIN_PX;
-            maxY = vh - headerH;
+            return { minX: 0, maxX: vw - w, minY: 0, maxY: vh - this.getHeight() };
         }
+
+        // Header-reachable fallback: keep at least an EDGE_MARGIN_PX strip visible
+        // horizontally and the whole header band visible vertically. The 26 px
+        // floor mirrors the default header height before the header has laid out.
+        const headerH = this._header.getHeight() || 26;
+
+        return { minX: EDGE_MARGIN_PX - w, maxX: vw - EDGE_MARGIN_PX, minY: 0, maxY: vh - headerH };
+    }
+
+    private clampDragDelta(): void {
+        const { minX, maxX, minY, maxY } = this.viewportPositionBounds();
 
         const targetX = this._dragStartLeft + this._dragDX;
         const targetY = this._dragStartTop  + this._dragDY;
@@ -1277,6 +1431,24 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
 
         this._dragDX = clampedX - this._dragStartLeft;
         this._dragDY = clampedY - this._dragStartTop;
+    }
+
+    /**
+     * Clamps the window's current position so the window sits inside the
+     * viewport, by the same rule the move-drag uses. Call after positioning a
+     * window programmatically — e.g. opening one at a tear-off release point that
+     * may lie past the viewport edge — so it can never land off-screen. Set the
+     * window's size first, since the bounds depend on it.
+     *
+     * @returns This window, for method chaining.
+     */
+    clampPositionToViewport(): this {
+        const { minX, maxX, minY, maxY } = this.viewportPositionBounds();
+
+        this.setX(Math.max(Math.min(this.getX(), maxX), minX));
+        this.setY(Math.max(Math.min(this.getY(), maxY), minY));
+
+        return this;
     }
 
     /**

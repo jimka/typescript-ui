@@ -6,11 +6,12 @@ import { Text } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
 
 /**
- * Z-order ceiling for the drag ghost — must sit above
- * [`DragFeedback`](/api/core/classes/DragFeedback) /
- * [`ReorderIndicator`](/api/core/classes/ReorderIndicator) (10199) so the
- * follow-the-cursor preview is never occluded by the per-target tint that
- * lives inside the drop target.
+ * Z-order ceiling for the drag ghost. The follow-the-cursor preview rides above
+ * everything during a drag — appended at the document root, above the
+ * LayerManager bands — so it is never occluded by a floating window or by the
+ * per-target highlights ([`DragFeedback`](/api/core/classes/DragFeedback) /
+ * [`ReorderIndicator`](/api/core/classes/ReorderIndicator)), which deliberately
+ * sit *below* the window band instead.
  */
 const Z_INDEX = 10200;
 

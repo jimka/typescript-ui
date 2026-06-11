@@ -3,11 +3,16 @@
 import { Component } from "~/core/Component.js";
 import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
+import { LayerManager } from "~/core/LayerManager.js";
 
 /**
- * Z-order shared with [`DragFeedback`](/api/core/classes/DragFeedback).
+ * Z-order shared with {@link DragFeedback}: just **below** the lowest
+ * {@link LayerManager} band (the {@link Window} band) so this drop-target
+ * insertion line — drawn over app content that establishes no isolating
+ * stacking context — never paints over a floating window, while still sitting
+ * above the target's own content. The drag ghost sits above both at the root.
  */
-const Z_INDEX = 10199;
+const Z_INDEX = LayerManager.Band.Window - 1;
 
 /** Height of the insertion-line bar in pixels. */
 const BAR_HEIGHT = 2;
