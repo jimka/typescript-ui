@@ -271,6 +271,38 @@ class Split extends LayoutManager {
     }
 
     /**
+     * Seeds or overrides the stored main-axis size for one pane.
+     *
+     * Lets a caller that has just inserted a pane (an edge-drop dock, say) give
+     * it a specific share instead of the equal division `recalculateSizes`
+     * applies to a pane with no stored size. The value is a px main-axis extent
+     * — the same unit the gutters store and {@link recalculateSizes} rescales —
+     * not a ratio; pass it relative to the other panes' current stored sizes.
+     *
+     * @param pane - The pane whose stored size to seed or override.
+     * @param size - The main-axis extent in px to store for the pane.
+     * @returns This layout manager, for method chaining.
+     */
+    setPaneSize(pane: Component, size: number): this {
+        this._sizes.set(pane, size);
+
+        return this;
+    }
+
+    /**
+     * Returns a pane's stored main-axis size in px, or `undefined` when the pane
+     * has no stored size yet (it has never been laid out, or it was added since
+     * the last layout). A pane reporting `undefined` is the one
+     * {@link recalculateSizes} gives a proportional share on the next layout.
+     *
+     * @param pane - The pane whose stored size to read.
+     * @returns The stored main-axis extent in px, or `undefined` when unset.
+     */
+    getPaneSize(pane: Component): number | undefined {
+        return this._sizes.get(pane);
+    }
+
+    /**
      * Returns the stored pane sizes normalised to sum 1.0, in container child
      * order. Captures the user's split ratios for serialization; ratios are
      * viewport-independent, so they survive a restore into a differently-sized
@@ -294,6 +326,76 @@ class Split extends LayoutManager {
         const sum   = sizes.reduce((total, size) => total + size, 0);
 
         return sum > 0 ? sizes.map(size => size / sum) : components.map(() => 1 / components.length);
+    }
+
+    /**
+     * The split's preferred size, derived from its panes the box-layout way: the
+     * panes' preferred extents sum along the split axis (plus the gutter
+     * footprint) and the widest/tallest is taken across it, then the container
+     * perimeter is added. Panes that report no preferred size contribute
+     * nothing, matching [`HBox`](/api/layout/classes/HBox) / [`VBox`](/api/layout/classes/VBox).
+     *
+     * This is a content hint for the *host* sizing the split's slot; it is
+     * independent of the dragged per-pane sizes, which only distribute the
+     * split's actual extent among the panes at layout time.
+     *
+     * @returns The preferred `{width, height}`, or `null` when detached.
+     */
+    getPreferredSize(): Size | null {
+        return this.computeContentSize(component => component.getPreferredSize());
+    }
+
+    /**
+     * The split's minimum size, computed from its panes' minimums exactly as
+     * {@link getPreferredSize} computes the preferred size: summed along the
+     * split axis (plus gutters), maxed across it, plus the container perimeter.
+     *
+     * @returns The minimum `{width, height}`, or `null` when detached.
+     */
+    getMinSize(): Size | null {
+        return this.computeContentSize(component => component.getMinSize());
+    }
+
+    /**
+     * Shared core of {@link getPreferredSize} / {@link getMinSize}: sums the
+     * panes' sizes (selected by `sizeOf`) along the split axis together with the
+     * gutter footprint, takes the largest across it, and adds the container
+     * perimeter. Panes reporting no size are skipped, as in the other box
+     * managers.
+     *
+     * @param sizeOf - Selects each pane's preferred or minimum size.
+     * @returns The composed `{width, height}`, or `null` when detached.
+     */
+    private computeContentSize(sizeOf: (component: Component) => Size | null): Size | null {
+        const container = this.getContainer();
+        if (!container) {
+            return null;
+        }
+
+        const components = container.getComponents();
+        const perimiter  = container.getPerimiterSize();
+        const horizontal = this._direction === "horizontal";
+
+        let main  = 0;
+        let cross = 0;
+
+        for (let idx = 0; idx < components.length; idx += 1) {
+            const size = sizeOf(components[idx]);
+            if (!size) {
+                continue;
+            }
+
+            main  += horizontal ? size.width  : size.height;
+            cross  = Math.max(cross, horizontal ? size.height : size.width);
+        }
+
+        main += this.gutterTotal(components.length);
+
+        return horizontal
+            ? { width:  main  + perimiter.left + perimiter.right,
+                height: cross + perimiter.top  + perimiter.bottom }
+            : { width:  cross + perimiter.left + perimiter.right,
+                height: main  + perimiter.top  + perimiter.bottom };
     }
 
     /**
@@ -907,6 +1009,17 @@ class Split extends LayoutManager {
 
         let components = container.getComponents();
 
+        // Drop stored sizes (and collapsed flags) for panes that have left the
+        // container. `moveComponent`/`removeComponent` give Split no removal
+        // hook, so without this the entries would linger forever — skewing the
+        // `_sizes.size` check and the refill total below, and leaking memory.
+        for (let pane of [...this._sizes.keys()]) {
+            if (components.indexOf(pane) < 0) {
+                this._sizes.delete(pane);
+                this._collapsed.delete(pane);
+            }
+        }
+
         // `getInnerSize` already removed the perimeter (insets + border +
         // padding); the only thing the panes don't get is the gutters, so the
         // space to divide is the inner main axis minus the gutter footprint.
@@ -972,6 +1085,34 @@ class Split extends LayoutManager {
 
                 this._sizes.set(component, componentSize);
                 componentsWithSize += 1;
+            }
+        }
+
+        // After the steps above every live pane has a stored size, but their
+        // sum can fall short of `available` when a pane was *removed* since the
+        // last layout (its slot freed but no survivor reclaimed it — e.g. a tab
+        // torn off, or a pane moved out while being wrapped in a nested Split).
+        // `computeMainAxisSizes`/`doLayout` place panes at their raw stored
+        // sizes, so a short sum strands a trailing gap. Normalise back to the
+        // `Σ == available` invariant; a uniform scale preserves any ratio the
+        // user dragged. Additions already keep the sum constant via the
+        // proportional steal above, so this is a no-op for them.
+        let storedTotal = 0;
+
+        for (let idx = 0; idx < components.length; idx += 1) {
+            storedTotal += this._sizes.get(components[idx]) ?? 0;
+        }
+
+        if (storedTotal > 0 && available > 0) {
+            let refill = available / storedTotal;
+
+            for (let idx = 0; idx < components.length; idx += 1) {
+                let component = components[idx];
+                let stored = this._sizes.get(component);
+
+                if (stored != undefined) {
+                    this._sizes.set(component, stored * refill);
+                }
             }
         }
 

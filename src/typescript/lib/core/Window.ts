@@ -1185,7 +1185,9 @@ class Window extends Panel<WindowOptions> implements DismissableLayer {
      * Cleans up the registry entry once the gesture ends and, when the drop
      * docked the content elsewhere (so the window has emptied), closes the window.
      *
-     * @param dropped - `true` iff an accepting strip consumed the drop.
+     * @param dropped - `true` when the release landed on a registered drop
+     *   target (whether it accepted or refused the drop); `false` on a release
+     *   over empty space. The window only closes when the content actually left.
      */
     private onHeaderDragEnd(dropped: boolean): void {
         tabDragRegistry.delete(this._headerDragComponentId);

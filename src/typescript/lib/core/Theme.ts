@@ -557,6 +557,11 @@ export interface Theme {
         reorderIndicator: {
             color: string;
         };
+        dropzone: {
+            background      : string;
+            border          : string;
+            activeBackground: string;
+        };
     };
 
     scroll: {
@@ -878,6 +883,9 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-drag-feedback-invalid-bg'         : theme.drag.feedback.invalid.background,
         '--ts-ui-drag-feedback-invalid-border'     : theme.drag.feedback.invalid.border,
         '--ts-ui-drag-reorder-color'               : theme.drag.reorderIndicator.color,
+        '--ts-ui-drag-dropzone-bg'                 : theme.drag.dropzone.background,
+        '--ts-ui-drag-dropzone-border'             : theme.drag.dropzone.border,
+        '--ts-ui-drag-dropzone-active-bg'          : theme.drag.dropzone.activeBackground,
         '--ts-ui-scroll-shadow-color'              : theme.scroll.shadowColor,
     };
 }

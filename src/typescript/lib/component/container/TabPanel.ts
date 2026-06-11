@@ -137,18 +137,28 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
     }
 
     /**
-     * Registers a listener on the wrapped {@link Tab} manager. Public
-     * forwarder so consumers can wire `tabclose` listeners through the
-     * panel surface without reaching the protected manager accessor.
+     * Registers a `tabclose` listener on the wrapped {@link Tab} manager. Public
+     * forwarder so consumers can wire listeners through the panel surface
+     * without reaching the protected manager accessor.
      *
-     * @param event - The {@link Tab} event name.
-     * @param listener - The callback to invoke when the event fires.
+     * @param event - The `"tabclose"` event.
+     * @param listener - The callback invoked with the removed content component.
      *
      * @returns This panel, for method chaining.
      */
     on(event: "tabclose", listener: (component: Component) => void): this;
+    /**
+     * Registers an `empty` listener on the wrapped {@link Tab} manager — fires
+     * after the strip loses its last tab by any path (close, tear-off, re-dock).
+     *
+     * @param event - The `"empty"` event.
+     * @param listener - The zero-argument callback invoked when the strip empties.
+     *
+     * @returns This panel, for method chaining.
+     */
+    on(event: "empty", listener: () => void): this;
     on(event: TabEvent,   listener: Function): this {
-        this.getTabManager().on(event, listener as (component: Component) => void);
+        this.getTabManager().on(event as "empty", listener as () => void);
 
         return this;
     }
