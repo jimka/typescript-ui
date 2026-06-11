@@ -45,6 +45,8 @@ On an edge drop the structural change depends on what the region already is:
 
 This keeps nesting shallow (matching-axis edge drops extend rather than nest) and is the standard dock-manager behaviour. **Center** drops never split: they call into the region's tab host (a `Tab` layout) and add the panel as a tab — if the region is not already a `Tab`, center-drop wraps it in a `Tab` the same structural way an edge wraps it in a `Split`. (Center-into-Tab reuses plan #2's dock path; this plan only routes to it.)
 
+> **Write-time note (resolved during implementation):** plan #2's `Tab.dockComponent` is *private*, so `dockAsTab` cannot call it. The public route is `region.moveComponent(panel)` followed by the public [`Tab.createTab(panel)`](../src/typescript/lib/layout/Tab.ts#L1897) — `createTab` reads the tab label from the panel's `LayoutConstraints.name`, which `moveComponent` carries, so a dragged tab keeps its label. The **wrap** case (region is not a `Tab`) needs no explicit `createTab`: `Tab.doLayout` already creates a tab for every container child no entry owns yet ([Tab.ts:2639](../src/typescript/lib/layout/Tab.ts#L2639)), so moving both the region and the panel into a fresh `new Panel({ layoutManager: new Tab() })` and scheduling a layout tabs them both.
+
 ### New public `Split` methods — `insertPane` and `setPaneSize`; do not mutate `_sizes` from outside
 
 `Split` exposes no way to add a pane at a runtime index with a chosen size, nor to read/seed a pane's stored size — `_sizes`, `_direction`, `_gutters` are all private and `recalculateSizes` only *fills* missing sizes. A `DockRegion` performing an insert must (a) put the dragged panel into the Split container at a specific index (that is `container.moveComponent(panel, index)` — *not* a Split method; the container owns children) and (b) optionally seed the new pane's stored size so it doesn't steal the whole container on first layout. **Decision:** add two typed public methods to `Split`:
@@ -238,7 +240,7 @@ Key invariants the implementer must preserve: all re-parents go through `moveCom
 | Modify | `src/typescript/lib/layout/index.ts` — export `DockRegion`, `DropZone` |
 | Modify | `src/typescript/lib/core/index.ts` (or the core component sub-barrel) — export `DropZoneOverlay` |
 | Modify | `src/typescript/lib/core/Theme.ts` — `dropzone` interface fields + `themeToVars` rows |
-| Modify | `src/typescript/lib/core/themes/BaseTheme.ts` — `dropzone` shared default (if applicable) |
+| ~~Modify~~ | ~~`src/typescript/lib/core/themes/BaseTheme.ts`~~ — **not modified**: `BaseTheme.drag` carries only `ghost.opacity`; `feedback`/`reorderIndicator`/`dropzone` colour values live in the three concrete themes (confirmed at write time, matching the `drag.feedback` placement) |
 | Modify | `src/typescript/lib/core/themes/ClassicTheme.ts` — `dropzone` light values |
 | Modify | `src/typescript/lib/core/themes/ModernTheme.ts` — `dropzone` light values |
 | Modify | `src/typescript/lib/core/themes/DarkTheme.ts` — `dropzone` dark values |
@@ -306,6 +308,7 @@ Key invariants the implementer must preserve: all re-parents go through `moveCom
 - **A `Split.insertPane` method** — rejected; inserting a pane is `container.moveComponent(panel, index)` because the container owns children and `recalculateSizes` already sizes a new pane. Only `setPaneSize`/`getPaneSize` (seeding a specific share) are genuinely missing.
 - **Configurable edge-band fraction / per-region dock options** — a single documented `EDGE_BAND_FRACTION` constant; per-region configurability is deferred to plan #5.
 - **Animated split creation** — `moveComponent` resets transitions by design; a docked panel snaps into its new pane.
+- **Promoting `DropZoneOverlay` into a `DragManager`-owned feedback protocol** — `DropZoneOverlay` is the 2-D twin of [`ReorderIndicator`](../src/typescript/lib/core/component/ReorderIndicator.ts) (same overlay shape, same `Band.Window - 1` z-order, both positional feedback driven by `onDragOver`): `ReorderIndicator` off a returned `number`, `DropZoneOverlay` off a returned zone. The natural future generalisation is to widen `DragManager`'s `onDragOver` return from `number | null` to a small feedback descriptor and let the manager own `DropZoneOverlay` the way it already owns `ReorderIndicator`, centralising attach/detach/z-order. It is **not** done here: there is one consumer, and widening that contract touches every drop target — a cross-cutting change to a shared core class that should wait for a second zone-style target. Note also that this is *not* a merge with `DragFeedback`: validity (tint, driven by `accepts`) and position (zone) are orthogonal axes that compose, so the future home is the `ReorderIndicator` positional-feedback path, never `DragFeedback`.
 
 ---
 
