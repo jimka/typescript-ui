@@ -86,10 +86,12 @@ export interface DragSourceOptions {
     /** CSS cursor applied to `<body>` while the drag is active. */
     cursor?      : string;
     /**
-     * Fired once the gesture ends, after any `onDrop`. `dropped` is `true` iff
-     * an accepting target consumed the drop. Lets a source distinguish a
-     * committed drop from a release over empty space — the signal the
-     * `"dragend"` DOM event alone cannot carry.
+     * Fired once the gesture ends, after any `onDrop`. `dropped` is `true` when
+     * the release was handled by a registered drop target — whether the target
+     * accepted the drop or refused it — and `false` only on a release over empty
+     * space. Lets a source distinguish a release that landed on a target from a
+     * fall-through to empty space (e.g. tab tear-off), the signal the `"dragend"`
+     * DOM event alone cannot carry.
      */
     onDragEnd?   : (detail: DragEventDetail, dropped: boolean) => void;
 }
@@ -557,11 +559,19 @@ function onMouseUp(e: MouseEvent): void {
     if (session.committed && session.currentTarget !== null) {
         const target = dropTargets.get(session.currentTarget.getId());
 
-        if (target && target.options.accepts(detail)) {
-            const onDropResult = target.options.onDrop?.(detail);
+        if (target) {
+            // Released over a registered drop target. Dispatch the drop only
+            // when the target accepts; either way the release was *handled* by a
+            // target rather than falling through to empty space, so report
+            // `dropped` so the source skips its empty-space fallback — e.g. a Tab
+            // header snaps back instead of tearing off into a window when the
+            // target refused it (a rejected self-dock is a no-op, not a detach).
+            if (target.options.accepts(detail)) {
+                const onDropResult = target.options.onDrop?.(detail);
 
-            if (onDropResult !== false) {
-                Event.fireEvent(session.source, "drop", { detail });
+                if (onDropResult !== false) {
+                    Event.fireEvent(session.source, "drop", { detail });
+                }
             }
 
             dropped = true;

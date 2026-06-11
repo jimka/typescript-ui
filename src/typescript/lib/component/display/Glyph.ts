@@ -302,11 +302,14 @@ class Glyph extends Component<GlyphOptions> {
     }
 
     /**
-     * Returns the registry name this Glyph was constructed with.
+     * Returns the registry name this Glyph was constructed with. Named
+     * `getGlyphName` rather than `getName` so it does not shadow
+     * [`Component.getName`](/api/core/classes/Component#getname), whose
+     * intrinsic `name` is a display label with a different meaning.
      *
      * @returns The registry key supplied to the constructor.
      */
-    getName(): string {
+    getGlyphName(): string {
         return this._name;
     }
 

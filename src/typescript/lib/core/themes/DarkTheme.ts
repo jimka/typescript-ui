@@ -277,6 +277,11 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         reorderIndicator: {
             color: 'rgb(80, 140, 240)',
         },
+        dropzone: {
+            background      : 'rgba(80, 140, 240, 0.12)',
+            border          : 'rgba(80, 140, 240, 0.45)',
+            activeBackground: 'rgba(80, 140, 240, 0.32)',
+        },
     },
     scroll: {
         shadowColor: 'rgba(0, 0, 0, 1)',
