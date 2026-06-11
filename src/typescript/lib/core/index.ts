@@ -47,7 +47,7 @@ export type { BeforeRecordListener, BindingEvent } from '~/core/Binding.js';
 export type { Bindable, BindingAccessors } from '~/core/Bindable.js';
 
 export { DragManager } from '~/core/DragManager.js';
-export type { DragData, DragEventDetail, DragSourceOptions, DropTargetOptions } from '~/core/DragManager.js';
+export type { DragData, DragEventDetail, DragSourceOptions, DropTargetOptions, TabDragData } from '~/core/DragManager.js';
 export { DragGhost } from '~/core/component/DragGhost.js';
 export { DragFeedback } from '~/core/component/DragFeedback.js';
 export { ReorderIndicator } from '~/core/component/ReorderIndicator.js';

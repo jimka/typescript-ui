@@ -33,6 +33,38 @@ export interface DragEventDetail {
 }
 
 /**
+ * Drag-data payload attached to every tab-header drag — the cross-container
+ * contract shared by the within-strip reorder path, tab tear-off / re-dock, the
+ * Ctrl-drag window re-dock, and the downstream edge-split / dock-manager work.
+ * A drop target reads it off {@link DragEventDetail}'s `dragData`. Because
+ * {@link DragData} is a plain record it cannot carry a live component reference,
+ * so `componentId` keys into the module-level `tabDragRegistry` to resolve the
+ * dragged content.
+ *
+ * @category Core
+ */
+export interface TabDragData {
+    /** Discriminator a drop target tests in its `accepts` predicate. */
+    tabDrag:     true;
+    /** The source strip's stable id — distinguishes reorder-within from dock-from-elsewhere. */
+    sourceTabId: string;
+    /** The dragged content component's id — the key into `tabDragRegistry`. */
+    componentId: string;
+    /** The tab label — used for the drag ghost and the tear-off window title. */
+    label:       string;
+}
+
+/**
+ * Resolves a {@link TabDragData} `componentId` back to the live content
+ * component being dragged. Written when a header drag starts and cleared when it
+ * ends, so a drop target — the same strip, another strip, or a torn-off
+ * {@link DragData}-carrying window — can move the real component rather than
+ * only learning its id. Shared by-import across `Tab` and `Window`; one
+ * instance, so a source-side write is visible to the destination-side read.
+ */
+export const tabDragRegistry: Map<string, Component> = new Map<string, Component>();
+
+/**
  * Construction-time options accepted by {@link DragManager.makeDragSource}.
  *
  * @category Core
@@ -53,6 +85,13 @@ export interface DragSourceOptions {
     ghostFactory?: (source: Component, data: DragData) => Component;
     /** CSS cursor applied to `<body>` while the drag is active. */
     cursor?      : string;
+    /**
+     * Fired once the gesture ends, after any `onDrop`. `dropped` is `true` iff
+     * an accepting target consumed the drop. Lets a source distinguish a
+     * committed drop from a release over empty space — the signal the
+     * `"dragend"` DOM event alone cannot carry.
+     */
+    onDragEnd?   : (detail: DragEventDetail, dropped: boolean) => void;
 }
 
 /**
@@ -536,7 +575,7 @@ function onMouseUp(e: MouseEvent): void {
  * Removes overlays, unwires viewport listeners, restores the body
  * cursor, and fires `dragend` when the session committed.
  */
-function endSession(_dropped: boolean, clientX: number, clientY: number): void {
+function endSession(dropped: boolean, clientX: number, clientY: number): void {
     if (activeSession === null) {
         return;
     }
@@ -572,6 +611,7 @@ function endSession(_dropped: boolean, clientX: number, clientY: number): void {
         const detail = buildDetail(session, clientX, clientY);
 
         Event.fireEvent(session.source, "dragend", { detail });
+        session.sourceOptions.onDragEnd?.(detail, dropped);
     }
 
     activeSession = null;
