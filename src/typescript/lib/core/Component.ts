@@ -131,6 +131,8 @@ export interface ComponentOptions {
     touchAction?:     string;
     layoutManager?:   LayoutManager;
     id?:              string;
+    /** Human-readable title for the component; read by the [`Tab`](/api/layout/classes/Tab) layout for the tab/window label. */
+    name?:            string | null;
     attributes?:      Record<string, string>;
     components?:      Array<Component | ConstrainedComponent>;
     styleRules?:      ComponentStyleRuleSpec[];
@@ -387,6 +389,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const opts = { ...this._defaultOptions, ...options };
 
         if (opts.id              !== undefined) this.setId(opts.id);
+        if (opts.name            !== undefined) this.setName(opts.name);
         if (opts.layoutManager   !== undefined) this.setLayoutManager(opts.layoutManager);
         if (opts.visible         !== undefined) this.setVisible(opts.visible);
         if (opts.displayed       !== undefined) this.setDisplayed(opts.displayed);
@@ -1080,6 +1083,37 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         element.id = id;
+
+        return this;
+    }
+
+    /**
+     * Returns the component's human-readable title — its intrinsic name,
+     * distinct from the unique {@link getId} identifier. Set via the `name`
+     * option or {@link setName}; `null` when unset. The
+     * [`Tab`](/api/layout/classes/Tab) layout reads it for a tab button's label
+     * (and a torn-off window's title) when no per-placement
+     * `LayoutConstraints.name` override is present.
+     *
+     * @returns The component's name, or `null` when none has been set.
+     */
+    getName(): string | null {
+        return this._options.name ?? null;
+    }
+
+    /**
+     * Sets the component's human-readable title. Pure metadata — it writes no
+     * DOM and does not affect layout; consumers such as the
+     * [`Tab`](/api/layout/classes/Tab) layout read it to label the component.
+     * The name travels with the component across re-parents (it lives on the
+     * component, not on a parent's layout constraint).
+     *
+     * @param name - The new name, or `null` to clear it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setName(name: string | null): this {
+        this._options.name = name;
 
         return this;
     }

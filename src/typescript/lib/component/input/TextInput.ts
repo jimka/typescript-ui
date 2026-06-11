@@ -41,7 +41,6 @@ import { callable } from "~/core/Callable.js";
  * @category Components
  */
 export interface TextInputOptions extends AbstractInputOptions {
-    name?:         string;
     type?:         string;
     text?:         string;
     textAlign?:    string | null;
@@ -122,10 +121,6 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
         super.applyOptions(options);
 
         const opts = { ...this._defaultOptions, ...options } as TOptions;
-
-        if (opts.name !== undefined) {
-            this.setName(opts.name);
-        }
 
         if (opts.text !== undefined) {
             this.setText(opts.text);
@@ -225,24 +220,26 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     }
 
     /**
-     * Returns the HTML `name` attribute value, or null if unset.
+     * Sets the component's name — see
+     * [`Component.setName`](/api/core/classes/Component#setname) for the shared
+     * intrinsic-name semantics — and, because this is a form control, mirrors it
+     * to the underlying element's HTML `name` attribute (used for form
+     * submission and radio grouping). Passing `null` clears both the stored name
+     * and the attribute. The intrinsic name is inherited (no separate `name`
+     * state); this override only adds the DOM reflection.
      *
-     * @returns The name string, or null.
-     */
-    getName(): string | null {
-        return this._options.name ?? null;
-    }
-
-    /**
-     * Sets the HTML `name` attribute on the underlying input.
-     *
-     * @param value - The name used for form submission and radio grouping.
+     * @param name - The name, or `null` to clear it.
      *
      * @returns This component, for method chaining.
      */
-    setName(value: string): this {
-        this._options.name = value;
-        this.setElementAttribute("name", value);
+    setName(name: string | null): this {
+        super.setName(name);
+
+        if (name == null) {
+            this.removeElementAttribute("name");
+        } else {
+            this.setElementAttribute("name", name);
+        }
 
         return this;
     }
@@ -618,7 +615,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
             el.setAttribute("type", this._options.type);
         }
 
-        if (this._options.name !== undefined) {
+        if (this._options.name != null) {
             el.setAttribute("name", this._options.name);
         }
 
