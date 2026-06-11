@@ -49,6 +49,7 @@ class WindowHeader extends Header {
     private _activeBackgroundImage: string;
     private _titleGlyph:      Glyph | null = null;
     private _titleRow:        Component;
+    private _closeable:       boolean = true;
     private _minimizable:     boolean = true;
     private _maximizable:     boolean = true;
 
@@ -122,7 +123,7 @@ class WindowHeader extends Header {
         const opts = { ...this._defaultOptions, ...options } as WindowHeaderOptions;
 
         if (opts.closeable !== undefined) {
-            this._exitButton.setVisible(opts.closeable);
+            this.setCloseable(opts.closeable);
         }
 
         if (opts.minimizable !== undefined) {
@@ -206,6 +207,31 @@ class WindowHeader extends Header {
         }
 
         return this;
+    }
+
+    /**
+     * Enables or disables the close (exit) button. Disabling greys it out and
+     * stops it firing, rather than hiding it — so a non-closeable window keeps a
+     * full, evenly-spaced button row instead of a gap where the close button was.
+     *
+     * @param value - True to enable the close button, false to disable it.
+     *
+     * @returns This component, for method chaining.
+     */
+    setCloseable(value: boolean): this {
+        this._closeable = value;
+        this._exitButton.setEnabled(value);
+
+        return this;
+    }
+
+    /**
+     * Returns whether the close button is enabled.
+     *
+     * @returns True when the close button is enabled.
+     */
+    isCloseable(): boolean {
+        return this._closeable;
     }
 
     /**

@@ -13,7 +13,9 @@ export { Accordion } from '~/layout/Accordion.js';
 export type { AccordionOptions, AccordionEvent, SectionToggleCallback } from '~/layout/Accordion.js';
 export { AccordionConstraints } from '~/layout/AccordionConstraints.js';
 export { Tab } from '~/layout/Tab.js';
-export type { TabOptions, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign } from '~/layout/Tab.js';
+export type { TabOptions, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign, TabDetachWindowMode } from '~/layout/Tab.js';
+// `TabDragData` now lives in core/DragManager (shared with Window); re-exported here for back-compat.
+export type { TabDragData } from '~/core/DragManager.js';
 export { Border } from '~/layout/Border.js';
 export type { BorderOptions } from '~/layout/Border.js';
 export { BoxLayout } from '~/layout/BoxLayout.js';
