@@ -39,9 +39,13 @@ Glyph.register(angle_left, angle_right, angle_up, angle_down);
 /**
  * String-literal union of the events emitted by {@link Tab}.
  *
+ * `"tabclose"` fires when a tab is closed (carrying the removed content);
+ * `"empty"` fires when the strip loses its last tab by any path — close,
+ * tear-off, or re-dock — and carries no payload.
+ *
  * @category Layouts
  */
-export type TabEvent = "tabclose";
+export type TabEvent = "tabclose" | "empty";
 
 /**
  * How a torn-off tab's floating window hosts its content.
@@ -194,6 +198,8 @@ export interface TabOptions extends LayoutManagerOptions {
      */
     listeners?: {
         tabclose?: (component: Component) => void;
+        /** Fires after the last tab leaves the strip by any path (close, tear-off, re-dock). */
+        empty?: () => void;
     };
 
     /** Tab-button width strategy; defaults to `"equal"`. */
@@ -487,8 +493,9 @@ class TabReorderBar extends Component {
 /**
  * A layout manager that renders a row of tab buttons above the container content area
  * and shows exactly one child component at a time based on the selected tab.
- * Tab button labels are taken from `LayoutConstraints.name` when available,
- * otherwise from the component's ID.
+ * Tab button labels resolve in priority order: the per-placement
+ * `LayoutConstraints.name` override, then the component's intrinsic
+ * [`name`](/api/core/classes/Component#getname), then its ID.
  *
  * @category Layouts
  */
@@ -675,6 +682,10 @@ class Tab extends LayoutManager {
 
         if (options.listeners?.tabclose !== undefined) {
             this.on("tabclose", options.listeners.tabclose);
+        }
+
+        if (options.listeners?.empty !== undefined) {
+            this.on("empty", options.listeners.empty);
         }
 
         if (options.widthMode !== undefined) {
@@ -1890,19 +1901,15 @@ class Tab extends LayoutManager {
      *
      * @param component - The content component for which a tab entry should be created.
      *
-     * @remarks The button label is taken from `LayoutConstraints.name` when available;
-     * otherwise the component's ID is used. When `constraints.closeable` is true, a
+     * @remarks The button label resolves in priority order: the per-placement
+     * `LayoutConstraints.name` override, then the component's intrinsic
+     * [`name`](/api/core/classes/Component#getname), then its ID as a last
+     * resort. When `constraints.closeable` is true, a
      * [`TabCloseButton`](/api/component/button/classes/TabCloseButton) is appended to the wrapper after the toggle button.
      */
     createTab(component: Component): void {
         let constraints = this.getLayoutConstraints(component);
-        let name: string;
-
-        if (constraints && constraints.name) {
-            name = constraints.name;
-        } else {
-            name = component.getId();
-        }
+        const name = constraints?.name ?? component.getName() ?? component.getId();
 
         const entry = this.buildTabEntry(name, constraints);
 
@@ -2965,7 +2972,9 @@ class Tab extends LayoutManager {
      *
      * @param entry - The dragged tab entry.
      * @param detail - The drag event detail (carries the release point).
-     * @param dropped - `true` iff an accepting strip consumed the drop.
+     * @param dropped - `true` when the release landed on a registered drop
+     *   target (whether it accepted or refused the drop); `false` only on a
+     *   release over empty space, which is what tears the tab off.
      */
     private onTabDragEnd(entry: TabEntry, detail: DragEventDetail, dropped: boolean): void {
         const content = entry.component;
@@ -3135,6 +3144,10 @@ class Tab extends LayoutManager {
         this.getContainer()?.scheduleLayout();
         this.syncHostWindowCloseable();
         this.closeHostWindowIfEmpty();
+
+        if (this._tabs.length === 0) {
+            this.emit("empty");
+        }
     }
 
     /**
@@ -3330,15 +3343,26 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Registers a listener for one of this tab layout's events.
+     * Registers a listener for the `"tabclose"` event, which fires after a tab
+     * is closed, receiving the content component that was removed.
      *
-     * @param event - `"tabclose"` fires after a tab is closed, receiving
-     *   the content component that was removed.
-     * @param listener - The callback to invoke when the event fires.
+     * @param event - The `"tabclose"` event.
+     * @param listener - The callback to invoke when a tab is closed.
      *
      * @returns This tab layout, for method chaining.
      */
     on(event: "tabclose", listener: (component: Component) => void): this;
+    /**
+     * Registers a listener for the `"empty"` event, which fires after the strip
+     * loses its last tab by any path (close, tear-off, or re-dock). It carries
+     * no payload — a passive announcement; the subscriber decides what to do.
+     *
+     * @param event - The `"empty"` event.
+     * @param listener - The zero-argument callback to invoke when the strip empties.
+     *
+     * @returns This tab layout, for method chaining.
+     */
+    on(event: "empty", listener: () => void): this;
     on(event: TabEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -3368,6 +3392,7 @@ class Tab extends LayoutManager {
      * @param payload - Forwarded to each listener.
      */
     protected emit(event: "tabclose", component: Component): void;
+    protected emit(event: "empty"): void;
     protected emit(event: TabEvent,   ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
@@ -3416,6 +3441,10 @@ class Tab extends LayoutManager {
         this.getContainer()?.scheduleLayout();
         this.syncHostWindowCloseable();
         this.closeHostWindowIfEmpty();
+
+        if (this._tabs.length === 0) {
+            this.emit("empty");
+        }
     }
 
     /**

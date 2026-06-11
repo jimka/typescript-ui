@@ -287,6 +287,11 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
         reorderIndicator: {
             color: 'rgb(30, 100, 200)',
         },
+        dropzone: {
+            background      : 'rgba(80, 140, 240, 0.10)',
+            border          : 'rgba(80, 140, 240, 0.40)',
+            activeBackground: 'rgba(80, 140, 240, 0.28)',
+        },
     },
     scroll: {
         shadowColor: 'rgba(0, 0, 0, 1)',
