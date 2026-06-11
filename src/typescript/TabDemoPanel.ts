@@ -2,7 +2,7 @@
 
 import { callable, Component } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
-import { Fit, HBox, VBox, TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign } from '@jimka/typescript-ui/layout';
+import { Fit, HBox, VBox, DockRegion, TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign } from '@jimka/typescript-ui/layout';
 import { Text, ComboBox, NumberSpinner } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { TabPanel } from '@jimka/typescript-ui/component/container';
@@ -181,6 +181,34 @@ class TabDemoPanel extends Component {
 
         this.addComponent(dockTarget);
 
+        // --- Edge-drop-to-split region ---
+        // A plain region wrapped by a DockRegion: dragging a tab from either
+        // strip above and dropping on an edge splits the region (wrapping it in a
+        // new Split, or extending a same-axis one); dropping on the centre adds
+        // the tab. The five-zone overlay highlights the band under the cursor.
+        this.addComponent(new Text(
+            "Tip: drag a tab from a strip above onto the region below — drop near an edge to split it, or on the centre to add it as a tab.",
+            { preferredSize: { width: 0, height: 24 } },
+        ));
+
+        this.addComponent(new Text(
+            "Tip: emptying a dropped stack (tear its last tab into a window, re-dock it, or close it) removes the empty stack and collapses the leftover single-pane split.",
+            { preferredSize: { width: 0, height: 24 } },
+        ));
+
+        // Named so a centre-drop, which wraps this region itself as a tab, shows
+        // "Workspace" rather than the region's UUID.
+        const splitRegion = new Component({ preferredSize: { width: 0, height: 220 }, name: "Workspace" });
+        splitRegion.setLayoutManager(new Fit());
+        splitRegion.addComponent(this.buildContent("Drop tabs on my edges"));
+
+        this.addComponent(splitRegion);
+
+        // Constructed for its side effect: DockRegion registers splitRegion as a
+        // drop target with DragManager, whose registry keeps it alive — so the
+        // demo needs no handle (a real consumer would keep one to call destroy()).
+        new DockRegion(splitRegion);
+
         // --- Wire placement controls ---
         sideCombo.on("change", () => {
             this.tabPanel.setTabSide(sideModes[sideCombo.getSelectedIndex()]);
@@ -262,7 +290,10 @@ class TabDemoPanel extends Component {
      * @returns The content component.
      */
     private buildContent(title: string): Component {
-        const panel = new Component({ insets: new Insets(12, 12, 12, 12) });
+        // Intrinsic name travels with the panel: when it is edge/centre-dropped
+        // into a stack or torn off, the tab/window title reads `title` instead
+        // of the component's UUID — no LayoutConstraints.name needed.
+        const panel = new Component({ insets: new Insets(12, 12, 12, 12), name: title });
         panel.setLayoutManager(new Fit());
 
         panel.addComponent(

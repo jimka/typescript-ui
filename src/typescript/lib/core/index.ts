@@ -51,3 +51,4 @@ export type { DragData, DragEventDetail, DragSourceOptions, DropTargetOptions, T
 export { DragGhost } from '~/core/component/DragGhost.js';
 export { DragFeedback } from '~/core/component/DragFeedback.js';
 export { ReorderIndicator } from '~/core/component/ReorderIndicator.js';
+export { DropZoneOverlay } from '~/core/component/DropZoneOverlay.js';
