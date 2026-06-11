@@ -87,12 +87,14 @@ strip fill and chevron colour are themed via the `collapse` tokens — see
 | Method | Purpose |
 | --- | --- |
 | `setDirection(value)` | `'horizontal'` (default) or `'vertical'`. |
-| `setSize(component, px)` | Programmatically set a pane's pixel size. |
+| `setPaneSize(pane, px)` | Seed or override a pane's stored main-axis size in pixels. |
+| `getPaneSize(pane)` | Read a pane's stored main-axis size, or `undefined` when unset. |
 | `setPaneCollapsed(index, value)` | Collapse or restore the pane at `index`. |
 | `isPaneCollapsed(index)` | Whether the pane at `index` is collapsed. |
 
 ## Notes
 
+- A `Split` reports a content-derived **preferred** (and **minimum**) size, like [`HBox`](/layouts/HBox) / [`VBox`](/layouts/VBox): pane sizes summed along the split axis plus the gutter footprint, and the largest pane across it. So a host layout sizes the split to fit its panes (a vertical split prefers the sum of its panes' heights; a horizontal split, the sum of their widths). This is a hint to the host and is separate from the dragged per-pane sizes, which only distribute the split's actual extent.
 - Gutter visuals are themed via the `gutter.background` token — see [Theming](/concepts/theming#theme-keys).
 - Drag interactions disable body pointer events during the drag to suppress text selection.
 - For a non-resizable two-region split, use [`Border`](/layouts/Border) instead.

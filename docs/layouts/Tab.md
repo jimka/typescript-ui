@@ -27,15 +27,26 @@ tabbed.addComponent(networkPanel,   { name: 'Network'  });
 tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 ```
 
-[`TabOptions`](/api/layout/interfaces/TabOptions) accepts a `listeners: { tabclose }` bag declaratively; call `on("tabclose", fn)` for runtime wiring.
+[`TabOptions`](/api/layout/interfaces/TabOptions) accepts a `listeners` bag declaratively; call `on(event, fn)` for runtime wiring.
+
+## Events
+
+| Event | Payload | Fires when |
+| --- | --- | --- |
+| `tabclose` | the removed content component | A tab is **closed** (close button or context-menu Close). |
+| `empty` | none | The strip loses its **last** tab by any path — close, [tear-off, or re-dock](#tear-off-re-dock). |
+
+`empty` is a passive announcement: the `Tab` fires it but does nothing itself, so a strip you place deliberately stays on screen when emptied. A dock layer can subscribe to it to clean up — [`DockRegion`](/layouts/DockRegion) listens on the stacks it creates to remove an emptied stack and collapse a leftover single-pane [`Split`](/layouts/Split). It is orthogonal to `tabclose`: a close-button close fires `tabclose` (with the content) and then, if that was the last tab, `empty` (with none); a tear-off or re-dock fires only `empty` (no `tabclose`, since the tab is relocated, not closed).
 
 ## Per-child constraints
 
 | Field | Purpose |
 | --- | --- |
-| `name` | Tab button label. Defaults to the component's ID. |
+| `name` | Per-placement tab button label override (see resolution below). |
 | `closeable` | When `true`, render a [`TabCloseButton`](/components/TabCloseButton) inside the tab button. |
 | `glyph` | Optional registry glyph name shown leading the tab button's label (dispatched to the button's `setGlyph`). |
+
+A tab button's label resolves in priority order: the per-placement `name` constraint above, then the component's intrinsic [`name`](/api/core/classes/Component#getname) (which travels with it across moves and tear-offs), then its `id` as a last resort. So a component constructed with `{ name: "Console" }` labels its tab automatically — and its torn-off window title too — without any constraint, while the constraint stays available to override the label for a specific placement.
 
 ## Selecting a tab
 
