@@ -152,6 +152,35 @@ class TabDemoPanel extends Component {
 
         this.addComponent(this.tabPanel);
 
+        // Tear-off / re-dock: with reorder enabled, dragging a tab header off the
+        // strip into empty space floats it in a Window, and dragging a tab onto
+        // the second strip below docks its live content there as a new tab.
+        this.addComponent(new Text(
+            "Tip: tear a tab off the top strip → a one-tab window (drag its tab back to re-dock); tear one off the bottom strip → a bare window (Shift-drag its title bar onto a strip to re-dock).",
+            { preferredSize: { width: 0, height: 24 } },
+        ));
+
+        // --- Second strip: a drop target for cross-strip re-dock ---
+        // `detachWindowMode: "bare"` here (vs. the default "strip" on the first
+        // strip) so both tear-off styles are exercisable: tear a tab off the top
+        // strip → a one-tab-strip window; tear one off this strip → a bare window
+        // that Shift-drags back onto a strip.
+        const dockTarget = new TabPanel({
+            preferredSize: { width: 0, height: 180 },
+            tabOptions: {
+                widthMode: "equal",
+                maxWidth: 160,
+                reorderable: true,
+                detachWindowMode: "bare",
+            },
+            tabs: [
+                { label: "Delta",   component: this.buildContent("Delta"),   closeable: true },
+                { label: "Epsilon", component: this.buildContent("Epsilon"), closeable: true },
+            ],
+        });
+
+        this.addComponent(dockTarget);
+
         // --- Wire placement controls ---
         sideCombo.on("change", () => {
             this.tabPanel.setTabSide(sideModes[sideCombo.getSelectedIndex()]);

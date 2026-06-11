@@ -3,7 +3,7 @@
 import { Panel, PanelOptions } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
-import { Tab, TabOptions, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign } from "~/layout/Tab.js";
+import { Tab, TabOptions, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign, TabDetachWindowMode } from "~/layout/Tab.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -420,6 +420,29 @@ class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel
      */
     isTabReorderable(): boolean {
         return this.getTabManager().isReorderable();
+    }
+
+    /**
+     * Sets how a torn-off tab's floating window hosts its content, forwarding to
+     * the wrapped {@link Tab} manager.
+     *
+     * @param mode - `"strip"` for a one-tab strip in the window, `"bare"` for the content directly.
+     *
+     * @returns This panel, for method chaining.
+     */
+    setTabDetachWindowMode(mode: TabDetachWindowMode): this {
+        this.getTabManager().setDetachWindowMode(mode);
+
+        return this;
+    }
+
+    /**
+     * Returns the tear-off window content mode of the wrapped {@link Tab} manager.
+     *
+     * @returns The active {@link TabDetachWindowMode}.
+     */
+    getTabDetachWindowMode(): TabDetachWindowMode {
+        return this.getTabManager().getDetachWindowMode();
     }
 
     /**
