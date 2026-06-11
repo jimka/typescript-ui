@@ -51,6 +51,14 @@ Subclass options inherit every parent field, so any `ComponentOptions` field —
 
 ## Examples
 
+### Naming a panel
+
+The `name` option sets a component's human-readable title — distinct from its unique `id`. It is pure metadata (no DOM, no layout effect) that travels with the component across re-parents, and [`Tab`](/layouts/Tab) reads it to label a tab button (and a torn-off window) when no per-placement override is set.
+
+```typescript
+Component({ name: "Console", layoutManager: Fit() });
+```
+
 ### Styling a label
 
 ```typescript
