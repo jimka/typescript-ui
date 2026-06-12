@@ -1285,12 +1285,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
     /**
      * Returns whether the component participates in layout. A `false` value
-     * (set via {@link Component.setDisplayed | setDisplayed}) maps the element
-     * to CSS `display: none`, so it occupies no space and its parent's layout
-     * manager skips it (see {@link Component.getLaidOutComponents}).
+     * (set via `setDisplayed`) maps the element to CSS `display: none`, so it
+     * occupies no space and its parent's layout manager skips it (see
+     * `getLaidOutComponents`).
      *
      * @returns `true` unless `setDisplayed(false)` was called; never null
-     *   (unlike {@link Component.isVisible}, which is tri-state).
+     *   (unlike `isVisible`, which is tri-state for inherited visibility).
      */
     isDisplayed(): boolean {
         return (this._options.displayed ?? this._defaultOptions.displayed) as boolean;
@@ -3962,13 +3962,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
-     * Returns the child components that participate in layout: {@link
-     * Component.getComponents} filtered to those whose {@link
-     * Component.isDisplayed} is `true`. Layout managers that size or place
-     * children iterate this rather than `getComponents()`, so a `display: none`
-     * child reserves no space. The general `getComponents()` accessor is
-     * unchanged and still returns *all* children for serialization, teardown,
-     * event delegation, and DOM mounting.
+     * Returns the child components that participate in layout: `getComponents`
+     * filtered to those whose `isDisplayed` is `true`. Layout managers that
+     * size or place children iterate this rather than `getComponents()`, so a
+     * `display: none` child reserves no space. The general `getComponents()`
+     * accessor is unchanged and still returns *all* children for serialization,
+     * teardown, event delegation, and DOM mounting.
      *
      * @returns The displayed child components, in order.
      */
