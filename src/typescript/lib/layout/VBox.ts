@@ -46,7 +46,7 @@ class VBox extends BoxLayout {
         }
 
         let perimiterSize = container.getPerimiterSize();
-        let components = container.getComponents();
+        let components = container.getLaidOutComponents();
 
         if (this._mode === "equal") {
             let innerWidth = 0;
@@ -106,7 +106,7 @@ class VBox extends BoxLayout {
         }
 
         let perimiterSize = container.getPerimiterSize();
-        let components = container.getComponents();
+        let components = container.getLaidOutComponents();
 
         if (this._mode === "equal") {
             let innerWidth = 0;
@@ -169,7 +169,7 @@ class VBox extends BoxLayout {
         }
 
         let perimiterSize = container.getPerimiterSize();
-        let components = container.getComponents();
+        let components = container.getLaidOutComponents();
         let width = 0;
         let height = perimiterSize.top + perimiterSize.bottom;
         let widthUnbounded = false;
@@ -254,7 +254,7 @@ class VBox extends BoxLayout {
             return { width: 0, height: 0 };
         }
 
-        const components = container.getComponents();
+        const components = container.getLaidOutComponents();
         if (components.length === 0) {
             return { width: 0, height: 0 };
         }
@@ -307,7 +307,7 @@ class VBox extends BoxLayout {
             return;
         }
 
-        const components      = container.getComponents();
+        const components      = container.getLaidOutComponents();
         const containerInsets = container.getContentInsets();
         const spacing         = this.getComponentSpacing();
 

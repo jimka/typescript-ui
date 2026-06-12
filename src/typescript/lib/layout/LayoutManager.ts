@@ -193,7 +193,7 @@ export abstract class LayoutManager extends BaseObject {
         }
 
         const inner      = container.getInnerSize();
-        const components  = container.getComponents();
+        const components  = container.getLaidOutComponents();
 
         if (!inner || components.length === 0) {
             container.clearContentFrame();

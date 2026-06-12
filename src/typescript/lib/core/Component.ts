@@ -1284,6 +1284,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns whether the component participates in layout. A `false` value
+     * (set via `setDisplayed`) maps the element to CSS `display: none`, so it
+     * occupies no space and its parent's layout manager skips it (see
+     * `getLaidOutComponents`).
+     *
+     * @returns `true` unless `setDisplayed(false)` was called; never null
+     *   (unlike `isVisible`, which is tri-state for inherited visibility).
+     */
+    isDisplayed(): boolean {
+        return (this._options.displayed ?? this._defaultOptions.displayed) as boolean;
+    }
+
+    /**
      * Returns the component's insets (internal spacing used by layout managers).
      *
      * @returns The current Insets instance.
@@ -3949,6 +3962,20 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the child components that participate in layout: `getComponents`
+     * filtered to those whose `isDisplayed` is `true`. Layout managers that
+     * size or place children iterate this rather than `getComponents()`, so a
+     * `display: none` child reserves no space. The general `getComponents()`
+     * accessor is unchanged and still returns *all* children for serialization,
+     * teardown, event delegation, and DOM mounting.
+     *
+     * @returns The displayed child components, in order.
+     */
+    getLaidOutComponents(): Component[] {
+        return this._components.filter(component => component.isDisplayed());
+    }
+
+    /**
      * Returns the layout constraints for a child component from the layout manager.
      *
      * @param component - The child component whose constraints to retrieve.
@@ -4067,7 +4094,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     doChildrenComponentLayouts(): this {
-        let components = this.getComponents();
+        // Lay out only displayed children — a `display: none` subtree takes no
+        // space, so recursing into it is wasted work and leaves stale committed
+        // coordinates that `reserveContentFrame` would otherwise read.
+        let components = this.getLaidOutComponents();
 
         for (let idx = 0; idx < components.length; idx += 1) {
             let component = components[idx];
