@@ -125,6 +125,7 @@ export default defineConfig({
                     { text: 'Tree', link: '/components/Tree' },
                 ] },
                 { text: 'Containers', collapsed: false, items: [
+                    { text: 'TabBar',         link: '/components/TabBar' },
                     { text: 'TabPanel',       link: '/components/TabPanel' },
                     { text: 'AccordionPanel', link: '/components/AccordionPanel' },
                 ] },

@@ -144,6 +144,7 @@ tree.setNodes([
 
 | Component | Purpose |
 | --- | --- |
+| [`TabBar`](/components/TabBar) | Standalone, window-agnostic tab **strip** (buttons, indicator, reorder bar, tools, overflow scroll, tab DnD) the [`Tab`](/api/layout/classes/Tab) layout composes — emits semantic events, owns no content |
 | [`TabPanel`](/components/TabPanel) | [`Panel`](/api/core/classes/Panel) subclass wrapping the [`Tab`](/api/layout/classes/Tab) layout — typed `addTab` / `addLazyTab` / `on("tabclose")` |
 | [`AccordionPanel`](/components/AccordionPanel) | [`Panel`](/api/core/classes/Panel) subclass wrapping the [`Accordion`](/api/layout/classes/Accordion) layout — typed `addSection` / `openSection` / `setSingleOpen` |
 
