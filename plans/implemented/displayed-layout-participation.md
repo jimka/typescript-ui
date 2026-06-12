@@ -86,16 +86,9 @@ The simple-manager migration's load-bearing targets are the general box/grid/flo
 
 **Decision — split the two reads.** Split must read **structural membership** (the `_sizes`/`_collapsed` cleanup diff, the map-key set, the stored-size refill in `recalculateSizes`) from the full `container.getComponents()`, while reading **layout participation** (main-axis size distribution in `computeMainAxisSizes`, pane placement and gutter count in `doLayout`) from the displayed-filtered set. Concretely: keep `getComponents()` for the cleanup loop and the `_sizes`-map bookkeeping; derive a `laidOut = components.filter(c => c.isDisplayed())` (or `getLaidOutComponents()`) for the distribution/placement/gutter-count math so a hidden pane contributes neither a slot nor a gutter. Gutter creation and the gutter↔pane index mapping (`gutterTargetPane`, the `_gutters` array) must align with the **displayed** sequence so a hidden pane in the middle does not leave a dangling gutter. This dual-use split is the central decision of the Split section; do **not** redesign the collapse machinery.
 
-### `Tab` — gate the entry button + active-tab reselection
+### `Tab` — **carved out: delivered by [`extract-tabbar.md`](../extract-tabbar.md)**
 
-`Tab` ([`Tab.ts`](../src/typescript/lib/layout/Tab.ts)) gives each child a `TabEntry` whose `button` (a `ToggleButton`) is built in `buildTabEntry` ([:1735](../src/typescript/lib/layout/Tab.ts#L1735)) and held in the parallel `_tabs` array ([:515](../src/typescript/lib/layout/Tab.ts#L515)), maintained 1:1 with the children. The active tab is funnelled through `onTabPressed` ([:1468](../src/typescript/lib/layout/Tab.ts#L1468)) / `setActiveTabIndex` ([:1512](../src/typescript/lib/layout/Tab.ts#L1512)); the active content is `getComponents()[this._selectedTabIndex]` ([:1658](../src/typescript/lib/layout/Tab.ts#L1658)).
-
-**Decision — gate at entry rendering and active selection, not via a `getComponents()` swap.** Honouring `displayed` on a tab child means:
-1. **Hide that tab's button** in the strip/toolbar — the entry's `button` is suppressed (not rendered / `setDisplayed(false)` on the button) when its content child is not displayed, and the strip's layout/extent math (`tabModeExtent`, the per-entry loops at [:978-1134](../src/typescript/lib/layout/Tab.ts#L978)) skips the hidden entry so the strip reclaims its width.
-2. **Skip it as content** — a hidden tab is never the rendered content.
-3. **Reselect a displayed sibling when the hidden tab was active.** If the child being hidden is the current `_selectedTabIndex`, route a reselection through the existing funnel (`onTabPressed`/`setActiveTabIndex`) to the nearest displayed sibling, so the panel never shows a `display:none` content. Index stability for `_tabs`↔children is preserved (the entry stays in `_tabs`; only its button visibility and active eligibility change).
-
-Keep this scoped: **do not redesign Tab DnD or the reorder/indicator math** — only add the displayed gate to entry/button rendering and the active-tab reselection.
+`Tab`'s displayed-honouring was **deliberately not implemented in this plan.** Honouring `displayed` on a tab child means suppressing that tab's button in the strip (its `_tabs`-iterating width/extent math — `tabModeExtent`, `applyTabWidths`, `predictTabsExtent`, `positionCloseButtons` — must skip the hidden entry) and reselecting a displayed sibling when the hidden tab is active. That is pervasive surgery across ~10 `_tabs`-iterating methods in the single file `extract-tabbar.md` then re-homes into a standalone `TabBar` component. Doing it here would mean doing it twice on moving code, so it is **folded into `extract-tabbar.md`**: the new `TabBar` honours `isDisplayed()` on its entries as part of the extraction. Until that lands, a `Tab`'s content children do not yet drop out of its strip — the one manager (alongside the deliberately-excluded `Card`/`DockRegion`) that does not honour the flag after this plan.
 
 ### `Accordion` — per-section skip of header + wrapper + animation
 
@@ -214,7 +207,7 @@ The deliverable of this step is a per-line decision; the table above is the star
 
 7. **`Split` — dual-use split** ([`Split.ts`](../src/typescript/lib/layout/Split.ts), per *Per-Manager Handling*). Keep `getComponents()` for the `_sizes`/`_collapsed` cleanup diff and map-key bookkeeping in `recalculateSizes` ([:1016](../src/typescript/lib/layout/Split.ts#L1016)); derive an `isDisplayed()`-filtered list for the main-axis distribution (`computeMainAxisSizes` [:942](../src/typescript/lib/layout/Split.ts#L942)), pane placement and gutter count (`doLayout` [:669](../src/typescript/lib/layout/Split.ts#L669)). → verify: hide a middle pane — its slot **and** its gutter vanish, the remaining panes reflow; re-show — the hidden pane returns at the **same dragged size** (the `_sizes` entry survived); `tsc` clean.
 
-8. **`Tab` — entry-button gate + active reselection** ([`Tab.ts`](../src/typescript/lib/layout/Tab.ts), per *Per-Manager Handling*). Suppress the hidden child's `TabEntry.button` in the strip and its extent math; if the hidden child is the active tab, reselect the nearest displayed sibling through `onTabPressed`/`setActiveTabIndex` ([:1468](../src/typescript/lib/layout/Tab.ts#L1468)/[:1512](../src/typescript/lib/layout/Tab.ts#L1512)). Do **not** touch DnD/reorder math. → verify: hide a non-active tab — its button disappears, the strip reclaims the width, the active content is unchanged; hide the active tab — a displayed sibling becomes active and is shown; `tsc` clean.
+8. **`Tab` — CARVED OUT, delivered by [`extract-tabbar.md`](../extract-tabbar.md).** Not implemented in this plan (see the *Tab* note under *Per-Manager Handling*): the strip's `_tabs`-iterating width/extent math is pervasive surgery on a file `extract-tabbar.md` is about to re-home into a `TabBar` component, so the displayed gate is folded into that extraction to avoid implementing it twice on moving code.
 
 9. **`Accordion` — per-section skip** ([`Accordion.ts`](../src/typescript/lib/layout/Accordion.ts), per *Per-Manager Handling*). Gate each index `i` on `components[i].isDisplayed()` in the size-summing loops (`getPreferredSize` [:382](../src/typescript/lib/layout/Accordion.ts#L382), `getMinSize` [:433](../src/typescript/lib/layout/Accordion.ts#L433)) and `doLayout` ([:561](../src/typescript/lib/layout/Accordion.ts#L561)); hide the section's `_headers[i]`/`_panelWrappers[i]` and exclude it from `primeWrapper`'s prime/transition set ([:776](../src/typescript/lib/layout/Accordion.ts#L776)). → verify: hide a section — its header **and** its wrapper height leave the stack (sections below slide up, no reserved gap, no animation for the hidden one); re-show restores it; `tsc` clean.
 
@@ -238,9 +231,10 @@ The deliverable of this step is a per-line decision; the table above is the star
 | Modify | src/typescript/lib/layout/Absolute.ts |
 | Modify | src/typescript/lib/layout/Fit.ts |
 | Modify | src/typescript/lib/layout/Split.ts |
-| Modify | src/typescript/lib/layout/Tab.ts |
 | Modify | src/typescript/lib/layout/Accordion.ts |
-| Modify | src/typescript/lib/component/table/Table.ts |
+| Modify | src/typescript/lib/layout/Table.ts |
+
+(`Tab.ts` is **not** modified here — carved out to [`extract-tabbar.md`](../extract-tabbar.md). The `Table` gating landed in the [`TableLayout`](../src/typescript/lib/layout/Table.ts) part-positioning — a section lays out only when both `isXVisible()` and `isDisplayed()` — leaving its row/cell `getComponents()` structure untouched; the `Table` *component* needed no change.)
 
 (`Card.ts` and `DockRegion.ts` are intentionally **not** modified — out of scope per *Non-Goals*. The `layout/Table.ts` column-width manager is **not** modified — it is row/cell structure, not child-participation. The `component/table/Table.ts` component **is** modified: it must honour `isDisplayed()` on its laid-out children, by a strategy of its choice reconciled with the existing visibility flags. Re-confirm the exact touch points against the step-3 audit before finalising, but the component row stays.)
 
