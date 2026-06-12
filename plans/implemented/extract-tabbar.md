@@ -58,23 +58,32 @@ This keeps each class single-responsibility and means `window-tab-header.md` can
 
 Per [ARCHITECTURE.md](../ARCHITECTURE.md#L11) the event split is by origin. `TabBar`→`Tab` notifications are framework-custom semantic events (they are *not* raw DOM events — the bar has already interpreted a DOM `click`/`drop`/release into a semantic intent), so they use the full `on`/`off`/`emit` + `ListenerBag<TabBarEvent>` shape with a string-literal union. Internally, `TabBar` still wires its own DOM listeners through the `Event` class on `this` (the tab button `"action"`, the toolbar `keydown`, the `mousedown` veto-capture, the `contextmenu` subtree) — those stay exactly as today, just relocated into `TabBar`.
 
-`TabBar` reads the three cross-seam flows ([selection](../src/typescript/lib/layout/Tab.ts#L1468), [reorder](../src/typescript/lib/layout/Tab.ts#L3301), [tear-off](../src/typescript/lib/layout/Tab.ts#L3017)) and emits this confirmed event union:
+`TabBar` reads the three cross-seam flows ([selection](../src/typescript/lib/layout/Tab.ts#L1468), [reorder](../src/typescript/lib/layout/Tab.ts#L3301), [tear-off](../src/typescript/lib/layout/Tab.ts#L3017)) and emits this event union (**refined during implementation** — the plan invited verifying the seam before committing to the set; see the two notes below):
 
 ```
 type TabBarEvent =
     | "tabpressed"       // a tab cell was activated (id) — Tab swaps content, runs lazy-load
-    | "reordered"        // an in-strip reorder committed (fromId, toIndex) — Tab reorders ContentEntry[]
+    | "reordered"        // an in-strip reorder committed (fromId, toIndex) — Tab re-derives ContentEntry order from getEntryIds()
     | "tabclose"         // a cell's ✕ was clicked (id) — Tab removes content + emits its own "tabclose"
     | "dockrequested"    // a foreign tab was dropped here (componentId, slot) — Tab docks the content
-    | "tearoffrequested" // a cell was released over empty space (id, clientX, clientY, forceBare) — Tab opens a Window
-    | "detached"         // a cell was removed because its content docked elsewhere (id) — Tab drops its ContentEntry
-    | "empty";           // the bar lost its last cell — Tab re-emits its own "empty"
+    | "tabdragstart"     // a cell's drag committed (id) — Tab registers its live content in tabDragRegistry
+    | "tearoffrequested" // a cell was released over empty space (id, clientX, clientY, forceBare) — Tab tears off (if its content is ready)
+    | "detached";        // a cell's drag was released onto a target (id) — Tab drops its ContentEntry IFF the content left this container
 ```
 
 **Why these and not the prompt's candidate set.** The prompt floated `tabpressed`/`reorder`/`tearoffrequested`/`backgroundpress`. Reading the flows refined it:
 
 - `backgroundpress` is **dropped**: today's `Tab` has no empty-toolbar-press handler; only `window-tab-header.md` adds one, and it does so by wiring `Event.addListener(this._toolbar, "mousedown", …)` *from Tab* against the bar's element. Post-extraction that becomes a `TabBar`-owned concern; this plan exposes the seam needed (see below) but adds **no** behavior, so no `backgroundpress` event is emitted today. (Noted as a relocation for the follow-up — see *window-tab-header.md relocations*.)
-- The dock/close/detach/empty intents are **added** because they are real cross-seam transitions buried in today's DnD code ([`dropTabHeader`](../src/typescript/lib/layout/Tab.ts#L2936) → `dockComponent`; [`closeTab`](../src/typescript/lib/layout/Tab.ts#L3405); [`onTabDragEnd`](../src/typescript/lib/layout/Tab.ts#L2979) → `removeEntryKeepingContent`; the `"empty"` emit). After the split the *bar* detects them (it owns the DnD) but the *content* must act (re-parent, remove, close the window), so each becomes an event.
+- The dock/close/detach intents are **added** because they are real cross-seam transitions buried in today's DnD code ([`dropTabHeader`](../src/typescript/lib/layout/Tab.ts#L2936) → `dockComponent`; [`closeTab`](../src/typescript/lib/layout/Tab.ts#L3405); [`onTabDragEnd`](../src/typescript/lib/layout/Tab.ts#L2979) → `removeEntryKeepingContent`). After the split the *bar* detects them (it owns the DnD) but the *content* must act (re-parent, remove, close the window), so each becomes an event.
+
+**Two seam refinements discovered while reading the DnD code (both keep the bar content-agnostic):**
+
+- **`tabdragstart` was added, replacing the source-side registry write.** Today [`makeTabDragSource`](../src/typescript/lib/layout/Tab.ts#L2850)'s `onDragStart` registers the live content in the module-level `tabDragRegistry` (keyed by the content's component id) so a *foreign* strip's drop can resolve it; `onTabDragEnd` deletes it. The registry holds a live `Component`, which the bar must not touch. Registering *eagerly* (on materialize) instead of per-drag is **not** behaviour-equivalent — a dock re-registers the same content id in the destination strip, and the source strip's later removal would then delete the destination's fresh entry. So the per-drag timing must be preserved: `TabBar`'s drag-source `onDragStart` (after its own close-button veto) emits `tabdragstart(id)`, and `Tab` synchronously registers its content; `Tab` deletes on the drag-end events. The `componentId` the bar puts on the `TabDragData` comes from a per-`BarEntry` `contentId` *string* (`""` until the content materializes), which `Tab` keeps current via `TabBar.setEntryContentId(id, contentId)` — a string, not a content pointer.
+- **The bar's `"empty"` event was dropped.** A `TabBar` never removes a cell on its own — `createBarEntry` / `removeBarEntry` / `moveBarEntry` are all driven *by `Tab`* (from its `tabclose` / `detached` / `tearoffrequested` handlers). So `Tab` already knows the moment `_contents` hits zero and emits its own `"empty"` directly; a bar→Tab `"empty"` relay would be redundant. (The bar still exposes `getEntryIds()` so `Tab` can observe emptiness, but no event is needed.)
+
+### Event closures are relocated verbatim, not converted to named-method references
+
+[ARCHITECTURE.md §"Listeners must reference a named function"](../ARCHITECTURE.md#L19) forbids inline-arrow listeners. Today's `Tab` wires many **per-entry** closures that capture the specific entry/button — `tabButton.on("action", () => this.onTabPressed(tabButton))`, the per-wrapper `contextmenu` handler, the per-close-button `"action"` — plus a handful of strip-level inline arrows (`keydown`, the scroll-arrow `"action"`s, the `mousedown` veto-capture). Converting the per-entry closures to bare named-method references is **not** mechanically possible without changing the closure model (the `"action"` payload does not carry which button fired), and doing so on the repo's highest-risk file would trade behaviour-preservation for style. This extraction therefore **relocates every event closure verbatim** (the strip-level handlers now self-listen — `Event.addSubtreeListener(this, …)` — because `TabBar` *is* the element `Tab` used to reach into). Bringing the closures into named-method conformance is explicitly deferred (it is pre-existing debt the extraction neither worsens nor is obligated to fix under the surgical-change rule), and is a clean follow-up once parity is proven.
 
 **Where state is shared rather than evented.** Two reads cross the seam synchronously rather than as events: `TabBar.isEntryCloseable(id)` (for `syncHostWindowCloseable`) and `TabBar.getEntryIds()` / `getActiveEntryId()` (for serialization and post-reorder content ordering). These are pull-style accessors, not push events, because `Tab` needs them on demand (during a layout/serialize), not as a notification.
 
@@ -100,7 +109,7 @@ The veto-capture ([`recordMouseTarget`](../src/typescript/lib/layout/Tab.ts#L282
 
 - **`callable()` wrapping + barrel** — `TabBar` exported as `export { TabBar as _TabBar, TabBarCallable as TabBar }`; added to [`component/container/index.ts`](../src/typescript/lib/component/container/index.ts) with `TabBarOptions` / `TabBarEvent`.
 - **Typed setters + `XOptions`** — each migrated bar property keeps its typed setter (`setWidthMode`, `setSide`, `setAlign`, `setOrientation`, `setScrollable`, `setCompact`, `setReorderable`, `setMaxWidth`, `setFixedWidth`, `setUnderBorderFullWidth`, `setTextAlign`) with its cached backing field, now on `TabBar`, and a matching `TabBarOptions` field forwarded in `applyOptions`. `Tab` keeps thin forwarders (`Tab.setSide(s) → this._bar.setSide(s)` + content relayout) so `TabPanel` and `TabOptions` are byte-for-byte unchanged.
-- **`Event` class for DOM, `on`/`off`/`emit` + `ListenerBag` for custom** — as above. Listeners reference named methods (not inline arrows) per [the named-function rule](../ARCHITECTURE.md#L20); today's inline arrows in `attach`/`buildTabEntry`/`makeTabDragSource` are relocated as named private methods on `TabBar` (a behavior-preserving tidy that the rule already required — flag any that were previously inline as now-named).
+- **`Event` class for DOM, `on`/`off`/`emit` + `ListenerBag` for custom** — as above. The `TabBar`→`Tab` notifications use the full `on`/`off`/`emit` + `ListenerBag<TabBarEvent>` shape; the strip's own DOM listeners (the tab button `"action"`, the toolbar `keydown`, the `mousedown` veto-capture, the `contextmenu` subtree) self-listen via `Event.addSubtreeListener(this, …)` since `TabBar` *is* the element `Tab` used to reach into. Per the [the named-function rule](../ARCHITECTURE.md#L19), the per-entry inline-arrow closures are **relocated verbatim, not converted** — see the dedicated decision *Event closures are relocated verbatim* above for why (the closure model can't become bare named-method references without restructuring, and that is deferred to keep this extraction behaviour-preserving).
 - **One element per class** — `TabBar` owns exactly one element (the toolbar); `_clipFrame`/`_toolGroup`/`_indicator`/`_reorderBar`/scroll arrows are child `Component`s it composes (same as today, where they were already separate Components). `TabIndicator` and `TabReorderBar` (today private module classes in Tab.ts) **move to TabBar.ts** as private module classes — they are bar-only.
 - **JSDoc on every public member**, `@category Components`.
 - **No new theme tokens** — the bar reuses every existing `--ts-ui-tab-*` token verbatim.
@@ -114,7 +123,7 @@ The veto-capture ([`recordMouseTarget`](../src/typescript/lib/layout/Tab.ts#L282
 
 /** Events emitted by a TabBar to its content owner. */
 export type TabBarEvent =
-    "tabpressed" | "reordered" | "tabclose" | "dockrequested" | "tearoffrequested" | "detached" | "empty";
+    "tabpressed" | "reordered" | "tabclose" | "dockrequested" | "tabdragstart" | "tearoffrequested" | "detached";
 
 export interface TabBarOptions extends PanelOptions {
     widthMode?: TabWidthMode;
@@ -134,9 +143,9 @@ export interface TabBarOptions extends PanelOptions {
         reordered?:        (fromId: string, toIndex: number) => void;
         tabclose?:         (id: string) => void;
         dockrequested?:    (componentId: string, slot: number) => void;
+        tabdragstart?:     (id: string) => void;
         tearoffrequested?: (id: string, clientX: number, clientY: number, forceBare: boolean) => void;
         detached?:         (id: string) => void;
-        empty?:            () => void;
     };
 }
 
@@ -148,8 +157,12 @@ class TabBar extends Panel<TabBarOptions> {
     removeBarEntry(id: string): this;                 // bar-only teardown (button group, roving, listeners, wrapper)
     getEntryIds(): string[];                          // current order
     getActiveEntryId(): string | null;
-    setActiveEntry(id: string): this;                 // programmatic select (drives button group + roving + indicator)
+    setActiveEntry(id: string): this;                 // programmatic select that funnels through onTabPressed → emits "tabpressed"
+    setActiveVisual(id: string): this;                // visual-only re-select (button state + indicator), no emit/roving — for post-close reselection
     isEntryCloseable(id: string): boolean;
+    getEntryName(id: string): string;                 // the cell's label — Tab reads it for the tear-off window title
+    getEntryButtonId(id: string): string;             // the tab button's id — Tab sets the content panel's aria-labelledby to it
+    setEntryContentId(id: string, contentId: string): this; // owner pushes the content's component id (drag payload + button aria-controls)
     moveBarEntry(id: string, toIndex: number): this;  // used by the owner's dock path
 
     // Layout entry point called by Tab.doLayout with the strip rectangle.
@@ -225,7 +238,7 @@ this._bar.placeStrip(toolbarX, toolbarY, toolbarW, toolbarH);  // BAR — bar la
 
 3. **Migrate bar mechanics** — move `buildTabEntry` (→ `createBarEntry`), `wireComponentAria`'s *button-side* (the `setControls`/`getId` half stays bar; the component-side ARIA stays in `Tab` via an `id→element` callback or is re-wired by `Tab` when content arrives — pick the callback), the whole width/extent math (`stripThickness`, `tabModeExtent`, `applyTabWidths`, `buttonMainExtent`/`buttonCrossExtent`, `computeTabButtonInsets`/`computeToolButtonInsets`, `clampWrapperMain`, `isRotatedText`, `isVertical`), the toolbar-positioning helpers (`syncToolbarOrientation`, `toolGroupMainExtent`, `predictTabsExtent`/`predictedTabExtent`, `computeArrowReserve`, `positionClipFrame`, `applyTabButtonStyles`, `endAlignGap`, `positionToolGroup`, `positionIndicator`, `positionCloseButtons`, `layoutOverflowChrome`/`ensureScrollArrows`/`layoutOverflowArrows`/`hideOverflowArrows`, `clipScroll`/`clipScrollMax`/`setClipScroll`/`refreshScrollArrows`/`scrollStrip`/`revealSelectedIfRequested`), the DnD (`installTabDnD`/`teardownTabDnD`/`makeTabDragSource`/`makeTabDropTarget`/`isTabHeaderDrag`/`dropTabHeader`/`stripId`/`onTabDragEnd`/`updateReorderSlot`/`slotBoundary`/`dropReorder`/`reorderTab`), the context menu (`openTabMenu` + `_contextMenu`), and `onToolbarKeyDown`. Wire all the DOM listeners through `Event.addListener(this, …)` on `TabBar`. → verify: `TabBar.placeStrip` reproduces every position write that `Tab.doLayout` made between toolbar-place and content-place.
 
-4. **Define the event seam** — in the migrated mechanics, replace each cross-seam call with an `emit`: `onTabPressed`→`emit("tabpressed", id)`; `dropReorder`/`reorderTab`→`emit("reordered", fromId, toIndex)` (the bar still does its own `_clipFrame.moveComponent`; `Tab` reorders `ContentEntry[]`); close-button `"action"`→`emit("tabclose", id)`; `dropTabHeader` foreign branch→`emit("dockrequested", componentId, slot)`; `onTabDragEnd` not-dropped→`emit("tearoffrequested", id, x, y, forceBare)`, moved-out→`emit("detached", id)`; last-cell-removed→`emit("empty")`. Add `on`/`off`/`emit` overloads + `ListenerBag<TabBarEvent>`.
+4. **Define the event seam** — in the migrated mechanics, replace each cross-seam call with an `emit`: `onTabPressed`→`emit("tabpressed", id)`; `dropReorder`/`reorderTab`→`emit("reordered", fromId, toIndex)` (the bar still does its own `_clipFrame.moveComponent`; `Tab` reorders `ContentEntry[]`); close-button `"action"`→`emit("tabclose", id)`; `dropTabHeader` foreign branch→`emit("dockrequested", componentId, slot)`; `onTabDragEnd` not-dropped→`emit("tearoffrequested", id, x, y, forceBare)`, dropped→`emit("detached", id)`; drag committed (after the close-button veto)→`emit("tabdragstart", id)`. The bar emits **no** `"empty"` event — it never removes a cell on its own (all removals are owner-driven), so `Tab` emits its own `"empty"` directly when `_contents` hits zero. Add `on`/`off`/`emit` overloads + `ListenerBag<TabBarEvent>`.
 
 5. **Add `TabBar` cell/order accessors** — `getEntryIds`, `getActiveEntryId`, `setActiveEntry`, `isEntryCloseable`, `moveBarEntry`, `removeBarEntry`. These let `Tab` resolve content by id and keep order aligned.
 
