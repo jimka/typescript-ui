@@ -12,6 +12,16 @@
 +------------------------------+
 ```
 
+::: tip Composed from a `TabBar`
+The strip chrome — the toolbar, tab buttons, selection indicator, reorder bar,
+tool group, overflow scrolling, and all tab drag-and-drop — is a standalone,
+window-agnostic [`TabBar`](/components/TabBar) component that `Tab` owns and
+drives. `Tab` itself is the *content* manager (selected panel, lazy-load,
+tear-off, docking) and reacts to the bar's semantic events. This is an internal
+composition: there is no consumer-facing behaviour change, and the `Tab` /
+`TabPanel` surface is unchanged.
+:::
+
 ## Usage
 
 ```typescript
@@ -256,6 +266,7 @@ reuses the `drag.reorderIndicator.color` token.
 ## See also
 
 - [API: Tab](/api/layout/classes/Tab)
+- [`TabBar`](/components/TabBar) — the standalone strip chrome `Tab` composes
 - [`TabDragData`](/api/core/interfaces/TabDragData) — the tear-off / re-dock drag contract
 - [`Card`](/layouts/Card) — same one-at-a-time semantics, no toolbar
 - [`TabCloseButton`](/components/TabCloseButton)
