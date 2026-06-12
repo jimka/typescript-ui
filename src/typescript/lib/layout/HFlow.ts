@@ -182,7 +182,7 @@ class HFlow extends LayoutManager {
         }
 
         const perimiterSize = container.getPerimiterSize();
-        const components = container.getComponents();
+        const components = container.getLaidOutComponents();
         const uniformWidth  = this.isUniformWidth();
         const uniformHeight = this.isUniformHeight();
         const extents = (uniformWidth || uniformHeight) ? this.computeUniformExtents(components) : { width: 0, height: 0 };
@@ -234,7 +234,7 @@ class HFlow extends LayoutManager {
         }
 
         const perimiterSize = container.getPerimiterSize();
-        const components = container.getComponents();
+        const components = container.getLaidOutComponents();
 
         let maxChildMinWidth = 0;
         const heights: number[] = [];
@@ -279,7 +279,7 @@ class HFlow extends LayoutManager {
         }
 
         const perimiterSize = container.getPerimiterSize();
-        const components = container.getComponents();
+        const components = container.getLaidOutComponents();
         const uniformWidth = this.isUniformWidth();
         const extents = uniformWidth ? this.computeUniformExtents(components) : { width: 0, height: 0 };
 
@@ -347,7 +347,7 @@ class HFlow extends LayoutManager {
             return;
         }
 
-        const components  = container.getComponents();
+        const components  = container.getLaidOutComponents();
         const insets      = container.getContentInsets();
         const spacing     = this.getComponentSpacing();
         const lineSpacing = this.getLineSpacing();

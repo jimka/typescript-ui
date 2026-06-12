@@ -103,7 +103,7 @@ class FlowLayout extends LayoutManager {
         let y = 0;
         let rowHeight = 0;
 
-        for (const child of container.getComponents()) {
+        for (const child of container.getLaidOutComponents()) {
             const pref = child.getPreferredSize() ?? { width: 100, height: 24 };
 
             if (x + pref.width > inner.width) {
@@ -121,6 +121,8 @@ class FlowLayout extends LayoutManager {
     }
 }
 ```
+
+A custom `doLayout` iterates [`getLaidOutComponents()`](/api/core/classes/Component#getlaidoutcomponents) — the children filtered to those whose `isDisplayed()` is `true` — rather than `getComponents()`, so a child hidden with `setDisplayed(false)` takes no space and its siblings reflow to fill (mirroring CSS `display: none`). Use `getComponents()` only when you need *every* child regardless of display state (serialization, teardown). A child hidden with `setVisible(false)` is the opposite: it keeps its layout slot and is merely painted out, so it stays in `getLaidOutComponents()`.
 
 `LayoutManager` itself handles:
 
