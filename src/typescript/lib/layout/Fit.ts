@@ -78,7 +78,7 @@ class Fit extends LayoutManager {
     /**
      * Returns the preferred size of the single child component plus the container perimeter.
      *
-     * @returns The preferred `{width, height}`, or `null` if there is no container or no child.
+     * @returns The preferred `{width, height}`, or `null` if there is no container or no displayed child.
      */
     getPreferredSize(): Size | null {
         let container = this.getContainer();
@@ -91,7 +91,10 @@ class Fit extends LayoutManager {
         let outerWidth = perimiterSize.left + perimiterSize.right;
         let outerHeight = perimiterSize.top + perimiterSize.bottom;
 
-        let component = this.getComponent();
+        // Size the displayed child only: a hidden sole child contributes no
+        // size, so the Fit container reports none and its own parent reserves
+        // nothing for it (honouring `displayed`, matching doLayout below).
+        let component = container.getLaidOutComponents()[0] ?? null;
         if (!component) {
             return null;
         }
@@ -110,7 +113,7 @@ class Fit extends LayoutManager {
     /**
      * Returns the minimum size of the single child component plus the container perimeter.
      *
-     * @returns The minimum `{width, height}`, or `null` if there is no container or no child.
+     * @returns The minimum `{width, height}`, or `null` if there is no container or no displayed child.
      */
     getMinSize(): Size | null {
         let container = this.getContainer();
@@ -123,7 +126,10 @@ class Fit extends LayoutManager {
         let outerWidth = perimiterSize.left + perimiterSize.right;
         let outerHeight = perimiterSize.top + perimiterSize.bottom;
 
-        let component = this.getComponent();
+        // Size the displayed child only: a hidden sole child contributes no
+        // size, so the Fit container reports none and its own parent reserves
+        // nothing for it (honouring `displayed`, matching doLayout below).
+        let component = container.getLaidOutComponents()[0] ?? null;
         if (!component) {
             return null;
         }
@@ -142,7 +148,7 @@ class Fit extends LayoutManager {
     /**
      * Returns the maximum size of the single child component plus the container perimeter.
      *
-     * @returns The maximum `{width, height}`, or `null` if there is no container or no child.
+     * @returns The maximum `{width, height}`, or `null` if there is no container or no displayed child.
      */
     getMaxSize(): Size | null {
         let container = this.getContainer();
@@ -155,7 +161,10 @@ class Fit extends LayoutManager {
         let outerWidth = perimiterSize.left + perimiterSize.right;
         let outerHeight = perimiterSize.top + perimiterSize.bottom;
 
-        let component = this.getComponent();
+        // Size the displayed child only: a hidden sole child contributes no
+        // size, so the Fit container reports none and its own parent reserves
+        // nothing for it (honouring `displayed`, matching doLayout below).
+        let component = container.getLaidOutComponents()[0] ?? null;
         if (!component) {
             return null;
         }
