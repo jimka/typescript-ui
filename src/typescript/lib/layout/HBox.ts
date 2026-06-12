@@ -54,7 +54,7 @@ class HBox extends BoxLayout {
         const heights: number[] = [];
         const baselines: Array<number | null> = [];
 
-        for (const component of container.getComponents()) {
+        for (const component of container.getLaidOutComponents()) {
             const size = component.getPreferredSize();
             heights.push(size ? size.height : 0);
             baselines.push(component.getBaseline());
@@ -78,7 +78,7 @@ class HBox extends BoxLayout {
         }
 
         let perimiterSize = container.getPerimiterSize();
-        let components = container.getComponents();
+        let components = container.getLaidOutComponents();
         let width = perimiterSize.left + perimiterSize.right;
 
         const heights: number[] = [];
@@ -140,7 +140,7 @@ class HBox extends BoxLayout {
         }
 
         let perimiterSize = container.getPerimiterSize();
-        let components = container.getComponents();
+        let components = container.getLaidOutComponents();
         let width = perimiterSize.left + perimiterSize.right;
 
         const heights: number[] = [];
@@ -204,7 +204,7 @@ class HBox extends BoxLayout {
         }
 
         let perimiterSize = container.getPerimiterSize();
-        let components = container.getComponents();
+        let components = container.getLaidOutComponents();
         let width = perimiterSize.left + perimiterSize.right;
         let height = 0;
         let widthUnbounded = false;
@@ -289,7 +289,7 @@ class HBox extends BoxLayout {
             return { width: 0, height: 0 };
         }
 
-        const components = container.getComponents();
+        const components = container.getLaidOutComponents();
         if (components.length === 0) {
             return { width: 0, height: 0 };
         }
@@ -342,7 +342,7 @@ class HBox extends BoxLayout {
             return;
         }
 
-        const components      = container.getComponents();
+        const components      = container.getLaidOutComponents();
         const containerInsets = container.getContentInsets();
         const spacing         = this.getComponentSpacing();
 

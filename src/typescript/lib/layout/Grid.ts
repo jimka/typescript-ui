@@ -294,7 +294,7 @@ class Grid extends LayoutManager {
             return;
         }
 
-        let components = container.getComponents();
+        let components = container.getLaidOutComponents();
         let componentCount = components.length;
 
         let rows = 0;
@@ -340,7 +340,7 @@ class Grid extends LayoutManager {
         let outerWidth = perimiterSize.left + perimiterSize.right;
         let outerHeight = perimiterSize.top + perimiterSize.bottom;
 
-        let components = container.getComponents();
+        let components = container.getLaidOutComponents();
 
         let maxCellWidth = 0;
         let maxCellHeight = 0;
@@ -400,7 +400,7 @@ class Grid extends LayoutManager {
         let outerWidth = perimiterSize.left + perimiterSize.right;
         let outerHeight = perimiterSize.top + perimiterSize.bottom;
 
-        let components = container.getComponents();
+        let components = container.getLaidOutComponents();
 
         let maxCellWidth = 0;
         let maxCellHeight = 0;
@@ -461,7 +461,7 @@ class Grid extends LayoutManager {
         let outerWidth = perimiterSize.left + perimiterSize.right;
         let outerHeight = perimiterSize.top + perimiterSize.bottom;
 
-        let components = container.getComponents();
+        let components = container.getLaidOutComponents();
 
         let colRowCount = this.getColRowCount();
         let cols = colRowCount ? colRowCount.width  : 1;
@@ -564,7 +564,7 @@ class Grid extends LayoutManager {
             return { width: 0, height: 0 };
         }
 
-        const components = container.getComponents();
+        const components = container.getLaidOutComponents();
         if (components.length === 0) {
             return { width: 0, height: 0 };
         }
@@ -665,7 +665,7 @@ class Grid extends LayoutManager {
             return;
         }
 
-        let components = container.getComponents();
+        let components = container.getLaidOutComponents();
         let containerInsets = container.getContentInsets();
         let containerSize = container.getInnerSize();
         if (!containerSize) {

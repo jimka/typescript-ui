@@ -113,7 +113,12 @@ class Table extends LayoutManager {
         const body   = container.getBody();
         const footer = container.getFooter();
 
-        if (container.isHeaderVisible() && header) {
+        // A section is laid out only when it is both visible (the Table's own
+        // header/body/footer visibility flag) AND displayed (the core
+        // `setDisplayed` flag). The two are reconciled, not substituted: a
+        // `setDisplayed(false)` part drops out of the layout exactly like a
+        // `setHeaderVisible(false)` one, and the body reflows to reclaim its band.
+        if (container.isHeaderVisible() && header && header.isDisplayed()) {
             // Header cells render their text in the shared px line box, so the
             // row height is that line box plus the cell padding.
             const theme        = ThemeManager.getTheme();
@@ -234,7 +239,7 @@ class Table extends LayoutManager {
             cover.style.height = headerBandHeight + "px";
         }
 
-        if (container.isFooterVisible() && footer) {
+        if (container.isFooterVisible() && footer && footer.isDisplayed()) {
             // Footer cells render their text in the shared px line box, so the
             // row height is that line box plus the cell padding.
             const theme         = ThemeManager.getTheme();
@@ -267,9 +272,9 @@ class Table extends LayoutManager {
             });
         }
 
-        if (container.isBodyVisible() && body) {
-            const headerHeight = container.isHeaderVisible() && header ? header.getHeight() : 0;
-            const footerHeight = container.isFooterVisible() && footer ? footer.getHeight() : 0;
+        if (container.isBodyVisible() && body && body.isDisplayed()) {
+            const headerHeight = container.isHeaderVisible() && header && header.isDisplayed() ? header.getHeight() : 0;
+            const footerHeight = container.isFooterVisible() && footer && footer.isDisplayed() ? footer.getHeight() : 0;
 
             body.setAutoCommitStyle(false);
             body.setX(containerInsets.getLeft());

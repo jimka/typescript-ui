@@ -113,7 +113,7 @@ class Split extends LayoutManager {
             return false;
         }
 
-        const pane = container.getComponents()[index];
+        const pane = container.getLaidOutComponents()[index];
 
         return pane ? (this._collapsed.get(pane) ?? false) : false;
     }
@@ -217,7 +217,7 @@ class Split extends LayoutManager {
             return this;
         }
 
-        const components = container.getComponents();
+        const components = container.getLaidOutComponents();
         const pane       = components[index];
         if (!pane) {
             return this;
@@ -372,7 +372,7 @@ class Split extends LayoutManager {
             return null;
         }
 
-        const components = container.getComponents();
+        const components = container.getLaidOutComponents();
         const perimiter  = container.getPerimiterSize();
         const horizontal = this._direction === "horizontal";
 
@@ -468,7 +468,7 @@ class Split extends LayoutManager {
             return this;
         }
 
-        const pane = container.getComponents()[index];
+        const pane = container.getLaidOutComponents()[index];
         if (!pane) {
             return this;
         }
@@ -494,8 +494,8 @@ class Split extends LayoutManager {
      */
     onDragStart(container: Component, gutter: SplitGutter, position: number) {
         let gutterIdx = this._gutters.indexOf(gutter);
-        let lhs = container.getComponents()[gutterIdx];
-        let rhs = container.getComponents()[gutterIdx + 1];
+        let lhs = container.getLaidOutComponents()[gutterIdx];
+        let rhs = container.getLaidOutComponents()[gutterIdx + 1];
 
         this._dragOriginPointer = position;
 
@@ -527,8 +527,8 @@ class Split extends LayoutManager {
      */
     onDrag(container: Component, gutter: SplitGutter, position: number) {
         let gutterIdx = this._gutters.indexOf(gutter);
-        let lhs = container.getComponents()[gutterIdx];
-        let rhs = container.getComponents()[gutterIdx + 1];
+        let lhs = container.getLaidOutComponents()[gutterIdx];
+        let rhs = container.getLaidOutComponents()[gutterIdx + 1];
 
         const horizontal = this._direction === "horizontal";
         const total      = this._dragOriginLhsSize + this._dragOriginRhsSize;
@@ -612,7 +612,7 @@ class Split extends LayoutManager {
             return { width: 0, height: 0 };
         }
 
-        const components = container.getComponents();
+        const components = container.getLaidOutComponents();
         if (components.length === 0) {
             return { width: 0, height: 0 };
         }
@@ -678,6 +678,11 @@ class Split extends LayoutManager {
             return;
         }
 
+        // The un-inflated inner main extent the displayed panes share — captured
+        // before the overflow inflation below so `computeMainAxisSizes` fills the
+        // true viewport (matching the pre-displayed Σ-stored basis).
+        const innerMain = this._direction === "horizontal" ? containerSize.width : containerSize.height;
+
         // Universal scroll: see HBox.doLayout for the rationale. When the
         // host has marked the corresponding axis as overflowing, grow the
         // working size past the host's inner rect so trailing panes land
@@ -692,7 +697,11 @@ class Split extends LayoutManager {
         }
 
         let element = container.getElement();
-        let components = container.getComponents();
+        // The visible layout is driven by the displayed panes: a non-displayed
+        // pane (and its gutter) drops out entirely, neighbours reflowing to fill.
+        // `recalculateSizes`/`_sizes` bookkeeping below still spans the full child
+        // list, so a hidden pane keeps its stored size for a later restore.
+        let components = container.getLaidOutComponents();
         let containerInsets = container.getContentInsets();
 
         let componentCount = components.length;
@@ -715,7 +724,7 @@ class Split extends LayoutManager {
                 // The chevron toggles whichever neighbour this gutter serves —
                 // its leading pane by default, or a trailing pane that opted to
                 // collapse toward the end.
-                const target = me.gutterTargetPane(gutterIndex, (<Component>container).getComponents());
+                const target = me.gutterTargetPane(gutterIndex, (<Component>container).getLaidOutComponents());
                 if (target >= 0) {
                     me.setPaneCollapsed(target, !me.isPaneCollapsed(target));
                 }
@@ -734,7 +743,7 @@ class Split extends LayoutManager {
 
         const horizontal = this._direction === "horizontal";
         const crossSize  = horizontal ? containerSize.height : containerSize.width;
-        const mainSizes  = this.computeMainAxisSizes(components);
+        const mainSizes  = this.computeMainAxisSizes(components, innerMain);
 
         // Gutters placed this pass (as a strip or a divider); the rest are
         // hidden afterward — e.g. the trailing gutter of a pane collapsed
@@ -936,22 +945,20 @@ class Split extends LayoutManager {
      * panes in proportion to their stored sizes, so the layout always fills the
      * container and the expanded panes keep their relative ratio.
      *
-     * @param components - The container's current child panes.
+     * @param components - The container's laid-out (displayed) child panes;
+     *   non-displayed panes are absent and so neither sized nor gutter-spaced.
+     * @param mainInner - The container's inner main-axis extent in px.
      * @returns A map from pane to its displayed main-axis size (`0` when collapsed).
      */
-    private computeMainAxisSizes(components: Array<Component>): Map<Component, number> {
+    private computeMainAxisSizes(components: Array<Component>, mainInner: number): Map<Component, number> {
         const gutterCount = components.length - 1;
 
-        let available      = 0;   // Σ of all stored sizes (= inner − gutterTotal)
         let expandedStored = 0;
         let strips         = 0;   // collapsed panes (each turns a gutter into a strip)
-        let hidden         = 0;   // gutters hidden by a toward-end collapse
+        let hiddenDividers = 0;   // gutters hidden by a toward-end collapse
 
         for (let idx = 0; idx < components.length; idx += 1) {
             const component = components[idx];
-            const stored    = this._sizes.get(component) ?? 0;
-
-            available += stored;
 
             const collapsed = (this._collapsed.get(component) ?? false) && this.paneServingGutter(idx, components) >= 0;
 
@@ -962,19 +969,26 @@ class Split extends LayoutManager {
                 // the strip, leaving its trailing gutter (when it has one)
                 // hidden — that 4px divider is reclaimed by the expanded panes.
                 if (!this.collapsesTowardStart(this.paneDirection(component)) && idx < gutterCount) {
-                    hidden += 1;
+                    hiddenDividers += 1;
                 }
             } else {
-                expandedStored += stored;
+                expandedStored += this._sizes.get(component) ?? 0;
             }
         }
 
-        // Each collapsed pane's gutter becomes a `COLLAPSE_STRIP_SIZE` strip in
-        // place of the `GUTTER_SIZE` divider it would otherwise be, the pane
-        // itself yields its whole slot, and any hidden divider is reclaimed. The
-        // expanded panes absorb the rest, so panes + strips + visible dividers
-        // still sum to the inner extent.
-        const expandedTotal = Math.max(0, available - strips * (COLLAPSE_STRIP_SIZE - GUTTER_SIZE) + hidden * GUTTER_SIZE);
+        // The expanded panes share the inner main extent net of the GUTTER_SIZE
+        // dividers between displayed panes. Derived from `mainInner` rather than
+        // Σ stored, because a hidden pane keeps its stored size (frozen for a
+        // later restore) yet is absent from `components` — so its slot and gutter
+        // are genuinely reclaimed here, and the expanded panes inflate to fill
+        // via `factor` without `_sizes` being rewritten (preserving the ratio a
+        // re-shown pane returns to). Each collapsed pane's gutter becomes a
+        // `COLLAPSE_STRIP_SIZE` strip in place of its `GUTTER_SIZE` divider, the
+        // pane yields its whole slot, and any toward-end-hidden divider is
+        // reclaimed — so panes + strips + visible dividers still sum to the inner
+        // extent.
+        const available     = Math.max(0, mainInner - this.gutterTotal(components.length));
+        const expandedTotal = Math.max(0, available - strips * (COLLAPSE_STRIP_SIZE - GUTTER_SIZE) + hiddenDividers * GUTTER_SIZE);
         const factor        = expandedStored > 0 ? expandedTotal / expandedStored : 0;
 
         const sizes = new Map<Component, number>();
