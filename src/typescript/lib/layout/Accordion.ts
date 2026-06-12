@@ -392,6 +392,12 @@ class Accordion extends LayoutManager {
         let maxWidth = 0;
 
         for (let i = 0; i < components.length; i++) {
+            // A non-displayed section contributes neither its header nor its
+            // (possibly open) content height to the stack.
+            if (!components[i].isDisplayed()) {
+                continue;
+            }
+
             totalHeight += this._headerHeight;
 
             // openState is populated lazily in doLayout; fall back to the
@@ -443,6 +449,12 @@ class Accordion extends LayoutManager {
         let maxWidth = 0;
 
         for (let i = 0; i < components.length; i++) {
+            // A non-displayed section contributes neither its header nor its
+            // (possibly open) content height to the stack.
+            if (!components[i].isDisplayed()) {
+                continue;
+            }
+
             totalHeight += this._headerHeight;
 
             // openState is populated lazily in doLayout; fall back to the
@@ -545,6 +557,10 @@ class Accordion extends LayoutManager {
         let maxWidth = 0;
 
         for (const component of container.getComponents()) {
+            if (!component.isDisplayed()) {
+                continue;
+            }
+
             const min = component.getMinSize();
             if (min) {
                 maxWidth = Math.max(maxWidth, min.width);
@@ -597,6 +613,20 @@ class Accordion extends LayoutManager {
             const header = this._headers[i];
             const wrapper = this._panelWrappers[i];
             const isOpen = this._openState[i];
+
+            // A non-displayed section drops out of the stack entirely: hide its
+            // header and panel wrapper and don't advance the cursor, so the
+            // sections below slide up to reclaim the space. Re-showing restores
+            // both (setDisplayed is a no-op when already in the target state).
+            if (!component.isDisplayed()) {
+                header.setDisplayed(false);
+                wrapper.setDisplayed(false);
+
+                continue;
+            }
+
+            header.setDisplayed(true);
+            wrapper.setDisplayed(true);
 
             header.setX(insets.getLeft());
             header.setY(y);
@@ -665,11 +695,19 @@ class Accordion extends LayoutManager {
             return 0;
         }
 
-        const headerTotal = components.length * this._headerHeight;
+        let headerTotal = 0;
         let openPreferred = 0;
         let openMin = 0;
 
         for (let i = 0; i < components.length; i++) {
+            // A non-displayed section shows neither its header nor its content,
+            // so it contributes nothing to the height budget.
+            if (!components[i].isDisplayed()) {
+                continue;
+            }
+
+            headerTotal += this._headerHeight;
+
             if (!this._openState[i]) {
                 continue;
             }

@@ -470,6 +470,20 @@ class Border extends LayoutManager {
     }
 
     /**
+     * Resolves a slot component for layout: a non-displayed region component is
+     * treated as an empty slot (`null`), so a `display: none` region reserves no
+     * space and is not placed — the same outcome as removing it from the region.
+     * Every slot read in the size/layout methods routes through this so the
+     * "hidden = absent" rule is uniform.
+     *
+     * @param component - The slot component, or `null` when the region is empty.
+     * @returns The component when present and displayed, otherwise `null`.
+     */
+    private laidOut(component: Component | null): Component | null {
+        return component && component.isDisplayed() ? component : null;
+    }
+
+    /**
      * Computes the preferred size by summing the preferred sizes of all occupied border regions.
      *
      * @returns The preferred `{width, height}` or `null` if no container is attached.
@@ -491,40 +505,47 @@ class Border extends LayoutManager {
         let middleWidth = 0;
         let middleHeight = 0;
 
-        if (this._northComponent) {
-            let size = this._northComponent.getPreferredSize();
+        // A non-displayed region is treated as absent, contributing nothing.
+        const north  = this.laidOut(this._northComponent);
+        const south  = this.laidOut(this._southComponent);
+        const west   = this.laidOut(this._westComponent);
+        const center = this.laidOut(this._centerComponent);
+        const east   = this.laidOut(this._eastComponent);
+
+        if (north) {
+            let size = north.getPreferredSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += this.isRegionCollapsed(Placement.NORTH) ? COLLAPSE_STRIP_SIZE : size.height;
             }
         }
 
-        if (this._southComponent) {
-            let size = this._southComponent.getPreferredSize();
+        if (south) {
+            let size = south.getPreferredSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += this.isRegionCollapsed(Placement.SOUTH) ? COLLAPSE_STRIP_SIZE : size.height;
             }
         }
 
-        if (this._westComponent) {
-            let size = this._westComponent.getPreferredSize();
+        if (west) {
+            let size = west.getPreferredSize();
             if (size) {
                 middleWidth += this.isRegionCollapsed(Placement.WEST) ? COLLAPSE_STRIP_SIZE : size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
 
-        if (this._centerComponent) {
-            let size = this._centerComponent.getPreferredSize();
+        if (center) {
+            let size = center.getPreferredSize();
             if (size) {
                 middleWidth += size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
 
-        if (this._eastComponent) {
-            let size = this._eastComponent.getPreferredSize();
+        if (east) {
+            let size = east.getPreferredSize();
             if (size) {
                 middleWidth += this.isRegionCollapsed(Placement.EAST) ? COLLAPSE_STRIP_SIZE : size.width;
                 middleHeight += Math.max(middleHeight, size.height);
@@ -562,40 +583,47 @@ class Border extends LayoutManager {
         let middleWidth = 0;
         let middleHeight = 0;
 
-        if (this._northComponent) {
-            let size = this._northComponent.getMinSize();
+        // A non-displayed region is treated as absent, contributing nothing.
+        const north  = this.laidOut(this._northComponent);
+        const south  = this.laidOut(this._southComponent);
+        const west   = this.laidOut(this._westComponent);
+        const center = this.laidOut(this._centerComponent);
+        const east   = this.laidOut(this._eastComponent);
+
+        if (north) {
+            let size = north.getMinSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += this.isRegionCollapsed(Placement.NORTH) ? COLLAPSE_STRIP_SIZE : size.height;
             }
         }
 
-        if (this._southComponent) {
-            let size = this._southComponent.getMinSize();
+        if (south) {
+            let size = south.getMinSize();
             if (size) {
                 innerWidth = Math.max(innerWidth, size.width);
                 innerHeight += this.isRegionCollapsed(Placement.SOUTH) ? COLLAPSE_STRIP_SIZE : size.height;
             }
         }
 
-        if (this._westComponent) {
-            let size = this._westComponent.getMinSize();
+        if (west) {
+            let size = west.getMinSize();
             if (size) {
                 middleWidth += this.isRegionCollapsed(Placement.WEST) ? COLLAPSE_STRIP_SIZE : size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
 
-        if (this._centerComponent) {
-            let size = this._centerComponent.getMinSize();
+        if (center) {
+            let size = center.getMinSize();
             if (size) {
                 middleWidth += size.width;
                 middleHeight += Math.max(middleHeight, size.height);
             }
         }
 
-        if (this._eastComponent) {
-            let size = this._eastComponent.getMinSize();
+        if (east) {
+            let size = east.getMinSize();
             if (size) {
                 middleWidth += this.isRegionCollapsed(Placement.EAST) ? COLLAPSE_STRIP_SIZE : size.width;
                 middleHeight += Math.max(middleHeight, size.height);
@@ -635,8 +663,10 @@ class Border extends LayoutManager {
         let outerHeight = perimiterSize.top + perimiterSize.bottom;
 
         const INF = Number.MAX_SAFE_INTEGER;
+        // A non-displayed region resolves to null here (no constraint), not the
+        // INF sentinel — it must not widen/heighten the layout at all.
         const maxOf = (component: Component | null): Size | null =>
-            component ? (component.getMaxSize() ?? { width: INF, height: INF }) : null;
+            this.laidOut(component) ? (component!.getMaxSize() ?? { width: INF, height: INF }) : null;
 
         const north  = maxOf(this._northComponent);
         const south  = maxOf(this._southComponent);
@@ -692,11 +722,13 @@ class Border extends LayoutManager {
             return { width: 0, height: 0 };
         }
 
-        const westMin   = this._westComponent  ?.getMinSize();
-        const centerMin = this._centerComponent?.getMinSize();
-        const eastMin   = this._eastComponent  ?.getMinSize();
-        const northMin  = this._northComponent ?.getMinSize();
-        const southMin  = this._southComponent ?.getMinSize();
+        // A non-displayed region is treated as absent (laidOut → null), so it
+        // contributes no min-size to the total.
+        const westMin   = this.laidOut(this._westComponent)  ?.getMinSize();
+        const centerMin = this.laidOut(this._centerComponent)?.getMinSize();
+        const eastMin   = this.laidOut(this._eastComponent)  ?.getMinSize();
+        const northMin  = this.laidOut(this._northComponent) ?.getMinSize();
+        const southMin  = this.laidOut(this._southComponent) ?.getMinSize();
 
         // Horizontal regions contribute to width; vertical regions contribute
         // to height. Each inter-region gap is added only when both adjacent
@@ -772,6 +804,17 @@ class Border extends LayoutManager {
             containerSize = { width: w, height: h };
         }
 
+        // Resolve every region through laidOut so a non-displayed region is
+        // treated as absent: skipped for placement and excluded from the
+        // adjacent-region gap checks below — the same outcome as an empty slot.
+        // This also keeps the preferred-size throws below unreachable for a
+        // hidden region (its `if` block is skipped entirely).
+        const north  = this.laidOut(this._northComponent);
+        const south  = this.laidOut(this._southComponent);
+        const west   = this.laidOut(this._westComponent);
+        const center = this.laidOut(this._centerComponent);
+        const east   = this.laidOut(this._eastComponent);
+
         let width = containerSize.width;
         let height = containerSize.height;
         let centerX;
@@ -779,13 +822,13 @@ class Border extends LayoutManager {
         let centerWidth;
         let middleHeight;
 
-        if (this._northComponent) {
-            let constraints = this.getLayoutConstraints(this._northComponent);
+        if (north) {
+            let constraints = this.getLayoutConstraints(north);
             if (!constraints) {
                 throw new Error("Unable to determine layout constraints for north component.");
             }
 
-            let preferredSize = this._northComponent.getPreferredSize();
+            let preferredSize = north.getPreferredSize();
             if (!preferredSize) {
                 throw new Error("Unable to determine preferred size for north component.");
             }
@@ -802,18 +845,18 @@ class Border extends LayoutManager {
             // outer edge while collapsed; the centre and gutter use the strip
             // extent (`middleY`) so they grow into the reclaimed space.
             this.placeComponent(
-                this._northComponent,
+                north,
                 northX,
                 northY,
                 northWidth,
                 preferredSize.height + northInsetTop,
                 FillType.BOTH
             );
-            this.applyRegionClip(this._northComponent, Placement.NORTH);
+            this.applyRegionClip(north, Placement.NORTH);
 
             this.updateRegionGutter(Placement.NORTH, northX, northY, northWidth, middleY);
 
-            if (this._westComponent || this._centerComponent || this._eastComponent || this._southComponent) {
+            if (west || center || east || south) {
                 middleY += this._gap;
             }
         } else {
@@ -821,8 +864,8 @@ class Border extends LayoutManager {
         }
 
         middleHeight = height - middleY;
-        if (this._southComponent) {
-            let preferredSize = this._southComponent.getPreferredSize();
+        if (south) {
+            let preferredSize = south.getPreferredSize();
             if (!preferredSize) {
                 throw new Error("Unable to determine preferred size for south component.");
             }
@@ -839,14 +882,14 @@ class Border extends LayoutManager {
             let southFullY = containerInsets.getTop() + height - preferredSize.height;
 
             this.placeComponent(
-                this._southComponent,
+                south,
                 southX,
                 southFullY,
                 width,
                 preferredSize.height,
                 FillType.BOTH
             );
-            this.applyRegionClip(this._southComponent, Placement.SOUTH);
+            this.applyRegionClip(south, Placement.SOUTH);
 
             this.updateRegionGutter(Placement.SOUTH, southX, southY, width, southHeight);
         }
@@ -858,8 +901,8 @@ class Border extends LayoutManager {
         // the trailing buttons).
         let eastPreferredWidth = 0;
         let eastFullWidth = 0;
-        if (this._eastComponent) {
-            let eastPreferred = this._eastComponent.getPreferredSize();
+        if (east) {
+            let eastPreferred = east.getPreferredSize();
             if (!eastPreferred) {
                 throw new Error("Unable to determine preferred size for east component.");
             }
@@ -867,8 +910,8 @@ class Border extends LayoutManager {
             eastPreferredWidth = this.regionExtent(Placement.EAST, eastPreferred.width);
         }
 
-        if (this._westComponent) {
-            let preferredSize = this._westComponent.getPreferredSize();
+        if (west) {
+            let preferredSize = west.getPreferredSize();
             if (!preferredSize) {
                 throw new Error("Unable to determine preferred size for west component.");
             }
@@ -884,18 +927,18 @@ class Border extends LayoutManager {
             let westFullWidth = Math.max(0, Math.min(preferredSize.width, width - eastPreferredWidth));
 
             this.placeComponent(
-                this._westComponent,
+                west,
                 westX,
                 westY,
                 westFullWidth,
                 middleHeight,
                 FillType.BOTH
             );
-            this.applyRegionClip(this._westComponent, Placement.WEST);
+            this.applyRegionClip(west, Placement.WEST);
 
             this.updateRegionGutter(Placement.WEST, westX, westY, westWidth, middleHeight);
 
-            if (this._centerComponent) {
+            if (center) {
                 centerX += this._gap;
             }
         } else {
@@ -904,7 +947,7 @@ class Border extends LayoutManager {
 
         centerWidth = width - centerX;
 
-        if (this._eastComponent) {
+        if (east) {
             centerWidth -= this._gap;
             centerWidth -= eastPreferredWidth;
 
@@ -916,20 +959,20 @@ class Border extends LayoutManager {
             let eastFullX = containerInsets.getLeft() + width - eastFullWidth;
 
             this.placeComponent(
-                this._eastComponent,
+                east,
                 eastFullX,
                 eastY,
                 eastFullWidth,
                 middleHeight,
                 FillType.BOTH
             );
-            this.applyRegionClip(this._eastComponent, Placement.EAST);
+            this.applyRegionClip(east, Placement.EAST);
 
             this.updateRegionGutter(Placement.EAST, eastX, eastY, eastPreferredWidth, middleHeight);
         }
 
-        if (this._centerComponent) {
-            this.placeComponent(this._centerComponent,
+        if (center) {
+            this.placeComponent(center,
                 containerInsets.getLeft() + centerX,
                 containerInsets.getTop() + middleY,
                 centerWidth,

@@ -213,7 +213,7 @@ class Fit extends LayoutManager {
             return { width: 0, height: 0 };
         }
 
-        const component = container.getComponents()[0];
+        const component = container.getLaidOutComponents()[0];
         if (!component) {
             return { width: 0, height: 0 };
         }
@@ -238,7 +238,9 @@ class Fit extends LayoutManager {
             return;
         }
 
-        let components = container.getComponents();
+        // Honour `displayed`: a hidden sole child contributes nothing and a
+        // hidden first-of-two is skipped, so the visible child still fits.
+        let components = container.getLaidOutComponents();
 
         if (components.length > 1) {
             throw new Error("Container contains more then one component.");

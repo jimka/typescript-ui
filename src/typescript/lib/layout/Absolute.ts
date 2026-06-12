@@ -42,7 +42,7 @@ class Absolute extends LayoutManager {
             return;
         }
 
-        const components = container.getComponents();
+        const components = container.getLaidOutComponents();
 
         for (const component of components) {
             const preferredSize = component.getPreferredSize();
