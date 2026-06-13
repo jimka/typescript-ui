@@ -55,7 +55,9 @@ export default defineConfig({
                 ] },
                 { text: 'Core', collapsed: false, items: [
                     { text: 'Body',             link: '/components/Body' },
+                    { text: 'AbstractWindow',   link: '/components/AbstractWindow' },
                     { text: 'Window',           link: '/components/Window' },
+                    { text: 'TabWindow',        link: '/components/TabWindow' },
                     { text: 'Dialog',           link: '/components/Dialog' },
                     { text: 'Drawer',           link: '/components/Drawer' },
                     { text: 'Tooltip',          link: '/components/Tooltip' },
