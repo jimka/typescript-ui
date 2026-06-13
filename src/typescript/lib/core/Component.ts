@@ -111,6 +111,8 @@ export interface ComponentOptions {
     padding?:         Insets;
     backgroundColor?: string;
     backgroundImage?: string;
+    /** CSS `background` shorthand — a color, gradient, or image (all layers). */
+    background?:      string;
     foregroundColor?: string;
     colorScheme?:     string;
     border?:          BorderOptions | string;
@@ -397,6 +399,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.insets          !== undefined) this.setInsets(opts.insets);
         if (opts.padding         !== undefined) this.setPadding(opts.padding);
         if (opts.backgroundColor !== undefined) this.setBackgroundColor(opts.backgroundColor);
+        if (opts.background      !== undefined) this.setBackground(opts.background);
         if (opts.foregroundColor !== undefined) this.setForegroundColor(opts.foregroundColor);
         if (opts.colorScheme     !== undefined) this.setColorScheme(opts.colorScheme);
         this.applyChromeOptions(opts);
@@ -1456,6 +1459,46 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this._options.backgroundColor = undefined;
         this.setElementCSSRule("backgroundColor", null);
+
+        return this;
+    }
+
+    /**
+     * Returns the CSS `background` shorthand value, or null if none is set.
+     *
+     * @returns The CSS background shorthand string, or null.
+     */
+    getBackground(): string | null {
+        return this._options.background ?? null;
+    }
+
+    /**
+     * Sets the CSS `background` shorthand property — a color, gradient, or image
+     * (resetting every background layer). Use {@link clearBackground} to remove.
+     *
+     * @param value - A CSS `background` shorthand string.
+     *
+     * @returns This component, for method chaining.
+     */
+    setBackground(value: string): this {
+        if (this._options.background === value) {
+            return this;
+        }
+
+        this._options.background = value;
+        this.setElementCSSRule("background", value);
+
+        return this;
+    }
+
+    /**
+     * Removes the `background` shorthand CSS property from the component's CSS rule.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearBackground(): this {
+        this._options.background = undefined;
+        this.setElementCSSRule("background", null);
 
         return this;
     }

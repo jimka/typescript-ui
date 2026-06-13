@@ -123,6 +123,15 @@ export const _defaultWindowOptions: Partial<WindowOptions> = {
     constrainToViewport: true,
 };
 
+// z-index for the eight resize handles, lifting them above the window's content
+// layers so the edges and corners stay grabbable even when content paints over
+// the gutter — a TabWindow bar (`barIgnoreParentInsets`) or a Window header
+// (`ignoreParentInsets`) reaches the outer edge, and the layout-manager bar is
+// appended *after* the handles in DOM, so without an explicit z-index it would
+// win hit-testing. 10 sits comfortably above the tab bar's internal chrome
+// (tool group, indicator, scroll-arrow buttons top out at z-index 3).
+const RESIZE_BORDER_Z_INDEX: number = 10;
+
 /**
  * Header-agnostic base for floating, resizable, draggable windows.
  *
@@ -230,6 +239,13 @@ export abstract class AbstractWindow extends Panel<WindowOptions> implements Dis
         this._borderComponents.southeast.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
         this._borderComponents.south.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
         this._borderComponents.southwest.on("drag", (border: WindowBorder, e: MouseEvent) => this.onResize(border, e));
+
+        // Keep the resize handles on top of the window's content (see
+        // RESIZE_BORDER_Z_INDEX) so a bar/header that paints over the gutter does
+        // not steal their edge/corner hit area.
+        for (const border of Object.values(this._borderComponents)) {
+            border.setZIndex(RESIZE_BORDER_Z_INDEX);
+        }
 
         this.setVisible(false);
         // Resizable — size containment unsafe; layout containment scopes reflow to the window subtree.
