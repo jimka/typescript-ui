@@ -463,6 +463,12 @@ class TabBar extends Panel<TabBarOptions> {
     private _dndTeardowns: Array<() => void> = [];
     private _dragMouseTarget: EventTarget | null = null;
 
+    // Teardown for the empty-bar-area window-move trigger (see installMoveTrigger).
+    // Kept OUT of `_dndTeardowns` because that array is swept by teardownTabDnD on
+    // every reorder/first-render install — which would kill the gesture. Drained
+    // only by dispose().
+    private _moveTriggerTeardown: (() => void) | null = null;
+
     // Whether Shift was held at the press that began a tab drag — captured at
     // mousedown (the drag callbacks get no key state) and read at tear-off so the
     // owner can force a bare detach window regardless of its detach mode.
@@ -654,6 +660,8 @@ class TabBar extends Panel<TabBarOptions> {
         }
 
         this.teardownTabDnD();
+        this._moveTriggerTeardown?.();
+        this._moveTriggerTeardown = null;
         this.getElement()?.remove();
 
         return this;
@@ -1043,6 +1051,118 @@ class TabBar extends Panel<TabBarOptions> {
     }
 
     /**
+     * Returns whether an event target lands on the bar's interactive chrome —
+     * a tab wrapper, the tool group, or an overflow scroll-arrow button — as
+     * opposed to the draggable blank area. The tab clip is deliberately NOT
+     * treated as chrome: it spans the whole tab band and its blank remainder
+     * between the last tab and the fixed chrome IS the empty bar area, so
+     * vetoing it would swallow every empty-area gesture.
+     *
+     * @param target - The event target to test.
+     *
+     * @returns `true` when the target is interactive bar chrome.
+     */
+    private isBarChromeTarget(target: EventTarget | null): boolean {
+        if (!(target instanceof Node)) {
+            return false;
+        }
+
+        for (const entry of this._entries) {
+            const wrapperEl = entry.wrapper.getElement();
+
+            if (wrapperEl && wrapperEl.contains(target)) {
+                return true;
+            }
+        }
+
+        const toolGroupEl = this._toolGroup.getElement();
+
+        if (toolGroupEl && toolGroupEl.contains(target)) {
+            return true;
+        }
+
+        const leadArrowEl = this._scrollLeadButton?.getElement() ?? null;
+
+        if (leadArrowEl && leadArrowEl.contains(target)) {
+            return true;
+        }
+
+        const trailArrowEl = this._scrollTrailButton?.getElement() ?? null;
+
+        if (trailArrowEl && trailArrowEl.contains(target)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Installs window-chrome gestures on the strip's blank area: a subtree
+     * `mousedown` invoking `onEmptyPress` (to start a window move) and, when
+     * `onEmptyDoubleClick` is given, a subtree `dblclick` invoking it (to toggle
+     * maximize). Both fire only for a press/click on the bar's empty area — not
+     * on a tab wrapper, the tool group, or a scroll-arrow button (see
+     * `isBarChromeTarget`) — so a host window can drive move and
+     * maximize from the bar's blank space. Shift-modified presses are skipped on
+     * the move trigger (reserved for re-dock gestures).
+     *
+     * Idempotent: any previously-installed trigger is torn down first. The
+     * teardown lives in `_moveTriggerTeardown` (never `_dndTeardowns`, which
+     * is swept on reorder / first-render install) and is drained only by
+     * {@link dispose}.
+     *
+     * @param onEmptyPress - Callback invoked with the originating `mousedown`
+     *   when an empty bar area is pressed.
+     * @param onEmptyDoubleClick - Optional callback invoked with the originating
+     *   `dblclick` when an empty bar area is double-clicked.
+     *
+     * @returns This tab strip, for method chaining.
+     */
+    installMoveTrigger(onEmptyPress: (e: MouseEvent) => void, onEmptyDoubleClick?: (e: MouseEvent) => void): this {
+        this._moveTriggerTeardown?.();
+        this._moveTriggerTeardown = null;
+
+        // Inline-closure handlers (deliberate named-listener deviation, matching
+        // the local recordMouseTarget precedent in installTabDnD): they capture
+        // the callbacks and read the per-event veto neighbourhood live.
+        const onBarMouseDown = (e: MouseEvent): void => {
+            // Shift+press is a re-dock gesture, not a window move.
+            if (e.shiftKey || this.isBarChromeTarget(e.target)) {
+                return;
+            }
+
+            onEmptyPress(e);
+        };
+
+        Event.addSubtreeListener(this, "mousedown", onBarMouseDown);
+
+        const teardowns: Array<() => void> = [
+            (): void => Event.removeSubtreeListener(this, "mousedown", onBarMouseDown),
+        ];
+
+        if (onEmptyDoubleClick) {
+            const onBarDoubleClick = (e: MouseEvent): void => {
+                if (this.isBarChromeTarget(e.target)) {
+                    return;
+                }
+
+                onEmptyDoubleClick(e);
+            };
+
+            Event.addSubtreeListener(this, "dblclick", onBarDoubleClick);
+            teardowns.push((): void => Event.removeSubtreeListener(this, "dblclick", onBarDoubleClick));
+        }
+
+        this._moveTriggerTeardown = (): void => {
+            for (const teardown of teardowns) {
+                teardown();
+            }
+        };
+
+        return this;
+    }
+
+    /**
      * Returns the cell ids in current strip order.
      *
      * @returns A copy of the ordered cell ids.
@@ -1232,14 +1352,10 @@ class TabBar extends Panel<TabBarOptions> {
             closeButton.setZIndex(1);
 
             // Shrink the ✕ glyph to half the hit box, centred — the 16px button
-            // stays the click target while the mark itself reads lighter.
-            const glyph = closeButton.getGlyph();
-
-            if (glyph) {
-                glyph.setPreferredSize(CLOSE_GLYPH_SIZE, CLOSE_GLYPH_SIZE);
-                glyph.setMinSize(CLOSE_GLYPH_SIZE, CLOSE_GLYPH_SIZE);
-                glyph.setMaxSize(CLOSE_GLYPH_SIZE, CLOSE_GLYPH_SIZE);
-            }
+            // stays the click target while the mark itself reads lighter. Pin it
+            // (Glyph.setPreferredSize locks min/max too) so a theme change never
+            // re-tracks the glyph to the title line height and grows it.
+            closeButton.pinGlyphSize(CLOSE_GLYPH_SIZE);
 
             // Overlay it inside the cell rather than enrolling it in the Fit
             // layout (which would stretch it over the whole tab); `layoutChrome`

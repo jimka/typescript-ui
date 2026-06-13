@@ -106,6 +106,13 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
     window: {
         shadow      : '3px 3px 2px rgba(0, 0, 0, 0.4)',
         snapGlow    : '0 0 0 2px rgba(30, 100, 200, 0.7)',
+        control     : {
+            background      : 'linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200))',
+            border          : '1px solid rgb(200, 200, 200)',
+            shadow          : '1px 2px 5px 0 rgba(0, 0, 0, 0.2)',
+            hoverBackground : 'linear-gradient(rgb(252, 252, 252), rgb(220, 220, 220))',
+            activeBackground: 'linear-gradient(rgb(200, 200, 200), rgb(214, 214, 214))',
+        },
     },
     table : {
         header: {

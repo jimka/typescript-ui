@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Window } from "~/core/Window.js";
+import { AbstractWindow } from "~/core/AbstractWindow.js";
 import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
@@ -215,8 +216,8 @@ function nodeFor(component: Component): LayoutNode {
  * @param win - The window to inspect.
  * @returns The content component, or `null`.
  */
-function windowContentOf(win: Window): Component | null {
-    return win.getComponents().find(child => child !== win.getHeader()) ?? null;
+function windowContentOf(win: AbstractWindow): Component | null {
+    return win.getComponents().find(child => !win.isChromeComponent(child)) ?? null;
 }
 
 /**
@@ -226,7 +227,7 @@ function windowContentOf(win: Window): Component | null {
  * @param win - The open window to capture.
  * @returns The window node, or `null`.
  */
-function windowNodeFor(win: Window): WindowNode | null {
+function windowNodeFor(win: AbstractWindow): WindowNode | null {
     const content = windowContentOf(win);
 
     if (!content) {
@@ -236,7 +237,7 @@ function windowNodeFor(win: Window): WindowNode | null {
     return {
         kind:        "window",
         panelId:     panelIdOf(content),
-        header:      String(win.getHeader().getText().getText()),
+        header:      win.getTitle(),
         rect:        win.getRect(),
         state:       win.getWindowState(),
         restoreRect: win.getRestoreRect(),
@@ -300,7 +301,7 @@ function collectLeaves(component: Component, into: Component[]): void {
  * @param factory - Resolves a panel ID to its owning component.
  * @returns The parked leaves, keyed by panel ID.
  */
-function parkLeaves(root: Component, liveWindows: Window[], factory: LayoutFactory): Map<string, Component> {
+function parkLeaves(root: Component, liveWindows: AbstractWindow[], factory: LayoutFactory): Map<string, Component> {
     const leaves: Component[] = [];
 
     collectLeaves(root, leaves);
