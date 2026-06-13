@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentStyleRuleSpec } from "~/core/Component.js";
+import { Component } from "~/core/Component.js";
 import { Button } from "~/component/button/Button.js";
 import { Tab } from "~/layout/Tab.js";
-import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+import {
+    createWindowControlButton,
+    createWindowLeadGlyphButton,
+    setWindowControlsActive,
+} from "~/core/windowControls.js";
 import {
     AbstractWindow,
     WindowOptions,
@@ -81,22 +85,14 @@ class TabWindow extends AbstractWindow {
         this.setLayoutManager(this._tab);
 
         // Chromeless control tools wired to the inherited public window-state
-        // actions, fully painted from the theme's `window.control` tokens so the
-        // look switches live with the theme: flat themes (modern / dark) blend
-        // the controls into the content surface (no border, no shadow), while the
-        // classic theme renders them as standard raised buttons (gradient fill,
-        // border, drop shadow). `background` (shorthand, not `backgroundColor`)
-        // is used because the classic fills are gradients. The 2px insets match
-        // WindowHeader's trailing buttons.
-        const controlButtonStyleRules: ComponentStyleRuleSpec[] = [
-            { suffix: "",                    styles: { background: "var(--ts-ui-window-control-bg)", border: "var(--ts-ui-window-control-border)", boxShadow: "var(--ts-ui-window-control-shadow)" } },
-            { suffix: ":hover:not(:active)", styles: { background: "var(--ts-ui-window-control-hover-bg)" } },
-            { suffix: ":active",             styles: { background: "var(--ts-ui-window-control-active-bg)" } },
-        ];
-
-        this._minTool   = new Button({ glyph: "window-minimize", chromeless: true, styleRules: controlButtonStyleRules, insets: new Insets(2, 2, 2, 2) });
-        this._maxTool   = new Button({ glyph: "window-maximize", chromeless: true, styleRules: controlButtonStyleRules, insets: new Insets(2, 2, 2, 2) });
-        this._closeTool = new Button({ glyph: "xmark",           chromeless: true, styleRules: controlButtonStyleRules, insets: new Insets(2, 2, 2, 2) });
+        // actions, built from the shared window-control factory so the trailing
+        // controls match an ordinary Window's header controls exactly (same
+        // `window.control` theme tokens, same box). The bar later re-sets their
+        // insets to the compact tool inset (see `Tab`/`TabBar`), so the factory's
+        // 2px insets are the standalone default, not the rendered box.
+        this._minTool   = createWindowControlButton("window-minimize");
+        this._maxTool   = createWindowControlButton("window-maximize");
+        this._closeTool = createWindowControlButton("xmark");
 
         this._minTool.on("action",   () => this.toggleMinimize());
         this._maxTool.on("action",   () => this.toggleMaximize());
@@ -108,25 +104,10 @@ class TabWindow extends AbstractWindow {
 
         // Leading window icon at the start of the bar, mirroring the title glyph an
         // ordinary Window shows in its header: an explicit `glyph` option wins, else
-        // the `window-maximize` default (already registered, used by the max control).
-        // Unlike the trailing controls it is purely decorative — a transparent base
-        // background lets the bar surface (focused toolbar fill / blurred gutter fill)
-        // show through in every theme, so it reads as a title icon, not a clickable
-        // button. (When a future menu hangs off this slot, swap in an opaque fill.)
-        // The `1px solid transparent` border is invisible in all themes yet reserves
-        // the same 1px border box the controls' `window.control.border` does (1px wide
-        // across every theme), so the leading slot — which shares the controls' tool
-        // inset policy — lands the exact same box, keeping the icon a true size/inset
-        // peer. The styling is baked into the style rules (CSS) rather than a post-
-        // construct `setBackground`, which would be replayed away by the pre-init
-        // applyStyle cascade. pointer-events:none lets a press fall through to the
-        // window-move trigger.
-        const leadGlyphStyleRules: ComponentStyleRuleSpec[] = [
-            { suffix: "", styles: { background: "transparent", border: "1px solid transparent", boxShadow: "none" } },
-        ];
-
-        this._leadGlyphBtn = new Button({ glyph: this._options.glyph ?? "window-maximize", chromeless: true, styleRules: leadGlyphStyleRules, insets: new Insets(2, 2, 2, 2) });
-        this._leadGlyphBtn.setPointerEvents("none");
+        // the `window-maximize` default. Built from the shared decorative leading-
+        // glyph factory (transparent, pointer-through, control-peer box) so it
+        // matches the header's title icon.
+        this._leadGlyphBtn = createWindowLeadGlyphButton(this._options.glyph ?? "window-maximize");
         this._tab.setBarLeadingWidget(this._leadGlyphBtn);
 
         this.initChrome(options);
@@ -252,19 +233,14 @@ class TabWindow extends AbstractWindow {
     }
 
     /**
-     * Toggles the three control buttons' opaque base background between the themed
-     * window-control token (focused) and `"transparent"` (blurred). The `background`
-     * shorthand resets every layer, so the classic gradient clears on blur too,
-     * leaving the controls' border/shadow and hover/press rules intact.
+     * Flattens (or restores) the three control buttons via the shared
+     * {@link setWindowControlsActive} helper, so a blurred `TabWindow` and a
+     * blurred header `Window` neutralize their controls identically.
      *
      * @param active - True to restore the control fill, false to flatten it.
      */
     private setControlsActive(active: boolean): void {
-        const background = active ? "var(--ts-ui-window-control-bg)" : "transparent";
-
-        for (const button of [this._minTool, this._maxTool, this._closeTool]) {
-            button.setBackground(background);
-        }
+        setWindowControlsActive([this._minTool, this._maxTool, this._closeTool], active);
     }
 
     /**

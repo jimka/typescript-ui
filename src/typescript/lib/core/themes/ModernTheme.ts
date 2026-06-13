@@ -126,6 +126,7 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
             hoverBackground : 'rgb(236, 238, 241)',
             activeBackground: 'rgb(226, 229, 233)',
         },
+        header      : { background: '#eee' },
     },
     table : {
         header: {

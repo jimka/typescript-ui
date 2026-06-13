@@ -113,6 +113,7 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
             hoverBackground : 'linear-gradient(rgb(252, 252, 252), rgb(220, 220, 220))',
             activeBackground: 'linear-gradient(rgb(200, 200, 200), rgb(214, 214, 214))',
         },
+        header      : { background: '#eee' },
     },
     table : {
         header: {
