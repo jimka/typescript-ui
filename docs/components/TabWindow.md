@@ -66,6 +66,7 @@ The window has no `setHeaderText` / `getHeader` — there is no header. The titl
 - **Title** — derived, not set. [`AbstractWindow`](/components/AbstractWindow) exposes a read-only title concept used by serialization; `TabWindow` resolves it from the active tab's label. Switching the active tab changes the title.
 - **Move** — a press on the bar's blank area (not on a tab, a tool, or the scrollable tab clip) starts a window move. This is wired through the [`Tab`](/api/layout/classes/Tab) strip's empty-area move trigger, so a press on a tab still selects it and a press on a control still fires that control.
 - **Minimize / maximize / close** — three chromeless controls pinned to the trailing end of the bar, wired to `toggleMinimize()` / `toggleMaximize()` / `requestClose()`. `minimizable` / `maximizable` toggle their visibility; `closeable` toggles the close control's enabled state.
+- **Focus state** — on blur the whole bar flattens to the unfocused gutter fill (`--ts-ui-gutter-bg`) reaching the window edges, and the three controls flatten with it; refocus restores the themed toolbar fill and the opaque control backgrounds. This mirrors how [`Window`](/components/Window) flattens its header on blur.
 
 ## Non-closeable contract
 
@@ -74,7 +75,6 @@ A non-closeable tab keeps its contract in window form. The strip pushes the ever
 ## Gotchas
 
 - A `TabWindow` is floating chrome, not part of its parent's layout flow — same as [`Window`](/components/Window#gotchas).
-- Double-click-maximize on the bar is **not** wired (it is a header-only gesture on `Window`); maximize a `TabWindow` via its trailing maximize control.
 - Serialization round-trips a torn-off `TabWindow` back to a header [`Window`](/components/Window) on restore — restoring it as a `TabWindow` is out of scope.
 
 ## See also
