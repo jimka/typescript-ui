@@ -610,6 +610,25 @@ class TabBar extends Panel<TabBarOptions> {
     }
 
     /**
+     * Recolors every opaque toolbar surface of the bar — the strip Panel itself,
+     * the tool-group overlay, and (when built) the two scroll-arrow buttons — so a
+     * focus-state swap paints the whole bar uniformly. A recolor only; it does not
+     * relayout.
+     *
+     * @param color - A CSS color string applied to every toolbar surface.
+     *
+     * @returns This tab strip, for method chaining.
+     */
+    setBarSurfaceColor(color: string): this {
+        this.setBackgroundColor(color);
+        this._toolGroup.setBackgroundColor(color);
+        this._scrollLeadButton?.setBackgroundColor(color);
+        this._scrollTrailButton?.setBackgroundColor(color);
+
+        return this;
+    }
+
+    /**
      * Raw-appends the chrome overlays (clip frame, tool group, indicator, reorder
      * bar) into the strip element, wires the toolbar keyboard handler, and
      * performs the deferred drag-reorder install. Runs once, at first render —
@@ -2004,8 +2023,10 @@ class TabBar extends Panel<TabBarOptions> {
      * @param endGap - The leading gap that trailing-aligns `"end"` tabs (0 otherwise).
      * @param thickness - The strip's cross-axis thickness in px.
      * @param mainInner - The strip's main-axis inner extent in px.
+     * @param crossLead - The bar's leading cross-axis inset (0 unless the bar absorbed a parent inset).
+     * @param mainLead - The bar's leading main-axis inset (0 unless the bar absorbed a parent inset).
      */
-    private positionClipFrame(toolExtent: number, arrowReserve: number, endGap: number, thickness: number, mainInner: number): void {
+    private positionClipFrame(toolExtent: number, arrowReserve: number, endGap: number, thickness: number, mainInner: number, crossLead: number, mainLead: number): void {
         const toolsLead = this._align === "end";
         const leadChrome = (toolsLead ? toolExtent : 0) + arrowReserve;
         const trailChrome = (toolsLead ? 0 : toolExtent) + arrowReserve;
@@ -2013,14 +2034,14 @@ class TabBar extends Panel<TabBarOptions> {
         const leadInset = endGap;
 
         if (this.isVertical()) {
-            this._tabClip.setX(0);
-            this._tabClip.setY(leadChrome);
+            this._tabClip.setX(crossLead);
+            this._tabClip.setY(leadChrome + mainLead);
             this._tabClip.setWidth(thickness);
             this._tabClip.setHeight(mainSize);
             this._tabClip.setInsets(new Insets(leadInset, 0, 0, 0));
         } else {
-            this._tabClip.setX(leadChrome);
-            this._tabClip.setY(0);
+            this._tabClip.setX(leadChrome + mainLead);
+            this._tabClip.setY(crossLead);
             this._tabClip.setWidth(mainSize);
             this._tabClip.setHeight(thickness);
             this._tabClip.setInsets(new Insets(0, 0, 0, leadInset));
@@ -2092,8 +2113,10 @@ class TabBar extends Panel<TabBarOptions> {
      * @param mainInner - The strip's main-axis inner extent in px.
      * @param toolExtent - The tool-group main extent in px.
      * @param thickness - The strip's cross-axis thickness in px.
+     * @param crossLead - The bar's leading cross-axis inset (0 unless the bar absorbed a parent inset).
+     * @param mainLead - The bar's leading main-axis inset (0 unless the bar absorbed a parent inset).
      */
-    private positionToolGroup(mainInner: number, toolExtent: number, thickness: number): void {
+    private positionToolGroup(mainInner: number, toolExtent: number, thickness: number, crossLead: number, mainLead: number): void {
         if (this._tools.length === 0 || toolExtent <= 0) {
             this._toolGroup.setVisible(false);
 
@@ -2102,16 +2125,16 @@ class TabBar extends Panel<TabBarOptions> {
 
         this._toolGroup.setVisible(true);
 
-        const mainPos = this._align === "end" ? 0 : mainInner - toolExtent;
+        const mainPos = (this._align === "end" ? 0 : mainInner - toolExtent) + mainLead;
 
         if (this.isVertical()) {
-            this._toolGroup.setX(0);
+            this._toolGroup.setX(crossLead);
             this._toolGroup.setY(mainPos);
             this._toolGroup.setWidth(thickness);
             this._toolGroup.setHeight(toolExtent);
         } else {
             this._toolGroup.setX(mainPos);
-            this._toolGroup.setY(0);
+            this._toolGroup.setY(crossLead);
             this._toolGroup.setWidth(toolExtent);
             this._toolGroup.setHeight(thickness);
         }
@@ -2185,12 +2208,14 @@ class TabBar extends Panel<TabBarOptions> {
      * @param toolExtent - The reserved tool-group main extent in px.
      * @param thickness - The strip's cross-axis thickness in px.
      * @param arrowReserve - The per-end scroll-arrow gutter in px (0 when not overflowing).
+     * @param crossLead - The bar's leading cross-axis inset (0 unless the bar absorbed a parent inset).
+     * @param mainLead - The bar's leading main-axis inset (0 unless the bar absorbed a parent inset).
      */
-    private layoutOverflowChrome(mainInner: number, toolExtent: number, thickness: number, arrowReserve: number): void {
+    private layoutOverflowChrome(mainInner: number, toolExtent: number, thickness: number, arrowReserve: number, crossLead: number, mainLead: number): void {
         this.setOverflow("hidden");
 
         if (this._scrollable && arrowReserve > 0) {
-            this.layoutOverflowArrows(mainInner, toolExtent, thickness, arrowReserve);
+            this.layoutOverflowArrows(mainInner, toolExtent, thickness, arrowReserve, crossLead, mainLead);
         } else {
             this.hideOverflowArrows();
         }
@@ -2242,8 +2267,10 @@ class TabBar extends Panel<TabBarOptions> {
      * @param toolExtent - The reserved tool-group main extent in px.
      * @param thickness - The strip's cross-axis thickness in px.
      * @param arrowReserve - The per-end arrow gutter (the arrows' main-axis size) in px.
+     * @param crossLead - The bar's leading cross-axis inset (0 unless the bar absorbed a parent inset).
+     * @param mainLead - The bar's leading main-axis inset (0 unless the bar absorbed a parent inset).
      */
-    private layoutOverflowArrows(mainInner: number, toolExtent: number, thickness: number, arrowReserve: number): void {
+    private layoutOverflowArrows(mainInner: number, toolExtent: number, thickness: number, arrowReserve: number, crossLead: number, mainLead: number): void {
         this.ensureScrollArrows();
 
         const lead = this._scrollLeadButton as Button;
@@ -2265,21 +2292,21 @@ class TabBar extends Panel<TabBarOptions> {
         // excludes the tool-group slot: tools trail the tabs in `"start"`
         // alignment and lead them in `"end"` alignment.
         const toolsLead = this._align === "end";
-        const leadPos = toolsLead ? toolExtent : 0;
-        const trailPos = (toolsLead ? mainInner : mainInner - toolExtent) - arrowReserve;
+        const leadPos = (toolsLead ? toolExtent : 0) + mainLead;
+        const trailPos = (toolsLead ? mainInner : mainInner - toolExtent) - arrowReserve + mainLead;
 
         for (const button of [lead, trail]) {
             if (vertical) {
                 // Pin the main-axis (height) to the gutter; fill the thickness.
                 button.setMinSize(0, arrowReserve);
                 button.setMaxSize(Number.MAX_VALUE, arrowReserve);
-                button.setX(0);
+                button.setX(crossLead);
                 button.setWidth(thickness);
                 button.setHeight(arrowReserve);
             } else {
                 button.setMinSize(arrowReserve, 0);
                 button.setMaxSize(arrowReserve, Number.MAX_VALUE);
-                button.setY(0);
+                button.setY(crossLead);
                 button.setHeight(thickness);
                 button.setWidth(arrowReserve);
             }
@@ -2476,13 +2503,25 @@ class TabBar extends Panel<TabBarOptions> {
      * selected tab, then positions the tool group, indicator, close overlays, and
      * overflow arrows.
      *
-     * @param width - The strip's box width in px (== inner width; insets are 0).
+     * @param width - The strip's box width in px (== outer width).
      * @param height - The strip's box height in px.
      */
     private layoutChrome(width: number, height: number): void {
+        // The bar may carry per-side insets (the parent inset it absorbed when
+        // `barIgnoreParentInsets` grew it to the container's outer edge). Derive
+        // the leading offsets from the bar's own content frame so the
+        // hand-positioned chrome lands within it; with zero insets (the default)
+        // every offset is 0 and this reduces to the original placement.
+        const ci = this.getContentInsets();
+        const vertical = this.isVertical();
+        const crossLead = vertical ? ci.getLeft() : ci.getTop();
+        const mainLead = vertical ? ci.getTop() : ci.getLeft();
+        const mainTrail = vertical ? ci.getBottom() : ci.getRight();
+
         const toolExtent = this._tools.length > 0 ? this.toolGroupMainExtent() : 0;
         const thickness = this.stripThickness();
-        const mainInner = this.isVertical() ? height : width;
+        const mainOuter = vertical ? height : width;
+        const mainInner = mainOuter - mainLead - mainTrail;
 
         // Place the clip frame between the tool slot and — when a scrollable strip
         // is overflowing — a scroll-arrow gutter at each end, so the tabs lay out
@@ -2492,7 +2531,7 @@ class TabBar extends Panel<TabBarOptions> {
         const arrowReserve = this.computeArrowReserve(mainInner, toolExtent);
         const available = mainInner - toolExtent - 2 * arrowReserve;
         const endGap = this.endAlignGap(available);
-        this.positionClipFrame(toolExtent, arrowReserve, endGap, thickness, mainInner);
+        this.positionClipFrame(toolExtent, arrowReserve, endGap, thickness, mainInner, crossLead, mainLead);
 
         this.applyTabWidths(available);
         this._tabClip.doLayout();
@@ -2502,10 +2541,10 @@ class TabBar extends Panel<TabBarOptions> {
         // a same-pass width change. No relayout: native scroll shifts the content.
         this.revealSelectedIfRequested();
 
-        this.positionToolGroup(mainInner, toolExtent, thickness);
+        this.positionToolGroup(mainInner, toolExtent, thickness, crossLead, mainLead);
         this.positionIndicator();
         this.positionCloseButtons();
-        this.layoutOverflowChrome(mainInner, toolExtent, thickness, arrowReserve);
+        this.layoutOverflowChrome(mainInner, toolExtent, thickness, arrowReserve, crossLead, mainLead);
     }
 
     /**

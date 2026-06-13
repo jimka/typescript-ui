@@ -71,7 +71,7 @@ class TabWindow extends AbstractWindow {
     constructor(options?: WindowOptions) {
         super(options);
 
-        this._tab = new Tab({ reorderable: true, widthMode: "fixed", textAlign: "start", compact: true });
+        this._tab = new Tab({ reorderable: true, widthMode: "fixed", textAlign: "start", compact: true, barIgnoreParentInsets: true });
 
         // This strip is the window's body, so it closes the window when emptied
         // (the last tab dragged out or closed) — the same contract the legacy
@@ -197,13 +197,35 @@ class TabWindow extends AbstractWindow {
     }
 
     /**
-     * No-op: the {@link TabBar} paints its own background and active styling, so
-     * there is no separate active/inactive chrome paint for a `TabWindow`.
+     * Swaps the tab bar between the focused themed toolbar fill and the flat
+     * unfocused gutter fill, then neutralizes (or restores) the control buttons,
+     * so a blurred `TabWindow` flattens like a standard {@link Window} header.
+     * Both fills are passed as CSS-var strings so a live theme change tracks.
      *
-     * @param _active - True when this window is the active layer (unused).
+     * @param active - True when this window is the active layer.
      */
-    protected paintActive(_active: boolean): void {
-        // Intentionally empty — see method JSDoc.
+    protected paintActive(active: boolean): void {
+        this._tab.setBarBackgroundColor(
+            active ? "var(--ts-ui-tab-toolbar-bg, #eee)" : "var(--ts-ui-gutter-bg, rgb(200, 200, 200))"
+        );
+
+        this.setControlsActive(active);
+    }
+
+    /**
+     * Toggles the three control buttons' opaque base background between the themed
+     * window-control token (focused) and `"transparent"` (blurred). The `background`
+     * shorthand resets every layer, so the classic gradient clears on blur too,
+     * leaving the controls' border/shadow and hover/press rules intact.
+     *
+     * @param active - True to restore the control fill, false to flatten it.
+     */
+    private setControlsActive(active: boolean): void {
+        const background = active ? "var(--ts-ui-window-control-bg)" : "transparent";
+
+        for (const button of [this._minTool, this._maxTool, this._closeTool]) {
+            button.setBackground(background);
+        }
     }
 
     /**

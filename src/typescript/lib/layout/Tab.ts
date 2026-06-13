@@ -3,6 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Size } from "~/primitive/Size.js";
+import { Insets } from "~/primitive/Insets.js";
 import { Component } from "~/core/Component.js";
 import { Window } from "~/core/Window.js";
 import { TabWindow } from "~/core/TabWindow.js";
@@ -185,6 +186,14 @@ export interface TabOptions extends LayoutManagerOptions {
     reorderable?: boolean;
 
     /**
+     * When true, the tab bar extends to the container's outer edges (ignoring
+     * the container's content insets) while the tab content stays inset; the bar
+     * absorbs the parent inset as its own inset so its chrome stays flush with the
+     * content. Mirrors a Border NORTH region's `ignoreParentInsets`. Defaults to false.
+     */
+    barIgnoreParentInsets?: boolean;
+
+    /**
      * How a torn-off tab's floating window hosts its content — a one-tab strip
      * (`"strip"`, the default) or the bare content (`"bare"`). Defaults to
      * `"strip"`. See {@link TabDetachWindowMode}.
@@ -272,6 +281,10 @@ class Tab extends LayoutManager {
     // selection changes (not on every relayout, e.g. window resize).
     private _lastFadedTabIndex: number = -1;
     private _listeners: ListenerBag<TabEvent> = new ListenerBag<TabEvent>();
+
+    // When true, doLayout grows the bar to the container's outer edges and hands
+    // it the absorbed parent inset as its own inset; the content stays inset.
+    private _barIgnoreParentInsets: boolean = false;
 
     // How a torn-off tab's window hosts its content — consulted at tear-off time.
     private _detachWindowMode: TabDetachWindowMode = "strip";
@@ -364,6 +377,10 @@ class Tab extends LayoutManager {
 
         if (options.reorderable !== undefined) {
             this.setReorderable(options.reorderable);
+        }
+
+        if (options.barIgnoreParentInsets !== undefined) {
+            this.setBarIgnoreParentInsets(options.barIgnoreParentInsets);
         }
 
         if (options.detachWindowMode !== undefined) {
@@ -655,6 +672,32 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Toggles whether the tab bar extends to the container's outer edges,
+     * absorbing the container's content inset as the bar's own inset while the
+     * content stays inset, then re-lays out.
+     *
+     * @param value - `true` to grow the bar to the outer edges, `false` to keep it inset.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setBarIgnoreParentInsets(value: boolean): this {
+        this._barIgnoreParentInsets = value;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns whether the tab bar extends to the container's outer edges.
+     *
+     * @returns `true` when the bar ignores the container's content insets.
+     */
+    isBarIgnoreParentInsets(): boolean {
+        return this._barIgnoreParentInsets;
+    }
+
+    /**
      * Sets how a torn-off tab's floating window hosts its content. The mode is
      * consulted at the next tear-off, so this just caches the value — no layout
      * work, unlike {@link setReorderable}.
@@ -722,6 +765,20 @@ class Tab extends LayoutManager {
         this._bar.removeTool(button);
 
         this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Recolors every opaque toolbar surface of the bar, forwarding to
+     * {@link TabBar.setBarSurfaceColor}. A recolor only — it does not relayout.
+     *
+     * @param color - A CSS color string applied to every toolbar surface.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setBarBackgroundColor(color: string): this {
+        this._bar.setBarSurfaceColor(color);
 
         return this;
     }
@@ -1407,6 +1464,55 @@ class Tab extends LayoutManager {
                 toolbarH = cs.height;
                 contentW = cs.width - thickness;
                 break;
+        }
+
+        // When the bar ignores the parent insets, grow its rect to the
+        // container's outer edges and hand it the absorbed parent inset as its
+        // own inset (the content-facing edge stays 0), so `layoutChrome` keeps
+        // its chrome flush with the content. The content rects are untouched.
+        // When false, the bar's insets stay cleared to zero so `layoutChrome`'s
+        // per-side offsets are all 0 — the original layout byte-for-byte.
+        if (this._barIgnoreParentInsets) {
+            const L = containerInsets.getLeft();
+            const T = containerInsets.getTop();
+            const R = containerInsets.getRight();
+            const B = containerInsets.getBottom();
+
+            switch (this._bar.getSide()) {
+                case "north":
+                    toolbarX = 0;
+                    toolbarY = 0;
+                    toolbarW = cs.width + L + R;
+                    toolbarH = thickness + T;
+                    this._bar.setInsets(new Insets(T, R, 0, L));
+                    break;
+
+                case "south":
+                    toolbarX = 0;
+                    toolbarY = baseY + cs.height - thickness;
+                    toolbarW = cs.width + L + R;
+                    toolbarH = thickness + B;
+                    this._bar.setInsets(new Insets(0, R, B, L));
+                    break;
+
+                case "west":
+                    toolbarX = 0;
+                    toolbarY = 0;
+                    toolbarW = thickness + L;
+                    toolbarH = cs.height + T + B;
+                    this._bar.setInsets(new Insets(T, 0, B, L));
+                    break;
+
+                case "east":
+                    toolbarX = baseX + cs.width - thickness;
+                    toolbarY = 0;
+                    toolbarW = thickness + R;
+                    toolbarH = cs.height + T + B;
+                    this._bar.setInsets(new Insets(T, R, B, 0));
+                    break;
+            }
+        } else {
+            this._bar.clearInsets();
         }
 
         this._bar.placeStrip(toolbarX, toolbarY, toolbarW, toolbarH);
