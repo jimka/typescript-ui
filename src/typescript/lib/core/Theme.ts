@@ -256,6 +256,19 @@ export interface Theme {
         shadow      : string;
         snapGlow    : string;
         minDockWidth: string;
+        /**
+         * Window control buttons (minimize / maximize / close) when they live
+         * in a {@link TabWindow}'s tab bar rather than a `WindowHeader`. Flat
+         * themes blend them into the content surface; the classic theme renders
+         * them as standard raised buttons.
+         */
+        control: {
+            background      : string;
+            border          : string;
+            shadow          : string;
+            hoverBackground : string;
+            activeBackground: string;
+        };
     };
 
     header: {
@@ -752,6 +765,11 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-window-shadow'                    : theme.window.shadow,
         '--ts-ui-window-snap-glow'                 : theme.window.snapGlow,
         '--ts-ui-window-min-dock-width'            : theme.window.minDockWidth,
+        '--ts-ui-window-control-bg'                : theme.window.control.background,
+        '--ts-ui-window-control-border'            : theme.window.control.border,
+        '--ts-ui-window-control-shadow'            : theme.window.control.shadow,
+        '--ts-ui-window-control-hover-bg'          : theme.window.control.hoverBackground,
+        '--ts-ui-window-control-active-bg'         : theme.window.control.activeBackground,
         '--ts-ui-header-font-size'                 : theme.header.font.size,
         '--ts-ui-table-header-bg'                  : theme.table.header.background,
         '--ts-ui-table-header-border'              : theme.table.header.border,

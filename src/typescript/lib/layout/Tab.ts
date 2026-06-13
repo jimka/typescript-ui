@@ -4,8 +4,9 @@ import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Size } from "~/primitive/Size.js";
 import { Component } from "~/core/Component.js";
-import { Panel } from "~/core/Panel.js";
 import { Window } from "~/core/Window.js";
+import { TabWindow } from "~/core/TabWindow.js";
+import { AbstractWindow } from "~/core/AbstractWindow.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Animation } from "~/core/Animation.js";
 import { FillType } from "~/layout/FillType.js";
@@ -678,6 +679,24 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Flags this strip to close its host {@link AbstractWindow} once it empties
+     * (its last tab is dragged out or closed). Set by a host window that builds a
+     * `Tab` as its own layout manager — the same flag the auto-created tear-off
+     * strip carries — so `hostWindow`/`closeHostWindowIfEmpty` resolve and
+     * close that window. Caches the value; no layout work, like
+     * {@link setDetachWindowMode}.
+     *
+     * @param value - True to close the host window when the strip empties.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setCloseHostWindowWhenEmpty(value: boolean): this {
+        this._closeHostWindowWhenEmpty = value;
+
+        return this;
+    }
+
+    /**
      * Adds a tool button at the far end of the strip, opposite the tab buttons.
      *
      * @param button - The tool component to add.
@@ -703,6 +722,27 @@ class Tab extends LayoutManager {
         this._bar.removeTool(button);
 
         this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Installs empty-bar-area window-chrome gestures on the underlying strip,
+     * forwarding to {@link TabBar.installMoveTrigger}. A press on the bar's blank
+     * area (not on a tab, a tool, or a scroll arrow) invokes `onEmptyPress`; an
+     * optional `onEmptyDoubleClick` fires on a double-click of the same area. A
+     * host {@link AbstractWindow} uses these to move and maximize from the bar.
+     * Mirrors the {@link Tab.addTool} forwarding idiom.
+     *
+     * @param onEmptyPress - Callback invoked with the originating `mousedown`
+     *   when an empty bar area is pressed.
+     * @param onEmptyDoubleClick - Optional callback invoked on a double-click of
+     *   the empty bar area.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    installBarMoveTrigger(onEmptyPress: (e: MouseEvent) => void, onEmptyDoubleClick?: (e: MouseEvent) => void): this {
+        this._bar.installMoveTrigger(onEmptyPress, onEmptyDoubleClick);
 
         return this;
     }
@@ -1439,6 +1479,19 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Returns the display label of the currently active tab, or `null` when the
+     * strip is empty. A read-only accessor over the bar's active cell, used by a
+     * host {@link AbstractWindow} to derive its title from the active tab.
+     *
+     * @returns The active tab's label, or `null` when there is no active tab.
+     */
+    getActiveTabLabel(): string | null {
+        const id = this._bar.getActiveEntryId();
+
+        return id === null ? null : this._bar.getEntryName(id);
+    }
+
+    /**
      * Activates the tab at the given index programmatically — clamped to the
      * valid range — driving the same selection sync a click does through the
      * strip: the button group's pressed state, the roving tabindex, lazy
@@ -1545,10 +1598,18 @@ class Tab extends LayoutManager {
      * @param forceBare - When `true`, a bare window is opened regardless of `detachWindowMode` (Shift held during the drag).
      */
     private detachTabToWindow(id: string, content: Component, clientX: number, clientY: number, forceBare: boolean): void {
+        // Holding Shift forces a bare window regardless of mode.
+        const useStrip = !forceBare && this._detachWindowMode === "strip";
+
         // The window inherits the tab's closeable state: a non-closeable tab's
         // window has no close button, so the user can only re-dock it (never
         // destroy the content via the title-bar X), honouring the tab's contract.
-        const win = new Window(this._bar.getEntryName(id), { closeable: this._bar.isEntryCloseable(id) });
+        // A strip-mode tear-off is a headerless TabWindow whose interior IS a
+        // Tab; a bare tear-off is an ordinary header Window.
+        const win: AbstractWindow = useStrip
+            ? new TabWindow({ closeable: this._bar.isEntryCloseable(id) })
+            : new Window(this._bar.getEntryName(id), { closeable: this._bar.isEntryCloseable(id) });
+
         win.setX(clientX);
         win.setY(clientY);
         win.setSize({ width: DETACH_WINDOW_WIDTH, height: DETACH_WINDOW_HEIGHT });
@@ -1558,9 +1619,11 @@ class Tab extends LayoutManager {
         win.clampPositionToViewport();
 
         // Position/size set before show() so the window does not flash at its
-        // default spot first. Holding Shift forces a bare window regardless of mode.
-        if (!forceBare && this._detachWindowMode === "strip") {
-            this.fillWindowWithStrip(win, content);
+        // default spot first.
+        if (useStrip) {
+            // The TabWindow builds the bar entry and reflects title + closeable;
+            // it already closes itself when its last tab leaves.
+            this.fillWindowWithStrip(win as TabWindow, content);
         } else {
             // Bare: the live content fills the window body (Border CENTER).
             win.moveComponent(content);
@@ -1571,32 +1634,16 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Builds a one-tab reorderable {@link Tab} strip inside `win` hosting
-     * `content` — the `"strip"` tear-off mode. The inner strip is flagged to
-     * close `win` once its tab is dragged out (or closed), so the float
-     * disappears when emptied, and `win` is marked so the Ctrl-drag header
-     * re-dock source stays inert over it (its body is the strip, not a panel).
+     * Populates a headerless {@link TabWindow} with `content` as its single tab
+     * and shows it — the `"strip"` tear-off mode. The `TabWindow` *is* the strip
+     * (its interior is a {@link Tab}), so there is no inner nesting; it also owns
+     * the close-when-empty wiring, so the float disappears once its tab leaves.
      *
      * @param win - The freshly-constructed (not yet shown) host window.
      * @param content - The live content to host in the strip's single tab.
      */
-    private fillWindowWithStrip(win: Window, content: Component): void {
-        const innerTab = new Tab({ reorderable: true });
-
-        // Same-class private write: only this auto-created strip closes its host.
-        innerTab._closeHostWindowWhenEmpty = true;
-
-        const strip = new Panel();
-        strip.setLayoutManager(innerTab);
-
-        win.moveComponent(strip);
-        win.setTearOffStripBody(true);
-
-        // Re-parent the content into the strip's container, then build its tab —
-        // mirroring dockComponent's moveComponent-then-createTab order.
-        strip.moveComponent(content);
-        innerTab.createTab(content);
-
+    private fillWindowWithStrip(win: TabWindow, content: Component): void {
+        win.createTab(content);
         win.show();
     }
 
@@ -1608,18 +1655,18 @@ class Tab extends LayoutManager {
      *
      * @returns The owning tear-off window, or `null`.
      */
-    private hostWindow(): Window | null {
+    private hostWindow(): AbstractWindow | null {
         if (!this._closeHostWindowWhenEmpty) {
             return null;
         }
 
-        let ancestor = this.getContainer()?.getParentComponent() ?? null;
+        let ancestor: Component | null = this.getContainer();
 
-        while (ancestor && !(ancestor instanceof Window)) {
+        while (ancestor && !(ancestor instanceof AbstractWindow)) {
             ancestor = ancestor.getParentComponent();
         }
 
-        return ancestor instanceof Window ? ancestor : null;
+        return ancestor instanceof AbstractWindow ? ancestor : null;
     }
 
     /**

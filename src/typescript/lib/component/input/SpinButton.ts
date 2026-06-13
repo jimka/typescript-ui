@@ -99,11 +99,11 @@ class SpinButton extends Button<SpinButtonOptions> {
         // Button's centring math: the measured input height is often odd,
         // making `(halfHeight - 8) / 2` a fractional value that the browser
         // resolves toward the bottom of the cell.
-        const glyph = this.getGlyph();
-        if (glyph) {
-            glyph.setPreferredSize(8, 8);
-            glyph.setTranslate(0, -1);
-        }
+        // Pin the chevron so a theme change never re-tracks it to the title
+        // line height; the 1px upward nudge corrects the centring rounding noted
+        // above.
+        this.pinGlyphSize(8);
+        this.getGlyph()?.setTranslate(0, -1);
 
         Event.addListener(this, "mousedown", () => this.onMouseDown());
         Event.addViewportListener(this, "mouseup", () => this.onMouseUp());
