@@ -22,12 +22,13 @@ Most code does not construct a `TabWindow` directly — it is produced automatic
 
 ## Construction
 
-`TabWindow(options?)` — there is **no** title positional argument (unlike [`Window`](/components/Window)); the title is derived from the active tab, not set. `options` is a [`WindowOptions`](/api/core/interfaces/WindowOptions) bag and accepts the same geometry / state / snap-resize fields as `Window` (minus the header-only `headerText` / `glyph`, which have no slot on a headerless window).
+`TabWindow(options?)` — there is **no** title positional argument (unlike [`Window`](/components/Window)); the title is derived from the active tab, not set. `options` is a [`WindowOptions`](/api/core/interfaces/WindowOptions) bag and accepts the same geometry / state / snap-resize fields as `Window` (minus the header-only `headerText`, which has no slot on a headerless window).
 
 | Option | Type | Purpose |
 | --- | --- | --- |
 | `x` / `y` | `number` | Initial top-left corner in viewport coordinates. |
 | `width` / `height` | `number` | Initial size in pixels. |
+| `glyph` | `string` | Leading window icon pinned to the start of the bar (a title icon, like [`Window`](/components/Window)'s). Defaults to `window-maximize`; change it at runtime with `setGlyph`. |
 | `closeable` | `boolean` | Enables the trailing close control. Driven thereafter by the strip — the close control greys while any hosted tab is non-closeable. |
 | `minimizable` | `boolean` | Show the trailing minimize control. |
 | `maximizable` | `boolean` | Show the trailing maximize control. |
@@ -58,12 +59,14 @@ There is no inner `Panel` and no second `Tab` — the `TabWindow`'s own `Tab` *i
 | `setSize(w, h)` / `setPosition(x, y)` | Initial geometry. |
 | `toggleMinimize()` / `toggleMaximize()` | Drive the matching lifecycle transition — the same actions the trailing controls invoke. |
 | `requestClose()` | Begin the close teardown — the action the trailing close control invokes. |
+| `setGlyph(name)` | Swap the leading window icon at runtime — parity with [`Window.setGlyph`](/components/Window). |
 
 The window has no `setHeaderText` / `getHeader` — there is no header. The title is read live from the active tab via the `Tab`'s [`getActiveTabLabel()`](/api/layout/classes/Tab#getactivetablabel); it is never set on the window directly.
 
 ## Title, move & controls
 
 - **Title** — derived, not set. [`AbstractWindow`](/components/AbstractWindow) exposes a read-only title concept used by serialization; `TabWindow` resolves it from the active tab's label. Switching the active tab changes the title.
+- **Window glyph** — a decorative leading icon pinned to the start of the bar (before the first tab), mirroring [`Window`](/components/Window)'s title icon. Defaults to `window-maximize`, overridable via the `glyph` option or `setGlyph` at runtime. It is `pointer-events: none`, so a press on it falls through to the move gesture.
 - **Move** — a press on the bar's blank area (not on a tab, a tool, or the scrollable tab clip) starts a window move. This is wired through the [`Tab`](/api/layout/classes/Tab) strip's empty-area move trigger, so a press on a tab still selects it and a press on a control still fires that control.
 - **Minimize / maximize / close** — three chromeless controls pinned to the trailing end of the bar, wired to `toggleMinimize()` / `toggleMaximize()` / `requestClose()`. `minimizable` / `maximizable` toggle their visibility; `closeable` toggles the close control's enabled state.
 - **Focus state** — on blur the whole bar flattens to the unfocused gutter fill (`--ts-ui-gutter-bg`) reaching the window edges, and the three controls flatten with it; refocus restores the themed toolbar fill and the opaque control backgrounds. This mirrors how [`Window`](/components/Window) flattens its header on blur.
