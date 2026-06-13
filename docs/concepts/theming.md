@@ -65,11 +65,12 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `tab.indicator.color` | `--ts-ui-tab-indicator-color` | Fill of the sliding active-tab selection bar |
 | `tab.indicator.thickness` | `--ts-ui-tab-indicator-thickness` | Thickness of the active-tab selection bar |
 | `window.shadow` | `--ts-ui-window-shadow` | Drop shadow on floating [`Window`](/api/core/classes/Window) components |
-| `window.control.background` | `--ts-ui-window-control-bg` | Resting fill of a [`TabWindow`](/components/TabWindow)'s min/max/close controls; flat themes use the content surface, Classic a raised gradient |
-| `window.control.border` | `--ts-ui-window-control-border` | Border of the `TabWindow` controls (`1px solid transparent` when blended; a visible border in Classic) |
-| `window.control.shadow` | `--ts-ui-window-control-shadow` | Drop shadow of the `TabWindow` controls (`none` when blended; a raised shadow in Classic) |
-| `window.control.hoverBackground` | `--ts-ui-window-control-hover-bg` | Hover fill of the `TabWindow` controls |
-| `window.control.activeBackground` | `--ts-ui-window-control-active-bg` | Pressed fill of the `TabWindow` controls |
+| `window.control.background` | `--ts-ui-window-control-bg` | Resting fill of a [`TabWindow`](/components/TabWindow)'s or [`Window`](/components/Window) header's min/max/close controls; flat themes use the content surface, Classic a raised gradient |
+| `window.control.border` | `--ts-ui-window-control-border` | Border of the window controls (`1px solid transparent` when blended; a visible border in Classic) |
+| `window.control.shadow` | `--ts-ui-window-control-shadow` | Drop shadow of the window controls (`none` when blended; a raised shadow in Classic) |
+| `window.control.hoverBackground` | `--ts-ui-window-control-hover-bg` | Hover fill of the window controls |
+| `window.control.activeBackground` | `--ts-ui-window-control-active-bg` | Pressed fill of the window controls |
+| `window.header.background` | `--ts-ui-window-header-bg` | Focused fill of an ordinary [`Window`](/components/Window)'s header; valued equal to `tab.toolbar.background` so a header `Window` and a headerless `TabWindow` share one chrome colour (both flatten to `gutter.background` when blurred) |
 | `header.font.size` | `--ts-ui-header-font-size` | Font size of window and panel title-bar labels |
 | `table.header.background` | `--ts-ui-table-header-bg` | Background fill of the table column header; falls back to `button.background` so headers track the button surface unless given a distinct value |
 | `table.header.border` | `--ts-ui-table-header-border` | Bottom border separating the table header from the body |
