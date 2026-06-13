@@ -881,7 +881,14 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // the title's baseline from `_content` and leave the glyph centred;
             // added directly, the title's baseline is visible so the glyph drops
             // onto the text baseline — matching the description topology.
-            this._orientBox(this._content, inlineAxis, 2);
+            // A glyph-only button (empty label) drops the inline spacing to 0 so
+            // the glyph sits flush at the box centre: the default spacing between
+            // the glyph and a zero-width label pads one side and pushes the glyph
+            // off centre (the visible "hugs the left edge" on icon buttons). The
+            // empty `_text` stays in the row so its line box still drives the
+            // button height — dropping it shrinks the button vertically.
+            const hasText = this._text.getText().valueOf() !== "";
+            this._orientBox(this._content, inlineAxis, this._glyph && !hasText ? 0 : 2);
 
             const inlineChildren = this._glyph ? [this._glyph, this._text] : [this._text];
             this._addContentChildren(this._content, inlineChildren, inlineReversed);

@@ -770,6 +770,22 @@ class Tab extends LayoutManager {
     }
 
     /**
+     * Sets or clears the bar's always-leading widget, forwarding to
+     * {@link TabBar.setLeadingWidget}. Passing `null` clears the leading slot.
+     *
+     * @param widget - The widget to host in the leading slot, or `null` to clear it.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setBarLeadingWidget(widget: Component | null): this {
+        this._bar.setLeadingWidget(widget);
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
      * Recolors every opaque toolbar surface of the bar, forwarding to
      * {@link TabBar.setBarSurfaceColor}. A recolor only — it does not relayout.
      *

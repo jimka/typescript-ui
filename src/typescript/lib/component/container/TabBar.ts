@@ -66,6 +66,16 @@ const STRIP_THICKNESS = 30;
 const STRIP_THICKNESS_COMPACT = 24;
 
 /**
+ * Extra main-axis gap (px) between the leading widget's box and the first tab,
+ * folded into the reserved lead extent (never into the widget's own box). Small
+ * because the leading widget already carries the same tool inset as the trailing
+ * controls (its box has a main-axis pad of its own), and the first tab carries
+ * its tab inset — so the boxes nearly butt, with their own insets supplying most
+ * of the breathing room and this knob adding a hair of separation.
+ */
+const LEAD_GLYPH_GAP = 4;
+
+/**
  * Main-axis length (px) of each overflow scroll-arrow button — square against
  * the strip thickness. Wide enough to be an easy click target, matching the
  * default tab height.
@@ -448,6 +458,20 @@ class TabBar extends Panel<TabBarOptions> {
     // buttons' content max (same reason as the strip itself).
     private _toolGroup: Panel = new Panel();
 
+    // Leading-slot group pinned at the start of the strip, align-independent —
+    // unlike `_toolGroup`, which flips ends with `_align`. A stretching HBox/VBox
+    // overlay that mirrors `_toolGroup` exactly, so the hosted widget is stretched
+    // across the strip thickness and its glyph auto-syncs to the strip line-height
+    // the same way a trailing tool's does (a bare raw-appended widget would skip
+    // that stretch-and-sync and end up smaller than the controls). Transparent and
+    // pointer-transparent: the hosted widget is decorative and presses fall through
+    // to the empty-area window-move trigger.
+    private _leadGroup: Panel = new Panel();
+    // The single caller-supplied widget hosted in `_leadGroup`, or null until
+    // `setLeadingWidget` is first called. Tracked separately so the extent/position
+    // helpers can short-circuit to a no-op when the slot is empty.
+    private _leadWidget: Component | null = null;
+
     // Overflow "arrows" chrome: leading/trailing scroll buttons, hidden when the
     // strip fits. Built lazily the first time `scrollable` is enabled.
     private _scrollLeadButton: Button | null = null;
@@ -517,6 +541,19 @@ class TabBar extends Panel<TabBarOptions> {
         // Lift the tool group above the tab wrappers (which are appended later in
         // DOM order) so its buttons stay clickable in their reserved slot.
         this._toolGroup.setZIndex(1);
+
+        // The leading group mirrors the tool group at the opposite (start) end:
+        // its own stretching box lays the hosted widget out across the strip
+        // thickness so the widget's glyph syncs to the strip line-height exactly
+        // like a trailing tool, making it a true size/inset peer of the controls.
+        // Transparent (the strip start sits before the scrollable tab clip, so no
+        // tab ever slides behind it) and pointer-transparent (decorative — presses
+        // fall through to the empty-area window-move trigger).
+        this._leadGroup.setLayoutManager(new HBox({ spacing: 0, stretching: true }));
+        this._leadGroup.setBackgroundColor("transparent");
+        this._leadGroup.clearInsets();
+        this._leadGroup.setZIndex(1);
+        this._leadGroup.setPointerEvents("none");
 
         // Follow the active theme's under-border default until a consumer pins it
         // explicitly. Torn down in dispose(). The owner re-lays-out the strip on
@@ -650,6 +687,7 @@ class TabBar extends Panel<TabBarOptions> {
         // (and clip / scroll with them) rather than the strip's.
         host.appendChild(this._tabClip.getElement(true));
         host.appendChild(this._toolGroup.getElement(true));
+        host.appendChild(this._leadGroup.getElement(true));
 
         const clip = this._tabClip.getElement(true);
         clip.appendChild(this._indicator.getElement(true));
@@ -1067,6 +1105,48 @@ class TabBar extends Panel<TabBarOptions> {
         this.scheduleLayout();
 
         return this;
+    }
+
+    /**
+     * Sets or clears the caller-supplied widget hosted in the leading slot (the
+     * strip start, independent of `_align`). Removes any previous widget from the
+     * leading group, then adds the new one as the group's child so the group's
+     * stretching box lays it out across the strip thickness — the same treatment a
+     * trailing tool gets. Passing `null` clears the slot.
+     *
+     * @param widget - The widget to host in the leading slot, or `null` to clear it.
+     *
+     * @returns This tab strip, for method chaining.
+     *
+     * @remarks
+     * The hosting group is transparent and pointer-transparent, so the caller's
+     * widget is decorative by default (a press on it falls through to the
+     * empty-area window-move trigger). The widget is deliberately outside the
+     * {@link setBarSurfaceColor} / `isBarChromeTarget` chrome set.
+     */
+    setLeadingWidget(widget: Component | null): this {
+        if (this._leadWidget) {
+            this._leadGroup.removeComponent(this._leadWidget);
+        }
+
+        this._leadWidget = widget;
+
+        if (widget) {
+            this._leadGroup.addComponent(widget);
+        }
+
+        this.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the current leading widget, or `null` when none is set.
+     *
+     * @returns The leading {@link Component}, or `null`.
+     */
+    getLeadingWidget(): Component | null {
+        return this._leadWidget;
     }
 
     /**
@@ -1943,6 +2023,12 @@ class TabBar extends Panel<TabBarOptions> {
                 ? new VBox({ spacing: 0, stretching: true })
                 : new HBox({ spacing: 0, stretching: true }));
         }
+
+        if ((this._leadGroup.getLayoutManager() instanceof VBox) !== wantVertical) {
+            this._leadGroup.setLayoutManager(wantVertical
+                ? new VBox({ spacing: 0, stretching: true })
+                : new HBox({ spacing: 0, stretching: true }));
+        }
     }
 
     /**
@@ -1959,6 +2045,28 @@ class TabBar extends Panel<TabBarOptions> {
         }
 
         return this.isVertical() ? pref.height : pref.width;
+    }
+
+    /**
+     * Reads the leading group's reserved main-axis extent — its preferred
+     * main-axis size plus the {@link LEAD_GLYPH_GAP} before the first tab. The
+     * group's preferred size reflects the hosted widget stretched and glyph-synced
+     * like a trailing tool, so the slot is a true main-axis peer of the tool group.
+     *
+     * @returns The reserved lead extent in px, or 0 when no leading widget is set.
+     */
+    private leadWidgetMainExtent(): number {
+        if (!this._leadWidget) {
+            return 0;
+        }
+
+        const pref = this._leadGroup.getPreferredSize();
+
+        if (!pref) {
+            return 0;
+        }
+
+        return (this.isVertical() ? pref.height : pref.width) + LEAD_GLYPH_GAP;
     }
 
     /**
@@ -2019,6 +2127,7 @@ class TabBar extends Panel<TabBarOptions> {
      * trailing-aligns the tabs and survives an independent clip-frame relayout.
      *
      * @param toolExtent - The tool group's main-axis extent in px.
+     * @param leadExtent - The leading glyph's reserved main-axis extent in px (0 when no leading glyph).
      * @param arrowReserve - The per-end scroll-arrow gutter in px (0 when no arrows).
      * @param endGap - The leading gap that trailing-aligns `"end"` tabs (0 otherwise).
      * @param thickness - The strip's cross-axis thickness in px.
@@ -2026,9 +2135,9 @@ class TabBar extends Panel<TabBarOptions> {
      * @param crossLead - The bar's leading cross-axis inset (0 unless the bar absorbed a parent inset).
      * @param mainLead - The bar's leading main-axis inset (0 unless the bar absorbed a parent inset).
      */
-    private positionClipFrame(toolExtent: number, arrowReserve: number, endGap: number, thickness: number, mainInner: number, crossLead: number, mainLead: number): void {
+    private positionClipFrame(toolExtent: number, leadExtent: number, arrowReserve: number, endGap: number, thickness: number, mainInner: number, crossLead: number, mainLead: number): void {
         const toolsLead = this._align === "end";
-        const leadChrome = (toolsLead ? toolExtent : 0) + arrowReserve;
+        const leadChrome = leadExtent + (toolsLead ? toolExtent : 0) + arrowReserve;
         const trailChrome = (toolsLead ? 0 : toolExtent) + arrowReserve;
         const mainSize = mainInner - leadChrome - trailChrome;
         const leadInset = endGap;
@@ -2051,7 +2160,8 @@ class TabBar extends Panel<TabBarOptions> {
     /**
      * Re-derives every tab button's insets from `_compact` and applies the
      * `writing-mode` for the current orientation (cleared on horizontal sides),
-     * and tightens the tool buttons' insets to match, so `setCompact` /
+     * and tightens the tool buttons' insets — and the leading widget's, a
+     * tool-peer at the opposite end — to match, so `setCompact` /
      * `setOrientation` take effect on the next pass without the setters touching
      * the DOM. Run before the width pass so the insets feed the buttons' measured
      * extents.
@@ -2083,6 +2193,14 @@ class TabBar extends Panel<TabBarOptions> {
 
         for (const tool of this._tools) {
             tool.setInsets(toolInsets);
+        }
+
+        // The leading widget is a tool-peer at the opposite end, so it shares the
+        // tool inset policy (cross-axis zeroed, main-axis pad) — without it the
+        // widget keeps its own constructed insets and lays out a few px off the
+        // trailing controls' box, breaking the symmetric edge inset.
+        if (this._leadWidget) {
+            this._leadWidget.setInsets(toolInsets);
         }
     }
 
@@ -2140,6 +2258,49 @@ class TabBar extends Panel<TabBarOptions> {
         }
 
         this._toolGroup.doLayout();
+    }
+
+    /**
+     * Places the leading group in its reserved slot at the strip's start (main
+     * origin `mainLead`), sized to the strip thickness on the cross axis so it
+     * mirrors the tool group at the opposite end, then lays out the hosted widget.
+     * The group's stretching box stretches the widget across the thickness (so its
+     * glyph syncs to the strip line-height like a trailing tool) and the widget
+     * centres within that box, so its ink v-centres in the thickness and h-centres
+     * in a box the same size as a control's — a true peer. Hides the group when no
+     * leading widget is set.
+     *
+     * @param thickness - The strip's cross-axis thickness in px.
+     * @param crossLead - The bar's leading cross-axis inset (0 unless the bar absorbed a parent inset).
+     * @param mainLead - The bar's leading main-axis inset (0 unless the bar absorbed a parent inset).
+     */
+    private positionLeadGroup(thickness: number, crossLead: number, mainLead: number): void {
+        // The group's preferred main size — its own box extent, excluding the
+        // trailing LEAD_GLYPH_GAP that leadWidgetMainExtent folds in for the tabs.
+        const pref = this._leadWidget ? this._leadGroup.getPreferredSize() : null;
+        const mainExtent = pref ? (this.isVertical() ? pref.height : pref.width) : 0;
+
+        if (mainExtent <= 0) {
+            this._leadGroup.setVisible(false);
+
+            return;
+        }
+
+        this._leadGroup.setVisible(true);
+
+        if (this.isVertical()) {
+            this._leadGroup.setX(crossLead);
+            this._leadGroup.setY(mainLead);
+            this._leadGroup.setWidth(thickness);
+            this._leadGroup.setHeight(mainExtent);
+        } else {
+            this._leadGroup.setX(mainLead);
+            this._leadGroup.setY(crossLead);
+            this._leadGroup.setWidth(mainExtent);
+            this._leadGroup.setHeight(thickness);
+        }
+
+        this._leadGroup.doLayout();
     }
 
     /**
@@ -2206,16 +2367,17 @@ class TabBar extends Panel<TabBarOptions> {
      *
      * @param mainInner - The strip's main-axis inner extent in px.
      * @param toolExtent - The reserved tool-group main extent in px.
+     * @param leadExtent - The leading glyph's reserved main-axis extent in px (0 when no leading glyph).
      * @param thickness - The strip's cross-axis thickness in px.
      * @param arrowReserve - The per-end scroll-arrow gutter in px (0 when not overflowing).
      * @param crossLead - The bar's leading cross-axis inset (0 unless the bar absorbed a parent inset).
      * @param mainLead - The bar's leading main-axis inset (0 unless the bar absorbed a parent inset).
      */
-    private layoutOverflowChrome(mainInner: number, toolExtent: number, thickness: number, arrowReserve: number, crossLead: number, mainLead: number): void {
+    private layoutOverflowChrome(mainInner: number, toolExtent: number, leadExtent: number, thickness: number, arrowReserve: number, crossLead: number, mainLead: number): void {
         this.setOverflow("hidden");
 
         if (this._scrollable && arrowReserve > 0) {
-            this.layoutOverflowArrows(mainInner, toolExtent, thickness, arrowReserve, crossLead, mainLead);
+            this.layoutOverflowArrows(mainInner, toolExtent, leadExtent, thickness, arrowReserve, crossLead, mainLead);
         } else {
             this.hideOverflowArrows();
         }
@@ -2265,12 +2427,13 @@ class TabBar extends Panel<TabBarOptions> {
      *
      * @param mainInner - The strip's main-axis inner extent in px.
      * @param toolExtent - The reserved tool-group main extent in px.
+     * @param leadExtent - The leading glyph's reserved main-axis extent in px (0 when no leading glyph).
      * @param thickness - The strip's cross-axis thickness in px.
      * @param arrowReserve - The per-end arrow gutter (the arrows' main-axis size) in px.
      * @param crossLead - The bar's leading cross-axis inset (0 unless the bar absorbed a parent inset).
      * @param mainLead - The bar's leading main-axis inset (0 unless the bar absorbed a parent inset).
      */
-    private layoutOverflowArrows(mainInner: number, toolExtent: number, thickness: number, arrowReserve: number, crossLead: number, mainLead: number): void {
+    private layoutOverflowArrows(mainInner: number, toolExtent: number, leadExtent: number, thickness: number, arrowReserve: number, crossLead: number, mainLead: number): void {
         this.ensureScrollArrows();
 
         const lead = this._scrollLeadButton as Button;
@@ -2292,7 +2455,7 @@ class TabBar extends Panel<TabBarOptions> {
         // excludes the tool-group slot: tools trail the tabs in `"start"`
         // alignment and lead them in `"end"` alignment.
         const toolsLead = this._align === "end";
-        const leadPos = (toolsLead ? toolExtent : 0) + mainLead;
+        const leadPos = leadExtent + (toolsLead ? toolExtent : 0) + mainLead;
         const trailPos = (toolsLead ? mainInner : mainInner - toolExtent) - arrowReserve + mainLead;
 
         for (const button of [lead, trail]) {
@@ -2520,18 +2683,22 @@ class TabBar extends Panel<TabBarOptions> {
 
         const toolExtent = this._tools.length > 0 ? this.toolGroupMainExtent() : 0;
         const thickness = this.stripThickness();
+        // Always reserved at the leading (start) edge, independent of `_align`; 0
+        // when no leading widget is set, so every `+ leadExtent` reduces to `+ 0`
+        // and the default path is byte-for-byte unchanged.
+        const leadExtent = this.leadWidgetMainExtent();
         const mainOuter = vertical ? height : width;
         const mainInner = mainOuter - mainLead - mainTrail;
 
-        // Place the clip frame between the tool slot and — when a scrollable strip
-        // is overflowing — a scroll-arrow gutter at each end, so the tabs lay out
-        // (and scroll, clipped) strictly within it rather than behind the chrome.
-        // An "end"-align leading gap is folded in as a frame inset too, so the box
-        // trailing-aligns the tabs natively.
-        const arrowReserve = this.computeArrowReserve(mainInner, toolExtent);
-        const available = mainInner - toolExtent - 2 * arrowReserve;
+        // Place the clip frame between the tool slot, the leading glyph slot, and —
+        // when a scrollable strip is overflowing — a scroll-arrow gutter at each
+        // end, so the tabs lay out (and scroll, clipped) strictly within it rather
+        // than behind the chrome. An "end"-align leading gap is folded in as a
+        // frame inset too, so the box trailing-aligns the tabs natively.
+        const arrowReserve = this.computeArrowReserve(mainInner, toolExtent + leadExtent);
+        const available = mainInner - toolExtent - leadExtent - 2 * arrowReserve;
         const endGap = this.endAlignGap(available);
-        this.positionClipFrame(toolExtent, arrowReserve, endGap, thickness, mainInner, crossLead, mainLead);
+        this.positionClipFrame(toolExtent, leadExtent, arrowReserve, endGap, thickness, mainInner, crossLead, mainLead);
 
         this.applyTabWidths(available);
         this._tabClip.doLayout();
@@ -2542,9 +2709,10 @@ class TabBar extends Panel<TabBarOptions> {
         this.revealSelectedIfRequested();
 
         this.positionToolGroup(mainInner, toolExtent, thickness, crossLead, mainLead);
+        this.positionLeadGroup(thickness, crossLead, mainLead);
         this.positionIndicator();
         this.positionCloseButtons();
-        this.layoutOverflowChrome(mainInner, toolExtent, thickness, arrowReserve, crossLead, mainLead);
+        this.layoutOverflowChrome(mainInner, toolExtent, leadExtent, thickness, arrowReserve, crossLead, mainLead);
     }
 
     /**

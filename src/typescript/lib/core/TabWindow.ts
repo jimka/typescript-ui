@@ -59,6 +59,7 @@ class TabWindow extends AbstractWindow {
     private _closeTool: Button;
     private _minTool: Button;
     private _maxTool: Button;
+    private _leadGlyphBtn: Button;
 
     /**
      * Builds a headerless tab window: a reorderable {@link Tab} as the window's
@@ -105,6 +106,29 @@ class TabWindow extends AbstractWindow {
         this._tab.addTool(this._maxTool);
         this._tab.addTool(this._closeTool);
 
+        // Leading window icon at the start of the bar, mirroring the title glyph an
+        // ordinary Window shows in its header: an explicit `glyph` option wins, else
+        // the `window-maximize` default (already registered, used by the max control).
+        // Unlike the trailing controls it is purely decorative — a transparent base
+        // background lets the bar surface (focused toolbar fill / blurred gutter fill)
+        // show through in every theme, so it reads as a title icon, not a clickable
+        // button. (When a future menu hangs off this slot, swap in an opaque fill.)
+        // The `1px solid transparent` border is invisible in all themes yet reserves
+        // the same 1px border box the controls' `window.control.border` does (1px wide
+        // across every theme), so the leading slot — which shares the controls' tool
+        // inset policy — lands the exact same box, keeping the icon a true size/inset
+        // peer. The styling is baked into the style rules (CSS) rather than a post-
+        // construct `setBackground`, which would be replayed away by the pre-init
+        // applyStyle cascade. pointer-events:none lets a press fall through to the
+        // window-move trigger.
+        const leadGlyphStyleRules: ComponentStyleRuleSpec[] = [
+            { suffix: "", styles: { background: "transparent", border: "1px solid transparent", boxShadow: "none" } },
+        ];
+
+        this._leadGlyphBtn = new Button({ glyph: this._options.glyph ?? "window-maximize", chromeless: true, styleRules: leadGlyphStyleRules, insets: new Insets(2, 2, 2, 2) });
+        this._leadGlyphBtn.setPointerEvents("none");
+        this._tab.setBarLeadingWidget(this._leadGlyphBtn);
+
         this.initChrome(options);
     }
 
@@ -118,6 +142,21 @@ class TabWindow extends AbstractWindow {
      */
     createTab(content: Component): this {
         this.addContent(content);
+
+        return this;
+    }
+
+    /**
+     * Sets the leading window glyph by swapping the glyph on the existing
+     * decorative leading control (a peer of the trailing min/max/close controls),
+     * mirroring {@link Window.setGlyph}.
+     *
+     * @param glyph - The glyph name to show at the start of the bar.
+     *
+     * @returns This window, for method chaining.
+     */
+    setGlyph(glyph: string): this {
+        this._leadGlyphBtn.setGlyph(glyph);
 
         return this;
     }
