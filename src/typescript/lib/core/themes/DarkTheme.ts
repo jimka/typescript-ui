@@ -112,6 +112,7 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
             hoverBackground : 'rgb(55, 55, 55)',
             activeBackground: 'rgb(45, 45, 45)',
         },
+        header      : { background: '#2a2a2a' },
     },
     header    : { padding: 4 },
     table     : {

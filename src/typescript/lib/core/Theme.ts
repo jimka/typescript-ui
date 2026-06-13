@@ -257,10 +257,11 @@ export interface Theme {
         snapGlow    : string;
         minDockWidth: string;
         /**
-         * Window control buttons (minimize / maximize / close) when they live
-         * in a {@link TabWindow}'s tab bar rather than a `WindowHeader`. Flat
-         * themes blend them into the content surface; the classic theme renders
-         * them as standard raised buttons.
+         * Window control buttons (minimize / maximize / close), shared by a
+         * {@link TabWindow}'s tab bar and an ordinary `Window`'s `WindowHeader`
+         * (both build them from the same `windowControls` factory). Flat themes
+         * blend them into the surface; the classic theme renders them as standard
+         * raised buttons.
          */
         control: {
             background      : string;
@@ -268,6 +269,15 @@ export interface Theme {
             shadow          : string;
             hoverBackground : string;
             activeBackground: string;
+        };
+        /**
+         * Focused fill of an ordinary `Window`'s `WindowHeader`. Independently
+         * themeable from the tab strip, but valued equal to `tab.toolbar.background`
+         * so a header `Window` and a headerless {@link TabWindow} share one
+         * window-chrome colour. The blurred fill is the shared `gutter.background`.
+         */
+        header: {
+            background: string;
         };
     };
 
@@ -770,6 +780,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-window-control-shadow'            : theme.window.control.shadow,
         '--ts-ui-window-control-hover-bg'          : theme.window.control.hoverBackground,
         '--ts-ui-window-control-active-bg'         : theme.window.control.activeBackground,
+        '--ts-ui-window-header-bg'                 : theme.window.header.background,
         '--ts-ui-header-font-size'                 : theme.header.font.size,
         '--ts-ui-table-header-bg'                  : theme.table.header.background,
         '--ts-ui-table-header-border'              : theme.table.header.border,
