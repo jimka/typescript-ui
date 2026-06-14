@@ -56,6 +56,23 @@ tearDownTarget();
 | `onDragOver?` | Optional hover callback. Return a number to position a [`ReorderIndicator`](/api/core/classes/ReorderIndicator) at the given y inside the target. |
 | `onDragLeave?` | Fired when the cursor exits the target box. |
 | `onDrop?` | Fired on `mouseup` over an accepting target. Return `false` to suppress the `drop` event. |
+| `feedbackHost?` | Non-scrolling layer to host the validity tint, sized to the target's box within it. Pass it for a target that scrolls its own content so the tint overlays the viewport. |
+| `suppressValidityTint?` | Turns off the manager's whole-target green / red wash for this target. Pass it when the target paints its own positional feedback (see [Drop-feedback colours](#drop-feedback-colours)). |
+
+## Drop-feedback colours
+
+Drag feedback speaks in two colour channels, and they mean different things. Keep them distinct:
+
+- **Green / red wash** over the *whole target* = **validity**. The [`DragFeedback`](/api/core/classes/DragFeedback) tint, driven by `accepts`: green when the target accepts the drop, red when it refuses. Use it when the target has a single outcome and no sub-region to point at — e.g. a [`TreeTable`](/components/TreeTable) directory row ("the dragged record reparents here").
+- **Blue** = **position**, in two tiers. A *faint* full-target wash is the "you can drop a tab here" affordance (a [`DockRegion`](/layouts/DockRegion) tints its whole body; a [`TabBar`](/components/TabBar) tints its whole strip); a *brighter* mark on a zone or slot then shows exactly *where* the drop lands — a [`ReorderIndicator`](/api/core/classes/ReorderIndicator) insertion line, a `DockRegion` edge/centre zone, or the strip's insertion bar. The **red** variant of the bright mark flags a specific spot that is *illegal* (a no-op or a self-drop), as opposed to the whole target being invalid.
+
+The rule of thumb:
+
+> **Faint blue = "droppable here." Bright blue = "it lands here." Green = "this is a valid drop area." Red = "not here."**
+
+When a target paints its own blue position feedback, set `suppressValidityTint` so the manager's whole-target green/red wash doesn't stack a second, coarser signal over it. The [`DockRegion`](/layouts/DockRegion) bodies and the [`TabBar`](/components/TabBar) strip both do this: each pairs the faint droppable wash with a bright precise mark and folds validity into the mark's colour (blue when legal, red when not), so the green wash would be redundant — and would clash with the dock centre zone's blue for the identical "add a tab here" outcome. Reserve the green / red wash for targets like `TreeTable` rows, where a whole-target reparent has no finer slot to highlight.
+
+The colours come from theme tokens (`--ts-ui-drag-feedback-{valid,invalid}-bg` for the validity wash, `--ts-ui-drag-dropzone-bg` for the faint droppable wash, `--ts-ui-drag-dropzone-{active,invalid}-bg` and `--ts-ui-drag-reorder-color` for the precise marks); see [Theming](/concepts/theming).
 
 ## Cycle and self-drop checks
 
