@@ -14,7 +14,7 @@ touches-shared:
 
 ## Overview
 
-The capstone — **plan #5 of 5** — assembles the four foundational primitives into one user-facing component, `Dock`, that lets users freely rearrange panels: drag tabs to reorder, tear panels out to floating [`Window`](../src/typescript/lib/core/Window.ts#L135)s, drop panels on region edges to split, and save/restore the whole arrangement. It is **glue, not new mechanics**: every move goes through [`Component.moveComponent`](component-move-helper.md) (#1), tab drag/tear-off is owned by [`Tab`'s `reorderable` wiring](tab-detach-redock.md) (#2), edge-split-on-drop is owned by [`DockRegion`](edge-drop-to-split.md) (#3), and persistence is owned by [`serializeLayout`/`restoreLayout`](layout-serialization.md) (#4). `Dock` *orchestrates* those across its whole region tree.
+The capstone — **plan #5 of 5** — assembles the four foundational primitives into one user-facing component, `Dock`, that lets users freely rearrange panels: drag tabs to reorder, tear panels out to floating [`Window`](../src/typescript/lib/core/Window.ts#L41)s, drop panels on region edges to split, and save/restore the whole arrangement. It is **glue, not new mechanics**: every move goes through [`Component.moveComponent`](component-move-helper.md) (#1), tab drag/tear-off is owned by [`Tab`'s `reorderable` wiring](tab-detach-redock.md) (#2), edge-split-on-drop is owned by [`DockRegion`](edge-drop-to-split.md) (#3), and persistence is owned by [`serializeLayout`/`restoreLayout`](layout-serialization.md) (#4). `Dock` *orchestrates* those across its whole region tree.
 
 `Dock` lives in **`src/typescript/lib/core/Dock.ts`** beside [`Window.ts`](../src/typescript/lib/core/Window.ts), [`Drawer.ts`](../src/typescript/lib/core/Drawer.ts), and [`LayerManager.ts`](../src/typescript/lib/core/LayerManager.ts) — it is an app-root-level container, not a layout manager, so it belongs in the `core` band (exported from [`src/typescript/lib/core/index.ts`](../src/typescript/lib/core/index.ts)), not the `layout` band. It is a [`Panel`](../src/typescript/lib/core/Panel.ts) subclass whose single child is the **root region** of a tree of `Split`/`Tab` containers. It owns three things the primitives can't own alone: (1) the **panel registry** (`panelId → Component | factory`) shared with #4's `LayoutFactory`; (2) **DnD lifecycle wiring** — making every `Tab` it creates `reorderable` and wrapping every dockable region in a `DockRegion`, *including regions created on the fly by an edge-split*; and (3) the **public façade** (`addPanel`, `getLayoutState`/`setLayoutState`) that delegates to #4.
 
@@ -28,7 +28,7 @@ The new public surface is `Dock` + `DockOptions` + `DockPanelSpec`. No new theme
 
 ### Name `Dock`, a `Panel` subclass in the `core` band
 
-`Dock` is free now that the launcher rail is named [`Rail`](launcher-rail.md), so the layout claims the `dock`/`docking` vocabulary that matches its job — panels *dock* into it. `DockLayout` was rejected: it would imply a `LayoutManager` subclass, which this is not — it does not *lay out* children on an axis; it *hosts* a region tree and coordinates DnD/serialization across it. `DockManager` was rejected as redundant once the `Dock`-vs-rail collision disappeared. `Dock` extends `Panel` (not bare `Component`) to inherit the body-host/auto-scroll machinery a top-level app container wants, and it carries a `Fit` layout so its single root-region child fills it. It lives in `core` (not `layout`) because it composes core concerns — `Window` (tear-off targets), `DockRegion` orchestration, serialization — and sits at/near the app root alongside `Window`/`Drawer`, mirroring where [`main.ts:29`](../src/typescript/main.ts#L29) mounts the app's top-level container today.
+`Dock` is free now that the launcher rail is named [`Rail`](launcher-rail.md), so the layout claims the `dock`/`docking` vocabulary that matches its job — panels *dock* into it. `DockLayout` was rejected: it would imply a `LayoutManager` subclass, which this is not — it does not *lay out* children on an axis; it *hosts* a region tree and coordinates DnD/serialization across it. `DockManager` was rejected as redundant once the `Dock`-vs-rail collision disappeared. `Dock` extends `Panel` (not bare `Component`) to inherit the body-host/auto-scroll machinery a top-level app container wants, and it carries a `Fit` layout so its single root-region child fills it. It lives in `core` (not `layout`) because it composes core concerns — `Window` (tear-off targets), `DockRegion` orchestration, serialization — and sits at/near the app root alongside `Window`/`Drawer`, mirroring where [`main.ts:31`](../src/typescript/main.ts#L31) mounts the app's top-level container today.
 
 ### The region tree is plain `Panel` containers carrying `Split`/`Tab` managers — `Dock` never invents a new container kind
 
@@ -36,13 +36,28 @@ The new public surface is `Dock` + `DockOptions` + `DockPanelSpec`. No new theme
 
 ### DnD wiring is applied by a single idempotent sweep over the region tree — this is the hard part
 
-The tricky requirement is that drop targets and reorderable strips must exist on **every** region, including `Split`/`Tab` containers that #3 creates mid-drag during an edge-split. `Dock` solves this with one private method, `wireRegion(region)`, that:
+The tricky requirement is that drop targets and reorderable strips must exist on **every** region, including the `Split`/`Tab` containers #3 creates mid-drag during an edge-split or centre-dock. `Dock` solves this with one private method, `wireRegion(region)`, that:
 
-1. If the region's manager is a `Tab`, calls `tab.setReorderable(true)` (#2) so its tabs reorder and tear off.
-2. Constructs a `DockRegion(region)` (#3) so the region accepts edge/center drops, and stores the returned coordinator so it can be `destroy()`ed.
+1. If the region's manager is a `Tab`, calls `tab.setReorderable(true)` (#2) so its tabs reorder and tear off, and subscribes the `Tab`'s public `"empty"` event ([Tab.ts:30](../src/typescript/lib/layout/Tab.ts#L30)) to `scheduleSweep()` so a strip emptied by a tear-off/close has its coordinator torn down promptly.
+2. Constructs a `DockRegion(region, () => this.scheduleSweep())` (#3) so the region accepts edge/centre drops **and** notifies `Dock` after a drop mutates the tree; stores the coordinator so it can be `destroy()`ed.
 3. Recurses into the region's child regions (a `Split` whose panes are themselves `Tab`/`Split` regions).
 
-`wireRegion` is **idempotent and incremental**: it tracks already-wired regions in a `Map<Component, RegionWiring>` (the coordinator + a "tab wired" flag), so re-running it only wires *new* regions and tears down wiring for regions that vanished. The sweep is re-run after any structural change. Because #2 and #3 perform the actual `moveComponent`/wrap/split, `Dock` cannot intercept their mutations inline; instead it **re-sweeps on the next layout frame** by hooking the region tree's layout. **Decision (resolve in step 1):** prefer a structural-change signal already emitted by the moves — if `Tab` emits a `tabclose`/reorder event and `DockRegion` can emit an "after-split" callback, subscribe to those; otherwise drive the sweep from `Dock`'s own `doLayout` override (it runs whenever any descendant `scheduleLayout`s, which every `moveComponent` does — plan #1 guarantees both ends schedule a layout), guarded by a dirty flag so it is cheap when nothing changed. The `doLayout`-driven sweep is the robust fallback and needs no new events on `Tab`/`DockRegion`; choose it unless step 1 finds a clean existing event. This keeps `Dock` the *only* place that knows "all my regions must be dockable", without #2/#3 needing to know they live inside a dock.
+`wireRegion` is **idempotent and incremental**: it tracks already-wired regions in a `Map<Component, RegionWiring>`, so re-running it only wires *new* regions and `destroy()`s the coordinators of regions no longer reachable from the root.
+
+The **load-bearing** thing the sweep adds is the per-region `DockRegion` **drop target** on every dynamically-created region — #3 does *not* register drop targets on the stacks it builds. Step 1's `setReorderable(true)` + `"empty"` subscription are belt-and-suspenders for those stacks: [`DockRegion.newStack()`](../src/typescript/lib/layout/DockRegion.ts) already creates them `reorderable` and self-prunes on `"empty"`, and the `tabWired` guard keeps `Dock` from re-applying either. They still matter for regions `Dock` builds itself (the `compileLayout` tree and `restoreLayout` output), which are not necessarily `DockRegion`-made.
+
+**The re-wire trigger.** A sweep must follow every structural change, of which there are exactly two sources:
+
+- **`Dock`'s own operations** — the constructor build, `addPanel`, and `setLayoutState` — call `scheduleSweep()` directly.
+- **Drag-driven changes** — an edge/centre drop that #3's `DockRegion` turns into a fresh `Split` or tab stack ([DockRegion.splitOnEdge / dockAsTab](../src/typescript/lib/layout/DockRegion.ts)). `DockRegion` performs the mutation internally and shipped with **no** post-mutation hook, so this plan adds **one minimal additive callback** to it — an optional `onStructureChanged` invoked at the end of its `onDrop`, after `splitOnEdge`/`dockAsTab`. `Dock` passes `() => this.scheduleSweep()` when constructing each coordinator. This is the **only** change to a shipped primitive (flagged in Files-to-Modify and Non-Goals); because it fires target-side it covers a panel **re-docked from a torn-off `Window`** (whose drag source lives outside the dock subtree) exactly as well as an in-dock drop.
+
+`scheduleSweep()` sets a dirty flag and coalesces to a single `requestAnimationFrame` that runs `wireRegion(this.getRootRegion())` once and clears the flag — so a burst of moves within one gesture yields exactly one sweep. **It is *not* driven by `Dock.doLayout`.** An earlier draft assumed a descendant `moveComponent` would schedule a layout that "bubbles" to `Dock.doLayout`; that is false — `Component.scheduleLayout` queues *the scheduled node itself* ([Component.ts:4186](../src/typescript/lib/core/Component.ts#L4186)) and `flushPendingLayouts` runs `doLayout` only on scheduled nodes, recursing *downward*, never up to `Dock`.
+
+**Rejected alternative — a global `"dragend"` listener.** `DragManager` fires a *non-bubbling* `"dragend"` CustomEvent on the drag source and calls a per-source `onDragEnd` ([DragManager.ts:623-624](../src/typescript/lib/core/DragManager.ts#L623)); neither is a `Dock`-reachable global hook. A window-capture `Event.addViewportListener(this, "dragend", …)` would observe it (capture reaches the target regardless of `bubbles`), but `baseViewportListener` calls `stopPropagation()` on every matched event and fires for unrelated app-wide drags — risking interference with other `"dragend"` consumers. The target-side `DockRegion` callback is deterministic and local, so it is preferred.
+
+### The root region is derived live, never cached
+
+An edge drop onto the **root** region wraps it in a fresh `Split` ([DockRegion.splitOnEdge](../src/typescript/lib/layout/DockRegion.ts)), making that wrapper `Dock`'s new single child. A cached `_root` field would then point at a now-nested sub-region, so `getRootRegion()` / serialization would capture the wrong subtree. `Dock` therefore derives the root region live as its sole `Fit` child — `getRootRegion() => this.getComponents()[0]` ([Component.ts:4003](../src/typescript/lib/core/Component.ts#L4003)) — and `getLayoutState` / `setLayoutState` / `wireRegion` all read it through that accessor. The constructor guarantees exactly one child (the compiled layout, or a default empty `Panel`+`Tab`).
 
 ### Panel registry is the serialization factory — one source of truth
 
@@ -50,7 +65,7 @@ The tricky requirement is that drop targets and reorderable strips must exist on
 
 ### `addPanel` adds to the active region as a tab; it does not invent placement
 
-The simplest honest default: `addPanel(spec)` registers the spec, resolves its `Component`, stamps the constraint name, and `moveComponent`s it into the **currently-active `Tab` region** (or the root region if it is a `Tab`) as a new tab — then re-sweeps so the new region (if the root had to be wrapped in a `Tab`) is wired. Where it lands *structurally* after that is the user's business via drag/drop (#2/#3). `Dock` does **not** expose a "split here / dock there" placement API — that is what the edge-drop gesture is *for*, and adding a programmatic placement vocabulary would duplicate #3's structural mutations. Initial multi-region arrangements are expressed declaratively via `DockOptions.layout` (a `DockPanelSpec` tree, below), not via imperative split calls.
+The simplest honest default: `addPanel(spec)` registers the spec, resolves its `Component`, stamps the constraint name, and `moveComponent`s it into the **active `Tab` region** as a new tab — then re-sweeps so the new region (if the root had to be wrapped in a `Tab`) is wired. The active region is resolved deterministically with no extra tracking state: the root region if it is a `Tab`; otherwise the first `Tab` region found depth-first; if the tree holds no `Tab` region at all, the root is wrapped in a fresh `Tab` first (the one structural build `addPanel` may trigger). A future `setActiveRegion(region)` could let callers steer placement, but the default needs no stored cursor. Where it lands *structurally* after that is the user's business via drag/drop (#2/#3). `Dock` does **not** expose a "split here / dock there" placement API — that is what the edge-drop gesture is *for*, and adding a programmatic placement vocabulary would duplicate #3's structural mutations. Initial multi-region arrangements are expressed declaratively via `DockOptions.layout` (a `DockPanelSpec` tree, below), not via imperative split calls.
 
 ### Initial arrangement is a small declarative spec compiled to the region tree
 
@@ -58,7 +73,7 @@ The simplest honest default: `addPanel(spec)` registers the spec, resolves its `
 
 ### Tear-off windows are tracked but not re-parented into the dock tree
 
-#2 already tears a tab off into a `new Window(...)` and re-docks it. `Dock` lets that happen untouched; it only needs the torn-off windows to participate in serialization. Since #4's `serializeLayout` already gathers windows from `Window.getOpenWindows()` and records those whose content resolves to a known panel id, `Dock` gets float persistence **for free** as long as torn-off panels keep their constraint `name` (they do — `moveComponent` carries constraints, plan #1). So `Dock` holds **no** separate float registry; it relies on #4's window-plane capture. The one wiring concern: a panel **re-docked** from a window into a dock `Tab` must land in a `reorderable` strip and a `DockRegion` — guaranteed because every dock `Tab`/region was wired by the sweep before the drop could target it.
+#2 already tears a tab off into a `new Window(...)` and re-docks it. `Dock` lets that happen untouched; it only needs the torn-off windows to participate in serialization. Since #4's `serializeLayout` already gathers windows from `AbstractWindow.getOpenWindows()` ([AbstractWindow.ts:760](../src/typescript/lib/core/AbstractWindow.ts#L760)) and records those whose content resolves to a known panel id, `Dock` gets float persistence **for free** as long as torn-off panels keep their constraint `name` (they do — `moveComponent` carries constraints, plan #1). So `Dock` holds **no** separate float registry; it relies on #4's window-plane capture. The one wiring concern: a panel **re-docked** from a window into a dock `Tab` must land in a `reorderable` strip and a `DockRegion` — guaranteed because every dock `Tab`/region was wired by the sweep before the drop could target it.
 
 ### CODE_CONVENTIONS compliance
 
@@ -111,7 +126,7 @@ class Dock extends Panel<DockOptions> {
 }
 ```
 
-`Dock`, `DockOptions`, `DockPanelSpec`, `DockLayoutSpec` are exported from the `core` barrel ([`src/typescript/lib/core/index.ts`](../src/typescript/lib/core/index.ts#L36), beside `Drawer`/`Window`). `LayoutState` is imported from the `layout` bucket (#4) for the return/param types — a cross-bucket type import, fine for signatures. `Dock` uses the `callable` export pair (`callable(_Dock)` + `export { DockCallable as Dock }`) like every other headline component, so it constructs as `Dock({...})` and is auto-promoted to `classes/` by the typedoc-callable-plugin.
+`Dock`, `DockOptions`, `DockPanelSpec`, `DockLayoutSpec` are exported from the `core` barrel ([`src/typescript/lib/core/index.ts`](../src/typescript/lib/core/index.ts#L38), beside `Drawer`/`Window`). `LayoutState` is imported from the `layout` bucket (#4) for the return/param types — a cross-bucket type import, fine for signatures. `Dock` uses the `callable` export pair (`callable(_Dock)` + `export { DockCallable as Dock }`) like every other headline component, so it constructs as `Dock({...})` and is auto-promoted to `classes/` by the typedoc-callable-plugin.
 
 No new DOM property, backing field, `XOptions` styling field, or theme token.
 
@@ -122,40 +137,42 @@ No new DOM property, backing field, `XOptions` styling field, or theme token.
 Private state:
 
 ```typescript
-private _panels  = new Map<string, DockPanelSpec>();         // panelId -> spec (the serialization factory source)
-private _wiring  = new Map<Component, RegionWiring>();        // region container -> its DnD coordinators
-private _root!:   Component;                                   // the root region (a Panel + Split/Tab manager)
-private _sweepScheduled = false;                              // dirty flag for the doLayout-driven re-wire sweep
+private _panels  = new Map<string, DockPanelSpec>();   // panelId -> spec (the serialization factory source)
+private _wiring  = new Map<Component, RegionWiring>();  // region container -> its DnD wiring
+private _sweepScheduled = false;                        // rAF coalescing flag for the re-wire sweep
+// No cached root: the root region is derived live as this.getComponents()[0]; it is swapped out when the root is edge-split.
 
 interface RegionWiring {
     dockRegion: DockRegion;     // #3 coordinator (destroy() on teardown)
-    tabWired:   boolean;        // whether setReorderable(true) was applied (Tab regions only)
+    tabWired:   boolean;        // setReorderable(true) + "empty" subscription applied (Tab regions only)
 }
 ```
 
 `resolvePanel(id)` — the `LayoutFactory` passed to `restoreLayout`: look up `_panels.get(id)`; if its `content` is a function, call it once and cache the built `Component` back into the spec; stamp the constraint name; return it, or `null` (skip) if unknown.
 
+`getRootRegion()` — the live root region: `this.getComponents()[0]` (`Dock`'s single `Fit` child; swapped out when the root is edge-split, so it is never cached).
+
 `wireRegion(region)` (idempotent sweep, recursive):
 
 ```
-manager = region.getLayoutManager()
-cls = manager.getClassName().replace(/^_/, "")
 existing = _wiring.get(region)
 if !existing:
-    dr = new DockRegion(region)                       // #3 — edge/center drop
+    dr = new DockRegion(region, () => this.scheduleSweep())   // #3 — edge/centre drop + post-drop notify
     existing = { dockRegion: dr, tabWired: false }
     _wiring.set(region, existing)
-if cls === "Tab" && !existing.tabWired:
-    (manager as Tab).setReorderable(true)             // #2 — reorder + tear-off
+manager = region.getLayoutManager()
+if isTab(manager) && !existing.tabWired:
+    (manager as Tab).setReorderable(true)                     // #2 — reorder + tear-off
+    manager.on("empty", () => this.scheduleSweep())           // prompt teardown when this strip empties
     existing.tabWired = true
 for child in region.getComponents():
-    if isRegionContainer(child): wireRegion(child)    // Split/Tab child = nested region
-// teardown sweep: for any region in _wiring no longer reachable from _root, dockRegion.destroy() + delete
+    if isRegionContainer(child): wireRegion(child)            // Split/Tab child = nested region
+// teardown: every region in _wiring not reachable from getRootRegion() -> dockRegion.destroy() + delete
 ```
 
-`isRegionContainer(c)` = `c.getLayoutManager().getClassName()` is `_Split` or `_Tab` (string compare, no `instanceof` — same discrimination #4 uses, avoids an import cycle).
+`isRegionContainer(c)` = `c.getLayoutManager().getClassName().replace(/^_/, "")` is `"Split"` or `"Tab"`, and `isTab(m)` = `m.getClassName().replace(/^_/, "") === "Tab"`. `getClassName()` returns `this.constructor.name` — `"Split"`/`"Tab"` ([BaseObject.ts:44](../src/typescript/lib/core/BaseObject.ts#L44)), never the `_`-prefixed export alias — so the stripped string compare is what matches, with no `instanceof` (avoids an import cycle). This mirrors #4's discrimination in [LayoutSerialization.ts:148](../src/typescript/lib/layout/LayoutSerialization.ts#L148).
 
-`scheduleSweep()` sets `_sweepScheduled` and the sweep runs from `Dock.doLayout` (or the chosen structural-change event): if `_sweepScheduled`, run `wireRegion(_root)` then clear the flag. Because every `moveComponent` schedules layout on both ends (plan #1), and those layouts bubble to `Dock.doLayout`, a split/reorder/dock/re-dock always triggers exactly one sweep on the next frame.
+`scheduleSweep()` coalesces re-wires to one `requestAnimationFrame`: if `_sweepScheduled` is set it returns; otherwise it sets the flag and schedules a callback that clears it and runs `wireRegion(this.getRootRegion())` once. A whole gesture (a drop that splits, prunes an emptied stack, and fires several `moveComponent`s) collapses to a single sweep. It does **not** override or depend on `Dock.doLayout`.
 
 `compileLayout(spec)` (construction only) → returns a region `Component`:
 
@@ -166,15 +183,15 @@ leaf:           register spec in _panels; build content; stamp constraint name; 
                 for each child -> compileLayout -> addComponent; return panel
 ```
 
-Constructor: build `_root` from `options.layout` (or a default empty `Panel` + `Tab`), `addComponent(_root)` under `Dock`'s `Fit`, then `wireRegion(_root)` once.
+Constructor: build the root region from `options.layout` (or a default empty `Panel` + `Tab`), `addComponent(root)` under `Dock`'s `Fit`, then `scheduleSweep()` for the initial wire.
 
-`getLayoutState()` = `serializeLayout(this._root)`. `setLayoutState(state)` = `restoreLayout(this._root, state, id => this.resolvePanel(id))` then `scheduleSweep()` (restore creates fresh `Split`/`Tab` regions that must be wired).
+`getLayoutState()` = `serializeLayout(this.getRootRegion())`. `setLayoutState(state)` = `restoreLayout(this.getRootRegion(), state, id => this.resolvePanel(id))` then `scheduleSweep()` (restore creates fresh `Split`/`Tab` regions that must be wired).
 
 ---
 
 ## Ordered Implementation Steps
 
-1. **Resolve the re-wire trigger.** Read whether #2's `Tab` and #3's `DockRegion` surface a post-mutation event (`tabclose`, a `DockRegion` after-split callback). If a clean signal exists, subscribe to it for `scheduleSweep()`. Otherwise drive the sweep from a `Dock.doLayout` override guarded by `_sweepScheduled` (the robust default — no new events needed). Decide and note the choice in the file's header comment.
+1. **Add the `DockRegion` post-drop callback.** In [`src/typescript/lib/layout/DockRegion.ts`](../src/typescript/lib/layout/DockRegion.ts), add an optional `onStructureChanged?: () => void` constructor parameter and invoke it at the end of `onDrop`, after `splitOnEdge`/`dockAsTab` complete (a ~2-line additive change; existing callers pass nothing and are unaffected). This is the trigger `Dock` subscribes to for drag-driven re-wires.
 2. **Create `src/typescript/lib/core/Dock.ts`.** `Panel` subclass with `Fit` layout, `callable` export pair (mirror `Drawer.ts`'s export form). Add `DockPanelSpec`, `DockLayoutSpec`, `DockOptions`. Implement private state, `resolvePanel`, `isRegionContainer`, `compileLayout`, `wireRegion`, `scheduleSweep`, and the constructor (compile `layout`, add root, initial sweep). Dispatch `options.listeners` (if any) from the constructor body.
 3. **Implement the public façade:** `addPanel` (register + stamp + `moveComponent` into active `Tab` region + `scheduleSweep`), `getRootRegion`, `getLayoutState` (→ `serializeLayout`), `setLayoutState` (→ `restoreLayout` + `scheduleSweep`). Every re-parent uses `moveComponent` (#1).
 4. **Barrel export.** Add `Dock` + `DockOptions`, `DockPanelSpec`, `DockLayoutSpec` to [`src/typescript/lib/core/index.ts`](../src/typescript/lib/core/index.ts) beside the Drawer/Window entries.
@@ -189,11 +206,12 @@ Constructor: build `_root` from `options.layout` (or a default empty `Panel` + `
 | Action | File |
 |---|---|
 | Create | `src/typescript/lib/core/Dock.ts` — the capstone component (registry, region-wiring sweep, façade) |
+| Modify | `src/typescript/lib/layout/DockRegion.ts` — add the additive `onStructureChanged?` post-drop callback (#3) |
 | Modify | `src/typescript/lib/core/index.ts` — export `Dock` + types |
 | Modify | `src/typescript/MiscPanel.ts` — capstone demo |
 | Create | `docs/components/Dock.md` + catalog/sidebar entries (see Documentation Impact) |
 
-No deletions. No `Tab`/`Split`/`Window`/`DragManager` changes — all needed surface is added by #1–#4.
+No deletions. The sole shipped-primitive change is the additive `DockRegion.onStructureChanged` callback above; no `Tab`/`Split`/`Window`/`DragManager` changes — all other needed surface is added by #1–#4.
 
 ---
 
@@ -217,7 +235,7 @@ No deletions. No `Tab`/`Split`/`Window`/`DragManager` changes — all needed sur
 ## Documentation Impact
 
 - **New public symbols:** `Dock`, `DockOptions`, `DockPanelSpec`, `DockLayoutSpec` — exported from the per-subpath `core` barrel ([`src/typescript/lib/core/index.ts`](../src/typescript/lib/core/index.ts); there is no root barrel). Add `@category Core`. Verify `Dock` lands under `docs/api/core/classes/` after build (the `callable` export form is what the typedoc-callable-plugin promotes — mirror `Drawer`'s export exactly).
-- **Curated page:** add `docs/components/Dock.md` covering the declarative `layout` spec, `addPanel`, the four composed behaviours (reorder, tear-off, edge-split, save/restore), and the panel-id/factory contract. Add it to the `docs/components/` catalog `index.md` and to the **Core** group in the sidebar in [`docs/.vitepress/config.mts`](../docs/.vitepress/config.mts) (beside `Window`/`Dialog`/`Drawer` at config lines 57–64).
+- **Curated page:** add `docs/components/Dock.md` covering the declarative `layout` spec, `addPanel`, the four composed behaviours (reorder, tear-off, edge-split, save/restore), and the panel-id/factory contract. Add it to the `docs/components/` catalog `index.md` and to the **Core** group in the sidebar in [`docs/.vitepress/config.mts`](../docs/.vitepress/config.mts) (beside `Window`/`Dialog`/`Drawer` at config lines 59/61/62).
 - **Cross-references (markdown links across buckets, not `{@link}`, per [`_shared/docs-conventions.md`](../.claude/skills/_shared/docs-conventions.md)):** the Dock page links to `Window`, `Drawer`, the `Tab` and `Split` layout pages (`/layouts/Tab`, `/layouts/Split`), and the #4 serialization page; conversely add a "see also Dock" line to the `Tab`, `Split`, `Window`, and #3 `DockRegion` pages so the assembly is discoverable from each primitive.
 - **Recipe (optional but apt):** a `docs/recipes/dockable-layout.md` walking the save/restore loop would slot beside the existing `recipes/drag-and-drop.md`; add to the recipes sidebar + `recipes/index.md` if created. Not required for the API to be documented.
 
@@ -225,12 +243,13 @@ No deletions. No `Tab`/`Split`/`Window`/`DragManager` changes — all needed sur
 
 ## Potential Challenges
 
-- **Wiring dynamically-created regions** (the headline risk) — #2/#3 create `Split`/`Tab` containers mid-drag that `Dock` did not build, so they are unwired until the next sweep. Mitigation: the `doLayout`-driven idempotent `wireRegion(_root)` re-sweep, which fires because every `moveComponent` schedules a layout that bubbles to `Dock` (plan #1 contract); verified by demo step 3.
+- **Wiring dynamically-created regions** (the headline risk) — #3 creates `Split`/`Tab` containers mid-drag that `Dock` did not build, so they are unwired until the next sweep. Mitigation: the additive `DockRegion.onStructureChanged` callback fires `scheduleSweep()` after every drop, running the idempotent `wireRegion(getRootRegion())` on the next animation frame; verified by demo step 3. (The earlier `doLayout`-bubbling trigger was dropped — `scheduleLayout` queues only the scheduled node, never `Dock`.)
 - **Double-wiring / listener stacking** — re-running the sweep must not stack a second `DockRegion` or re-call `setReorderable(true)` on a region. Mitigation: the `_wiring` map's idempotence guard (skip already-wired regions; `tabWired` flag).
-- **Stale coordinators after a region is destroyed** (e.g. a `Split` flattened away when a pane empties) — leaked `DockRegion`s keep drop targets registered on dead elements. Mitigation: the teardown half of the sweep `destroy()`s wiring for regions no longer reachable from `_root`.
+- **Stale coordinators after a region is destroyed** (e.g. a `Split` flattened away when a pane empties) — leaked `DockRegion`s keep drop targets registered on dead elements. Mitigation: the teardown half of the sweep `destroy()`s wiring for regions no longer reachable from `getRootRegion()`.
 - **Restore re-home order** — #4 clears/repopulates regions; the post-`setLayoutState` sweep must run *after* restore finishes mutating the tree. Mitigation: `scheduleSweep()` defers to the next layout frame, after `restoreLayout`'s synchronous work and its scheduled layouts.
 - **Lazy panel content built twice** — `resolvePanel` and `addPanel`/`compileLayout` could each invoke a `() => Component` factory. Mitigation: `resolvePanel` caches the built `Component` back into the spec (`content` becomes the instance after first build), so every id resolves to one instance.
 - **`moveComponent` resets CSS transitions** on the moved subtree (documented plan #1 behaviour). Acceptable for a dock — panels snap into place; not re-litigated here.
+- **Leaf content that exposes its own `Split`/`Tab` root manager** would be misclassified as a region by `isRegionContainer` (it discriminates on the manager kind, like #4's `managerKind`), so the sweep would wrap it in a `DockRegion`. Mitigation: dock leaf content must not present a `Split`/`Tab` as its *own* root layout manager — wrap such content in a plain `Panel`; this is the same assumption #4's serialization already relies on, so no new constraint is introduced.
 - **Float persistence depends on constraint names surviving tear-off** — #4 captures windows whose content resolves to a known panel id via the constraint `name`. Mitigation: `addPanel`/`compileLayout` stamp the name at registration, and `moveComponent` carries constraints, so a torn-off panel keeps its id; verified by demo steps 2/6.
 
 ---
@@ -239,15 +258,15 @@ No deletions. No `Tab`/`Split`/`Window`/`DragManager` changes — all needed sur
 
 - [`src/typescript/lib/core/Panel.ts`](../src/typescript/lib/core/Panel.ts) — `Dock`'s superclass (`PanelOptions`, body-host/`Fit` machinery).
 - [`src/typescript/lib/core/Drawer.ts`](../src/typescript/lib/core/Drawer.ts) — the headline-component idiom to mirror: options-bag-as-cache, `applyOptions` after `super`, constructor-body listener dispatch, `callable` export pair.
-- [`src/typescript/lib/core/Component.ts`](../src/typescript/lib/core/Component.ts) — `moveComponent` (#1), `getComponents` (3628), `getLayoutManager` (3686), `getLayoutConstraints`/`setLayoutConstraints` (3639/3655), `getClassName` discrimination, `doLayout`/`scheduleLayout` (3794) (the sweep trigger).
-- [`src/typescript/lib/core/index.ts`](../src/typescript/lib/core/index.ts#L36) — the `core` barrel; new exports beside Drawer/Window.
-- [`src/typescript/main.ts`](../src/typescript/main.ts#L29) — how the app root composes a top-level container today (where a `Dock` would sit in a real app).
+- [`src/typescript/lib/core/Component.ts`](../src/typescript/lib/core/Component.ts) — `moveComponent` (3912, #1), `getComponents` (4003), `getLayoutManager` (4075), `getLayoutConstraints`/`setLayoutConstraints` (4028/4044), `getClassName` discrimination, `doLayout`/`scheduleLayout` (4160/4186) — note `scheduleLayout` queues the node itself, not `Dock`, which is why the sweep is callback-driven rather than `doLayout`-driven.
+- [`src/typescript/lib/core/index.ts`](../src/typescript/lib/core/index.ts#L38) — the `core` barrel; new exports beside Drawer/Window.
+- [`src/typescript/main.ts`](../src/typescript/main.ts#L31) — how the app root composes a top-level container today (where a `Dock` would sit in a real app).
 - [`src/typescript/MiscPanel.ts`](../src/typescript/MiscPanel.ts) — demo home (Drawer/Window demo blocks to mirror; `setLayoutManager(new HBox)` at 152).
 - [`plans/component-move-helper.md`](component-move-helper.md) — `moveComponent` (every re-parent + the both-ends-schedule-layout guarantee the sweep relies on).
-- [`plans/tab-detach-redock.md`](tab-detach-redock.md) — `Tab.setReorderable`, `TabDragData`, `tabDragRegistry`, the tear-off `Window` path.
-- [`plans/edge-drop-to-split.md`](edge-drop-to-split.md) — `DockRegion(region)` / `destroy()`, the wrap-vs-extend mutation, `Split.setPaneSize`.
-- [`plans/layout-serialization.md`](layout-serialization.md) — `serializeLayout`/`restoreLayout`, `LayoutState`, `LayoutFactory`, the window-plane capture (`Window.getOpenWindows`).
-- [`docs/.vitepress/config.mts`](../docs/.vitepress/config.mts) — Core sidebar group (lines 56–64).
+- [`plans/tab-detach-redock.md`](tab-detach-redock.md) — `Tab.setReorderable` ([Tab.ts:659](../src/typescript/lib/layout/Tab.ts#L659)), the `Tab` `"empty"` event, the tear-off `Window` path. (`TabDragData` / `tabDragRegistry` live in [`DragManager.ts`](../src/typescript/lib/core/DragManager.ts), re-exported via the layout barrel — used by #3, not `Dock` directly.)
+- [`plans/edge-drop-to-split.md`](edge-drop-to-split.md) + [`src/typescript/lib/layout/DockRegion.ts`](../src/typescript/lib/layout/DockRegion.ts) — `DockRegion(region)` / `destroy()`, the wrap-vs-extend mutation, the self-pruning `newStack()`/`pruneEmptyStack`; this plan adds the `onStructureChanged?` callback here.
+- [`plans/layout-serialization.md`](layout-serialization.md) — `serializeLayout`/`restoreLayout`, `LayoutState`, `LayoutFactory`, the window-plane capture via [`AbstractWindow.getOpenWindows`](../src/typescript/lib/core/AbstractWindow.ts#L760).
+- [`docs/.vitepress/config.mts`](../docs/.vitepress/config.mts) — Core sidebar group (lines 56–67; `Window`/`Dialog`/`Drawer` at 59/61/62).
 
 ---
 
@@ -277,6 +296,7 @@ size-constraint-invariant.md            (blocking prerequisite — sane min ≤ 
 - **Collapsible / pinnable regions, custom per-region drop policies, region headers/toolbars** — the dock arranges and persists; richer per-region chrome is deferred.
 - **Auto-persistence (localStorage / server), debounced auto-save, schema migration** — `getLayoutState`/`setLayoutState` return/accept a plain `LayoutState`; transport is the app's concern (#4 Non-Goal, inherited).
 - **Flattening redundant nested `Split`s** after repeated perpendicular edge drops — correct nesting is kept (#3 Non-Goal); any normalisation pass is future work, not this capstone.
+- **Migrating `DockRegion`'s prune+collapse routine into `Dock.wireRegion`** — [`prune-degenerate-dock-containers.md`](implemented/prune-degenerate-dock-containers.md) names `Dock.wireRegion` as the *formal long-term home* for the empty-stack prune / single-pane-`Split` collapse and flags the move as "#5's concern." This capstone deliberately **declines** that migration: it leaves the prune where it already works ([`DockRegion.newStack()`](../src/typescript/lib/layout/DockRegion.ts) self-subscribing `"empty"`→prune) and only adds its own `"empty"`→`scheduleSweep()` subscription for stale-coordinator teardown. The two are independent (DockRegion prunes the stack it minted; `Dock` tears down the vanished region's coordinator), so nothing double-prunes and nothing is missed. Hoisting the routine up to `Dock` is left out to keep the capstone minimal glue.
 - **New theme tokens** — all drag affordances reuse #2/#3's `--ts-ui-drag-*` family.
-- **A floating-window manager beyond what `Window` + #4 provide** — `Dock` holds no float registry; it leans on `Window.getOpenWindows()` (#4).
+- **A floating-window manager beyond what `Window` + #4 provide** — `Dock` holds no float registry; it leans on `AbstractWindow.getOpenWindows()` (#4).
 ```
