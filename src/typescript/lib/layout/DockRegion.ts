@@ -37,14 +37,19 @@ export class DockRegion {
     private _region: Component;
     private _overlay: DropZoneOverlay = new DropZoneOverlay();
     private _teardown: () => void;
+    private _onStructureChanged: (() => void) | null;
 
     /**
      * Registers `region` as a drop target and wires the five-zone gesture.
      *
      * @param region - The container whose edges/center accept a docked tab.
+     * @param onStructureChanged - Optional callback invoked after a drop mutates
+     *   the tree (an edge split or a centre dock), letting a tree owner such as
+     *   [`Dock`](/api/core/classes/Dock) re-wire the regions a drop just created.
      */
-    constructor(region: Component) {
+    constructor(region: Component, onStructureChanged?: () => void) {
         this._region = region;
+        this._onStructureChanged = onStructureChanged ?? null;
 
         this._teardown = DragManager.makeDropTarget(region, {
             accepts: (detail: DragEventDetail): boolean => {
@@ -100,6 +105,8 @@ export class DockRegion {
                 } else {
                     this.splitOnEdge(panel, zone);
                 }
+
+                this._onStructureChanged?.();
             },
         });
     }
@@ -222,6 +229,14 @@ export class DockRegion {
 
         split.moveComponent(stack,    leading ? 0 : 1);
         split.moveComponent(unitPane, leading ? 1 : 0);
+
+        // The fresh `split` now occupies the slot `unit` held in `container`. When
+        // that container is itself a Split, hand the new wrapper the size the unit
+        // had so the user's dragged ratio survives the wrap instead of the slot
+        // re-equalizing.
+        if (containerLm instanceof Split) {
+            containerLm.transferPaneSize(unit, split);
+        }
     }
 
     /**
@@ -322,6 +337,15 @@ export class DockRegion {
         }
 
         const index = grandparent.getComponents().indexOf(container);
+
+        // The hoisted child takes the slot the collapsing Split vacated; carry the
+        // Split's stored size onto it so a single-pane collapse keeps the user's
+        // dragged ratio (when the grandparent is itself a Split).
+        const grandparentLm = grandparent.getLayoutManager();
+
+        if (grandparentLm instanceof Split) {
+            grandparentLm.transferPaneSize(container, children[0]);
+        }
 
         grandparent.moveComponent(children[0], index);
         grandparent.removeComponent(container);

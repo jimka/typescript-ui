@@ -37,6 +37,8 @@ export { Dialog, DialogTitleBar, DialogButtons } from '~/core/Dialog.js';
 export type { DialogConfig, DialogButtonConfig, DialogResult } from '~/core/Dialog.js';
 export { Drawer } from '~/core/Drawer.js';
 export type { DrawerOptions, DrawerEdge, DrawerEvent, DrawerCloseController } from '~/core/Drawer.js';
+export { Dock } from '~/core/Dock.js';
+export type { DockOptions, DockPanelSpec, DockLayoutSpec } from '~/core/Dock.js';
 
 export { ThemeManager, BaseTheme, ClassicTheme, DarkTheme, ModernTheme, defineTheme } from '~/core/Theme.js';
 export type { Theme, DeepPartial } from '~/core/Theme.js';

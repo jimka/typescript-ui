@@ -303,6 +303,38 @@ class Split extends LayoutManager {
     }
 
     /**
+     * Moves a pane's stored size (and collapsed state) onto another component,
+     * for when a structural change swaps one child for another in the *same* pane
+     * slot — a pane wrapped in a nested `Split`, or a single-pane `Split`'s lone
+     * child hoisted into the slot the `Split` vacated. Without it the replacement
+     * is treated as a brand-new pane and {@link recalculateSizes} re-equalizes the
+     * slot, discarding a user-dragged ratio. No-op when `from` has no stored size.
+     *
+     * @param from - The pane leaving the slot.
+     * @param to - The component taking the slot.
+     * @returns This layout manager, for method chaining.
+     */
+    transferPaneSize(from: Component, to: Component): this {
+        const size = this._sizes.get(from);
+
+        if (size === undefined) {
+            return this;
+        }
+
+        this._sizes.set(to, size);
+        this._sizes.delete(from);
+
+        const collapsed = this._collapsed.get(from);
+
+        if (collapsed !== undefined) {
+            this._collapsed.set(to, collapsed);
+            this._collapsed.delete(from);
+        }
+
+        return this;
+    }
+
+    /**
      * Returns the stored pane sizes normalised to sum 1.0, in container child
      * order. Captures the user's split ratios for serialization; ratios are
      * viewport-independent, so they survive a restore into a differently-sized

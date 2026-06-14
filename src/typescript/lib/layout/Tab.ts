@@ -981,6 +981,11 @@ class Tab extends LayoutManager {
 
         if (content) {
             this.dockComponent(content, slot);
+
+            // A panel docked into this strip should bring the strip's host window
+            // (if any) to the front and focus it — a no-op for an in-document
+            // strip, which has no host window.
+            this.hostWindow()?.bringToFront();
         }
     };
 
@@ -1753,6 +1758,12 @@ class Tab extends LayoutManager {
         }
 
         this.removeEntryKeepingContent(id);
+
+        // Activate the torn-off window last. Removing the source entry re-selects
+        // a neighbour in the source strip and leaves the source window raised, but
+        // the tear-off's result is the new window, so it should end up focused and
+        // frontmost.
+        win.bringToFront();
     }
 
     /**
