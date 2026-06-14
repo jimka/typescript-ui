@@ -139,6 +139,9 @@ class Dock extends Panel<DockOptions> {
         DragManager.makeDropTarget(this, {
             accepts: (detail: DragEventDetail): boolean =>
                 detail.dragData["tabDrag"] === true && this.getComponents().length === 0,
+            // The full-region blue overlay is the only feedback here; suppress the
+            // manager's whole-target tint so it does not stack with it.
+            suppressValidityTint: true,
             onDragOver: (): null => {
                 this._emptyDropOverlay.attachTo(this);
                 this._emptyDropOverlay.highlightFull();
