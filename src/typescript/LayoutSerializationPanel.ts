@@ -107,7 +107,9 @@ class LayoutSerializationPanel extends Panel {
      */
     private buildPanels(): void {
         for (const id of PANEL_IDS) {
-            const panel = new Panel();
+            // The id is the serialization key (serializeLayout keys on getId()),
+            // so stamp it here for the captured layout to round-trip.
+            const panel = new Panel({ id });
             panel.setLayoutManager(new Fit());
             panel.addComponent(new TextArea("Panel \"" + id + "\" — type here, then switch layouts."));
 

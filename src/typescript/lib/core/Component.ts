@@ -1080,12 +1080,24 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     setId(id: string): this {
         super.setId(id);
 
+        // The per-component style rule is selector-scoped to `#<id>` and carries
+        // `position: absolute` (plus every other rule-based style). It is created
+        // from the initial id (the auto-UUID) before the constructor's
+        // `applyOptions` can process an `id` option, so any id change — whether a
+        // construction-time `{ id }` or a later `setId` — must re-point it, or
+        // the rule stops matching the element and the component silently falls
+        // back to `position: static`. Re-derive it here from the new id; the
+        // values are replayed from the component's fields by `applyStyle` at
+        // render (and immediately below when already rendered).
+        this._styleRule = new StyleRule({ scope: "component", name: id, materialize: false });
+
         let element = this.getElement();
         if (!element) {
             return this;
         }
 
         element.id = id;
+        this.applyStyle(element);
 
         return this;
     }

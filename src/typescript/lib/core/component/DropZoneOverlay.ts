@@ -183,6 +183,20 @@ class DropZoneOverlay extends Component {
     }
 
     /**
+     * Lights up the **entire** region as a single drop zone, leaving no edge
+     * bands. For a target with only one possible outcome — an empty dock, where
+     * any drop simply becomes the sole region — so the feedback reads as one
+     * solid blue area rather than {@link setHighlight}`("center")`'s inset square
+     * that implies splittable edges. Cheap to call per `onDragOver`: the underlying
+     * geometry setters short-circuit once placed.
+     */
+    highlightFull(): void {
+        this._zone = null;
+
+        this._highlight.placeBand(0, 0, this.getWidth(), this.getHeight());
+    }
+
+    /**
      * Removes the overlay element from the DOM and resets the cached zone so a
      * later re-attach starts with no highlight.
      */

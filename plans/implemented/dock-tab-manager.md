@@ -61,11 +61,21 @@ An edge drop onto the **root** region wraps it in a fresh `Split` ([DockRegion.s
 
 ### Panel registry is the serialization factory — one source of truth
 
-#4 restores leaves through a caller-supplied `LayoutFactory: (panelId) => Component | null`. `Dock` *is* that caller, so it owns a `Map<string, DockPanelSpec>` where a spec carries either a live `Component` or a lazy `() => Component` factory plus the panel's title/glyph. `getLayoutState()` calls `serializeLayout(this.getRootRegion())`; `setLayoutState(state)` calls `restoreLayout(this.getRootRegion(), state, id => this.resolvePanel(id))`. The same registry feeds both the initial build and restore, so there is exactly one `panelId → content` mapping. Panel IDs are the stable strings the caller assigns via `DockPanelSpec.id`; `Dock` stamps each panel's `LayoutConstraints.name` to that id when it adds the panel (the channel #4 reads for `panelIdOf`), so serialization round-trips without the caller wiring constraint names by hand.
+#4 restores leaves through a caller-supplied `LayoutFactory: (panelId) => Component | null`. `Dock` *is* that caller, so it owns a `Map<string, DockPanelSpec>` where a spec carries either a live `Component` or a lazy `() => Component` factory plus the panel's title/glyph. `getLayoutState()` calls `serializeLayout(this.getRootRegion())`; `setLayoutState(state)` calls `restoreLayout(this.getRootRegion(), state, id => this.resolvePanel(id))`. The same registry feeds both the initial build and restore, so there is exactly one `panelId → content` mapping.
+
+### Identity is `getId()`, label is the panel name, glyph is a constraint — decoupling forces a small #4 rework
+
+The shipped #4 serialization keyed a leaf's stable id on its `LayoutConstraints.name` — but `Tab.createTab` *also* resolves a tab's visible label from that same field (`constraints.name ?? getName() ?? getId()` — [Tab.ts:1186](../src/typescript/lib/layout/Tab.ts#L1186)), and `restoreLayout` re-stamps `constraints.name = panelId` on every re-homed leaf ([LayoutSerialization.ts:345](../src/typescript/lib/layout/LayoutSerialization.ts#L345)). So one field can't carry both a stable machine id **and** a human title — any title set via the name channel is clobbered to the id on the first restore. `DockPanelSpec` wants both, so this plan **decouples them**, which requires a small, deliberate change to shipped #4:
+
+- **Identity (the serialization key) = `Component.getId()`.** `Dock` stamps `component.setId(spec.id)` ([Component.ts:1080](../src/typescript/lib/core/Component.ts#L1080)) so the panel's id *is* the stable, caller-assigned key. `panelIdOf` is changed to key on `getId()` (dropping the `constraints.name` preference and the volatile-id warning); because `Dock` controls the id, it round-trips.
+- **Label = the panel name.** `Dock` sets `component.setName(spec.title)`; since the name lives on the component (not the per-container constraint), it survives the re-home a restore performs, so the tab label stays the title across save/restore. `Tab`'s existing label priority is untouched.
+- **Glyph = a serialized `LayoutConstraints.glyph`.** The tab glyph is per-container constraint state that a re-home would drop, so #4 gains an optional `glyph` on `PanelNode`: `serializePanel` captures it and `constraintsFor` restores it (carrying **only** glyph now, never `name`).
+
+This is the second (and last) shipped-primitive change beyond the `DockRegion` callback; both are flagged in Files-to-Modify and Non-Goals. The existing `LayoutSerializationPanel` demo is updated to stamp `new Panel({ id })` so its `getId()` keys round-trip under the new scheme.
 
 ### `addPanel` adds to the active region as a tab; it does not invent placement
 
-The simplest honest default: `addPanel(spec)` registers the spec, resolves its `Component`, stamps the constraint name, and `moveComponent`s it into the **active `Tab` region** as a new tab — then re-sweeps so the new region (if the root had to be wrapped in a `Tab`) is wired. The active region is resolved deterministically with no extra tracking state: the root region if it is a `Tab`; otherwise the first `Tab` region found depth-first; if the tree holds no `Tab` region at all, the root is wrapped in a fresh `Tab` first (the one structural build `addPanel` may trigger). A future `setActiveRegion(region)` could let callers steer placement, but the default needs no stored cursor. Where it lands *structurally* after that is the user's business via drag/drop (#2/#3). `Dock` does **not** expose a "split here / dock there" placement API — that is what the edge-drop gesture is *for*, and adding a programmatic placement vocabulary would duplicate #3's structural mutations. Initial multi-region arrangements are expressed declaratively via `DockOptions.layout` (a `DockPanelSpec` tree, below), not via imperative split calls.
+The simplest honest default: `addPanel(spec)` registers the spec, resolves its `Component` (stamping `setId(spec.id)` + `setName(spec.title)`), and `moveComponent`s it into the **active `Tab` region** as a new tab (with a `{ glyph }` constraint when the spec carries one) — then re-sweeps so the new region (if the root had to be wrapped in a `Tab`) is wired. The active region is resolved deterministically with no extra tracking state: the root region if it is a `Tab`; otherwise the first `Tab` region found depth-first; if the tree holds no `Tab` region at all, the root is wrapped in a fresh `Tab` first (the one structural build `addPanel` may trigger). A future `setActiveRegion(region)` could let callers steer placement, but the default needs no stored cursor. Where it lands *structurally* after that is the user's business via drag/drop (#2/#3). `Dock` does **not** expose a "split here / dock there" placement API — that is what the edge-drop gesture is *for*, and adding a programmatic placement vocabulary would duplicate #3's structural mutations. Initial multi-region arrangements are expressed declaratively via `DockOptions.layout` (a `DockPanelSpec` tree, below), not via imperative split calls.
 
 ### Initial arrangement is a small declarative spec compiled to the region tree
 
@@ -73,7 +83,7 @@ The simplest honest default: `addPanel(spec)` registers the spec, resolves its `
 
 ### Tear-off windows are tracked but not re-parented into the dock tree
 
-#2 already tears a tab off into a `new Window(...)` and re-docks it. `Dock` lets that happen untouched; it only needs the torn-off windows to participate in serialization. Since #4's `serializeLayout` already gathers windows from `AbstractWindow.getOpenWindows()` ([AbstractWindow.ts:760](../src/typescript/lib/core/AbstractWindow.ts#L760)) and records those whose content resolves to a known panel id, `Dock` gets float persistence **for free** as long as torn-off panels keep their constraint `name` (they do — `moveComponent` carries constraints, plan #1). So `Dock` holds **no** separate float registry; it relies on #4's window-plane capture. The one wiring concern: a panel **re-docked** from a window into a dock `Tab` must land in a `reorderable` strip and a `DockRegion` — guaranteed because every dock `Tab`/region was wired by the sweep before the drop could target it.
+#2 already tears a tab off into a `new Window(...)` and re-docks it. `Dock` lets that happen untouched; it only needs the torn-off windows to participate in serialization. Since #4's `serializeLayout` already gathers windows from `AbstractWindow.getOpenWindows()` ([AbstractWindow.ts:760](../src/typescript/lib/core/AbstractWindow.ts#L760)) and records those whose content resolves to a known panel id, `Dock` gets float persistence **for free** as long as torn-off panels keep their stable `getId()` (they do — `setId` is on the component, which survives the tear-off re-home). So `Dock` holds **no** separate float registry; it relies on #4's window-plane capture. The one wiring concern: a panel **re-docked** from a window into a dock `Tab` must land in a `reorderable` strip and a `DockRegion` — guaranteed because every dock `Tab`/region was wired by the sweep before the drop could target it.
 
 ### CODE_CONVENTIONS compliance
 
@@ -88,9 +98,9 @@ The simplest honest default: `addPanel(spec)` registers the spec, resolves its `
 
 /** Declarative description of one dockable content panel. */
 export interface DockPanelSpec {
-    /** Stable id used for the panel registry and serialization (stamped onto the panel's LayoutConstraints.name). */
+    /** Stable id used for the panel registry and serialization (stamped onto the panel via setId, so getId() is the key). */
     id:       string;
-    /** Tab label / tear-off window title. */
+    /** Tab label / tear-off window title (stamped via setName, so it survives a restore re-home). */
     title:    string;
     /** Optional handle/tab glyph. */
     glyph?:   string;
@@ -148,7 +158,7 @@ interface RegionWiring {
 }
 ```
 
-`resolvePanel(id)` — the `LayoutFactory` passed to `restoreLayout`: look up `_panels.get(id)`; if its `content` is a function, call it once and cache the built `Component` back into the spec; stamp the constraint name; return it, or `null` (skip) if unknown.
+`resolvePanel(id)` — the `LayoutFactory` passed to `restoreLayout`: look up `_panels.get(id)`; if its `content` is a function, call it once and cache the built `Component` back into the spec; stamp `setId(id)` + `setName(spec.title)` on it; return it, or `null` (skip) if unknown.
 
 `getRootRegion()` — the live root region: `this.getComponents()[0]` (`Dock`'s single `Fit` child; swapped out when the root is edge-split, so it is never cached).
 
@@ -192,12 +202,13 @@ Constructor: build the root region from `options.layout` (or a default empty `Pa
 ## Ordered Implementation Steps
 
 1. **Add the `DockRegion` post-drop callback.** In [`src/typescript/lib/layout/DockRegion.ts`](../src/typescript/lib/layout/DockRegion.ts), add an optional `onStructureChanged?: () => void` constructor parameter and invoke it at the end of `onDrop`, after `splitOnEdge`/`dockAsTab` complete (a ~2-line additive change; existing callers pass nothing and are unaffected). This is the trigger `Dock` subscribes to for drag-driven re-wires.
-2. **Create `src/typescript/lib/core/Dock.ts`.** `Panel` subclass with `Fit` layout, `callable` export pair (mirror `Drawer.ts`'s export form). Add `DockPanelSpec`, `DockLayoutSpec`, `DockOptions`. Implement private state, `resolvePanel`, `isRegionContainer`, `compileLayout`, `wireRegion`, `scheduleSweep`, and the constructor (compile `layout`, add root, initial sweep). Dispatch `options.listeners` (if any) from the constructor body.
-3. **Implement the public façade:** `addPanel` (register + stamp + `moveComponent` into active `Tab` region + `scheduleSweep`), `getRootRegion`, `getLayoutState` (→ `serializeLayout`), `setLayoutState` (→ `restoreLayout` + `scheduleSweep`). Every re-parent uses `moveComponent` (#1).
-4. **Barrel export.** Add `Dock` + `DockOptions`, `DockPanelSpec`, `DockLayoutSpec` to [`src/typescript/lib/core/index.ts`](../src/typescript/lib/core/index.ts) beside the Drawer/Window entries.
-5. **Typecheck:** `npm run typecheck` — zero errors. **No-manual-reparent checkpoint:** `grep -n "addComponent\|removeComponent\|insertComponent" src/typescript/lib/core/Dock.ts` — every runtime re-parent is `moveComponent`; `addComponent` is acceptable only inside `compileLayout`/constructor (building fresh containers whose children have no parent yet). **No-instanceof checkpoint:** `grep -n "instanceof Split\|instanceof Tab" src/typescript/lib/core/Dock.ts` — expect zero (string discrimination).
-6. **Demo screen.** Add a `Dock` demo to [`MiscPanel.ts`](../src/typescript/MiscPanel.ts) (see Verification) exercising the full capstone loop.
-7. **Docs** (see Documentation Impact).
+2. **Rework #4 to key on `getId()` and serialize the glyph.** In [`src/typescript/lib/layout/LayoutSerialization.ts`](../src/typescript/lib/layout/LayoutSerialization.ts): change `panelIdOf` to return `component.getId()` (drop the `constraints.name` preference, the one-time warning, and the `missingNameWarned` flag); add an optional `glyph?: string | null` to `PanelNode`; have `serializePanel` capture the leaf's `constraints.glyph`; change `constraintsFor` to set **only** `glyph` (never `name`) — returning `undefined` when there is no glyph. Then update the [`LayoutSerializationPanel`](../src/typescript/LayoutSerializationPanel.ts) demo to build its panels as `new Panel({ id })` so their `getId()` keys round-trip. Verify the demo's three layout switches + save still round-trip (`npm run dev`).
+3. **Create `src/typescript/lib/core/Dock.ts`.** `Panel` subclass with `Fit` layout, `callable` export pair (mirror `Drawer.ts`'s export form). Add `DockPanelSpec`, `DockLayoutSpec`, `DockOptions`. Implement private state, `resolvePanel`, `isRegionContainer`, `compileLayout`, `wireRegion`, `scheduleSweep`, and the constructor (compile `layout`, add root, initial sweep). Dispatch `options.listeners` (if any) from the constructor body.
+4. **Implement the public façade:** `addPanel` (register + stamp + `moveComponent` into active `Tab` region + `scheduleSweep`), `getRootRegion`, `getLayoutState` (→ `serializeLayout`), `setLayoutState` (→ `restoreLayout` + `scheduleSweep`). Every re-parent uses `moveComponent` (#1).
+5. **Barrel export.** Add `Dock` + `DockOptions`, `DockPanelSpec`, `DockLayoutSpec` to [`src/typescript/lib/core/index.ts`](../src/typescript/lib/core/index.ts) beside the Drawer/Window entries.
+6. **Typecheck:** `npm run typecheck` — zero errors. **No-manual-reparent checkpoint:** `grep -n "addComponent\|removeComponent\|insertComponent" src/typescript/lib/core/Dock.ts` — every runtime re-parent is `moveComponent`; `addComponent` is acceptable only inside `compileLayout`/constructor (building fresh containers whose children have no parent yet). **No-instanceof checkpoint:** `grep -n "instanceof Split\|instanceof Tab" src/typescript/lib/core/Dock.ts` — expect zero (string discrimination).
+7. **Demo screen.** Add a `Dock` demo to [`MiscPanel.ts`](../src/typescript/MiscPanel.ts) (see Verification) exercising the full capstone loop.
+8. **Docs** (see Documentation Impact).
 
 ---
 
@@ -207,11 +218,13 @@ Constructor: build the root region from `options.layout` (or a default empty `Pa
 |---|---|
 | Create | `src/typescript/lib/core/Dock.ts` — the capstone component (registry, region-wiring sweep, façade) |
 | Modify | `src/typescript/lib/layout/DockRegion.ts` — add the additive `onStructureChanged?` post-drop callback (#3) |
+| Modify | `src/typescript/lib/layout/LayoutSerialization.ts` — key on `getId()`; serialize/restore `PanelNode.glyph`; `constraintsFor` carries glyph only (#4) |
+| Modify | `src/typescript/LayoutSerializationPanel.ts` — stamp `new Panel({ id })` so the demo round-trips under `getId()` keying |
 | Modify | `src/typescript/lib/core/index.ts` — export `Dock` + types |
 | Modify | `src/typescript/MiscPanel.ts` — capstone demo |
 | Create | `docs/components/Dock.md` + catalog/sidebar entries (see Documentation Impact) |
 
-No deletions. The sole shipped-primitive change is the additive `DockRegion.onStructureChanged` callback above; no `Tab`/`Split`/`Window`/`DragManager` changes — all other needed surface is added by #1–#4.
+No deletions. Two deliberate shipped-primitive changes: the additive `DockRegion.onStructureChanged` callback, and the #4 identity/label/glyph rework (`LayoutSerialization.ts` + its demo). No `Tab`/`Split`/`Window`/`DragManager` changes — all other needed surface is added by #1–#4.
 
 ---
 
@@ -250,7 +263,7 @@ No deletions. The sole shipped-primitive change is the additive `DockRegion.onSt
 - **Lazy panel content built twice** — `resolvePanel` and `addPanel`/`compileLayout` could each invoke a `() => Component` factory. Mitigation: `resolvePanel` caches the built `Component` back into the spec (`content` becomes the instance after first build), so every id resolves to one instance.
 - **`moveComponent` resets CSS transitions** on the moved subtree (documented plan #1 behaviour). Acceptable for a dock — panels snap into place; not re-litigated here.
 - **Leaf content that exposes its own `Split`/`Tab` root manager** would be misclassified as a region by `isRegionContainer` (it discriminates on the manager kind, like #4's `managerKind`), so the sweep would wrap it in a `DockRegion`. Mitigation: dock leaf content must not present a `Split`/`Tab` as its *own* root layout manager — wrap such content in a plain `Panel`; this is the same assumption #4's serialization already relies on, so no new constraint is introduced.
-- **Float persistence depends on constraint names surviving tear-off** — #4 captures windows whose content resolves to a known panel id via the constraint `name`. Mitigation: `addPanel`/`compileLayout` stamp the name at registration, and `moveComponent` carries constraints, so a torn-off panel keeps its id; verified by demo steps 2/6.
+- **Float persistence depends on the stable id surviving tear-off** — #4 captures windows whose content resolves to a known panel id via `getId()`. Mitigation: `addPanel`/`compileLayout`/`resolvePanel` stamp `setId(spec.id)` at registration, and the id lives on the component (not a per-container constraint), so it survives the tear-off re-home into a `Window`; verified by demo steps 2/6.
 
 ---
 
@@ -296,7 +309,7 @@ size-constraint-invariant.md            (blocking prerequisite — sane min ≤ 
 - **Collapsible / pinnable regions, custom per-region drop policies, region headers/toolbars** — the dock arranges and persists; richer per-region chrome is deferred.
 - **Auto-persistence (localStorage / server), debounced auto-save, schema migration** — `getLayoutState`/`setLayoutState` return/accept a plain `LayoutState`; transport is the app's concern (#4 Non-Goal, inherited).
 - **Flattening redundant nested `Split`s** after repeated perpendicular edge drops — correct nesting is kept (#3 Non-Goal); any normalisation pass is future work, not this capstone.
-- **Migrating `DockRegion`'s prune+collapse routine into `Dock.wireRegion`** — [`prune-degenerate-dock-containers.md`](implemented/prune-degenerate-dock-containers.md) names `Dock.wireRegion` as the *formal long-term home* for the empty-stack prune / single-pane-`Split` collapse and flags the move as "#5's concern." This capstone deliberately **declines** that migration: it leaves the prune where it already works ([`DockRegion.newStack()`](../src/typescript/lib/layout/DockRegion.ts) self-subscribing `"empty"`→prune) and only adds its own `"empty"`→`scheduleSweep()` subscription for stale-coordinator teardown. The two are independent (DockRegion prunes the stack it minted; `Dock` tears down the vanished region's coordinator), so nothing double-prunes and nothing is missed. Hoisting the routine up to `Dock` is left out to keep the capstone minimal glue.
+- **Fully removing `DockRegion`'s self-prune** — [`prune-degenerate-dock-containers.md`](implemented/prune-degenerate-dock-containers.md) names `Dock.wireRegion` as the *formal long-term home* for the empty-stack prune / single-pane-`Split` collapse. `Dock.wireRegion` now **does** prune (its `"empty"` subscription removes the emptied region and collapses a resulting single-pane `Split`), because regions the dock builds itself via `compileLayout` / `restoreLayout` are *not* `DockRegion`-minted and so don't self-prune — without Dock pruning them, re-docking a tab out of a compiled region orphaned an empty stack. What is **not** done is removing [`DockRegion.newStack()`](../src/typescript/lib/layout/DockRegion.ts)'s own `"empty"`→prune: standalone `DockRegion` callers (the edge-drop demo) rely on it. So both prune; on a `DockRegion`-minted stack both fire, which is harmless — the second is a no-op once the region is detached.
 - **New theme tokens** — all drag affordances reuse #2/#3's `--ts-ui-drag-*` family.
 - **A floating-window manager beyond what `Window` + #4 provide** — `Dock` holds no float registry; it leans on `AbstractWindow.getOpenWindows()` (#4).
 ```
