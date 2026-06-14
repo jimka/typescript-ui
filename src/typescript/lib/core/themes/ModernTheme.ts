@@ -296,9 +296,10 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
             color: 'rgb(30, 100, 200)',
         },
         dropzone: {
-            background      : 'rgba(80, 140, 240, 0.10)',
-            border          : 'rgba(80, 140, 240, 0.40)',
-            activeBackground: 'rgba(80, 140, 240, 0.28)',
+            background       : 'rgba(80, 140, 240, 0.10)',
+            border           : 'rgba(80, 140, 240, 0.40)',
+            activeBackground : 'rgba(80, 140, 240, 0.28)',
+            invalidBackground: 'rgba(200, 50, 50, 0.28)',
         },
     },
     scroll: {

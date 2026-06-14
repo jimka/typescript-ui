@@ -287,9 +287,10 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
             color: 'rgb(80, 140, 240)',
         },
         dropzone: {
-            background      : 'rgba(80, 140, 240, 0.12)',
-            border          : 'rgba(80, 140, 240, 0.45)',
-            activeBackground: 'rgba(80, 140, 240, 0.32)',
+            background       : 'rgba(80, 140, 240, 0.12)',
+            border           : 'rgba(80, 140, 240, 0.45)',
+            activeBackground : 'rgba(80, 140, 240, 0.32)',
+            invalidBackground: 'rgba(200, 50, 50, 0.32)',
         },
     },
     scroll: {
