@@ -60,6 +60,7 @@ export default defineConfig({
                     { text: 'TabWindow',        link: '/components/TabWindow' },
                     { text: 'Dialog',           link: '/components/Dialog' },
                     { text: 'Drawer',           link: '/components/Drawer' },
+                    { text: 'Dock',             link: '/components/Dock' },
                     { text: 'Tooltip',          link: '/components/Tooltip' },
                     { text: 'Popover',          link: '/components/Popover' },
                     { text: 'Notification',     link: '/components/Notification' },

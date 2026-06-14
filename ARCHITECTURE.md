@@ -53,6 +53,14 @@ If a layout manager can't express what a component needs:
 
 No other values are exposed on the `Position` enum. `relative` / `sticky` / `initial` / `inherit` are deliberately absent.
 
+## Drag-and-drop feedback colours
+
+Drag feedback uses two colour channels with fixed meanings; do not blur them. **Green / red** is a whole-target *validity* wash (`DragFeedback`, driven by the target's `accepts` predicate): green when the target accepts the drop, red when it refuses. **Blue** marks *position* in two tiers — a *faint* full-target wash for the "droppable here" affordance (a `DockRegion` body, a `TabBar` strip) plus a *brighter* mark for the precise zone or slot a drop will occupy (a `ReorderIndicator` insertion line, a `DockRegion` edge/centre zone, a `TabBar` strip's insertion bar); the bright mark's **red** variant flags a specific *illegal* spot (a no-op or self-drop) rather than the whole target being invalid. The convention consumers learn: **faint blue = "droppable here", bright blue = "it lands here", green = "valid drop area", red = "not here"**.
+
+A drop target that paints its own positional feedback MUST set `suppressValidityTint` on its `makeDropTarget` options so the manager's whole-target wash does not stack a second, coarser signal over the precise one — keeping "where it lands" the same blue everywhere. Reserve the green / red wash for targets with a single outcome and no sub-region to point at (e.g. `TreeTable` rows, where a reparent has no finer slot to highlight). Consumer-facing version: [`docs/recipes/drag-and-drop.md`](docs/recipes/drag-and-drop.md).
+
+Blue here is the framework's **single accent** — selection (`table.row.selected`, row/list `selectedBackground`) and the focus ring use the same hue — so drag's blue is intentional, not a clash with selection. It stays distinguishable by being transient and modal (drawn on overlays only during an active drag) and by treatment (a faint wash plus a thin bar, not a selection's filled state). Do not introduce a second accent hue for drag to "fix" the overlap.
+
 ## Size constraints: who is responsible for what
 
 Every `Component` carries three size hints per axis — minimum, preferred, maximum — bound by the invariant `min ≤ preferred ≤ max`. Three distinct responsibilities keep them honest; conflating them is what historically produced "mysteriously collapsed" or "won't scroll" layouts. The consumer-facing version is [`docs/concepts/sizing.md`](docs/concepts/sizing.md).

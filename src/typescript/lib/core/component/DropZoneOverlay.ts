@@ -35,6 +35,10 @@ export const EDGE_BAND_FRACTION = 0.25;
  */
 class DropZoneHighlight extends Component {
 
+    // Cached validity so the colour swap in {@link setValid} is a no-op on a
+    // repeat call with the same state — the band is re-placed every drag frame.
+    private _valid: boolean = true;
+
     /** Builds the highlight rect, hidden until {@link placeBand} positions it. */
     constructor() {
         super();
@@ -59,6 +63,25 @@ class DropZoneHighlight extends Component {
         this.setWidth(width);
         this.setHeight(height);
         this.setVisible(true);
+    }
+
+    /**
+     * Swaps the band colour between the active (valid) and invalid drop tokens —
+     * the band itself carries the drop's validity now that the whole-target tint
+     * is suppressed for dock regions. Idempotent on repeat calls.
+     *
+     * @param valid - `true` for the active blue band, `false` for the red one.
+     */
+    setValid(valid: boolean): void {
+        if (this._valid === valid) {
+            return;
+        }
+
+        this._valid = valid;
+
+        this.setBackgroundColor(valid
+            ? "var(--ts-ui-drag-dropzone-active-bg)"
+            : "var(--ts-ui-drag-dropzone-invalid-bg)");
     }
 
     /** Hides the rect (no zone highlighted). */
@@ -98,10 +121,12 @@ class DropZoneOverlay extends Component {
     // exists by the time the constructor body configures it.
     private _highlight: DropZoneHighlight = new DropZoneHighlight();
 
-    // Cached current zone so a per-mousemove `setHighlight` with an unchanged
-    // zone is a no-op — `onDragOver` fires every frame, and re-placing the rect
-    // each frame would be needless DOM churn.
+    // Cached current zone and validity so a per-mousemove `setHighlight` with an
+    // unchanged zone *and* validity is a no-op — `onDragOver` fires every frame,
+    // and re-placing or re-colouring the rect each frame would be needless DOM
+    // churn.
     private _zone: DropZone | null = null;
+    private _valid: boolean = true;
 
     /**
      * Constructs a dock-zone overlay. The overlay is not attached until
@@ -148,22 +173,29 @@ class DropZoneOverlay extends Component {
      * `null`. The lit rectangle is the edge band (an `EDGE_BAND_FRACTION`
      * slice against the relevant axis) for an edge zone, or the central
      * remainder for `"center"` — matching the rectangle the drop would occupy.
-     * A repeat call with the current zone is a no-op.
+     * The band is drawn in the active (blue) colour when `valid`, or the invalid
+     * (red) colour when not — so an illegal drop is marked on the exact zone it
+     * would occupy rather than tinting the whole target. A repeat call with the
+     * current zone *and* validity is a no-op.
      *
      * @param zone - The zone to highlight, or `null` to hide the highlight.
+     * @param valid - Whether the drop on this zone is legal (defaults to `true`).
      */
-    setHighlight(zone: DropZone | null): void {
-        if (zone === this._zone) {
+    setHighlight(zone: DropZone | null, valid: boolean = true): void {
+        if (zone === this._zone && valid === this._valid) {
             return;
         }
 
-        this._zone = zone;
+        this._zone  = zone;
+        this._valid = valid;
 
         if (zone === null) {
             this._highlight.hide();
 
             return;
         }
+
+        this._highlight.setValid(valid);
 
         const w = this.getWidth();
         const h = this.getHeight();
@@ -183,11 +215,28 @@ class DropZoneOverlay extends Component {
     }
 
     /**
+     * Lights up the **entire** region as a single drop zone, leaving no edge
+     * bands. For a target with only one possible outcome — an empty dock, where
+     * any drop simply becomes the sole region — so the feedback reads as one
+     * solid blue area rather than {@link setHighlight}`("center")`'s inset square
+     * that implies splittable edges. Cheap to call per `onDragOver`: the underlying
+     * geometry setters short-circuit once placed.
+     */
+    highlightFull(): void {
+        this._zone  = null;
+        this._valid = true;
+
+        this._highlight.setValid(true);
+        this._highlight.placeBand(0, 0, this.getWidth(), this.getHeight());
+    }
+
+    /**
      * Removes the overlay element from the DOM and resets the cached zone so a
      * later re-attach starts with no highlight.
      */
     detach(): void {
-        this._zone = null;
+        this._zone  = null;
+        this._valid = true;
         this.removeElement();
     }
 }

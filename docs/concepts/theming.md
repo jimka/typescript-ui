@@ -103,6 +103,10 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 `button.background`, `button.pressed.background`, `button.hover.background`, and `toggle.selected.background` accept either a plain colour (`rgb(200, 200, 200)`) or any CSS `background-image` value (`linear-gradient(...)`, `radial-gradient(...)`, etc.). The framework applies the token to both `background-color` and `background-image`; CSS's "invalid at computed-value time" rule routes the value to whichever property it is valid for.
 :::
 
+::: info Blue is the single accent colour
+One accent blue runs across selection (`table.row.selected`, list/row `selectedBackground`), the keyboard `indicator.focus` ring, and drag-and-drop *position* feedback (the [`ReorderIndicator`](/api/core/classes/ReorderIndicator) bar plus the dock / tab-strip drop-zone wash). The overlap is deliberate — blue means "what you're acting on, or where the action goes." Drag feedback stays distinct from selection by **modality** (it shows only during an active drag, on overlays above the page) and **treatment** (a faint area wash plus a thin moving bar, versus a selection's solid filled state), and the drop-zone wash uses a lighter blue than the accent fill. Don't introduce a second accent hue for drag — rely on treatment and modality. See [Drag-and-drop feedback colours](/recipes/drag-and-drop#drop-feedback-colours).
+:::
+
 ## Custom themes
 
 Build a theme with [`defineTheme`](/api/core/functions/defineTheme), which deep-merges your overrides onto a base and returns a complete [`Theme`](/api/core/interfaces/Theme) ready for `setTheme`. The recommended base is [`BaseTheme`](/api/core/variables/BaseTheme) — the structural scaffold shared by all three built-ins (sizes, paddings, radii, durations, font sizes). You supply the palette and `colorScheme`; the structure is inherited:
