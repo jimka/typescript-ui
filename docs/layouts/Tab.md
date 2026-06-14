@@ -212,9 +212,11 @@ The same `setReorderable(true)` flag also enables cross-container gestures —
 turning a strip reorderable enables reorder, tear-off, and re-dock together:
 
 - **Tear-off** — release a header drag over empty space (not over any strip) and
-  the tab detaches into a floating
-  [`Window`](/api/core/classes/Window) opened at the cursor, hosting the tab's
-  **live** content. The window title is the tab label.
+  the tab detaches into a floating window opened at the cursor, hosting the tab's
+  **live** content. In the default `"strip"` mode this is a headerless
+  [`TabWindow`](/components/TabWindow) whose tab bar doubles as its title bar; in
+  `"bare"` mode it is an ordinary [`Window`](/api/core/classes/Window). Either way
+  the window title is the tab label (see [Re-docking a floating window](#re-docking-a-floating-window)).
 - **Cross-strip dock** — release a header drag over another reorderable strip and
   the live content docks there as a new tab at the insertion slot. Same-strip
   releases stay [reorders](#reorderable-tabs).
@@ -231,9 +233,15 @@ reset — a torn-off or docked panel snaps into place rather than animating.
 `setDetachWindowMode(mode)` (option `detachWindowMode`) selects how a tear-off
 window hosts its content, and so how it is re-docked:
 
-- **`"strip"`** (default) — the window hosts a one-tab reorderable strip. Drag
-  that tab out onto another strip to re-dock it; the emptied window closes
-  itself.
+- **`"strip"`** (default) — the tear-off opens a
+  [`TabWindow`](/components/TabWindow): a headerless window whose tab bar **is**
+  its title bar (no separate [`WindowHeader`](/api/component/container/classes/WindowHeader)
+  stacked above the strip). The window title derives from the active tab's label
+  ([`getActiveTabLabel()`](/api/layout/classes/Tab#getactivetablabel)); dragging
+  the empty area of the bar moves the window (double-click it to maximize or
+  restore); and minimize / maximize / close sit as trailing controls in the bar.
+  Drag the tab out onto another strip to re-dock
+  it; the emptied window closes itself.
 - **`"bare"`** — the content fills the window body directly. **Shift-drag** the
   window title bar onto a strip to re-dock it (a plain drag still moves the
   window; a Shift-drag released over empty space is a no-op). Shift keeps the
@@ -267,6 +275,7 @@ reuses the `drag.reorderIndicator.color` token.
 
 - [API: Tab](/api/layout/classes/Tab)
 - [`TabBar`](/components/TabBar) — the standalone strip chrome `Tab` composes
+- [`TabWindow`](/components/TabWindow) — the headerless window a `"strip"` tear-off produces
 - [`TabDragData`](/api/core/interfaces/TabDragData) — the tear-off / re-dock drag contract
 - [`Card`](/layouts/Card) — same one-at-a-time semantics, no toolbar
 - [`TabCloseButton`](/components/TabCloseButton)

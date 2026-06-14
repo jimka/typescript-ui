@@ -78,6 +78,8 @@ The bar carries the same strip knobs as the [`Tab`](/layouts/Tab) layout, each w
 
 `TabBar` reuses every existing `--ts-ui-tab-*` token verbatim — see the [`Tab` theming notes](/layouts/Tab#theming). No new tokens are introduced.
 
+[`setBarSurfaceColor(color)`](/api/component/container/classes/TabBar#setbarsurfacecolor) repaints every opaque toolbar surface at once — the strip itself, the tool group, and (when built) the scroll arrows — for owners that swap the bar fill on a state change, such as a [`TabWindow`](/components/TabWindow) flattening its bar on blur. It is a recolor only and never relays out.
+
 ## See also
 
 - [API: TabBar](/api/component/container/classes/TabBar)

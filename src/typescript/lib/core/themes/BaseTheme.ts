@@ -7,9 +7,10 @@ import type { DeepPartial, Theme } from '~/core/Theme.js';
  * paddings, radii, gaps, thicknesses, durations, and font sizes. Not a usable
  * theme on its own (palette tokens are absent); wrap it with {@link defineTheme}.
  *
- * The two structural-shaped tokens that are *not* invariant carry their majority
+ * The two structural-shaped tokens that are *not* invariant carry their base
  * value here — `header.padding: 5` (Dark overrides to `4`) and
- * `tab.underBorderFullWidth: true` (Modern overrides to `false`).
+ * `tab.underBorderFullWidth: true` (Modern and Dark override to `false`, so only
+ * Classic keeps the base value).
  *
  * @category Theme
  */

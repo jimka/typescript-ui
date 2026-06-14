@@ -92,6 +92,7 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         indicator: { color: 'rgb(160,160,160)' },
     },
     tab   : {
+        underBorderFullWidth: false,
         toolbar: { background: '#2a2a2a', border: '#444' },
         button : {
             background: '#3a3a3a',
@@ -104,6 +105,14 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
     window    : {
         shadow      : '3px 3px 2px rgba(0, 0, 0, 0.6)',
         snapGlow    : '0 0 0 2px rgba(80, 150, 240, 0.8)',
+        control     : {
+            background      : 'rgb(30, 30, 30)',
+            border          : '1px solid transparent',
+            shadow          : 'none',
+            hoverBackground : 'rgb(55, 55, 55)',
+            activeBackground: 'rgb(45, 45, 45)',
+        },
+        header      : { background: '#2a2a2a' },
     },
     header    : { padding: 4 },
     table     : {
