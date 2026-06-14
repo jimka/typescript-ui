@@ -217,8 +217,23 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * its current preferred size still equals this value — so a subclass /
      * consumer that pinned its own glyph size (SpinButton, Tab close-glyph)
      * is left untouched. `null` until the framework first sizes the glyph.
+     *
+     * This size-difference guard is unreliable on its own: a consumer that
+     * pins the glyph *before* the first successful sync (while this is still
+     * `null` — e.g. before the button is attached and the line height
+     * resolves) is not protected, so the first post-attach re-sync clobbers
+     * the pin. {@link _glyphSizePinned} is the authoritative opt-out.
      */
     private _glyphSyncedSize: number | null = null;
+
+    /**
+     * Set by {@link pinGlyphSize} when a consumer fixes the leading glyph to a
+     * specific size. While `true`, {@link _syncGlyphSize} skips the glyph
+     * entirely, so a theme change never re-tracks it to the title line height.
+     * This is the reliable opt-out (the {@link _glyphSyncedSize} size-diff guard
+     * has a null-window hole — see there).
+     */
+    private _glyphSizePinned: boolean = false;
 
     /**
      * Flipped to `true` the first time a consumer calls `setPreferredSize`
@@ -866,7 +881,14 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // the title's baseline from `_content` and leave the glyph centred;
             // added directly, the title's baseline is visible so the glyph drops
             // onto the text baseline — matching the description topology.
-            this._orientBox(this._content, inlineAxis, 2);
+            // A glyph-only button (empty label) drops the inline spacing to 0 so
+            // the glyph sits flush at the box centre: the default spacing between
+            // the glyph and a zero-width label pads one side and pushes the glyph
+            // off centre (the visible "hugs the left edge" on icon buttons). The
+            // empty `_text` stays in the row so its line box still drives the
+            // button height — dropping it shrinks the button vertically.
+            const hasText = this._text.getText().valueOf() !== "";
+            this._orientBox(this._content, inlineAxis, this._glyph && !hasText ? 0 : 2);
 
             const inlineChildren = this._glyph ? [this._glyph, this._text] : [this._text];
             this._addContentChildren(this._content, inlineChildren, inlineReversed);
@@ -907,6 +929,11 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     private _syncGlyphSize(): void {
         const glyph = this._glyph;
         if (!glyph) {
+            return;
+        }
+
+        // A consumer-pinned glyph keeps its fixed size across theme changes.
+        if (this._glyphSizePinned) {
             return;
         }
 
@@ -984,6 +1011,28 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     getGlyph(): Glyph | null {
         return this._glyph;
+    }
+
+    /**
+     * Pins the leading glyph to a fixed square size and opts it out of the
+     * theme-reactive line-height sync. Use for compact icon buttons whose glyph
+     * must stay a constant size regardless of the active theme's font metrics —
+     * a tab's close ✕, a spinner chevron. A plain
+     * `getGlyph().setPreferredSize(...)` is unreliable here: if it runs before
+     * the button is attached (line height unresolved), the first theme change
+     * re-tracks the glyph to the title line height and grows it. This sets the
+     * authoritative `_glyphSizePinned` opt-out so the sync skips the glyph.
+     *
+     * @param px - The square glyph size in pixels.
+     *
+     * @returns This button, for chaining.
+     */
+    pinGlyphSize(px: number): this {
+        this._glyphSizePinned = true;
+
+        this._glyph?.setPreferredSize(px, px);
+
+        return this;
     }
 
     /**

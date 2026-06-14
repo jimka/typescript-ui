@@ -11,7 +11,9 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Component`](/api/core/classes/Component) | Base class — position, size, styling, child tree |
 | [`BaseObject`](/api/core/classes/BaseObject) | UUID-based identity above `Component` |
 | [`Body`](/api/core/classes/Body) | Singleton wrapping `document.body`; bootstraps the framework |
-| [`Window`](/api/core/classes/Window) | Floating, draggable, resizable window |
+| [`AbstractWindow`](/components/AbstractWindow) | Abstract base for `Window` and `TabWindow` — header-agnostic window machinery |
+| [`Window`](/components/Window) | Floating, draggable, resizable window with a title-bar header |
+| [`TabWindow`](/components/TabWindow) | Headerless floating window whose tab bar is its title bar (strip tear-off) |
 | [`Dialog`](/api/core/classes/Dialog) | Modal dialog with async result |
 | [`Drawer`](/components/Drawer) | Edge-anchored panel that slides in from a viewport edge; modal or non-modal |
 | [`Tooltip`](/api/core/classes/Tooltip) | Singleton hover hint, attach via `Tooltip.attach(component, text)` |

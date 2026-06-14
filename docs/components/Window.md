@@ -2,6 +2,8 @@
 
 [`Window`](/api/core/classes/Window) is a floating, draggable, resizable panel with a title bar and a close button. Multiple windows stack with auto-managed `z-index`, and clicks outside the active window deactivate it.
 
+`Window` extends [`AbstractWindow`](/components/AbstractWindow), the abstract base that holds the header-agnostic window machinery (resize borders, move, window-state lifecycle, z-order, show/hide). `Window` is the concrete subclass that adds a [`WindowHeader`](/api/component/container/classes/WindowHeader) title bar; its headerless sibling is [`TabWindow`](/components/TabWindow). `getHeader()` still returns the `WindowHeader` exactly as before.
+
 ## Usage
 
 ```typescript
@@ -99,9 +101,12 @@ win.setSnapResizeEnabled(false); // opt out
 - A `Window` is not added to its parent's layout flow. It floats in absolute coordinates and you control its position via `setPosition` / `setSize`.
 - Calling `show()` is what registers it with the active-window tracking. Without `show()`, drag and focus behavior won't activate.
 - Use `setResizeFps(0)` to disable throttling during resize if you need every frame.
+- **Removed:** `setTearOffStripBody` / `isTearOffStripBody` no longer exist. They marked a window as a strip-mode tear-off body so the header re-dock gesture stayed inert over it; that role is now handled structurally by the headerless [`TabWindow`](/components/TabWindow) (it has no header re-dock path at all), so the flag was deleted from the public surface.
 
 ## See also
 
 - [API: Window](/api/core/classes/Window)
+- [`AbstractWindow`](/components/AbstractWindow) — the shared window base class
+- [`TabWindow`](/components/TabWindow) — the headerless tab-bar window sibling
 - [Mental model](/guide/mental-model)
 - Recipe: [Floating window](/recipes/floating-window)

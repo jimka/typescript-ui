@@ -11,12 +11,22 @@ import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { Placement } from "~/primitive/Placement.js";
 import { callable } from "~/core/Callable.js";
+import {
+    createWindowControlButton,
+    setWindowControlsActive,
+} from "~/core/windowControls.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
 import { window_maximize } from "~/glyphs/solid/window_maximize.js";
 import { window_minimize } from "~/glyphs/solid/window_minimize.js";
 import { window_restore } from "~/glyphs/solid/window_restore.js";
 
 Glyph.register(xmark, window_maximize, window_minimize, window_restore);
+
+// Pixel size of the leading title-glyph's ink. Matches the ink a TabWindow's
+// leading glyph renders (its control-peer box syncs the glyph to ~14px), so the
+// two window kinds show a same-sized title icon. A plain Glyph is pinned to this
+// rather than auto-syncing, since it sits in the title-text row, not a strip.
+const LEAD_GLYPH_INK_SIZE: number = 14;
 
 /**
  * Construction-time options for {@link WindowHeader}.
@@ -46,7 +56,7 @@ class WindowHeader extends Header {
     private _minimizeButton:  Button;
     private _maximizeButton:  Button;
     private _trailingRow:     Component;
-    private _activeBackgroundImage: string;
+    private _activeBackground: string;
     private _titleGlyph:      Glyph | null = null;
     private _titleRow:        Component;
     private _closeable:       boolean = true;
@@ -56,8 +66,13 @@ class WindowHeader extends Header {
     constructor(text: string, options?: WindowHeaderOptions) {
         super(text);
 
-        this._activeBackgroundImage = "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))";
-        this.setBackgroundImage(this._activeBackgroundImage);
+        // Focused fill: the dedicated window-header surface, valued equal to the
+        // tab-toolbar fill a TabWindow's bar uses so a header Window and a headerless
+        // TabWindow share one window-chrome colour (both also share the gutter fill
+        // when blurred), while staying independently themeable. A solid colour, not
+        // the button gradient that used to sit here.
+        this._activeBackground = "var(--ts-ui-window-header-bg, #eee)";
+        this.setBackgroundColor(this._activeBackground);
 
         // Reparent the inherited title text into a permanent HBox row that
         // owns the Border WEST slot. setGlyph then only has to swap the
@@ -67,7 +82,10 @@ class WindowHeader extends Header {
 
         this._titleRow = new Component();
         this._titleRow.setLayoutManager(new HBox({ spacing: 8 }));
-        this._titleRow.setInsets(new Insets(0, 0, 0, 0));
+        // Leading inset so the title icon sits the same distance from the left edge
+        // as the trailing controls sit from the right (and as a TabWindow's leading
+        // glyph) — without it the icon hugs the corner, closer in than the controls.
+        this._titleRow.setInsets(new Insets(0, 0, 0, 5));
         this._titleRow.setPointerEvents("none");
         this._titleRow.addComponent(title);
 
@@ -77,21 +95,25 @@ class WindowHeader extends Header {
             fill:      FillType.HORIZONTAL
         });
 
-        // Translucent overlay :hover / :active rules — darken whatever
-        // header tint is underneath without imposing a colour. Picked over
-        // a solid `var(--ts-ui-button-hover-bg)` because that gray looks
-        // odd against the active-window gradient title bar.
-        const trailingButtonStyleRules = [
-            { suffix: ":hover:not(:active)", styles: { backgroundColor: "var(--ts-ui-titlebar-btn-hover-bg, rgba(0, 0, 0, 0.08))" } },
-            { suffix: ":active",             styles: { backgroundColor: "var(--ts-ui-titlebar-btn-active-bg, rgba(0, 0, 0, 0.16))" } },
-        ];
+        // Control buttons built from the shared window-control factory so the
+        // header's trailing controls match a TabWindow's exactly: the themed
+        // `window.control` fill (white in modern, raised in classic). A TabWindow's
+        // controls reach their 24×24 box by being stretched to the strip thickness
+        // (their `Insets(0,4,0,4)` only sets the within-box padding); a header row is
+        // not stretched, so the same look is reached with symmetric `Insets(4,4,4,4)`
+        // — a 24×24 box around the 14px glyph that centres in the header (it slightly
+        // overflows the text content area into the header padding, like the TabWindow
+        // controls fill the strip, without forcing the header taller).
+        this._minimizeButton = createWindowControlButton("window-minimize");
+        this._maximizeButton = createWindowControlButton("window-maximize");
+        this._exitButton     = createWindowControlButton("xmark");
 
-        this._minimizeButton = new Button({ glyph: "window-minimize", chromeless: true, styleRules: trailingButtonStyleRules, insets: new Insets(2,2,2,2) });
-        this._maximizeButton = new Button({ glyph: "window-maximize", chromeless: true, styleRules: trailingButtonStyleRules, insets: new Insets(2,2,2,2) });
-        this._exitButton     = new Button({ glyph: "xmark",           chromeless: true, styleRules: trailingButtonStyleRules, insets: new Insets(2,2,2,2) });
+        for (const control of [this._minimizeButton, this._maximizeButton, this._exitButton]) {
+            control.setInsets(new Insets(4, 4, 4, 4));
+        }
 
         this._trailingRow = new Component();
-        this._trailingRow.setLayoutManager(new HBox({ spacing: 2 }));
+        this._trailingRow.setLayoutManager(new HBox({ spacing: 0 }));
         this._trailingRow.setInsets(new Insets(0, 0, 0, 0));
         this._trailingRow.addComponent(this._minimizeButton);
         this._trailingRow.addComponent(this._maximizeButton);
@@ -160,7 +182,14 @@ class WindowHeader extends Header {
             this._titleGlyph = null;
         }
 
+        // A bare decorative glyph (pointer-through) sized to the same ink the
+        // TabWindow's leading glyph renders, so the title icon matches it. Kept a
+        // plain Glyph rather than a control-peer button so it baseline-aligns with
+        // the title text in this shared row (a taller control box would desync the
+        // text's vertical centring); the leading inset on the title row supplies the
+        // corner offset that mirrors the TabWindow's.
         const glyph = new Glyph(name);
+        glyph.setPreferredSize(LEAD_GLYPH_INK_SIZE, LEAD_GLYPH_INK_SIZE);
         glyph.setPointerEvents("none");
         this._titleGlyph = glyph;
 
@@ -195,16 +224,16 @@ class WindowHeader extends Header {
     /**
      * Toggles the title bar appearance between the focused and unfocused states.
      *
-     * @param active - True to show the focused (gradient) background; false for the unfocused (flat) background.
+     * @param active - True to show the focused tab-toolbar background; false for the unfocused gutter background.
      */
     setActive(active: boolean): this {
-        if (active) {
-            this.setBackgroundImage(this._activeBackgroundImage);
-            this.clearBackgroundColor();
-        } else {
-            this.clearBackgroundImage();
-            this.setBackgroundColor("var(--ts-ui-gutter-bg, rgb(200, 200, 200))");
-        }
+        this.setBackgroundColor(active
+            ? this._activeBackground
+            : "var(--ts-ui-gutter-bg, rgb(200, 200, 200))");
+
+        // Flatten the controls to transparent on blur (and restore the themed fill
+        // on focus) exactly like a TabWindow's bar, via the shared helper.
+        setWindowControlsActive([this._minimizeButton, this._maximizeButton, this._exitButton], active);
 
         return this;
     }

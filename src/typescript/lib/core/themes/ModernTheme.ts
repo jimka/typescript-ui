@@ -119,6 +119,14 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
     window: {
         shadow      : '3px 3px 2px rgba(0, 0, 0, 0.4)',
         snapGlow    : '0 0 0 2px rgba(30, 100, 200, 0.7)',
+        control     : {
+            background      : 'rgb(255, 255, 255)',
+            border          : '1px solid transparent',
+            shadow          : 'none',
+            hoverBackground : 'rgb(236, 238, 241)',
+            activeBackground: 'rgb(226, 229, 233)',
+        },
+        header      : { background: '#eee' },
     },
     table : {
         header: {
