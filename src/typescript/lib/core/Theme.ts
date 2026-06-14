@@ -581,9 +581,10 @@ export interface Theme {
             color: string;
         };
         dropzone: {
-            background      : string;
-            border          : string;
-            activeBackground: string;
+            background       : string;
+            border           : string;
+            activeBackground : string;
+            invalidBackground: string;
         };
     };
 
@@ -915,6 +916,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-drag-dropzone-bg'                 : theme.drag.dropzone.background,
         '--ts-ui-drag-dropzone-border'             : theme.drag.dropzone.border,
         '--ts-ui-drag-dropzone-active-bg'          : theme.drag.dropzone.activeBackground,
+        '--ts-ui-drag-dropzone-invalid-bg'         : theme.drag.dropzone.invalidBackground,
         '--ts-ui-scroll-shadow-color'              : theme.scroll.shadowColor,
     };
 }

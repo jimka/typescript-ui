@@ -119,6 +119,15 @@ export interface DropTargetOptions {
     /** Optional drop callback — return `false` to suppress the `drop` event. */
     onDrop?      : (detail: DragEventDetail) => boolean | void;
     /**
+     * Suppresses the whole-target validity tint
+     * ([`DragFeedback`](/api/core/classes/DragFeedback)) for this target. Pass it
+     * when the target paints its own positional validity feedback (e.g. a
+     * [`DockRegion`](/api/layout/classes/DockRegion) colours the drop *zone*
+     * blue/red in `onDragOver`) so the two don't stack into a tinted frame *and*
+     * a tinted zone. `accepts` still governs whether `onDragOver`/`onDrop` fire.
+     */
+    suppressValidityTint?: boolean;
+    /**
      * Optional non-scrolling layer to host the validity tint, sized to the
      * target's box within it. Pass it when the target scrolls its own content
      * (e.g. a Tab strip's clip frame) so the tint overlays the *viewport* and
@@ -431,7 +440,7 @@ function leaveCurrentTarget(session: DragSession, detail: DragEventDetail): void
 function enterNewTarget(session: DragSession, target: DropTargetRecord, detail: DragEventDetail): void {
     const accepted = target.options.accepts(detail);
 
-    if (session.feedback) {
+    if (session.feedback && !target.options.suppressValidityTint) {
         session.feedback.setValid(accepted);
         session.feedback.attachTo(target.component, target.options.feedbackHost);
     }
@@ -522,7 +531,7 @@ function onMouseMove(e: MouseEvent): void {
     // rejected.
     const accepted = target.options.accepts(detail);
 
-    if (session.feedback) {
+    if (session.feedback && !target.options.suppressValidityTint) {
         session.feedback.setValid(accepted);
     }
 

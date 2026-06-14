@@ -53,6 +53,12 @@ export type LayoutNode = PanelNode | SplitNode | TabNode;
 export interface PanelNode {
     kind:    "panel";
     panelId: string;
+    /**
+     * Optional registry glyph name, captured from the leaf's
+     * {@link LayoutConstraints.glyph} so a restored tab keeps its glyph (the
+     * per-container constraint would otherwise be dropped by the re-home).
+     */
+    glyph?:  string | null;
 }
 
 /**
@@ -129,10 +135,6 @@ export interface LayoutState {
  */
 export type LayoutFactory = (panelId: string) => Component | null;
 
-// One-time warning latch: a panel without a stable constraint `name` falls back
-// to its volatile per-instance id, which cannot round-trip across reloads.
-let missingNameWarned = false;
-
 /**
  * Returns a container's arrangement-manager kind with the callable alias's
  * leading underscore stripped (`_Split` → `"Split"`), or `""` when the
@@ -149,26 +151,15 @@ function managerKind(component: Component): string {
 }
 
 /**
- * Resolves a component's stable serialization ID from its layout-constraint
- * `name`, falling back to the volatile {@link Component.getId} with a one-time
- * warning when no name is set.
+ * Resolves a component's stable serialization ID as its {@link Component.getId}.
+ * The id is the identity channel: callers that need a layout to round-trip across
+ * reloads assign each leaf a stable id via `setId` (a volatile auto-generated id
+ * round-trips within a session but not across one).
  *
  * @param component - The leaf component to identify.
- * @returns The stable panel ID, or the volatile id as a last resort.
+ * @returns The component's id.
  */
 function panelIdOf(component: Component): string {
-    const name = component.getParentComponent()?.getLayoutConstraints(component)?.name;
-
-    if (name) {
-        return name;
-    }
-
-    if (!missingNameWarned) {
-        console.warn("serializeLayout: a serialized panel has no layout-constraint `name`; falling back to its volatile getId(), which will not round-trip. Assign a stable constraint name.");
-
-        missingNameWarned = true;
-    }
-
     return component.getId();
 }
 
@@ -206,7 +197,9 @@ function nodeFor(component: Component): LayoutNode {
         };
     }
 
-    return { kind: "panel", panelId: panelIdOf(component) };
+    const glyph = component.getParentComponent()?.getLayoutConstraints(component)?.glyph ?? null;
+
+    return { kind: "panel", panelId: panelIdOf(component), glyph };
 }
 
 /**
@@ -329,20 +322,41 @@ function parkLeaves(root: Component, liveWindows: AbstractWindow[], factory: Lay
 }
 
 /**
- * Returns the layout constraints to re-home a child node under, carrying a
- * panel leaf's stable ID through as the constraint `name` so the rebuilt tree
- * re-serializes identically. Sub-containers carry no name.
+ * Whether `win` hosts `node` — i.e. `node` lies within `win`'s subtree, so `win`
+ * is the window the layout root lives in rather than a torn-off float. Walks
+ * `node`'s ancestor chain looking for `win`.
+ *
+ * @param win - A candidate host window.
+ * @param node - The layout root being restored.
+ * @returns `true` when `win` contains `node`.
+ */
+function hostsComponent(win: AbstractWindow, node: Component): boolean {
+    for (let n: Component | null = node; n; n = n.getParentComponent()) {
+        if (n === win) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Returns the layout constraints to re-home a panel leaf under, carrying its
+ * captured `glyph` through so a restored tab keeps its glyph. Identity rides on
+ * the component's own id (see {@link panelIdOf}), not a constraint, so no `name`
+ * is stamped — that keeps the leaf's visible label (its component name) intact
+ * across a restore. Sub-containers and glyph-less leaves carry no constraints.
  *
  * @param node - The child node being placed.
- * @returns The constraints, or `undefined` for a container child.
+ * @returns The constraints, or `undefined` when none are needed.
  */
 function constraintsFor(node: LayoutNode): LayoutConstraints | undefined {
-    if (node.kind !== "panel") {
+    if (node.kind !== "panel" || !node.glyph) {
         return undefined;
     }
 
     const constraints = new LayoutConstraints();
-    constraints.name = node.panelId;
+    constraints.glyph = node.glyph;
 
     return constraints;
 }
@@ -498,13 +512,17 @@ function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: 
  * @category Layouts
  */
 export function restoreLayout(root: Component, state: LayoutState, factory: LayoutFactory): void {
-    const liveWindows = Window.getOpenWindows();
+    // Float-plane windows only. A window that *hosts* `root` (the layout lives
+    // inside it, e.g. a Dock in a Window) must be left alone — tearing it down
+    // would close the very window the restored layout renders into. Only
+    // torn-off floats are parked and rebuilt from `state.windows`.
+    const liveWindows = Window.getOpenWindows().filter(win => !hostsComponent(win, root));
 
     // 1. PARK every factory-known leaf (detach, never destroy).
     const parked = parkLeaves(root, liveWindows, factory);
 
-    // 2. TEAR DOWN the live arrangement: close windows (content already parked)
-    //    and clear the root container subtree wholesale.
+    // 2. TEAR DOWN the live arrangement: close the float windows (content already
+    //    parked) and clear the root container subtree wholesale.
     liveWindows.forEach(win => win.onExitAction());
     root.removeAllComponents();
 

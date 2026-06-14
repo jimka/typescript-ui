@@ -7,6 +7,7 @@ import {
     Component,
     DarkTheme,
     Dialog,
+    Dock,
     Drawer,
     Event,
     Menu,
@@ -22,10 +23,12 @@ import type { AutoScrollMode, DrawerEdge } from '@jimka/typescript-ui/core';
 import { Insets, Placement } from '@jimka/typescript-ui/primitive';
 import {
     Absolute,
+    Border,
     Fit,
     HBox,
     VBox
 } from '@jimka/typescript-ui/layout';
+import type { LayoutState } from '@jimka/typescript-ui/layout';
 import {
     MemoryStore,
     Model,
@@ -76,6 +79,7 @@ import { file }          from '@jimka/typescript-ui/glyphs/solid/file';
 import { file_code }     from '@jimka/typescript-ui/glyphs/solid/file_code';
 import { file_lines }    from '@jimka/typescript-ui/glyphs/solid/file_lines';
 import { floppy_disk }   from '@jimka/typescript-ui/glyphs/solid/floppy_disk';
+import { ToolBar } from '~/component/menubar/ToolBar';
 
 Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines, floppy_disk);
 /**
@@ -614,6 +618,66 @@ class MiscPanel extends Panel {
         const nonModalDrawerButton = new Button("Non-modal drawer (left)");
         nonModalDrawerButton.on("action", () => openDemoDrawer(Placement.WEST, false, "left"));
         leftColumn.addComponent(nonModalDrawerButton);
+
+        // Dock demo — a rearrangeable VS Code / GoldenLayout style layout. The
+        // initial arrangement is a horizontal split: a two-tab group on the left
+        // and a single panel on the right. Drag a tab to reorder, tear it off
+        // into a window, or drop one on a region edge to split; Save/Restore
+        // exercises the serialization round-trip.
+        const dockButton = new Button("Dockable layout (Dock)");
+        dockButton.on("action", () => {
+            const win = new Window("Dockable layout");
+            win.setX(180);
+            win.setY(120);
+            win.setWidth(720);
+            win.setHeight(460);
+
+            const dockPanel = (text: string): (() => Component) => () => {
+                const host = new Panel({ layoutManager: new Fit() });
+                host.addComponent(new Text(text));
+
+                return host;
+            };
+
+            const dock = new Dock({
+                layout: {
+                    split: "horizontal",
+                    children: [
+                        { tabs: [
+                            { id: "explorer", title: "Explorer", content: dockPanel("Explorer — drag this tab to reorder or tear it off.") },
+                            { id: "search",   title: "Search",   content: dockPanel("Search panel.") },
+                        ] },
+                        { id: "editor", title: "Editor", content: dockPanel("Editor — drop a tab on an edge to split this region.") },
+                    ],
+                },
+            });
+
+            let savedLayout: LayoutState | null = null;
+            const toolbar = new ToolBar();
+
+            const saveButton = new Button("Save layout");
+            saveButton.on("action", () => {
+                savedLayout = dock.getLayoutState();
+            });
+
+            const restoreButton = new Button("Restore layout");
+            restoreButton.on("action", () => {
+                if (savedLayout) {
+                    dock.setLayoutState(savedLayout);
+                }
+            });
+
+            toolbar.addComponent(saveButton);
+            toolbar.addComponent(restoreButton);
+
+            const body = new Panel({ layoutManager: new Border(), insets: new Insets(0, 0, 0, 0) });
+            body.addComponent(toolbar, { placement: Placement.NORTH });
+            body.addComponent(dock, { placement: Placement.CENTER });
+
+            win.addComponent(body);
+            win.show();
+        });
+        leftColumn.addComponent(dockButton);
 
         const spacer = new Spacer({ flex: true });
         leftColumn.addComponent(spacer);

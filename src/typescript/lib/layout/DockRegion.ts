@@ -37,46 +37,35 @@ export class DockRegion {
     private _region: Component;
     private _overlay: DropZoneOverlay = new DropZoneOverlay();
     private _teardown: () => void;
+    private _onStructureChanged: (() => void) | null;
 
     /**
      * Registers `region` as a drop target and wires the five-zone gesture.
      *
      * @param region - The container whose edges/center accept a docked tab.
+     * @param onStructureChanged - Optional callback invoked after a drop mutates
+     *   the tree (an edge split or a centre dock), letting a tree owner such as
+     *   [`Dock`](/api/core/classes/Dock) re-wire the regions a drop just created.
      */
-    constructor(region: Component) {
+    constructor(region: Component, onStructureChanged?: () => void) {
         this._region = region;
+        this._onStructureChanged = onStructureChanged ?? null;
 
         this._teardown = DragManager.makeDropTarget(region, {
-            accepts: (detail: DragEventDetail): boolean => {
-                if (detail.dragData["tabDrag"] !== true) {
-                    return false;
-                }
-
-                const componentId = detail.dragData["componentId"];
-
-                // Reject docking the region into itself or into one of its own
-                // ancestors: the overlay sits on `this._region`, so re-homing the
-                // region — or a container that holds it — beneath the region
-                // would re-parent a node under its own subtree, detaching (and
-                // visually dropping) it. This became reachable once an edge drop
-                // wrapped the region in a tab stack, making the region itself
-                // draggable by its own tab.
-                for (let node: Component | null = this._region; node; node = node.getParentComponent()) {
-                    if (node.getId() === componentId) {
-                        return false;
-                    }
-                }
-
-                // Reject the degenerate self-drop: docking a panel onto the edge
-                // of the region it is already the sole content of would create a
-                // split with the same panel on both sides.
-                const children = this._region.getComponents();
-
-                return !(children.length === 1 && children[0].getId() === componentId);
-            },
+            // Accept any tab drag so the manager keeps routing onDragOver/onDrop
+            // here even over a zone the drop is *not* legal on — legality is then
+            // decided per-zone (see isLegalDrop) and shown by colouring the drop
+            // zone blue/red, not by tinting the whole frame. suppressValidityTint
+            // turns off the manager's whole-target tint so it does not stack with
+            // the per-zone colour.
+            accepts:              (detail: DragEventDetail): boolean => detail.dragData["tabDrag"] === true,
+            suppressValidityTint: true,
             onDragOver: (detail: DragEventDetail): null => {
+                const componentId = detail.dragData["componentId"] as string;
+                const zone        = this.computeZone(detail.clientX, detail.clientY);
+
                 this._overlay.attachTo(this._region);
-                this._overlay.setHighlight(this.computeZone(detail.clientX, detail.clientY));
+                this._overlay.setHighlight(zone, this.isLegalDrop(componentId, zone));
 
                 // Suppress the manager's ReorderIndicator — position feedback is
                 // the overlay's job here, not a single insertion line.
@@ -85,14 +74,24 @@ export class DockRegion {
             onDragLeave: (): void => {
                 this._overlay.detach();
             },
-            onDrop: (detail: DragEventDetail): void => {
-                const panel = tabDragRegistry.get(detail.dragData["componentId"] as string);
-                const zone  = this.computeZone(detail.clientX, detail.clientY);
+            onDrop: (detail: DragEventDetail): boolean | void => {
+                const componentId = detail.dragData["componentId"] as string;
+                const zone        = this.computeZone(detail.clientX, detail.clientY);
 
                 this._overlay.detach();
 
+                // An illegal zone (self/ancestor, sole-content, a no-op edge, or
+                // a centre drop into the panel's own tab bar) is a no-op:
+                // suppress the drop so the source snaps back, exactly as the red
+                // zone feedback promised.
+                if (!this.isLegalDrop(componentId, zone)) {
+                    return false;
+                }
+
+                const panel = tabDragRegistry.get(componentId);
+
                 if (!panel) {
-                    return;
+                    return false;
                 }
 
                 if (zone === "center") {
@@ -100,6 +99,8 @@ export class DockRegion {
                 } else {
                     this.splitOnEdge(panel, zone);
                 }
+
+                this._onStructureChanged?.();
             },
         });
     }
@@ -143,6 +144,161 @@ export class DockRegion {
         if (nearest === distTop)   { return "top"; }
 
         return "bottom";
+    }
+
+    /**
+     * Whether dropping `componentId` on `zone` of this region is a real,
+     * structure-changing move — the single predicate behind both the zone
+     * colour (`onDragOver`) and the commit guard (`onDrop`). A drop is illegal
+     * when it would:
+     *
+     * - re-home the region into itself or an ancestor (a cycle: the overlay sits
+     *   on the region, so docking a node that contains the region beneath it
+     *   would detach the subtree). Reachable since an edge drop wraps the region
+     *   in a tab stack, making the region draggable by its own tab;
+     * - dock a panel onto the edge of the region it is already the sole content
+     *   of (a split with the same panel on both sides);
+     * - reproduce the panel's current layout — an edge drop where the dragged
+     *   stack is already that edge's neighbour (see {@link isRedundantEdgeDrop}),
+     *   or a centre drop adding the panel to the tab bar it is already in (see
+     *   {@link isRedundantCenterDrop}).
+     *
+     * @param componentId - The dragged content component's id.
+     * @param zone - The zone the cursor resolved to.
+     * @returns `true` when the drop would change the layout.
+     */
+    private isLegalDrop(componentId: string, zone: DropZone): boolean {
+        for (let node: Component | null = this._region; node; node = node.getParentComponent()) {
+            if (node.getId() === componentId) {
+                return false;
+            }
+        }
+
+        const children = this._region.getComponents();
+
+        if (children.length === 1 && children[0].getId() === componentId) {
+            return false;
+        }
+
+        if (zone === "center") {
+            return !this.isRedundantCenterDrop(componentId);
+        }
+
+        return !this.isRedundantEdgeDrop(componentId, zone);
+    }
+
+    /**
+     * Whether a centre drop of `componentId` would add it to the tab bar it is
+     * already in — the panel is already a tab there, so the drop changes
+     * nothing. Mirrors {@link dockAsTab}'s target resolution: a centre drop adds
+     * to the region's own `Tab` (when the region is a stack), or to the region's
+     * parent `Tab` (when the region is a tabbed leaf); any other shape wraps the
+     * region in a fresh stack and so is never redundant. Redundant exactly when
+     * the dragged panel's current stack is that same target stack.
+     *
+     * @param componentId - The dragged content component's id.
+     * @returns `true` when the centre drop would leave the layout unchanged.
+     */
+    private isRedundantCenterDrop(componentId: string): boolean {
+        const dragged = tabDragRegistry.get(componentId);
+
+        if (!dragged) {
+            return false;
+        }
+
+        const stack = dragged.getParentComponent();
+
+        if (this._region.getLayoutManager() instanceof Tab) {
+            return stack === this._region;
+        }
+
+        const parent = this._region.getParentComponent();
+
+        if (parent?.getLayoutManager() instanceof Tab) {
+            return stack === parent;
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether an edge drop of `componentId` on `zone` would reproduce the
+     * current layout — i.e. land the dragged panel exactly where it already is.
+     * Such a drop is the spatial equivalent of a self-drop and is rejected so it
+     * gets red, no-op feedback rather than silently rebuilding the same tree.
+     *
+     * The redundant case is narrow: the dragged panel is the *sole* tab of a
+     * stack that is *already* the immediate neighbour of the split unit on the
+     * drop side. A multi-tab stack always changes (a tab is pulled out); a
+     * perpendicular or non-adjacent drop always wraps or reorders. The
+     * unit/container resolution mirrors {@link splitOnEdge} so this predicts the
+     * exact insertion that method would perform, but reads the tree before any
+     * mutation.
+     *
+     * @param componentId - The dragged content component's id.
+     * @param zone - The edge the cursor resolved to (never `"center"`).
+     * @returns `true` when the drop would leave the layout unchanged.
+     */
+    private isRedundantEdgeDrop(componentId: string, zone: DropZone): boolean {
+        const dragged = tabDragRegistry.get(componentId);
+
+        if (!dragged) {
+            return false;
+        }
+
+        // Only a single-tab stack relocates wholesale: pulling a tab out of a
+        // multi-tab stack always splits it off, which is a real change.
+        const stack = dragged.getParentComponent();
+
+        if (!stack || stack.getComponents().length !== 1) {
+            return false;
+        }
+
+        const axis    = (zone === "left" || zone === "right") ? "horizontal" : "vertical";
+        const leading = zone === "top" || zone === "left";
+
+        // Branch 1: the region is itself a same-axis Split — the drop appends the
+        // stack as the region's first/last child. Redundant when the dragged
+        // stack already occupies that boundary slot inside the region.
+        const regionLm = this._region.getLayoutManager();
+
+        if (regionLm instanceof Split && String(regionLm.getDirection()) === axis) {
+            if (stack.getParentComponent() !== this._region) {
+                return false;
+            }
+
+            const kids = this._region.getComponents();
+
+            return leading ? kids[0] === stack : kids[kids.length - 1] === stack;
+        }
+
+        // Branch 2: the stack inserts adjacent to the split unit (the region, or
+        // its whole tab stack) inside a same-axis Split container. Redundant when
+        // the dragged stack is already that neighbour. Any other container shape
+        // wraps the unit in a fresh Split — never a no-op.
+        const parent    = this._region.getParentComponent();
+        const unit      = parent?.getLayoutManager() instanceof Tab ? parent : this._region;
+        const container = unit?.getParentComponent();
+
+        if (!container) {
+            return false;
+        }
+
+        const containerLm = container.getLayoutManager();
+
+        if (!(containerLm instanceof Split && String(containerLm.getDirection()) === axis)) {
+            return false;
+        }
+
+        if (stack.getParentComponent() !== container) {
+            return false;
+        }
+
+        const kids       = container.getComponents();
+        const unitIndex  = kids.indexOf(unit);
+        const stackIndex = kids.indexOf(stack);
+
+        return leading ? stackIndex === unitIndex - 1 : stackIndex === unitIndex + 1;
     }
 
     /**
@@ -222,6 +378,14 @@ export class DockRegion {
 
         split.moveComponent(stack,    leading ? 0 : 1);
         split.moveComponent(unitPane, leading ? 1 : 0);
+
+        // The fresh `split` now occupies the slot `unit` held in `container`. When
+        // that container is itself a Split, hand the new wrapper the size the unit
+        // had so the user's dragged ratio survives the wrap instead of the slot
+        // re-equalizing.
+        if (containerLm instanceof Split) {
+            containerLm.transferPaneSize(unit, split);
+        }
     }
 
     /**
@@ -322,6 +486,15 @@ export class DockRegion {
         }
 
         const index = grandparent.getComponents().indexOf(container);
+
+        // The hoisted child takes the slot the collapsing Split vacated; carry the
+        // Split's stored size onto it so a single-pane collapse keeps the user's
+        // dragged ratio (when the grandparent is itself a Split).
+        const grandparentLm = grandparent.getLayoutManager();
+
+        if (grandparentLm instanceof Split) {
+            grandparentLm.transferPaneSize(container, children[0]);
+        }
 
         grandparent.moveComponent(children[0], index);
         grandparent.removeComponent(container);

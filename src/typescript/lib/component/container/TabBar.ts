@@ -384,6 +384,54 @@ class TabReorderBar extends Component {
 }
 
 /**
+ * The faint full-strip wash shown while a tab-header drag hovers the strip — the
+ * "you can drop a tab here" affordance, the strip's counterpart to the
+ * [`DropZoneOverlay`](/api/core/classes/DropZoneOverlay) root tint a
+ * [`DockRegion`](/api/layout/classes/DockRegion) paints over a region. It shares
+ * the dock's drop-zone token so the whole-target droppable cue reads the same
+ * blue everywhere; the precise insertion position is the brighter
+ * {@link TabReorderBar} drawn above it (`z-index` 1 vs 2). Pure affordance — no
+ * pointer events, hidden until a drag positions it.
+ */
+class TabDropTint extends Component {
+
+    /** Builds the wash: faint drop-zone blue, below the reorder bar, hidden. */
+    constructor() {
+        super();
+
+        this.setBackgroundColor("var(--ts-ui-drag-dropzone-bg)");
+        this.setPointerEvents("none");
+        this.setZIndex(1);
+        this.setVisible(false);
+    }
+
+    /**
+     * Sizes the wash to cover `strip` (the clip viewport it is parented in) and
+     * shows it.
+     *
+     * @param strip - The clip frame whose visible box the wash should cover.
+     *
+     * @returns This wash, for chaining.
+     */
+    showOver(strip: Component): this {
+        this.setX(0);
+        this.setY(0);
+        this.setWidth(strip.getWidth());
+        this.setHeight(strip.getHeight());
+        this.setVisible(true);
+
+        return this;
+    }
+
+    /** Hides the wash (drag left the strip, or the drop completed). */
+    hide(): this {
+        this.setVisible(false);
+
+        return this;
+    }
+}
+
+/**
  * A standalone, window-agnostic tab **strip** — the toolbar element, the tab
  * buttons, the selection indicator, the reorder bar, the tool group, overflow
  * scrolling, and all tab drag-and-drop — with **no** content machinery. It is
@@ -484,6 +532,7 @@ class TabBar extends Panel<TabBarOptions> {
     // Within-strip drag-reorder wiring (see installTabDnD / teardownTabDnD).
     private _reorderable: boolean = false;
     private _reorderBar: TabReorderBar = new TabReorderBar();
+    private _dropTint: TabDropTint = new TabDropTint();
     private _dndTeardowns: Array<() => void> = [];
     private _dragMouseTarget: EventTarget | null = null;
 
@@ -691,6 +740,7 @@ class TabBar extends Panel<TabBarOptions> {
 
         const clip = this._tabClip.getElement(true);
         clip.appendChild(this._indicator.getElement(true));
+        clip.appendChild(this._dropTint.getElement(true));
         clip.appendChild(this._reorderBar.getElement(true));
 
         Event.addSubtreeListener(this, "keydown", (e: KeyboardEvent) => this.onToolbarKeyDown(e));
@@ -2793,27 +2843,43 @@ class TabBar extends Panel<TabBarOptions> {
      * manager's own horizontal reorder indicator in favour of the main-axis
      * {@link TabReorderBar}.
      *
+     * Feedback follows the framework's drag-and-drop colour convention: blue marks
+     * where the drop lands, the green/red wash marks whole-target validity. So
+     * `suppressValidityTint` turns off the manager's whole-strip green wash, and
+     * the strip paints the two blue cues a dock region uses instead — a faint
+     * {@link TabDropTint} "droppable here" wash over the whole strip plus the
+     * brighter {@link TabReorderBar} marking the precise insertion slot.
+     *
      * @returns The target teardown closure.
      */
     private makeTabDropTarget(): () => void {
         return DragManager.makeDropTarget(this._tabClip, {
-            // Host the validity tint in the (non-scrolling) strip layer, over the
-            // clip frame's box, so it overlays the visible tab viewport and stays
-            // put while the tabs scroll inside the clip frame.
-            feedbackHost: this,
+            suppressValidityTint: true,
             accepts: (detail: DragEventDetail): boolean => this.isTabHeaderDrag(detail),
             onDragOver: (detail: DragEventDetail): number | null => {
+                this._dropTint.showOver(this._tabClip);
                 this.updateReorderSlot(detail);
 
                 return null;
             },
             onDragLeave: (): void => {
-                this._reorderBar.hide();
+                this.hideDropAffordance();
             },
             onDrop: (detail: DragEventDetail): void => {
                 this.dropTabHeader(detail);
             },
         });
+    }
+
+    /**
+     * Clears both drag-over cues — the faint {@link TabDropTint} wash and the
+     * {@link TabReorderBar} insertion rule — when a drag leaves the strip or a
+     * drop completes. The two are shown together in `onDragOver`, so they are
+     * hidden together.
+     */
+    private hideDropAffordance(): void {
+        this._reorderBar.hide();
+        this._dropTint.hide();
     }
 
     /**
@@ -2844,7 +2910,7 @@ class TabBar extends Panel<TabBarOptions> {
 
         this.emit("dockrequested", detail.dragData["componentId"] as string, this._dragInsertIndex);
 
-        this._reorderBar.hide();
+        this.hideDropAffordance();
         this._dragInsertIndex = -1;
     }
 
@@ -2959,7 +3025,7 @@ class TabBar extends Panel<TabBarOptions> {
      * @param detail - The drag event detail (carries the source id).
      */
     private dropReorder(detail: DragEventDetail): void {
-        this._reorderBar.hide();
+        this.hideDropAffordance();
 
         const fromIdx = this._entries.findIndex(entry => entry.wrapper.getId() === detail.sourceId);
 
@@ -3015,7 +3081,7 @@ class TabBar extends Panel<TabBarOptions> {
         }
 
         this._dndTeardowns = [];
-        this._reorderBar.hide();
+        this.hideDropAffordance();
     }
 
     /**
