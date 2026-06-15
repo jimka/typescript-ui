@@ -60,6 +60,7 @@ import {
     ProgressSpinner
 } from '@jimka/typescript-ui/component/display';
 import { FieldSet, Spacer, StatusBar } from '@jimka/typescript-ui/component/container';
+import type { MenuItemConfig } from '@jimka/typescript-ui/component/container';
 import {
     ColumnSpec,
     Table,
@@ -499,6 +500,27 @@ class MiscPanel extends Panel {
             ]);
         });
         leftColumn.addComponent(buttonContextMenu);
+
+        // A deliberately tall context menu (40 items) so it exceeds the
+        // viewport height. Right-clicking near the bottom of the screen shows
+        // the menu clamp to the available room and scroll vertically rather
+        // than running off-screen with unreachable items.
+        const tallContextMenu = new Menu();
+
+        const tallItems: MenuItemConfig[] = [];
+
+        for (let i = 1; i <= 40; i++) {
+            tallItems.push({ text: `Item ${i}`, action: () => alert(`Item ${i} clicked!`) });
+        }
+
+        const buttonTallContextMenu = new Button("Right-click for a tall (scrolling) menu");
+        Tooltip.attach(buttonTallContextMenu, "Right-click near the screen edge to see the menu clamp and scroll");
+        Event.addListener(buttonTallContextMenu, "contextmenu", (e: MouseEvent) => {
+            e.preventDefault();
+            Tooltip.hide();
+            tallContextMenu.show(e.clientX, e.clientY, tallItems);
+        });
+        leftColumn.addComponent(buttonTallContextMenu);
 
         const buttonTooltip = new Button("Hover over me for a tooltip");
         Tooltip.attach(buttonTooltip, "This tooltip appears after a short delay");
