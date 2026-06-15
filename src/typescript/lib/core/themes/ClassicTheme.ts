@@ -11,8 +11,8 @@ import type { Theme } from '~/core/Theme.js';
  *
  * Authored as `defineTheme(BaseTheme, …)`: it declares only its palette (and
  * `colorScheme`); every structural token is inherited from {@link BaseTheme}.
- * Classic carries no structural override — its `header.padding` and
- * `tab.underBorderFullWidth` already match the base majority.
+ * Classic carries no structural override — its `tab.underBorderFullWidth`
+ * already matches the base value.
  *
  * @category Theme
  */

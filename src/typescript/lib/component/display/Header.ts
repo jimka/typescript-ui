@@ -27,11 +27,11 @@ export interface HeaderOptions extends TextOptions {
  * dispatched from there.
  */
 const _defaultHeaderOptions: Partial<HeaderOptions> = {
-    // Resting content padding around the header label, set explicitly now that
-    // the base is Container (zero default insets) rather than Panel, which
-    // supplied this 4px implicitly. WindowHeader builds on Header without
-    // passing its own insets, so this default is the bar's only padding source
-    // at construction; 4px preserves the spacing headers had before the reparent.
+    // Static content padding around the header label — the single source of the
+    // bar's padding (WindowHeader subclasses Header without passing its own
+    // insets). 4px matches the spacing headers carried implicitly from Panel
+    // before the Container reparent; it is not theme-derived, so headers do not
+    // reflow their padding on a theme change.
     insets: new Insets(4, 4, 4, 4),
 };
 
@@ -73,12 +73,12 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Container<T
             fill: FillType.HORIZONTAL
         });
 
-        if (this._options.insets === undefined) {
-            this.applyThemePadding();
-        }
+        // Recompute the preferred height on theme change: the header font size
+        // is theme-bound, so a theme swap can change the label's measured height.
+        // The insets are static (see `_defaultHeaderOptions`), so padding is not
+        // re-derived here.
         ThemeManager.onThemeChange(() => {
             this.updatePreferredSize();
-            this.applyThemePadding();
         });
 
         if (this._options.preferredSize === undefined) {
@@ -173,11 +173,6 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Container<T
                                     + insets.getBottom();
 
         this.setPreferredSize(100, preferredHeight);
-    }
-
-    private applyThemePadding(): void {
-        const pad = ThemeManager.getTheme().header.padding;
-        this.setInsets(new Insets(pad, pad, pad, pad));
     }
 
     /**
