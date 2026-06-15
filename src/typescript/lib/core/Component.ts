@@ -2597,11 +2597,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * The default is `true`: most components adhere to their content-derived
      * size, so they never collapse below what their children need to render.
-     * {@link Panel} overrides this to `false` — a panel fits whatever space its
-     * parent allocates and lets the overflow clip or scroll (when `autoScroll`
-     * is configured) instead of inflating itself back up to its content size.
-     * For a panel only an explicit {@link setMinSize} / {@link setMaxSize}
-     * remains a hard floor or ceiling.
+     * {@link Container} overrides this to `false` (inherited by {@link Panel}) —
+     * such a container fits whatever space its parent allocates and lets the
+     * overflow clip (or scroll, on a `Panel` with `autoScroll` configured)
+     * instead of inflating itself back up to its content size. Then only an
+     * explicit {@link setMinSize} / {@link setMaxSize} remains a hard floor or
+     * ceiling.
      *
      * @returns `true` to clamp to the merged constraints; `false` for the
      *   component's own explicit constraints only.
@@ -2617,8 +2618,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * merged {@link getMinSize} / {@link getMaxSize} when
      * {@link clampsToContentSize} is `true` (the default — adhere to the
      * content-derived size), or the component's own explicit `_options` (or
-     * default) constraints when it is `false` ({@link Panel}, which fits its
-     * allocation and scrolls).
+     * default) constraints when it is `false` ({@link Container} / {@link Panel},
+     * which fit their allocation).
      */
     private clampWidth(width: number): number {
         const toContent = this.clampsToContentSize();
