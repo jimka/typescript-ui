@@ -490,10 +490,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Sets the window width, clamping to the {@link chromeMinSize} floor so
-     * border drags can't shrink the window below the chrome's required width
-     * (icon, title budget, control tools). Oversized body content overflows
-     * per the `Container` policy rather than holding the window open.
+     * Sets the window width, clamping to the `chromeMinSize` floor so border
+     * drags can't shrink the window below the chrome's required width (icon,
+     * title budget, control tools). Oversized body content overflows per the
+     * `Container` policy rather than holding the window open.
      *
      * @param width - Requested width in pixels.
      *
@@ -502,7 +502,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @remarks Clamps to the chrome minimum, NOT `getMinSize` — the latter
      * folds in the layout manager's (body content's) min, which would let a
      * tall/wide child hold the window open and contradicts
-     * {@link Container.clampsToContentSize} being `false`. An explicit consumer
+     * `Container.clampsToContentSize` being `false`. An explicit consumer
      * `minSize` is still enforced separately by `Component.setWidth`'s private
      * `clampWidth`, so a caller-set floor remains honoured.
      */
@@ -516,8 +516,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Sets the window height, clamping to the {@link chromeMinSize} floor for
-     * the same reason described on {@link setWidth}.
+     * Sets the window height, clamping to the `chromeMinSize` floor for the
+     * same reason described on {@link setWidth}.
      *
      * @param height - Requested height in pixels.
      *
@@ -1428,8 +1428,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         }
 
         // Header-reachable fallback: keep at least an EDGE_MARGIN_PX strip visible
-        // horizontally and the whole chrome band visible vertically. The 26 px
-        // floor mirrors the default chrome height before the chrome has laid out.
+        // horizontally and the whole chrome band visible vertically. The
+        // CHROME_HEIGHT_FLOOR_PX floor covers the pre-layout window before the
+        // chrome has measured a real height.
         const headerH = this.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
 
         return { minX: EDGE_MARGIN_PX - w, maxX: vw - EDGE_MARGIN_PX, minY: 0, maxY: vh - headerH };
