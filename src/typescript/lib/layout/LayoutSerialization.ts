@@ -426,7 +426,7 @@ function populateContainer(container: Component, node: SplitNode | TabNode, park
             }
         });
     } else {
-        const tab = new Tab();
+        const tab = new Tab({ reorderable: true, compact: true });
         container.setLayoutManager(tab);
 
         node.children.forEach(child => {

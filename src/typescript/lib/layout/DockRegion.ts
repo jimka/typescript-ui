@@ -429,7 +429,7 @@ export class DockRegion {
      * @returns A `Container` carrying a reorderable `Tab` layout manager.
      */
     private newStack(): Container {
-        const stack = new Container({ layoutManager: new Tab({ reorderable: true }) });
+        const stack = new Container({ layoutManager: new Tab({ reorderable: true, compact: true }) });
         const tab   = stack.getLayoutManager() as Tab;
 
         tab.on("empty", () => this.pruneEmptyStack(stack));

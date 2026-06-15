@@ -352,7 +352,7 @@ class Dock extends Container<DockOptions> {
      * @returns The new `Tab` region.
      */
     private newTabRegion(): Component {
-        return new Container({ layoutManager: new Tab() });
+        return new Container({ layoutManager: new Tab({ reorderable: true, compact: true }) });
     }
 
     /**
