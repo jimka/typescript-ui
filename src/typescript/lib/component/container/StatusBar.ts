@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { Panel, PanelOptions } from "~/core/Panel.js";
+import { Container, ContainerOptions } from "~/core/Container.js";
 import { Text } from "~/component/input/Text.js";
 import { HBox } from "~/layout/HBox.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -31,7 +31,7 @@ const STATUS_BAR_BORDER_TOP_WIDTH: number = 1;
  *
  * @category Components
  */
-export interface StatusBarOptions extends PanelOptions {
+export interface StatusBarOptions extends ContainerOptions {
     /** Initial transient message shown in the left zone. */
     message?:        string;
     /**
@@ -57,7 +57,7 @@ const _defaultStatusBarOptions: Partial<StatusBarOptions> = {
  * A thin horizontal strip mounted at the bottom of a window or panel that
  * surfaces a transient status message and small persistent indicators.
  *
- * `StatusBar` extends [`Panel`](/api/core/classes/Panel) and wraps an
+ * `StatusBar` extends [`Container`](/api/core/classes/Container) and wraps an
  * [`HBox`](/api/layout/classes/HBox) layout split into three siblings: a left
  * zone holding the message [`Text`](/api/component/input/classes/Text) plus
  * any caller-added widgets, a flex-weighted spacer, and a right zone for
@@ -79,13 +79,13 @@ const _defaultStatusBarOptions: Partial<StatusBarOptions> = {
  *
  * @category Components
  */
-class StatusBar extends Panel<StatusBarOptions> {
+class StatusBar extends Container<StatusBarOptions> {
 
     private _message:        string         = "";
     private _defaultMessage: string         = "";
     private _messageTimer:   number | null  = null;
-    private _leftZone!:      Panel;
-    private _rightZone!:     Panel;
+    private _leftZone!:      Container;
+    private _rightZone!:     Container;
     private _messageText!:   Text;
 
     /**
@@ -109,8 +109,8 @@ class StatusBar extends Panel<StatusBarOptions> {
         this.setMinSize(0,                       STATUS_BAR_HEIGHT);
         this.setMaxSize(Number.MAX_SAFE_INTEGER, STATUS_BAR_HEIGHT);
 
-        this._leftZone  = new Panel({ insets: new Insets(0, 0, 0, 0) });
-        this._rightZone = new Panel({ insets: new Insets(0, 0, 0, 0) });
+        this._leftZone  = new Container();
+        this._rightZone = new Container();
 
         const leftBox = new HBox();
         leftBox.setComponentSpacing(4);
@@ -145,7 +145,7 @@ class StatusBar extends Panel<StatusBarOptions> {
     }
 
     /**
-     * Applies a {@link StatusBarOptions} bag. Inherited Panel fields cascade
+     * Applies a {@link StatusBarOptions} bag. Inherited Container fields cascade
      * through `super.applyOptions`; the `message` and `defaultMessage` fields
      * are written pure to `_options` here and dispatched from the constructor
      * body once the internal message [`Text`](/api/component/input/classes/Text)

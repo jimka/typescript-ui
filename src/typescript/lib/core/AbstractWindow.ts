@@ -8,8 +8,16 @@ import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerMa
 import { Fit } from "~/layout/Fit.js";
 import { FillType } from "~/layout/FillType.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
-import { Panel, PanelOptions } from "~/core/Panel.js";
+import { Container, ContainerOptions } from "~/core/Container.js";
+import { Insets } from "~/primitive/Insets.js";
 
+// Window body inset in pixels, set explicitly now that the base is Container
+// (zero default insets) rather than Panel (which supplied this 4px implicitly).
+// `doLayout` folds this inset into the resize-border thickness, so it both pads
+// the body content and reserves the grab band the WindowBorder handles sit in;
+// 4px preserves the exact resting geometry windows inherited from Panel before
+// the reparent.
+const WINDOW_BODY_INSET_PX:     number = 4;
 const WINDOW_ANIM_DURATION_MS: number = 150;
 const SNAP_DOCK_GAP_PX:         number = 4;
 const DEFAULT_MIN_DOCK_WIDTH_PX: number = 200;
@@ -74,7 +82,7 @@ export interface WindowRect {
  *
  * @category Core
  */
-export interface WindowOptions extends PanelOptions {
+export interface WindowOptions extends ContainerOptions {
     headerText?:        string;
     glyph?:             string;
     x?:                 number;
@@ -108,6 +116,7 @@ export const _defaultWindowOptions: Partial<WindowOptions> = {
     y:                 50,
     width:             400,
     height:            300,
+    insets:            new Insets(WINDOW_BODY_INSET_PX, WINDOW_BODY_INSET_PX, WINDOW_BODY_INSET_PX, WINDOW_BODY_INSET_PX),
     border:            "1px solid var(--ts-ui-border-color, black)",
     borderRadius:      "var(--ts-ui-border-radius, 4px)",
     shadow:            "var(--ts-ui-window-shadow, 3px 3px 2px rgba(0, 0, 0, 0.4))",
@@ -149,7 +158,7 @@ const RESIZE_BORDER_Z_INDEX: number = 10;
  *
  * @category Core
  */
-export abstract class AbstractWindow extends Panel<WindowOptions> implements DismissableLayer {
+export abstract class AbstractWindow extends Container<WindowOptions> implements DismissableLayer {
 
     private static openWindows: Set<AbstractWindow> = new Set<AbstractWindow>();
 
@@ -294,7 +303,7 @@ export abstract class AbstractWindow extends Panel<WindowOptions> implements Dis
     }
 
     /**
-     * Applies a {@link WindowOptions} bag. Inherited Panel/Component fields
+     * Applies a {@link WindowOptions} bag. Inherited Container/Component fields
      * cascade through `super.applyOptions`; `headerText` / `glyph` /
      * `contentFactory` / `onReady` are written pure into `_options` here and
      * dispatched later (from `initChrome`, or — for `glyph` — the subclass

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Panel, PanelOptions } from "~/core/Panel.js";
+import { Container, ContainerOptions } from "~/core/Container.js";
+import { Panel } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
@@ -119,7 +120,7 @@ export type TabBarEvent =
  *
  * @category Components
  */
-export interface TabBarOptions extends PanelOptions {
+export interface TabBarOptions extends ContainerOptions {
     /** Multi-event listener bag dispatched to {@link TabBar.on} at construction time. */
     listeners?: {
         tabpressed?:       (id: string) => void;
@@ -446,15 +447,14 @@ class TabDropTint extends Component {
  * by its owner through {@link prepareStrip} → {@link stripThickness} →
  * {@link placeStrip} each layout pass.
  *
- * Extends [`Panel`](/api/core/classes/Panel) (not a bare `Component`) so the
- * strip fills its allocated edge: `clampsToContentSize()` is `false` (inherited
- * from [`Container`](/api/core/classes/Container) via `Panel`), so `setWidth` /
- * `setHeight` accept the full container extent instead of shrinking to the tab
- * buttons' content max.
+ * Extends [`Container`](/api/core/classes/Container) (not a bare `Component`) so
+ * the strip fills its allocated edge: `clampsToContentSize()` is `false` (defined
+ * on `Container`), so `setWidth` / `setHeight` accept the full container extent
+ * instead of shrinking to the tab buttons' content max.
  *
  * @category Components
  */
-class TabBar extends Panel<TabBarOptions> {
+class TabBar extends Container<TabBarOptions> {
 
     // Clips the tab region. Holds the tab wrappers (its box children), the
     // selection indicator, and the reorder bar; positioned to the scrollable tab
@@ -557,14 +557,13 @@ class TabBar extends Panel<TabBarOptions> {
     constructor(options?: TabBarOptions) {
         super(options);
 
-        // This Panel's element is the strip toolbar (was Tab._toolbar). Configure
+        // This bar's element is the strip toolbar (was Tab._toolbar). Configure
         // it, then build the raw-appended chrome overlays. The base options were
-        // already dispatched by the Panel/Component super cascade; the bar-only
+        // already dispatched by the Container/Component super cascade; the bar-only
         // options are dispatched at the end of this body once the sub-components
         // exist (so a `tools` / `listeners` option has somewhere to land).
         this.setLayoutManager(new HBox({ mode: "equal", spacing: 0 }));
         this.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
-        this.clearInsets();
         this._underBorderFullWidth = ThemeManager.getTheme().tab.underBorderFullWidth;
         this.applyUnderBorder();
         this.setPreferredSize(0, STRIP_THICKNESS);

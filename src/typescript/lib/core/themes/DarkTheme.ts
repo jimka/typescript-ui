@@ -7,10 +7,10 @@ import type { Theme } from '~/core/Theme.js';
 /**
  * Dark-mode theme using dark backgrounds and light text.
  *
- * Authored as `defineTheme(BaseTheme, …)`: it declares only its palette,
- * `colorScheme: 'dark'`, and the single structural divergence
- * `header.padding: 4` (the base majority is `5`). Every other structural token
- * is inherited from {@link BaseTheme}.
+ * Authored as `defineTheme(BaseTheme, …)`: beyond its palette and
+ * `colorScheme: 'dark'`, its only structural divergence is
+ * `tab.underBorderFullWidth: false` (the base value is `true`). Every other
+ * structural token is inherited from {@link BaseTheme}.
  *
  * @category Theme
  */
@@ -114,7 +114,6 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         },
         header      : { background: '#2a2a2a' },
     },
-    header    : { padding: 4 },
     table     : {
         header: {
             background: 'linear-gradient(rgb(70, 70, 70), rgb(50, 50, 50))',

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Panel, PanelOptions } from "~/core/Panel.js";
+import { Container, ContainerOptions } from "~/core/Container.js";
 import { Component } from "~/core/Component.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Tab, TabOptions, TabEvent, TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign, TabDetachWindowMode } from "~/layout/Tab.js";
@@ -27,7 +27,7 @@ export interface TabEntryConfig {
  *
  * @category Components
  */
-export interface TabPanelOptions extends PanelOptions {
+export interface TabPanelOptions extends ContainerOptions {
     /** Optional initial set of tabs; each entry maps to one `addTab` call. */
     tabs?:       TabEntryConfig[];
     /**
@@ -44,11 +44,11 @@ export interface TabPanelOptions extends PanelOptions {
 }
 
 /**
- * A [`Panel`](/api/core/classes/Panel) subclass that owns an internal
+ * A [`Container`](/api/core/classes/Container) subclass that owns an internal
  * [`Tab`](/api/layout/classes/Tab) layout manager and exposes a tab-typed
  * `addTab` / `addLazyTab` / `on("tabclose")` surface so consumers do not have
- * to wire `new Panel({ layoutManager: new Tab() })` themselves. The bare
- * Panel + Tab manager path still works unchanged; `TabPanel` is the
+ * to wire `new Container({ layoutManager: new Tab() })` themselves. The bare
+ * Container + Tab manager path still works unchanged; `TabPanel` is the
  * convenience entry point.
  *
  * @example
@@ -66,7 +66,7 @@ export interface TabPanelOptions extends PanelOptions {
  *
  * @category Components
  */
-class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Panel<TOptions> {
+class TabPanel<TOptions extends TabPanelOptions = TabPanelOptions> extends Container<TOptions> {
 
     /**
      * Wires the panel to an internal `Tab` manager, dispatches the optional
