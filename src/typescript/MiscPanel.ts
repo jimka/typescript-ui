@@ -623,9 +623,11 @@ class MiscPanel extends Panel {
 
         // Dock demo — a rearrangeable VS Code / GoldenLayout style layout. The
         // initial arrangement is a horizontal split: a two-tab group on the left
-        // and a single panel on the right. Drag a tab to reorder, tear it off
-        // into a window, or drop one on a region edge to split; Save/Restore
-        // exercises the serialization round-trip.
+        // and a single panel on the right. Drag a tab to reorder, drop one on a
+        // region edge to split, or tear it off into a floating window — the float
+        // is itself a mini-dock you can edge-split, arrange, and re-dock against
+        // the main dock in both directions. Save/Restore round-trips the whole
+        // arrangement, including each float's internal split/tab tree.
         const dockButton = new Button("Dockable layout (Dock)");
         dockButton.on("action", () => {
             const win = new Window("Dockable layout");
