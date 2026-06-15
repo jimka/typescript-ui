@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Panel, PanelOptions } from "~/core/Panel.js";
+import { Container, ContainerOptions } from "~/core/Container.js";
 import { Component } from "~/core/Component.js";
 import { Accordion, AccordionEvent, SectionToggleCallback } from "~/layout/Accordion.js";
 import { AccordionConstraints } from "~/layout/AccordionConstraints.js";
@@ -25,7 +25,7 @@ export interface AccordionSectionConfig {
  *
  * @category Components
  */
-export interface AccordionPanelOptions extends PanelOptions {
+export interface AccordionPanelOptions extends ContainerOptions {
     /** Optional initial sections; each entry maps to one `addSection` call. */
     sections?:        AccordionSectionConfig[];
     /** Mirrors `Accordion.setSingleOpen` — only one section open at a time. */
@@ -35,11 +35,11 @@ export interface AccordionPanelOptions extends PanelOptions {
 }
 
 /**
- * A [`Panel`](/api/core/classes/Panel) subclass that owns an internal
+ * A [`Container`](/api/core/classes/Container) subclass that owns an internal
  * [`Accordion`](/api/layout/classes/Accordion) layout manager and exposes a
  * section-typed `addSection` / `openSection` / `closeSection` surface so
- * consumers do not have to wire `new Panel({ layoutManager: new Accordion() })`
- * themselves. The bare Panel + Accordion manager path still works
+ * consumers do not have to wire `new Container({ layoutManager: new Accordion() })`
+ * themselves. The bare Container + Accordion manager path still works
  * unchanged; `AccordionPanel` is the convenience entry point.
  *
  * @example
@@ -57,7 +57,7 @@ export interface AccordionPanelOptions extends PanelOptions {
  *
  * @category Components
  */
-class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOptions> extends Panel<TOptions> {
+class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOptions> extends Container<TOptions> {
 
     /**
      * Wires the panel to an internal `Accordion` manager, dispatches the
