@@ -7,7 +7,7 @@ import { SplitGutter } from "~/component/container/SplitGutter.js";
 import { CollapseDirection } from "~/component/container/CollapseButton.js";
 import { FillType } from "~/layout/FillType.js";
 import { Placement } from "~/primitive/Placement.js";
-import { Size } from "~/primitive/Size.js";
+import { Size, UNBOUNDED, saturate } from "~/primitive/Size.js";
 import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
 
@@ -680,7 +680,7 @@ class Border extends LayoutManager {
      * that exists — a region cannot usefully widen the border past where its own
      * row stops growing — and the height is the sum of the three row heights.
      * An absent region imposes no constraint; an unbounded region contributes
-     * the `Number.MAX_SAFE_INTEGER` sentinel.
+     * the unbounded sentinel.
      *
      * @returns The maximum `{width, height}` or `null` if no container is attached.
      */
@@ -695,11 +695,10 @@ class Border extends LayoutManager {
         let outerWidth = perimiterSize.left + perimiterSize.right;
         let outerHeight = perimiterSize.top + perimiterSize.bottom;
 
-        const INF = Number.MAX_SAFE_INTEGER;
         // A non-displayed region resolves to null here (no constraint), not the
-        // INF sentinel — it must not widen/heighten the layout at all.
+        // unbounded sentinel — it must not widen/heighten the layout at all.
         const maxOf = (component: Component | null): Size | null =>
-            this.laidOut(component) ? (component!.getMaxSize() ?? { width: INF, height: INF }) : null;
+            this.laidOut(component) ? (component!.getMaxSize() ?? { width: UNBOUNDED, height: UNBOUNDED }) : null;
 
         const north  = maxOf(this._northComponent);
         const south  = maxOf(this._southComponent);
@@ -722,7 +721,7 @@ class Border extends LayoutManager {
         }
 
         // Width is shared by every row; cap to the narrowest existing row.
-        let innerWidth = INF;
+        let innerWidth = UNBOUNDED;
         if (north)     { innerWidth = Math.min(innerWidth, north.width); }
         if (south)     { innerWidth = Math.min(innerWidth, south.width); }
         if (hasMiddle) { innerWidth = Math.min(innerWidth, middleWidth); }
@@ -734,8 +733,8 @@ class Border extends LayoutManager {
         if (south)     { innerHeight += south.height; }
 
         return {
-            width:  Math.min(innerWidth  + outerWidth,  INF),
-            height: Math.min(innerHeight + outerHeight, INF)
+            width:  saturate(innerWidth  + outerWidth),
+            height: saturate(innerHeight + outerHeight)
         };
     }
 

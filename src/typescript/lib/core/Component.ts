@@ -3,7 +3,7 @@
 import { LayoutManager } from "~/layout/LayoutManager.js";
 import { Absolute } from "~/layout/Absolute.js";
 import { BorderOptions, borderToStyle, borderSideWidth } from "~/primitive/Border.js";
-import { Size } from "~/primitive/Size.js";
+import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { BaseObject } from "~/core/BaseObject.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
@@ -342,7 +342,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             insets       : new Insets(0, 0, 0, 0),
             padding      : new Insets(0, 0, 0, 0),
             minSize      : { width: 0, height: 0 },
-            maxSize      : { width: Number.MAX_VALUE, height: Number.MAX_VALUE },
+            maxSize      : { width: UNBOUNDED, height: UNBOUNDED },
             overflow     : "hidden",
             zIndex       : 0,
             displayed    : true,
@@ -2108,7 +2108,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const next: Size = { width, height };
         this._options.preferredSize = next;
-        this.setDataAttribute("preferredSize", (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.width) + "px")) + " " + (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.height) + "px")));
+        this.setDataAttribute("preferredSize", (isUnbounded(next.width) ? "inf" : (Math.round(next.width) + "px")) + " " + (isUnbounded(next.width) ? "inf" : (Math.round(next.height) + "px")));
         this._onPreferredSizeChange?.();
 
         return this;
@@ -2178,7 +2178,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             minHeight: next.height + "px"
         });
 
-        this.setDataAttribute("minSize", (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.width) + "px")) + " " + (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.height) + "px")));
+        this.setDataAttribute("minSize", (isUnbounded(next.width) ? "inf" : (Math.round(next.width) + "px")) + " " + (isUnbounded(next.width) ? "inf" : (Math.round(next.height) + "px")));
 
         return this;
     }
@@ -2218,8 +2218,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 width = layoutMaxSize.width;
                 height = layoutMaxSize.height;
             } else {
-                width = Number.MAX_VALUE;
-                height = Number.MAX_VALUE;
+                width = UNBOUNDED;
+                height = UNBOUNDED;
             }
         }
 
@@ -2232,8 +2232,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Sets the maximum size and applies it to the CSS rule.
      *
-     * @param width - The maximum width in pixels. Pass Number.MAX_VALUE to remove the constraint.
-     * @param height - The maximum height in pixels. Pass Number.MAX_VALUE to remove the constraint.
+     * @param width - The maximum width in pixels. Pass UNBOUNDED to remove the constraint.
+     * @param height - The maximum height in pixels. Pass UNBOUNDED to remove the constraint.
      *
      * @returns This component, for method chaining.
      */
@@ -2247,11 +2247,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._options.maxSize = next;
 
         this.setElementCSSRules({
-            maxWidth:  next.width  === Number.MAX_VALUE ? "none" : next.width  + "px",
-            maxHeight: next.height === Number.MAX_VALUE ? "none" : next.height + "px"
+            maxWidth:  isUnbounded(next.width)  ? "none" : next.width  + "px",
+            maxHeight: isUnbounded(next.height) ? "none" : next.height + "px"
         });
 
-        this.setDataAttribute("maxSize", (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.width) + "px")) + " " + (next.width === Number.MAX_VALUE ? "inf" : (Math.round(next.height) + "px")));
+        this.setDataAttribute("maxSize", (isUnbounded(next.width) ? "inf" : (Math.round(next.width) + "px")) + " " + (isUnbounded(next.width) ? "inf" : (Math.round(next.height) + "px")));
 
         return this;
     }
@@ -3690,9 +3690,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const maxSize = opts.maxSize;
         if (maxSize) {
-            this._styleRule.set("maxWidth",  maxSize.width  === Number.MAX_VALUE ? "none" : maxSize.width  + "px");
-            this._styleRule.set("maxHeight", maxSize.height === Number.MAX_VALUE ? "none" : maxSize.height + "px");
-            this.setDataAttribute("maxSize", (maxSize.width === Number.MAX_VALUE ? "inf" : (Math.round(maxSize.width) + "px")) + " " + (maxSize.width === Number.MAX_VALUE ? "inf" : (Math.round(maxSize.height) + "px")));
+            this._styleRule.set("maxWidth",  isUnbounded(maxSize.width)  ? "none" : maxSize.width  + "px");
+            this._styleRule.set("maxHeight", isUnbounded(maxSize.height) ? "none" : maxSize.height + "px");
+            this.setDataAttribute("maxSize", (isUnbounded(maxSize.width) ? "inf" : (Math.round(maxSize.width) + "px")) + " " + (isUnbounded(maxSize.width) ? "inf" : (Math.round(maxSize.height) + "px")));
         }
 
         if (this._overflowX !== null) {
