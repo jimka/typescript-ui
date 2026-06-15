@@ -447,9 +447,10 @@ class TabDropTint extends Component {
  * {@link placeStrip} each layout pass.
  *
  * Extends [`Panel`](/api/core/classes/Panel) (not a bare `Component`) so the
- * strip fills its allocated edge: `Panel.clampsToContentSize()` is `false`, so
- * `setWidth` / `setHeight` accept the full container extent instead of shrinking
- * to the tab buttons' content max.
+ * strip fills its allocated edge: `clampsToContentSize()` is `false` (inherited
+ * from [`Container`](/api/core/classes/Container) via `Panel`), so `setWidth` /
+ * `setHeight` accept the full container extent instead of shrinking to the tab
+ * buttons' content max.
  *
  * @category Components
  */
