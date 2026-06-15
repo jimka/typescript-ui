@@ -5,7 +5,7 @@ import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { GridTrack } from "~/layout/GridTrack.js";
 import { GridConstraints } from "~/layout/GridConstraints.js";
-import { Size } from "~/primitive/Size.js";
+import { Size, UNBOUNDED, isUnbounded, saturate } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Component } from "~/core/Component.js";
 import { callable } from "~/core/Callable.js";
@@ -478,8 +478,6 @@ class Grid extends LayoutManager {
             ? this.trackAxisMax(this._rowTracks, rows, content.rows)
             : rows * this.maxChildExtent(components, false);
 
-        const saturate = (value: number): number => Math.min(value, Number.MAX_SAFE_INTEGER);
-
         return {
             width:  saturate(innerWidth  + Math.max(0, cols - 1) * spacing + outerWidth),
             height: saturate(innerHeight + Math.max(0, rows - 1) * spacing + outerHeight)
@@ -489,8 +487,8 @@ class Grid extends LayoutManager {
     /**
      * Sums the per-track maxima along one axis: a `fixed` track contributes its
      * pixel value, a `content` track its measured content size, and a `weight`
-     * track is unbounded — the first weight track saturates the axis to
-     * `Number.MAX_SAFE_INTEGER`, since a flex track can grow without limit. A
+     * track is unbounded — the first weight track saturates the axis to the
+     * unbounded sentinel, since a flex track can grow without limit. A
      * missing track defaults to `weight`, matching {@link trackAxisExtent}.
      *
      * @param tracks - The declared tracks for this axis.
@@ -509,7 +507,7 @@ class Grid extends LayoutManager {
             } else if (track.mode === "content") {
                 total += contentSizes[i] ?? 0;
             } else {
-                return Number.MAX_SAFE_INTEGER;
+                return UNBOUNDED;
             }
         }
 
@@ -520,11 +518,11 @@ class Grid extends LayoutManager {
      * Returns the largest per-child maximum extent across all children on one
      * axis, for the uniform-cell (no-track) fallback. A child whose maximum is
      * `null` or at the unbounded sentinel makes the whole axis unbounded, so the
-     * result saturates to `Number.MAX_SAFE_INTEGER`.
+     * result saturates to the unbounded sentinel.
      *
      * @param components - The grid's children.
      * @param horizontal - `true` to read each child's max width, `false` for height.
-     * @returns The largest child maximum, or `Number.MAX_SAFE_INTEGER` when any
+     * @returns The largest child maximum, or the unbounded sentinel when any
      *   child is unbounded.
      */
     private maxChildExtent(components: Component[], horizontal: boolean): number {
@@ -534,13 +532,13 @@ class Grid extends LayoutManager {
             const max = component.getMaxSize();
 
             if (!max) {
-                return Number.MAX_SAFE_INTEGER;
+                return UNBOUNDED;
             }
 
             const extent = horizontal ? max.width : max.height;
 
-            if (extent >= Number.MAX_SAFE_INTEGER) {
-                return Number.MAX_SAFE_INTEGER;
+            if (isUnbounded(extent)) {
+                return UNBOUNDED;
             }
 
             largest = Math.max(largest, extent);
