@@ -4,7 +4,7 @@ import { Component } from "~/core/Component.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { Border } from "~/layout/Border.js";
 import { HBox } from "~/layout/HBox.js";
-import { Panel } from "~/core/Panel.js";
+import { Container } from "~/core/Container.js";
 import { Placement } from "~/primitive/Placement.js";
 import { Button } from "~/component/button/Button.js";
 import { PaginationBar } from "~/component/display/PaginationBar.js";
@@ -35,7 +35,7 @@ Glyph.register(plus, minus, arrows_rotate, ban);
  *
  * @category Components
  */
-class TreeTablePanel extends Panel {
+class TreeTablePanel extends Container {
 
     private _treeTable: TreeTable;
     private _toolbar: Component;

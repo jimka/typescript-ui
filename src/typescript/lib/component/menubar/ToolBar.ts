@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { Panel, PanelOptions } from "~/core/Panel.js";
+import { Container, ContainerOptions } from "~/core/Container.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
@@ -35,7 +35,7 @@ export type ToolBarOverflow = "clip" | "menu";
  *
  * @category Components
  */
-export interface ToolBarOptions extends PanelOptions {
+export interface ToolBarOptions extends ContainerOptions {
     orientation?: ToolBarOrientation;
     compact?:     boolean;
     overflow?:    ToolBarOverflow;
@@ -69,8 +69,9 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
  * A horizontal (or vertical) strip of related controls — e.g. Bold / Italic
  * / Underline in a text editor, or Cut / Copy / Paste in a file manager.
  *
- * `ToolBar` extends [`Panel`](/api/core/classes/Panel) so it inherits the
- * standard 4-pixel insets. Layout defaults to a horizontal
+ * `ToolBar` extends [`Container`](/api/core/classes/Container) and sets its own
+ * resting 4-pixel insets at construction via `setCompact(false)` (compact mode
+ * tightens them to 2 pixels). Layout defaults to a horizontal
  * [`HBox`](/api/layout/classes/HBox); pass `orientation: "vertical"` (or call
  * `setOrientation("vertical")`) to swap to a [`VBox`](/api/layout/classes/VBox).
  *
@@ -99,7 +100,7 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
  *
  * @category Components
  */
-class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Panel<TOptions> {
+class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Container<TOptions> {
 
     declare private _orientation:  ToolBarOrientation;
     declare private _compact:      boolean;
@@ -136,7 +137,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Panel<TO
     }
 
     /**
-     * Applies a {@link ToolBarOptions} bag. Inherited `Panel` fields cascade
+     * Applies a {@link ToolBarOptions} bag. Inherited `Container` fields cascade
      * through `super.applyOptions`; the `ToolBar`-specific fields
      * (orientation, compact, overflow) are dispatched here when set.
      *

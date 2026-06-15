@@ -285,7 +285,6 @@ export interface Theme {
         font: {
             size: string;
         };
-        padding: number;
     };
 
     table: {
