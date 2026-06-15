@@ -574,6 +574,10 @@ class Dock extends Container<DockOptions> {
             // mini-dock region tree the user can edge-split and re-dock.
             (manager as Tab).setDetachWindowMode("bare");
             (manager as Tab).on("empty", () => this.pruneRegion(region));
+            // Adopt the torn-off float on the next sweep. "empty" only covers a
+            // tear-off that drains the strip; "detached" fires for every tear-off,
+            // so a tab torn off a strip that keeps siblings still gets adopted.
+            (manager as Tab).on("detached", () => this.scheduleSweep());
 
             wiring.tabWired = true;
         }
