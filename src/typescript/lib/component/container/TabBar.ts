@@ -2825,6 +2825,14 @@ class TabBar extends Container<TabBarOptions> {
         this.applyTabWidths(available);
         this._tabClip.doLayout();
 
+        // `applyTabWidths` can lay the content out narrower than the current
+        // scroll offset (e.g. switching to `compact` while scrolled to the end);
+        // the browser then clamps the clip's native scroll on its own, behind the
+        // cached scroll API's back, leaving `clipScroll()` stale. Resync the cache
+        // from the DOM before the reveal reads it, or `revealSelectedIfRequested`
+        // would add its live-rect delta to a stale base and under-scroll.
+        this._tabClip.syncScrollOffsets();
+
         // Scroll-into-view moves the clip frame's native scroll against the
         // now-laid-out wrapper rects — a prediction before the box runs can't see
         // a same-pass width change. No relayout: native scroll shifts the content.
