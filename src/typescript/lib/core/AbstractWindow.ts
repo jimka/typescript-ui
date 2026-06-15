@@ -504,12 +504,19 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * tall/wide child hold the window open and contradicts
      * `Container.clampsToContentSize` being `false`. An explicit consumer
      * `minSize` is still enforced separately by `Component.setWidth`'s private
-     * `clampWidth`, so a caller-set floor remains honoured.
+     * `clampWidth`, so a caller-set floor remains honoured. The clamp is
+     * skipped until the window is rendered: `chromeMinSize` consults subclass
+     * chrome (the header / strip) that does not exist yet while `applyOptions`
+     * cascades `width` during `super()` — the same pre-render window in which
+     * the setter already defers its DOM write.
      */
     setWidth(width: number): this {
-        const min = this.chromeMinSize();
-        if (width < min.width) {
-            width = min.width;
+        if (this.getElement()) {
+            const min = this.chromeMinSize();
+
+            if (width < min.width) {
+                width = min.width;
+            }
         }
 
         return super.setWidth(width);
@@ -524,9 +531,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns This component, for method chaining.
      */
     setHeight(height: number): this {
-        const min = this.chromeMinSize();
-        if (height < min.height) {
-            height = min.height;
+        if (this.getElement()) {
+            const min = this.chromeMinSize();
+
+            if (height < min.height) {
+                height = min.height;
+            }
         }
 
         return super.setHeight(height);
