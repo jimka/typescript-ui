@@ -19,6 +19,11 @@ const DEFAULT_REBUILD_WIDTH = 180;
 /** Duration (ms) of the fade-in / fade-out transitions on every menu panel. */
 const MENU_ANIM_DURATION_MS = 120;
 
+/** Pixels kept between a clamped menu and the viewport edge so the panel
+ *  border and shadow are never flush against the screen. Mirrors the small
+ *  inset used by other floating panels; purely cosmetic breathing room. */
+const VIEWPORT_MARGIN = 4;
+
 /**
  * A floating menu panel that operates in one of two modes:
  *
@@ -160,16 +165,24 @@ class Menu extends Component {
 
         const totalHeight = this.getPreferredSize()?.height ?? 0;
 
-        this.setHeight(totalHeight);
-
         const el = this.getElement(true);
-
-        this.scheduleLayout();
 
         const vp = Util.getViewportSize();
 
-        this.setX(Math.max(0, Math.min(x, vp.width - this._menuWidth)));
-        this.setY(Math.max(0, Math.min(y, vp.height - totalHeight)));
+        // Fold VIEWPORT_MARGIN into the position clamp so a fitting menu's bottom
+        // lands at `vp.height - VIEWPORT_MARGIN`; then `available` equals
+        // `totalHeight` exactly and no spurious scrollbar appears. `show()` only
+        // ever grows the menu downward from `top` (never flipped above the
+        // cursor), so the room below `top` is the correct available height.
+        const left = Math.max(VIEWPORT_MARGIN, Math.min(x, vp.width - this._menuWidth - VIEWPORT_MARGIN));
+        const top = Math.max(VIEWPORT_MARGIN, Math.min(y, vp.height - totalHeight - VIEWPORT_MARGIN));
+        const available = vp.height - top - VIEWPORT_MARGIN;
+
+        this.setX(left);
+        this.setY(top);
+        this.applyViewportHeightClamp(available, totalHeight);
+
+        this.scheduleLayout();
 
         document.documentElement.appendChild(el);
 
@@ -231,8 +244,6 @@ class Menu extends Component {
 
         const totalHeight = this.getPreferredSize()?.height ?? (this._menuItems.length * MenuItem.HEIGHT + 8);
 
-        this.setHeight(totalHeight);
-
         const el = this.getElement(true);
         document.documentElement.appendChild(el);
 
@@ -246,15 +257,14 @@ class Menu extends Component {
             const anchorRect = anchorEl.getBoundingClientRect();
 
             let x = parentRect.right;
-            let y = anchorRect.top;
 
             if (x + PANEL_WIDTH > vp.width) {
                 x = parentRect.left - PANEL_WIDTH;
             }
 
-            if (y + totalHeight > vp.height) {
-                y = vp.height - totalHeight;
-            }
+            // A submenu grows down from the anchor item's top, and flips up
+            // against that same top edge when there is more room above.
+            const y = this.placeVertically(anchorRect.top, anchorRect.top, totalHeight, vp.height);
 
             this.setAutoCommitStyle(false);
             this.setX(Math.max(0, x));
@@ -264,15 +274,14 @@ class Menu extends Component {
             const anchorRect = anchorEl.getBoundingClientRect();
 
             let x = anchorRect.left;
-            let y = anchorRect.bottom;
 
             if (x + PANEL_WIDTH > vp.width) {
                 x = vp.width - PANEL_WIDTH;
             }
 
-            if (y + totalHeight > vp.height) {
-                y = anchorRect.top - totalHeight;
-            }
+            // A top-level dropdown grows down from the anchor's bottom, and
+            // flips up against the anchor's top when there is more room above.
+            const y = this.placeVertically(anchorRect.bottom, anchorRect.top, totalHeight, vp.height);
 
             this.setAutoCommitStyle(false);
             this.setX(Math.max(0, x));
@@ -486,6 +495,8 @@ class Menu extends Component {
         this.setShadow("var(--ts-ui-menu-bar-panel-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
         this.getAria().setRole("menu");
         this.setContain("layout");
+
+        this.enableVerticalScroll();
     }
 
     /**
@@ -500,6 +511,74 @@ class Menu extends Component {
         this.setBorderRadius("var(--ts-ui-border-radius, 4px)");
         this.setShadow("var(--ts-ui-context-menu-shadow, 2px 4px 8px rgba(0, 0, 0, 0.15))");
         this.setContain("layout");
+
+        this.enableVerticalScroll();
+    }
+
+    /**
+     * Wires the native vertical-scroll primitives so an over-tall menu scrolls
+     * its items instead of overflowing the clamped panel height. This is the
+     * `"y"` case of [`Panel.setAutoScroll`](/api/core/classes/Panel#setautoscroll)
+     * replicated directly: `overflow-x: hidden` (so a `visible` x-axis does not
+     * compute to `auto` and sprout a spurious horizontal scrollbar), `overflow-y:
+     * auto`, and the layout manager's vertical overflow flag so the `VBox` lays
+     * items out past the clamped inner height rather than compressing them.
+     */
+    private enableVerticalScroll(): void {
+        this.setOverflowX("hidden");
+        this.setOverflowY("auto");
+
+        (this.getLayoutManager() as VBox).setOverflowing(false, true);
+    }
+
+    /**
+     * Caps the menu's height to the vertical room available at its anchored
+     * position, then applies the content height. Because `Menu` is a
+     * `clampsToContentSize()` component, `setHeight` runs `contentHeight` through
+     * `clampHeight`, which caps it at `availableHeight`; when the content fits no
+     * clamp fires, and when it overflows the height is capped and the
+     * `overflow-y: auto` scrollbar engages. Width is left unconstrained via the
+     * `Number.MAX_VALUE` "no constraint" sentinel — horizontal scroll is a
+     * non-goal.
+     *
+     * @param availableHeight - Vertical room (px) the menu may occupy at its anchor.
+     * @param contentHeight - The unclamped preferred height (px) of the menu's items.
+     */
+    private applyViewportHeightClamp(availableHeight: number, contentHeight: number): void {
+        this.setMaxSize(Number.MAX_VALUE, Math.max(0, availableHeight));
+        this.setHeight(contentHeight);
+    }
+
+    /**
+     * Resolves the persistent-mode panel's top coordinate and applies the
+     * matching height clamp. The menu grows downward from `growTop` unless the
+     * content overflows the room below *and* the room above the anchor is
+     * larger, in which case it flips to grow upward from `anchorTop`. The room
+     * is measured against the side the menu actually grows toward — never
+     * re-derived from a clamped top, which would let a flipped, viewport-pinned
+     * menu grow back down across its anchor. For the flipped case the returned
+     * top is derived from the clamped height so the menu's bottom still meets
+     * the anchor.
+     *
+     * @param growTop - The viewport edge the menu grows downward from.
+     * @param anchorTop - The anchor edge the menu flips up against.
+     * @param totalHeight - The unclamped preferred height (px) of the menu's items.
+     * @param viewportHeight - The current viewport height (px).
+     * @returns The resolved top coordinate (px) for the panel.
+     */
+    private placeVertically(growTop: number, anchorTop: number, totalHeight: number, viewportHeight: number): number {
+        const roomBelow = viewportHeight - growTop - VIEWPORT_MARGIN;
+        const roomAbove = anchorTop - VIEWPORT_MARGIN;
+
+        if (totalHeight <= roomBelow || roomBelow >= roomAbove) {
+            this.applyViewportHeightClamp(roomBelow, totalHeight);
+
+            return growTop;
+        }
+
+        this.applyViewportHeightClamp(roomAbove, totalHeight);
+
+        return anchorTop - Math.min(totalHeight, roomAbove);
     }
 
     /**
