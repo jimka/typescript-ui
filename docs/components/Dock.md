@@ -53,16 +53,18 @@ Once a panel is docked, the gestures come from the composed primitives:
 | Gesture | Result | Owned by |
 | --- | --- | --- |
 | Drag a tab within its strip | Reorder | [`Tab`](/api/layout/classes/Tab) |
-| Drag a tab off the strip | Tear off into a floating [`Window`](/components/Window) | [`Tab`](/api/layout/classes/Tab) |
+| Drag a tab off the strip | Tear off into a floating [`Window`](/components/Window) that is itself a **mini-dock** | [`Tab`](/api/layout/classes/Tab) + `Dock` |
 | Drop a tab on a region **edge** | Split the region, new pane gets the panel | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Drop a tab on a region **centre** | Dock as a tab | [`DockRegion`](/api/layout/classes/DockRegion) |
-| Drag a window's content back onto a strip | Re-dock | [`Tab`](/api/layout/classes/Tab) + `DockRegion` |
+| Drop a tab into another window | Dock there, and that window is raised and activated | [`DockRegion`](/api/layout/classes/DockRegion) |
+| Hold a dragged tab over a backgrounded window | Spring-loads it to the front after a short dwell so you can aim | [`DockRegion`](/api/layout/classes/DockRegion) |
+| Drag a window's last tab back out | Re-dock, and the now-empty float closes itself | [`Tab`](/api/layout/classes/Tab) + `Dock` |
 
-`Dock` guarantees the regions these gestures create are themselves dockable: after any structural change it runs an idempotent, animation-frame-coalesced sweep that gives every region a `DockRegion` drop target and makes every `Tab` reorderable.
+`Dock` guarantees the regions these gestures create are themselves dockable: after any structural change it runs an idempotent, animation-frame-coalesced sweep that gives every region a `DockRegion` drop target and makes every `Tab` reorderable. A torn-off tab lands in an ordinary header [`Window`](/components/Window) whose content the sweep **adopts** into a wired region tree — so the float is a *mini-dock* you can edge-split, arrange into multiple panes, and re-dock against the main dock in both directions, not a tab-only strip.
 
 ## Saving and restoring
 
-`getLayoutState()` captures the whole arrangement — split ratios, tab order, the active tab, and any torn-off windows — as a plain serializable [`LayoutState`](/api/layout/interfaces/LayoutState). `setLayoutState(state)` rebuilds it, sourcing each panel from the registry by `id`:
+`getLayoutState()` captures the whole arrangement — split ratios, tab order, the active tab, and every torn-off window *including its internal split/tab tree* — as a plain serializable [`LayoutState`](/api/layout/interfaces/LayoutState). Each float is stored as a [`WindowNode`](/api/layout/interfaces/WindowNode) carrying a `content` region tree, so a multi-pane float round-trips with its splits and active tabs intact (a legacy single-panel `panelId` state still restores through a fallback). `setLayoutState(state)` rebuilds it, sourcing each panel from the registry by `id`:
 
 ```typescript
 const saved = dock.getLayoutState();           // -> plain JSON-able object
