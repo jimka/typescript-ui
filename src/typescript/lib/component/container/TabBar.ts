@@ -56,14 +56,17 @@ const TAB_BUTTON_INSET = 4;
 const TAB_BUTTON_INSET_COMPACT = 2;
 
 /**
- * Strip thickness (px) on the cross axis — the toolbar's height for north/south
- * and its width for west/east. Matches the legacy `setPreferredSize(0, 30)`
- * seed the top-only strip was tuned against. Reduced to
- * `STRIP_THICKNESS_COMPACT` when the strip is `compact`.
+ * Minimum strip thickness (px) on the cross axis — the *floor* `stripThickness`
+ * falls back to before any tab has reported a preferred size (an empty or
+ * pre-first-layout strip). Once buttons measure, the strip grows past this to fit
+ * the font (see {@link TabBar.stripThickness}); this is no longer the value, only
+ * the pre-measurement floor. Kept at the legacy `setPreferredSize(0, 30)` seed
+ * the top-only strip was tuned against so an unmeasured strip looks unchanged.
+ * Reduced to `STRIP_THICKNESS_COMPACT` when the strip is `compact`.
  */
 const STRIP_THICKNESS = 30;
 
-/** Reduced cross-axis strip thickness (px) used when the strip is `compact`. */
+/** Reduced cross-axis strip thickness floor (px) used when the strip is `compact`. */
 const STRIP_THICKNESS_COMPACT = 24;
 
 /**
@@ -84,8 +87,11 @@ const LEAD_GLYPH_GAP = 4;
 const SCROLL_ARROW_SIZE = 24;
 
 /**
- * Pixels the strip scrolls per overflow-arrow click. One roughly-tab-width
- * nudge so repeated clicks page through the tabs without overshooting.
+ * Floor (px) for the per-overflow-arrow-click scroll step, used only before a
+ * tab has measured. {@link TabBar.scrollStepExtent} derives the live step from
+ * the first tab's predicted extent so a click pages by ≈ one tab at any font
+ * size; this kicks in when no tab has a preferred size yet (the predicted extent
+ * is 0). Kept at the legacy fixed step so a pre-measurement click still nudges.
  */
 const SCROLL_ARROW_STEP = 80;
 
@@ -566,6 +572,10 @@ class TabBar extends Container<TabBarOptions> {
         this.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
         this._underBorderFullWidth = ThemeManager.getTheme().tab.underBorderFullWidth;
         this.applyUnderBorder();
+        // Seeds the bar's own preferred size with the floor; the owning `Tab`
+        // sizes the strip from `stripThickness()` directly (never from this
+        // self-report), so this is only the bar's pre-layout self-size, kept at
+        // the floor so it matches the unmeasured strip.
         this.setPreferredSize(0, STRIP_THICKNESS);
         this.getAria().setRole("tablist");
 
@@ -1867,14 +1877,21 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Computes the strip's thickness (px) on its cross axis. North/south keep the
-     * base `STRIP_THICKNESS` seed (the smaller `STRIP_THICKNESS_COMPACT`
-     * when `compact`); west/east grow from that seed to the widest button (or tool)
-     * cross extent so horizontal-text vertical strips fit their longest label,
-     * never shrinking below it. In `"fixed"` width mode with *upright* text the
-     * vertical strip's thickness is instead pinned to `fixedWidth`. Rotated text
-     * reads along the main axis, so fixed sizes its height and the thickness stays
-     * content-derived.
+     * Computes the strip's thickness (px) on its cross axis, derived from the
+     * *measured* tab buttons so the strip grows with the label's font.
+     * `STRIP_THICKNESS` / `STRIP_THICKNESS_COMPACT` act as the floor used before
+     * any tab has reported a preferred size (an empty or pre-first-layout strip),
+     * never as the value itself.
+     *
+     * North/south grow the floor to the tallest button's content height plus
+     * `stripChrome` (the vertical breathing the strip supplies, since the
+     * north/south tab button carries no top/bottom inset — see
+     * `computeTabButtonInsets`). West/east grow the floor to the widest
+     * button (or tool) cross extent, which already bakes its breathing into the
+     * button's left/right insets, so no chrome is added there. In `"fixed"` width
+     * mode with *upright* text the vertical strip's thickness is instead pinned to
+     * `fixedWidth`. Rotated text reads along the main axis, so fixed sizes its
+     * height and the thickness stays content-derived.
      *
      * @returns The strip thickness in px.
      */
@@ -1882,7 +1899,13 @@ class TabBar extends Container<TabBarOptions> {
         const base = this._compact ? STRIP_THICKNESS_COMPACT : STRIP_THICKNESS;
 
         if (!this.isVertical()) {
-            return base;
+            let maxCross = base;
+
+            for (const entry of this._entries) {
+                maxCross = Math.max(maxCross, this.buttonCrossExtent(entry.button) + this.stripChrome());
+            }
+
+            return maxCross;
         }
 
         if (this._widthMode === "fixed" && !this.isRotatedText()) {
@@ -1902,6 +1925,24 @@ class TabBar extends Container<TabBarOptions> {
         }
 
         return maxCross;
+    }
+
+    /**
+     * The fixed vertical breathing (px) the north/south strip adds around a tab
+     * button's content box. The north/south tab button carries *zero* top/bottom
+     * inset (see `computeTabButtonInsets`: the strip supplies the cross-axis
+     * room), so the band that keeps the label off the strip edges must come from
+     * the strip itself. It mirrors the west/east model, where the same `pad * 2`
+     * per cross-side lives inside the button's insets instead — so a north/south
+     * strip and a west/east strip give a label the same clearance, and the chrome
+     * shrinks in lockstep with `compact` exactly as the insets do.
+     *
+     * @returns The combined top+bottom chrome in px (`pad * 2` per side).
+     */
+    private stripChrome(): number {
+        const pad = this._compact ? TAB_BUTTON_INSET_COMPACT : TAB_BUTTON_INSET;
+
+        return pad * 2 * 2;
     }
 
     /**
@@ -2458,8 +2499,8 @@ class TabBar extends Container<TabBarOptions> {
             button.setZIndex(3);
         }
 
-        lead.on("action", () => this.scrollStrip(-SCROLL_ARROW_STEP));
-        trail.on("action", () => this.scrollStrip(SCROLL_ARROW_STEP));
+        lead.on("action", this.scrollLeadClicked);
+        trail.on("action", this.scrollTrailClicked);
 
         const element = this.getElement(true);
         element.appendChild(lead.getElement(true));
@@ -2600,6 +2641,37 @@ class TabBar extends Container<TabBarOptions> {
         // despite sub-pixel rounding in scrollWidth/clientWidth.
         trail.setEnabled(scroll < this.clipScrollMax() - 1);
     }
+
+    /**
+     * Pixels to scroll per overflow-arrow click ≈ one tab, so a click pages by a
+     * tab at any font size. Derived from the first tab's predicted main-axis
+     * extent (which collapses width-mode sizing and raw content width into the
+     * laid-out width); falls back to the {@link SCROLL_ARROW_STEP} floor before
+     * any tab has measured (`predictedTabExtent` returns 0, which `|| ` floors).
+     *
+     * @returns The per-click scroll step in px.
+     */
+    private scrollStepExtent(): number {
+        return this._entries.length > 0
+            ? this.predictedTabExtent(this._entries[0].button) || SCROLL_ARROW_STEP
+            : SCROLL_ARROW_STEP;
+    }
+
+    /**
+     * Handles a leading overflow-arrow click: scrolls one tab toward the start.
+     * Resolves the step at click time so it tracks the current font.
+     */
+    private scrollLeadClicked = (): void => {
+        this.scrollStrip(-this.scrollStepExtent());
+    };
+
+    /**
+     * Handles a trailing overflow-arrow click: scrolls one tab toward the end.
+     * Resolves the step at click time so it tracks the current font.
+     */
+    private scrollTrailClicked = (): void => {
+        this.scrollStrip(this.scrollStepExtent());
+    };
 
     /**
      * Scrolls the strip along the main axis by `delta` px (used by the overflow
