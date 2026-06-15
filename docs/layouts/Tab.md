@@ -45,8 +45,9 @@ tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 | --- | --- | --- |
 | `tabclose` | the removed content component | A tab is **closed** (close button or context-menu Close). |
 | `empty` | none | The strip loses its **last** tab by any path — close, [tear-off, or re-dock](#tear-off-re-dock). |
+| `detached` | the torn-off [`Window`](/components/Window) | A tab is **torn off** into a new floating window — fires for *every* tear-off, even one that leaves siblings behind. |
 
-`empty` is a passive announcement: the `Tab` fires it but does nothing itself, so a strip you place deliberately stays on screen when emptied. A dock layer can subscribe to it to clean up — [`DockRegion`](/layouts/DockRegion) listens on the stacks it creates to remove an emptied stack and collapse a leftover single-pane [`Split`](/layouts/Split). It is orthogonal to `tabclose`: a close-button close fires `tabclose` (with the content) and then, if that was the last tab, `empty` (with none); a tear-off or re-dock fires only `empty` (no `tabclose`, since the tab is relocated, not closed).
+`empty` is a passive announcement: the `Tab` fires it but does nothing itself, so a strip you place deliberately stays on screen when emptied. A dock layer can subscribe to it to clean up — [`DockRegion`](/layouts/DockRegion) listens on the stacks it creates to remove an emptied stack and collapse a leftover single-pane [`Split`](/layouts/Split). It is orthogonal to `tabclose`: a close-button close fires `tabclose` (with the content) and then, if that was the last tab, `empty` (with none); a tear-off fires `detached` (with the new window) and, only when it drained the strip, `empty` too. `detached` is what lets a dock fold *every* tear-off into its model — [`Dock`](/api/core/classes/Dock) schedules an adoption sweep on it — since `empty` alone misses a tear-off that keeps siblings.
 
 ## Per-child constraints
 
