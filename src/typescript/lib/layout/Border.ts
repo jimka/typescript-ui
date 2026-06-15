@@ -76,6 +76,16 @@ class Border extends LayoutManager {
     // re-snapshots and retargets without two loops fighting.
     private _collapseAnimation: (() => void) | null = null;
 
+    // True while a collapse/restore animation is being driven. The animation
+    // slides every region by writing each element's own `left`/`top` (via
+    // `CollapseSupport.commitRect`'s `setX`/`setY`), which a clip frame defeats
+    // because the frame — not the element — carries a framed region's position
+    // and the element sits parked at `(0, 0)` inside it. While this is set,
+    // `doLayout` lays every region out unframed (plain `placeComponent`) so the
+    // animation can move them; the steady-state frames are reinstated by the
+    // final `doLayout` once the animation settles.
+    private _collapsing: boolean = false;
+
     constructor(options?: BorderOptions) {
         super();
 
@@ -251,12 +261,29 @@ class Border extends LayoutManager {
             return this;
         }
 
-        this._collapsed.set(placement, collapsed);
-
         const container = this.getContainer();
         if (!container) {
             return this;
         }
+
+        // Enter the animated phase before laying out the start state. When no
+        // animation is already running the regions are clip-framed, parked at
+        // `(0, 0)` inside frames that carry their real position; this `doLayout`
+        // (now that `_collapsing` is set) re-lays them out unframed at their
+        // current pre-toggle position, so each element's own `left`/`top` holds
+        // the real start that `runCollapse` snapshots — a framed element would
+        // otherwise snapshot `(0, 0)` and never move. A re-toggle mid-animation
+        // is already unframed (its elements hold live interpolated positions),
+        // so it skips this and lets `runCollapse` re-snapshot the live geometry
+        // for a smooth retarget.
+        const wasAnimating = this._collapsing;
+        this._collapsing = true;
+
+        if (!wasAnimating) {
+            container.doLayout();
+        }
+
+        this._collapsed.set(placement, collapsed);
 
         // Materialise the region's gutter so it joins the participant list.
         this.ensureGutter(placement);
@@ -274,6 +301,12 @@ class Border extends LayoutManager {
 
         this._collapseAnimation = runCollapse(container, component, participants, this._collapseAnimation, () => {
             this._collapseAnimation = null;
+
+            // Leave the animated phase and re-lay-out so the non-collapsible
+            // regions get their steady-state clip frames back.
+            this._collapsing = false;
+
+            container.doLayout();
         });
 
         return this;
@@ -875,8 +908,10 @@ class Border extends LayoutManager {
 
             // The region is always laid out at full size and clipped toward its
             // outer edge while collapsed; the centre and gutter use the strip
-            // extent (`middleY`) so they grow into the reclaimed space.
-            if (this.isRegionCollapsible(Placement.NORTH)) {
+            // extent (`middleY`) so they grow into the reclaimed space. While a
+            // collapse animates, every region takes the unframed path so its own
+            // `left`/`top` can be interpolated (a frame would freeze it).
+            if (this.isRegionCollapsible(Placement.NORTH) || this._collapsing) {
                 this.placeComponent(
                     north,
                     northX,
@@ -925,7 +960,7 @@ class Border extends LayoutManager {
             // collapsed; the gutter uses the strip rect (`southY`/`southHeight`).
             let southFullY = containerInsets.getTop() + height - preferredSize.height;
 
-            if (this.isRegionCollapsible(Placement.SOUTH)) {
+            if (this.isRegionCollapsible(Placement.SOUTH) || this._collapsing) {
                 this.placeComponent(
                     south,
                     southX,
@@ -980,7 +1015,7 @@ class Border extends LayoutManager {
             // collapsed; the centre and gutter use the strip extent (`westWidth`).
             let westFullWidth = Math.max(0, Math.min(preferredSize.width, width - eastPreferredWidth));
 
-            if (this.isRegionCollapsible(Placement.WEST)) {
+            if (this.isRegionCollapsible(Placement.WEST) || this._collapsing) {
                 this.placeComponent(
                     west,
                     westX,
@@ -1022,7 +1057,7 @@ class Border extends LayoutManager {
             // collapsed; the gutter uses the strip rect (`eastX`/`eastPreferredWidth`).
             let eastFullX = containerInsets.getLeft() + width - eastFullWidth;
 
-            if (this.isRegionCollapsible(Placement.EAST)) {
+            if (this.isRegionCollapsible(Placement.EAST) || this._collapsing) {
                 this.placeComponent(
                     east,
                     eastFullX,
@@ -1046,17 +1081,23 @@ class Border extends LayoutManager {
         }
 
         if (center) {
-            // CENTER is never collapsible, so it always takes the frame branch
-            // and never carries a clip-path. Its rect is its own allocation (it
-            // can never overflow it), so the frame is a perfect-fit sheath that
-            // clips nothing — keeping one code path for the non-collapsible case.
-            center.setClipFrame(
-                containerInsets.getLeft() + centerX,
-                containerInsets.getTop() + middleY,
-                centerWidth,
-                middleHeight
-            );
-            this.commitBounds(center, 0, 0, centerWidth, middleHeight);
+            let centerLeft = containerInsets.getLeft() + centerX;
+            let centerTop = containerInsets.getTop() + middleY;
+
+            // CENTER is never collapsible, so outside an animation it always
+            // takes the frame branch and never carries a clip-path. Its rect is
+            // its own allocation (it can never overflow it), so the frame is a
+            // perfect-fit sheath that clips nothing — keeping one code path for
+            // the non-collapsible case. While a collapse animates, CENTER grows
+            // into the reclaimed space, so it takes the unframed path so its own
+            // `left`/`top` can be interpolated.
+            if (this._collapsing) {
+                this.placeComponent(center, centerLeft, centerTop, centerWidth, middleHeight, FillType.BOTH);
+                center.clearClipFrame();
+            } else {
+                center.setClipFrame(centerLeft, centerTop, centerWidth, middleHeight);
+                this.commitBounds(center, 0, 0, centerWidth, middleHeight);
+            }
         }
     }
 
