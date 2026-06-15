@@ -10,6 +10,7 @@ import { FillType } from "~/layout/FillType.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Insets } from "~/primitive/Insets.js";
+import { Size } from "~/primitive/Size.js";
 
 // Window body inset in pixels, set explicitly now that the base is Container
 // (zero default insets) rather than Panel (which supplied this 4px implicitly).
@@ -28,6 +29,11 @@ const DEFAULT_MIN_DOCK_WIDTH_PX: number = 200;
 // consults this. 24 px is wide enough to grab with a cursor yet narrow enough
 // not to feel restrictive.
 const EDGE_MARGIN_PX:            number = 24;
+// Fallback chrome-band height used before the window has laid out, when the
+// title chrome's measured height (`chromeHeight()`) still reads 0. 26 px is the
+// default chrome height a `Window` header renders at, so a pre-layout geometry
+// calculation lands on the same footprint the laid-out window will have.
+const CHROME_HEIGHT_FLOOR_PX:   number = 26;
 
 /**
  * Lifecycle state for an {@link AbstractWindow}. The three values are mutually
@@ -192,6 +198,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private _dragOriginClientY: number = 0;
     private _dragDX: number = 0;
     private _dragDY: number = 0;
+    // Lowest / highest top-left coordinate the window has reached during the
+    // in-progress move drag, per axis. Seeded to the drag origin in
+    // startMoveFrom and ratcheted in clampDragDelta so an off-screen edge can
+    // only ever travel back toward the viewport, never further out — even
+    // mid-drag after reversing direction.
+    private _dragReachMinX: number = 0;
+    private _dragReachMaxX: number = 0;
+    private _dragReachMinY: number = 0;
+    private _dragReachMaxY: number = 0;
     private _contentFactory: (() => Component) | null = null;
     private _contentReadyCallback: ((component: Component) => void) | null = null;
 
@@ -423,13 +438,44 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     /**
      * Returns the height of the window's title chrome, consulted by the generic
      * viewport-clamp / dock-rect / minimized-stack geometry. Defaulted to `0`;
-     * the `|| 26` "before the chrome laid out" floor is applied at each call
-     * site, not here. Subclasses override to return their real chrome height.
+     * the {@link CHROME_HEIGHT_FLOOR_PX} "before the chrome laid out" floor is
+     * applied at each call site, not here. Subclasses override to return their
+     * real chrome height.
      *
      * @returns The chrome height in pixels.
      */
     protected chromeHeight(): number {
         return 0;
+    }
+
+    /**
+     * Returns the window's intrinsic chrome minimum — the smallest outer size
+     * that still shows the title chrome (header / control tools / tab strip)
+     * without crushing it. Consulted by {@link setWidth} / {@link setHeight} as
+     * the resize floor instead of {@link Component.getMinSize}, which folds in
+     * the body content's layout-manager minimum. A window is a `Container`
+     * ({@link Container.clampsToContentSize} is `false`), so oversized body
+     * content overflows rather than inflating the window past this chrome floor.
+     *
+     * Built from the two chrome seeds the subclasses already expose —
+     * {@link minContentWidthSeed} and {@link chromeHeight} — converted from a
+     * content-min to an outer-window min by adding the perimeter the body inset
+     * folds into the resize-border band (mirroring {@link doLayout}'s
+     * outer→inner arithmetic, which adds a single inset side per axis).
+     *
+     * @returns The chrome-only minimum outer size in pixels.
+     */
+    protected chromeMinSize(): Size {
+        const border = this.getBorderSize();
+        const insets = this.getInsets();
+
+        const horizontalChrome = (Number(border.left) || 0) + (Number(border.right)  || 0) + insets.getLeft();
+        const verticalChrome   = (Number(border.top)  || 0) + (Number(border.bottom) || 0) + insets.getTop();
+
+        return {
+            width:  this.minContentWidthSeed() + horizontalChrome,
+            height: (this.chromeHeight() || CHROME_HEIGHT_FLOOR_PX) + verticalChrome,
+        };
     }
 
     /**
@@ -453,40 +499,53 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Sets the window width, clamping to the dynamic {@link getMinSize}
-     * floor so border drags can't shrink the window below the chrome's
-     * required width or the body content's min width.
+     * Sets the window width, clamping to the `chromeMinSize` floor so border
+     * drags can't shrink the window below the chrome's required width (icon,
+     * title budget, control tools). Oversized body content overflows per the
+     * `Container` policy rather than holding the window open.
      *
      * @param width - Requested width in pixels.
      *
      * @returns This component, for method chaining.
      *
-     * @remarks `Component.setWidth` already clamps against `_options.minSize`
-     * via its private `clampWidth`, but that path ignores the layout
-     * manager's contribution — which is where the body content's minSize
-     * lives. Consulting `getMinSize` first folds both sides in.
+     * @remarks Clamps to the chrome minimum, NOT `getMinSize` — the latter
+     * folds in the layout manager's (body content's) min, which would let a
+     * tall/wide child hold the window open and contradicts
+     * `Container.clampsToContentSize` being `false`. An explicit consumer
+     * `minSize` is still enforced separately by `Component.setWidth`'s private
+     * `clampWidth`, so a caller-set floor remains honoured. The clamp is
+     * skipped until the window is rendered: `chromeMinSize` consults subclass
+     * chrome (the header / strip) that does not exist yet while `applyOptions`
+     * cascades `width` during `super()` — the same pre-render window in which
+     * the setter already defers its DOM write.
      */
     setWidth(width: number): this {
-        const min = this.getMinSize();
-        if (min && width < min.width) {
-            width = min.width;
+        if (this.getElement()) {
+            const min = this.chromeMinSize();
+
+            if (width < min.width) {
+                width = min.width;
+            }
         }
 
         return super.setWidth(width);
     }
 
     /**
-     * Sets the window height, clamping to the dynamic {@link getMinSize}
-     * floor for the same reason described on {@link setWidth}.
+     * Sets the window height, clamping to the `chromeMinSize` floor for the
+     * same reason described on {@link setWidth}.
      *
      * @param height - Requested height in pixels.
      *
      * @returns This component, for method chaining.
      */
     setHeight(height: number): this {
-        const min = this.getMinSize();
-        if (min && height < min.height) {
-            height = min.height;
+        if (this.getElement()) {
+            const min = this.chromeMinSize();
+
+            if (height < min.height) {
+                height = min.height;
+            }
         }
 
         return super.setHeight(height);
@@ -1183,6 +1242,14 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this._dragDX = 0;
         this._dragDY = 0;
 
+        // Seed the per-axis reach ratchet at the start position so the first
+        // frame's allowed range spans the origin (no snap on grab) and tightens
+        // from there.
+        this._dragReachMinX = this._dragStartLeft;
+        this._dragReachMaxX = this._dragStartLeft;
+        this._dragReachMinY = this._dragStartTop;
+        this._dragReachMaxY = this._dragStartTop;
+
         // Pre-promote to a compositor layer so the first mousemove translate doesn't
         // pay a layer-creation cost mid-drag. Released in onMouseUp.
         this.setWillChange("transform");
@@ -1388,9 +1455,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         }
 
         // Header-reachable fallback: keep at least an EDGE_MARGIN_PX strip visible
-        // horizontally and the whole chrome band visible vertically. The 26 px
-        // floor mirrors the default chrome height before the chrome has laid out.
-        const headerH = this.chromeHeight() || 26;
+        // horizontally and the whole chrome band visible vertically. The
+        // CHROME_HEIGHT_FLOOR_PX floor covers the pre-layout window before the
+        // chrome has measured a real height.
+        const headerH = this.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
 
         return { minX: EDGE_MARGIN_PX - w, maxX: vw - EDGE_MARGIN_PX, minY: 0, maxY: vh - headerH };
     }
@@ -1404,14 +1472,32 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private clampDragDelta(): void {
         const { minX, maxX, minY, maxY } = this.viewportPositionBounds();
 
+        // A window can start beyond a bound — larger than the viewport, or
+        // opened with an edge off-screen. A plain [min, max] clamp would snap it
+        // back to the bound on grab, jerking it from under the cursor. Instead
+        // ratchet the allowed range from the reach extremes: the far end follows
+        // the window as it travels toward the viewport (`max(maxBound, reachMin)`
+        // floored at the real bound) so an off-screen edge can move in but never
+        // back out — disallowing southward/eastward travel for as long as that
+        // edge stays outside, even after reversing mid-drag. Symmetric on the
+        // near end. For a window that started in-bounds the reach extremes sit
+        // within [min, max], so this collapses to the plain clamp.
+        const hiX = Math.max(maxX, this._dragReachMinX);
+        const loX = Math.min(minX, this._dragReachMaxX);
+        const hiY = Math.max(maxY, this._dragReachMinY);
+        const loY = Math.min(minY, this._dragReachMaxY);
+
         const targetX = this._dragStartLeft + this._dragDX;
         const targetY = this._dragStartTop  + this._dragDY;
 
-        // Outer Math.max floors at the min so the top-left corner (and the header)
-        // stays visible when the window is larger than the viewport (max < min);
-        // the inner Math.min caps the far edge.
-        const clampedX = Math.max(Math.min(targetX, maxX), minX);
-        const clampedY = Math.max(Math.min(targetY, maxY), minY);
+        const clampedX = Math.max(Math.min(targetX, hiX), loX);
+        const clampedY = Math.max(Math.min(targetY, hiY), loY);
+
+        // Record the new reach so the next frame's range can only tighten.
+        this._dragReachMinX = Math.min(this._dragReachMinX, clampedX);
+        this._dragReachMaxX = Math.max(this._dragReachMaxX, clampedX);
+        this._dragReachMinY = Math.min(this._dragReachMinY, clampedY);
+        this._dragReachMaxY = Math.max(this._dragReachMaxY, clampedY);
 
         this._dragDX = clampedX - this._dragStartLeft;
         this._dragDY = clampedY - this._dragStartTop;
@@ -1653,7 +1739,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private computeDockRect(): WindowRect {
         const dockWidth = this.getMinDockWidth();
         const slotIndex = this.computeDockSlotIndex();
-        const headerHeight = this.chromeHeight() || 26;
+        const headerHeight = this.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
         const x = slotIndex * (dockWidth + SNAP_DOCK_GAP_PX);
         const y = window.innerHeight - headerHeight;
 
@@ -1709,7 +1795,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
                 continue;
             }
             const dockWidth   = win.getMinDockWidth();
-            const headerHeight = win.chromeHeight() || 26;
+            const headerHeight = win.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
             const x = index * (dockWidth + SNAP_DOCK_GAP_PX);
             const y = window.innerHeight - headerHeight;
 

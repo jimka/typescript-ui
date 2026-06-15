@@ -81,6 +81,7 @@ import { file_code }     from '@jimka/typescript-ui/glyphs/solid/file_code';
 import { file_lines }    from '@jimka/typescript-ui/glyphs/solid/file_lines';
 import { floppy_disk }   from '@jimka/typescript-ui/glyphs/solid/floppy_disk';
 import { ToolBar } from '~/component/menubar/ToolBar';
+import { VBoxPanel } from './VBoxPanel';
 
 Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines, floppy_disk);
 /**
@@ -649,6 +650,7 @@ class MiscPanel extends Panel {
                             { id: "search",   title: "Search",   content: dockPanel("Search panel.") },
                         ] },
                         { id: "editor", title: "Editor", content: dockPanel("Editor — drop a tab on an edge to split this region.") },
+                        { id: "vbox_test", title: "VBox", content: VBoxPanel() },
                     ],
                 },
             });
