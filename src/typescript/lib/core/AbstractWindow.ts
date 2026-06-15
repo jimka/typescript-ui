@@ -10,6 +10,7 @@ import { FillType } from "~/layout/FillType.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Insets } from "~/primitive/Insets.js";
+import { Size } from "~/primitive/Size.js";
 
 // Window body inset in pixels, set explicitly now that the base is Container
 // (zero default insets) rather than Panel (which supplied this 4px implicitly).
@@ -28,6 +29,11 @@ const DEFAULT_MIN_DOCK_WIDTH_PX: number = 200;
 // consults this. 24 px is wide enough to grab with a cursor yet narrow enough
 // not to feel restrictive.
 const EDGE_MARGIN_PX:            number = 24;
+// Fallback chrome-band height used before the window has laid out, when the
+// title chrome's measured height (`chromeHeight()`) still reads 0. 26 px is the
+// default chrome height a `Window` header renders at, so a pre-layout geometry
+// calculation lands on the same footprint the laid-out window will have.
+const CHROME_HEIGHT_FLOOR_PX:   number = 26;
 
 /**
  * Lifecycle state for an {@link AbstractWindow}. The three values are mutually
@@ -423,13 +429,44 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     /**
      * Returns the height of the window's title chrome, consulted by the generic
      * viewport-clamp / dock-rect / minimized-stack geometry. Defaulted to `0`;
-     * the `|| 26` "before the chrome laid out" floor is applied at each call
-     * site, not here. Subclasses override to return their real chrome height.
+     * the {@link CHROME_HEIGHT_FLOOR_PX} "before the chrome laid out" floor is
+     * applied at each call site, not here. Subclasses override to return their
+     * real chrome height.
      *
      * @returns The chrome height in pixels.
      */
     protected chromeHeight(): number {
         return 0;
+    }
+
+    /**
+     * Returns the window's intrinsic chrome minimum — the smallest outer size
+     * that still shows the title chrome (header / control tools / tab strip)
+     * without crushing it. Consulted by {@link setWidth} / {@link setHeight} as
+     * the resize floor instead of {@link Component.getMinSize}, which folds in
+     * the body content's layout-manager minimum. A window is a `Container`
+     * ({@link Container.clampsToContentSize} is `false`), so oversized body
+     * content overflows rather than inflating the window past this chrome floor.
+     *
+     * Built from the two chrome seeds the subclasses already expose —
+     * {@link minContentWidthSeed} and {@link chromeHeight} — converted from a
+     * content-min to an outer-window min by adding the perimeter the body inset
+     * folds into the resize-border band (mirroring {@link doLayout}'s
+     * outer→inner arithmetic, which adds a single inset side per axis).
+     *
+     * @returns The chrome-only minimum outer size in pixels.
+     */
+    protected chromeMinSize(): Size {
+        const border = this.getBorderSize();
+        const insets = this.getInsets();
+
+        const horizontalChrome = (Number(border.left) || 0) + (Number(border.right)  || 0) + insets.getLeft();
+        const verticalChrome   = (Number(border.top)  || 0) + (Number(border.bottom) || 0) + insets.getTop();
+
+        return {
+            width:  this.minContentWidthSeed() + horizontalChrome,
+            height: (this.chromeHeight() || CHROME_HEIGHT_FLOOR_PX) + verticalChrome,
+        };
     }
 
     /**
@@ -453,22 +490,25 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Sets the window width, clamping to the dynamic {@link getMinSize}
-     * floor so border drags can't shrink the window below the chrome's
-     * required width or the body content's min width.
+     * Sets the window width, clamping to the {@link chromeMinSize} floor so
+     * border drags can't shrink the window below the chrome's required width
+     * (icon, title budget, control tools). Oversized body content overflows
+     * per the `Container` policy rather than holding the window open.
      *
      * @param width - Requested width in pixels.
      *
      * @returns This component, for method chaining.
      *
-     * @remarks `Component.setWidth` already clamps against `_options.minSize`
-     * via its private `clampWidth`, but that path ignores the layout
-     * manager's contribution — which is where the body content's minSize
-     * lives. Consulting `getMinSize` first folds both sides in.
+     * @remarks Clamps to the chrome minimum, NOT `getMinSize` — the latter
+     * folds in the layout manager's (body content's) min, which would let a
+     * tall/wide child hold the window open and contradicts
+     * {@link Container.clampsToContentSize} being `false`. An explicit consumer
+     * `minSize` is still enforced separately by `Component.setWidth`'s private
+     * `clampWidth`, so a caller-set floor remains honoured.
      */
     setWidth(width: number): this {
-        const min = this.getMinSize();
-        if (min && width < min.width) {
+        const min = this.chromeMinSize();
+        if (width < min.width) {
             width = min.width;
         }
 
@@ -476,16 +516,16 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Sets the window height, clamping to the dynamic {@link getMinSize}
-     * floor for the same reason described on {@link setWidth}.
+     * Sets the window height, clamping to the {@link chromeMinSize} floor for
+     * the same reason described on {@link setWidth}.
      *
      * @param height - Requested height in pixels.
      *
      * @returns This component, for method chaining.
      */
     setHeight(height: number): this {
-        const min = this.getMinSize();
-        if (min && height < min.height) {
+        const min = this.chromeMinSize();
+        if (height < min.height) {
             height = min.height;
         }
 
@@ -1390,7 +1430,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // Header-reachable fallback: keep at least an EDGE_MARGIN_PX strip visible
         // horizontally and the whole chrome band visible vertically. The 26 px
         // floor mirrors the default chrome height before the chrome has laid out.
-        const headerH = this.chromeHeight() || 26;
+        const headerH = this.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
 
         return { minX: EDGE_MARGIN_PX - w, maxX: vw - EDGE_MARGIN_PX, minY: 0, maxY: vh - headerH };
     }
@@ -1653,7 +1693,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private computeDockRect(): WindowRect {
         const dockWidth = this.getMinDockWidth();
         const slotIndex = this.computeDockSlotIndex();
-        const headerHeight = this.chromeHeight() || 26;
+        const headerHeight = this.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
         const x = slotIndex * (dockWidth + SNAP_DOCK_GAP_PX);
         const y = window.innerHeight - headerHeight;
 
@@ -1709,7 +1749,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
                 continue;
             }
             const dockWidth   = win.getMinDockWidth();
-            const headerHeight = win.chromeHeight() || 26;
+            const headerHeight = win.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
             const x = index * (dockWidth + SNAP_DOCK_GAP_PX);
             const y = window.innerHeight - headerHeight;
 
