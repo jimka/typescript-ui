@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Panel, PanelOptions } from "~/core/Panel.js";
+import { Container, ContainerOptions } from "~/core/Container.js";
 import { Component } from "~/core/Component.js";
 import { Fit } from "~/layout/Fit.js";
 import { Tab } from "~/layout/Tab.js";
@@ -52,7 +52,7 @@ export type DockLayoutSpec =
  *
  * @category Core
  */
-export interface DockOptions extends PanelOptions {
+export interface DockOptions extends ContainerOptions {
     /** Initial arrangement, compiled to the region tree at construction. Omit for an empty dock. */
     layout?: DockLayoutSpec;
 }
@@ -87,7 +87,7 @@ interface RegionWiring {
  *
  * @category Core
  */
-class Dock extends Panel<DockOptions> {
+class Dock extends Container<DockOptions> {
 
     // panelId -> spec; the single source the serialization factory resolves from.
     private _panels:         Map<string, DockPanelSpec> = new Map<string, DockPanelSpec>();
@@ -191,7 +191,7 @@ class Dock extends Panel<DockOptions> {
     }
 
     /**
-     * Returns the root region container (a `Panel` carrying a `Split`/`Tab`
+     * Returns the root region container (a `Container` carrying a `Split`/`Tab`
      * manager). Derived live as the sole `Fit` child rather than cached, because
      * an edge drop onto the root swaps that child for a fresh `Split` wrapper.
      *
@@ -232,7 +232,7 @@ class Dock extends Panel<DockOptions> {
      * frame, building it once (running a lazy content factory at most once) and
      * caching it so every resolve returns the same instance.
      *
-     * The frame is a `Panel` constructed with the stable `id` (the serialization
+     * The frame is a `Container` constructed with the stable `id` (the serialization
      * key, read back via `getId()`) and the `title` (the visible tab label, via
      * `getName()`) set **at construction** — the caller's content is placed
      * inside it and never mutated. The id must be set at construction, not via a
@@ -257,7 +257,7 @@ class Dock extends Panel<DockOptions> {
         if (!frame) {
             const content = typeof spec.content === "function" ? spec.content() : spec.content;
 
-            frame = new Panel({ id: spec.id, name: spec.title, layoutManager: new Fit() });
+            frame = new Container({ id: spec.id, name: spec.title, layoutManager: new Fit() });
             frame.addComponent(content);
 
             this._frames.set(id, frame);
@@ -347,12 +347,12 @@ class Dock extends Panel<DockOptions> {
     }
 
     /**
-     * Builds an empty region: a `Panel` carrying a fresh `Tab` manager.
+     * Builds an empty region: a `Container` carrying a fresh `Tab` manager.
      *
      * @returns The new `Tab` region.
      */
     private newTabRegion(): Component {
-        return new Panel({ layoutManager: new Tab() });
+        return new Container({ layoutManager: new Tab() });
     }
 
     /**
@@ -366,7 +366,7 @@ class Dock extends Panel<DockOptions> {
      */
     private compileLayout(spec: DockLayoutSpec): Component {
         if ("split" in spec) {
-            const region = new Panel({ layoutManager: new Split({ direction: spec.split }) });
+            const region = new Container({ layoutManager: new Split({ direction: spec.split }) });
 
             for (const child of spec.children) {
                 region.addComponent(this.compileRegion(child));
@@ -585,7 +585,7 @@ class Dock extends Panel<DockOptions> {
     }
 
     /**
-     * Whether a component is a region container — a `Panel` carrying a `Split`
+     * Whether a component is a region container — a `Container` carrying a `Split`
      * or `Tab` manager. Discriminates on the stripped runtime class name (no
      * `instanceof`, avoiding an import cycle), matching how serialization keys
      * its node kinds.

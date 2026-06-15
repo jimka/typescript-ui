@@ -5,6 +5,7 @@ import {
     callable,
     ClassicTheme,
     Component,
+    Container,
     DarkTheme,
     Dialog,
     Dock,
@@ -670,7 +671,7 @@ class MiscPanel extends Panel {
             toolbar.addComponent(saveButton);
             toolbar.addComponent(restoreButton);
 
-            const body = new Panel({ layoutManager: new Border(), insets: new Insets(0, 0, 0, 0) });
+            const body = new Container({ layoutManager: new Border() });
             body.addComponent(toolbar, { placement: Placement.NORTH });
             body.addComponent(dock, { placement: Placement.CENTER });
 

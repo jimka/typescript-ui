@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component, ComponentOptions } from "~/core/Component";
+import { Container, ContainerOptions } from "~/core/Container.js";
 import { Insets } from "~/primitive/Insets";
 import { LayoutManager } from "~/layout/LayoutManager.js";
 import { Util } from "~/core/Util.js";
@@ -69,7 +69,7 @@ export type AutoScrollMode = "none" | "auto" | "x" | "y" | "both";
  *
  * @category Core
  */
-export interface PanelOptions extends ComponentOptions {
+export interface PanelOptions extends ContainerOptions {
     tag?:        string;
 
     /**
@@ -100,19 +100,20 @@ const _defaultPanelOptions: Partial<PanelOptions> = {
 };
 
 /**
- * A [`Component`](/api/core/classes/Component) subclass that applies a default 4-pixel inset on all sides.
+ * A [`Container`](/api/core/classes/Container) subclass that applies a default 4-pixel inset on all sides.
  *
  * Use `Panel` as the base class for grouped UI containers where children
- * should not sit flush against the outer edge. Plain [`Component`](/api/core/classes/Component) defaults
- * to zero insets to keep leaf widgets pixel-predictable; `Panel` opts into
- * the visual breathing room that grouped layouts typically want.
+ * should not sit flush against the outer edge. A plain [`Container`](/api/core/classes/Container) fits
+ * its parent's allocation with zero insets to keep structural regions
+ * pixel-predictable; `Panel` opts into the visual breathing room that grouped
+ * content layouts typically want.
  *
  * `Panel` also exposes `setAutoScroll` to opt the container into native
  * browser scrolling when its children overflow the allocated rect.
  *
  * @category Core
  */
-class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOptions> {
+class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOptions> {
 
     // `declare` rather than initialiser to dodge the class-field super-cascade
     // trap: a `= "none"` initialiser runs *after* super() returns, which
@@ -282,21 +283,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Component<TOpt
      */
     getAutoScroll(): AutoScrollMode {
         return this._autoScroll;
-    }
-
-    /**
-     * Overrides {@link Component.clampsToContentSize} to `false`: a panel fits
-     * whatever space its parent's layout manager allocates rather than inflating
-     * itself up to its content-derived minimum. When the laid-out children spill
-     * past that allocation, the overflow clips or — with {@link setAutoScroll}
-     * configured — scrolls. Only an explicit {@link setMinSize} /
-     * {@link setMaxSize} remains a hard floor or ceiling on a panel.
-     *
-     * @returns `false`, so {@link clampWidth} / {@link clampHeight} clamp to the
-     *   panel's own explicit constraints only.
-     */
-    protected clampsToContentSize(): boolean {
-        return false;
     }
 
     /**
