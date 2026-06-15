@@ -772,6 +772,31 @@ class Border extends LayoutManager {
     }
 
     /**
+     * Clears the clip frame of every region that `doLayout` will skip because it
+     * resolved to `null` (a non-displayed region), so a `display: none` region
+     * does not leave its `overflow: hidden` wrapper orphaned around the hidden
+     * element until the region is shown again.
+     *
+     * @param laidOutRegions - The `laidOut` results for north, south, west,
+     *   center, and east; a `null` entry marks a region `doLayout` will skip.
+     */
+    private clearSkippedRegionFrames(...laidOutRegions: (Component | null)[]): void {
+        const rawRegions = [
+            this._northComponent,
+            this._southComponent,
+            this._westComponent,
+            this._centerComponent,
+            this._eastComponent
+        ];
+
+        rawRegions.forEach((component, index) => {
+            if (component && !laidOutRegions[index]) {
+                component.clearClipFrame();
+            }
+        });
+    }
+
+    /**
      * Positions north, south, east, west, and center children within the container's inner bounds.
      *
      * @remarks The north component may opt out of parent insets via `constraints.ignoreParentInsets`,
@@ -815,6 +840,13 @@ class Border extends LayoutManager {
         const center = this.laidOut(this._centerComponent);
         const east   = this.laidOut(this._eastComponent);
 
+        // A non-displayed region is skipped by its `if (region)` block below, so
+        // its clip frame is never re-driven or cleared there. Clear it now on the
+        // raw component so a `display: none` region doesn't orphan its
+        // `overflow: hidden` wrapper around the hidden element; clearClipFrame is
+        // a no-op when no frame is active.
+        this.clearSkippedRegionFrames(north, south, west, center, east);
+
         let width = containerSize.width;
         let height = containerSize.height;
         let centerX;
@@ -844,15 +876,27 @@ class Border extends LayoutManager {
             // The region is always laid out at full size and clipped toward its
             // outer edge while collapsed; the centre and gutter use the strip
             // extent (`middleY`) so they grow into the reclaimed space.
-            this.placeComponent(
-                north,
-                northX,
-                northY,
-                northWidth,
-                preferredSize.height + northInsetTop,
-                FillType.BOTH
-            );
-            this.applyRegionClip(north, Placement.NORTH);
+            if (this.isRegionCollapsible(Placement.NORTH)) {
+                this.placeComponent(
+                    north,
+                    northX,
+                    northY,
+                    northWidth,
+                    preferredSize.height + northInsetTop,
+                    FillType.BOTH
+                );
+                north.clearClipFrame();
+                this.applyRegionClip(north, Placement.NORTH);
+            } else {
+                // Containment via clip frame: an oversized or mis-sized region's
+                // own box is clipped to its allocated rect rather than bleeding
+                // over the adjacent region. Clear any stale clip-path left by a
+                // prior collapsible state (setRegionCollapsible can flip a region
+                // at runtime); this branch never calls applyRegionClip.
+                north.setClipPath(null);
+                north.setClipFrame(northX, northY, northWidth, preferredSize.height + northInsetTop);
+                this.commitBounds(north, 0, 0, northWidth, preferredSize.height + northInsetTop);
+            }
 
             this.updateRegionGutter(Placement.NORTH, northX, northY, northWidth, middleY);
 
@@ -881,15 +925,25 @@ class Border extends LayoutManager {
             // collapsed; the gutter uses the strip rect (`southY`/`southHeight`).
             let southFullY = containerInsets.getTop() + height - preferredSize.height;
 
-            this.placeComponent(
-                south,
-                southX,
-                southFullY,
-                width,
-                preferredSize.height,
-                FillType.BOTH
-            );
-            this.applyRegionClip(south, Placement.SOUTH);
+            if (this.isRegionCollapsible(Placement.SOUTH)) {
+                this.placeComponent(
+                    south,
+                    southX,
+                    southFullY,
+                    width,
+                    preferredSize.height,
+                    FillType.BOTH
+                );
+                south.clearClipFrame();
+                this.applyRegionClip(south, Placement.SOUTH);
+            } else {
+                // Containment via clip frame; see the NORTH branch. The
+                // non-collapsible full position equals the strip position, so the
+                // element commits at (0, 0) inside the frame.
+                south.setClipPath(null);
+                south.setClipFrame(southX, southFullY, width, preferredSize.height);
+                this.commitBounds(south, 0, 0, width, preferredSize.height);
+            }
 
             this.updateRegionGutter(Placement.SOUTH, southX, southY, width, southHeight);
         }
@@ -926,15 +980,25 @@ class Border extends LayoutManager {
             // collapsed; the centre and gutter use the strip extent (`westWidth`).
             let westFullWidth = Math.max(0, Math.min(preferredSize.width, width - eastPreferredWidth));
 
-            this.placeComponent(
-                west,
-                westX,
-                westY,
-                westFullWidth,
-                middleHeight,
-                FillType.BOTH
-            );
-            this.applyRegionClip(west, Placement.WEST);
+            if (this.isRegionCollapsible(Placement.WEST)) {
+                this.placeComponent(
+                    west,
+                    westX,
+                    westY,
+                    westFullWidth,
+                    middleHeight,
+                    FillType.BOTH
+                );
+                west.clearClipFrame();
+                this.applyRegionClip(west, Placement.WEST);
+            } else {
+                // Containment via clip frame; see the NORTH branch. The
+                // non-collapsible full width equals the strip width, so the
+                // element commits at (0, 0) inside the frame.
+                west.setClipPath(null);
+                west.setClipFrame(westX, westY, westFullWidth, middleHeight);
+                this.commitBounds(west, 0, 0, westFullWidth, middleHeight);
+            }
 
             this.updateRegionGutter(Placement.WEST, westX, westY, westWidth, middleHeight);
 
@@ -958,34 +1022,52 @@ class Border extends LayoutManager {
             // collapsed; the gutter uses the strip rect (`eastX`/`eastPreferredWidth`).
             let eastFullX = containerInsets.getLeft() + width - eastFullWidth;
 
-            this.placeComponent(
-                east,
-                eastFullX,
-                eastY,
-                eastFullWidth,
-                middleHeight,
-                FillType.BOTH
-            );
-            this.applyRegionClip(east, Placement.EAST);
+            if (this.isRegionCollapsible(Placement.EAST)) {
+                this.placeComponent(
+                    east,
+                    eastFullX,
+                    eastY,
+                    eastFullWidth,
+                    middleHeight,
+                    FillType.BOTH
+                );
+                east.clearClipFrame();
+                this.applyRegionClip(east, Placement.EAST);
+            } else {
+                // Containment via clip frame; see the NORTH branch. The
+                // non-collapsible full position equals the strip position, so the
+                // element commits at (0, 0) inside the frame.
+                east.setClipPath(null);
+                east.setClipFrame(eastFullX, eastY, eastFullWidth, middleHeight);
+                this.commitBounds(east, 0, 0, eastFullWidth, middleHeight);
+            }
 
             this.updateRegionGutter(Placement.EAST, eastX, eastY, eastPreferredWidth, middleHeight);
         }
 
         if (center) {
-            this.placeComponent(center,
+            // CENTER is never collapsible, so it always takes the frame branch
+            // and never carries a clip-path. Its rect is its own allocation (it
+            // can never overflow it), so the frame is a perfect-fit sheath that
+            // clips nothing — keeping one code path for the non-collapsible case.
+            center.setClipFrame(
                 containerInsets.getLeft() + centerX,
                 containerInsets.getTop() + middleY,
                 centerWidth,
-                middleHeight,
-                FillType.BOTH
+                middleHeight
             );
+            this.commitBounds(center, 0, 0, centerWidth, middleHeight);
         }
     }
 
     /**
      * Detaches from the container, removing every lazily-created collapse gutter
      * from the DOM and tearing down its event listeners so a layout-manager swap
-     * leaves no orphaned affordances.
+     * leaves no orphaned affordances. Also clears the clip frame installed on
+     * each non-collapsible region: when Border is swapped out but its regions
+     * stay mounted, a successor manager that doesn't drive clip frames would
+     * otherwise leave Border's `overflow: hidden` wrapper orphaned around the
+     * region element. `clearClipFrame` is a no-op for an unframed region.
      */
     detach(): this {
         super.detach();
@@ -997,6 +1079,10 @@ class Border extends LayoutManager {
         }
 
         this._gutters.clear();
+
+        for (const placement of [Placement.NORTH, Placement.SOUTH, Placement.WEST, Placement.EAST, Placement.CENTER]) {
+            this.getRegionComponent(placement)?.clearClipFrame();
+        }
 
         return this;
     }
