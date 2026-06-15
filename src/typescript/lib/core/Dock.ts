@@ -605,7 +605,28 @@ class Dock extends Container<DockOptions> {
 
         parent.removeComponent(region);
         this.collapseSinglePaneSplit(parent);
+        this.closeFloatIfEmpty(parent);
         this.scheduleSweep();
+    }
+
+    /**
+     * Closes a float window whose mini-dock just emptied. When a region was the
+     * direct content of a float window and pruning it leaves the window with no
+     * content, the float has nothing left to host — close it, matching the
+     * auto-close a strip-mode tear-off window performs when its last tab leaves.
+     * A no-op when `container` is an in-dock region (its parent is the dock or a
+     * `Split`, never a window) or the window still holds content.
+     *
+     * @param container - The container the pruned region was removed from.
+     */
+    private closeFloatIfEmpty(container: Component): void {
+        if (!AbstractWindow.getOpenWindows().includes(container as AbstractWindow)) {
+            return;
+        }
+
+        if (!this.windowContent(container as AbstractWindow)) {
+            (container as AbstractWindow).requestClose();
+        }
     }
 
     /**
