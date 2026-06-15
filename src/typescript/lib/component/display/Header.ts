@@ -7,7 +7,7 @@ import { AnchorType } from "~/layout/AnchorType.js";
 import { FillType } from "~/layout/FillType.js";
 import { Placement } from "~/primitive/Placement.js";
 import { ThemeManager } from "~/core/Theme.js";
-import { Panel } from "~/core/Panel.js";
+import { Container } from "~/core/Container.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -21,7 +21,7 @@ export interface HeaderOptions extends TextOptions {
 
 /**
  * User-overridable defaults forwarded to `super` via the options bag. The
- * cascade in `Panel`/`Component` dispatches each present setter once with the
+ * cascade in `Container`/`Component` dispatches each present setter once with the
  * final value. Font fields are handled in the constructor body once the inner
  * `text` child exists — they're written into `_options` by `applyOptions` and
  * dispatched from there.
@@ -37,7 +37,7 @@ const _defaultHeaderOptions: Partial<HeaderOptions> = {
  *
  * @category Components
  */
-class Header<TOptions extends HeaderOptions = HeaderOptions> extends Panel<TOptions> {
+class Header<TOptions extends HeaderOptions = HeaderOptions> extends Container<TOptions> {
 
     private _text!: Text;
 
@@ -123,7 +123,7 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Panel<TOpti
     }
 
     /**
-     * Applies a {@link HeaderOptions} bag. Inherited Panel/Component fields
+     * Applies a {@link HeaderOptions} bag. Inherited Container/Component fields
      * cascade through `super.applyOptions`; text-targeting fields are written
      * pure into `_options` here and dispatched from the constructor body once
      * `this.text` exists.
