@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { Panel } from "~/core/Panel.js";
+import { Container } from "~/core/Container.js";
 import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
 import { DragManager, DragEventDetail, tabDragRegistry } from "~/core/DragManager.js";
@@ -367,7 +367,7 @@ export class DockRegion {
 
         // Otherwise wrap the unit in a fresh same-axis Split (a perpendicular
         // drop therefore nests by one level, as intended).
-        const split = new Panel({ layoutManager: new Split({ direction: axis }) });
+        const split = new Container({ layoutManager: new Split({ direction: axis }) });
 
         container.moveComponent(split, unitIndex);
 
@@ -426,10 +426,10 @@ export class DockRegion {
      * collapses. The closure captures only `stack`; both are dropped together
      * when the stack is pruned, so no explicit `off` is needed.
      *
-     * @returns A `Panel` carrying a reorderable `Tab` layout manager.
+     * @returns A `Container` carrying a reorderable `Tab` layout manager.
      */
-    private newStack(): Panel {
-        const stack = new Panel({ layoutManager: new Tab({ reorderable: true }) });
+    private newStack(): Container {
+        const stack = new Container({ layoutManager: new Tab({ reorderable: true }) });
         const tab   = stack.getLayoutManager() as Tab;
 
         tab.on("empty", () => this.pruneEmptyStack(stack));
