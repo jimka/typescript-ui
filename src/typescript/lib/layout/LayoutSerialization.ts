@@ -91,13 +91,25 @@ export interface TabNode {
 }
 
 /**
- * A floating [`Window`](/api/core/classes/Window) referencing one content panel.
+ * A floating [`Window`](/api/core/classes/Window) and the arrangement it hosts.
+ * A dockable float carries a full region {@link content} tree (splits, tab
+ * order, active tab); a legacy single-panel float carried only {@link panelId}.
  *
  * @category Layouts
  */
 export interface WindowNode {
     kind:        "window";
-    panelId:     string;
+    /**
+     * Legacy single-panel reference. Read on restore for backward-compat with
+     * states written before floats became dockable; new states write
+     * {@link content} instead.
+     */
+    panelId?:    string;
+    /**
+     * The float's internal arrangement — a region tree. Present in every
+     * newly-serialized state; a single-frame float records a one-tab `tab` node.
+     */
+    content?:    LayoutNode;
     /** Title-bar text — captured so the restored window reproduces its title. */
     header:      string;
     rect:        SerializedRect;
@@ -229,7 +241,7 @@ function windowNodeFor(win: AbstractWindow): WindowNode | null {
 
     return {
         kind:        "window",
-        panelId:     panelIdOf(content),
+        content:     nodeFor(content),
         header:      win.getTitle(),
         rect:        win.getRect(),
         state:       win.getWindowState(),
@@ -302,7 +314,18 @@ function parkLeaves(root: Component, liveWindows: AbstractWindow[], factory: Lay
     liveWindows.forEach(win => {
         const content = windowContentOf(win);
 
-        if (content) {
+        if (!content) {
+            return;
+        }
+
+        // A dockable float's content is a region tree: park every leaf in it so
+        // each frame's state survives the restore. A legacy single-frame float
+        // has a bare content component — park it directly.
+        const kind = managerKind(content);
+
+        if (kind === "Split" || kind === "Tab") {
+            collectLeaves(content, leaves);
+        } else {
             leaves.push(content);
         }
     });
@@ -450,31 +473,40 @@ function populateContainer(container: Component, node: SplitNode | TabNode, park
 
 /**
  * Rebuilds a floating window from a {@link WindowNode}: a fresh window with the
- * recorded title and the parked/factory content panel. The normal-state
- * geometry is applied first (from `restoreRect` when the saved state isn't
- * normal), then `setWindowState` re-caches it and animates to the saved state.
+ * recorded title and its materialized content — a region tree for a dockable
+ * float, or the single parked/factory panel for a legacy single-frame float. The
+ * normal-state geometry is applied first (from `restoreRect` when the saved
+ * state isn't normal), then `setWindowState` re-caches it and animates to the
+ * saved state.
  *
  * @param node - The window node to rebuild.
  * @param parked - The parked leaves to re-home from.
- * @param factory - Supplies the content panel if not parked.
+ * @param factory - Supplies any content panel not parked.
  */
 function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: LayoutFactory): void {
-    const panel = parked.get(node.panelId) ?? factory(node.panelId);
+    // New states carry a `content` tree; a legacy state carries only `panelId`,
+    // restored as a single-panel node through the same materialize path.
+    const contentNode: LayoutNode | null = node.content
+        ?? (node.panelId ? { kind: "panel", panelId: node.panelId, glyph: null } : null);
 
-    if (!panel) {
-        console.warn(`restoreLayout: no component for window panelId "${node.panelId}"; skipping.`);
+    if (!contentNode) {
+        console.warn("restoreLayout: window node has neither content nor panelId; skipping.");
 
+        return;
+    }
+
+    const content = materializeNode(contentNode, parked, factory);
+
+    if (!content) {
         return;
     }
 
     const win = new Window(node.header);
 
-    // Carry the panel ID as the content's constraint `name` so a later restore
-    // discovers it by ID and parks it through the normal leaf path — same as a
-    // split/tab pane. Without it the content is unparkable, so it rides the
-    // closing window during teardown and is moved out late, landing with the
-    // window's stale committed geometry instead of its new container's.
-    win.moveComponent(panel, undefined, constraintsFor({ kind: "panel", panelId: node.panelId }));
+    // Carry the leaf's glyph (single-panel content only) through the re-home, as
+    // for any split/tab pane. The frame's id is its own identity channel, so a
+    // later restore still discovers and parks it through the normal leaf path.
+    win.moveComponent(content, undefined, constraintsFor(contentNode));
 
     // Apply the geometry BEFORE show(): show() runs the first doLayout, which
     // sizes the content to the window's body — so the rect must already be the

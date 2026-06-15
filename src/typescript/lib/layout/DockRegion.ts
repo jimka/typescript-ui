@@ -2,10 +2,21 @@
 
 import { Component } from "~/core/Component.js";
 import { Container } from "~/core/Container.js";
+import { AbstractWindow } from "~/core/AbstractWindow.js";
 import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
 import { DragManager, DragEventDetail, tabDragRegistry } from "~/core/DragManager.js";
 import { DropZone, DropZoneOverlay, EDGE_BAND_FRACTION } from "~/core/component/DropZoneOverlay.js";
+
+/**
+ * Dwell, in milliseconds, before a tab held over a region raises that region's
+ * host window. Long enough that brushing a drag across a background window in
+ * transit does not raise it, short enough that a deliberate hover surfaces the
+ * target so the user can aim the drop. Set above a `MenuItem` submenu's 150ms
+ * hover delay because raising a whole window is a heavier, more disruptive action
+ * than opening a submenu, so it should demand a clearly deliberate pause.
+ */
+const SPRING_RAISE_DELAY_MS = 1000;
 
 /**
  * Coordinator that turns an edge/center drop onto a region into a structural
@@ -38,6 +49,9 @@ export class DockRegion {
     private _overlay: DropZoneOverlay = new DropZoneOverlay();
     private _teardown: () => void;
     private _onStructureChanged: (() => void) | null;
+    // Pending spring-loaded raise of the host window while a tab dwells over this
+    // region; cleared the moment the cursor leaves, drops, or the region tears down.
+    private _raiseTimer: ReturnType<typeof setTimeout> | null = null;
 
     /**
      * Registers `region` as a drop target and wires the five-zone gesture.
@@ -67,18 +81,24 @@ export class DockRegion {
                 this._overlay.attachTo(this._region);
                 this._overlay.setHighlight(zone, this.isLegalDrop(componentId, zone));
 
+                // Spring-load a raise of the host window: a tab held over a
+                // backgrounded float surfaces it after a dwell so the user can aim.
+                this.scheduleSpringRaise();
+
                 // Suppress the manager's ReorderIndicator — position feedback is
                 // the overlay's job here, not a single insertion line.
                 return null;
             },
             onDragLeave: (): void => {
                 this._overlay.detach();
+                this.clearSpringRaise();
             },
             onDrop: (detail: DragEventDetail): boolean | void => {
                 const componentId = detail.dragData["componentId"] as string;
                 const zone        = this.computeZone(detail.clientX, detail.clientY);
 
                 this._overlay.detach();
+                this.clearSpringRaise();
 
                 // An illegal zone (self/ancestor, sole-content, a no-op edge, or
                 // a centre drop into the panel's own tab bar) is a no-op:
@@ -100,17 +120,81 @@ export class DockRegion {
                     this.splitOnEdge(panel, zone);
                 }
 
+                // Surface the window the tab just landed in: a cross-window dock
+                // onto a backgrounded float promotes and activates it, mirroring
+                // the strip-drop raise in `Tab`.
+                this.raiseHostWindow();
                 this._onStructureChanged?.();
             },
         });
     }
 
     /**
-     * Unregisters the drop target and detaches the overlay.
+     * Unregisters the drop target, detaches the overlay, and cancels any pending
+     * spring-loaded raise.
      */
     destroy(): void {
         this._teardown();
         this._overlay.detach();
+        this.clearSpringRaise();
+    }
+
+    /**
+     * The {@link AbstractWindow} this region lives in, or `null` when the region
+     * sits directly in the document. Walks the region's ancestor chain.
+     *
+     * @returns The owning window, or `null`.
+     */
+    private hostWindow(): AbstractWindow | null {
+        for (let node: Component | null = this._region; node; node = node.getParentComponent()) {
+            if (node instanceof AbstractWindow) {
+                return node;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Raises and activates the region's host window, if any. A no-op for an
+     * in-document region and harmless when the window is already frontmost.
+     */
+    private raiseHostWindow(): void {
+        this.hostWindow()?.bringToFront();
+    }
+
+    /**
+     * Arms the spring-loaded host-window raise if one is not already pending, so
+     * a tab dwelling over a backgrounded float surfaces it after
+     * {@link SPRING_RAISE_DELAY_MS}. Idempotent across the repeated `onDragOver`
+     * calls a single hover produces — the timer runs once per dwell.
+     */
+    private scheduleSpringRaise(): void {
+        if (this._raiseTimer !== null) {
+            return;
+        }
+
+        this._raiseTimer = setTimeout(() => {
+            this._raiseTimer = null;
+
+            // Only raise if the drag is still live: the leave/drop clears cover
+            // every reachable end, but guarding here keeps a cancelled drag (or
+            // any future end path) from raising a window after the gesture ended.
+            if (DragManager.isDragging()) {
+                this.raiseHostWindow();
+            }
+        }, SPRING_RAISE_DELAY_MS);
+    }
+
+    /**
+     * Cancels a pending spring-loaded raise — the cursor left, dropped, or the
+     * region tore down before the dwell elapsed.
+     */
+    private clearSpringRaise(): void {
+        if (this._raiseTimer !== null) {
+            clearTimeout(this._raiseTimer);
+            this._raiseTimer = null;
+        }
     }
 
     /**

@@ -1,6 +1,6 @@
 # Layout serialization
 
-[`serializeLayout`](/api/layout/functions/serializeLayout) and [`restoreLayout`](/api/layout/functions/restoreLayout) capture and restore the **arrangement** of the container managers that own topology — [`Split`](/layouts/Split) pane ratios, [`Tab`](/layouts/Tab) order and active index, and floating [`Window`](/api/core/classes/Window) rects and state — as a plain, serializable [`LayoutState`](/api/layout/interfaces/LayoutState) object.
+[`serializeLayout`](/api/layout/functions/serializeLayout) and [`restoreLayout`](/api/layout/functions/restoreLayout) capture and restore the **arrangement** of the container managers that own topology — [`Split`](/layouts/Split) pane ratios, [`Tab`](/layouts/Tab) order and active index, and floating [`Window`](/api/core/classes/Window) rects, state, and internal split/tab arrangement — as a plain, serializable [`LayoutState`](/api/layout/interfaces/LayoutState) object.
 
 They do **not** serialize the component tree. A leaf panel is an arbitrary [`Component`](/api/core/classes/Component) subclass built imperatively with constructor arguments and post-construction wiring the framework cannot reconstruct from data. So the captured form is **topology + geometry only** — each leaf is recorded as a bare `{ kind: "panel", panelId }` reference, and on restore a caller-supplied [`LayoutFactory`](/api/layout/type-aliases/LayoutFactory) maps each `panelId` back to its content component. The library rebuilds the *containers*; the caller owns the *content*.
 
@@ -81,7 +81,7 @@ interface LayoutState {
 | [`PanelNode`](/api/layout/interfaces/PanelNode) | A content leaf — just its `panelId`. |
 | [`SplitNode`](/api/layout/interfaces/SplitNode) | `direction`, child nodes, per-pane `ratios` (sum ~1.0) and `collapsed` flags. |
 | [`TabNode`](/api/layout/interfaces/TabNode) | Child nodes in tab order plus the `activeIndex`. |
-| [`WindowNode`](/api/layout/interfaces/WindowNode) | `panelId`, title `header`, `rect`, `state`, and the normal-state `restoreRect`. |
+| [`WindowNode`](/api/layout/interfaces/WindowNode) | A `content` region tree (the float's internal split/tab arrangement), title `header`, `rect`, `state`, and the normal-state `restoreRect`. The legacy single-panel `panelId` is still read on restore as a fallback. |
 
 Containers the serializer does not recognise (`Border`, `HBox`, `VBox`, `Accordion`, `Grid`, …) are treated as **opaque leaves**: the walk does not descend into them, and each is recorded as a single panel keyed by its own constraint `name`. Only `Split`/`Tab`/`Window` topologies are captured.
 
