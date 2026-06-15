@@ -5,7 +5,7 @@ import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
-import { Panel, PanelOptions } from "~/core/Panel.js";
+import { Container, ContainerOptions } from "~/core/Container.js";
 import { Position } from "~/primitive/Position.js";
 import { Insets } from "~/primitive/Insets.js";
 import { VBox } from "~/layout/VBox.js";
@@ -76,7 +76,7 @@ export type PopoverDismissMode = "click-outside" | "blur" | "manual";
  *
  * @category Core
  */
-export interface PopoverOptions extends PanelOptions {
+export interface PopoverOptions extends ContainerOptions {
     /** Resolved placement relative to the anchor. Default `"auto"`. */
     placement?: PopoverPlacement;
     /** Dismiss strategy. Default `"click-outside"`. */
@@ -106,7 +106,7 @@ const _defaultPopoverOptions: Partial<PopoverOptions> = {
  * [`Tooltip`](/api/core/classes/Tooltip), and for modal containment reach
  * for [`Dialog`](/api/core/classes/Dialog).
  *
- * `Popover` extends {@link Panel} so authors can compose freely via
+ * `Popover` extends {@link Container} so authors can compose freely via
  * `addComponent`; the `setTitle` / `setBody` / `addAction` conveniences are
  * sugar over the same container surface.
  *
@@ -136,7 +136,7 @@ const _defaultPopoverOptions: Partial<PopoverOptions> = {
  *
  * @category Core
  */
-class Popover extends Panel<PopoverOptions> implements DismissableLayer {
+class Popover extends Container<PopoverOptions> implements DismissableLayer {
 
     // Option-backed fields use `declare` rather than initializers to dodge the
     // class-field super-cascade trap: an initializer runs *after* super()
@@ -207,7 +207,7 @@ class Popover extends Panel<PopoverOptions> implements DismissableLayer {
 
     /**
      * Applies a {@link PopoverOptions} bag, dispatching popover-specific
-     * fields after the inherited Panel cascade.
+     * fields after the inherited Container cascade.
      *
      * @param options - The options bag carrying the values to apply.
      * @returns This popover, for method chaining.
