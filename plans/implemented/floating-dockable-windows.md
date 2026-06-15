@@ -242,4 +242,14 @@ No deletions, no new files. One shipped-primitive change (the `WindowNode` schem
 - **Glyph preservation across the float wrap** — the leading-tab glyph constraint is dropped when a bare frame is wrapped in a single-tab float region; the label (frame `getName()`) is kept. Re-stamping the glyph is a cosmetic follow-up, not part of this feature.
 - **Schema migration / `version` bump** — the `WindowNode` change is additive and backward-compatible via the `panelId` fallback; no migration pass and no `version: 2`.
 - **Cross-OS-window / multi-monitor docking** — floats are in-viewport `Window`s; dragging between separate browser/OS windows is out of scope (inherited from the Dock plan).
-- **New `Tab`/`TabWindow`/`Window`/`DockRegion` surface** — the tear-off reuses shipped `"bare"` mode and `splitOnEdge`'s existing window-rooted-container handling; no new mode, factory hook, or callback is added to a primitive (the only shipped change is the additive `WindowNode.content` field).
+- **New `Tab`/`TabWindow`/`Window`/`DockRegion` surface** — the tear-off reuses shipped `"bare"` mode and `splitOnEdge`'s existing window-rooted-container handling; no new mode, factory hook, or callback is added to a primitive (the only shipped change is the additive `WindowNode.content` field). *(Superseded during implementation — see Post-Implementation Deviations.)*
+
+---
+
+## Post-Implementation Deviations
+
+Manual testing surfaced gaps the original design's assumptions missed; the following shipped beyond the plan as written and are recorded here for accuracy.
+
+- **A `Tab` `"detached"` event was added (revises the "no new `Tab` surface" Non-Goal).** The plan assumed the tear-off's `"empty"` emit was a sufficient adoption trigger. It is not: `"empty"` only fires when the tear-off *drains* the source strip, so tearing one tab off a strip that keeps siblings scheduled no sweep and the float was never adopted — it lingered as a bare-frame window. `Tab` now emits `"detached"` (carrying the torn-off window) for every tear-off, and `Dock.wireRegion` subscribes to it with `scheduleSweep`. This is one additive event on the existing exported `TabEvent` union, the minimal surface that makes adoption fire on *every* tear-off.
+
+- **`DockRegion` and `Dock` gained window-lifecycle behaviour (revises the "no `DockRegion` change / cross-window re-dock needs no change" decision).** Three follow-ups, all behavioural (no new public method, option, or callback on a primitive): (1) `DockRegion.onDrop` raises and activates the region's host window on a cross-window dock — mirroring `Tab`'s existing strip-drop raise — so a tab dropped into a backgrounded float surfaces it; (2) `DockRegion` spring-loads the same raise while a tab dwells over the region, gated on `DragManager.isDragging` so a late timer fire after the gesture ends is a no-op; (3) `Dock.pruneRegion` closes a float window when pruning its mini-dock leaves it empty, restoring the close-on-empty contract the strip-mode `TabWindow` had. The "cross-window re-dock spans windows — no change" decision held for the *drop mechanics*; only the window raise/close *affordances* were missing.

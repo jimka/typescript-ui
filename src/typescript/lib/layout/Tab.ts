@@ -23,11 +23,13 @@ import { callable } from "~/core/Callable.js";
  *
  * `"tabclose"` fires when a tab is closed (carrying the removed content);
  * `"empty"` fires when the strip loses its last tab by any path — close,
- * tear-off, or re-dock — and carries no payload.
+ * tear-off, or re-dock — and carries no payload; `"detached"` fires when a tab
+ * is torn off into a new floating window (carrying that window), the one
+ * structural change that does *not* always empty the source strip.
  *
  * @category Layouts
  */
-export type TabEvent = "tabclose" | "empty";
+export type TabEvent = "tabclose" | "empty" | "detached";
 
 /**
  * How a torn-off tab's floating window hosts its content.
@@ -1764,6 +1766,12 @@ class Tab extends LayoutManager {
         // the tear-off's result is the new window, so it should end up focused and
         // frontmost.
         win.bringToFront();
+
+        // Announce the tear-off so a tree owner can fold the new window into its
+        // model. `removeEntryKeepingContent` already fired `"empty"` when this was
+        // the strip's last tab, but a tear-off that leaves siblings behind fires
+        // nothing else — this is the signal that covers that case.
+        this.emit("detached", win);
     }
 
     /**
@@ -1885,6 +1893,19 @@ class Tab extends LayoutManager {
      * @returns This tab layout, for method chaining.
      */
     on(event: "empty", listener: () => void): this;
+    /**
+     * Registers a listener for the `"detached"` event, which fires after a tab is
+     * torn off into a new floating window, carrying that window. Unlike `"empty"`,
+     * it fires whether or not the tear-off left the source strip empty — so a
+     * tree owner such as [`Dock`](/api/core/classes/Dock) can react to *every*
+     * tear-off, not just the ones that drain the strip.
+     *
+     * @param event - The `"detached"` event.
+     * @param listener - Invoked with the torn-off window.
+     *
+     * @returns This tab layout, for method chaining.
+     */
+    on(event: "detached", listener: (window: AbstractWindow) => void): this;
     on(event: TabEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -1915,6 +1936,7 @@ class Tab extends LayoutManager {
      */
     protected emit(event: "tabclose", component: Component): void;
     protected emit(event: "empty"): void;
+    protected emit(event: "detached", window: AbstractWindow): void;
     protected emit(event: TabEvent,   ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
