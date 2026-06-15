@@ -198,6 +198,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private _dragOriginClientY: number = 0;
     private _dragDX: number = 0;
     private _dragDY: number = 0;
+    // Lowest / highest top-left coordinate the window has reached during the
+    // in-progress move drag, per axis. Seeded to the drag origin in
+    // startMoveFrom and ratcheted in clampDragDelta so an off-screen edge can
+    // only ever travel back toward the viewport, never further out — even
+    // mid-drag after reversing direction.
+    private _dragReachMinX: number = 0;
+    private _dragReachMaxX: number = 0;
+    private _dragReachMinY: number = 0;
+    private _dragReachMaxY: number = 0;
     private _contentFactory: (() => Component) | null = null;
     private _contentReadyCallback: ((component: Component) => void) | null = null;
 
@@ -1233,6 +1242,14 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this._dragDX = 0;
         this._dragDY = 0;
 
+        // Seed the per-axis reach ratchet at the start position so the first
+        // frame's allowed range spans the origin (no snap on grab) and tightens
+        // from there.
+        this._dragReachMinX = this._dragStartLeft;
+        this._dragReachMaxX = this._dragStartLeft;
+        this._dragReachMinY = this._dragStartTop;
+        this._dragReachMaxY = this._dragStartTop;
+
         // Pre-promote to a compositor layer so the first mousemove translate doesn't
         // pay a layer-creation cost mid-drag. Released in onMouseUp.
         this.setWillChange("transform");
@@ -1455,14 +1472,32 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private clampDragDelta(): void {
         const { minX, maxX, minY, maxY } = this.viewportPositionBounds();
 
+        // A window can start beyond a bound — larger than the viewport, or
+        // opened with an edge off-screen. A plain [min, max] clamp would snap it
+        // back to the bound on grab, jerking it from under the cursor. Instead
+        // ratchet the allowed range from the reach extremes: the far end follows
+        // the window as it travels toward the viewport (`max(maxBound, reachMin)`
+        // floored at the real bound) so an off-screen edge can move in but never
+        // back out — disallowing southward/eastward travel for as long as that
+        // edge stays outside, even after reversing mid-drag. Symmetric on the
+        // near end. For a window that started in-bounds the reach extremes sit
+        // within [min, max], so this collapses to the plain clamp.
+        const hiX = Math.max(maxX, this._dragReachMinX);
+        const loX = Math.min(minX, this._dragReachMaxX);
+        const hiY = Math.max(maxY, this._dragReachMinY);
+        const loY = Math.min(minY, this._dragReachMaxY);
+
         const targetX = this._dragStartLeft + this._dragDX;
         const targetY = this._dragStartTop  + this._dragDY;
 
-        // Outer Math.max floors at the min so the top-left corner (and the header)
-        // stays visible when the window is larger than the viewport (max < min);
-        // the inner Math.min caps the far edge.
-        const clampedX = Math.max(Math.min(targetX, maxX), minX);
-        const clampedY = Math.max(Math.min(targetY, maxY), minY);
+        const clampedX = Math.max(Math.min(targetX, hiX), loX);
+        const clampedY = Math.max(Math.min(targetY, hiY), loY);
+
+        // Record the new reach so the next frame's range can only tighten.
+        this._dragReachMinX = Math.min(this._dragReachMinX, clampedX);
+        this._dragReachMaxX = Math.max(this._dragReachMaxX, clampedX);
+        this._dragReachMinY = Math.min(this._dragReachMinY, clampedY);
+        this._dragReachMaxY = Math.max(this._dragReachMaxY, clampedY);
 
         this._dragDX = clampedX - this._dragStartLeft;
         this._dragDY = clampedY - this._dragStartTop;
