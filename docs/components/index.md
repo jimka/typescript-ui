@@ -11,6 +11,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`Component`](/api/core/classes/Component) | Base class — position, size, styling, child tree |
 | [`BaseObject`](/api/core/classes/BaseObject) | UUID-based identity above `Component` |
 | [`Body`](/api/core/classes/Body) | Singleton wrapping `document.body`; bootstraps the framework |
+| [`Container`](/api/core/classes/Container) | Fit-parent, zero-inset, no-scroll base for structural regions; `Panel` adds 4px padding + scrolling |
 | [`AbstractWindow`](/components/AbstractWindow) | Abstract base for `Window` and `TabWindow` — header-agnostic window machinery |
 | [`Window`](/components/Window) | Floating, draggable, resizable window with a title-bar header |
 | [`TabWindow`](/components/TabWindow) | Headerless floating window whose tab bar is its title bar (strip tear-off) |
