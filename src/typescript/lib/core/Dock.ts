@@ -2,6 +2,7 @@
 
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Component } from "~/core/Component.js";
+import { AbstractWindow } from "~/core/AbstractWindow.js";
 import { Fit } from "~/layout/Fit.js";
 import { Tab } from "~/layout/Tab.js";
 import { Split } from "~/layout/Split.js";
@@ -440,8 +441,9 @@ class Dock extends Container<DockOptions> {
     }
 
     /**
-     * Runs the idempotent sweep: wire every reachable region, then tear down the
-     * coordinators of regions that have vanished from the tree.
+     * Runs the idempotent sweep: adopt every owned float window into a wired
+     * region tree, wire the in-dock root and each float region, then tear down
+     * the coordinators of regions that have vanished from the combined live tree.
      */
     private runSweep(): void {
         const root = this.getRootRegion();
@@ -450,8 +452,100 @@ class Dock extends Container<DockOptions> {
             return;
         }
 
+        const floatRegions = this.ownedFloatWindows()
+            .map(win => this.adoptFloat(win))
+            .filter((region): region is Component => region !== null);
+
         this.wireRegion(root);
-        this.teardownVanished(root);
+
+        for (const region of floatRegions) {
+            this.wireRegion(region);
+        }
+
+        this.teardownVanished(root, floatRegions);
+    }
+
+    /**
+     * Open windows whose content subtree holds one of this dock's identity frames
+     * — the floats torn off from this dock — excluding the window the dock itself
+     * lives in. Re-derived each sweep (never cached) so a closed float drops out
+     * naturally, mirroring the derived-live root in {@link getRootRegion}.
+     *
+     * @returns The owned float windows.
+     */
+    private ownedFloatWindows(): AbstractWindow[] {
+        const frames = [...this._frames.values()];
+
+        return AbstractWindow.getOpenWindows().filter(win =>
+            !this.windowContains(win, this) &&
+            frames.some(frame => this.windowContains(win, frame)));
+    }
+
+    /**
+     * Whether `node` lies within `win`'s subtree — walks `node`'s ancestor chain
+     * looking for `win`. Used both to detect a float hosting a frame and to
+     * exclude the dock's own host window (which contains the dock, hence every
+     * still-docked frame).
+     *
+     * @param win - The candidate ancestor window.
+     * @param node - The component whose ancestor chain to walk.
+     *
+     * @returns `true` when `win` is an ancestor of `node`.
+     */
+    private windowContains(win: AbstractWindow, node: Component): boolean {
+        for (let current: Component | null = node; current; current = current.getParentComponent()) {
+            if (current === win) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A window's first non-chrome child — its content panel — or `null` when the
+     * window has none yet.
+     *
+     * @param win - The window to inspect.
+     *
+     * @returns The content component, or `null`.
+     */
+    private windowContent(win: AbstractWindow): Component | null {
+        return win.getComponents().find(child => !win.isChromeComponent(child)) ?? null;
+    }
+
+    /**
+     * Ensures a float window's content is a wired-able region tree and returns
+     * that region. A freshly torn-off float holds its bare identity frame as the
+     * window's content; this wraps it in a single fresh `Tab` region so it is a
+     * proper region leaf with a draggable handle, turning the window into a
+     * mini-dock. Idempotent: once the content is a region container (already
+     * adopted, or restored as a tree) it is returned unchanged, so re-sweeps
+     * after edge-splits inside the float do not re-wrap.
+     *
+     * @param win - The float window to adopt.
+     *
+     * @returns The float's content region, or `null` when the window has no content.
+     */
+    private adoptFloat(win: AbstractWindow): Component | null {
+        const content = this.windowContent(win);
+
+        if (!content) {
+            return null;
+        }
+
+        if (this.isRegionContainer(content)) {
+            return content;
+        }
+
+        const region = this.newTabRegion();
+
+        // A fresh region carries no constraint, so the window's Border fills it as
+        // an unplaced→CENTER child — the same way the bare frame filled before.
+        win.moveComponent(region);
+        region.moveComponent(content);
+
+        return region;
     }
 
     /**
@@ -475,6 +569,10 @@ class Dock extends Container<DockOptions> {
 
         if (this.isTab(region) && !wiring.tabWired) {
             (manager as Tab).setReorderable(true);
+            // Tear a dock tab off into a plain header Window hosting the bare
+            // identity frame (not a TabWindow), so the sweep can adopt it into a
+            // mini-dock region tree the user can edge-split and re-dock.
+            (manager as Tab).setDetachWindowMode("bare");
             (manager as Tab).on("empty", () => this.pruneRegion(region));
 
             wiring.tabWired = true;
@@ -551,14 +649,22 @@ class Dock extends Container<DockOptions> {
 
     /**
      * Destroys the wiring of every tracked region no longer reachable from the
-     * root, releasing the drop targets a removed region's coordinator held.
+     * combined live tree (the in-dock root plus every owned float's region tree),
+     * releasing the drop targets a removed region's coordinator held. Seeding the
+     * reachable set from the float regions too is what keeps a float's drop
+     * targets alive across sweeps driven by unrelated in-dock moves.
      *
      * @param root - The current root region.
+     * @param floatRegions - The adopted content region of each owned float window.
      */
-    private teardownVanished(root: Component): void {
+    private teardownVanished(root: Component, floatRegions: Component[]): void {
         const reachable = new Set<Component>();
 
         this.collectRegions(root, reachable);
+
+        for (const region of floatRegions) {
+            this.collectRegions(region, reachable);
+        }
 
         for (const [region, wiring] of this._wiring) {
             if (!reachable.has(region)) {
