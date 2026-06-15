@@ -12,8 +12,9 @@ import { DropZone, DropZoneOverlay, EDGE_BAND_FRACTION } from "~/core/component/
  * Dwell, in milliseconds, before a tab held over a region raises that region's
  * host window. Long enough that brushing a drag across a background window in
  * transit does not raise it, short enough that a deliberate hover surfaces the
- * target so the user can aim the drop — the spring-loaded-folder convention,
- * mirroring {@link MenuItem}'s hover-to-open submenu delay.
+ * target so the user can aim the drop. Set above a `MenuItem` submenu's 150ms
+ * hover delay because raising a whole window is a heavier, more disruptive action
+ * than opening a submenu, so it should demand a clearly deliberate pause.
  */
 const SPRING_RAISE_DELAY_MS = 1000;
 
@@ -175,7 +176,13 @@ export class DockRegion {
 
         this._raiseTimer = setTimeout(() => {
             this._raiseTimer = null;
-            this.raiseHostWindow();
+
+            // Only raise if the drag is still live: the leave/drop clears cover
+            // every reachable end, but guarding here keeps a cancelled drag (or
+            // any future end path) from raising a window after the gesture ended.
+            if (DragManager.isDragging()) {
+                this.raiseHostWindow();
+            }
         }, SPRING_RAISE_DELAY_MS);
     }
 
