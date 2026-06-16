@@ -35,14 +35,14 @@ parent.addComponent(bar);
 | --- | --- | --- |
 | `orientation` | `"horizontal"` | `"horizontal"` packs children with [`HBox`](/api/layout/classes/HBox); `"vertical"` swaps to [`VBox`](/api/layout/classes/VBox). |
 | `compact` | `false` | When `true`, insets shrink to `(2, 2, 2, 2)` and child spacing collapses to `0`. |
-| `overflow` | `"clip"` | v1 ships `"clip"` only. `"menu"` is accepted as a forward-compat placeholder; a follow-up plan will render a trailing dropdown of overflowed children. |
+| `overflow` | `"clip"` | `"clip"` lets children spill into the parent's clipping region. `"menu"` hides the [`Button`](/api/component/button/classes/Button) / [`ToggleButton`](/api/component/button/classes/ToggleButton) children that don't fit and surfaces them in a dropdown opened by a trailing chevron. See [Overflow menu](#overflow-menu). |
 | `flat` | `true` | When `true`, [`Button`](/api/component/button/classes/Button) / [`ToggleButton`](/api/component/button/classes/ToggleButton) children are switched to the flat appearance. Set `false` to keep raised buttons. |
 
 ## Setters
 
 - `setOrientation(value)` — flips the layout manager between [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox), preserving child spacing. The trailing-edge border flips from bottom to right (or vice versa). Existing [`ToolBarSeparator`](/components/ToolBarSeparator) children are **not** auto-flipped — recreate them with the matching orientation if needed.
 - `setCompact(value)` — toggles between the default insets / gap and the compact `(2, 2, 2, 2)` / `0` pair.
-- `setOverflow(value)` — caches the strategy. Currently behaves as `"clip"` regardless of value.
+- `setOverflow(value)` — switches between `"clip"` and `"menu"`. Entering `"menu"` for the first time lazily builds the chevron trigger and its dropdown. `getOverflow()` reports the current strategy.
 - `setFlat(value)` — flattens (or restores) the bar's `Button` / `ToggleButton` children. The flag also governs children added later through `addComponent`, so any button you add to a flat bar is flattened automatically. Non-button children are left untouched. `isFlat()` reports the current state.
 
 ## Keyboard nav
@@ -52,6 +52,28 @@ parent.addComponent(bar);
 - Non-focusable children (separators, plain spacers) are skipped.
 
 `RovingTabIndex.add` snapshots focusability at insertion time. A child whose tabindex changes after `addComponent` (e.g. a disabled button later re-enabled) will not be retroactively added to the roving group.
+
+## Overflow menu
+
+With `overflow: "menu"`, a bar that runs out of room hides its trailing [`Button`](/api/component/button/classes/Button) / [`ToggleButton`](/api/component/button/classes/ToggleButton) children and surfaces them in a dropdown opened by a trailing chevron affordance.
+
+```typescript
+const bar = new ToolBar({ overflow: "menu" });
+
+for (const label of ['New', 'Open', 'Save', 'Print', 'Undo', 'Redo']) {
+    const button = new Button(label);
+
+    button.on('action', () => run(label));
+    bar.addComponent(button);
+}
+```
+
+On every layout pass the bar re-measures its children against its inner width. Buttons that no longer fit are switched to `display: none` and a chevron button — a flat, glyph-only trigger — appears at the trailing edge. Clicking it opens a [`Menu`](/api/core/classes/Menu) with one row per overflowed button, labelled from the button's text and glyph; selecting a row re-fires that button's `action`. Widening the bar reveals the buttons again and hides the chevron once everything fits.
+
+Two limitations are deliberate:
+
+- **Horizontal only.** Menu overflow applies to horizontal bars. A vertical bar always clips; `setOrientation("vertical")` leaves overflow as clip even when the mode is `"menu"`.
+- **Buttons only.** Only [`Button`](/api/component/button/classes/Button) / [`ToggleButton`](/api/component/button/classes/ToggleButton) children reflow into the dropdown — a menu row is text plus action, which other children (combo boxes, spacers, separators) have no well-defined mapping to. Non-button children that don't fit are clipped, exactly as in `"clip"` mode.
 
 ## Theming
 
