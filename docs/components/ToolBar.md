@@ -4,6 +4,8 @@
 
 `ToolBar` extends [`Panel`](/api/core/classes/Panel) so it inherits the 4-px default insets. Layout defaults to a horizontal [`HBox`](/api/layout/classes/HBox); pass `orientation: "vertical"` (or call `setOrientation("vertical")`) to swap to a [`VBox`](/api/layout/classes/VBox). Children can be any [`Component`](/api/core/classes/Component); focusable children are auto-registered with an internal [`RovingTabIndex`](/api/core/classes/RovingTabIndex) so Arrow keys cycle focus through them.
 
+By default the bar gives its [`Button`](/api/component/button/classes/Button) and [`ToggleButton`](/api/component/button/classes/ToggleButton) children the classical flat appearance: no resting frame, a light frame and subtle fill on hover, and a sunken inset frame on press. A toggled-on `ToggleButton` reads as depressed, and a glyph-only button tightens to a compact square. Pass `flat: false` (or call `setFlat(false)`) to keep raised buttons.
+
 ## Usage
 
 ```typescript
@@ -34,12 +36,14 @@ parent.addComponent(bar);
 | `orientation` | `"horizontal"` | `"horizontal"` packs children with [`HBox`](/api/layout/classes/HBox); `"vertical"` swaps to [`VBox`](/api/layout/classes/VBox). |
 | `compact` | `false` | When `true`, insets shrink to `(2, 2, 2, 2)` and child spacing collapses to `0`. |
 | `overflow` | `"clip"` | v1 ships `"clip"` only. `"menu"` is accepted as a forward-compat placeholder; a follow-up plan will render a trailing dropdown of overflowed children. |
+| `flat` | `true` | When `true`, [`Button`](/api/component/button/classes/Button) / [`ToggleButton`](/api/component/button/classes/ToggleButton) children are switched to the flat appearance. Set `false` to keep raised buttons. |
 
 ## Setters
 
 - `setOrientation(value)` — flips the layout manager between [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox), preserving child spacing. The trailing-edge border flips from bottom to right (or vice versa). Existing [`ToolBarSeparator`](/components/ToolBarSeparator) children are **not** auto-flipped — recreate them with the matching orientation if needed.
 - `setCompact(value)` — toggles between the default insets / gap and the compact `(2, 2, 2, 2)` / `0` pair.
 - `setOverflow(value)` — caches the strategy. Currently behaves as `"clip"` regardless of value.
+- `setFlat(value)` — flattens (or restores) the bar's `Button` / `ToggleButton` children. The flag also governs children added later through `addComponent`, so any button you add to a flat bar is flattened automatically. Non-button children are left untouched. `isFlat()` reports the current state.
 
 ## Keyboard nav
 
