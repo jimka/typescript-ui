@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { FillType } from "~/layout/FillType.js";
-import { Size } from "~/primitive/Size.js";
+import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Component } from "~/core/Component.js";
 import { BoxLayout, BoxLayoutOptions } from "~/layout/BoxLayout.js";
@@ -69,7 +69,7 @@ class VBox extends BoxLayout {
             return { width, height };
         }
 
-        let width = Number.MAX_SAFE_INTEGER;
+        let width = UNBOUNDED;
         let height = perimiterSize.top + perimiterSize.bottom;
 
         for (let idx in components) {
@@ -77,7 +77,7 @@ class VBox extends BoxLayout {
             let size = component.getPreferredSize();
 
             if (size) {
-                width = width == Number.MAX_SAFE_INTEGER ? Math.min(width, size.width) : Math.max(width, size.width);
+                width = isUnbounded(width) ? Math.min(width, size.width) : Math.max(width, size.width);
                 height += size.height;
             }
         }
@@ -158,81 +158,12 @@ class VBox extends BoxLayout {
      * cell shares the tallest child's allowance. The cross axis (width) takes
      * the *largest* child maximum — the widest a child permits the column to
      * grow to. A child whose maximum is `null` or at the unbounded sentinel
-     * makes that axis unbounded (`Number.MAX_SAFE_INTEGER`).
+     * makes that axis unbounded.
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
     getMaxSize(): Size | null {
-        let container = this.getContainer();
-        if (!container) {
-            return null;
-        }
-
-        let perimiterSize = container.getPerimiterSize();
-        let components = container.getLaidOutComponents();
-        let width = 0;
-        let height = perimiterSize.top + perimiterSize.bottom;
-        let widthUnbounded = false;
-        let heightUnbounded = false;
-
-        if (this._mode === "equal") {
-            let maxChildMaxHeight = 0;
-
-            for (const component of components) {
-                const size = component.getMaxSize();
-
-                if (!size) {
-                    widthUnbounded = true;
-                    heightUnbounded = true;
-                    continue;
-                }
-
-                if (size.width >= Number.MAX_SAFE_INTEGER) {
-                    widthUnbounded = true;
-                } else {
-                    width = Math.max(width, size.width);
-                }
-
-                if (size.height >= Number.MAX_SAFE_INTEGER) {
-                    heightUnbounded = true;
-                } else {
-                    maxChildMaxHeight = Math.max(maxChildMaxHeight, size.height);
-                }
-            }
-
-            height += components.length * maxChildMaxHeight + this._spacing * Math.max(0, components.length - 1);
-        } else {
-            for (const component of components) {
-                const size = component.getMaxSize();
-
-                if (!size) {
-                    widthUnbounded = true;
-                    heightUnbounded = true;
-                    continue;
-                }
-
-                if (size.width >= Number.MAX_SAFE_INTEGER) {
-                    widthUnbounded = true;
-                } else {
-                    width = Math.max(width, size.width);
-                }
-
-                if (size.height >= Number.MAX_SAFE_INTEGER) {
-                    heightUnbounded = true;
-                } else {
-                    height += size.height;
-                }
-            }
-
-            height += this._spacing * Math.max(0, components.length - 1);
-        }
-
-        width += perimiterSize.left + perimiterSize.right;
-
-        return {
-            width:  widthUnbounded  ? Number.MAX_SAFE_INTEGER : width,
-            height: heightUnbounded ? Number.MAX_SAFE_INTEGER : height
-        };
+        return this.aggregateMaxSize(false);
     }
 
     /**

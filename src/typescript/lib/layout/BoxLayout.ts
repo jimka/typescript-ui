@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
-import { Size } from "~/primitive/Size.js";
+import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 
 /**
  * Sizing strategy along an {@link HBox} or {@link VBox}'s main axis.
@@ -217,6 +217,80 @@ export abstract class BoxLayout extends LayoutManager {
      * @returns The total min-size of the children.
      */
     protected abstract computeTotalMinSize(): Size;
+
+    /**
+     * Aggregates the children's maximum sizes per the box contract: main axis =
+     * sum of child maxima (+ spacing; in `"equal"` mode count * widest-child-max),
+     * cross axis = max of child maxima, a null or unbounded child max making that
+     * axis unbounded. Saturated to {@link UNBOUNDED}. Includes the container
+     * perimeter.
+     *
+     * @param horizontal - `true` for {@link HBox} (main = width), `false` for
+     *   {@link VBox} (main = height).
+     * @returns The aggregated maximum `{width, height}`, or `null` if no
+     *   container is attached.
+     */
+    protected aggregateMaxSize(horizontal: boolean): Size | null {
+        const container = this.getContainer();
+        if (!container) {
+            return null;
+        }
+
+        const perimiterSize = container.getPerimiterSize();
+        const components = container.getLaidOutComponents();
+
+        const mainStart  = horizontal ? perimiterSize.left + perimiterSize.right : perimiterSize.top + perimiterSize.bottom;
+        const crossExtra = horizontal ? perimiterSize.top + perimiterSize.bottom : perimiterSize.left + perimiterSize.right;
+
+        let main = mainStart;
+        let cross = 0;
+        let mainUnbounded = false;
+        let crossUnbounded = false;
+        let maxChildMain = 0;
+
+        for (const component of components) {
+            const size = component.getMaxSize();
+
+            if (!size) {
+                mainUnbounded = true;
+                crossUnbounded = true;
+                continue;
+            }
+
+            const mainExtent  = horizontal ? size.width  : size.height;
+            const crossExtent = horizontal ? size.height : size.width;
+
+            if (isUnbounded(mainExtent)) {
+                mainUnbounded = true;
+            } else if (this._mode === "equal") {
+                maxChildMain = Math.max(maxChildMain, mainExtent);
+            } else {
+                main += mainExtent;
+            }
+
+            if (isUnbounded(crossExtent)) {
+                crossUnbounded = true;
+            } else {
+                cross = Math.max(cross, crossExtent);
+            }
+        }
+
+        if (this._mode === "equal") {
+            main += components.length * maxChildMain + this._spacing * Math.max(0, components.length - 1);
+        } else {
+            main += this._spacing * Math.max(0, components.length - 1);
+        }
+
+        cross += crossExtra;
+
+        const mainValue  = mainUnbounded  ? UNBOUNDED : main;
+        const crossValue = crossUnbounded ? UNBOUNDED : cross;
+
+        return {
+            width:  horizontal ? mainValue  : crossValue,
+            height: horizontal ? crossValue : mainValue
+        };
+    }
 
     /**
      * Inflates a working container size to the children's combined minSize on

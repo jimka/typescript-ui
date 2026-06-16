@@ -193,81 +193,12 @@ class HBox extends BoxLayout {
      * the widest child's allowance. The cross axis (height) takes the *largest*
      * child maximum — the tallest a child permits the row to grow to. A child
      * whose maximum is `null` or at the unbounded sentinel makes that axis
-     * unbounded (`Number.MAX_SAFE_INTEGER`).
+     * unbounded.
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
     getMaxSize(): Size | null {
-        let container = this.getContainer();
-        if (!container) {
-            return null;
-        }
-
-        let perimiterSize = container.getPerimiterSize();
-        let components = container.getLaidOutComponents();
-        let width = perimiterSize.left + perimiterSize.right;
-        let height = 0;
-        let widthUnbounded = false;
-        let heightUnbounded = false;
-
-        if (this._mode === "equal") {
-            let maxChildMaxWidth = 0;
-
-            for (const component of components) {
-                const size = component.getMaxSize();
-
-                if (!size) {
-                    widthUnbounded = true;
-                    heightUnbounded = true;
-                    continue;
-                }
-
-                if (size.width >= Number.MAX_SAFE_INTEGER) {
-                    widthUnbounded = true;
-                } else {
-                    maxChildMaxWidth = Math.max(maxChildMaxWidth, size.width);
-                }
-
-                if (size.height >= Number.MAX_SAFE_INTEGER) {
-                    heightUnbounded = true;
-                } else {
-                    height = Math.max(height, size.height);
-                }
-            }
-
-            width += components.length * maxChildMaxWidth + this._spacing * Math.max(0, components.length - 1);
-        } else {
-            for (const component of components) {
-                const size = component.getMaxSize();
-
-                if (!size) {
-                    widthUnbounded = true;
-                    heightUnbounded = true;
-                    continue;
-                }
-
-                if (size.width >= Number.MAX_SAFE_INTEGER) {
-                    widthUnbounded = true;
-                } else {
-                    width += size.width;
-                }
-
-                if (size.height >= Number.MAX_SAFE_INTEGER) {
-                    heightUnbounded = true;
-                } else {
-                    height = Math.max(height, size.height);
-                }
-            }
-
-            width += this._spacing * Math.max(0, components.length - 1);
-        }
-
-        height += perimiterSize.top + perimiterSize.bottom;
-
-        return {
-            width:  widthUnbounded  ? Number.MAX_SAFE_INTEGER : width,
-            height: heightUnbounded ? Number.MAX_SAFE_INTEGER : height
-        };
+        return this.aggregateMaxSize(true);
     }
 
     /**
