@@ -15,7 +15,7 @@ import { callable } from "~/core/Callable.js";
  *
  * @category Components
  */
-export type TreeEvent = "selection";
+export type TreeEvent = "selection" | "loaderror";
 
 /** Pixels of indentation added per depth level. */
 const INDENT_PX = 16;
@@ -54,6 +54,7 @@ export interface TreeOptions extends ComponentOptions {
      */
     listeners?: {
         selection?: (nodes: TreeNode[]) => void;
+        loaderror?: (node: TreeNode, error: unknown) => void;
     };
 }
 
@@ -96,6 +97,8 @@ class Tree extends Component<TreeOptions> {
     private _lastRowWidth       : number                                                  = 0;
     private _scroller           : VirtualScroller | null                                  = null;
     private _selectedNodes      : Set<TreeNode>                                           = new Set();
+    private _loadingNodes       : Set<TreeNode>                                           = new Set();
+    private _loadedNodes        : Set<TreeNode>                                           = new Set();
     private _anchorNode         : TreeNode | null                                         = null;
     private _focusNode          : TreeNode | null                                         = null;
     private _listeners          : ListenerBag<TreeEvent>                                  = new ListenerBag<TreeEvent>();
@@ -116,6 +119,10 @@ class Tree extends Component<TreeOptions> {
         if (options?.listeners?.selection !== undefined) {
             this.on("selection", options.listeners.selection);
         }
+
+        if (options?.listeners?.loaderror !== undefined) {
+            this.on("loaderror", options.listeners.loaderror);
+        }
     }
 
     /**
@@ -127,6 +134,8 @@ class Tree extends Component<TreeOptions> {
         this._nodes = nodes;
         this._expandedNodes.clear();
         this._selectedNodes.clear();
+        this._loadingNodes.clear();
+        this._loadedNodes.clear();
         this._anchorNode = null;
         this._focusNode = null;
         this._flatten();
@@ -184,6 +193,18 @@ class Tree extends Component<TreeOptions> {
      * @returns This tree, for method chaining.
      */
     on(event: "selection", listener: (nodes: TreeNode[]) => void): this;
+
+    /**
+     * Registers a listener for a lazy node's failed child load.
+     *
+     * @param event - `"loaderror"` fires when a node's `loadChildren` rejects;
+     *   the node stays collapsed and unloaded so toggling again retries.
+     * @param listener - Receives the {@link TreeNode} whose load failed and the
+     *   rejection reason.
+     *
+     * @returns This tree, for method chaining.
+     */
+    on(event: "loaderror", listener: (node: TreeNode, error: unknown) => void): this;
     on(event: TreeEvent,   listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -213,6 +234,7 @@ class Tree extends Component<TreeOptions> {
      * @param payload - Forwarded to each listener.
      */
     protected emit(event: "selection", nodes: TreeNode[]): void;
+    protected emit(event: "loaderror", node: TreeNode, error: unknown): void;
     protected emit(event: TreeEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
@@ -260,6 +282,22 @@ class Tree extends Component<TreeOptions> {
     }
 
     /**
+     * Reports whether a node renders an expand/collapse caret.
+     *
+     * @param node - The node to test.
+     * @returns True when the node already carries children, or is a lazy node
+     *   declared with `hasChildren: true`.
+     *
+     * @remarks
+     * Centralising the predicate keeps the caret, ARIA, and flatten decisions
+     * from drifting apart. An eager node with an empty `children` array is not
+     * expandable; a lazy node is expandable before its children exist.
+     */
+    private _isExpandable(node: TreeNode): boolean {
+        return !!(node.children && node.children.length > 0) || node.hasChildren === true;
+    }
+
+    /**
      * Rebuilds the flat visible-row list from the current root nodes and expanded set,
      * computing `siblingCount` and `posInSet` (1-based) for each entry.
      */
@@ -274,7 +312,7 @@ class Tree extends Component<TreeOptions> {
 
                 this._flatRows.push({ node, depth, siblingCount, posInSet: i + 1 });
 
-                if (node.children && node.children.length > 0 && this._expandedNodes.has(node)) {
+                if (this._isExpandable(node) && this._expandedNodes.has(node) && node.children) {
                     recurse(node.children, depth + 1);
                 }
             }
@@ -284,21 +322,85 @@ class Tree extends Component<TreeOptions> {
     }
 
     /**
-     * Toggles the expanded state of a node, re-flattens, and re-renders.
+     * Re-flattens the visible subtree and forces a full rebind of the pool so
+     * every row reflects the current expanded/loading state.
      *
-     * @param node - The node whose expanded state should be toggled.
+     * @remarks
+     * Called from the collapse path, the synchronous expand path, and the async
+     * load path — anywhere the flattened-row set or a node's loading affordance
+     * changes.
      */
-    private _onToggle(node: TreeNode): void {
-        if (this._expandedNodes.has(node)) {
-            this._expandedNodes.delete(node);
-        } else {
-            this._expandedNodes.add(node);
-        }
-
+    private _reflattenAndRender(): void {
         this._flatten();
         this._boundIndices.fill(-1);
         this._invalidateGeom();
         this._renderWindow();
+    }
+
+    /**
+     * Toggles the expanded state of a node, re-flattens, and re-renders.
+     *
+     * @param node - The node whose expanded state should be toggled.
+     *
+     * @remarks
+     * Collapse and already-resolved expansion commit synchronously. A lazy node
+     * declared with `loadChildren` that has not loaded yet defers its expansion
+     * to {@link _loadAndExpand}, which only commits once the loader resolves.
+     */
+    private _onToggle(node: TreeNode): void {
+        if (this._expandedNodes.has(node)) {
+            this._expandedNodes.delete(node);
+            this._reflattenAndRender();
+
+            return;
+        }
+
+        const needsLoad = node.loadChildren !== undefined
+            && !this._loadedNodes.has(node)
+            && !(node.children && node.children.length);
+
+        if (!needsLoad) {
+            this._expandedNodes.add(node);
+            this._reflattenAndRender();
+
+            return;
+        }
+
+        if (this._loadingNodes.has(node)) {
+            return;
+        }
+
+        void this._loadAndExpand(node);
+    }
+
+    /**
+     * Loads a lazy node's children, then commits its expansion.
+     *
+     * @param node - The lazy node to load and expand.
+     *
+     * @remarks
+     * Marks the node loading (driving its spinner affordance), awaits
+     * `loadChildren`, and on success writes `children`, records the node as
+     * loaded and expanded. A rejection emits `"loaderror"` and leaves the node
+     * collapsed and unloaded so toggling again retries. An empty resolved array
+     * is treated as success: the node renders as an expanded, empty parent.
+     */
+    private async _loadAndExpand(node: TreeNode): Promise<void> {
+        this._loadingNodes.add(node);
+        this._reflattenAndRender();
+
+        try {
+            const children = await node.loadChildren!();
+
+            node.children = children;
+            this._loadedNodes.add(node);
+            this._expandedNodes.add(node);
+        } catch (error) {
+            this.emit("loaderror", node, error);
+        } finally {
+            this._loadingNodes.delete(node);
+            this._reflattenAndRender();
+        }
     }
 
 
@@ -467,7 +569,7 @@ class Tree extends Component<TreeOptions> {
             }
 
             const { node } = flatRows[focusIdx];
-            const hasChildren = !!(node.children && node.children.length > 0);
+            const hasChildren = this._isExpandable(node);
 
             if (!hasChildren) {
                 return;
@@ -487,7 +589,7 @@ class Tree extends Component<TreeOptions> {
             }
 
             const { node, depth } = flatRows[focusIdx];
-            const hasChildren = !!(node.children && node.children.length > 0);
+            const hasChildren = this._isExpandable(node);
 
             if (hasChildren && this._expandedNodes.has(node)) {
                 // Expanded — collapse and stay on the same node
@@ -769,13 +871,14 @@ class Tree extends Component<TreeOptions> {
             const row         = this._rowPool[i];
             const dataIndex   = firstRow + i;
             const flatRow     = this._flatRows[dataIndex];
-            const hasChildren = !!(flatRow.node.children && flatRow.node.children.length > 0);
+            const hasChildren = this._isExpandable(flatRow.node);
             const expanded    = this._expandedNodes.has(flatRow.node);
+            const loading     = this._loadingNodes.has(flatRow.node);
             const wasRebound  = this._boundIndices[i] !== dataIndex;
 
             if (wasRebound) {
                 const selected = this._selectedNodes.has(flatRow.node);
-                row.setRowData(flatRow.node, flatRow.depth, hasChildren, expanded, flatRow.siblingCount, flatRow.posInSet, selected);
+                row.setRowData(flatRow.node, flatRow.depth, hasChildren, expanded, flatRow.siblingCount, flatRow.posInSet, selected, loading);
                 this._boundIndices[i] = dataIndex;
             }
 
