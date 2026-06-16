@@ -1127,6 +1127,25 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * Programmatically actions the button, as if the user had clicked it:
+     * fires this button's own `"click"` event so every registered
+     * {@link on | `"action"`} handler runs. Provided so other components can
+     * drive a button through its named surface rather than synthesising its
+     * DOM event from the outside — e.g. [`ToolBar`](/api/component/menubar/classes/ToolBar)
+     * replays an overflowed button's action from its dropdown. A
+     * [`ToggleButton`](/api/component/button/classes/ToggleButton)
+     * inherits this and toggles, because its internal toggle is wired to the
+     * same `"click"`.
+     *
+     * @returns This button, for method chaining.
+     */
+    click(): this {
+        Event.fireEvent(this, "click");
+
+        return this;
+    }
+
+    /**
      * Registers a `pointerdown` event listener on this button. The named
      * surface lets external consumers (e.g.
      * [`AbstractPickerField`](/api/component/input/classes/AbstractPickerField))

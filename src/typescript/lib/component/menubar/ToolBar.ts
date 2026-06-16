@@ -551,7 +551,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
             configs.push({
                 text:   child.getText(),
                 glyph:  glyph,
-                action: () => { Event.fireEvent(child, "click"); },
+                action: () => { child.click(); },
             });
         }
 
