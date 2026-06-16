@@ -767,6 +767,7 @@ class Body extends Component {
                 row.setData(records[dataIndex]);
 
                 this._boundIndices[i] = dataIndex;
+                row.setStripe(dataIndex % 2 === 1);   // odd logical rows carry the zebra stripe; set before the paint below
                 this.updateRowVisualState(i);
                 this.computeRowAria(row, dataIndex);
                 this.applyReadOnlyState(row, records[dataIndex]);

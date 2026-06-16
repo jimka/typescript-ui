@@ -305,6 +305,7 @@ export interface Theme {
             selectedBorder: string;
             new           : string;
             dirty         : string;
+            stripe        : string;
         };
         cell: {
             height            : string;
@@ -791,6 +792,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-table-row-selected-border'        : theme.table.row.selectedBorder,
         '--ts-ui-table-row-new'                    : theme.table.row.new,
         '--ts-ui-table-row-dirty'                  : theme.table.row.dirty,
+        '--ts-ui-table-row-stripe'                 : theme.table.row.stripe,
         '--ts-ui-table-cell-height'                : theme.table.cell.height,
         '--ts-ui-table-cell-bg'                    : theme.table.cell.background,
         '--ts-ui-table-cell-readonly-bg'           : theme.table.cell.readonlyBackground,

@@ -125,6 +125,7 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
             selectedBorder: 'inset 0 0 0 1px rgba(30, 100, 200, 0.8)',
             new           : 'rgba(70, 200, 70, 0.2)',
             dirty         : 'rgba(255, 165, 0, 0.2)',
+            stripe        : 'rgba(255, 255, 255, 0.045)',
         },
         cell  : {
             background        : 'transparent',

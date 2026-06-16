@@ -37,6 +37,7 @@ class Row extends Component {
     private _onCellCommit?: (record: ModelRecord) => void;
     private _fieldNames: string[] = [];
     private _treeCell: Cell<any> | null = null;
+    private _stripe: boolean = false;
 
     constructor(
         model?: AbstractModel,
@@ -167,9 +168,23 @@ class Row extends Component {
     }
 
     /**
+     * Marks whether this row sits on a striped (odd) logical index, so the
+     * resting background paints the zebra stripe.
+     *
+     * @param striped - True when this row's logical data index is odd.
+     *
+     * @remarks Set by the host Body on each rebind from `dataIndex % 2`; it only
+     * updates the backing flag, so call `updateVisualState` afterwards to repaint.
+     * Not for consumer use.
+     */
+    setStripe(striped: boolean): void {
+        this._stripe = striped;
+    }
+
+    /**
      * Applies a background color based on the record's new/dirty/clean state.
      *
-     * @remarks New records get a green tint, dirty records an orange tint, and clean records no tint.
+     * @remarks New records get a green tint, dirty records an orange tint, and clean records the zebra stripe (odd rows) or no tint (even rows).
      */
     updateVisualState(): void {
         const el = this.getElement() as HTMLElement;
@@ -186,6 +201,8 @@ class Row extends Component {
             el.style.setProperty('background-color', 'var(--ts-ui-table-row-new, rgba(70, 200, 70, 0.15))');
         } else if (this._data?.isDirty()) {
             el.style.setProperty('background-color', 'var(--ts-ui-table-row-dirty, rgba(255, 165, 0, 0.15))');
+        } else if (this._stripe) {
+            el.style.setProperty('background-color', 'var(--ts-ui-table-row-stripe, rgba(0, 0, 0, 0.035))');
         } else {
             el.style.removeProperty('background-color');
         }
