@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { Button } from "~/component/button/Button.js";
 import { Component } from "~/core/Component.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Event } from "~/core/Event.js";
@@ -39,6 +40,13 @@ export interface ToolBarOptions extends ContainerOptions {
     orientation?: ToolBarOrientation;
     compact?:     boolean;
     overflow?:    ToolBarOverflow;
+    /**
+     * When `true` (the default), `Button` / `ToggleButton` children added to the
+     * bar are switched to flat appearance for the classical toolbar look — no
+     * resting frame, a light frame on hover, and a sunken inset frame on press.
+     * Set `false` to keep raised buttons. Runtime counterpart `setFlat`.
+     */
+    flat?:        boolean;
 }
 
 /**
@@ -62,6 +70,7 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
     orientation:     "horizontal",
     compact:         false,
     overflow:        "clip",
+    flat:            true,
     backgroundColor: "var(--ts-ui-toolbar-bg, rgb(245, 245, 245))",
 };
 
@@ -105,6 +114,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     declare private _orientation:  ToolBarOrientation;
     declare private _compact:      boolean;
     declare private _overflowMode: ToolBarOverflow;
+    declare private _flat:         boolean;
     declare private _rovingTabIndex: RovingTabIndex;
     declare private _onKeyDown:    (e: KeyboardEvent) => void;
 
@@ -151,6 +161,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         if (opts.orientation !== undefined) this.setOrientation(opts.orientation);
         if (opts.compact     !== undefined) this.setCompact(opts.compact);
         if (opts.overflow    !== undefined) this.setOverflow(opts.overflow);
+        if (opts.flat        !== undefined) this.setFlat(opts.flat);
 
         return this;
     }
@@ -276,6 +287,47 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     }
 
     /**
+     * Toggles the classical flat appearance for the bar's `Button` /
+     * `ToggleButton` children. When `true` (the default), each such child is
+     * switched to flat mode — no resting frame, a light frame on hover, a sunken
+     * inset frame on press, and a depressed look for a toggled-on
+     * `ToggleButton`. Glyph-only flat buttons also tighten to compact squares.
+     * Setting `false` reverts existing button children to raised chrome.
+     *
+     * Non-`Button` children (separators, combo boxes, spacers) are left
+     * untouched. The flag also governs children added later through
+     * {@link addComponent}.
+     *
+     * @param value - `true` to flatten button children, `false` to restore them.
+     *
+     * @returns This component, for method chaining.
+     */
+    setFlat(value: boolean): this {
+        if (value === this._flat) {
+            return this;
+        }
+
+        this._flat = value;
+
+        for (const child of this.getComponents()) {
+            if (child instanceof Button) {
+                child.setFlat(value);
+            }
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether the bar flattens its `Button` children.
+     *
+     * @returns `true` if flat mode is enabled.
+     */
+    isFlat(): boolean {
+        return this._flat;
+    }
+
+    /**
      * Appends a child component and, when its tab-index marks it focusable,
      * registers it with the internal roving-tabindex group so Arrow keys
      * cycle focus through it.
@@ -293,6 +345,10 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
 
         if (component.getAria().getTabIndex() !== -1) {
             this._rovingTabIndex.add(component);
+        }
+
+        if (this._flat && component instanceof Button) {
+            component.setFlat(true);
         }
 
         return this;

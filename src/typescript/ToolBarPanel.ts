@@ -10,10 +10,12 @@ import { ToolBar, ToolBarSeparator }               from '@jimka/typescript-ui/co
 /**
  * Demo panel showcasing the `ToolBar` component.
  *
- * Demonstrates: a horizontal toolbar with a Bold/Italic/Underline
- * `ButtonGroup`, a separator, three plain Cut/Copy/Paste buttons, a
- * `Spacer.flex()` that pushes a trailing zoom `ComboBox` to the right edge,
- * and a status text area below that reflects the last action.
+ * Demonstrates: a flat (default) horizontal toolbar with a Bold/Italic/Underline
+ * `ButtonGroup` whose selected button reads depressed, a separator, glyph-only
+ * Cut/Copy/Paste buttons that render as compact squares, a `Spacer.flex()` that
+ * pushes a trailing zoom `ComboBox` to the right edge, and a status text area
+ * below that reflects the last action. A second `ToolBar({ flat: false })`
+ * demonstrates the raised-button escape hatch.
  */
 class ToolBarPanel extends Panel {
 
@@ -47,9 +49,9 @@ class ToolBarPanel extends Panel {
         italic.on("action", () => { status("Toggle Italic"); });
         underline.on("action", () => { status("Toggle Underline"); });
 
-        const cut   = new Button("Cut");
-        const copy  = new Button("Copy");
-        const paste = new Button("Paste");
+        const cut   = new Button({ glyph: "scissors" });
+        const copy  = new Button({ glyph: "copy" });
+        const paste = new Button({ glyph: "paste" });
 
         cut.on("action", () => { status("Cut"); });
         copy.on("action", () => { status("Copy"); });
@@ -68,7 +70,19 @@ class ToolBarPanel extends Panel {
         bar.addComponent(Spacer.flex());
         bar.addComponent(zoom);
 
+        const raisedBar = new ToolBar({ flat: false });
+
+        const save = new Button("Save");
+        const open = new Button("Open");
+
+        save.on("action", () => { status("Save"); });
+        open.on("action", () => { status("Open"); });
+
+        raisedBar.addComponent(save);
+        raisedBar.addComponent(open);
+
         this.addComponent(bar);
+        this.addComponent(raisedBar);
         this.addComponent(statusText);
     }
 }
