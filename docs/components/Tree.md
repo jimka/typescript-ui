@@ -24,12 +24,34 @@ Each node follows [`TreeNode`](/api/component/tree/interfaces/TreeNode):
 
 ```typescript
 interface TreeNode {
-    label:     string;
-    children?: TreeNode[];
+    label:         string;
+    children?:     TreeNode[];
+    hasChildren?:  boolean;
+    loadChildren?: () => Promise<TreeNode[]>;
 }
 ```
 
-Nodes with a non-empty `children` array render as expandable parents; nodes without children render as leaves.
+Nodes with a non-empty `children` array render as expandable parents; nodes without children render as leaves. Set `hasChildren: true` with a `loadChildren` loader to make a node load its children lazily (see below).
+
+## Lazy loading
+
+A node whose children are fetched on demand declares `hasChildren: true` so it renders an expandable caret before its children exist, and supplies a `loadChildren` function returning a promise. On first expansion the row shows a spinner in place of the caret, awaits `loadChildren`, populates `children`, then re-renders. The result is cached, so re-collapsing and re-expanding never refetches.
+
+```typescript
+tree.setNodes([
+    {
+        label: 'Lazy folder',
+        hasChildren: true,
+        loadChildren: () => fetch('/api/children').then(r => r.json()),
+    },
+]);
+
+tree.on('loaderror', (node, error) => {
+    console.error(`Failed to load ${node.label}`, error);
+});
+```
+
+If `loadChildren` rejects, the node reverts to a collapsed, unloaded caret — toggling it again retries the load — and the tree fires a `loaderror` event carrying the node and the rejection reason. A loader that resolves to an empty array succeeds: the node renders as an expanded, empty parent.
 
 ## Common methods
 
@@ -38,6 +60,7 @@ Nodes with a non-empty `children` array render as expandable parents; nodes with
 | `setNodes(nodes[])` | Replace the entire tree. |
 | `expandAll()` / `collapseAll()` | Bulk-toggle expansion. |
 | `on("selection", fn)` | Subscribe to user-driven selection changes. |
+| `on("loaderror", fn)` | Subscribe to lazy-load failures (see [Lazy loading](#lazy-loading)). |
 | `setRendererFactory(fn)` | Replace the content renderer used for every row. |
 
 ## Custom row renderers
