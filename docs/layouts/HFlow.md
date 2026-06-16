@@ -24,7 +24,7 @@ tags.addComponent(Button('layout'));
 tags.addComponent(Button('flow'));
 ```
 
-The same options ([`HFlowOptions`](/api/layout/interfaces/HFlowOptions)) can be passed to set `spacing`, `lineSpacing`, and `uniform` declaratively. The `setComponentSpacing` / `setLineSpacing` / `setUniform` setters work for runtime updates.
+The same options ([`HFlowOptions`](/api/layout/interfaces/HFlowOptions)) can be passed to set `spacing`, `lineSpacing`, `uniform`, and `align` declaratively. The `setComponentSpacing` / `setLineSpacing` / `setUniform` / `setAlign` setters work for runtime updates.
 
 ## Wrapping
 
@@ -71,6 +71,29 @@ panel.setLayoutManager(HFlow({ uniform: "both", spacing: 8, lineSpacing: 8 }));
 
 Because a uniform cell is larger than the item it holds, each item is positioned within its cell by its own [`AnchorType`](/api/layout/enumerations/AnchorType) constraint (default centre — see [Per-child constraints](#per-child-constraints)). The widest/tallest extents are measured from each item's preferred size clamped to its own min / max.
 
+## Line alignment
+
+By default each wrapped line packs from the west edge, so the residual space when a line wraps is left empty on the east. The `align` option ([`FlowAlign`](/api/layout/type-aliases/FlowAlign)) packs each line's content block along the horizontal (main) axis instead:
+
+- `"start"` (default) — content at the west edge; residual on the east (today's behaviour).
+- `"center"` — the residual is split, centring each line's content.
+- `"end"` — content at the east edge; residual on the west.
+
+```typescript
+import { HFlow } from '@jimka/typescript-ui/layout';
+// Centre each wrapped line within the available width.
+panel.setLayoutManager(HFlow({ align: "center", spacing: 8, lineSpacing: 8 }));
+```
+
+```
++----------------------------+
+|     [A] [B] [C] [D]        |
+|       [E] [F] [G]          |   ← align: "center" → each line centred
++----------------------------+
+```
+
+Alignment moves each line's content as a single block; it does not redistribute the inter-item `spacing` (there is no justify / space-between mode). It is independent of the per-child [`AnchorType`](/api/layout/enumerations/AnchorType), which positions a child *within its own cell* — both apply.
+
 ## Scrolling
 
 `HFlow` only wraps horizontally; it never overflows sideways. On the vertical axis the stacked lines simply grow downward. When the lines exceed the host's inner height and the host has opted into vertical scroll (`Panel.setAutoScroll`), a vertical scrollbar appears — the children's committed extent drives the scroll, with no special inflation step.
@@ -100,6 +123,7 @@ When the host does not scroll, lines past the inner height are clipped by the ho
 | `setComponentSpacing(px)` | Horizontal gap between items on a line. |
 | `setLineSpacing(px)` | Vertical gap between wrapped lines. |
 | `setUniform("none" \| "width" \| "height" \| "both")` | Make cells uniform so wrapped items align into a grid. |
+| `setAlign("start" \| "center" \| "end")` | Pack each line's content at the west edge (default), centred, or the east edge. |
 
 ## Baseline alignment
 

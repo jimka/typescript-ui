@@ -1,36 +1,32 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { FlowLayout, FlowLayoutOptions } from "~/layout/FlowLayout.js";
 import { FillType } from "~/layout/FillType.js";
 import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Component } from "~/core/Component.js";
 import { callable } from "~/core/Callable.js";
 
 /**
- * Which axes of an {@link HFlow}'s cells are made uniform so wrapped items
- * line up into a grid.
- *
- * - `"none"` (the default) — each item keeps its own preferred size and lines
- *   pack independently, so columns do not align across lines.
- * - `"width"` — every cell takes the widest item's width, so columns align
- *   horizontally; each line still uses its own (tallest-item) height.
- * - `"height"` — every cell takes the tallest item's height, so lines align
- *   vertically; widths still vary per item.
- * - `"both"` — every cell is identical (widest × tallest), a full grid.
- *
- * @category Layouts
- */
-export type FlowUniformity = "none" | "width" | "height" | "both";
-
-/**
  * Construction-time options for {@link HFlow}.
  *
+ * @remarks Inherits every flow field (`spacing`, `lineSpacing`, `uniform`,
+ * `align`) from {@link FlowLayoutOptions}; `HFlow` adds none of its own.
+ *
  * @category Layouts
  */
-export interface HFlowOptions extends LayoutManagerOptions {
-    spacing?:     number;
-    lineSpacing?: number;
-    uniform?:     FlowUniformity;
+export interface HFlowOptions extends FlowLayoutOptions {}
+
+/**
+ * One wrapped row of an {@link HFlow}: its ordered cells (each with the width it
+ * was placed at and its own cell height), the row's total content width, the
+ * row height (tallest cell), and the row's top in the container's coordinate
+ * space.
+ */
+interface HFlowRow {
+    cells: Array<{ component: Component; width: number; height: number }>;
+    contentWidth: number;
+    rowHeight: number;
+    y: number;
 }
 
 /**
@@ -40,125 +36,18 @@ export interface HFlowOptions extends LayoutManagerOptions {
  * size and lines stack downward. A scroll-enabled host (`Panel.setAutoScroll`)
  * gains a vertical scrollbar once the stacked lines exceed its inner height.
  *
- * @remarks This deliberately does not extend {@link BoxLayout}. That base models
- * a non-wrapping single-axis box — `mode`, `stretching`, `weight`, proportional
- * shrink, and a min-total overflow inflation — none of which a wrapping flow
- * uses; the scroll extent here comes entirely from the children's committed
- * positions read by `reserveContentFrame`. The `uniform` option grows every
- * cell to the widest and/or tallest item so wrapped items line up into a grid;
- * each item is positioned within its cell by its own {@link AnchorType}
- * constraint (default centre).
+ * @remarks Shares its flow configuration (item/line spacing, cell uniformity,
+ * line alignment) with {@link VFlow} through the {@link FlowLayout} base. The
+ * `uniform` option grows every cell to the widest and/or tallest item so wrapped
+ * items line up into a grid; each item is positioned within its cell by its own
+ * {@link AnchorType} constraint (default centre). The `align` option packs each
+ * row's content block at the west edge (`"start"`, the default), centred, or the
+ * east edge — the scroll extent comes entirely from the children's committed
+ * positions read by `reserveContentFrame`.
  *
  * @category Layouts
  */
-class HFlow extends LayoutManager {
-
-    private _spacing: number = 5;
-    private _lineSpacing: number = 5;
-    private _uniform: FlowUniformity = "none";
-
-    /**
-     * Constructs the layout manager, applying any supplied options.
-     *
-     * @param options - Optional construction-time configuration.
-     */
-    constructor(options?: HFlowOptions) {
-        super();
-
-        if (options) {
-            this.applyOptions(options);
-        }
-    }
-
-    /**
-     * Applies an {@link HFlowOptions} bag after the inherited LayoutManager
-     * defaults, dispatching the item and line spacings and the uniformity mode.
-     *
-     * @param options - The options bag carrying the values to apply.
-     */
-    protected applyOptions(options: HFlowOptions): void {
-        super.applyOptions(options);
-
-        if (options.spacing !== undefined) {
-            this.setComponentSpacing(options.spacing);
-        }
-
-        if (options.lineSpacing !== undefined) {
-            this.setLineSpacing(options.lineSpacing);
-        }
-
-        if (options.uniform !== undefined) {
-            this.setUniform(options.uniform);
-        }
-    }
-
-    /**
-     * Returns the horizontal pixel spacing between items on a line.
-     *
-     * @returns The current item spacing in pixels.
-     */
-    getComponentSpacing(): number {
-        return this._spacing || 0;
-    }
-
-    /**
-     * Sets the horizontal pixel spacing between items on a line.
-     *
-     * @param spacing - Spacing in pixels.
-     *
-     * @returns This layout manager, for method chaining.
-     */
-    setComponentSpacing(spacing: number): this {
-        this._spacing = spacing || 0;
-
-        return this;
-    }
-
-    /**
-     * Returns the vertical pixel spacing between wrapped lines.
-     *
-     * @returns The current line spacing in pixels.
-     */
-    getLineSpacing(): number {
-        return this._lineSpacing || 0;
-    }
-
-    /**
-     * Sets the vertical pixel spacing between wrapped lines.
-     *
-     * @param lineSpacing - Spacing in pixels.
-     *
-     * @returns This layout manager, for method chaining.
-     */
-    setLineSpacing(lineSpacing: number): this {
-        this._lineSpacing = lineSpacing || 0;
-
-        return this;
-    }
-
-    /**
-     * Returns which axes are made uniform so wrapped items align into a grid.
-     *
-     * @returns The current uniformity mode.
-     */
-    getUniform(): FlowUniformity {
-        return this._uniform;
-    }
-
-    /**
-     * Sets which axes are made uniform so wrapped items align into a grid.
-     *
-     * @param uniform - `"width"` aligns columns, `"height"` aligns rows,
-     *   `"both"` produces a full grid, `"none"` packs each item at its own
-     *   size. See {@link FlowUniformity}.
-     *
-     * @returns This layout manager, for method chaining.
-     */
-    setUniform(uniform: FlowUniformity): this {
-        this._uniform = uniform;
-
-        return this;
-    }
+class HFlow extends FlowLayout {
 
     /**
      * Returns the preferred size: the single-line shape of the children — the
@@ -329,12 +218,12 @@ class HFlow extends LayoutManager {
 
     /**
      * Packs the children left-to-right at their cell size, wrapping to a new
-     * line when the next cell's right edge would exceed the inner width, and
-     * lets `y` accumulate so trailing lines land past the viewport. In a
-     * `uniform` mode every cell grows to the widest and/or tallest item so the
-     * wrapped items line up into a grid. A scroll-enabled host then scrolls the
-     * overflow via `reserveContentFrame`, which sizes the content frame to the
-     * children's committed extent.
+     * line when the next cell's right edge would exceed the inner width, then
+     * places each row's content block per the `align` mode. In a `uniform` mode
+     * every cell grows to the widest and/or tallest item so the wrapped items
+     * line up into a grid. A scroll-enabled host then scrolls the overflow via
+     * `reserveContentFrame`, which sizes the content frame to the children's
+     * committed extent.
      */
     doLayout(): void {
         const container = this.getContainer();
@@ -356,111 +245,87 @@ class HFlow extends LayoutManager {
         const uniformHeight = this.isUniformHeight();
         const extents = (uniformWidth || uniformHeight) ? this.computeUniformExtents(components) : { width: 0, height: 0 };
 
-        const lineStartX = insets.getLeft();
-        let x = lineStartX;
-        let y = insets.getTop();
-        let lineHeight = 0;
+        const rows = this.groupIntoRows(components, innerSize.width, insets.getTop(), spacing, lineSpacing, uniformWidth, uniformHeight, extents);
+
+        this.placeRows(rows, insets.getLeft(), innerSize.width, spacing);
+
+        this.reserveContentFrame();
+    }
+
+    /**
+     * Phase 1 of {@link HFlow.doLayout}: walks the children left-to-right,
+     * wrapping into rows, and records each row's cells, content width, height,
+     * and top — without committing any bounds. A first cell wider than the inner
+     * width is clamped to that width so its right edge stays inside a scrolling
+     * host.
+     *
+     * @param components - The children to place, in order.
+     * @param innerWidth - The container's inner width (the wrap threshold).
+     * @param topInset - The container's top content inset (the first row's top).
+     * @param spacing - Inter-item horizontal spacing in pixels.
+     * @param lineSpacing - Inter-row vertical spacing in pixels.
+     * @param uniformWidth - Whether cells take the uniform width.
+     * @param uniformHeight - Whether cells take the uniform height.
+     * @param extents - The uniform cell extents, when a uniform mode is active.
+     * @returns The ordered rows ready for {@link HFlow.placeRows}.
+     */
+    private groupIntoRows(components: Component[], innerWidth: number, topInset: number, spacing: number, lineSpacing: number, uniformWidth: boolean, uniformHeight: boolean, extents: Size): HFlowRow[] {
+        const rows: HFlowRow[] = [];
+        let y = topInset;
+        let current: HFlowRow | null = null;
 
         for (const component of components) {
             const cell = this.clampedPreferredSize(component);
             const cellWidth  = uniformWidth  ? extents.width  : cell.width;
             const cellHeight = uniformHeight ? extents.height : cell.height;
 
-            // Wrap before placing when this is not the first cell on the line
-            // and its right edge would spill past the inner width.
-            if (x > lineStartX && (x - lineStartX) + cellWidth > innerSize.width) {
-                y += lineHeight + lineSpacing;
-                x  = lineStartX;
-                lineHeight = 0;
+            // Wrap before placing when the current row is non-empty and this
+            // cell's right edge (including the joining spacing) would spill past
+            // the inner width.
+            if (current && current.contentWidth + spacing + cellWidth > innerWidth) {
+                y += current.rowHeight + lineSpacing;
+                current = null;
+            }
+
+            if (!current) {
+                current = { cells: [], contentWidth: 0, rowHeight: 0, y: y };
+
+                rows.push(current);
             }
 
             // A cell wider than the inner width occupies its own line clamped to
             // that width, so its right edge stays inside a scrolling host.
-            const placedWidth = (x === lineStartX) ? Math.min(cellWidth, innerSize.width) : cellWidth;
+            const placedWidth = (current.cells.length === 0) ? Math.min(cellWidth, innerWidth) : cellWidth;
 
-            // FillType.NONE keeps each child at its preferred size; the child's
-            // own anchor (default CENTER) positions it within the cell, which
-            // only matters in a uniform mode where the cell exceeds the child.
-            this.placeComponent(component, x, y, placedWidth, cellHeight, FillType.NONE);
-
-            x += placedWidth + spacing;
-            lineHeight = Math.max(lineHeight, cellHeight);
+            current.contentWidth += (current.cells.length === 0) ? placedWidth : spacing + placedWidth;
+            current.cells.push({ component: component, width: placedWidth, height: cellHeight });
+            current.rowHeight = Math.max(current.rowHeight, cellHeight);
         }
 
-        this.reserveContentFrame();
+        return rows;
     }
 
     /**
-     * Whether cells are made uniform on the horizontal axis (columns align).
+     * Phase 2 of {@link HFlow.doLayout}: places each row's content block at the
+     * leading offset the `align` mode dictates, then lays out the cells
+     * left-to-right at the recorded sizes. Each child keeps its preferred size
+     * (`FillType.NONE`); its own {@link AnchorType} positions it within its cell.
      *
-     * @returns `true` for the `"width"` and `"both"` uniformity modes.
+     * @param rows - The rows produced by {@link HFlow.groupIntoRows}.
+     * @param leftInset - The container's left content inset (the row's leading edge).
+     * @param innerWidth - The container's inner width (for the alignment residual).
+     * @param spacing - Inter-item horizontal spacing in pixels.
      */
-    private isUniformWidth(): boolean {
-        return this._uniform === "width" || this._uniform === "both";
-    }
+    private placeRows(rows: HFlowRow[], leftInset: number, innerWidth: number, spacing: number): void {
+        for (const row of rows) {
+            let x = leftInset + this.alignLead(row.contentWidth, innerWidth);
 
-    /**
-     * Whether cells are made uniform on the vertical axis (rows align).
-     *
-     * @returns `true` for the `"height"` and `"both"` uniformity modes.
-     */
-    private isUniformHeight(): boolean {
-        return this._uniform === "height" || this._uniform === "both";
-    }
+            for (const cell of row.cells) {
+                this.placeComponent(cell.component, x, row.y, cell.width, cell.height, FillType.NONE);
 
-    /**
-     * Computes the uniform cell extent: the widest and tallest clamped preferred
-     * size across the children, used to size cells in a `uniform` mode.
-     *
-     * @param components - The children sharing the flow.
-     * @returns The `{width, height}` every uniform cell uses on its axis.
-     */
-    private computeUniformExtents(components: Component[]): Size {
-        let width = 0;
-        let height = 0;
-
-        for (const component of components) {
-            const cell = this.clampedPreferredSize(component);
-
-            width  = Math.max(width,  cell.width);
-            height = Math.max(height, cell.height);
+                x += cell.width + spacing;
+            }
         }
-
-        return {
-            width: width,
-            height: height
-        };
-    }
-
-    /**
-     * Resolves a child's placed size: its preferred size clamped to its own
-     * min and max sizes.
-     *
-     * @param component - The child to measure.
-     * @returns The clamped `{width, height}`.
-     */
-    private clampedPreferredSize(component: Component): Size {
-        const pref = component.getPreferredSize();
-        const min  = component.getMinSize();
-        const max  = component.getMaxSize();
-
-        let width  = pref ? pref.width : 0;
-        let height = pref ? pref.height : 0;
-
-        if (min) {
-            width  = Math.max(width,  min.width);
-            height = Math.max(height, min.height);
-        }
-
-        if (max) {
-            width  = Math.min(width,  max.width);
-            height = Math.min(height, max.height);
-        }
-
-        return {
-            width: width,
-            height: height
-        };
     }
 }
 

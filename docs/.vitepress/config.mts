@@ -156,6 +156,7 @@ export default defineConfig({
                     { text: 'HBox',      link: '/layouts/HBox' },
                     { text: 'VBox',      link: '/layouts/VBox' },
                     { text: 'HFlow',     link: '/layouts/HFlow' },
+                    { text: 'VFlow',     link: '/layouts/VFlow' },
                     { text: 'Grid',      link: '/layouts/Grid' },
                     { text: 'Card',      link: '/layouts/Card' },
                     { text: 'Tab',       link: '/layouts/Tab' },
