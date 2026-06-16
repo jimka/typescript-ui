@@ -9,6 +9,8 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { VBox } from "~/layout/VBox.js";
 import { Insets } from "~/primitive/Insets.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
+import { Menu } from "~/core/Menu.js";
+import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -22,10 +24,10 @@ export type ToolBarOrientation = "horizontal" | "vertical";
 
 /**
  * Overflow behaviour for a {@link ToolBar} whose children exceed its measured
- * extent. `"clip"` (the v1 default) lets the children spill into the parent's
- * clipping region. `"menu"` is reserved for a follow-up release that will
- * render a trailing affordance opening a dropdown of overflowed children; for
- * now it is accepted and cached but behaves like `"clip"`.
+ * extent. `"clip"` (the default) lets the children spill into the parent's
+ * clipping region. `"menu"` hides the `Button` / `ToggleButton` children that
+ * don't fit and surfaces them in a dropdown opened by a trailing chevron
+ * affordance. Menu overflow is horizontal-only; vertical bars always clip.
  *
  * @category Components
  */
@@ -62,6 +64,13 @@ const TOOLBAR_GAP_DEFAULT: number = 4;
  * Compact-mode child spacing in pixels — children sit flush together.
  */
 const TOOLBAR_COMPACT_GAP: number = 0;
+
+/**
+ * Registry glyph rendered on the overflow ("more") trigger button. Verified
+ * present in the solid glyph set (`glyphs/solid/ellipsis_v.ts`); the vertical
+ * ellipsis is the conventional overflow affordance for a horizontal bar.
+ */
+const OVERFLOW_TRIGGER_GLYPH: string = "ellipsis-v";
 
 /**
  * User-overridable defaults forwarded to `super` via the options bag.
@@ -117,6 +126,8 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     declare private _flat:         boolean;
     declare private _rovingTabIndex: RovingTabIndex;
     declare private _onKeyDown:    (e: KeyboardEvent) => void;
+    declare private _overflowButton: Button | null;
+    declare private _overflowMenu:   Menu | null;
 
     /**
      * Constructs a `ToolBar`.
@@ -259,22 +270,51 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     }
 
     /**
-     * Sets the overflow strategy. v1 supports `"clip"` (children spill into
-     * the parent's clipping region) and accepts `"menu"` as a forward-compat
-     * placeholder — `"menu"` behaves like `"clip"` until a follow-up plan
-     * lands the dropdown affordance.
+     * Sets the overflow strategy. `"clip"` lets children spill into the parent's
+     * clipping region. `"menu"` hides the `Button` / `ToggleButton` children
+     * that don't fit and surfaces them in a dropdown opened by a trailing
+     * chevron affordance; the trigger and its rebuild-mode
+     * [`Menu`](/api/core/classes/Menu) are created lazily on first entry to
+     * `"menu"` mode. Menu overflow applies to horizontal bars only — a vertical
+     * bar always clips.
      *
      * @param value - `"clip"` or `"menu"`.
      *
      * @returns This component, for method chaining.
      */
     setOverflow(value: ToolBarOverflow): this {
-        // TODO: menu overflow — render a trailing "more" affordance that opens
-        // a dropdown of children that didn't fit. Deferred to a follow-up plan;
-        // for now the field is cached and the v1 behaviour is "clip".
         this._overflowMode = value;
 
+        if (value === "menu" && this._overflowButton === undefined) {
+            this._createOverflowAffordance();
+        }
+
+        this.doLayout();
+
         return this;
+    }
+
+    /**
+     * Lazily builds the overflow trigger — a flat, glyph-only `Button` carrying
+     * the chevron glyph — and the rebuild-mode `Menu` it opens. The trigger is
+     * appended through `super.addComponent` so it bypasses the flatten-children
+     * pass in {@link addComponent} and is excluded from the overflow set by
+     * identity. It starts hidden; {@link doLayout} shows it only once at least
+     * one button has overflowed.
+     */
+    private _createOverflowAffordance(): void {
+        const trigger = new Button({ flat: true, glyph: OVERFLOW_TRIGGER_GLYPH });
+
+        trigger.setDisplayed(false);
+        trigger.getAria().setLabel("More");
+        trigger.getAria().setHasPopup("menu");
+
+        trigger.on("action", () => { this._openOverflowMenu(); });
+
+        this._overflowButton = trigger;
+        this._overflowMenu   = new Menu();
+
+        super.addComponent(trigger);
     }
 
     /**
@@ -352,6 +392,176 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         }
 
         return this;
+    }
+
+    /**
+     * Lays the bar out and, in `"menu"` overflow mode on a horizontal bar,
+     * reflows the `Button` / `ToggleButton` children that no longer fit into the
+     * trailing chevron dropdown. The base pass runs first so children report
+     * their resolved preferred widths; the reflow then re-derives the fit-set
+     * from scratch each pass, so widening the bar restores previously-hidden
+     * buttons. Vertical bars and `"clip"` mode skip the reflow entirely.
+     *
+     * @returns This component, for method chaining.
+     */
+    override doLayout(): this {
+        super.doLayout();
+
+        if (this._overflowMode !== "menu" || this._orientation !== "horizontal") {
+            return this;
+        }
+
+        if (this._overflowButton === undefined || this._overflowButton === null) {
+            return this;
+        }
+
+        this._reflowOverflow(this._overflowButton);
+
+        return this;
+    }
+
+    /**
+     * Re-derives which `Button` / `ToggleButton` children overflow the bar's
+     * inner width and toggles their `display` accordingly, reserving room for
+     * the trigger whenever at least one button is hidden. Only mutates child
+     * visibility when the fit-set actually changed, so the
+     * `setDisplayed`-triggered re-layout converges instead of thrashing. The
+     * trigger itself is shown only while ≥1 button is overflowed and is then
+     * positioned for the dropdown anchor.
+     *
+     * @param trigger - The lazily-created overflow trigger button.
+     */
+    private _reflowOverflow(trigger: Button): void {
+        const insets = this.getInsets();
+        const inner  = this.getWidth() - insets.getLeft() - insets.getRight();
+
+        const lm  = this.getLayoutManager();
+        const gap = (lm instanceof HBox) ? lm.getComponentSpacing() : TOOLBAR_GAP_DEFAULT;
+
+        const children = this.getComponents().filter(child => child !== trigger);
+        const overflowed = this._computeOverflowed(children, trigger, inner, gap);
+
+        let changed = false;
+
+        for (const child of children) {
+            const shouldHide = overflowed.includes(child);
+
+            if (child.isDisplayed() === shouldHide) {
+                child.setDisplayed(!shouldHide);
+                changed = true;
+            }
+        }
+
+        const wantTrigger = overflowed.length > 0;
+
+        if (trigger.isDisplayed() !== wantTrigger) {
+            trigger.setDisplayed(wantTrigger);
+            changed = true;
+        }
+
+        if (changed) {
+            super.doLayout();
+        }
+    }
+
+    /**
+     * Walks the (non-trigger) children left-to-right, accumulating preferred
+     * widths plus inter-child gaps, and returns the `Button` / `ToggleButton`
+     * children that cross the inner width. When nothing overflows the result is
+     * empty; otherwise the trigger's own width is reserved so the chevron has
+     * room. Non-`Button` children that don't fit are left in place (clipped) —
+     * only buttons have a well-defined menu-row representation.
+     *
+     * @param children - The bar's children, excluding the trigger.
+     * @param trigger - The overflow trigger, measured for its reserved width.
+     * @param inner - The bar's inner content width in pixels.
+     * @param gap - The inter-child spacing in pixels.
+     *
+     * @returns The overflowed button children, in document order.
+     */
+    private _computeOverflowed(children: Component[], trigger: Button, inner: number, gap: number): Component[] {
+        const widthOf = (child: Component): number => child.getPreferredSize()?.width ?? 0;
+
+        let total = 0;
+
+        for (let i = 0; i < children.length; i++) {
+            total += widthOf(children[i]);
+
+            if (i > 0) {
+                total += gap;
+            }
+        }
+
+        if (total <= inner) {
+            return [];
+        }
+
+        const reserve   = widthOf(trigger) + gap;
+        const available = inner - reserve;
+
+        const overflowed: Component[] = [];
+
+        let used    = 0;
+        let crossed = false;
+
+        for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            const next  = used + widthOf(child) + (i > 0 ? gap : 0);
+
+            if (next > available) {
+                crossed = true;
+            }
+
+            // Once the width crosses the available extent, every following
+            // Button overflows so the hidden set stays a contiguous trailing
+            // run; non-Button children past the crossover stay put (clipped).
+            if (crossed && child instanceof Button) {
+                overflowed.push(child);
+            } else {
+                used = next;
+            }
+        }
+
+        return overflowed;
+    }
+
+    /**
+     * Builds one {@link MenuItemConfig} per currently-overflowed button and
+     * opens the rebuild-mode dropdown anchored under the trigger. Each row's
+     * `action` re-fires the source button's `"click"` (the DOM event behind its
+     * `"action"`) so the dropdown drives the original handler.
+     */
+    private _openOverflowMenu(): void {
+        const trigger = this._overflowButton;
+        const menu    = this._overflowMenu;
+
+        if (trigger === null || trigger === undefined || menu === null || menu === undefined) {
+            return;
+        }
+
+        const configs: MenuItemConfig[] = [];
+
+        for (const child of this.getComponents()) {
+            if (child === trigger || child.isDisplayed() || !(child instanceof Button)) {
+                continue;
+            }
+
+            const glyph = child.getGlyph()?.getGlyphName();
+
+            configs.push({
+                text:   child.getText(),
+                glyph:  glyph,
+                action: () => { Event.fireEvent(child, "click"); },
+            });
+        }
+
+        const rect = trigger.getElement()?.getBoundingClientRect();
+
+        if (rect === undefined) {
+            return;
+        }
+
+        menu.show(rect.left, rect.bottom, configs);
     }
 }
 

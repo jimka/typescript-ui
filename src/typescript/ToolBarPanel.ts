@@ -15,7 +15,9 @@ import { ToolBar, ToolBarSeparator }               from '@jimka/typescript-ui/co
  * Cut/Copy/Paste buttons that render as compact squares, a `Spacer.flex()` that
  * pushes a trailing zoom `ComboBox` to the right edge, and a status text area
  * below that reflects the last action. A second `ToolBar({ flat: false })`
- * demonstrates the raised-button escape hatch.
+ * demonstrates the raised-button escape hatch. A third
+ * `ToolBar({ overflow: "menu" })` packs enough buttons that narrowing the panel
+ * pushes the trailing ones into a chevron dropdown.
  */
 class ToolBarPanel extends Panel {
 
@@ -81,8 +83,20 @@ class ToolBarPanel extends Panel {
         raisedBar.addComponent(save);
         raisedBar.addComponent(open);
 
+        const overflowBar = new ToolBar({ overflow: "menu" });
+
+        const actions = ["New", "Open", "Save", "Print", "Undo", "Redo", "Find", "Replace"];
+
+        for (const label of actions) {
+            const button = new Button(label);
+
+            button.on("action", () => { status(label); });
+            overflowBar.addComponent(button);
+        }
+
         this.addComponent(bar);
         this.addComponent(raisedBar);
+        this.addComponent(overflowBar);
         this.addComponent(statusText);
     }
 }

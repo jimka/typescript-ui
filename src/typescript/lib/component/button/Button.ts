@@ -536,6 +536,18 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * Returns the button's current title text, or `""` when no label is set.
+     * A read-only companion to {@link setText} — the inner label has no other
+     * public accessor; the [`ToolBar`](/api/component/menubar/classes/ToolBar)
+     * overflow menu reads it to label each dropdown row.
+     *
+     * @returns The current title string, or `""` if none is set.
+     */
+    getText(): string {
+        return this._text.getText().valueOf();
+    }
+
+    /**
      * Applies a writing mode to the button and propagates it to the inner label
      * (and description) so their measured preferred size reflects the rotated
      * text run — a label-only `getWritingMode` would otherwise stay horizontal
