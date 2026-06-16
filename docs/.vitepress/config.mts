@@ -87,6 +87,8 @@ export default defineConfig({
                     { text: 'DateTimeField',     link: '/components/DateTimeField' },
                     { text: 'NumberSpinner',     link: '/components/NumberSpinner' },
                     { text: 'Slider',            link: '/components/Slider' },
+                    { text: 'FileField',         link: '/components/FileField' },
+                    { text: 'FileDropZone',      link: '/components/FileDropZone' },
                 ] },
                 { text: 'Display', collapsed: false, items: [
                     { text: 'Label',           link: '/components/Label' },
