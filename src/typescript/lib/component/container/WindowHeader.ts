@@ -4,6 +4,7 @@ import { Header, HeaderOptions } from "~/component/display/Header.js";
 import { Button, ClickListener } from "~/component/button/Button.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { ThemeManager, readBaseSizePx, resolveScaleToken } from "~/core/Theme.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
 import { Fit } from "~/layout/Fit.js";
@@ -22,12 +23,6 @@ import { window_minimize } from "~/glyphs/solid/window_minimize.js";
 import { window_restore } from "~/glyphs/solid/window_restore.js";
 
 Glyph.register(xmark, window_maximize, window_minimize, window_restore);
-
-// Pixel size of the leading title-glyph's ink. Matches the ink a TabWindow's
-// leading glyph renders (its control-peer box syncs the glyph to ~14px), so the
-// two window kinds show a same-sized title icon. A plain Glyph is pinned to this
-// rather than auto-syncing, since it sits in the title-text row, not a strip.
-const LEAD_GLYPH_INK_SIZE: number = 14;
 
 // Equal top/bottom gap (px) around the title line inside the header band. The
 // header thickness is `textHeight + 2 * CHROME_MARGIN`; the stretched controls
@@ -168,8 +163,11 @@ class WindowHeader extends Header {
      * and on every theme change (the base wires both to this method), so the
      * thickness survives a theme toggle.
      *
-     * @remarks Reads only the inherited text and the module constant — no subclass
-     *   field — so it is safe when called via `super()` before subclass fields init.
+     * @remarks Touches the `_titleGlyph` subclass field only behind an
+     *   `if (this._titleGlyph)` guard, so it stays safe when called via `super()`
+     *   before subclass fields init: during the super-cascade the field is
+     *   `undefined`, the guard skips the re-pin, and the rest reads only the
+     *   inherited text and the module constant.
      */
     protected updatePreferredSize(): void {
         // 20px mirrors the base Header's pre-measurement fallback (a sane default
@@ -179,6 +177,28 @@ class WindowHeader extends Header {
         const textHeight = textSize ? textSize.height : 20;
 
         this.setPreferredSize(100, textHeight + 2 * CHROME_MARGIN);
+
+        // Re-pin the title glyph's ink whenever the header re-measures — the
+        // inherited Header theme listener drives this method on construction and
+        // every theme change, so an SVG title glyph follows a base-size change
+        // with no listener of our own. Guarded because the field is undefined
+        // during the super() cascade that first runs this method.
+        if (this._titleGlyph) {
+            const ink = this.resolveTitleGlyphInk();
+            this._titleGlyph.setPreferredSize(ink, ink);
+        }
+    }
+
+    /**
+     * Resolves the title-glyph ink size in px from the theme's
+     * `scale.titleGlyph` token against the live base size. Read at render time
+     * (the `updatePreferredSize` re-pin and `setGlyph`) and never cached, so a
+     * base- or theme-change re-resolves it.
+     *
+     * @returns The title-glyph ink size in pixels.
+     */
+    private resolveTitleGlyphInk(): number {
+        return resolveScaleToken(ThemeManager.getTheme().scale.titleGlyph, readBaseSizePx());
     }
 
     /**
@@ -238,7 +258,8 @@ class WindowHeader extends Header {
         // text's vertical centring); the leading inset on the title row supplies the
         // corner offset that mirrors the TabWindow's.
         const glyph = new Glyph(name);
-        glyph.setPreferredSize(LEAD_GLYPH_INK_SIZE, LEAD_GLYPH_INK_SIZE);
+        const ink = this.resolveTitleGlyphInk();
+        glyph.setPreferredSize(ink, ink);
         glyph.setPointerEvents("none");
         this._titleGlyph = glyph;
 
