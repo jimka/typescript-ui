@@ -3,6 +3,7 @@
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Component } from "~/core/Component.js";
 import { AbstractWindow } from "~/core/AbstractWindow.js";
+import { TabWindow } from "~/core/TabWindow.js";
 import { Fit } from "~/layout/Fit.js";
 import { Tab } from "~/layout/Tab.js";
 import { Split } from "~/layout/Split.js";
@@ -471,12 +472,19 @@ class Dock extends Container<DockOptions> {
      * lives in. Re-derived each sweep (never cached) so a closed float drops out
      * naturally, mirroring the derived-live root in {@link getRootRegion}.
      *
+     * A {@link TabWindow} is excluded: a default tear-off opens one as a
+     * self-contained floating tabbed window, re-dockable via its own tab DnD and
+     * self-closing when emptied. It is never adopted into the dock's region tree,
+     * so the sweep must leave it alone — only the Shift-torn bare {@link Window}
+     * floats become adoptable mini-docks.
+     *
      * @returns The owned float windows.
      */
     private ownedFloatWindows(): AbstractWindow[] {
         const frames = [...this._frames.values()];
 
         return AbstractWindow.getOpenWindows().filter(win =>
+            !(win instanceof TabWindow) &&
             !this.windowContains(win, this) &&
             frames.some(frame => this.windowContains(win, frame)));
     }
@@ -569,14 +577,12 @@ class Dock extends Container<DockOptions> {
 
         if (this.isTab(region) && !wiring.tabWired) {
             (manager as Tab).setReorderable(true);
-            // Tear a dock tab off into a plain header Window hosting the bare
-            // identity frame (not a TabWindow), so the sweep can adopt it into a
-            // mini-dock region tree the user can edge-split and re-dock.
-            (manager as Tab).setDetachWindowMode("bare");
             (manager as Tab).on("empty", () => this.pruneRegion(region));
-            // Adopt the torn-off float on the next sweep. "empty" only covers a
-            // tear-off that drains the strip; "detached" fires for every tear-off,
-            // so a tab torn off a strip that keeps siblings still gets adopted.
+            // Sweep after the source strip loses a tab by tear-off. "empty" only
+            // covers a tear-off that drains the strip; "detached" fires for every
+            // tear-off, so the sweep also runs when the strip keeps siblings —
+            // pruning the source side and adopting any Shift-torn bare Window
+            // float (a default TabWindow float is self-contained and skipped).
             (manager as Tab).on("detached", () => this.scheduleSweep());
 
             wiring.tabWired = true;
