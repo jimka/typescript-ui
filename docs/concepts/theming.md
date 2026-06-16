@@ -30,7 +30,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | --- | --- | --- |
 | `colorScheme` | *(set directly as `color-scheme`)* | Browser rendering of native controls (checkboxes, scrollbars). Use `'light'` or `'dark'`. |
 | `font.family` | `--ts-ui-font-family` | Font family for the entire UI (cascades from `<html>`). Defaults to the bundled, self-hosted Manrope — `'Manrope Variable', sans-serif` — injected on first `setTheme` (see [How it works](#how-it-works)) |
-| `font.size` | `--ts-ui-font-size` | Base font size for the entire UI |
+| `font.size` | `--ts-ui-font-size` | Base font size for the entire UI — the anchor the relative font tokens resolve against (see [Relative font sizes](#relative-font-sizes)) |
 | `scale.base` | `--ts-ui-base-size` | Framework scale root in px — the global size knob the `scale.*` ratio tokens multiply. Resolved sizes are read in JS via [`ThemeManager.getResolvedScale()`](/api/core/classes/ThemeManager#getresolvedscale). See [Base size & scaling](#base-size-scaling) |
 | `font.linePadding` | `--ts-ui-line-padding` | Vertical leading (e.g. `"2px"`) added to a control's own font size to form its line box: the rendered line height is `calc(1em + var(--ts-ui-line-padding))`, so the leading scales per font size (12px and 14px text get proportionate line boxes from one token). Every text control renders **and** measures against this same arithmetic, so inputs, labels, and `Text` share one baseline. Drives the row-height of `Text`/tables and the baseline alignment math in `HBox`/`Column`/`Grid`. Override per control with `Text.setLineHeight(px)` for a fixed line-height |
 | `text.color` | `--ts-ui-text-color` | Default text color for all components |
@@ -41,7 +41,8 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `button.border` | `--ts-ui-button-border` | Outline of [`Button`](/api/component/button/classes/Button) and [`ToggleButton`](/api/component/button/classes/ToggleButton) |
 | `button.shadow` | `--ts-ui-button-shadow` | Drop shadow on unpressed buttons |
 | `button.padding` | `--ts-ui-button-padding` | Padding inside [`Button`](/api/component/button/classes/Button) |
-| `button.font.size` | `--ts-ui-button-font-size` | Font size of [`Button`](/api/component/button/classes/Button) labels |
+| `button.font.size` | `--ts-ui-button-font-size` | Font size of [`Button`](/api/component/button/classes/Button) labels. Accepts a [`FontSizeToken`](/api/core/type-aliases/FontSizeToken) — see [Relative font sizes](#relative-font-sizes) |
+| `button.description.fontSize` | `--ts-ui-button-description-font-size` | Font size of a [`Button`](/api/component/button/classes/Button)'s secondary description line. Accepts a [`FontSizeToken`](/api/core/type-aliases/FontSizeToken) — see [Relative font sizes](#relative-font-sizes) |
 | `button.pressed.background` | `--ts-ui-button-pressed-bg` | Background while a button is held down |
 | `button.pressed.foreground` | `--ts-ui-button-pressed-fg` | Text color while a button is held down |
 | `button.pressed.shadow` | `--ts-ui-button-pressed-shadow` | Inset shadow on a pressed button |
@@ -72,10 +73,11 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `window.control.hoverBackground` | `--ts-ui-window-control-hover-bg` | Hover fill of the window controls |
 | `window.control.activeBackground` | `--ts-ui-window-control-active-bg` | Pressed fill of the window controls |
 | `window.header.background` | `--ts-ui-window-header-bg` | Focused fill of an ordinary [`Window`](/components/Window)'s header; valued equal to `tab.toolbar.background` so a header `Window` and a headerless `TabWindow` share one chrome colour (both flatten to `gutter.background` when blurred) |
-| `header.font.size` | `--ts-ui-header-font-size` | Font size of window and panel title-bar labels |
+| `header.font.size` | `--ts-ui-header-font-size` | Font size of window and panel title-bar labels. Accepts a [`FontSizeToken`](/api/core/type-aliases/FontSizeToken) — see [Relative font sizes](#relative-font-sizes) |
 | `table.header.background` | `--ts-ui-table-header-bg` | Background fill of the table column header; falls back to `button.background` so headers track the button surface unless given a distinct value |
 | `table.header.border` | `--ts-ui-table-header-border` | Bottom border separating the table header from the body |
-| `table.header.font.size` | `--ts-ui-table-header-font-size` | Font size of table column header cells |
+| `table.header.font.size` | `--ts-ui-table-header-font-size` | Font size of table column header cells. Accepts a [`FontSizeToken`](/api/core/type-aliases/FontSizeToken) — see [Relative font sizes](#relative-font-sizes) |
+| `table.sortBadge.fontSize` | `--ts-ui-sort-badge-font-size` | Font size of the multi-sort priority badge on a column header. Accepts a [`FontSizeToken`](/api/core/type-aliases/FontSizeToken) — see [Relative font sizes](#relative-font-sizes) |
 | `table.row.selected` | `--ts-ui-table-row-selected` | Background tint of the currently selected table row |
 | `table.row.new` | `--ts-ui-table-row-new` | Background tint of unsaved new records |
 | `table.row.dirty` | `--ts-ui-table-row-dirty` | Background tint of locally modified records |
@@ -128,6 +130,35 @@ Raise `scale.base` (in a theme passed to `setTheme`) to scale the chrome that fo
 
 ::: warning Exactly-one is not type-enforced inside a theme literal
 `ScaleToken` is a `{ scale } | { fixed }` union, but a theme literal is a *deep-partial* of [`Theme`](/api/core/interfaces/Theme) (so you can override one token without restating the rest), and that weakens the union to `{ scale? } | { fixed? }` — `{}` or a both-present token is **not** a compile error where you author it. The resolution into the snapshot guards every arm: `scale` wins if both are present, and a token missing both falls back to the base size rather than producing `NaN`.
+:::
+
+## Relative font sizes
+
+The font-size tokens (`button.font.size`, `button.description.fontSize`, `header.font.size`, `table.header.font.size`, `table.sortBadge.fontSize`) can be expressed *relative to the base font size* — `font.size`, the `--ts-ui-font-size` anchor — instead of a hardcoded length. This is the type-scale counterpart to [Base size & scaling](#base-size-scaling): fonts are sized by CSS `font-size`, so unlike SVG glyph boxes they ride the cascade, and a relative font token is emitted as a `calc(…)` that re-resolves whenever the base changes. (Fonts anchor on `--ts-ui-font-size`, the **text** base — distinct from `--ts-ui-base-size`, the glyph/chrome base.)
+
+Each of those five tokens accepts a [`FontSizeToken`](/api/core/type-aliases/FontSizeToken), which is one of:
+
+| Form | Example | Resolves to |
+|---|---|---|
+| Absolute length | `'13px'`, `'1.2rem'` | the length, unchanged |
+| Signed px offset | `'-2px'`, `'+3px'` | `calc(var(--ts-ui-font-size) - 2px)` — a **fixed** distance from the base |
+| Ratio | `{ scale: 1.2 }` | `calc(var(--ts-ui-font-size) * 1.2)` — **proportional** to the base |
+| *(omitted)* | — | the base font size, `var(--ts-ui-font-size)` |
+
+```typescript
+import { defineTheme, BaseTheme } from '@jimka/typescript-ui/core';
+const MyTheme = defineTheme(BaseTheme, {
+    font:   { size: '16px' },                 // raise the base
+    button: { font: { size: '+1px' } },       // 17px, and stays base+1 as the base moves
+    header: { font: { size: { scale: 0.9 } } }, // 90% of the base, growing with it
+    table:  { sortBadge: { fontSize: undefined } }, // omitted → inherits the base
+});
+```
+
+An **offset stays a constant distance** from the base when you raise it (`'-2px'` is always two px below); a **`{ scale }` ratio grows proportionally**. The built-in themes use fixed offsets — `button.font.size: '-2px'`, `header.font.size: '-2px'`, `table.header.font.size: '-1px'`, `button.description.fontSize: '-3px'`, `table.sortBadge.fontSize: '-4px'` — reproducing their historic px exactly at the 14px base while tracking a raised one. Use `{ scale }` instead when you want a font to grow in proportion.
+
+::: warning A theme literal weakens the `{ scale }` arm
+Like [`ScaleToken`](#base-size-scaling), a `FontSizeToken` lives inside a *deep-partial* of [`Theme`](/api/core/interfaces/Theme), so the object arm weakens to `{ scale?: number }` — `{}` is not a compile error where you author it. The resolver guards it: a `{ scale }` missing the number (or any unrecognised shape) falls back to `var(--ts-ui-font-size)`, so a malformed token degrades to the base font size rather than producing a broken value.
 :::
 
 ## Custom themes
