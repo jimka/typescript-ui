@@ -28,19 +28,53 @@ const NO_FILE_LABEL = "no file selected";
  */
 class HiddenFileInput extends Component {
 
+    // Cached native attributes, so reads return the canonical value and `init()`
+    // can replay them once the element exists — `setElementAttribute` is a no-op
+    // before render, so the cache is the single source of truth (same recipe as
+    // TextInput's `_options.type` / `init()` replay). These live in private
+    // backing fields rather than an options bag because this internal control is
+    // not consumer-configurable.
+    private _type:     string | null  = null;
+    private _multiple: boolean         = false;
+    private _accept:   string | null  = null;
+
     constructor() {
         super({ tag: "input" });
 
         this.setDisplay("none");
-        this.setElementAttribute("type", "file");
+        this.setType("file");
     }
 
     /**
-     * Sets or clears the native `multiple` attribute.
+     * Returns the cached native `type`, or `null` before it is set.
+     *
+     * @returns The input type string, or `null`.
+     */
+    getType(): string | null {
+        return this._type;
+    }
+
+    /**
+     * Sets the native `type` attribute through the typed-setter seam, mirroring
+     * [`TextInput.setType`](/api/component/input/classes/TextInput#settype) — the
+     * value is cached and {@link init} replays it once the element exists.
+     *
+     * @param value - The input type (always `"file"` here).
+     */
+    setType(value: string): void {
+        this._type = value;
+        this.setElementAttribute("type", value);
+    }
+
+    /**
+     * Sets or clears the native `multiple` attribute. Cached for replay at
+     * render time.
      *
      * @param value - `true` to allow multi-file selection.
      */
     setMultipleAttribute(value: boolean): void {
+        this._multiple = value;
+
         if (value) {
             this.setElementAttribute("multiple", "");
         } else {
@@ -49,11 +83,13 @@ class HiddenFileInput extends Component {
     }
 
     /**
-     * Sets the native `accept` attribute (the OS picker's type filter).
+     * Sets the native `accept` attribute (the OS picker's type filter). Cached
+     * for replay at render time.
      *
      * @param value - A comma-separated `accept` token list, e.g. `".csv,image/*"`.
      */
     setAcceptAttribute(value: string): void {
+        this._accept = value;
         this.setElementAttribute("accept", value);
     }
 
@@ -93,6 +129,40 @@ class HiddenFileInput extends Component {
         if (el) {
             el.value = "";
         }
+    }
+
+    /**
+     * Replays the cached behavioural attributes onto the freshly created element.
+     * `setElementAttribute` is a no-op before the element exists (it does not
+     * queue), so the constructor-time / constructor-tail writes must be
+     * re-applied here — the same replay TextInput's `init()` performs.
+     *
+     * @param element - The element being initialised, when provided by the caller.
+     *
+     * @returns This component, for method chaining.
+     */
+    protected init(element?: HTMLElement): this {
+        super.init(element);
+
+        const el = (element ?? this.getElement()) as HTMLInputElement | null;
+
+        if (!el) {
+            return this;
+        }
+
+        if (this._type !== null) {
+            el.setAttribute("type", this._type);
+        }
+
+        if (this._multiple) {
+            el.setAttribute("multiple", "");
+        }
+
+        if (this._accept !== null) {
+            el.setAttribute("accept", this._accept);
+        }
+
+        return this;
     }
 }
 
