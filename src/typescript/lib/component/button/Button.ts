@@ -391,6 +391,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this.setDescription(this._options.description);
         }
 
+        // Construction-time flat: `_applyFlatChrome` ran during the super
+        // cascade before `_glyph` / `_text` existed, so the compact glyph-only
+        // inset was skipped. Re-evaluate it now the content row is built.
+        if (this._flat) {
+            this._applyFlatCompactInsets();
+        }
+
         // Initial auto-sized preferred-size pass. No-ops when the consumer
         // already supplied `preferredSize` (the override of `setPreferredSize`
         // below flips `_consumerSetPreferredSize`).
@@ -1198,8 +1205,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this.clearPressedForegroundColor();
             this.clearPressedShadow();
             this.clearPressedBorderRadius();
-            // `clearPressedBorder` doesn't exist today; consumers that set
-            // a pressed border live with it across a chromeless toggle.
+            this.clearPressedBorder();
         }
 
         if (this._hoverStyleRule !== undefined) {
@@ -1208,8 +1214,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this.clearHoverForegroundColor();
             this.clearHoverShadow();
             this.clearHoverBorderRadius();
-            // `clearHoverBorder` doesn't exist today — same story as
-            // `clearPressedBorder`.
+            this.clearHoverBorder();
         }
     }
 
@@ -1232,6 +1237,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (d.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(d.pressedBackgroundImage);
         if (d.pressedShadow          !== undefined) this.setPressedShadow         (d.pressedShadow);
         if (d.pressedBorder          !== undefined) this.setPressedBorder         (d.pressedBorder);
+        else                                        this.clearPressedBorder      ();
         if (d.pressedBorderRadius    !== undefined) this.setPressedBorderRadius   (d.pressedBorderRadius);
 
         if (d.hoverForegroundColor   !== undefined) this.setHoverForegroundColor  (d.hoverForegroundColor);
@@ -1239,6 +1245,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (d.hoverBackgroundImage   !== undefined) this.setHoverBackgroundImage  (d.hoverBackgroundImage);
         if (d.hoverShadow            !== undefined) this.setHoverShadow           (d.hoverShadow);
         if (d.hoverBorder            !== undefined) this.setHoverBorder           (d.hoverBorder);
+        else                                        this.clearHoverBorder         ();
         if (d.hoverBorderRadius      !== undefined) this.setHoverBorderRadius     (d.hoverBorderRadius);
     }
 
@@ -1329,10 +1336,24 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this.setPressedShadow("var(--ts-ui-button-flat-pressed-shadow, inset 1px 1px 3px rgba(0, 0, 0, 0.25))");
         this.setPressedBorder("var(--ts-ui-button-flat-pressed-border, 1px solid rgb(180, 180, 180))");
 
-        // Compact square for glyph-only buttons: 4px symmetric insets (vs. the
-        // default 5/10) so a toolbar icon reads as a tight square. The literal
-        // mirrors the plan's compact-icon decision; text buttons keep defaults.
-        if (this._glyph && this._text.getText().valueOf() === "") {
+        // Compact square for glyph-only buttons. Runs through the shared helper
+        // so the construction-time flat path — where `_glyph` / `_text` don't
+        // yet exist during the super cascade — can re-apply it from the
+        // constructor body once the content row is built.
+        this._applyFlatCompactInsets();
+    }
+
+    /**
+     * Tightens a flat glyph-only button (a glyph with an empty label) to a
+     * compact 4px symmetric square inset (vs. the default 5/10) so a toolbar
+     * icon reads as a tight square; no-ops otherwise. Split out of
+     * {@link _applyFlatChrome} because that runs during the `super()` cascade —
+     * before the constructor assigns `_glyph` / `_text` — so the constructor
+     * re-invokes it once the content row exists. Text buttons keep their
+     * default insets.
+     */
+    private _applyFlatCompactInsets(): void {
+        if (this._flat && this._glyph && this._text.getText().valueOf() === "") {
             this.setInsets(new Insets(4, 4, 4, 4));
         }
     }
@@ -1581,6 +1602,25 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * Removes the border from the :active CSS rule, reverting the pressed
+     * state to no explicit border. Lets the un-flatten / un-chromeless round
+     * trip strip a flat pressed border that has no raised default to restore.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearPressedBorder(): this {
+        this._pressedBorder = null;
+        this.pressedStyleRule.setMany({
+            borderTop:    null,
+            borderRight:  null,
+            borderBottom: null,
+            borderLeft:   null,
+        });
+
+        return this;
+    }
+
+    /**
      * Returns the border radius applied when the button is in the :active state.
      *
      * @returns The CSS border-radius string, or null if not set.
@@ -1777,6 +1817,25 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     setHoverBorder(options?: BorderOptions | string): this {
         this._hoverBorder = typeof options === "string" ? { border: options } : (options ?? {});
         this.hoverStyleRule.setMany(borderToStyle(this._hoverBorder));
+
+        return this;
+    }
+
+    /**
+     * Removes the border from the :hover CSS rule, reverting the hover state
+     * to no explicit border. Lets the un-flatten / un-chromeless round trip
+     * strip a flat hover border that has no raised default to restore.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearHoverBorder(): this {
+        this._hoverBorder = null;
+        this.hoverStyleRule.setMany({
+            borderTop:    null,
+            borderRight:  null,
+            borderBottom: null,
+            borderLeft:   null,
+        });
 
         return this;
     }
