@@ -396,6 +396,7 @@ class Tree extends Component<TreeOptions> {
      * @param y - The new scroll position in pixels.
      */
     setScrollY(y: number): this {
+        this._scroller?.resetWheelEase();
         this._scroller?.setScrollY(y);
 
         return this;
@@ -408,6 +409,7 @@ class Tree extends Component<TreeOptions> {
      * @param x - The new scroll position in pixels.
      */
     setScrollX(x: number): this {
+        this._scroller?.resetWheelEase();
         this._scroller?.setScrollX(x);
 
         return this;

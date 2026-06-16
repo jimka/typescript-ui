@@ -12,6 +12,7 @@ import { Util } from "~/core/Util.js";
 import { Position } from "~/primitive/Position.js";
 import { Aria } from "~/core/Aria.js";
 import { Event } from "~/core/Event.js";
+import { SmoothScroller, consumeWheel, type ScrollAxis } from "~/core/SmoothScroller.js";
 import { StyleRule, InlineStyle } from "~/core/StyleTarget.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
@@ -226,6 +227,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _onPreferredSizeChange: (() => void) | null     = null;
     private _overflowX            : string | null           = null;
     private _overflowY            : string | null           = null;
+    // Eased wheel-scroll controller, lazily attached while an overflow axis is
+    // scrollable (auto/scroll). Null otherwise — most components never scroll.
+    private _wheelScroller        : SmoothScroller | null     = null;
     private _contain              : string | null           = null;
     private _animation            : string | null           = null;
     private _outline              : string | null           = null;
@@ -2799,6 +2803,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setScrollLeft(value: number): this {
+        this._wheelScroller?.reset();
+
         const element = this.getElement();
 
         if (element) {
@@ -2820,6 +2826,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     setScrollTop(value: number): this {
+        this._wheelScroller?.reset();
+
         const element = this.getElement();
 
         if (element) {
@@ -2844,6 +2852,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     syncScrollOffsets(): this {
+        this._wheelScroller?.reset();
+
         const element = this.getElement();
 
         if (element) {
@@ -3061,6 +3071,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this._overflowX = value;
         this.setElementCSSRule("overflowX", value);
+        this.refreshWheelScrolling();
 
         return this;
     }
@@ -3077,6 +3088,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this._overflowX = null;
         this.setElementCSSRule("overflowX", null);
+        this.refreshWheelScrolling();
 
         return this;
     }
@@ -3104,6 +3116,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this._overflowY = value;
         this.setElementCSSRule("overflowY", value);
+        this.refreshWheelScrolling();
 
         return this;
     }
@@ -3120,8 +3133,121 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         this._overflowY = null;
         this.setElementCSSRule("overflowY", null);
+        this.refreshWheelScrolling();
 
         return this;
+    }
+
+    /**
+     * Returns whether a CSS overflow value lets the browser scroll the axis —
+     * i.e. `auto` or `scroll`.
+     *
+     * @param overflow - The per-axis overflow value, or null.
+     *
+     * @returns `true` when the axis is scrollable.
+     */
+    private isOverflowScrollable(overflow: string | null): boolean {
+        return overflow === "auto" || overflow === "scroll";
+    }
+
+    /**
+     * Lazily attaches the eased wheel-scroll controller when either overflow
+     * axis becomes scrollable, and tears it down when neither does. Called from
+     * every overflow setter/clearer; because Panel `autoScroll` routes through
+     * those, this single hook covers `autoScroll` panels and direct
+     * `setOverflow("auto")` users alike.
+     */
+    private refreshWheelScrolling(): void {
+        const scrollable = this.isOverflowScrollable(this._overflowX)
+                        || this.isOverflowScrollable(this._overflowY);
+
+        if (scrollable && !this._wheelScroller) {
+            this.attachWheelScrolling();
+        } else if (!scrollable && this._wheelScroller) {
+            this.detachWheelScrolling();
+        }
+    }
+
+    /**
+     * Builds the {@link SmoothScroller} over the element's native scroll offsets
+     * and registers the non-passive subtree wheel listener that feeds it.
+     *
+     * @remarks Subtree because wheel fires on whichever descendant the pointer
+     * is over, not the scroll container itself; `passive: false` so
+     * {@link onWheelScroll} can `preventDefault` the native page scroll.
+     */
+    private attachWheelScrolling(): void {
+        this._wheelScroller = new SmoothScroller({
+            read:  (axis) => axis === "x" ? (this.getElement()?.scrollLeft ?? 0) : (this.getElement()?.scrollTop ?? 0),
+            write: (axis, value) => this.writeNativeScroll(axis, value),
+            clamp: (axis, value) => Math.max(0, Math.min(axis === "x" ? this.getMaxScrollLeft() : this.getMaxScrollTop(), value)),
+        });
+
+        Event.addSubtreeListener(this, "wheel", this.onWheelScroll, { passive: false });
+    }
+
+    /**
+     * Removes the wheel listener, cancels any in-flight ease, and drops the
+     * controller once neither axis is scrollable.
+     */
+    private detachWheelScrolling(): void {
+        Event.removeSubtreeListener(this, "wheel", this.onWheelScroll);
+        this._wheelScroller?.reset();
+        this._wheelScroller = null;
+    }
+
+    /**
+     * Writes a native scroll offset for one axis and mirrors the browser-clamped
+     * result into the {@link getScrollLeft} / {@link getScrollTop} cache, holding
+     * the cache invariant the eased wheel loop would otherwise bypass.
+     *
+     * @param axis - The axis to write.
+     * @param value - The new offset in pixels.
+     */
+    private writeNativeScroll(axis: ScrollAxis, value: number): void {
+        const element = this.getElement();
+        if (!element) {
+            return;
+        }
+
+        if (axis === "x") {
+            element.scrollLeft = value;
+            this._scrollLeft = element.scrollLeft;
+        } else {
+            element.scrollTop = value;
+            this._scrollTop = element.scrollTop;
+        }
+    }
+
+    /**
+     * Eases a wheel gesture into the element's native scroll offset. Only a
+     * scrollable axis receives delta, and shift+wheel with a bare vertical delta
+     * is redirected to horizontal.
+     *
+     * @param e - The wheel event.
+     */
+    private onWheelScroll(e: WheelEvent): void {
+        const canX = this.isOverflowScrollable(this._overflowX);
+        const canY = this.isOverflowScrollable(this._overflowY);
+
+        let dx = canX ? e.deltaX : 0;
+        let dy = canY ? e.deltaY : 0;
+
+        if (e.shiftKey && canX && e.deltaY !== 0 && e.deltaX === 0) {
+            dx = e.deltaY;
+            dy = 0;
+        }
+
+        if (dx === 0 && dy === 0) {
+            return;
+        }
+
+        if (!consumeWheel(e)) {
+            return;
+        }
+
+        e.preventDefault();
+        this._wheelScroller?.scrollBy(dx, dy);
     }
 
     /**

@@ -4,6 +4,8 @@ export { BaseObject } from '~/core/BaseObject.js';
 export { Event } from '~/core/Event.js';
 export { ListenerBag } from '~/core/ListenerBag.js';
 export { Animation } from '~/core/Animation.js';
+export { SmoothScroller } from '~/core/SmoothScroller.js';
+export type { SmoothScrollTarget, ScrollAxis } from '~/core/SmoothScroller.js';
 export { Util } from '~/core/Util.js';
 export type { TextMeasureOptions, TextMetrics } from '~/core/Util.js';
 export { callable } from '~/core/Callable.js';
