@@ -44,6 +44,25 @@ If [`Animation.isReducedMotion()`](../src/typescript/lib/core/Animation.ts#L71) 
 
 The touch loop in [`attachTouchHandlers`](../src/typescript/lib/component/container/VirtualScroller.ts#L357) is a **velocity-fling** model (decaying velocity after finger release), not a **chase-a-target** model. Forcing it through `SmoothScroller` would mean re-expressing fling as a moving target every frame — more code, not less, and it would muddy both abstractions. It already works and is proven. Leave it; `SmoothScroller` and the touch loop share the same `FRICTION`-style decay *constant family* and frame normalisation, but stay distinct loops. This is the recommended split.
 
+### Inner scroll container traps the wheel (`consumeWheel`)
+
+Added during implementation, outside the original plan. The framework dispatches
+subtree events descendant-first ([`Event` walks `target → parentElement`](../src/typescript/lib/core/Event.ts#L119)),
+so a wheel over an inner scroll container fires that container's handler **and**
+every scrollable ancestor's handler. Before this work only `VirtualScroller`
+processed wheel in JS, and its single `preventDefault` cancelled the native
+scroll for the whole event — so an inner table inside an `autoScroll` column did
+not also scroll the column. Now that native components also process wheel in JS,
+without coordination the inner container *and* its scrollable ancestors would all
+scroll at once (visible on the "Misc." demo, where tables live inside
+`autoScroll` columns). A small exported helper `consumeWheel(e)` in
+`SmoothScroller.ts` marks the event on first claim and reports whether the claim
+succeeded; because dispatch is descendant-first, the innermost container claims
+it and ancestors skip — restoring the native trap behaviour. The native handler
+claims **only** when it will actually move (non-zero delta on a scrollable axis),
+so a non-scrolling-direction wheel still chains to an ancestor. `consumeWheel` is
+an internal cross-module helper and is intentionally **not** barrel-exported.
+
 ### No global config / no theme involvement
 
 Smooth wheel scrolling is universal best-practice UX with a `prefers-reduced-motion` escape hatch; an opt-out flag is speculative configurability (CLAUDE.md §2) and is **not** added. No CSS custom properties are involved — `SMOOTH_FACTOR` is a tuning constant in `SmoothScroller.ts`, not a theme token. Flagged here per the plan-skill requirement: theme involvement is **none**.
