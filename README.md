@@ -32,12 +32,14 @@ npm install @jimka/typescript-ui
 
 ```typescript
 import { Window, ThemeManager, DarkTheme } from '@jimka/typescript-ui/core';
+import { Button } from '@jimka/typescript-ui/component/button';
 
 // ModernTheme is applied automatically when the core module is imported.
 // Call setTheme only to switch themes (e.g. dark mode):
 ThemeManager.setTheme(DarkTheme);
 
 const win = new Window('Hello');
+win.setContentFactory(() => new Button('Click me'));
 win.show();
 ```
 
