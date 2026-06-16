@@ -384,6 +384,10 @@ class Tree extends Component<TreeOptions> {
      * loaded and expanded. A rejection emits `"loaderror"` and leaves the node
      * collapsed and unloaded so toggling again retries. An empty resolved array
      * is treated as success: the node renders as an expanded, empty parent.
+     *
+     * If `setNodes` swaps the dataset while the loader is in flight, it clears
+     * `_loadingNodes`, so a still-present membership check after the await tells
+     * us the node is still live; an orphaned resolve commits nothing.
      */
     private async _loadAndExpand(node: TreeNode): Promise<void> {
         this._loadingNodes.add(node);
@@ -392,17 +396,24 @@ class Tree extends Component<TreeOptions> {
         try {
             const children = await node.loadChildren!();
 
+            if (!this._loadingNodes.has(node)) {
+                return;
+            }
+
             node.children = children;
             this._loadedNodes.add(node);
             this._expandedNodes.add(node);
         } catch (error) {
+            if (!this._loadingNodes.has(node)) {
+                return;
+            }
+
             this.emit("loaderror", node, error);
         } finally {
             this._loadingNodes.delete(node);
             this._reflattenAndRender();
         }
     }
-
 
     /**
      * Fills `_selectedNodes` with every node in `_flatRows` between `anchorIdx` and `focusIdx` (inclusive).
