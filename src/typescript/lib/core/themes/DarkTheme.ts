@@ -36,6 +36,17 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
             background: 'linear-gradient(rgb(90, 90, 90), rgb(65, 65, 65))',
             shadow    : '1px 3px 6px 0 rgba(0, 0, 0, 0.55)',
         },
+        flat      : {
+            hover  : {
+                background: 'rgba(255, 255, 255, 0.08)',
+                border    : '1px solid rgb(90, 90, 90)',
+            },
+            pressed: {
+                background: 'rgba(255, 255, 255, 0.12)',
+                shadow    : 'inset 1px 1px 3px rgba(0, 0, 0, 0.55)',
+                border    : '1px solid rgb(70, 70, 70)',
+            },
+        },
     },
     toggle      : {
         selected: {

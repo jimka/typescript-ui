@@ -38,6 +38,17 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
             background: 'linear-gradient(rgb(252, 252, 252), rgb(220, 220, 220))',
             shadow    : '1px 3px 6px 0 rgba(0, 0, 0, 0.25)',
         },
+        flat      : {
+            hover  : {
+                background: 'rgba(0, 0, 0, 0.06)',
+                border    : '1px solid rgb(200, 200, 200)',
+            },
+            pressed: {
+                background: 'rgba(0, 0, 0, 0.10)',
+                shadow    : 'inset 1px 1px 3px rgba(0, 0, 0, 0.25)',
+                border    : '1px solid rgb(180, 180, 180)',
+            },
+        },
     },
     toggle      : {
         selected: {

@@ -126,6 +126,17 @@ export interface Theme {
             background: string;
             shadow    : string;
         };
+        flat: {
+            hover: {
+                background: string;
+                border    : string;
+            };
+            pressed: {
+                background: string;
+                shadow    : string;
+                border    : string;
+            };
+        };
     };
 
     toggle: {
@@ -882,6 +893,11 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-button-hover-fg'                  : theme.button.hover.foreground,
         '--ts-ui-button-hover-bg'                  : theme.button.hover.background,
         '--ts-ui-button-hover-shadow'              : theme.button.hover.shadow,
+        '--ts-ui-button-flat-hover-bg'             : theme.button.flat.hover.background,
+        '--ts-ui-button-flat-hover-border'         : theme.button.flat.hover.border,
+        '--ts-ui-button-flat-pressed-bg'           : theme.button.flat.pressed.background,
+        '--ts-ui-button-flat-pressed-shadow'       : theme.button.flat.pressed.shadow,
+        '--ts-ui-button-flat-pressed-border'       : theme.button.flat.pressed.border,
         '--ts-ui-toggle-selected-bg'               : theme.toggle.selected.background,
         '--ts-ui-toggle-selected-shadow'           : theme.toggle.selected.shadow,
         '--ts-ui-input-bg'                         : theme.input.background,
