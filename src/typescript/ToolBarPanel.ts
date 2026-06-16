@@ -72,7 +72,7 @@ class ToolBarPanel extends Panel {
         bar.addComponent(Spacer.flex());
         bar.addComponent(zoom);
 
-        const raisedBar = new ToolBar({ flat: false });
+        const raisedBar: ToolBar = new ToolBar({ flat: false });
 
         const save = new Button("Save");
         const open = new Button("Open");
