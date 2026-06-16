@@ -31,9 +31,11 @@ npm install @jimka/typescript-ui
 ```
 
 ```typescript
-import { Body, Window, Button, ThemeManager, DefaultTheme } from '@jimka/typescript-ui';
+import { Window, ThemeManager, DarkTheme } from '@jimka/typescript-ui/core';
 
-ThemeManager.setTheme(DefaultTheme);
+// ModernTheme is applied automatically when the core module is imported.
+// Call setTheme only to switch themes (e.g. dark mode):
+ThemeManager.setTheme(DarkTheme);
 
 const win = new Window();
 win.setHeaderText('Hello');
@@ -84,7 +86,7 @@ Library components that internally use glyphs (Tree row chevrons, Notification b
 | --- | --- |
 | `npm run dev` | Vite dev server on port 8015 (demo app) |
 | `npm run build` | Production bundle of the demo app to `dist/` |
-| `npm run build:lib` | Library bundle (ESM + UMD + `.d.ts`) to `dist/lib/` |
+| `npm run build:lib` | Library bundle (ESM + `.d.ts`) to `dist/lib/` |
 | `npm run typecheck` | Strict TypeScript type check (no emit) |
 | `npm run docs:dev` | Serve the documentation site locally |
 | `npm run docs:build` | Build the documentation site |
@@ -94,4 +96,4 @@ Library components that internally use glyphs (Tree row chevrons, Notification b
 
 Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Free for personal and educational use; commercial use is not permitted.
 
-Third-party material redistributed with this project (Font Awesome Free icons) is covered by its own license — see [NOTICE](NOTICE) for attribution and license details.
+Third-party material redistributed with this project (Font Awesome Free icons) is covered by its own license — see [LICENSE-FONTAWESOME.md](LICENSE-FONTAWESOME.md) for attribution and license details.
