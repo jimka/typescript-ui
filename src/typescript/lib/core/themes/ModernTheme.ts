@@ -303,6 +303,12 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
             invalidBackground: 'rgba(200, 50, 50, 0.28)',
         },
     },
+    fileDropZone: {
+        background      : 'rgba(80, 140, 240, 0.06)',
+        border          : '2px dashed rgba(80, 140, 240, 0.40)',
+        activeBackground: 'rgba(80, 140, 240, 0.18)',
+        activeBorder    : '2px dashed rgba(80, 140, 240, 0.80)',
+    },
     scroll: {
         shadowColor: 'rgba(0, 0, 0, 1)',
     },

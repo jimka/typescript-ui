@@ -3,7 +3,7 @@
 import { Binding, callable, Component, Notification, Panel } from '@jimka/typescript-ui/core';
 import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
-import { Checkbox, ComboBox, DateField, Text, TextField, TimeField } from '@jimka/typescript-ui/component/input';
+import { Checkbox, ComboBox, DateField, FileDropZone, FileField, Text, TextField, TimeField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { FormFieldSet } from '@jimka/typescript-ui/component/container';
 class BindingPanel extends Panel {
@@ -184,6 +184,33 @@ class BindingPanel extends Panel {
         addressForm.setMaxSize(WIDE_FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
 
         this.addComponent(addressForm);
+
+        // ── File-input demo ──────────────────────────────────────────────────
+
+        // A single FileField (multi-select, CSV/JSON filter) plus a FileDropZone
+        // that also accepts OS file drops. Both are unbound — file inputs cannot
+        // be re-populated from a stored value (browser security model), so they
+        // showcase selection + the change fan-out rather than record binding.
+        const singleFile = new FileField({ accept: '.csv,.json', multiple: true });
+        const dropZone   = new FileDropZone({ accept: 'image/*', multiple: true });
+
+        singleFile.on('change', (files) => {
+            Notification.show('Picked ' + files.length + ' file(s).', 'info');
+        });
+
+        dropZone.on('change', (files) => {
+            Notification.show('Dropped/picked ' + files.length + ' image(s).', 'info');
+        });
+
+        const fileForm = new FormFieldSet('File inputs', {
+            rows: [
+                [{ title: 'Attachment', component: singleFile }],
+                { component: dropZone, fullWidth: true },
+            ],
+        });
+        fileForm.setMaxSize(FIELDSET_MAX_WIDTH, Number.MAX_VALUE);
+
+        this.addComponent(fileForm);
 
         // ── Wire up interactions ─────────────────────────────────────────────
 

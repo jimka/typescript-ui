@@ -621,6 +621,20 @@ export interface Theme {
         };
     };
 
+    /**
+     * Tokens consumed by the [`FileDropZone`](/api/component/input/classes/FileDropZone)
+     * surface — the dashed border and tinted background of its resting state
+     * and the brighter wash while a valid OS file drag hovers. Deliberately
+     * separate from the {@link Theme.drag} `dropzone` tokens, which belong to
+     * the internal pointer-drag overlay: the two mechanisms are unrelated.
+     */
+    fileDropZone: {
+        background    : string;
+        border        : string;
+        activeBackground: string;
+        activeBorder  : string;
+    };
+
     scroll: {
         /**
          * Start colour of the edge-fade gradient a scrolling {@link Panel}
@@ -1066,6 +1080,10 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-drag-dropzone-border'             : theme.drag.dropzone.border,
         '--ts-ui-drag-dropzone-active-bg'          : theme.drag.dropzone.activeBackground,
         '--ts-ui-drag-dropzone-invalid-bg'         : theme.drag.dropzone.invalidBackground,
+        '--ts-ui-filedropzone-bg'                  : theme.fileDropZone.background,
+        '--ts-ui-filedropzone-border'              : theme.fileDropZone.border,
+        '--ts-ui-filedropzone-active-bg'           : theme.fileDropZone.activeBackground,
+        '--ts-ui-filedropzone-active-border'       : theme.fileDropZone.activeBorder,
         '--ts-ui-scroll-shadow-color'              : theme.scroll.shadowColor,
     };
 }
