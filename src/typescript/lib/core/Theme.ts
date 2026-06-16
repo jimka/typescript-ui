@@ -37,7 +37,8 @@ import { ModernTheme } from '~/core/themes/ModernTheme.js';
  * enforced wherever a value is typed against `ScaleToken` directly. Inside a
  * theme literal the guarantee is weakened by
  * [`DeepPartial`](/api/core/type-aliases/DeepPartial) (which makes both arms
- * optional), so {@link resolveScaleToken} guards every arm at runtime.
+ * optional), so the resolution that produces {@link ResolvedScale} guards every
+ * arm at runtime.
  *
  * @category Theme
  */
@@ -616,10 +617,11 @@ export interface Theme {
     /**
      * The framework's global scale knob plus the font-coupled size ratios that
      * follow it. `base` is the root size in px, mirrored to CSS as
-     * `--ts-ui-base-size` and read back in JS via {@link readBaseSizePx}; SVG
-     * glyph boxes and JS layout constants size off it (CSS `font-size` does not
-     * reach an SVG glyph). Each non-`base` token is a {@link ScaleToken}
-     * resolved through {@link resolveScaleToken}.
+     * `--ts-ui-base-size`; SVG glyph boxes and JS layout constants size off it
+     * (CSS `font-size` does not reach an SVG glyph). Each non-`base` token is a
+     * {@link ScaleToken}; the block is resolved to a numeric
+     * {@link ResolvedScale} once per {@link ThemeManager.setTheme} and read by
+     * layout code via {@link ThemeManager.getResolvedScale}.
      */
     scale: {
         /** Root base size in px; the global scale knob. Mirror of `--ts-ui-base-size`. */
@@ -707,55 +709,54 @@ export function defineTheme(base: DeepPartial<Theme>, overrides: DeepPartial<The
 }
 
 /**
- * Reads the framework base size (`--ts-ui-base-size`) off the document root as a
- * px number — the live runtime view of `scale.base`. SVG glyph boxes and JS
- * layout constants multiply it by a {@link ScaleToken} ratio (via
- * {@link resolveScaleToken}) to size with the scale knob.
- *
- * Calls `getComputedStyle`, so it must run at layout/render time, never in a
- * constructor (the framework's defer-construction-time-reads rule). Mirrors
- * `ProgressSpinner`'s reader of `--ts-ui-font-size`, with the same
- * `parseFloat` + `NaN`→`14` fallback.
- *
- * @returns The current base size in pixels, or `14` when the var is unset or unparseable.
+ * The theme's {@link Theme.scale} block with every {@link ScaleToken} resolved
+ * to a px number against the base size. Computed once per
+ * [`setTheme`](/api/core/classes/ThemeManager#settheme) and read by layout code
+ * via [`getResolvedScale`](/api/core/classes/ThemeManager#getresolvedscale), so
+ * SVG glyph boxes and JS layout constants read a plain number instead of
+ * resolving a token on every layout pass.
  *
  * @category Theme
  */
-export function readBaseSizePx(): number {
-    const raw    = getComputedStyle(document.documentElement)
-                       .getPropertyValue('--ts-ui-base-size').trim();
-    const parsed = parseFloat(raw);
-
-    return isNaN(parsed) ? 14 : parsed;
-}
+export type ResolvedScale = { readonly [K in keyof Theme["scale"]]: number };
 
 /**
- * Resolves a {@link ScaleToken} to px against a live `base` (typically
- * {@link readBaseSizePx}). `{ scale }` is a ratio of the base
- * (`round(base * scale)`, grows with it); `{ fixed }` is absolute px that stays
- * put.
+ * Resolves a {@link ScaleToken} to px against `base`. `{ scale }` is a ratio of
+ * the base (`round(base * scale)`, grows with it); `{ fixed }` is absolute px
+ * that stays put.
  *
  * Every arm is guarded because
  * [`DeepPartial`](/api/core/type-aliases/DeepPartial) weakens the union to
  * `{ scale? } | { fixed? }` inside a theme literal, so an authored token can be
  * malformed (`{}`, both-present) without a compile error. `scale` wins when both
  * are somehow present; a token missing both falls back to `base` so a malformed
- * theme degrades visibly (base px) rather than producing `NaN` or crashing. Call
- * at layout/render time with the live base.
- *
- * @param token - The scale token from the theme's {@link Theme.scale} block.
- * @param base - The live base size in px.
- * @returns The resolved size in pixels.
- *
- * @category Theme
+ * theme degrades visibly (base px) rather than producing `NaN` or crashing.
  */
-export function resolveScaleToken(token: ScaleToken, base: number): number {
+function resolveScaleToken(token: ScaleToken, base: number): number {
     const t = token as { scale?: number; fixed?: number };
 
     if (typeof t.scale === 'number') return Math.round(base * t.scale);
     if (typeof t.fixed === 'number') return t.fixed;
 
     return base;
+}
+
+/**
+ * Resolves a theme's whole `scale` block to a numeric {@link ResolvedScale}
+ * snapshot. Runs once per {@link ThemeManager.setTheme} (and once at module load
+ * for the default theme), reading `scale.base` directly off the theme object —
+ * no `getComputedStyle` — so layout code never resolves a token itself.
+ */
+function resolveScale(theme: Theme): ResolvedScale {
+    const base = theme.scale.base;
+
+    return {
+        base,
+        titleGlyph    : resolveScaleToken(theme.scale.titleGlyph, base),
+        tabClose      : resolveScaleToken(theme.scale.tabClose, base),
+        tabCloseGlyph : resolveScaleToken(theme.scale.tabCloseGlyph, base),
+        tabButtonInset: resolveScaleToken(theme.scale.tabButtonInset, base),
+    };
 }
 
 /**
@@ -1080,6 +1081,7 @@ function ensureFontLoaded(): void {
  */
 export class ThemeManager {
     private static current: Theme = ModernTheme;
+    private static resolvedScale: ResolvedScale = resolveScale(ModernTheme);
     private static themeListeners: Array<() => void> = [];
 
     /**
@@ -1111,6 +1113,7 @@ export class ThemeManager {
         ensureFontLoaded();
 
         ThemeManager.current = theme;
+        ThemeManager.resolvedScale = resolveScale(theme);
 
         const rootStyle = new InlineStyle();
         rootStyle.setMany(themeToVars(theme));
@@ -1136,5 +1139,17 @@ export class ThemeManager {
      */
     static getTheme(): Theme {
         return ThemeManager.current;
+    }
+
+    /**
+     * Returns the active theme's `scale` block resolved to px numbers — the snapshot
+     * computed by the last `setTheme` (defaulting to [`ModernTheme`](/api/core/variables/ModernTheme)'s).
+     * Layout code reads these numbers directly instead of resolving a {@link ScaleToken}
+     * per pass; a base or token change re-resolves on the next `setTheme`.
+     *
+     * @returns The resolved scale snapshot for the active theme.
+     */
+    static getResolvedScale(): ResolvedScale {
+        return ThemeManager.resolvedScale;
     }
 }

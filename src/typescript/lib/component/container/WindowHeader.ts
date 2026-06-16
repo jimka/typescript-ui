@@ -4,7 +4,7 @@ import { Header, HeaderOptions } from "~/component/display/Header.js";
 import { Button, ClickListener } from "~/component/button/Button.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
-import { ThemeManager, readBaseSizePx, resolveScaleToken } from "~/core/Theme.js";
+import { ThemeManager } from "~/core/Theme.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
 import { Fit } from "~/layout/Fit.js";
@@ -190,15 +190,15 @@ class WindowHeader extends Header {
     }
 
     /**
-     * Resolves the title-glyph ink size in px from the theme's
-     * `scale.titleGlyph` token against the live base size. Read at render time
-     * (the `updatePreferredSize` re-pin and `setGlyph`) and never cached, so a
-     * base- or theme-change re-resolves it.
+     * Reads the title-glyph ink size in px from the active theme's resolved
+     * scale snapshot. Read at render time (the `updatePreferredSize` re-pin and
+     * `setGlyph`); a base- or theme-change re-resolves the snapshot in `setTheme`
+     * and the next layout pass picks it up.
      *
      * @returns The title-glyph ink size in pixels.
      */
     private resolveTitleGlyphInk(): number {
-        return resolveScaleToken(ThemeManager.getTheme().scale.titleGlyph, readBaseSizePx());
+        return ThemeManager.getResolvedScale().titleGlyph;
     }
 
     /**

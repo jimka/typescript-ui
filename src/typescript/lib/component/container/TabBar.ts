@@ -8,7 +8,7 @@ import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { Button } from "~/component/button/Button.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { Event } from "~/core/Event.js";
-import { ThemeManager, readBaseSizePx, resolveScaleToken } from "~/core/Theme.js";
+import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ButtonGroup } from "~/core/ButtonGroup.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
@@ -1456,7 +1456,7 @@ class TabBar extends Container<TabBarOptions> {
             borderLeft:   "var(--ts-ui-tab-button-selected-border-left,   var(--ts-ui-tab-button-selected-border, none))",
         });
 
-        tabButton.setInsets(this.computeTabButtonInsets(readBaseSizePx(), constraints));
+        tabButton.setInsets(this.computeTabButtonInsets(constraints));
 
         if (constraints?.glyph) {
             tabButton.setGlyph(constraints.glyph);
@@ -1499,7 +1499,7 @@ class TabBar extends Container<TabBarOptions> {
             // lighter. Pin it (Glyph.setPreferredSize locks min/max too) so the
             // line-height sync never re-tracks the glyph to the title line height;
             // positionCloseButtons re-pins it to the base-scaled size each layout.
-            closeButton.pinGlyphSize(resolveScaleToken(ThemeManager.getTheme().scale.tabCloseGlyph, readBaseSizePx()));
+            closeButton.pinGlyphSize(ThemeManager.getResolvedScale().tabCloseGlyph);
 
             // Overlay it inside the cell rather than enrolling it in the Fit
             // layout (which would stretch it over the whole tab); `layoutChrome`
@@ -1738,9 +1738,9 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Derives a tab button's insets from the current `_compact` flag and the live
-     * base size. The label gets two `pad` units of breathing room per side (`pad`
-     * is the `scale.tabButtonInset` token resolved against `base`, halved when
+     * Derives a tab button's insets from the current `_compact` flag and the
+     * active theme's resolved scale. The label gets two `pad` units of breathing
+     * room per side (`pad` is the resolved `scale.tabButtonInset`, halved when
      * compact); closeable tabs additionally reserve the resolved `scale.tabClose`
      * close-button box on the edge where {@link positionCloseButtons} pins the ✕ —
      * the right for upright text (north/south and west/east horizontal), the
@@ -1748,18 +1748,15 @@ class TabBar extends Container<TabBarOptions> {
      * Both the reservation and the pad scale with the base, while only the pad
      * additionally shrinks in the dense strip, so the glyph keeps its clearance.
      *
-     * @param base - The live base size in px (resolve once per layout pass and
-     *   pass in, so the per-tab loop reads `--ts-ui-base-size` only once).
      * @param constraints - The tab's layout constraints; `constraints.closeable`
      *   adds the close-button reservation.
      *
      * @returns The insets to apply to the tab button.
      */
-    private computeTabButtonInsets(base: number, constraints?: LayoutConstraints): Insets {
-        const theme = ThemeManager.getTheme();
-        const inset = resolveScaleToken(theme.scale.tabButtonInset, base);
-        const pad = this._compact ? Math.round(inset / 2) : inset;
-        const closeReserve = constraints?.closeable ? resolveScaleToken(theme.scale.tabClose, base) : 0;
+    private computeTabButtonInsets(constraints?: LayoutConstraints): Insets {
+        const scale = ThemeManager.getResolvedScale();
+        const pad = this._compact ? Math.round(scale.tabButtonInset / 2) : scale.tabButtonInset;
+        const closeReserve = constraints?.closeable ? scale.tabClose : 0;
 
         if (this.isRotatedText()) {
             // Rotated label runs along the cell, ending where it stops reading:
@@ -1788,13 +1785,10 @@ class TabBar extends Container<TabBarOptions> {
      * strip thickness supplies that dimension and the stretching tool group fills
      * the button to it), so only the main-axis pad tightens in compact mode.
      *
-     * @param base - The live base size in px (the `scale.tabButtonInset` token
-     *   resolves against it, matching the tab buttons).
-     *
      * @returns The insets to apply to each tool button.
      */
-    private computeToolButtonInsets(base: number): Insets {
-        const inset = resolveScaleToken(ThemeManager.getTheme().scale.tabButtonInset, base);
+    private computeToolButtonInsets(): Insets {
+        const inset = ThemeManager.getResolvedScale().tabButtonInset;
         const pad = this._compact ? Math.round(inset / 2) : inset;
 
         if (this.isVertical()) {
@@ -1895,13 +1889,8 @@ class TabBar extends Container<TabBarOptions> {
         if (!this.isVertical()) {
             let maxCross = base;
 
-            // Resolve the base size once for the whole loop — the per-entry
-            // stripChrome reads the same token, and reading --ts-ui-base-size per
-            // entry would interleave style-recalc flushes with the layout reads.
-            const baseSize = readBaseSizePx();
-
             for (const entry of this._entries) {
-                maxCross = Math.max(maxCross, this.buttonCrossExtent(entry.button) + this.stripChrome(baseSize));
+                maxCross = Math.max(maxCross, this.buttonCrossExtent(entry.button) + this.stripChrome());
             }
 
             return maxCross;
@@ -1937,13 +1926,10 @@ class TabBar extends Container<TabBarOptions> {
      * scales with the base and shrinks in lockstep with `compact` exactly as the
      * insets do.
      *
-     * @param base - The live base size in px (the same `scale.tabButtonInset`
-     *   token the button insets resolve, so the two stay matched).
-     *
      * @returns The combined top+bottom chrome in px (`pad * 2` per side).
      */
-    private stripChrome(base: number): number {
-        const inset = resolveScaleToken(ThemeManager.getTheme().scale.tabButtonInset, base);
+    private stripChrome(): number {
+        const inset = ThemeManager.getResolvedScale().tabButtonInset;
         const pad = this._compact ? Math.round(inset / 2) : inset;
 
         return pad * 2 * 2;
@@ -2269,13 +2255,8 @@ class TabBar extends Container<TabBarOptions> {
             : this._orientation === "vertical-ccw" ? "sideways-lr"
             : null;
 
-        // Resolve the base size once for both inset loops — reading
-        // --ts-ui-base-size per button would interleave style-recalc flushes with
-        // the per-button setInsets writes.
-        const base = readBaseSizePx();
-
         for (const entry of this._entries) {
-            entry.button.setInsets(this.computeTabButtonInsets(base, entry.constraints));
+            entry.button.setInsets(this.computeTabButtonInsets(entry.constraints));
 
             // Writing mode before text-align: the label justification maps to a
             // content anchor along the reading axis, so the button must already
@@ -2289,7 +2270,7 @@ class TabBar extends Container<TabBarOptions> {
             entry.button.setTextAlign(this._textAlign);
         }
 
-        const toolInsets = this.computeToolButtonInsets(base);
+        const toolInsets = this.computeToolButtonInsets();
 
         for (const tool of this._tools) {
             tool.setInsets(toolInsets);
@@ -2435,15 +2416,14 @@ class TabBar extends Container<TabBarOptions> {
     private positionCloseButtons(): void {
         const rotated = this.isRotatedText();
 
-        // Resolve the close-button box and ✕ ink once for the whole loop (one
-        // --ts-ui-base-size read), then size and re-pin every button — re-pinning
-        // here is what lets an existing ✕ follow a base-size change, since the
-        // entry-creation pin only sets the initial size. Both setters no-op when
-        // the value is unchanged, so a same-base pass costs nothing.
-        const theme = ThemeManager.getTheme();
-        const base = readBaseSizePx();
-        const closeSize = resolveScaleToken(theme.scale.tabClose, base);
-        const glyphSize = resolveScaleToken(theme.scale.tabCloseGlyph, base);
+        // Read the resolved close-button box and ✕ ink, then size and re-pin every
+        // button — re-pinning here is what lets an existing ✕ follow a base-size
+        // change, since the entry-creation pin only sets the initial size. Both
+        // setters no-op when the value is unchanged, so a same-scale pass costs
+        // nothing.
+        const scale = ThemeManager.getResolvedScale();
+        const closeSize = scale.tabClose;
+        const glyphSize = scale.tabCloseGlyph;
 
         for (const entry of this._entries) {
             const closeButton = entry.closeButton;
