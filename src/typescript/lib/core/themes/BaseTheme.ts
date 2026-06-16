@@ -24,9 +24,9 @@ export const BaseTheme: DeepPartial<Theme> = {
     },
     button: {
         padding: '0',
-        font   : { size: '12px' },
+        font   : { size: '-2px' },      // base − 2 → 12px at the 14px base
         description: {
-            fontSize: '11px',
+            fontSize: '-3px',           // base − 3 → 11px at the 14px base
             weight  : 'normal',
         },
     },
@@ -44,11 +44,11 @@ export const BaseTheme: DeepPartial<Theme> = {
         minDockWidth: '200px',
     },
     header: {
-        font   : { size: '12px' },
+        font   : { size: '-2px' },      // base − 2 → 12px at the 14px base
     },
     table: {
         header: {
-            font : { size: '13px' },
+            font : { size: '-1px' },    // base − 1 → 13px at the 14px base
             glyph: { gap: '4px' },
         },
         cell: {
@@ -60,7 +60,7 @@ export const BaseTheme: DeepPartial<Theme> = {
             cursor: 'ew-resize',
         },
         sortBadge: {
-            fontSize: '10px',
+            fontSize: '-4px',           // base − 4 → 10px at the 14px base
         },
     },
     menuBar: {

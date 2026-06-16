@@ -45,7 +45,7 @@ export { Dock } from '~/core/Dock.js';
 export type { DockOptions, DockPanelSpec, DockLayoutSpec } from '~/core/Dock.js';
 
 export { ThemeManager, BaseTheme, ClassicTheme, DarkTheme, ModernTheme, defineTheme } from '~/core/Theme.js';
-export type { Theme, DeepPartial, ScaleToken, ResolvedScale } from '~/core/Theme.js';
+export type { Theme, DeepPartial, ScaleToken, ResolvedScale, FontSizeToken } from '~/core/Theme.js';
 
 export { StyleTarget, StyleRule, InlineStyle } from '~/core/StyleTarget.js';
 export type { StyleRuleScope, StyleRuleSpec } from '~/core/StyleTarget.js';
