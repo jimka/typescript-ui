@@ -230,7 +230,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // Eased wheel-scroll controller, lazily attached while an overflow axis is
     // scrollable (auto/scroll). Null otherwise — most components never scroll.
     private _wheelScroller        : SmoothScroller | null     = null;
-    private _wheelListener        : ((e: WheelEvent) => void) | null = null;
     private _contain              : string | null           = null;
     private _animation            : string | null           = null;
     private _outline              : string | null           = null;
@@ -3184,20 +3183,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             clamp: (axis, value) => Math.max(0, Math.min(axis === "x" ? this.getMaxScrollLeft() : this.getMaxScrollTop(), value)),
         });
 
-        this._wheelListener = (e: WheelEvent) => this.onWheelScroll(e);
-        Event.addSubtreeListener(this, "wheel", this._wheelListener, { passive: false });
+        Event.addSubtreeListener(this, "wheel", this.onWheelScroll, { passive: false });
     }
 
     /**
-     * Removes the wheel listener and drops the controller (cancelling any
-     * in-flight ease) once neither axis is scrollable.
+     * Removes the wheel listener, cancels any in-flight ease, and drops the
+     * controller once neither axis is scrollable.
      */
     private detachWheelScrolling(): void {
-        if (this._wheelListener) {
-            Event.removeSubtreeListener(this, "wheel", this._wheelListener);
-            this._wheelListener = null;
-        }
-
+        Event.removeSubtreeListener(this, "wheel", this.onWheelScroll);
+        this._wheelScroller?.reset();
         this._wheelScroller = null;
     }
 
