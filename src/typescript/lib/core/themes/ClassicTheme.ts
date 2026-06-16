@@ -126,6 +126,7 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
             selectedBorder: 'inset 0 0 0 1px rgba(30, 100, 200, 0.6)',
             new           : 'rgba(70, 200, 70, 0.15)',
             dirty         : 'rgba(255, 165, 0, 0.15)',
+            stripe        : 'rgba(0, 0, 0, 0.035)',
         },
         cell  : {
             background        : 'transparent',
