@@ -100,6 +100,18 @@ Button('Save', { chromeless: true });
 
 Runtime toggle via `setChromeless(value)`; read with `isChromeless()`. Toggling back to chromeful restores chrome from `_defaultOptions`, so subclass chrome layered in at construction round-trips losslessly — only consumer-supplied chrome (passed through the caller's `options` bag) is not recovered.
 
+## Flat appearance
+
+`flat: true` gives the classical Office/Windows toolbar look: no resting border, shadow, or gradient, but a light frame plus subtle fill on `:hover:not(:active)` and a sunken inset frame on `:active`. Unlike `chromeless` — which strips the hover and pressed treatments entirely — `flat` keeps the interaction framing; it only suppresses the resting chrome. The hover and pressed colours come from the `--ts-ui-button-flat-*` theme tokens (see [Theming](/concepts/theming)), so the appearance tracks the active theme.
+
+```typescript
+Button({ glyph: 'check', flat: true });
+```
+
+A glyph-only flat button (a glyph with an empty label) tightens to a compact square so it reads as a toolbar icon button. Buttons with text keep their default insets.
+
+Runtime toggle via `setFlat(value)`; read with `isFlat()`. Toggling back restores the raised chrome from `_defaultOptions` (the same loss tradeoff as `setChromeless(false)` — only defaults round-trip, not consumer-supplied chrome). `flat` and `chromeless` are mutually exclusive and `chromeless` wins: `setFlat(true)` is ignored with a dev-time warning while the button is chromeless. A flat [`ToggleButton`](/components/ToggleButton) renders its selected state with the same sunken treatment, so a toggled-on toolbar button reads as depressed.
+
 ## Content anchor
 
 By default the content row (`glyph` + `text`) is centred within the button. Pass `anchor` (and optionally `fill`) to override:

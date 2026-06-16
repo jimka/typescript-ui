@@ -49,6 +49,11 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `button.hover.background` | `--ts-ui-button-hover-bg` | Background while the pointer is over a button (but not pressed) |
 | `button.hover.foreground` | `--ts-ui-button-hover-fg` | Text color while the pointer is over a button (default `inherit`) |
 | `button.hover.shadow` | `--ts-ui-button-hover-shadow` | Drop shadow while the pointer is over a button |
+| `button.flat.hover.background` | `--ts-ui-button-flat-hover-bg` | Subtle fill on `:hover:not(:active)` of a [flat](/components/Button#flat-appearance) button |
+| `button.flat.hover.border` | `--ts-ui-button-flat-hover-border` | Light frame on hover of a flat button |
+| `button.flat.pressed.background` | `--ts-ui-button-flat-pressed-bg` | Fill of the sunken `:active` / `.selected` state of a flat button |
+| `button.flat.pressed.shadow` | `--ts-ui-button-flat-pressed-shadow` | Sunken inset frame for the `:active` and flat `.selected` states |
+| `button.flat.pressed.border` | `--ts-ui-button-flat-pressed-border` | Frame around the sunken state of a flat button |
 | `toggle.selected.background` | `--ts-ui-toggle-selected-bg` | Background of a selected [`ToggleButton`](/api/component/button/classes/ToggleButton) or [`RadioButton`](/api/component/input/classes/RadioButton) |
 | `toggle.selected.shadow` | `--ts-ui-toggle-selected-shadow` | Inset shadow on a selected toggle / radio |
 | `input.background` | `--ts-ui-input-bg` | Background of text inputs, password fields, text areas, checkboxes, and the table body |
