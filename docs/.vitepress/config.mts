@@ -69,6 +69,7 @@ export default defineConfig({
                 { text: 'Buttons', collapsed: false, items: [
                     { text: 'Button',         link: '/components/Button' },
                     { text: 'ToggleButton',   link: '/components/ToggleButton' },
+                    { text: 'SplitButton',    link: '/components/SplitButton' },
                     { text: 'RadioButton',    link: '/components/RadioButton' },
                     { text: 'ButtonGroup',    link: '/components/ButtonGroup' },
                     { text: 'SpinButton',     link: '/components/SpinButton' },
