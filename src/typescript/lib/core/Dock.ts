@@ -578,9 +578,11 @@ class Dock extends Container<DockOptions> {
         if (this.isTab(region) && !wiring.tabWired) {
             (manager as Tab).setReorderable(true);
             (manager as Tab).on("empty", () => this.pruneRegion(region));
-            // Adopt the torn-off float on the next sweep. "empty" only covers a
-            // tear-off that drains the strip; "detached" fires for every tear-off,
-            // so a tab torn off a strip that keeps siblings still gets adopted.
+            // Sweep after the source strip loses a tab by tear-off. "empty" only
+            // covers a tear-off that drains the strip; "detached" fires for every
+            // tear-off, so the sweep also runs when the strip keeps siblings —
+            // pruning the source side and adopting any Shift-torn bare Window
+            // float (a default TabWindow float is self-contained and skipped).
             (manager as Tab).on("detached", () => this.scheduleSweep());
 
             wiring.tabWired = true;
