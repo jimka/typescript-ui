@@ -6,8 +6,8 @@ import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Menu } from "~/core/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { Fit } from "~/layout/Fit.js";
 import { Insets } from "~/primitive/Insets.js";
-import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 import { caret_down } from "~/glyphs/solid/caret_down.js";
 
@@ -123,6 +123,10 @@ class SplitButton extends Button<SplitButtonOptions> {
         chevron.setPreferredSize(CHEVRON_ZONE, CHEVRON_ZONE);
 
         this._chevronZone = new Component();
+        // A Fit layout sizes the wrapper to the chevron glyph; a bare Component
+        // defaults to an Absolute layout that reports 0×0 and would collapse the
+        // hit zone in the content row's HBox.
+        this._chevronZone.setLayoutManager(new Fit());
         this._chevronZone.setInsets(new Insets(0, 0, 0, 0));
         this._chevronZone.setPointerEvents("auto");
         this._chevronZone.setCursor("pointer");
@@ -177,15 +181,20 @@ class SplitButton extends Button<SplitButtonOptions> {
     }
 
     /**
-     * Returns the button's auto-derived preferred size, which already includes
-     * the trailing chevron zone because the chevron rides the content row that
-     * the size is measured from. Restated here (rather than inherited) so the
-     * generated docs carry this subclass's own description.
+     * Re-appends the trailing chevron after the inherited content-row rebuild.
+     * Button's `_rebuildContentRow` empties `_content` wholesale (on a
+     * `setGlyph` / `setDescription` / writing-mode change), which would detach
+     * the chevron; re-appending it last keeps the dropdown affordance trailing
+     * the title across those mutations.
      *
-     * @returns The preferred `{width, height}`.
+     * @remarks Guarded on `_chevronZone` because the rebuilds dispatched during
+     * the super-cascade run before the constructor builds the chevron; those
+     * skip, and the constructor appends it once afterwards.
      */
-    getPreferredSize(): Size | null {
-        return super.getPreferredSize();
+    protected override _afterRebuildContentRow(): void {
+        if (this._chevronZone) {
+            this._content.addComponent(this._chevronZone);
+        }
     }
 
     /**
