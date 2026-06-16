@@ -2833,6 +2833,28 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Re-reads the element's native scroll offsets into the cache that backs
+     * {@link getScrollLeft} / {@link getScrollTop}. That cache is authoritative
+     * only while the scroll is driven through {@link setScrollLeft} /
+     * {@link setScrollTop}; the browser also clamps the native offset on its own
+     * when the scrollable range shrinks (e.g. content laid out smaller than the
+     * current offset), bypassing those setters and leaving the cache stale. Call
+     * this after such a layout so the cache matches the DOM again.
+     *
+     * @returns This component, for method chaining.
+     */
+    syncScrollOffsets(): this {
+        const element = this.getElement();
+
+        if (element) {
+            this._scrollLeft = element.scrollLeft;
+            this._scrollTop = element.scrollTop;
+        }
+
+        return this;
+    }
+
+    /**
      * Returns the maximum horizontal scroll offset — the content's overflow past
      * the element's viewport (`scrollWidth - clientWidth`).
      *
