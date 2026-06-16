@@ -10,6 +10,7 @@ Before producing any code or commits, read in full:
 - [`CODE_CONVENTIONS.md`](../../../CODE_CONVENTIONS.md) — Code style, JSDoc, Framework rules, deferred DOM writes.
 - [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — Documentation updates, JSDoc cross-bucket links, typedoc-callable plugin.
 - [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
+- [`.claude/skills/_shared/worktree.md`](../_shared/worktree.md) — Worktree location, creation, reuse, and no-op cleanup. All implementation work happens in a worktree under `.worktrees/`.
 
 These contain the project's authoritative conventions. Sections below assume you've read them.
 
@@ -34,21 +35,19 @@ Build a DAG from hard deps. Reject cycles. Topo-sort; within each level, greedy-
 
 ## Multi-plan dispatch
 
-Worktrees are parent-orchestrated, not harness-isolated, so every concurrent run lives under a predictable, browsable root. Per phase:
+Worktrees are parent-orchestrated, not harness-isolated, so every concurrent run lives under a predictable, browsable root (see [`_shared/worktree.md`](../_shared/worktree.md)). Per phase:
 
 1. Pre-create a worktree per plan: `git worktree add .worktrees/<plan-slug> -b feature/<plan-slug>`.
-2. Launch one `Agent` per plan, `subagent_type: "general-purpose"`, **without** `isolation: "worktree"` (worktrees already exist). Prompt each agent to `cd .worktrees/<plan-slug>` and re-enter this skill in single-plan mode for its assigned plan. The branch is already checked out — _Work Instructions_ step 3.4 stays on it.
+2. Launch one `Agent` per plan, `subagent_type: "general-purpose"`, **without** `isolation: "worktree"` (worktrees already exist). Prompt each agent to `cd .worktrees/<plan-slug>` and re-enter this skill in single-plan mode for its assigned plan. The branch is already checked out — _Work Instructions_ step 3.5 detects this and stays on it.
 3. Wait for the phase to complete before starting the next.
-4. **Cleanup no-op worktrees.** For each returned branch, if `git -C .worktrees/<plan-slug> log feature/<plan-slug> --not master` is empty, run `git worktree remove .worktrees/<plan-slug>` and `git branch -D feature/<plan-slug>`.
+4. **Cleanup no-op worktrees** per `_shared/worktree.md`: for each returned branch with no commits beyond `master`, remove the worktree and delete the branch.
 5. Surface each surviving worktree path and branch so the user can merge in order.
-
-Add `.worktrees/` to `.gitignore` once at the project root. The path is conventional and lets the user `ls .worktrees/` between phases to inspect in-flight work.
 
 ## In-progress lifecycle
 
-- Start of work: move plan from `plans/` to `plans/in-progress/`. Commit.
-- Completion: move from `plans/in-progress/` to `plans/implemented/` in the code commit.
-- Abort: move back to `plans/`.
+- Start of work: the plan is untracked in the main tree and does not transfer to a fresh worktree, so copy it into the worktree's `plans/in-progress/<slug>.md`, then delete the main-tree copy. Commit the move (inside the worktree) as bookkeeping.
+- Completion: move from `plans/in-progress/` to `plans/implemented/` in the code commit (inside the worktree).
+- Abort: copy the plan back to the main tree's `plans/<slug>.md` and remove the worktree.
 
 `plans/in-progress/` acts as a soft lock — other invocations should skip plans listed there.
 
@@ -69,7 +68,7 @@ When `touches-shared` is non-empty: edit each shared file last; one atomic commi
 
 ## Rebase-clean checkpoint
 
-In worktree mode, before declaring done: `git fetch origin && git rebase origin/master`. Resolve any conflicts in the worktree and re-run typecheck + `docs:build` + smoke. Don't return a branch that won't merge.
+In the worktree, before declaring done: `git fetch origin && git rebase origin/master`. Resolve any conflicts in the worktree and re-run typecheck + `docs:build` + smoke. Don't return a branch that won't merge.
 
 ## Audit
 
@@ -96,7 +95,7 @@ Walk this list before yielding control. Any unchecked item means you are not don
 - [ ] `npm run docs:build` reports 0 errors and 0 link warnings (typedoc's "unsupported TypeScript version" notice is acceptable)
 - [ ] Audit returned no BLOCKING issues on the most recent cycle
 - [ ] Commits follow the `commit` skill's bucket structure (code / docs / tooling / bookkeeping), plus any audit-fix commits
-- [ ] If in worktree mode: rebase-clean checkpoint passed
+- [ ] Work was done in a worktree under `.worktrees/` (not the main tree), and the rebase-clean checkpoint passed
 
 If any item is unchecked, resume at the appropriate step. Do not stop just because the last file write succeeded or the last command returned cleanly.
 
@@ -109,8 +108,8 @@ If any item is unchecked, resume at the appropriate step. Do not stop just becau
    2. Read the plan.
    3. Check the codebase for incompatibilities (renamed/removed APIs, signature changes, file moves, broken assumptions). Update the plan in place if drift is found.
    4. If incompatibilities were found, stop and ask the user to review.
-   5. **(fresh only)** If on `master`, create and check out `feature/<short-feature-slug>`. Otherwise stay on the current branch.
-   6. **(fresh only)** Move the plan from `plans/` to `plans/in-progress/`. Commit.
+   5. **(fresh only)** Work in a worktree under `.worktrees/` per [`_shared/worktree.md`](../_shared/worktree.md) — never edit source in the main tree. If a parent dispatch already placed you in `.worktrees/<slug>` with `feature/<slug>` checked out, stay there. Otherwise create it: `git worktree add .worktrees/<slug> -b feature/<slug>`, then `cd .worktrees/<slug>`. Reuse an existing `.worktrees/<slug>` rather than duplicating it.
+   6. **(fresh only)** Bring the plan into the worktree per _In-progress lifecycle_: copy the untracked main-tree plan to the worktree's `plans/in-progress/<slug>.md`, delete the main-tree copy, and commit the move as bookkeeping.
    7. Implement. On resume, pick up at the step identified by _Resume detection_.
 
       **Definition of done for this step:** every file in the plan's "Files to Create/Modify/Delete" table has been written, every entry in "Ordered Implementation Steps" is addressed, and `npx tsc --noEmit` is clean. Do not advance to step 8 until this clears. Running `git status` / `ls` and seeing reasonable output is not the same as verifying this list.

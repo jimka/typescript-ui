@@ -7,6 +7,14 @@ description: Investigate a bug, layout/sizing issue, or performance regression i
 
 - [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) — the framework rules a fix must not silently violate. A bug that goes away only because a typed setter was bypassed is not fixed.
 
+## Where to work
+
+Debug works where the buggy feature already lives — it does **not** create new worktrees. Run `git worktree list` to find out:
+
+- **Existing worktree.** If the feature has a worktree (conventionally `.worktrees/<slug>`), do all investigation and fixes there.
+- **Main tree.** Otherwise, if the feature is checked out in the main working tree, work there.
+- **Neither.** If the feature is on a branch that is neither checked out in the main tree nor has a worktree, stop and ask the user how to proceed — do not create a worktree or switch the main tree's branch yourself.
+
 ## Approach
 
 Root-cause first, fix second. Read the actual call chain. Don't propose a fix until you can name the function, class, or line that produced the wrong behaviour.

@@ -10,6 +10,7 @@ Before drafting, read in full:
 - [`CODE_CONVENTIONS.md`](../../../CODE_CONVENTIONS.md) — Code style, JSDoc, Framework rules. Plans must not silently violate these; flag any unavoidable violation in `## Architecture Decisions`.
 - [`.claude/skills/_shared/docs-conventions.md`](../_shared/docs-conventions.md) — What docs need to change when public API moves. Cited from `## Documentation Impact`.
 - [`.claude/skills/_shared/plan-frontmatter.md`](../_shared/plan-frontmatter.md) — Optional plan frontmatter spec.
+- [`.claude/skills/_shared/worktree.md`](../_shared/worktree.md) — Worktree location, creation, and no-op cleanup. Each plan is drafted inside a worktree under `.worktrees/`.
 
 ## Purpose
 
@@ -29,10 +30,12 @@ Produce a written Markdown plan matching `{workspace}/plans/` conventions. Plans
 
 Every spawned plan agent gets a self-contained prompt because sub-agents don't inherit this skill. Each prompt must:
 
-- Start with: `Read /home/jika/typescript/typescript/.claude/skills/plan/SKILL.md first and follow it exactly. Do not modify source code — produce a Markdown plan only.` This pulls the skill in fresh on the sub-agent side, so the **Plan Format**, **Style**, and **What Not To Do** sections below apply to the sub-agent's output without you needing to paste them.
-- **Name the output filename up front** (kebab-case, derived from the feature) as the absolute path `{workspace}/plans/<name>.md`. Tell it to confirm via `ls plans/` that it doesn't collide.
+- Start with: `Read /home/jika/typescript/typescript/.claude/skills/plan/SKILL.md and /home/jika/typescript/typescript/.claude/skills/_shared/worktree.md first and follow them exactly. Do not modify source code — produce a Markdown plan only.` This pulls the skill in fresh on the sub-agent side, so the **Plan Format**, **Style**, and **What Not To Do** sections below apply to the sub-agent's output without you needing to paste them.
+- **Tell it to draft in a worktree.** Create `.worktrees/<slug>` per `_shared/worktree.md` (`git worktree add .worktrees/<slug> -b feature/<slug>`), `cd` into it, and do all investigation and drafting there — the main tree stays untouched.
+- **Name the output filename up front** (kebab-case `<name>`, derived from the feature). The sub-agent drafts at `<worktree>/plans/<name>.md`, then copies the finished file to the **main tree** at the absolute path `/home/jika/typescript/typescript/plans/<name>.md` so `/implement` finds it. Tell it to confirm via `ls /home/jika/typescript/typescript/plans/` that the name doesn't collide.
+- **Tell it to clean up.** Since the plan adds no source changes, the worktree is a no-op — after copying the plan back, remove it per `_shared/worktree.md` (`git worktree remove` + `git branch -D`).
 - **Scope narrowly:** one feature, the files it should investigate, the success criteria, and any architecture decisions you've already made for it. Hand over the **question**, not a script of steps — the sub-agent's job is to read code and form judgements, not to follow your prescriptions.
-- **Tell it to report back only the final path and a one-sentence summary.** Do not ask it to dump the plan body into the response — the file on disk is the artefact.
+- **Tell it to report back only the final main-tree path and a one-sentence summary.** Do not ask it to dump the plan body into the response — the file on disk is the artefact.
 
 ## Parallel Plans
 

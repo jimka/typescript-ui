@@ -23,6 +23,16 @@ Before spawning, pin down **what** is being reviewed. If the user's request is a
 
 If the user names a target you cannot locate (missing plan file, unknown branch), stop and ask rather than guess.
 
+## Worktree
+
+For branch-shaped targets (branch/PR diff, implemented-plan + branch), the review runs inside a worktree so the user's main tree keeps its current branch (see [`_shared/worktree.md`](../_shared/worktree.md)):
+
+- **Reuse first.** Run `git worktree list`. If `.worktrees/<slug>` already exists for the branch — e.g. an `/implement` run created it — point the reviewer there. Do not remove it; it isn't yours.
+- **Else create.** `git worktree add .worktrees/<slug> feature/<slug>`. After the reviewer returns, remove the worktree you created (`git worktree remove .worktrees/<slug>`); leave the branch alone.
+- **In-place targets.** Plan files, specific files, and open-ended subjects are read where they sit — no worktree.
+
+Pass the chosen worktree path to the reviewer (it must `cd` there before reading).
+
 ## Spawn the reviewer
 
 Invocation: `Agent({ subagent_type: "general-purpose", description: "Expert review", prompt: <below> })`.
@@ -37,6 +47,8 @@ Adapt the **Target** and **Method** lines to the target shape. Keep the rule poi
 > 3. `.claude/skills/_shared/docs-conventions.md` — documentation rules (read only if the target touches public API or docs).
 > 4. For plan reviews: `.claude/skills/plan/SKILL.md` (plan format) and `.claude/skills/_shared/plan-frontmatter.md` (optional frontmatter spec).
 > 5. For implementation reviews: `.claude/skills/implement/SKILL.md` so you know what the implementer was required to do.
+>
+> **Where to work:** <worktree path, or "the main working tree">. If a worktree path is given, `cd` into it before reading anything — the target lives there, not in the main tree.
 >
 > **Target:** <one paragraph: what to review, where to find it, success criteria>.
 >
