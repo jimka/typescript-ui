@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { SmoothScroller, consumeWheel } from "~/core/SmoothScroller.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
 
 // VirtualScroller is a plain helper, not a Component: it owns and lays out raw
@@ -49,6 +50,7 @@ export class VirtualScroller {
     private _scrollY        : number = 0;
     private _contentWidth   : number = 0;
     private _contentHeight  : number = 0;
+    private _smooth         : SmoothScroller;
 
     /**
      * Constructs a VirtualScroller and attaches it to the owner element.
@@ -93,13 +95,29 @@ export class VirtualScroller {
         clipBox.appendChild(container);
         this._rowsContainer = container;
 
+        // Drives wheel-initiated scrolling through an eased RAF loop. The seam
+        // delegates to the existing setScrollX/Y (which clamp, write the
+        // transform, and fire onScroll, so the virtual window re-renders every
+        // frame) and clamps targets against the same effective-viewport bounds.
+        this._smooth = new SmoothScroller({
+            read:  (axis) => axis === "x" ? this._scrollX : this._scrollY,
+            write: (axis, value) => axis === "x" ? this.setScrollX(value) : this.setScrollY(value),
+            clamp: (axis, value) => this.clampAxis(axis, value),
+        });
+
         this._scrollbarV = new Scrollbar("vertical");
         element.appendChild(this._scrollbarV.getElement(true));
-        this._scrollbarV.on("scroll", (p: number) => this.setScrollY(p));
+        this._scrollbarV.on("scroll", (p: number) => {
+            this._smooth.reset();
+            this.setScrollY(p);
+        });
 
         this._scrollbarH = new Scrollbar("horizontal");
         element.appendChild(this._scrollbarH.getElement(true));
-        this._scrollbarH.on("scroll", (p: number) => this.setScrollX(p));
+        this._scrollbarH.on("scroll", (p: number) => {
+            this._smooth.reset();
+            this.setScrollX(p);
+        });
 
         this._owner.setTouchAction("none");
 
@@ -192,6 +210,33 @@ export class VirtualScroller {
         this._onScroll();
 
         return this;
+    }
+
+    /**
+     * Clamps a requested position for one axis to its `[0, max]` range, using
+     * the same effective-viewport bounds as `setScrollX/Y` so the eased wheel
+     * target converges exactly where the scrollbar thumb tops out.
+     *
+     * @param axis - The axis to clamp (`"x"` or `"y"`).
+     * @param value - The requested position in pixels.
+     *
+     * @returns The clamped position in pixels.
+     */
+    private clampAxis(axis: "x" | "y", value: number): number {
+        const max = axis === "x"
+            ? Math.max(0, this._contentWidth  - this.effectiveViewportW())
+            : Math.max(0, this._contentHeight - this.effectiveViewportH());
+
+        return Math.max(0, Math.min(max, value));
+    }
+
+    /**
+     * Aborts any in-flight eased wheel animation and re-seeds it from the live
+     * position. Call before a programmatic scroll jump (e.g. `scrollToRecord`)
+     * so a lingering ease can't snap the position back afterward.
+     */
+    resetWheelEase(): void {
+        this._smooth.reset();
     }
 
     /**
@@ -329,24 +374,26 @@ export class VirtualScroller {
     }
 
     /**
-     * Routes wheel events to setScrollX/Y. Shift+wheel without explicit
-     * deltaX is treated as horizontal scroll.
+     * Eases wheel input into the scroll position through the {@link SmoothScroller}.
+     * Shift+wheel without an explicit deltaX is treated as horizontal scroll.
+     * Claims the event so an ancestor scroll container doesn't also scroll it.
      *
      * @param e - The wheel event.
      */
     private onWheel(e: WheelEvent): void {
+        if (!consumeWheel(e)) {
+            return;
+        }
+
         e.preventDefault();
 
         if (e.shiftKey && e.deltaY !== 0 && e.deltaX === 0) {
-            this.setScrollX(this._scrollX + e.deltaY);
+            this._smooth.scrollBy(e.deltaY, 0);
+
             return;
         }
-        if (e.deltaX !== 0) {
-            this.setScrollX(this._scrollX + e.deltaX);
-        }
-        if (e.deltaY !== 0) {
-            this.setScrollY(this._scrollY + e.deltaY);
-        }
+
+        this._smooth.scrollBy(e.deltaX, e.deltaY);
     }
 
     /**
@@ -377,6 +424,7 @@ export class VirtualScroller {
                 return;
             }
             cancelMomentum();
+            this._smooth.reset();
             touchActive       = true;
             touchStartY       = e.touches[0].clientY;
             touchStartX       = e.touches[0].clientX;
