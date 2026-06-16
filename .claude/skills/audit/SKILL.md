@@ -65,13 +65,22 @@ Adapt the **Target** and **Method** lines to the target shape. Keep the rule poi
 >
 > **Do not fix anything. Report only.** Be specific and concise — every finding cites a file:line and states what's wrong.
 
-## After the reviewer returns
+## After the reviewer returns — audit/fix loop
 
-Surface the report to the user in full — both lists, citations preserved. Do not silently filter or compress findings.
+Surface each report to the user in full — both lists, citations preserved. Do not silently filter or compress findings.
 
-Act only on user request:
-- **BLOCKING** fixes: address each, then optionally re-spawn a fresh reviewer for a follow-up cycle (hard cap: 3 cycles before stopping and surfacing remaining findings).
-- **ADVISORY** fixes: only when the user asks.
+Then run an **audit/fix loop** until no BLOCKING findings remain, capped at **5 iterations**:
+
+1. **Surface** the reviewer's report (both lists, citations intact).
+2. **If there are BLOCKING findings,** fix every one of them. Address them in the working tree (or the worktree the reviewer used). Do not touch ADVISORY items unless the user asks. Fix autonomously — **only pause to query the user when a fix involves a genuine design decision or when a finding has multiple viable fixes** and the choice between them isn't dictated by the rule documents or surrounding code. For mechanical or unambiguous fixes, just apply them and keep looping.
+3. **Re-audit:** spawn a *fresh* reviewer (new context, same prompt and target) to review the now-fixed state. Each cycle's reviewer must inherit none of the previous cycle's reasoning.
+4. **Repeat** from step 1 with the new report.
+
+**Exit conditions:**
+- A cycle returns **zero BLOCKING findings** → stop; report success and list any remaining ADVISORY items.
+- **5 iterations** complete with BLOCKING findings still open → stop and surface the remaining BLOCKING findings to the user, noting the cap was reached.
+
+**ADVISORY** fixes: only when the user asks.
 
 If this review is part of an `implement` flow, defer to the `implement` skill's _Expert review_ section — that flow has stricter loop semantics. This skill is for standalone reviews kicked off by the user.
 
@@ -79,5 +88,7 @@ If this review is part of an `implement` flow, defer to the `implement` skill's 
 
 - Don't perform the review yourself in the parent context. The point is an independent fresh-context read.
 - Don't summarise or pre-filter the reviewer's findings.
-- Don't auto-fix BLOCKING items unless the user asks.
+- Don't fix ADVISORY items unless the user asks — the loop only acts on BLOCKING findings.
+- Don't exceed 5 audit/fix iterations; surface any still-open BLOCKING findings when the cap is hit.
+- Don't reuse a reviewer across cycles — each re-audit gets a fresh context.
 - Don't paste your own analysis into the reviewer's prompt. Give it only the target + the rule pointers.
