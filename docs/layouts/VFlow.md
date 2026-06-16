@@ -1,0 +1,127 @@
+# VFlow
+
+[`VFlow`](/api/layout/classes/VFlow) packs children top-to-bottom at their preferred size and wraps to a new column when the next child would exceed the container's inner height. It is the vertical transpose of [`HFlow`](/layouts/HFlow): where `HFlow` fills rows left-to-right and wraps downward, `VFlow` fills columns top-to-bottom and wraps rightward. Like `HFlow` it never shrinks or stretches children — wrapping *is* its overflow relief.
+
+```
++----------------------+
+| [A]  [E]  [H]        |
+| [B]  [F]            |   ← wraps to a new column when the next child won't fit
+| [C]  [G]            |
+| [D]                 |
++----------------------+
+   items wrap into columns; spacing + lineSpacing configurable
+```
+
+## Usage
+
+```typescript
+import { Component } from '@jimka/typescript-ui/core';
+import { VFlow } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
+const tags = Component();
+tags.setLayoutManager(VFlow({ spacing: 6, lineSpacing: 6 }));
+
+tags.addComponent(Button('typescript'));
+tags.addComponent(Button('layout'));
+tags.addComponent(Button('flow'));
+```
+
+The same options ([`VFlowOptions`](/api/layout/interfaces/VFlowOptions)) can be passed to set `spacing`, `lineSpacing`, `uniform`, and `align` declaratively. The `setComponentSpacing` / `setLineSpacing` / `setUniform` / `setAlign` setters work for runtime updates.
+
+## Wrapping
+
+Children are placed at their preferred size (clamped to their own min / max) from the top of the current column. Before each child, `VFlow` checks whether its bottom edge would pass the container's inner height; if so — and the child is not the first item in the column — the column wraps and the child starts a fresh column to the right. A child taller than the inner height takes its own column, clamped to the inner height so its bottom edge stays inside the container.
+
+`VFlow` never shrinks, stretches, or weights its children. There is no `mode`, `stretching`, or `weight` knob; for an equal-height single column, use [`VBox`](/layouts/VBox) with `mode: "equal"` instead.
+
+## Spacing
+
+Two independent gaps control the layout — the same fields as `HFlow`, transposed:
+
+- `spacing` — the **vertical** gap between items in a column (never applied before the first item of a column).
+- `lineSpacing` — the **horizontal** gap between wrapped columns (never applied before the first column or after the last).
+
+Both default to `5` pixels.
+
+```typescript
+import { VFlow } from '@jimka/typescript-ui/layout';
+// Tight item gaps, airier column gaps.
+panel.setLayoutManager(VFlow({ spacing: 4, lineSpacing: 12 }));
+```
+
+## Row alignment (uniform cells)
+
+By default each item keeps its own height, so rows do not line up between wrapped columns. The `uniform` option ([`FlowUniformity`](/api/layout/type-aliases/FlowUniformity)) grows every cell to the largest item so the items align into a grid:
+
+- `"none"` (default) — each item at its own size; columns pack independently.
+- `"width"` — every cell takes the widest item's width, so **columns** align horizontally.
+- `"height"` — every cell takes the tallest item's height, so **rows** align vertically.
+- `"both"` — every cell is identical (widest × tallest), a full grid.
+
+```typescript
+import { VFlow } from '@jimka/typescript-ui/layout';
+// Wrapped items snap into an aligned grid.
+panel.setLayoutManager(VFlow({ uniform: "both", spacing: 8, lineSpacing: 8 }));
+```
+
+Because a uniform cell is larger than the item it holds, each item is positioned within its cell by its own [`AnchorType`](/api/layout/enumerations/AnchorType) constraint (default centre — see [Per-child constraints](#per-child-constraints)). The widest/tallest extents are measured from each item's preferred size clamped to its own min / max.
+
+## Column alignment
+
+By default each wrapped column packs from the north edge, so the residual space when a column wraps is left empty at the bottom. The `align` option ([`FlowAlign`](/api/layout/type-aliases/FlowAlign)) packs each column's content block along the vertical (main) axis instead:
+
+- `"start"` (default) — content at the north edge; residual at the south.
+- `"center"` — the residual is split, centring each column's content.
+- `"end"` — content at the south edge; residual at the north.
+
+```typescript
+import { VFlow } from '@jimka/typescript-ui/layout';
+// Centre each wrapped column within the available height.
+panel.setLayoutManager(VFlow({ align: "center", spacing: 8, lineSpacing: 8 }));
+```
+
+Alignment moves each column's content as a single block; it does not redistribute the inter-item `spacing` (there is no justify / space-between mode). It is independent of the per-child [`AnchorType`](/api/layout/enumerations/AnchorType), which positions a child *within its own cell* — both apply.
+
+## Scrolling
+
+`VFlow` only wraps vertically; it never overflows downward past the inner height. On the horizontal axis the columns simply grow rightward. When the columns exceed the host's inner width and the host has opted into horizontal scroll (`Panel.setAutoScroll`), a horizontal scrollbar appears — the children's committed extent drives the scroll, with no special inflation step.
+
+```typescript
+import { Component, Panel } from '@jimka/typescript-ui/core';
+import { VFlow } from '@jimka/typescript-ui/layout';
+// Wraps within the height; scrolls horizontally once the columns overflow.
+const gallery = Panel({ autoScroll: 'auto' });
+gallery.setLayoutManager(VFlow({ spacing: 8, lineSpacing: 8 }));
+```
+
+When the host does not scroll, columns past the inner width are clipped by the host's `overflow: hidden`, exactly as a non-scrolling [`VBox`](/layouts/VBox) clips its overflow.
+
+## Per-child constraints
+
+[`LayoutConstraints`](/layouts/Constraints):
+
+- `fill` — [`FillType`](/api/layout/enumerations/FillType): `NONE` (preferred size, the default `VFlow` placement), `HORIZONTAL`, `VERTICAL`, `BOTH`. A stored constraint on the child takes precedence over `VFlow`'s default `NONE`.
+- `anchor` — [`AnchorType`](/api/layout/enumerations/AnchorType): positions the child when its cell is larger than the child — i.e. in a `uniform` mode. Defaults to centre.
+- `weight` — ignored; `VFlow` has no fixed column to distribute remainder across.
+
+## Common methods
+
+| Method | Purpose |
+| --- | --- |
+| `setComponentSpacing(px)` | Vertical gap between items in a column. |
+| `setLineSpacing(px)` | Horizontal gap between wrapped columns. |
+| `setUniform("none" \| "width" \| "height" \| "both")` | Make cells uniform so wrapped items align into a grid. |
+| `setAlign("start" \| "center" \| "end")` | Pack each column's content at the north edge (default), centred, or the south edge. |
+
+## Baseline alignment
+
+A multi-column wrapped block exposes no single text baseline, so `VFlow` reports a `null` content baseline: a baseline-aware parent auto-centres or top-aligns the whole `VFlow` container rather than aligning it by an interior baseline. For baseline-aligned controls on a single row, use [`HBox`](/layouts/HBox).
+
+## See also
+
+- [API: VFlow](/api/layout/classes/VFlow)
+- [`FlowAlign`](/api/layout/type-aliases/FlowAlign) — the `align` option values
+- [`FlowUniformity`](/api/layout/type-aliases/FlowUniformity) — the `uniform` option values
+- [`HFlow`](/layouts/HFlow) — the horizontal-wrapping counterpart
+- [`VBox`](/layouts/VBox) — single-column vertical stack with sizing modes
+- [Layout constraints reference](/layouts/Constraints)
