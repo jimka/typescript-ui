@@ -37,8 +37,7 @@ import { Window, ThemeManager, DarkTheme } from '@jimka/typescript-ui/core';
 // Call setTheme only to switch themes (e.g. dark mode):
 ThemeManager.setTheme(DarkTheme);
 
-const win = new Window();
-win.setHeaderText('Hello');
+const win = new Window('Hello');
 win.show();
 ```
 
