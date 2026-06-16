@@ -2,7 +2,7 @@
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
-import { Size } from "~/primitive/Size.js";
+import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Component } from "~/core/Component.js";
 import { callable } from "~/core/Callable.js";
 
@@ -268,7 +268,7 @@ class HFlow extends LayoutManager {
      * `count * columnWidth` in a `uniform` width mode) plus item spacing, and the
      * height is the *largest* child maximum — the tallest a single row can grow
      * to. A child whose maximum is `null` or at the unbounded sentinel makes that
-     * axis unbounded (`Number.MAX_SAFE_INTEGER`).
+     * axis unbounded.
      *
      * @returns The maximum `{width, height}`, or `null` if no container is attached.
      */
@@ -300,14 +300,14 @@ class HFlow extends LayoutManager {
             }
 
             if (!uniformWidth) {
-                if (max.width >= Number.MAX_SAFE_INTEGER) {
+                if (isUnbounded(max.width)) {
                     widthUnbounded = true;
                 } else {
                     width += max.width;
                 }
             }
 
-            if (max.height >= Number.MAX_SAFE_INTEGER) {
+            if (isUnbounded(max.height)) {
                 heightUnbounded = true;
             } else {
                 height = Math.max(height, max.height);
@@ -322,8 +322,8 @@ class HFlow extends LayoutManager {
         height += perimiterSize.top + perimiterSize.bottom;
 
         return {
-            width:  widthUnbounded  ? Number.MAX_SAFE_INTEGER : width,
-            height: heightUnbounded ? Number.MAX_SAFE_INTEGER : height
+            width:  widthUnbounded  ? UNBOUNDED : width,
+            height: heightUnbounded ? UNBOUNDED : height
         };
     }
 

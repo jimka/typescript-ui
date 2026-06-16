@@ -3,7 +3,7 @@
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints";
-import { Size } from "~/primitive/Size.js";
+import { Size, UNBOUNDED } from "~/primitive/Size.js";
 import { Component } from "~/core/Component.js";
 import { BaseObject } from "~/core/BaseObject.js";
 
@@ -32,7 +32,7 @@ export abstract class LayoutManager extends BaseObject {
     private _layoutConstraints: Map<string, LayoutConstraints> = new Map<string, LayoutConstraints>();
     private _defaultPreferredSize: Size | null = null;
     private _defaultMinSize: Size = { width: 0, height: 0 };
-    private _defaultMaxSize: Size = { width: Number.MAX_VALUE, height: Number.MAX_VALUE };
+    private _defaultMaxSize: Size = { width: UNBOUNDED, height: UNBOUNDED };
     // Per-axis "let children overflow the host" flag. Driven by the host
     // `Panel.setAutoScroll`; consumed by each manager's `doLayout` to decide
     // whether the working size can grow past the host's `innerSize` when the
