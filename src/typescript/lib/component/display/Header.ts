@@ -162,9 +162,11 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Container<T
      * Recalculates the preferred height from the text component's measured preferred size.
      *
      * Called at construction time and after each theme change so that font-size
-     * adjustments propagate to the header's layout hint automatically.
+     * adjustments propagate to the header's layout hint automatically. `protected`
+     * so a subclass can override the derivation — `WindowHeader` substitutes a
+     * chrome-band thickness so its stretched controls fill the bar.
      */
-    private updatePreferredSize(): void {
+    protected updatePreferredSize(): void {
         const textSize = this._text.getPreferredSize();
         const insets = this.getInsets();
         const textHeight = textSize ? textSize.height : 20;

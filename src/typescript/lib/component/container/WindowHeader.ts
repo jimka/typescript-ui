@@ -6,6 +6,7 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { HBox } from "~/layout/HBox.js";
+import { Fit } from "~/layout/Fit.js";
 import { Insets } from "~/primitive/Insets.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
@@ -27,6 +28,14 @@ Glyph.register(xmark, window_maximize, window_minimize, window_restore);
 // two window kinds show a same-sized title icon. A plain Glyph is pinned to this
 // rather than auto-syncing, since it sits in the title-text row, not a strip.
 const LEAD_GLYPH_INK_SIZE: number = 14;
+
+// Equal top/bottom gap (px) around the title line inside the header band. The
+// header thickness is `textHeight + 2 * CHROME_MARGIN`; the stretched controls
+// fill that full-height band edge-to-edge (no overflow, so the region clip frame
+// contains them), and the Fit-centred title sits with this margin above and
+// below. Tuned so the thickness matches the established ~26px window-chrome height
+// (title line ≈ 18px + 2×4), keeping the redesign visually surgical.
+const CHROME_MARGIN: number = 4;
 
 /**
  * Construction-time options for {@link WindowHeader}.
@@ -74,6 +83,13 @@ class WindowHeader extends Header {
         this._activeBackground = "var(--ts-ui-window-header-bg, #eee)";
         this.setBackgroundColor(this._activeBackground);
 
+        // Horizontal-only padding: the header is a strip whose vertical extent is
+        // the chrome thickness (see updatePreferredSize), so the internal Border
+        // band spans the full height and the stretched trailing controls reach the
+        // bottom edge where the content panel begins. A vertical inset would shrink
+        // the band away from that edge and re-open the gap the redesign closes.
+        this.setInsets(new Insets(0, 4, 0, 4));
+
         // Reparent the inherited title text into a permanent HBox row that
         // owns the Border WEST slot. setGlyph then only has to swap the
         // optional leading glyph child in or out of this row.
@@ -89,7 +105,18 @@ class WindowHeader extends Header {
         this._titleRow.setPointerEvents("none");
         this._titleRow.addComponent(title);
 
-        this.addComponent(this._titleRow, {
+        // Centre the title line vertically in the full-height band: a Fit cell
+        // fills the WEST region's width and centres its single child (the title
+        // row) on the cross axis. A WEST `AnchorType.CENTER` would not work — the
+        // non-collapsible Border region commits via the clip-frame path, which
+        // bypasses anchor resolution — so the centring lives in this layout, not
+        // the placement anchor.
+        const titleCell = new Component();
+        titleCell.setLayoutManager(new Fit({ fill: FillType.HORIZONTAL }));
+        titleCell.setPointerEvents("none");
+        titleCell.addComponent(this._titleRow);
+
+        this.addComponent(titleCell, {
             placement: Placement.WEST,
             anchor:    AnchorType.WEST,
             fill:      FillType.HORIZONTAL
@@ -97,23 +124,22 @@ class WindowHeader extends Header {
 
         // Control buttons built from the shared window-control factory so the
         // header's trailing controls match a TabWindow's exactly: the themed
-        // `window.control` fill (white in modern, raised in classic). A TabWindow's
-        // controls reach their 24×24 box by being stretched to the strip thickness
-        // (their `Insets(0,4,0,4)` only sets the within-box padding); a header row is
-        // not stretched, so the same look is reached with symmetric `Insets(4,4,4,4)`
-        // — a 24×24 box around the 14px glyph that centres in the header (it slightly
-        // overflows the text content area into the header padding, like the TabWindow
-        // controls fill the strip, without forcing the header taller).
+        // `window.control` fill (white in modern, raised in classic). Like a
+        // TabWindow's controls — stretched to the strip thickness — these are
+        // stretched to the full header band (see the trailing row below), so their
+        // `Insets(0,4,0,4)` only sets the within-box horizontal padding; the stretch
+        // supplies the height. They fill the band edge-to-edge (no overflow, so the
+        // clip frame contains them) and meet the content panel at the bottom edge.
         this._minimizeButton = createWindowControlButton("window-minimize");
         this._maximizeButton = createWindowControlButton("window-maximize");
         this._exitButton     = createWindowControlButton("xmark");
 
         for (const control of [this._minimizeButton, this._maximizeButton, this._exitButton]) {
-            control.setInsets(new Insets(4, 4, 4, 4));
+            control.setInsets(new Insets(0, 4, 0, 4));
         }
 
         this._trailingRow = new Component();
-        this._trailingRow.setLayoutManager(new HBox({ spacing: 0 }));
+        this._trailingRow.setLayoutManager(new HBox({ spacing: 0, stretching: true }));
         this._trailingRow.setInsets(new Insets(0, 0, 0, 0));
         this._trailingRow.addComponent(this._minimizeButton);
         this._trailingRow.addComponent(this._maximizeButton);
@@ -130,6 +156,29 @@ class WindowHeader extends Header {
         if (options) {
             this.applyOptions(options);
         }
+    }
+
+    /**
+     * Derives the header's preferred height as a chrome-band thickness —
+     * `textHeight + 2 * CHROME_MARGIN` — rather than the base `textHeight +
+     * vertical insets`. With the vertical insets zeroed (so the band reaches the
+     * content edge for the stretched controls), the base derivation would collapse
+     * the header to the bare text height; this override supplies the breathing band
+     * that seats the control box and centres the title line. Runs at construction
+     * and on every theme change (the base wires both to this method), so the
+     * thickness survives a theme toggle.
+     *
+     * @remarks Reads only the inherited text and the module constant — no subclass
+     *   field — so it is safe when called via `super()` before subclass fields init.
+     */
+    protected updatePreferredSize(): void {
+        // 20px mirrors the base Header's pre-measurement fallback (a sane default
+        // line height before the text element has measured); the real height takes
+        // over on the first measured pass.
+        const textSize = this.getText().getPreferredSize();
+        const textHeight = textSize ? textSize.height : 20;
+
+        this.setPreferredSize(100, textHeight + 2 * CHROME_MARGIN);
     }
 
     /**
