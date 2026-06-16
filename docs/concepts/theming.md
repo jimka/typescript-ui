@@ -31,6 +31,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `colorScheme` | *(set directly as `color-scheme`)* | Browser rendering of native controls (checkboxes, scrollbars). Use `'light'` or `'dark'`. |
 | `font.family` | `--ts-ui-font-family` | Font family for the entire UI (cascades from `<html>`). Defaults to the bundled, self-hosted Manrope — `'Manrope Variable', sans-serif` — injected on first `setTheme` (see [How it works](#how-it-works)) |
 | `font.size` | `--ts-ui-font-size` | Base font size for the entire UI |
+| `scale.base` | `--ts-ui-base-size` | Framework scale root in px — the global size knob the `scale.*` ratio tokens multiply. Resolved sizes are read in JS via [`ThemeManager.getResolvedScale()`](/api/core/classes/ThemeManager#getresolvedscale). See [Base size & scaling](#base-size-scaling) |
 | `font.linePadding` | `--ts-ui-line-padding` | Vertical leading (e.g. `"2px"`) added to a control's own font size to form its line box: the rendered line height is `calc(1em + var(--ts-ui-line-padding))`, so the leading scales per font size (12px and 14px text get proportionate line boxes from one token). Every text control renders **and** measures against this same arithmetic, so inputs, labels, and `Text` share one baseline. Drives the row-height of `Text`/tables and the baseline alignment math in `HBox`/`Column`/`Grid`. Override per control with `Text.setLineHeight(px)` for a fixed line-height |
 | `text.color` | `--ts-ui-text-color` | Default text color for all components |
 | `body.background` | `--ts-ui-body-bg` | Page background; also the background of [`Window`](/api/core/classes/Window) |
@@ -105,6 +106,28 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 
 ::: info Blue is the single accent colour
 One accent blue runs across selection (`table.row.selected`, list/row `selectedBackground`), the keyboard `indicator.focus` ring, and drag-and-drop *position* feedback (the [`ReorderIndicator`](/api/core/classes/ReorderIndicator) bar plus the dock / tab-strip drop-zone wash). The overlap is deliberate — blue means "what you're acting on, or where the action goes." Drag feedback stays distinct from selection by **modality** (it shows only during an active drag, on overlays above the page) and **treatment** (a faint area wash plus a thin moving bar, versus a selection's solid filled state), and the drop-zone wash uses a lighter blue than the accent fill. Don't introduce a second accent hue for drag — rely on treatment and modality. See [Drag-and-drop feedback colours](/recipes/drag-and-drop#drop-feedback-colours).
+:::
+
+## Base size & scaling
+
+Most theme sizes are CSS length strings, so they already scale with the font and the cascade. SVG glyphs are the exception: an SVG icon is sized by its px box, not by CSS `font-size`, so a `rem`/`em` length never reaches it. The `scale` block gives the framework one **base size in px** plus a set of ratios, exposed both as a CSS variable and — once resolved — as plain JS numbers, so layout math and SVG glyph boxes can size off `round(base × ratio)`.
+
+- **`--ts-ui-base-size`** is the scale root, emitted from `scale.base` (default `14px`). It is published for CSS `calc()` consumers; the JS side reads the resolved numbers, not this variable.
+- **The `scale.*` ratio tokens** are [`ScaleToken`](/api/core/type-aliases/ScaleToken) values. A token is either `{ scale: n }` — a **ratio of the base** that grows with it (`round(base × n)`) — or `{ fixed: px }` — an **absolute px** that opts out of scaling. The built-in tokens (`titleGlyph`, `tabClose`, `tabCloseGlyph`, `tabButtonInset`) are ratios tuned to recover their historic px at the default base, then scale up as you raise it.
+
+Resolution happens **once per `setTheme`**: the whole `scale` block is multiplied out to a numeric [`ResolvedScale`](/api/core/type-aliases/ResolvedScale) snapshot that layout code reads via [`ThemeManager.getResolvedScale()`](/api/core/classes/ThemeManager#getresolvedscale) — no per-layout token math, no `getComputedStyle`.
+
+```typescript
+import { ThemeManager } from '@jimka/typescript-ui/core';
+
+const ink = ThemeManager.getResolvedScale().titleGlyph;
+// ink === 14 with the default base; set a theme whose scale.base is 28 and it becomes 28.
+```
+
+Raise `scale.base` (in a theme passed to `setTheme`) to scale the chrome that follows it — window and tab title glyphs, tab close buttons, and tab insets — or pin an individual token with the `{ fixed }` form to hold it constant while the rest grows. A base change is a theme change, so it goes through `setTheme`, which re-resolves the snapshot and re-runs layout. Text and char-mode glyphs keep sizing off `font.size` / `--ts-ui-font-size`, not the base, so this knob moves the SVG-and-layout chrome without touching the type scale.
+
+::: warning Exactly-one is not type-enforced inside a theme literal
+`ScaleToken` is a `{ scale } | { fixed }` union, but a theme literal is a *deep-partial* of [`Theme`](/api/core/interfaces/Theme) (so you can override one token without restating the rest), and that weakens the union to `{ scale? } | { fixed? }` — `{}` or a both-present token is **not** a compile error where you author it. The resolution into the snapshot guards every arm: `scale` wins if both are present, and a token missing both falls back to the base size rather than producing `NaN`.
 :::
 
 ## Custom themes

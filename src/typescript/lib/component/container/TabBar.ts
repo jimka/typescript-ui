@@ -39,22 +39,6 @@ Glyph.register(angle_left, angle_right, angle_up, angle_down);
  */
 const TAB_FADE_DURATION_MS = 120;
 
-/** Side length (px) of the square close button overlaid on closeable tabs. */
-const CLOSE_BUTTON_SIZE = 16;
-
-/** Side length (px) of the ✕ glyph inside the close button (half the hit box). */
-const CLOSE_GLYPH_SIZE = 8;
-
-/**
- * Breathing room (px) added to each tab button's insets on top of the close-
- * button reservation. The historic value the strip was tuned against; reduced
- * to {@link TAB_BUTTON_INSET_COMPACT} when the strip is `compact`.
- */
-const TAB_BUTTON_INSET = 4;
-
-/** Reduced per-tab breathing room (px) used when the strip is `compact`. */
-const TAB_BUTTON_INSET_COMPACT = 2;
-
 /**
  * Minimum strip thickness (px) on the cross axis — the *floor* `stripThickness`
  * falls back to before any tab has reported a preferred size (an empty or
@@ -1510,11 +1494,12 @@ class TabBar extends Container<TabBarOptions> {
             closeButton.clearShadow();
             closeButton.setZIndex(1);
 
-            // Shrink the ✕ glyph to half the hit box, centred — the 16px button
-            // stays the click target while the mark itself reads lighter. Pin it
-            // (Glyph.setPreferredSize locks min/max too) so a theme change never
-            // re-tracks the glyph to the title line height and grows it.
-            closeButton.pinGlyphSize(CLOSE_GLYPH_SIZE);
+            // Shrink the ✕ glyph to roughly half the close-button hit box,
+            // centred — the button stays the click target while the mark reads
+            // lighter. Pin it (Glyph.setPreferredSize locks min/max too) so the
+            // line-height sync never re-tracks the glyph to the title line height;
+            // positionCloseButtons re-pins it to the base-scaled size each layout.
+            closeButton.pinGlyphSize(ThemeManager.getResolvedScale().tabCloseGlyph);
 
             // Overlay it inside the cell rather than enrolling it in the Fit
             // layout (which would stretch it over the whole tab); `layoutChrome`
@@ -1753,14 +1738,15 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Derives a tab button's insets from the current `_compact` flag. The label
-     * gets two `pad` units of breathing room per side (`pad` shrinks when
-     * compact); closeable tabs additionally reserve {@link CLOSE_BUTTON_SIZE} on
-     * the edge where {@link positionCloseButtons} pins the ✕ — the right for
-     * upright text (north/south and west/east horizontal), the bottom or top for
-     * rotated cw / ccw text — so the label never runs under it. The close
-     * reservation is fixed; only the breathing pad shrinks, so the glyph keeps its
-     * clearance even in the dense strip.
+     * Derives a tab button's insets from the current `_compact` flag and the
+     * active theme's resolved scale. The label gets two `pad` units of breathing
+     * room per side (`pad` is the resolved `scale.tabButtonInset`, halved when
+     * compact); closeable tabs additionally reserve the resolved `scale.tabClose`
+     * close-button box on the edge where {@link positionCloseButtons} pins the ✕ —
+     * the right for upright text (north/south and west/east horizontal), the
+     * bottom or top for rotated cw / ccw text — so the label never runs under it.
+     * Both the reservation and the pad scale with the base, while only the pad
+     * additionally shrinks in the dense strip, so the glyph keeps its clearance.
      *
      * @param constraints - The tab's layout constraints; `constraints.closeable`
      *   adds the close-button reservation.
@@ -1768,8 +1754,9 @@ class TabBar extends Container<TabBarOptions> {
      * @returns The insets to apply to the tab button.
      */
     private computeTabButtonInsets(constraints?: LayoutConstraints): Insets {
-        const pad = this._compact ? TAB_BUTTON_INSET_COMPACT : TAB_BUTTON_INSET;
-        const closeReserve = constraints?.closeable ? CLOSE_BUTTON_SIZE : 0;
+        const scale = ThemeManager.getResolvedScale();
+        const pad = this._compact ? Math.round(scale.tabButtonInset / 2) : scale.tabButtonInset;
+        const closeReserve = constraints?.closeable ? scale.tabClose : 0;
 
         if (this.isRotatedText()) {
             // Rotated label runs along the cell, ending where it stops reading:
@@ -1801,7 +1788,8 @@ class TabBar extends Container<TabBarOptions> {
      * @returns The insets to apply to each tool button.
      */
     private computeToolButtonInsets(): Insets {
-        const pad = this._compact ? TAB_BUTTON_INSET_COMPACT : TAB_BUTTON_INSET;
+        const inset = ThemeManager.getResolvedScale().tabButtonInset;
+        const pad = this._compact ? Math.round(inset / 2) : inset;
 
         if (this.isVertical()) {
             return new Insets(pad * 2, 0, pad * 2, 0);
@@ -1928,19 +1916,21 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * The fixed vertical breathing (px) the north/south strip adds around a tab
+     * The vertical breathing (px) the north/south strip adds around a tab
      * button's content box. The north/south tab button carries *zero* top/bottom
      * inset (see `computeTabButtonInsets`: the strip supplies the cross-axis
      * room), so the band that keeps the label off the strip edges must come from
      * the strip itself. It mirrors the west/east model, where the same `pad * 2`
      * per cross-side lives inside the button's insets instead — so a north/south
      * strip and a west/east strip give a label the same clearance, and the chrome
-     * shrinks in lockstep with `compact` exactly as the insets do.
+     * scales with the base and shrinks in lockstep with `compact` exactly as the
+     * insets do.
      *
      * @returns The combined top+bottom chrome in px (`pad * 2` per side).
      */
     private stripChrome(): number {
-        const pad = this._compact ? TAB_BUTTON_INSET_COMPACT : TAB_BUTTON_INSET;
+        const inset = ThemeManager.getResolvedScale().tabButtonInset;
+        const pad = this._compact ? Math.round(inset / 2) : inset;
 
         return pad * 2 * 2;
     }
@@ -2426,6 +2416,15 @@ class TabBar extends Container<TabBarOptions> {
     private positionCloseButtons(): void {
         const rotated = this.isRotatedText();
 
+        // Read the resolved close-button box and ✕ ink, then size and re-pin every
+        // button — re-pinning here is what lets an existing ✕ follow a base-size
+        // change, since the entry-creation pin only sets the initial size. Both
+        // setters no-op when the value is unchanged, so a same-scale pass costs
+        // nothing.
+        const scale = ThemeManager.getResolvedScale();
+        const closeSize = scale.tabClose;
+        const glyphSize = scale.tabCloseGlyph;
+
         for (const entry of this._entries) {
             const closeButton = entry.closeButton;
 
@@ -2433,20 +2432,21 @@ class TabBar extends Container<TabBarOptions> {
                 continue;
             }
 
-            closeButton.setWidth(CLOSE_BUTTON_SIZE);
-            closeButton.setHeight(CLOSE_BUTTON_SIZE);
+            closeButton.setWidth(closeSize);
+            closeButton.setHeight(closeSize);
+            closeButton.pinGlyphSize(glyphSize);
 
             if (rotated) {
                 // Centre the ✕ across the strip thickness and pin it to the end
                 // of the reading flow: the bottom for clockwise (top-to-bottom)
                 // text, the top for counter-clockwise (bottom-to-top).
-                closeButton.setX(Math.round((entry.wrapper.getWidth() - CLOSE_BUTTON_SIZE) / 2));
+                closeButton.setX(Math.round((entry.wrapper.getWidth() - closeSize) / 2));
                 closeButton.setY(this._orientation === "vertical-ccw"
                     ? 2
-                    : entry.wrapper.getHeight() - CLOSE_BUTTON_SIZE - 2);
+                    : entry.wrapper.getHeight() - closeSize - 2);
             } else {
-                closeButton.setX(entry.wrapper.getWidth() - CLOSE_BUTTON_SIZE - 2);
-                closeButton.setY(Math.round((entry.wrapper.getHeight() - CLOSE_BUTTON_SIZE) / 2));
+                closeButton.setX(entry.wrapper.getWidth() - closeSize - 2);
+                closeButton.setY(Math.round((entry.wrapper.getHeight() - closeSize) / 2));
             }
         }
     }

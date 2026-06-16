@@ -99,4 +99,16 @@ export const BaseTheme: DeepPartial<Theme> = {
     drag: {
         ghost: { opacity: '0.85' },
     },
+    // The scale knob plus the font-coupled ratios. Each ratio is `current-px ÷
+    // base`, chosen so `round(base × ratio)` recovers the exact historic px at
+    // the default base of 14 (so nothing shifts until the base is raised), then
+    // grows proportionally as the base scales. titleGlyph is `{ scale: 1 }` —
+    // one base size — so the window/tab title glyph tracks the base 1:1.
+    scale: {
+        base          : 14,
+        titleGlyph    : { scale: 1 },        // 14 ÷ 14 — title glyph == base
+        tabClose      : { scale: 16 / 14 },  // close-button box was 16px
+        tabCloseGlyph : { scale: 8 / 14 },   // close-glyph ink was 8px
+        tabButtonInset: { scale: 4 / 14 },   // tab-button inset was 4px
+    },
 };
