@@ -44,8 +44,8 @@ export type { DrawerOptions, DrawerEdge, DrawerEvent, DrawerCloseController } fr
 export { Dock } from '~/core/Dock.js';
 export type { DockOptions, DockPanelSpec, DockLayoutSpec } from '~/core/Dock.js';
 
-export { ThemeManager, BaseTheme, ClassicTheme, DarkTheme, ModernTheme, defineTheme } from '~/core/Theme.js';
-export type { Theme, DeepPartial } from '~/core/Theme.js';
+export { ThemeManager, BaseTheme, ClassicTheme, DarkTheme, ModernTheme, defineTheme, readBaseSizePx, resolveScaleToken } from '~/core/Theme.js';
+export type { Theme, DeepPartial, ScaleToken } from '~/core/Theme.js';
 
 export { StyleTarget, StyleRule, InlineStyle } from '~/core/StyleTarget.js';
 export type { StyleRuleScope, StyleRuleSpec } from '~/core/StyleTarget.js';

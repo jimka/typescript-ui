@@ -29,6 +29,21 @@ import { DarkTheme } from '~/core/themes/DarkTheme.js';
 import { ModernTheme } from '~/core/themes/ModernTheme.js';
 
 /**
+ * A scaled size in the theme's {@link Theme.scale} block.
+ *
+ * `{ scale }` is a **ratio of the base** size — the resolved px grows with
+ * `scale.base` (`round(base * scale)`). `{ fixed }` is **absolute px** that opts
+ * out of scaling. Exactly one of the two is intended, and that is compile-time
+ * enforced wherever a value is typed against `ScaleToken` directly. Inside a
+ * theme literal the guarantee is weakened by
+ * [`DeepPartial`](/api/core/type-aliases/DeepPartial) (which makes both arms
+ * optional), so {@link resolveScaleToken} guards every arm at runtime.
+ *
+ * @category Theme
+ */
+export type ScaleToken = { scale: number } | { fixed: number };
+
+/**
  * Defines the full set of design tokens that make up a UI theme.
  *
  * Background tokens (e.g. `button.bg`, `button.pressed.bg`, `toggle.selected.bg`) accept any
@@ -597,6 +612,27 @@ export interface Theme {
          */
         shadowColor: string;
     };
+
+    /**
+     * The framework's global scale knob plus the font-coupled size ratios that
+     * follow it. `base` is the root size in px, mirrored to CSS as
+     * `--ts-ui-base-size` and read back in JS via {@link readBaseSizePx}; SVG
+     * glyph boxes and JS layout constants size off it (CSS `font-size` does not
+     * reach an SVG glyph). Each non-`base` token is a {@link ScaleToken}
+     * resolved through {@link resolveScaleToken}.
+     */
+    scale: {
+        /** Root base size in px; the global scale knob. Mirror of `--ts-ui-base-size`. */
+        base          : number;
+        /** Window/tab title-glyph ink size. */
+        titleGlyph    : ScaleToken;
+        /** Tab close-button box. */
+        tabClose      : ScaleToken;
+        /** Tab close-glyph ink size. */
+        tabCloseGlyph : ScaleToken;
+        /** Tab-button inset (the compact inset derives as half of this). */
+        tabButtonInset: ScaleToken;
+    };
 }
 
 export { BaseTheme, ClassicTheme, DarkTheme, ModernTheme };
@@ -671,6 +707,58 @@ export function defineTheme(base: DeepPartial<Theme>, overrides: DeepPartial<The
 }
 
 /**
+ * Reads the framework base size (`--ts-ui-base-size`) off the document root as a
+ * px number — the live runtime view of `scale.base`. SVG glyph boxes and JS
+ * layout constants multiply it by a {@link ScaleToken} ratio (via
+ * {@link resolveScaleToken}) to size with the scale knob.
+ *
+ * Calls `getComputedStyle`, so it must run at layout/render time, never in a
+ * constructor (the framework's defer-construction-time-reads rule). Mirrors
+ * `ProgressSpinner`'s reader of `--ts-ui-font-size`, with the same
+ * `parseFloat` + `NaN`→`14` fallback.
+ *
+ * @returns The current base size in pixels, or `14` when the var is unset or unparseable.
+ *
+ * @category Theme
+ */
+export function readBaseSizePx(): number {
+    const raw    = getComputedStyle(document.documentElement)
+                       .getPropertyValue('--ts-ui-base-size').trim();
+    const parsed = parseFloat(raw);
+
+    return isNaN(parsed) ? 14 : parsed;
+}
+
+/**
+ * Resolves a {@link ScaleToken} to px against a live `base` (typically
+ * {@link readBaseSizePx}). `{ scale }` is a ratio of the base
+ * (`round(base * scale)`, grows with it); `{ fixed }` is absolute px that stays
+ * put.
+ *
+ * Every arm is guarded because
+ * [`DeepPartial`](/api/core/type-aliases/DeepPartial) weakens the union to
+ * `{ scale? } | { fixed? }` inside a theme literal, so an authored token can be
+ * malformed (`{}`, both-present) without a compile error. `scale` wins when both
+ * are somehow present; a token missing both falls back to `base` so a malformed
+ * theme degrades visibly (base px) rather than producing `NaN` or crashing. Call
+ * at layout/render time with the live base.
+ *
+ * @param token - The scale token from the theme's {@link Theme.scale} block.
+ * @param base - The live base size in px.
+ * @returns The resolved size in pixels.
+ *
+ * @category Theme
+ */
+export function resolveScaleToken(token: ScaleToken, base: number): number {
+    const t = token as { scale?: number; fixed?: number };
+
+    if (typeof t.scale === 'number') return Math.round(base * t.scale);
+    if (typeof t.fixed === 'number') return t.fixed;
+
+    return base;
+}
+
+/**
  * Emits the four per-side tab-button border custom properties for one state,
  * keyed `<base>-top` / `-right` / `-bottom` / `-left`, each resolving to the
  * side's own value or falling back to the uniform `border`. All four are always
@@ -701,6 +789,7 @@ function themeToVars(theme: Theme): Record<string, string> {
     return {
         '--ts-ui-font-family'                      : theme.font.family,
         '--ts-ui-font-size'                        : theme.font.size,
+        '--ts-ui-base-size'                        : String(theme.scale.base) + 'px',
         '--ts-ui-line-padding'                     : String(theme.font.linePadding),
         '--ts-ui-text-color'                       : theme.text.color,
         '--ts-ui-body-bg'                          : theme.body.background,
