@@ -1,8 +1,8 @@
 # TabPanel
 
-[`TabPanel`](/api/component/container/classes/TabPanel) is a [`Panel`](/api/core/classes/Panel) subclass that owns an internal [`Tab`](/api/layout/classes/Tab) layout manager. It exposes a tab-typed `addTab` / `addLazyTab` / `on("tabclose", fn)` surface, so consumers don't have to wire `new Panel({ layoutManager: new Tab() })` themselves.
+[`TabPanel`](/api/component/container/classes/TabPanel) is a [`Panel`](/api/core/classes/Panel) subclass that owns an internal [`Tab`](/api/layout/classes/Tab) layout manager. It exposes a tab-typed `addTab` / `addLazyTab` surface, so consumers don't have to wire `new Panel({ layoutManager: new Tab() })` themselves.
 
-The bare `new Panel({ layoutManager: new Tab() })` form still works — `TabPanel` is the convenience entry point.
+The bare `new Panel({ layoutManager: new Tab() })` form still works — `TabPanel` is the convenience entry point. Strip-level configuration and events are reached through the wrapped manager via [`getTab`](/api/component/container/classes/TabPanel#gettab) rather than a mirrored forwarder per setter.
 
 ## Usage
 
@@ -42,10 +42,10 @@ The factory runs once, the first time the user activates the tab.
 
 ## Close hooks
 
-Either the construction-time `onTabClose` option or [`on("tabclose", fn)`](/api/component/container/classes/TabPanel#on) wires a callback for closeable tabs:
+Pass the construction-time `onTabClose` option, or wire a listener on the wrapped manager via [`getTab`](/api/component/container/classes/TabPanel#gettab), to react to closeable tabs:
 
 ```typescript
-tabs.on("tabclose", component => store.removeBinding(component));
+tabs.getTab().on("tabclose", component => store.removeBinding(component));
 ```
 
 The callback fires after the tab is removed; the closed component is passed in so callers can dispose any external state.
@@ -62,7 +62,9 @@ the `--ts-ui-tab-indicator-color` / `--ts-ui-tab-indicator-thickness` theme
 tokens.
 
 Construction-time strip settings nest under `tabOptions` (the wrapped manager's
-own options bag); each has a matching prefixed runtime forwarder on the panel:
+own options bag); to change them at runtime, reach the manager through
+[`getTab`](/api/component/container/classes/TabPanel#gettab) and call its
+setters directly:
 
 ```typescript
 const tabs = new TabPanel({
@@ -75,33 +77,31 @@ const tabs = new TabPanel({
     tabs: [/* … */],
 });
 
-tabs.setTabWidthMode("fixed");
-tabs.setTabFixedWidth(140);
-tabs.setTabUnderBorderFullWidth(false);
+tabs.getTab().setWidthMode("fixed");
+tabs.getTab().setFixedWidth(140);
+tabs.getTab().setUnderBorderFullWidth(false);
 ```
 
-[`setTabWidthMode`](/api/component/container/classes/TabPanel#settabwidthmode)
-chooses the tab-button width strategy:
+[`Tab.setWidthMode`](/api/layout/classes/Tab) chooses the tab-button width
+strategy:
 
 - `"fill"` (default) — tabs split the strip equally and stretch to fill it.
-- `"content"` — each tab takes its own content width, capped at
-  [`maxWidth`](/api/component/container/classes/TabPanel#settabmaxwidth).
+- `"content"` — each tab takes its own content width, capped at the manager's `maxWidth`.
 - `"equal"` — every tab matches the widest tab, capped at `maxWidth`.
-- `"fixed"` — every tab takes
-  [`fixedWidth`](/api/component/container/classes/TabPanel#settabfixedwidth)
+- `"fixed"` — every tab takes `fixedWidth`
   along the text's reading direction: the tab width for horizontal text
   (north/south, or upright west/east — where it sets the bar thickness), and the
   tab height for rotated west/east text.
 
 Every mode except `"fill"` leaves the strip full-width with the tabs
-left-aligned. [`setTabUnderBorderFullWidth`](/api/component/container/classes/TabPanel#settabunderborderfullwidth)
-toggles the edge-to-edge rule drawn under the strip. All forward to the wrapped
-[`Tab`](/api/layout/classes/Tab) manager.
+left-aligned. `Tab.setUnderBorderFullWidth`
+toggles the edge-to-edge rule drawn under the strip.
 
 ## Placement, tools, overflow, compact & reorder
 
-`TabPanel` forwards the strip-placement and behaviour surface of the wrapped
-`Tab` manager — see [Tab](/layouts/Tab) for the full description of each:
+The wrapped `Tab` manager owns the strip-placement and behaviour surface — see
+[Tab](/layouts/Tab) for the full description of each. Set them at construction
+under `tabOptions`, or at runtime through [`getTab`](/api/component/container/classes/TabPanel#gettab):
 
 ```typescript
 const tabs = new TabPanel({
@@ -118,37 +118,26 @@ const tabs = new TabPanel({
     tabs: [/* … */],
 });
 
-tabs.setTabSide("south");
-tabs.setTabAlign("start");
-tabs.setTabOrientation("horizontal");
-tabs.setTabTextAlign("center");
-tabs.setTabScrollable(true);
-tabs.setTabCompact(false);
-tabs.setTabReorderable(false);
-tabs.addTabTool(menuButton);
+tabs.getTab().setSide("south");
+tabs.getTab().setAlign("start");
+tabs.getTab().setOrientation("horizontal");
+tabs.getTab().setTextAlign("center");
+tabs.getTab().setScrollable(true);
+tabs.getTab().setCompact(false);
+tabs.getTab().setReorderable(false);
+tabs.getTab().addTool(menuButton);
 ```
-
-Construction settings nest under `tabOptions` (unprefixed, the manager's own
-option names); each has a matching prefixed runtime forwarder on the panel —
-[`setTabSide`](/api/component/container/classes/TabPanel#settabside),
-[`setTabAlign`](/api/component/container/classes/TabPanel#settabalign),
-[`setTabOrientation`](/api/component/container/classes/TabPanel#settaborientation),
-[`setTabTextAlign`](/api/component/container/classes/TabPanel#settabtextalign),
-[`setTabScrollable`](/api/component/container/classes/TabPanel#settabscrollable),
-[`setTabCompact`](/api/component/container/classes/TabPanel#settabcompact),
-[`setTabReorderable`](/api/component/container/classes/TabPanel#settabreorderable), and
-[`addTabTool`](/api/component/container/classes/TabPanel#addtabtool) — all
-forwarding to the wrapped [`Tab`](/layouts/Tab) manager.
 
 ## Accessing the underlying `Tab` manager
 
-For features `TabPanel` doesn't forward (e.g. directly inspecting `Tab`-only state), use [`getTabManager`](/api/component/container/classes/TabPanel#gettabmanager):
+[`getTab`](/api/component/container/classes/TabPanel#gettab) is the typed
+accessor for `this.getLayoutManager() as Tab`. It is the supported path for
+everything beyond construction and `addTab` / `addLazyTab` — strip placement,
+width strategy, overflow, tools, and `tabclose` / `empty` events:
 
 ```typescript
-const manager = tabs.getTabManager();
+const manager = tabs.getTab();
 ```
-
-This is the typed accessor for `this.getLayoutManager() as Tab`.
 
 ## When to use `TabPanel` vs bare `Panel` + `Tab`
 
