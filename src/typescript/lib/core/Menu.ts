@@ -112,7 +112,7 @@ class Menu extends Component {
                     this._onClose!();
                 }
             } else {
-                if (!this.getElement()?.contains(target)) {
+                if (!this.getElement()?.contains(target) && !this._excludedEl?.contains(target)) {
                     this.hide();
                 }
             }
@@ -131,11 +131,18 @@ class Menu extends Component {
      * @param onClose - Optional callback invoked once when the menu next closes
      *   (item activated or dismissed by an outside click), letting the opener
      *   revert an open-state affordance such as a rotated dropdown chevron.
+     * @param excludeEl - Optional element whose subtree is exempt from the
+     *   outside-click-to-close check. Pass the trigger that opened the menu (e.g.
+     *   a [`SplitButton`](/api/component/button/classes/SplitButton) chevron) so a
+     *   mousedown on it does not self-close the menu before the trigger's own
+     *   click can toggle it shut — mirroring [`MenuBar`](/api/component/menubar/classes/MenuBar)'s
+     *   dropdown-button exclusion.
      */
-    show(x: number, y: number, configs: MenuItemConfig[], onClose?: () => void): this {
+    show(x: number, y: number, configs: MenuItemConfig[], onClose?: () => void, excludeEl?: HTMLElement | null): this {
         this.assertRebuildMode("show");
 
         this._rebuildOnClose = onClose ?? null;
+        this._excludedEl = excludeEl ?? null;
 
         for (const item of this._menuItems) {
             if (item instanceof MenuItem) {

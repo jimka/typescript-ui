@@ -97,6 +97,14 @@ class SplitButton extends Button<SplitButtonOptions> {
     private _menu: Menu | null = null;
 
     /**
+     * Whether the dropdown is currently open. Tracked so a second chevron press
+     * toggles the menu *shut* instead of closing-then-reopening it: the menu
+     * excludes the chevron from its outside-click dismissal, so the chevron's
+     * own click is the sole close path while it is open.
+     */
+    private _open: boolean = false;
+
+    /**
      * Cached dropdown items. `declare` rather than initialized: `setMenuItems`
      * can fire from the super-cascade via `applyOptions`, and an `= []`
      * initializer would run after `super()` returns and clobber the cascaded
@@ -106,9 +114,16 @@ class SplitButton extends Button<SplitButtonOptions> {
 
     /**
      * Bound chevron-click handler. Held on the instance so it is a stable
-     * reference for the named-listener contract.
+     * reference for the named-listener contract. Toggles the dropdown: closes it
+     * when already open, opens it otherwise.
      */
-    private readonly _onChevronClick: () => void = () => { this._openMenu(); };
+    private readonly _onChevronClick: () => void = () => {
+        if (this._open) {
+            this._menu?.hide();
+        } else {
+            this._openMenu();
+        }
+    };
 
     /**
      * Constructs a SplitButton.
@@ -219,11 +234,24 @@ class SplitButton extends Button<SplitButtonOptions> {
 
         this._menu ??= new Menu();
 
-        // Spin the caret to its open state; the menu's onClose spins it back
-        // when an item is chosen or an outside click dismisses the dropdown.
+        // Spin the caret to its open state and flag the dropdown open; the menu's
+        // onClose reverts both when an item is chosen or an outside click
+        // dismisses the dropdown. The chevron element is excluded from the menu's
+        // outside-click check so a mousedown on it does not self-close the menu
+        // before `_onChevronClick` can toggle it shut.
+        this._open = true;
         this._setChevronOpen(true);
 
-        this._menu.show(rect.left, rect.bottom, this._menuItems, () => { this._setChevronOpen(false); });
+        this._menu.show(
+            rect.left,
+            rect.bottom,
+            this._menuItems,
+            () => {
+                this._open = false;
+                this._setChevronOpen(false);
+            },
+            this._chevron.getElement(true)
+        );
     }
 
     /**
