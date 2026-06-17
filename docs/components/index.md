@@ -56,6 +56,8 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | [`DateTimeField`](/api/component/input/classes/DateTimeField) | Combined date + time picker with animated dropdown |
 | [`NumberSpinner`](/api/component/input/classes/NumberSpinner) | Number field with up / down spinner |
 | [`Slider`](/api/component/input/classes/Slider) | Continuous-value slider |
+| [`FileField`](/api/component/input/classes/FileField) | File picker — trigger button + filename label over a hidden native input |
+| [`FileDropZone`](/api/component/input/classes/FileDropZone) | Drag-and-drop file surface that composes a `FileField` |
 
 ## Display
 

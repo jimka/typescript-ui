@@ -245,7 +245,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _layoutPaused         : boolean                 = false;
     private _aria                : Aria | null             = null;
     private _whiteSpace           : string | null;
-    private _display              : string;
     private _userSelect           : string | null;
     private _verticalAlign        : string | null;
     // Deferred-write style buffers. `styleRule` lazily materialises the
@@ -329,7 +328,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         // Constants without ComponentOptions counterpart.
         this._boxSizing     = "border-box";
-        this._display       = "block";
         this._whiteSpace    = "nowrap";
         this._userSelect    = "none";
         this._verticalAlign = "baseline";
@@ -1297,7 +1295,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        this.setElementStyle("display", v ? this._display : "none");
+        this.setElementStyle("display", v ? "block" : "none");
 
         return this;
     }
@@ -2974,35 +2972,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         return this;
     }
 
-    /**
-     * Returns the CSS `display` mode for this component.
-     *
-     * @returns The current display value (e.g. `"block"`, `"grid"`, `"flex"`).
-     */
-    getDisplay(): string {
-        return this._display;
-    }
-
-    /**
-     * Sets the CSS `display` mode (e.g. `"grid"`, `"flex"`, `"inline-block"`).
-     *
-     * Updates the cached display so that {@link setDisplayed} restores the
-     * correct mode when toggling visibility, and writes through to the
-     * per-component CSS rule.
-     *
-     * @param value - A valid CSS `display` value.
-     *
-     * @returns This component, for method chaining.
-     */
-    setDisplay(value: string): this {
-        this._display = value;
-
-        if (this._options.displayed !== false) {
-            this.setElementCSSRule("display", value);
-        }
-
-        return this;
-    }
 
     /**
      * Restores the framework default (`Position.ABSOLUTE`). Framework-internal
@@ -3771,7 +3740,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (opts.displayed != null) {
-            this._styleRule.set("display", opts.displayed ? this._display : "none");
+            this._styleRule.set("display", opts.displayed ? "block" : "none");
         }
 
         if (opts.cursor) {

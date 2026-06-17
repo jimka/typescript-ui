@@ -47,3 +47,7 @@ export { NumberSpinner } from '~/component/input/NumberSpinner.js';
 export type { NumberSpinnerOptions } from '~/component/input/NumberSpinner.js';
 export { SpinButton } from '~/component/input/SpinButton.js';
 export type { SpinButtonOptions, SpinButtonEvent } from '~/component/input/SpinButton.js';
+export { FileField } from '~/component/input/FileField.js';
+export type { FileFieldOptions } from '~/component/input/FileField.js';
+export { FileDropZone } from '~/component/input/FileDropZone.js';
+export type { FileDropZoneOptions } from '~/component/input/FileDropZone.js';
