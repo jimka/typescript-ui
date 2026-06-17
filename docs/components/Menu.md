@@ -24,7 +24,13 @@ Event.addListener(myComponent, 'contextmenu', (e: MouseEvent) => {
 });
 ```
 
-Reuse one `Menu` instance across the app — `show()` disposes the previous items and rebuilds. The menu closes itself on item click, outside click, or when the browser window loses focus (clicking another application or alt-tabbing); you don't need to call `hide()`. Pass an optional fourth `onClose` argument to `show(x, y, items, onClose)` to be notified once when the menu next closes — useful for reverting an open-state affordance such as a rotated dropdown chevron. An optional fifth `excludeEl` argument names an element exempt from the outside-click-to-close check; pass the trigger that opened the menu so a mousedown on it does not self-close the menu before that trigger's own click can toggle it shut (this is how [`SplitButton`](/components/SplitButton) makes a second chevron press close the dropdown).
+Reuse one `Menu` instance across the app — `show()` disposes the previous items and rebuilds. The menu closes itself on item click, outside click, or when the browser window loses focus (clicking another application or alt-tabbing); you don't need to call `hide()`. Pass an optional fourth `onClose` argument to `show(x, y, items, onClose)` to be notified once when the menu next closes — useful for reverting an open-state affordance such as a rotated dropdown chevron. An optional fifth `excludeEl` argument names an element exempt from the outside-click-to-close check; pass the trigger that opened the menu so a mousedown on it does not self-close the menu before that trigger's own click can toggle it shut.
+
+For a **left-click dropdown trigger** — a [`SplitButton`](/components/SplitButton) chevron, a [`ToolBar`](/components/ToolBar) overflow button — call `toggleFor(openerEl, x, y, items, onClose?)` instead of `show()`. It excludes `openerEl` and remembers it, so pressing the *same* opener again closes the menu (rather than the close-then-reopen flash a bare `show()` would produce), while pressing a *different* opener switches to it. Use plain `show()` for right-click context menus, which should reposition — not close — on a repeat trigger.
+
+```typescript
+trigger.on('click', () => menu.toggleFor(trigger.getElement(true), x, y, items));
+```
 
 ## Persistent mode (MenuBar dropdown)
 
