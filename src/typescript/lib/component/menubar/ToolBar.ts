@@ -108,9 +108,11 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
  * A horizontal (or vertical) strip of related controls — e.g. Bold / Italic
  * / Underline in a text editor, or Cut / Copy / Paste in a file manager.
  *
- * `ToolBar` extends [`Container`](/api/core/classes/Container) and sets its own
- * resting 4-pixel insets at construction via `setCompact(false)` (compact mode
- * tightens them to 2 pixels). Layout defaults to a horizontal
+ * `ToolBar` extends [`Container`](/api/core/classes/Container) and defaults to
+ * compact mode (`compact: true`), so at construction it tightens its own panel
+ * insets to 2 pixels and renders its `Button` / `ToggleButton` children compact;
+ * `setCompact(false)` restores the 4-pixel panel insets and the children's
+ * default rendering. Layout defaults to a horizontal
  * [`HBox`](/api/layout/classes/HBox); pass `orientation: "vertical"` (or call
  * `setOrientation("vertical")`) to swap to a [`VBox`](/api/layout/classes/VBox).
  *
