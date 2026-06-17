@@ -68,6 +68,15 @@ class ToggleButton extends Button<ToggleButtonOptions> {
             this.setSelected(opts.selected);
         }
 
+        // Button's flat branch runs in `applyChromeOptions` and re-points only
+        // Button's own hover/pressed rules — it never touches this toggle's
+        // `.selected` rule. Re-point it here so a `new ToggleButton(text,
+        // { flat: true })` reads depressed when selected, mirroring `setFlat`.
+        if (this.isFlat()) {
+            this.setSelectedShadow("var(--ts-ui-button-flat-pressed-shadow, inset 1px 1px 3px rgba(0, 0, 0, 0.25))");
+            this.setSelectedBackgroundColor("var(--ts-ui-button-flat-pressed-bg, rgba(0, 0, 0, 0.10))");
+        }
+
         return this;
     }
 
@@ -190,6 +199,34 @@ class ToggleButton extends Button<ToggleButtonOptions> {
     setSelectedBorder(options: BorderOptions | string): this {
         const border = typeof options === "string" ? { border: options } : options;
         this.selectedStyleRule.setMany(borderToStyle(border));
+
+        return this;
+    }
+
+    /**
+     * Toggles the flat appearance, then re-points the `.selected:not(:hover)`
+     * rule so a toggled-on flat button reads as depressed with the same sunken
+     * treatment Button's flat `:active` state uses. Flattening points the
+     * selected shadow/background at the `--ts-ui-button-flat-pressed-*` tokens;
+     * un-flattening restores the default `--ts-ui-toggle-selected-*` tokens.
+     *
+     * @param value - The new flat state.
+     *
+     * @returns This button, for method chaining.
+     */
+    setFlat(value: boolean): this {
+        super.setFlat(value);
+
+        // Read the resolved state, not the requested `value`: `super.setFlat`
+        // can refuse the flip (chromeless wins) or no-op on an unchanged value,
+        // and the selected rule must track whatever flat state actually holds.
+        if (this.isFlat()) {
+            this.setSelectedShadow("var(--ts-ui-button-flat-pressed-shadow, inset 1px 1px 3px rgba(0, 0, 0, 0.25))");
+            this.setSelectedBackgroundColor("var(--ts-ui-button-flat-pressed-bg, rgba(0, 0, 0, 0.10))");
+        } else {
+            this.setSelectedShadow("var(--ts-ui-toggle-selected-shadow, 2px 2px 1px inset grey)");
+            this.setSelectedBackgroundColor("var(--ts-ui-toggle-selected-bg, rgb(200, 200, 200))");
+        }
 
         return this;
     }

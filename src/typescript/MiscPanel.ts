@@ -164,7 +164,7 @@ class MiscPanel extends Panel {
         this.addComponent(leftColumn);
         this.addComponent(rightColumn);
 
-        let buttonWindowImage = new Button("Show window with image!");
+        let buttonWindowImage = new Button("Show window with image!", { flat: true });
         buttonWindowImage.on("action", function () {
             let win = new Window("Hello World!");
             win.setX(100);

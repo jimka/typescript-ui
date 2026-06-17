@@ -104,6 +104,14 @@ export interface ButtonOptions extends ComponentOptions {
     chromeless?:             boolean;
 
     /**
+     * Classical "flat" appearance: no resting border/shadow/gradient; a light
+     * frame + fill on `:hover:not(:active)` and a sunken inset frame on
+     * `:active`. Mutually exclusive with `chromeless` (chromeless wins).
+     * Runtime counterpart `setFlat`; read with `isFlat`.
+     */
+    flat?:                   boolean;
+
+    /**
      * Anchor for the inner content row (glyph + label) within Button's outer
      * `Fit` layout. Defaults to {@link AnchorType.CENTER}. Pass
      * {@link AnchorType.WEST} for left-anchored menubar-style buttons.
@@ -292,6 +300,15 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
     private _hoverBorder: BorderOptions | null = null;
 
+    /**
+     * Cached `flat` appearance flag. `declare` rather than initialized because
+     * `setFlat` can fire during the super-time cascade via `applyChromeOptions`
+     * (the flat branch installs hover/pressed treatments through the lazy
+     * style-rule getters), and an `= false` initializer would run after super
+     * returns and silently clobber the cascaded value.
+     */
+    private declare _flat?: boolean;
+
     private _enabledCursor: string = "pointer";
 
     /**
@@ -374,6 +391,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this.setDescription(this._options.description);
         }
 
+        // Construction-time flat: `_applyFlatChrome` ran during the super
+        // cascade before `_glyph` / `_text` existed, so the compact glyph-only
+        // inset was skipped. Re-evaluate it now the content row is built.
+        if (this._flat) {
+            this._applyFlatCompactInsets();
+        }
+
         // Initial auto-sized preferred-size pass. No-ops when the consumer
         // already supplied `preferredSize` (the override of `setPreferredSize`
         // below flips `_consumerSetPreferredSize`).
@@ -424,6 +448,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // fill are consumed by the constructor body when adding `_content` to
         // the outer Fit layout; later applyOptions calls don't reanchor.
         if (opts.chromeless   !== undefined) this._options.chromeless   = opts.chromeless;
+        if (opts.flat         !== undefined) this._options.flat          = opts.flat;
         if (opts.anchor       !== undefined) this._options.anchor       = opts.anchor;
         if (opts.fill         !== undefined) this._options.fill         = opts.fill;
 
@@ -480,6 +505,16 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (opts.hoverShadow            !== undefined) this.setHoverShadow           (opts.hoverShadow);
         if (opts.hoverBorder            !== undefined) this.setHoverBorder           (opts.hoverBorder);
         if (opts.hoverBorderRadius      !== undefined) this.setHoverBorderRadius     (opts.hoverBorderRadius);
+
+        // Flat is the third appearance mode: it runs in the chromeful `else`
+        // path (chromeless already returned above) and re-points the resting
+        // chrome + the raised `pressedX`/`hoverX` treatments just dispatched to
+        // the flat tokens. Reading the runtime cache first keeps a previously
+        // written flag gating future re-applies that omit `flat`.
+        if ((this._options.flat ?? opts.flat) === true) {
+            this._flat = true;
+            this._applyFlatChrome();
+        }
     }
 
     /**
@@ -1134,6 +1169,12 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             // self-evident if a future change does gate them.
             this._clearChrome();
             this._options.chromeless = true;
+
+            // Chromeless wins over flat: `_clearChrome` already stripped the
+            // flat hover/pressed treatments, so drop the flat flag too to keep
+            // `isFlat()` honest.
+            this._flat = false;
+            this._options.flat = false;
         } else {
             // Flip the flag first so the clear/set side-effects on the
             // restore path are not intercepted by anything that might
@@ -1164,8 +1205,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this.clearPressedForegroundColor();
             this.clearPressedShadow();
             this.clearPressedBorderRadius();
-            // `clearPressedBorder` doesn't exist today; consumers that set
-            // a pressed border live with it across a chromeless toggle.
+            this.clearPressedBorder();
         }
 
         if (this._hoverStyleRule !== undefined) {
@@ -1174,8 +1214,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this.clearHoverForegroundColor();
             this.clearHoverShadow();
             this.clearHoverBorderRadius();
-            // `clearHoverBorder` doesn't exist today — same story as
-            // `clearPressedBorder`.
+            this.clearHoverBorder();
         }
     }
 
@@ -1198,6 +1237,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (d.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(d.pressedBackgroundImage);
         if (d.pressedShadow          !== undefined) this.setPressedShadow         (d.pressedShadow);
         if (d.pressedBorder          !== undefined) this.setPressedBorder         (d.pressedBorder);
+        else                                        this.clearPressedBorder      ();
         if (d.pressedBorderRadius    !== undefined) this.setPressedBorderRadius   (d.pressedBorderRadius);
 
         if (d.hoverForegroundColor   !== undefined) this.setHoverForegroundColor  (d.hoverForegroundColor);
@@ -1205,7 +1245,124 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (d.hoverBackgroundImage   !== undefined) this.setHoverBackgroundImage  (d.hoverBackgroundImage);
         if (d.hoverShadow            !== undefined) this.setHoverShadow           (d.hoverShadow);
         if (d.hoverBorder            !== undefined) this.setHoverBorder           (d.hoverBorder);
+        else                                        this.clearHoverBorder         ();
         if (d.hoverBorderRadius      !== undefined) this.setHoverBorderRadius     (d.hoverBorderRadius);
+    }
+
+    /**
+     * Returns whether this button is currently in `flat` mode (no resting
+     * border / shadow / gradient; a light frame on hover and a sunken inset
+     * frame on press).
+     *
+     * @returns True when the flat appearance is applied.
+     */
+    isFlat(): boolean {
+        return this._flat ?? false;
+    }
+
+    /**
+     * Toggles the classical `flat` appearance and reconciles the DOM. When
+     * flipping to `true`, suppresses the resting frame and installs the flat
+     * hover / pressed treatments from the `--ts-ui-button-flat-*` tokens; when
+     * flipping to `false`, restores the raised chrome from `_defaultOptions`
+     * via the same round-trip `setChromeless(false)` uses. Mutually exclusive
+     * with `chromeless` (chromeless wins): `setFlat(true)` no-ops with a
+     * dev-time warning when the button is chromeless.
+     *
+     * @param value - The new flat state.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks Consumer-supplied chrome that came in via the caller's
+     * `options` bag (rather than the subclass's `_defaultOptions`) is not
+     * recovered by `setFlat(false)` — only the defaults round-trip, matching
+     * the documented `setChromeless(false)` tradeoff.
+     */
+    setFlat(value: boolean): this {
+        if (value && this.isChromeless()) {
+            console.warn("Button #" + this.getId() + ": setFlat(true) ignored — flat and chromeless are mutually exclusive, chromeless wins.");
+
+            return this;
+        }
+
+        if ((this._flat ?? false) === value) {
+            return this;
+        }
+
+        if (value) {
+            this._flat = true;
+            this._options.flat = true;
+            this._applyFlatChrome();
+        } else {
+            this._flat = false;
+            this._options.flat = false;
+            this._restoreChrome();
+        }
+
+        return this;
+    }
+
+    /**
+     * Suppresses the resting frame (border / radius / shadow / gradient) the
+     * same way the chromeless branch does, masks the inherited raised
+     * `pressedX` / `hoverX` defaults so a re-apply can't leak them, then
+     * installs the flat hover and sunken-pressed treatments sourced from the
+     * `--ts-ui-button-flat-*` tokens through the existing lazy style-rule
+     * setters. Glyph-only buttons (a glyph with an empty label) tighten to a
+     * compact square inset so they read as toolbar icon buttons.
+     */
+    private _applyFlatChrome(): void {
+        // Reserve the 1px frame at rest with a transparent border (rather than
+        // clearing it like the chromeless branch). Under `box-sizing: border-box`
+        // a border consumes content-box space, so a border that only appears on
+        // `:hover` / `:active` would nudge the centred label by 1px. Reserving it
+        // transparent keeps the geometry identical across states — the hover /
+        // pressed rules below only swap the border *colour*. Matches the 1px
+        // width of the `--ts-ui-button-flat-{hover,pressed}-border` tokens;
+        // widen this in lockstep if those ever exceed 1px.
+        this.setBorder("1px solid transparent");
+        this._options.borderRadius    = undefined;
+        this._options.shadow          = undefined;
+        this._options.backgroundImage = undefined;
+
+        if ((this._options.backgroundColor ?? this._defaultOptions.backgroundColor) === undefined) {
+            this._options.backgroundColor = "transparent";
+        }
+
+        // Mask the inherited raised pressed/hover defaults so a re-apply that
+        // omits them doesn't leak the raised treatments; the flat values below
+        // overwrite the live rules.
+        this._options.pressedBackgroundImage = undefined;
+        this._options.hoverBackgroundImage   = undefined;
+        this._options.hoverShadow            = undefined;
+
+        // Install the flat hover frame + sunken pressed frame from the tokens.
+        this.setHoverBackgroundColor("var(--ts-ui-button-flat-hover-bg, rgba(0, 0, 0, 0.06))");
+        this.setHoverBorder("var(--ts-ui-button-flat-hover-border, 1px solid rgb(200, 200, 200))");
+        this.setPressedBackgroundColor("var(--ts-ui-button-flat-pressed-bg, rgba(0, 0, 0, 0.10))");
+        this.setPressedShadow("var(--ts-ui-button-flat-pressed-shadow, inset 1px 1px 3px rgba(0, 0, 0, 0.25))");
+        this.setPressedBorder("var(--ts-ui-button-flat-pressed-border, 1px solid rgb(180, 180, 180))");
+
+        // Compact square for glyph-only buttons. Runs through the shared helper
+        // so the construction-time flat path — where `_glyph` / `_text` don't
+        // yet exist during the super cascade — can re-apply it from the
+        // constructor body once the content row is built.
+        this._applyFlatCompactInsets();
+    }
+
+    /**
+     * Tightens a flat glyph-only button (a glyph with an empty label) to a
+     * compact 4px symmetric square inset (vs. the default 5/10) so a toolbar
+     * icon reads as a tight square; no-ops otherwise. Split out of
+     * {@link _applyFlatChrome} because that runs during the `super()` cascade —
+     * before the constructor assigns `_glyph` / `_text` — so the constructor
+     * re-invokes it once the content row exists. Text buttons keep their
+     * default insets.
+     */
+    private _applyFlatCompactInsets(): void {
+        if (this._flat && this._glyph && this._text.getText().valueOf() === "") {
+            this.setInsets(new Insets(4, 4, 4, 4));
+        }
     }
 
     /**
@@ -1452,6 +1609,25 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * Removes the border from the :active CSS rule, reverting the pressed
+     * state to no explicit border. Lets the un-flatten / un-chromeless round
+     * trip strip a flat pressed border that has no raised default to restore.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearPressedBorder(): this {
+        this._pressedBorder = null;
+        this.pressedStyleRule.setMany({
+            borderTop:    null,
+            borderRight:  null,
+            borderBottom: null,
+            borderLeft:   null,
+        });
+
+        return this;
+    }
+
+    /**
      * Returns the border radius applied when the button is in the :active state.
      *
      * @returns The CSS border-radius string, or null if not set.
@@ -1648,6 +1824,25 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     setHoverBorder(options?: BorderOptions | string): this {
         this._hoverBorder = typeof options === "string" ? { border: options } : (options ?? {});
         this.hoverStyleRule.setMany(borderToStyle(this._hoverBorder));
+
+        return this;
+    }
+
+    /**
+     * Removes the border from the :hover CSS rule, reverting the hover state
+     * to no explicit border. Lets the un-flatten / un-chromeless round trip
+     * strip a flat hover border that has no raised default to restore.
+     *
+     * @returns This component, for method chaining.
+     */
+    clearHoverBorder(): this {
+        this._hoverBorder = null;
+        this.hoverStyleRule.setMany({
+            borderTop:    null,
+            borderRight:  null,
+            borderBottom: null,
+            borderLeft:   null,
+        });
 
         return this;
     }

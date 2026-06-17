@@ -38,6 +38,17 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
             background: 'rgb(234, 236, 239)',
             shadow    : 'none',
         },
+        flat      : {
+            hover  : {
+                background: 'rgba(0, 0, 0, 0.06)',
+                border    : '1px solid rgb(200, 200, 200)',
+            },
+            pressed: {
+                background: 'rgba(0, 0, 0, 0.10)',
+                shadow    : 'inset 1px 1px 3px rgba(0, 0, 0, 0.25)',
+                border    : '1px solid rgb(180, 180, 180)',
+            },
+        },
     },
     toggle      : {
         selected: {
