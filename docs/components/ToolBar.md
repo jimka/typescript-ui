@@ -36,6 +36,7 @@ parent.addComponent(bar);
 | `orientation` | `"horizontal"` | `"horizontal"` packs children with [`HBox`](/api/layout/classes/HBox); `"vertical"` swaps to [`VBox`](/api/layout/classes/VBox). |
 | `compact` | `false` | When `true`, insets shrink to `(2, 2, 2, 2)` and child spacing collapses to `0`. |
 | `overflow` | `"clip"` | `"clip"` lets children spill into the parent's clipping region. `"menu"` hides the [`Button`](/api/component/button/classes/Button) / [`ToggleButton`](/api/component/button/classes/ToggleButton) children that don't fit and surfaces them in a dropdown opened by a trailing chevron. See [Overflow menu](#overflow-menu). |
+| `overflowSide` | `"right"` | Edge the `"menu"` overflow chevron sits on. `"right"` pins it to the bar's far-right edge (a flex spacer fills the gap after the last visible button); `"left"` leads the buttons. The overflowing buttons are the trailing run either way. No effect unless `overflow` is `"menu"`. |
 | `flat` | `true` | When `true`, [`Button`](/api/component/button/classes/Button) / [`ToggleButton`](/api/component/button/classes/ToggleButton) children are switched to the flat appearance. Set `false` to keep raised buttons. |
 
 ## Setters
@@ -43,6 +44,7 @@ parent.addComponent(bar);
 - `setOrientation(value)` — flips the layout manager between [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox), preserving child spacing. The trailing-edge border flips from bottom to right (or vice versa). Existing [`ToolBarSeparator`](/components/ToolBarSeparator) children are **not** auto-flipped — recreate them with the matching orientation if needed.
 - `setCompact(value)` — toggles between the default insets / gap and the compact `(2, 2, 2, 2)` / `0` pair.
 - `setOverflow(value)` — switches between `"clip"` and `"menu"`. Entering `"menu"` for the first time lazily builds the chevron trigger and its dropdown. `getOverflow()` reports the current strategy.
+- `setOverflowSide(value)` — moves the `"menu"` chevron to the `"left"` or `"right"` (default) edge; `getOverflowSide()` reports it. On `"right"` a flex spacer pins the chevron to the bar's far-right edge. Only the trigger's position changes — the overflowing buttons remain the trailing run.
 - `setFlat(value)` — flattens (or restores) the bar's `Button` / `ToggleButton` children. The flag also governs children added later through `addComponent`, so any button you add to a flat bar is flattened automatically. Non-button children are left untouched. `isFlat()` reports the current state.
 
 ## Keyboard nav
