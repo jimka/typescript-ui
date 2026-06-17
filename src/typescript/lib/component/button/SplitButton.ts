@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Menu } from "~/core/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
-import { Fit } from "~/layout/Fit.js";
-import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
 import { caret_down } from "~/glyphs/solid/caret_down.js";
 
@@ -20,12 +17,12 @@ Glyph.register(caret_down);
 const CHEVRON_GLYPH = "caret-down";
 
 /**
- * Square pixel size of the trailing chevron's hit zone. Pinned (not
+ * Square pixel size of the trailing chevron glyph. Pinned (not
  * line-height-tracked like the leading glyph) so the dropdown affordance stays
- * a constant, comfortably-clickable target across themes; 16px matches the
+ * a constant, comfortably-clickable size across themes; 16px matches the
  * compact icon-button glyph size a flat toolbar uses.
  */
-const CHEVRON_ZONE = 16;
+const CHEVRON_SIZE = 16;
 
 /**
  * Construction-time options for {@link SplitButton}.
@@ -46,10 +43,11 @@ export interface SplitButtonOptions extends ButtonOptions {
  *
  * The chevron is a child [`Glyph`](/api/component/display/classes/Glyph) inside
  * Button's single `<button>` element (one DOM element per class is preserved):
- * it rides the content row beside the leading glyph and title, wrapped in a
- * pointer-events surface so a click in the chevron zone targets the chevron —
- * not the button face — which is how the dropdown click is distinguished from
- * the primary action without hit-testing coordinates.
+ * it rides the content row beside the leading glyph and title. A subtree
+ * listener on the chevron catches its click (which the SVG `<use>` retargets to
+ * an id-less inner element), while the button face's exact-target `"action"`
+ * only fires for a click on the `<button>` itself — distinguishing the dropdown
+ * gesture from the primary action with no hit-testing coordinates.
  *
  * Dropping a `SplitButton` into a flat [`ToolBar`](/api/component/menubar/classes/ToolBar)
  * flattens it like any other `Button`; the chevron is part of the content row,
@@ -74,13 +72,15 @@ export interface SplitButtonOptions extends ButtonOptions {
 class SplitButton extends Button<SplitButtonOptions> {
 
     /**
-     * Pointer-events surface wrapping the chevron glyph. A plain `<div>` whose
-     * own element id is the click target for the chevron zone — the glyph
-     * inside it carries `pointer-events: none`, so a click anywhere in the zone
-     * lands on this wrapper (which reliably has an id) rather than on an SVG
-     * `<path>` that the framework's exact-target dispatch could not match.
+     * The trailing dropdown chevron — a child of Button's `_content` row.
+     * Clicks on it land on the id-less inner element the SVG `<use>` retargets
+     * to, so they are caught with a *subtree* listener rather than an
+     * exact-target one; that same retargeting is why a chevron click never
+     * matches the button face's exact-target `"action"`, which is what
+     * distinguishes the dropdown gesture from the primary action without
+     * hit-testing.
      */
-    private _chevronZone!: Component;
+    private _chevron!: Glyph;
 
     /**
      * Lazily-created rebuild-mode dropdown, reused across opens. `null` until
@@ -115,26 +115,19 @@ class SplitButton extends Button<SplitButtonOptions> {
         // Default the cache when neither the super-cascade nor a caller set it.
         this._menuItems ??= [];
 
-        // Build the chevron zone after super() so the content row exists. The
-        // wrapper is a content-row child like the leading glyph; appending it
-        // last places the chevron after the title in the single `<button>`.
-        const chevron = new Glyph(CHEVRON_GLYPH);
-        chevron.setPointerEvents("none");
-        chevron.setPreferredSize(CHEVRON_ZONE, CHEVRON_ZONE);
+        // Build the chevron after super() so the content row exists. It rides
+        // the row like the leading glyph; appending it last places it after the
+        // title in the single `<button>`. A *subtree* listener catches the click
+        // the SVG `<use>` retargets to its id-less inner element — an
+        // exact-target listener on the glyph would never match it — while that
+        // same retargeting keeps the click off the button face's `"action"`.
+        this._chevron = new Glyph(CHEVRON_GLYPH);
+        this._chevron.setPreferredSize(CHEVRON_SIZE, CHEVRON_SIZE);
+        this._chevron.setCursor("pointer");
 
-        this._chevronZone = new Component();
-        // A Fit layout sizes the wrapper to the chevron glyph; a bare Component
-        // defaults to an Absolute layout that reports 0×0 and would collapse the
-        // hit zone in the content row's HBox.
-        this._chevronZone.setLayoutManager(new Fit());
-        this._chevronZone.setInsets(new Insets(0, 0, 0, 0));
-        this._chevronZone.setPointerEvents("auto");
-        this._chevronZone.setCursor("pointer");
-        this._chevronZone.addComponent(chevron);
+        this._content.addComponent(this._chevron);
 
-        this._content.addComponent(this._chevronZone);
-
-        Event.addListener(this._chevronZone, "click", this._onChevronClick);
+        Event.addSubtreeListener(this._chevron, "click", this._onChevronClick);
     }
 
     /**
@@ -187,13 +180,13 @@ class SplitButton extends Button<SplitButtonOptions> {
      * the chevron; re-appending it last keeps the dropdown affordance trailing
      * the title across those mutations.
      *
-     * @remarks Guarded on `_chevronZone` because the rebuilds dispatched during
-     * the super-cascade run before the constructor builds the chevron; those
-     * skip, and the constructor appends it once afterwards.
+     * @remarks Guarded on `_chevron` because the rebuilds dispatched during the
+     * super-cascade run before the constructor builds the chevron; those skip,
+     * and the constructor appends it once afterwards.
      */
     protected override _afterRebuildContentRow(): void {
-        if (this._chevronZone) {
-            this._content.addComponent(this._chevronZone);
+        if (this._chevron) {
+            this._content.addComponent(this._chevron);
         }
     }
 
