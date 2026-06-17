@@ -33,6 +33,22 @@ The `edge` option reuses the compass primitive [`Placement`](/api/primitive/enum
 
 `thickness` (default 48 px) is the strip's extent along its cross axis — width for WEST/EAST, height for NORTH/SOUTH.
 
+## Handle text orientation
+
+On the vertical (WEST/EAST) sides, the `orientation` option controls how handle labels read — mirroring the [`Tab`](/api/layout/classes/Tab) layout's orientation vocabulary. It is ignored on NORTH/SOUTH, where labels are always horizontal.
+
+| `orientation` | Handle text |
+| --- | --- |
+| `"horizontal"` (default) | Upright, beside the glyph |
+| `"vertical-cw"` | Rotated 90° clockwise — reads top-to-bottom (`writing-mode: sideways-rl`) |
+| `"vertical-ccw"` | Rotated the other way — reads bottom-to-top (`writing-mode: sideways-lr`) |
+
+It is implemented with CSS `writing-mode` (not `transform: rotate`), so the rotated label still reports an accurate box for handle sizing. Change it at runtime with `setOrientation`.
+
+```typescript
+const rail = Rail({ edge: Placement.WEST, orientation: 'vertical-cw' }).mount();
+```
+
 ## Hosting drawers
 
 `registerDrawer(drawer, options?)` adds a [`RailHandle`](/api/core/classes/RailHandle) for the drawer and wires it both ways:
@@ -84,7 +100,7 @@ The strip and its handles read these tokens (see [theming](/concepts/theming)):
 ## See also
 
 - [API: Rail](/api/core/classes/Rail)
-- [API: RailOptions](/api/core/interfaces/RailOptions), [RailEdge](/api/core/type-aliases/RailEdge), [RailEvent](/api/core/type-aliases/RailEvent), [RailDrawerRegistration](/api/core/interfaces/RailDrawerRegistration)
+- [API: RailOptions](/api/core/interfaces/RailOptions), [RailEdge](/api/core/type-aliases/RailEdge), [RailOrientation](/api/core/type-aliases/RailOrientation), [RailEvent](/api/core/type-aliases/RailEvent), [RailDrawerRegistration](/api/core/interfaces/RailDrawerRegistration)
 - [API: RailHandle](/api/core/classes/RailHandle), [RailHandleOptions](/api/core/interfaces/RailHandleOptions)
 - [Drawer](/components/Drawer) — the overlay panel a rail toggles
 - [Window](/components/Window) — minimizes into a rail via `setRail`
