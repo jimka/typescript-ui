@@ -536,6 +536,18 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * Returns the button's current title text, or `""` when no label is set.
+     * A read-only companion to {@link setText} — the inner label has no other
+     * public accessor; the [`ToolBar`](/api/component/menubar/classes/ToolBar)
+     * overflow menu reads it to label each dropdown row.
+     *
+     * @returns The current title string, or `""` if none is set.
+     */
+    getText(): string {
+        return this._text.getText().valueOf();
+    }
+
+    /**
      * Applies a writing mode to the button and propagates it to the inner label
      * (and description) so their measured preferred size reflects the rotated
      * text run — a label-only `getWritingMode` would otherwise stay horizontal
@@ -1110,6 +1122,25 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     off(event: "action", listener: ClickListener): this;
     off(_event: "action", listener: ClickListener): this {
         Event.removeListener(this, "click", listener);
+
+        return this;
+    }
+
+    /**
+     * Programmatically actions the button, as if the user had clicked it:
+     * fires this button's own `"click"` event so every registered
+     * {@link on | `"action"`} handler runs. Provided so other components can
+     * drive a button through its named surface rather than synthesising its
+     * DOM event from the outside — e.g. [`ToolBar`](/api/component/menubar/classes/ToolBar)
+     * replays an overflowed button's action from its dropdown. A
+     * [`ToggleButton`](/api/component/button/classes/ToggleButton)
+     * inherits this and toggles, because its internal toggle is wired to the
+     * same `"click"`.
+     *
+     * @returns This button, for method chaining.
+     */
+    click(): this {
+        Event.fireEvent(this, "click");
 
         return this;
     }

@@ -6,14 +6,26 @@ import { Spacer }                                  from '@jimka/typescript-ui/co
 import { ComboBox, Text }                          from '@jimka/typescript-ui/component/input';
 import { Button, ToggleButton }                    from '@jimka/typescript-ui/component/button';
 import { ToolBar, ToolBarSeparator }               from '@jimka/typescript-ui/component/menubar';
+import { Glyph }                                   from '@jimka/typescript-ui/component/display';
+import { scissors }                                from '@jimka/typescript-ui/glyphs/solid/scissors';
+import { copy as copyGlyph }                       from '@jimka/typescript-ui/glyphs/solid/copy';
+import { paste as pasteGlyph }                     from '@jimka/typescript-ui/glyphs/solid/paste';
+
+// The toolbar demo's Cut/Copy/Paste buttons render glyph-only; register their
+// glyphs at module load (copy/paste aliased to dodge the local const names).
+Glyph.register(scissors, copyGlyph, pasteGlyph);
 
 /**
  * Demo panel showcasing the `ToolBar` component.
  *
- * Demonstrates: a horizontal toolbar with a Bold/Italic/Underline
- * `ButtonGroup`, a separator, three plain Cut/Copy/Paste buttons, a
- * `Spacer.flex()` that pushes a trailing zoom `ComboBox` to the right edge,
- * and a status text area below that reflects the last action.
+ * Demonstrates: a flat (default) horizontal toolbar with a Bold/Italic/Underline
+ * `ButtonGroup` whose selected button reads depressed, a separator, glyph-only
+ * Cut/Copy/Paste buttons that render as compact squares, a `Spacer.flex()` that
+ * pushes a trailing zoom `ComboBox` to the right edge, and a status text area
+ * below that reflects the last action. A second `ToolBar({ flat: false })`
+ * demonstrates the raised-button escape hatch. A third
+ * `ToolBar({ overflow: "menu" })` packs enough buttons that narrowing the panel
+ * pushes the trailing ones into a chevron dropdown.
  */
 class ToolBarPanel extends Panel {
 
@@ -21,11 +33,7 @@ class ToolBarPanel extends Panel {
      * Constructs the demo panel and wires up a sample toolbar.
      */
     constructor() {
-        super();
-
-        const vbox = new VBox();
-        vbox.setStretching(true);
-        this.setLayoutManager(vbox);
+        super({layoutManager: VBox({ stretching: true })});
 
         const bar        = new ToolBar();
         const statusText = new Text("Click a toolbar button to see it here.");
@@ -38,18 +46,19 @@ class ToolBarPanel extends Panel {
         const italic    = new ToggleButton("I");
         const underline = new ToggleButton("U");
 
-        const styleGroup = new ButtonGroup();
-        styleGroup.addButton(bold);
-        styleGroup.addButton(italic);
-        styleGroup.addButton(underline);
+        const styleGroup = new ButtonGroup({ buttons: [
+            bold,
+            italic,
+            underline
+        ]});
 
         bold.on("action", () => { status("Toggle Bold"); });
         italic.on("action", () => { status("Toggle Italic"); });
         underline.on("action", () => { status("Toggle Underline"); });
 
-        const cut   = new Button("Cut");
-        const copy  = new Button("Copy");
-        const paste = new Button("Paste");
+        const cut   = new Button({ glyph: "scissors" });
+        const copy  = new Button({ glyph: "copy" });
+        const paste = new Button({ glyph: "paste" });
 
         cut.on("action", () => { status("Cut"); });
         copy.on("action", () => { status("Copy"); });
@@ -58,18 +67,46 @@ class ToolBarPanel extends Panel {
         const zoom = new ComboBox({ items: ["50%", "75%", "100%", "125%", "150%"] });
         zoom.on("action", (value: string) => { status("Zoom " + value); });
 
-        bar.addComponent(bold);
-        bar.addComponent(italic);
-        bar.addComponent(underline);
-        bar.addComponent(new ToolBarSeparator());
-        bar.addComponent(cut);
-        bar.addComponent(copy);
-        bar.addComponent(paste);
-        bar.addComponent(Spacer.flex());
-        bar.addComponent(zoom);
+        bar.addComponents(
+            styleGroup.getButtons(),
+            ToolBarSeparator(),
+            cut,
+            copy,
+            paste,
+            Spacer.flex(),
+            zoom
+        );
 
-        this.addComponent(bar);
-        this.addComponent(statusText);
+        const raisedBar: ToolBar = new ToolBar({ flat: false });
+
+        const save = new Button("Save");
+        const open = new Button("Open");
+
+        save.on("action", () => { status("Save"); });
+        open.on("action", () => { status("Open"); });
+
+        raisedBar.addComponents(
+            save,
+            open
+        );
+
+        const overflowBar = new ToolBar({ overflow: "menu" });
+
+        const actions = ["New", "Open", "Save", "Print", "Undo", "Redo", "Find", "Replace", "AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD", "EEEEEE", "FFFFFF", "GGGGGG", "HHHHHH", "IIIIII", "JJJJJJ"];
+
+        for (const label of actions) {
+            const button = new Button(label);
+
+            button.on("action", () => { status(label); });
+            overflowBar.addComponent(button);
+        }
+
+        this.addComponents(
+            bar,
+            raisedBar,
+            overflowBar,
+            statusText
+        );
     }
 }
 
