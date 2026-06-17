@@ -464,7 +464,7 @@ class Table extends Component<TableOptions> {
         // (bold + table-header font size). 4px cell padding + 5px resize-handle gutter
         // + 12px breathing room for the optional sort indicator (▲/▼).
         const textWidth = Util.measureTextWidth(f.getName(), {
-            fontSize  : "var(--ts-ui-table-header-font-size, 13px)",
+            fontSize  : "var(--ts-ui-table-header-font-size, var(--ts-ui-font-size))",
             fontWeight: "bold",
         });
         const headerMin = textWidth + 21;

@@ -45,6 +45,23 @@ import { ModernTheme } from '~/core/themes/ModernTheme.js';
 export type ScaleToken = { scale: number } | { fixed: number };
 
 /**
+ * A theme font-size token, resolved to a CSS string by `themeToVars`. A bare
+ * length string (`'13px'`, `'1.2rem'`) passes through unchanged; a signed pixel
+ * offset string (`'+2px'`, `'-2px'`) becomes `calc(var(--ts-ui-font-size) ± Npx)`;
+ * a `{ scale: n }` object becomes `calc(var(--ts-ui-font-size) * n)`. Omitting an
+ * optional font token inherits the base font size ([`Theme`](/api/core/interfaces/Theme)'s
+ * `font.size`, the `--ts-ui-font-size` anchor).
+ *
+ * Unlike the glyph {@link ScaleToken} — which resolves to a JS px number frozen
+ * into {@link ResolvedScale} once per theme — a `FontSizeToken` resolves to a CSS
+ * string and rides the cascade, so it re-resolves automatically when the base
+ * font size changes.
+ *
+ * @category Theme
+ */
+export type FontSizeToken = string | { scale: number };
+
+/**
  * Defines the full set of design tokens that make up a UI theme.
  *
  * Background tokens (e.g. `button.bg`, `button.pressed.bg`, `toggle.selected.bg`) accept any
@@ -60,7 +77,7 @@ export interface Theme {
 
     font: {
         family    : string;
-        size      : string;
+        size?     : string;
         /**
          * Extra vertical leading added to a control's own font size to form its
          * line box, as a CSS length string, e.g. `"2px"`. The rendered line
@@ -92,10 +109,10 @@ export interface Theme {
         shadow    : string;
         padding   : string;
         font: {
-            size: string;
+            size?: FontSizeToken;
         };
         description: {
-            fontSize  : string;
+            fontSize? : FontSizeToken;
             foreground: string;
             weight    : string;
         };
@@ -299,7 +316,7 @@ export interface Theme {
 
     header: {
         font: {
-            size: string;
+            size?: FontSizeToken;
         };
     };
 
@@ -309,7 +326,7 @@ export interface Theme {
             background: string;
             border: string;
             font: {
-                size: string;
+                size?: FontSizeToken;
             };
             glyph: {
                 gap  : string;
@@ -340,7 +357,7 @@ export interface Theme {
         sortBadge: {
             background: string;
             color     : string;
-            fontSize  : string;
+            fontSize? : FontSizeToken;
         };
     };
 
@@ -783,13 +800,54 @@ function tabButtonSideVars(
     };
 }
 
+// Matches a signed pixel offset: '+2px', '-2px', '+0.5px'. Whole/decimal, px only.
+const FONT_SIZE_OFFSET = /^([+-])(\d+(?:\.\d+)?)px$/;
+
+/**
+ * Resolves a {@link FontSizeToken} (or its absence) to the CSS string
+ * `themeToVars` emits for a font var.
+ *
+ * - A signed pixel offset string (`'+2px'` / `'-2px'`) becomes
+ *   `calc(var(--ts-ui-font-size) ± Npx)`.
+ * - A `{ scale: n }` object becomes `calc(var(--ts-ui-font-size) * n)`.
+ * - Any other string (a bare length like `'13px'` / `'1.2rem'`) passes through
+ *   unchanged.
+ * - `undefined` (an omitted optional token) and any unrecognised shape fall back
+ *   to `var(--ts-ui-font-size)`, so a malformed theme degrades to the base font
+ *   size — visibly, never `NaN`/crash. `DeepPartial<Theme>` weakens the
+ *   `{ scale }` arm to `{ scale?: number }` inside a theme literal, so the
+ *   `typeof token.scale === 'number'` guard is what keeps `{}` from emitting a
+ *   broken `calc(... * undefined)`.
+ */
+function resolveFontSizeToken(token: FontSizeToken | undefined): string {
+    if (token === undefined) return 'var(--ts-ui-font-size)';
+
+    if (typeof token === 'object') {
+        return typeof token.scale === 'number'
+            ? `calc(var(--ts-ui-font-size) * ${token.scale})`
+            : 'var(--ts-ui-font-size)';
+    }
+
+    if (typeof token === 'string') {
+        const m = FONT_SIZE_OFFSET.exec(token.trim());
+        // Whitespace around the operator is required — calc() rejects `14px-2px`
+        // but accepts `14px - 2px`.
+        return m ? `calc(var(--ts-ui-font-size) ${m[1]} ${m[2]}px)` : token;
+    }
+
+    return 'var(--ts-ui-font-size)';
+}
+
 /**
  * Converts a Theme object into a map of CSS custom property names to values.
  */
 function themeToVars(theme: Theme): Record<string, string> {
     return {
         '--ts-ui-font-family'                      : theme.font.family,
-        '--ts-ui-font-size'                        : theme.font.size,
+        // `'14px'` mirrors BaseTheme.font.size — the fallback only applies when a
+        // theme omits font.size entirely (the built-ins never do); it keeps the
+        // base anchor every relative font token references from being unemitted.
+        '--ts-ui-font-size'                        : theme.font.size ?? '14px',
         '--ts-ui-base-size'                        : String(theme.scale.base) + 'px',
         '--ts-ui-line-padding'                     : String(theme.font.linePadding),
         '--ts-ui-text-color'                       : theme.text.color,
@@ -800,8 +858,8 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-button-border'                    : theme.button.border,
         '--ts-ui-button-shadow'                    : theme.button.shadow,
         '--ts-ui-button-padding'                   : theme.button.padding,
-        '--ts-ui-button-font-size'                 : theme.button.font.size,
-        '--ts-ui-button-description-font-size'     : theme.button.description.fontSize,
+        '--ts-ui-button-font-size'                 : resolveFontSizeToken(theme.button.font.size),
+        '--ts-ui-button-description-font-size'     : resolveFontSizeToken(theme.button.description.fontSize),
         '--ts-ui-button-description-fg'            : theme.button.description.foreground,
         '--ts-ui-button-description-weight'        : theme.button.description.weight,
         '--ts-ui-button-pressed-fg'                : theme.button.pressed.foreground,
@@ -872,10 +930,10 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-window-control-hover-bg'          : theme.window.control.hoverBackground,
         '--ts-ui-window-control-active-bg'         : theme.window.control.activeBackground,
         '--ts-ui-window-header-bg'                 : theme.window.header.background,
-        '--ts-ui-header-font-size'                 : theme.header.font.size,
+        '--ts-ui-header-font-size'                 : resolveFontSizeToken(theme.header.font.size),
         '--ts-ui-table-header-bg'                  : theme.table.header.background,
         '--ts-ui-table-header-border'              : theme.table.header.border,
-        '--ts-ui-table-header-font-size'           : theme.table.header.font.size,
+        '--ts-ui-table-header-font-size'           : resolveFontSizeToken(theme.table.header.font.size),
         '--ts-ui-table-header-glyph-gap'           : theme.table.header.glyph.gap,
         '--ts-ui-table-header-glyph-color'         : theme.table.header.glyph.color,
         '--ts-ui-table-row-selected'               : theme.table.row.selected,
@@ -894,7 +952,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-table-resize-handle-cursor'       : theme.table.resizeHandle.cursor,
         '--ts-ui-sort-badge-bg'                    : theme.table.sortBadge.background,
         '--ts-ui-sort-badge-color'                 : theme.table.sortBadge.color,
-        '--ts-ui-sort-badge-font-size'             : theme.table.sortBadge.fontSize,
+        '--ts-ui-sort-badge-font-size'             : resolveFontSizeToken(theme.table.sortBadge.fontSize),
         '--ts-ui-color-scheme'                     : theme.colorScheme,
         '--ts-ui-context-menu-bg'                  : theme.contextMenu.background,
         '--ts-ui-context-menu-border'              : theme.contextMenu.border,
@@ -1122,7 +1180,7 @@ export class ThemeManager {
         document.documentElement.style.colorScheme = theme.colorScheme;
         document.documentElement.style.color       = theme.text.color;
         document.documentElement.style.fontFamily  = theme.font.family;
-        document.documentElement.style.fontSize    = theme.font.size;
+        document.documentElement.style.fontSize    = theme.font.size ?? '14px';   // mirrors BaseTheme.font.size; font.size is optional
         document.documentElement.style.lineHeight  = `calc(1em + ${theme.font.linePadding})`;
         document.body.style.backgroundColor        = theme.body.background;
         document.body.style.color                  = theme.text.color;

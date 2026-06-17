@@ -145,6 +145,34 @@ export namespace Util {
     }
 
     /**
+     * Resolves a CSS `font-size` value to a pixel number by applying it to an
+     * off-screen probe element, where the cascade evaluates it.
+     *
+     * Needed for a relative font token: its custom property holds a `calc(...)`,
+     * and `getComputedStyle(documentElement).getPropertyValue(name)` returns that
+     * `calc(...)` *unevaluated*, so `parseFloat` reads `NaN`. A probe in the
+     * document resolves it the way a real element would — and works before the
+     * consuming component is attached, unlike reading the component's own
+     * (not-yet-styled) element.
+     *
+     * @param fontSizeCSS - A CSS font-size value, e.g. `'var(--ts-ui-button-font-size, 14px)'`.
+     * @returns The resolved font size in pixels, or `14` when it can't be resolved.
+     */
+    export function resolveFontSizePx(fontSizeCSS: string): number {
+        const probe = document.createElement("span");
+        const buf   = new InlineStyle();
+
+        buf.attach(probe);
+        buf.setMany({ position: "fixed", visibility: "hidden", fontSize: fontSizeCSS });
+
+        document.body.appendChild(probe);
+        const px = parseFloat(getComputedStyle(probe).fontSize);
+        document.body.removeChild(probe);
+
+        return isNaN(px) ? 14 : px;   // 14 mirrors the base font fallback
+    }
+
+    /**
      * Returns the rendered pixel width of a text string.
      *
      * @param text - The string to measure.

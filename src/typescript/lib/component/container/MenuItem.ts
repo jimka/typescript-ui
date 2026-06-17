@@ -172,7 +172,7 @@ class MenuItem extends Component {
         this.setHeight(MenuItem.HEIGHT);
         this.setPreferredSize(0, MenuItem.HEIGHT);
         this.setBackgroundColor("transparent");
-        this.setElementCSSRule("fontSize", "var(--ts-ui-button-font-size, 12px)");
+        this.setElementCSSRule("fontSize", "var(--ts-ui-button-font-size, var(--ts-ui-font-size))");
         this.setCursor(enabled ? "pointer" : "default");
         this.getAria().setRole("menuitem");
 

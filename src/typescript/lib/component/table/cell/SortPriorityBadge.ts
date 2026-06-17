@@ -36,7 +36,7 @@ function ensureSortBadgeClassRule(): void {
             position:      "absolute",
             top:           "2px",
             right:         "8px",
-            fontSize:      "var(--ts-ui-sort-badge-font-size,10px)",
+            fontSize:      "var(--ts-ui-sort-badge-font-size, var(--ts-ui-font-size))",
             lineHeight:    "1",
             borderRadius:  "3px",
             padding:       "1px 3px",
