@@ -266,16 +266,12 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * a `Text` measures and renders at the line height a sibling input expects.
      */
     private readThemeLineHeightPx(): number {
-        // Prefer the element-resolved px so the floor is correct on the very
-        // first calculateSize (initial doLayout): a bound font var may be a
-        // calc() the cached `_options.fontSize` couldn't capture (its pre-attach
-        // parseFloat saw the unevaluated calc string). Pre-attach the helper
-        // returns null and the cached number is used — and calculateSize is
-        // itself post-attach-deferred, so the first consumed call resolves.
-        const fs = this.resolveBoundFontSizePx()
-            ?? (this._options.fontSize as number | undefined)
-            ?? (this._defaultOptions.fontSize as number | undefined)
-            ?? 14;
+        // `_options.fontSize` is the resolved px the bound var evaluates to —
+        // `setFontSize`/`onThemeChange` populate it through the probe-backed
+        // `resolveBoundFontSizePx`, so it is correct even pre-attach (a calc()
+        // token included). No element read here: a parent reads this at
+        // construction, before this Text's own element is styled.
+        const fs = (this._options.fontSize as number | undefined) ?? (this._defaultOptions.fontSize as number | undefined) ?? 14;
 
         if (this._lineHeightCSSVar) {
             const raw    = getComputedStyle(document.documentElement)
@@ -303,28 +299,26 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
-     * Resolves the bound font-size var to px the way the cascade renders it:
-     * reads the element's *computed* `font-size` (the `var()`/`calc()` is already
-     * applied via the `#<id>`-scoped style rule), not the raw custom property.
-     * `getComputedStyle(documentElement).getPropertyValue(name)` returns an
-     * unevaluated `calc(...)` string for a `calc()`-valued var (e.g. a
-     * `'-2px'`/`{ scale }` font token), which `parseFloat` reads as `NaN`; the
-     * element's computed `font-size` is the browser-evaluated px.
+     * Resolves the bound font-size var to a px number. A simple var (e.g. the
+     * `--ts-ui-font-size` base) parses straight off the document root; a relative
+     * font token's var holds a `calc(...)` that `getPropertyValue` returns
+     * unevaluated (so `parseFloat` reads `NaN`), so it falls back to a
+     * cascade-evaluating probe via {@link Util.resolveFontSizePx}. The probe path
+     * works **pre-attach** — before this component's own element is styled —
+     * which is when a parent (e.g. a `Header`) first reads the line-box size.
      *
      * @returns The resolved font size in px, or `null` when no var is bound (an
-     *   explicit px size) or pre-attach, before the element and its style rule
-     *   exist — callers then fall back to the cached number.
+     *   explicit numeric size was set instead) — callers keep the cached number.
      */
     private resolveBoundFontSizePx(): number | null {
         if (!this._fontSizeCSSVar) return null;   // explicit px size — no var bound
 
-        // `getElement()` returns null pre-render despite its `HTMLElement` type;
-        // the null check is required — don't simplify it away.
-        const el = this.getElement();
-        if (!el) return null;
+        const raw = parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue(this._fontSizeCSSVar).trim()
+        );
+        if (!isNaN(raw)) return raw;              // simple var — cheap, no probe
 
-        const parsed = parseFloat(getComputedStyle(el).fontSize);
-        return isNaN(parsed) ? null : parsed;
+        return Util.resolveFontSizePx(this._fontSizeCSSRule ?? `var(${this._fontSizeCSSVar})`);
     }
 
     /**
@@ -736,22 +730,16 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             this._fontSizeCSSRule   = null;
             this.setElementCSSRule("fontSize", value + "px");
         } else {
-            // Apply the var rule to the element first, so the cascade can
-            // evaluate it and `resolveBoundFontSizePx` can read the computed px.
             const fallbackPx      = (this.getFontSize() as number | undefined) ?? 14;
             this._fontSizeCSSVar  = value;
             this._fontSizeCSSRule = `var(${value}, ${fallbackPx}px)`;
             this.setElementCSSRule("fontSize", this._fontSizeCSSRule);
 
-            // Authoritative path: the element's computed font-size (resolves a
-            // calc()-valued token). Pre-attach the helper returns null, so fall
-            // back to parsing the root var — which still works for a plain-length
-            // token; a calc() token reads back as NaN here and is left for the
-            // post-attach readThemeLineHeightPx re-resolve.
-            const resolved = this.resolveBoundFontSizePx()
-                ?? parseFloat(getComputedStyle(document.documentElement).getPropertyValue(value).trim());
-
-            if (!isNaN(resolved)) {
+            // Cache the resolved px so line-box/baseline math has the real size
+            // even pre-attach — resolveBoundFontSizePx probes the cascade for a
+            // calc()-valued token rather than parseFloat-ing its raw var string.
+            const resolved = this.resolveBoundFontSizePx();
+            if (resolved !== null) {
                 this._options.fontSize = resolved as TOptions["fontSize"];
             }
         }
