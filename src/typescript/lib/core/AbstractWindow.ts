@@ -948,10 +948,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this._options.windowState = state;
 
         // A rail-minimized window is hidden outright (the rail handle is its
-        // minimized representation), so re-show it before any restore tween
-        // plays against its rect.
+        // minimized representation), so re-show it and play the reverse genie —
+        // scaling/fading back up out of the rail — before the state branch runs.
         if (from === "minimized" && this._rail !== null) {
             this.setDisplayed(true);
+            this.animateRailExpand();
         }
 
         if (state === "normal") {
@@ -975,13 +976,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             this.detachViewportResizeListener();
 
             if (this._rail !== null) {
-                // Rail-docked: skip the built-in bottom strip. Fly the window
-                // into a small slab at the rail edge, then hide it outright and
-                // let the rail show its handle (via the deferred "minimize"
-                // event). `_restoreRect` / `_preMinimizeState` captured above
-                // drive the fly-back on restore.
-                const target = this.computeRailDockRect();
-                this.animateRect(target, () => {
+                // Rail-docked: skip the built-in bottom strip. Genie the window
+                // — scaling and fading it into the rail's handle corner — then
+                // hide it outright and let the rail show its handle (via the
+                // deferred "minimize" event). The geometry is left untouched, so
+                // the reverse genie on restore replays from the same rect.
+                this.animateRailCollapse(() => {
                     this.setDisplayed(false);
                     this.emit("minimize");
                 });
@@ -1933,34 +1933,93 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
-     * Computes the small slab a rail-docked window collapses into when
-     * minimizing — a `thickness`-wide (rail cross-axis) chrome-height box hugging
-     * the rail's edge, kept at the window's current leading coordinate so it
-     * appears to slide into the rail. The window flies here, then hides; restore
-     * tweens back out from it. Assumes a rail is attached.
+     * Builds the genie `transform` that collapses the window into its rail's
+     * handle corner: it translates the window's top-left corner onto the rail
+     * edge (top corner for a vertical rail, leading corner for a horizontal one)
+     * and scales it down to roughly the rail thickness, so the window appears to
+     * shrink into the handle stack. Paired with `transform-origin: 0 0` and an
+     * opacity fade by the collapse/expand animations. Assumes a rail is attached.
      *
-     * @returns The rail-docked collapse rect.
+     * @returns A `translate(...) scale(...)` CSS transform value.
      */
-    private computeRailDockRect(): WindowRect {
-        const rail         = this._rail as Rail;
-        const thickness    = rail.getThickness();
-        const headerHeight = this.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
-        const cur          = this.currentRect();
+    private railGenieTransform(): string {
+        const rail      = this._rail as Rail;
+        const thickness = rail.getThickness();
+        const cur       = this.currentRect();
+        // Shrink to roughly the rail's thickness — clamped so an already-narrow
+        // window still visibly collapses rather than scaling up.
+        const scale     = Math.min(0.5, thickness / Math.max(cur.width, 1));
+
+        let targetX = 0;
+        let targetY = 0;
 
         switch (rail.getEdge()) {
             case Placement.EAST:
-                return { x: window.innerWidth - thickness, y: cur.y, width: thickness, height: headerHeight };
+                targetX = window.innerWidth - thickness;
 
-            case Placement.NORTH:
-                return { x: cur.x, y: 0, width: thickness, height: headerHeight };
+                break;
 
             case Placement.SOUTH:
-                return { x: cur.x, y: window.innerHeight - headerHeight, width: thickness, height: headerHeight };
+                targetY = window.innerHeight - thickness;
 
+                break;
+
+            case Placement.NORTH:
             case Placement.WEST:
             default:
-                return { x: 0, y: cur.y, width: thickness, height: headerHeight };
+                break;
         }
+
+        const tx = targetX - cur.x;
+        const ty = targetY - cur.y;
+
+        return `translate(${tx}px, ${ty}px) scale(${scale})`;
+    }
+
+    /**
+     * Plays the minimize genie: scales and fades the window into its rail's
+     * handle corner over `WINDOW_ANIM_DURATION_MS`, then runs `onDone` (which
+     * hides the window and lets the rail show its handle). Honours
+     * `prefers-reduced-motion` via {@link Animation.play}.
+     *
+     * @param onDone - Callback fired once the collapse completes.
+     */
+    private animateRailCollapse(onDone: () => void): void {
+        const element = this.getElement();
+
+        if (!element) {
+            onDone();
+
+            return;
+        }
+
+        Animation.play(element, {
+            from:       { transformOrigin: "0 0", transform: "translate(0, 0) scale(1)", opacity: "1" },
+            to:         { transform: this.railGenieTransform(), opacity: "0" },
+            durationMs: WINDOW_ANIM_DURATION_MS,
+            properties: ["transform", "opacity"],
+            onComplete: onDone,
+        });
+    }
+
+    /**
+     * Plays the reverse genie on restore: scales and fades the window back up
+     * out of its rail's handle corner to its resting rect. The geometry never
+     * moved while minimized, so this replays from the same collapsed transform.
+     */
+    private animateRailExpand(): void {
+        const element = this.getElement();
+
+        if (!element) {
+            return;
+        }
+
+        Animation.play(element, {
+            from:       { transformOrigin: "0 0", transform: this.railGenieTransform(), opacity: "0" },
+            to:         { transform: "translate(0, 0) scale(1)", opacity: "1" },
+            durationMs: WINDOW_ANIM_DURATION_MS,
+            properties: ["transform", "opacity"],
+        });
     }
 
     /**
