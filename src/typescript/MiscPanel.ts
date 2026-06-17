@@ -593,9 +593,37 @@ class MiscPanel extends Panel {
                         ],
                     },
                     { label: "Fungi" },
+                    {
+                        // Lazy node: renders a caret while collapsed, a spinner
+                        // on first expand, then its children after the loader
+                        // resolves. 800ms is long enough to see the spinner.
+                        label: "Lazy folder",
+                        hasChildren: true,
+                        loadChildren: () => new Promise<TreeNode[]>(resolve => {
+                            setTimeout(() => resolve([
+                                { label: "Loaded A" },
+                                { label: "Loaded B" },
+                            ]), 800);
+                        }),
+                    },
+                    {
+                        // Lazy node whose loader rejects, to exercise the
+                        // "loaderror" event and the retry-on-re-toggle path.
+                        label: "Lazy folder (fails)",
+                        hasChildren: true,
+                        loadChildren: () => new Promise<TreeNode[]>((_resolve, reject) => {
+                            setTimeout(() => reject(new Error("load failed")), 800);
+                        }),
+                    },
                 ];
 
-                const tree = new Tree();
+                const tree = new Tree({
+                    listeners: {
+                        loaderror: (node, error) => {
+                            Notification.show(`Failed to load "${node.label}": ${error}`, "error");
+                        },
+                    },
+                });
                 tree.setNodes(treeData);
 
                 return tree;

@@ -7,6 +7,12 @@
  * Nodes with a non-empty `children` array render as expandable parents; nodes
  * without children (or with an empty array) render as leaves.
  *
+ * @remarks
+ * A node can also be declared **lazy**: set `hasChildren` to `true` (so it
+ * renders an expandable caret before its children exist) and supply a
+ * `loadChildren` function. On first expansion the tree shows a loading
+ * affordance, awaits `loadChildren`, populates `children`, then re-renders.
+ *
  * @category Components
  */
 export interface TreeNode {
@@ -20,4 +26,21 @@ export interface TreeNode {
      * @remarks Omit or pass an empty array for leaf nodes.
      */
     children?: TreeNode[];
+
+    /**
+     * Marks the node as expandable before its children have loaded, so it
+     * renders a caret while collapsed. Pair with {@link loadChildren} for a
+     * lazily loaded node.
+     */
+    hasChildren?: boolean;
+
+    /**
+     * Supplies this node's children on first expansion. Invoked once; the
+     * resolved array is written to `children` and cached so later
+     * expand/collapse cycles do not refetch. A rejection leaves the node
+     * collapsed and unloaded so the user can retry by toggling again.
+     *
+     * @returns A promise resolving to this node's child {@link TreeNode} array.
+     */
+    loadChildren?: () => Promise<TreeNode[]>;
 }

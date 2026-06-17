@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Glyph } from "~/component/display/Glyph.js";
+import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
 import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
 import { LabelTreeNodeRenderer } from "~/component/tree/renderer/Label.js";
@@ -35,7 +36,8 @@ export const TOGGLE_WIDTH = 20;
  */
 class TreeRow extends Component {
 
-    private _toggle:   Glyph | null      = null;
+    private _toggle:   Glyph | null           = null;
+    private _spinner:  ProgressSpinner | null = null;
     private _renderer: TreeNodeRenderer;
     private _node:     TreeNode | null   = null;
     private _depth:    number            = 0;
@@ -125,8 +127,10 @@ class TreeRow extends Component {
      * @param siblingCount - Total number of siblings at this level under the same parent.
      * @param posInSet - 1-based position of this node among its siblings.
      * @param selected - Whether the node is currently selected.
+     * @param loading - Whether this node's lazy children are currently loading;
+     *   when true a spinner replaces the toggle caret.
      */
-    setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number, selected: boolean): this {
+    setRowData(node: TreeNode, depth: number, hasChildren: boolean, expanded: boolean, siblingCount: number, posInSet: number, selected: boolean, loading: boolean): this {
         this._node = node;
         this._depth = depth;
 
@@ -138,7 +142,26 @@ class TreeRow extends Component {
             this._toggle = null;
         }
 
-        if (hasChildren) {
+        if (this._spinner) {
+            const el = this.getElement();
+            if (el) {
+                el.removeChild(this._spinner.getElement(true));
+            }
+            this._spinner = null;
+        }
+
+        if (loading) {
+            // No explicit size: the spinner tracks the theme font-size so it
+            // reads as the same visual weight as the caret glyph it replaces,
+            // and `layoutChildren` fits it into the TOGGLE_WIDTH box.
+            const spinner = new ProgressSpinner();
+            this._spinner = spinner;
+
+            const el = this.getElement();
+            if (el) {
+                el.appendChild(spinner.getElement(true));
+            }
+        } else if (hasChildren) {
             const toggle = new Glyph(expanded ? "caret-down" : "caret-right");
             toggle.setCursor("pointer");
             toggle.clearInsets();
@@ -178,6 +201,20 @@ class TreeRow extends Component {
             this._toggle.setHeight(rowHeight);
             this._toggle.setLineHeight(rowHeight);
             this._toggle.setAutoCommitStyle(true);
+        }
+
+        if (this._spinner) {
+            this._spinner.setAutoCommitStyle(false);
+            this._spinner.setX(indent);
+            this._spinner.setY(0);
+            this._spinner.setWidth(TOGGLE_WIDTH);
+            this._spinner.setHeight(rowHeight);
+            this._spinner.setAutoCommitStyle(true);
+
+            // The spinner owns its inner arc, which only positions itself when
+            // its own doLayout runs; the row appends it directly rather than via
+            // addComponent, so drive that layout here once the box is sized.
+            this._spinner.doLayout();
         }
 
         const labelX     = indent + TOGGLE_WIDTH;
