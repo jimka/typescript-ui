@@ -24,7 +24,7 @@ Event.addListener(myComponent, 'contextmenu', (e: MouseEvent) => {
 });
 ```
 
-Reuse one `Menu` instance across the app — `show()` disposes the previous items and rebuilds. The menu closes itself on item click or outside click; you don't need to call `hide()`.
+Reuse one `Menu` instance across the app — `show()` disposes the previous items and rebuilds. The menu closes itself on item click or outside click; you don't need to call `hide()`. Pass an optional fourth `onClose` argument to `show(x, y, items, onClose)` to be notified once when the menu next closes — useful for reverting an open-state affordance such as a rotated dropdown chevron.
 
 ## Persistent mode (MenuBar dropdown)
 

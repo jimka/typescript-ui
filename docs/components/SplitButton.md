@@ -32,11 +32,11 @@ save.setMenuItems([
 ]);
 ```
 
-The dropdown is a rebuild-mode [`Menu`](/components/Menu): it is created lazily on the first chevron click, reused across opens, anchored under the button's bottom-left corner, clamped to the viewport, and dismissed on outside click.
+The dropdown is a rebuild-mode [`Menu`](/components/Menu): it is created lazily on the first chevron click, reused across opens, anchored under the button's bottom-left corner, clamped to the viewport, and dismissed on outside click. The chevron rotates 180° to point up while the dropdown is open and animates back to point down when it closes.
 
 ## How the chevron click is distinguished
 
-The chevron is a child [`Glyph`](/api/component/display/classes/Glyph) inside the button's single `<button>` element — the one-DOM-element-per-class rule still holds. It rides the content row beside the leading glyph and title, wrapped in a pointer-events surface whose own element is the click target. A click in the chevron zone therefore targets the chevron wrapper, while a click anywhere else targets the button face — so the dropdown click and the primary `"action"` are routed to different listeners without hit-testing pointer coordinates.
+The chevron is a child [`Glyph`](/api/component/display/classes/Glyph) inside the button's single `<button>` element — the one-DOM-element-per-class rule still holds. It rides the content row beside the leading glyph and title. Button sets its content row to `pointer-events: none` so face clicks reach the `<button>`; the chevron re-enables `pointer-events` on itself and a **subtree listener** catches its click (which the SVG `<use>` retargets to an id-less inner element). The button face's `"action"`, by contrast, only matches an exact click on the `<button>` itself — so the dropdown click and the primary action route to different listeners without hit-testing pointer coordinates.
 
 ## In a flat toolbar
 
