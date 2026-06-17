@@ -1,8 +1,8 @@
 # AccordionPanel
 
-[`AccordionPanel`](/api/component/container/classes/AccordionPanel) is a [`Panel`](/api/core/classes/Panel) subclass that owns an internal [`Accordion`](/api/layout/classes/Accordion) layout manager. It exposes a section-typed `addSection` / `openSection` / `closeSection` / `setSingleOpen` surface, so consumers don't have to wire `new Panel({ layoutManager: new Accordion() })` themselves.
+[`AccordionPanel`](/api/component/container/classes/AccordionPanel) is a [`Panel`](/api/core/classes/Panel) subclass that owns an internal [`Accordion`](/api/layout/classes/Accordion) layout manager. It exposes a section-typed `addSection` surface, so consumers don't have to wire `new Panel({ layoutManager: new Accordion() })` themselves.
 
-The bare `new Panel({ layoutManager: new Accordion() })` form still works — `AccordionPanel` is the convenience entry point.
+The bare `new Panel({ layoutManager: new Accordion() })` form still works — `AccordionPanel` is the convenience entry point. Section operations and events are reached through the wrapped manager via [`getAccordion`](/api/component/container/classes/AccordionPanel#getaccordion).
 
 ## Usage
 
@@ -29,23 +29,25 @@ acc.addSection(dangerZonePanel, "Danger zone", false);
 
 ## Programmatic open / close
 
+Section state lives on the wrapped manager; reach it through [`getAccordion`](/api/component/container/classes/AccordionPanel#getaccordion):
+
 ```typescript
-acc.openSection(0);                 // expand "Profile"
-acc.closeSection(1);                // collapse "Preferences"
-const open = acc.isSectionOpen(0);  // → true
+acc.getAccordion().openSection(0);                 // expand "Profile"
+acc.getAccordion().closeSection(1);                // collapse "Preferences"
+const open = acc.getAccordion().isSectionOpen(0);  // → true
 ```
 
 ## Single-open mode
 
-`singleOpen: true` enforces that at most one section is expanded at a time — opening one auto-collapses the rest. Toggle at runtime via [`setSingleOpen`](/api/component/container/classes/AccordionPanel#setsingleopen).
+`singleOpen: true` enforces that at most one section is expanded at a time — opening one auto-collapses the rest. Toggle at runtime through the manager:
 
 ```typescript
-acc.setSingleOpen(false);  // allow multiple sections open simultaneously
+acc.getAccordion().setSingleOpen(false);  // allow multiple sections open simultaneously
 ```
 
 ## Toggle callback
 
-Pass `onSectionToggle` at construction or call [`getAccordionManager().on("sectiontoggle", ...)`](/api/layout/classes/Accordion#on) to react to expand / collapse events:
+Pass `onSectionToggle` at construction, or call [`getAccordion().on("sectiontoggle", ...)`](/api/layout/classes/Accordion#on) to react to expand / collapse events:
 
 ```typescript
 new AccordionPanel({
@@ -57,15 +59,13 @@ new AccordionPanel({
 
 ## Accessing the underlying `Accordion` manager
 
-For features `AccordionPanel` doesn't forward (e.g. direct constraints inspection), use [`getAccordionManager`](/api/component/container/classes/AccordionPanel#getaccordionmanager):
+[`getAccordion`](/api/component/container/classes/AccordionPanel#getaccordion) is the typed accessor for `this.getLayoutManager() as Accordion`. It is the supported path for everything beyond construction and `addSection` — open/close, single-open mode, constraint inspection, and `sectiontoggle` events:
 
 ```typescript
-const manager = acc.getAccordionManager();
+const manager = acc.getAccordion();
 ```
-
-This is the typed accessor for `this.getLayoutManager() as Accordion`.
 
 ## When to use `AccordionPanel` vs bare `Panel` + `Accordion`
 
-- Reach for `AccordionPanel` when you want a sectioned panel with the typed `addSection` / `openSection` surface and the standard single-open / toggle-callback wiring.
+- Reach for `AccordionPanel` when you want a sectioned panel with the typed `addSection` surface and the standard single-open / toggle-callback wiring.
 - Reach for bare `new Panel({ layoutManager: new Accordion() })` when you need custom [`AccordionConstraints`](/api/layout/classes/AccordionConstraints) per section, or the `Accordion` instance is constructed elsewhere and passed in.
