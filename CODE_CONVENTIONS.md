@@ -10,6 +10,14 @@ Project-wide reference: code style, JSDoc, and framework rules. Applies to every
 - **Types:** explicit return type on every function/method (including `void`); explicit type on every class field.
 - **Naming collisions:** underscore-prefix backing fields (`private _foo`).
 
+## Fields written during the `super()` cascade must use `declare`
+
+A class-field initializer — `private _foo = false;` or `private _foo!: T;` — runs *after* `super()` returns. The base `Component` constructor invokes `applyOptions` from inside `super()`, before the subclass body runs, so any setter `applyOptions` dispatches executes during the cascade. If such a setter writes a field, the initializer that runs *afterward* silently reverts the write, and the value the consumer passed is lost.
+
+The rule: **any field a cascade-dispatched setter writes must be declared bare with `declare`** — `declare private _foo: T;`, with no `= …` initializer and no `!` definite-assignment assertion. A `declare` field emits no constructor-time initialization, so the value the setter wrote during `super()` survives. Reach for `declare` whenever a field is touched by a setter `applyOptions` can dispatch — the common case being an `XOptions` field whose setter caches into a private backing field.
+
+The complementary fix, for a field that genuinely needs a real initializer (a `ListenerBag` instance, say, which can't be left unconstructed), is to **defer the dispatch instead**: wire it from the constructor *body* (after `super()` returns), not from `applyOptions`. See the `listeners`-bag rule in [ARCHITECTURE.md](ARCHITECTURE.md) (Event handling) for that face of the same trap.
+
 ## JSDoc
 
 Every function, method, and class needs a JSDoc block:

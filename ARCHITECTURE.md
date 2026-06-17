@@ -14,7 +14,7 @@ The framework has **two event surfaces, split by the origin of the event**:
 
 A class that owns a primary user gesture MAY expose it as a typed **semantic** `on` / `off` **shorthand** whose body wraps `Event.addListener(this, …)` / `Event.removeListener(this, …)`. The canonical case is the **`"action"`** event — the component's main interaction — which every interactive control exposes: `Button.on("action", fn)` (DOM `click`), `Checkbox.on("action", fn)` (DOM `click`), `Slider.on("action", fn)` (DOM `input`), `ComboBox.on("action", fn)` (DOM `change`), `ToggleButton.on("action", fn)` (DOM `change`), `List.on("action", fn)` (DOM `change`). **The public event name is semantic (`"action"`), deliberately decoupled from whichever DOM event the body registers** — consumers wire intent ("the control was actioned"), not the implementation's DOM type. This is sugar over the DOM surface, not the custom-event machinery: there is no `ListenerBag` and no `emit`, because `Event.addListener` already multiplexes listeners per id. Value-bearing inputs additionally expose the inherited custom `"change"` / `"binding"` events (via the `ListenerBag`) for the committed-value and data-binding paths — distinct from the DOM-routed `"action"`. Classes that emit custom (non-DOM) events MUST use the full `on` / `off` / `emit` + `ListenerBag` shape. When an outer component needs to drive an inner component's custom event, the inner component exposes a public domain verb (e.g. `ResizeHandle.dragMove(delta)`) whose body calls its own `emit` — `emit` stays `protected`, never called across class boundaries.
 
-Construction-time listener wiring uses an options `listeners?: { [event]?: listener }` bag, dispatched to `on(event, fn)` from the constructor body (never from `applyOptions`, which runs inside `super()` before the `ListenerBag` field initializes).
+Construction-time listener wiring uses an options `listeners?: { [event]?: listener }` bag, dispatched to `on(event, fn)` from the constructor body — never from `applyOptions`, which runs inside `super()` before the `ListenerBag` field initializes. This is the deferred-dispatch face of the `super()`-cascade field trap (see [CODE_CONVENTIONS.md](CODE_CONVENTIONS.md), *Fields written during the `super()` cascade*): a plain cached field that can hold its value through `super()` uses `declare` instead, but the `ListenerBag` needs a real instance, so its dispatch is deferred to after `super()` rather than the field being left bare.
 
 ### Listeners must reference a named function
 
@@ -27,6 +27,10 @@ The `handler` (or `listener`) argument must always be a reference to a named fun
 Every `Component` owns the event surface its consumers can subscribe to and exposes it through the typed `on(event, fn)` / `off(event, fn)` pair on the class itself — `Button.on("action", fn)`, `Tab.on("tabclose", fn)`, `Tree.on("selection", fn)`, `Scrollbar.on("scroll", fn)`, and so on. The consumer routes through `on`; the class owns the internal `Event.addListener(this, …)` (for the DOM shorthand) or `emit(…)` (for a custom event) call. When a consumer needs an event a component doesn't yet expose, widen that component's `XEvent` union and add the `on` overload — never reach for the raw `Event` API from outside.
 
 The rule holds even when the bypass looks local (e.g. a parent component writing `Event.addListener(this._button, "click", …)` against a child it just constructed). The named-method surface is the contract; the raw call is not.
+
+### Hover detection uses `mouseover` / `mouseout`
+
+Because every DOM-routed event reaches the framework through a single window-level capture handler, hover wiring must use the **bubbling** `mouseover` / `mouseout` pair, never the non-bubbling `mouseenter` / `mouseleave`. Non-bubbling events do not propagate to the window capture handler in Chrome, so `Event.addListener(this, "mouseenter", …)` silently never fires. When you need true enter/leave semantics (ignoring moves between descendants), filter on `event.target` / `event.relatedTarget` inside the `mouseover` / `mouseout` handler rather than reaching for the non-bubbling events.
 
 ## One DOM element per class
 
@@ -89,6 +93,10 @@ Rules 1 and 6 turn on *which* minimum binds a component's committed size — and
 The switch is the protected `Component.clampsToContentSize()` — `true` by default, overridden to `false` in `Panel`. In both cases an explicit `setMinSize` / `setMaxSize` remains a hard floor and ceiling; the difference is only whether the *layout-derived* minimum also binds.
 
 One consequence for rules 6 and 7: because a manager may legitimately hand a `Panel` less than its content-minimum (the panel scrolls or clips), a manager must **not** itself floor a child up to that content-minimum. It assigns the available space, capped to the child's maximum, and leaves the minimum to the child's own clamp — which applies it for a general child and skips it for a panel.
+
+## No cosmetic insets or padding
+
+Insets and spacing express *layout structure* — they never exist to nudge something that merely looks visually off. Adding padding "to make it look right" masks the real defect (a wrong preferred size, a missing or mismeasured baseline, a layout manager not reporting accurate extents per the rules above), and the masked defect resurfaces the instant the content, font, or theme changes. When something sits wrong, trace it to the layout cause and fix it there — a [size-report bug](#size-constraints-who-is-responsible-for-what) at the manager, an optical-centring offset, a baseline. Reserve insets for genuine structural breathing room the design calls for, and document the value's "why" like any other [magic number](CODE_CONVENTIONS.md).
 
 ## Minimize direct DOM access
 
