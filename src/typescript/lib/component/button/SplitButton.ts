@@ -124,6 +124,12 @@ class SplitButton extends Button<SplitButtonOptions> {
         this._chevron = new Glyph(CHEVRON_GLYPH);
         this._chevron.setPreferredSize(CHEVRON_SIZE, CHEVRON_SIZE);
         this._chevron.setCursor("pointer");
+        // Button sets its whole `_content` row to `pointer-events: none` so face
+        // clicks fall through to the `<button>`; the chevron inherits that and
+        // would never receive its own click. Re-enable it here — an outer
+        // `<svg>` with `auto` is hittable across its full box (not just the
+        // painted caret pixels) — so the chevron reliably catches the click.
+        this._chevron.setPointerEvents("auto");
 
         this._content.addComponent(this._chevron);
 
