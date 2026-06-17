@@ -112,6 +112,16 @@ A glyph-only flat button (a glyph with an empty label) tightens to a compact squ
 
 Runtime toggle via `setFlat(value)`; read with `isFlat()`. Toggling back restores the raised chrome from `_defaultOptions` (the same loss tradeoff as `setChromeless(false)` — only defaults round-trip, not consumer-supplied chrome). `flat` and `chromeless` are mutually exclusive and `chromeless` wins: `setFlat(true)` is ignored with a dev-time warning while the button is chromeless. A flat [`ToggleButton`](/components/ToggleButton) renders its selected state with the same sunken treatment, so a toggled-on toolbar button reads as depressed.
 
+## Compact rendering
+
+`compact: true` tightens the button's inset perimeter so it reads denser — text buttons go from the default `(5, 10, 5, 10)` to `(2, 6, 2, 6)`, and glyph-only buttons collapse to a `(2, 2, 2, 2)` square. Defaults to `false`.
+
+```typescript
+Button({ text: 'Save', compact: true });
+```
+
+Compact is orthogonal to `flat` — a button can be compact, flat, both, or neither — and compact insets win when both apply (a compact flat icon is the tight `(2, 2, 2, 2)` square rather than the non-compact flat `(4, 4, 4, 4)`). Runtime toggle via `setCompact(value)`; read with `isCompact()`. A [`ToolBar`](/components/ToolBar) defaults to `compact: true` and drives it onto its button children, so buttons packed into a toolbar render compact without setting the flag yourself.
+
 ## Content anchor
 
 By default the content row (`glyph` + `text`) is centred within the button. Pass `anchor` (and optionally `fill`) to override:

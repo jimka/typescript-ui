@@ -25,8 +25,10 @@ Glyph.register(scissors, copyGlyph, pasteGlyph);
  * dropdown, a `Spacer.flex()` that pushes a trailing zoom `ComboBox` to the
  * right edge, and a status text area below that reflects the last action. A
  * second `ToolBar({ flat: false })` demonstrates the raised-button escape
- * hatch, and a third `ToolBar({ overflow: "menu" })` packs enough buttons that
- * narrowing the panel pushes the trailing ones into a chevron dropdown.
+ * hatch, a third `ToolBar({ compact: false })` opts out of compact rendering so
+ * its text buttons keep their roomy default insets, and a fourth
+ * `ToolBar({ overflow: "menu" })` packs enough buttons that narrowing the panel
+ * pushes the trailing ones into a chevron dropdown.
  */
 class ToolBarPanel extends Panel {
 
@@ -101,6 +103,22 @@ class ToolBarPanel extends Panel {
             open
         );
 
+        // Non-compact bar: compact defaults to true, so opting out keeps the
+        // children at their roomy default insets — contrast its text buttons
+        // against the tighter compact buttons in the bars above.
+        const looseBar: ToolBar = new ToolBar({ compact: false });
+
+        const looseCut  = new Button("Cut");
+        const looseCopy = new Button("Copy");
+
+        looseCut.on("action",  () => { status("Cut"); });
+        looseCopy.on("action", () => { status("Copy"); });
+
+        looseBar.addComponents(
+            looseCut,
+            looseCopy
+        );
+
         const overflowBar = new ToolBar({ overflow: "menu" });
 
         const actions = ["New", "Open", "Save", "Print", "Undo", "Redo", "Find", "Replace", "AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD", "EEEEEE", "FFFFFF", "GGGGGG", "HHHHHH", "IIIIII", "JJJJJJ"];
@@ -115,6 +133,7 @@ class ToolBarPanel extends Panel {
         this.addComponents(
             bar,
             raisedBar,
+            looseBar,
             overflowBar,
             statusText
         );
