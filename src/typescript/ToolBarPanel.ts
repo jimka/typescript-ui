@@ -6,6 +6,14 @@ import { Spacer }                                  from '@jimka/typescript-ui/co
 import { ComboBox, Text }                          from '@jimka/typescript-ui/component/input';
 import { Button, ToggleButton }                    from '@jimka/typescript-ui/component/button';
 import { ToolBar, ToolBarSeparator }               from '@jimka/typescript-ui/component/menubar';
+import { Glyph }                                   from '@jimka/typescript-ui/component/display';
+import { scissors }                                from '@jimka/typescript-ui/glyphs/solid/scissors';
+import { copy as copyGlyph }                       from '@jimka/typescript-ui/glyphs/solid/copy';
+import { paste as pasteGlyph }                     from '@jimka/typescript-ui/glyphs/solid/paste';
+
+// The toolbar demo's Cut/Copy/Paste buttons render glyph-only; register their
+// glyphs at module load (copy/paste aliased to dodge the local const names).
+Glyph.register(scissors, copyGlyph, pasteGlyph);
 
 /**
  * Demo panel showcasing the `ToolBar` component.

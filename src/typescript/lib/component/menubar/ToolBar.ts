@@ -11,7 +11,14 @@ import { Insets } from "~/primitive/Insets.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
 import { Menu } from "~/core/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { Glyph } from "~/component/display/Glyph.js";
+import { ellipsis_v } from "~/glyphs/solid/ellipsis_v.js";
 import { callable } from "~/core/Callable.js";
+
+// Register the overflow trigger's chevron eagerly at module load — same pattern
+// as SplitButton registering its caret_down — so the lazily-created "more"
+// affordance always resolves its glyph without the consumer pre-registering it.
+Glyph.register(ellipsis_v);
 
 /**
  * Layout direction of a {@link ToolBar}. `"horizontal"` packs children
