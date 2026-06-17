@@ -65,20 +65,20 @@ class AccordionDemoPanel extends Panel {
         // --- Wire controls ---
         openAllBtn.on("action", () => {
             for (let i = 0; i < 4; i++) {
-                this.accordion.openSection(i);
+                this.accordion.getAccordion().openSection(i);
             }
         });
 
         closeAllBtn.on("action", () => {
             for (let i = 0; i < 4; i++) {
-                this.accordion.closeSection(i);
+                this.accordion.getAccordion().closeSection(i);
             }
         });
 
         this.singleOpenToggle.on("action", () => {
-            const next = !this.accordion.isSingleOpen();
+            const next = !this.accordion.getAccordion().isSingleOpen();
 
-            this.accordion.setSingleOpen(next);
+            this.accordion.getAccordion().setSingleOpen(next);
             this.singleOpenToggle.setText(`Single-open: ${next ? 'ON' : 'OFF'}`);
         });
     }

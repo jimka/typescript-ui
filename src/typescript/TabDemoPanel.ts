@@ -211,31 +211,31 @@ class TabDemoPanel extends Component {
 
         // --- Wire placement controls ---
         sideCombo.on("change", () => {
-            this.tabPanel.setTabSide(sideModes[sideCombo.getSelectedIndex()]);
+            this.tabPanel.getTab().setSide(sideModes[sideCombo.getSelectedIndex()]);
         });
 
         alignCombo.on("change", () => {
-            this.tabPanel.setTabAlign(alignModes[alignCombo.getSelectedIndex()]);
+            this.tabPanel.getTab().setAlign(alignModes[alignCombo.getSelectedIndex()]);
         });
 
         orientationCombo.on("change", () => {
-            this.tabPanel.setTabOrientation(orientationModes[orientationCombo.getSelectedIndex()]);
+            this.tabPanel.getTab().setOrientation(orientationModes[orientationCombo.getSelectedIndex()]);
         });
 
         alignTextCombo.on("change", () => {
-            this.tabPanel.setTabTextAlign(alignTextModes[alignTextCombo.getSelectedIndex()]);
+            this.tabPanel.getTab().setTextAlign(alignTextModes[alignTextCombo.getSelectedIndex()]);
         });
 
         scrollBtn.on("action", () => {
-            this.tabPanel.setTabScrollable(!this.tabPanel.isTabScrollable());
+            this.tabPanel.getTab().setScrollable(!this.tabPanel.getTab().isScrollable());
         });
 
         compactBtn.on("action", () => {
-            this.tabPanel.setTabCompact(!this.tabPanel.isTabCompact());
+            this.tabPanel.getTab().setCompact(!this.tabPanel.getTab().isCompact());
         });
 
         reorderBtn.on("action", () => {
-            this.tabPanel.setTabReorderable(!this.tabPanel.isTabReorderable());
+            this.tabPanel.getTab().setReorderable(!this.tabPanel.getTab().isReorderable());
         });
 
         // --- Wire width controls ---
@@ -243,15 +243,15 @@ class TabDemoPanel extends Component {
         // returns the row index, not the label — map the selected index back to
         // the mode rather than reading the value.
         modeCombo.on("change", () => {
-            this.tabPanel.setTabWidthMode(widthModes[modeCombo.getSelectedIndex()]);
+            this.tabPanel.getTab().setWidthMode(widthModes[modeCombo.getSelectedIndex()]);
         });
 
         maxSpinner.on("change", () => {
-            this.tabPanel.setTabMaxWidth(maxSpinner.getValue());
+            this.tabPanel.getTab().setMaxWidth(maxSpinner.getValue());
         });
 
         fixedSpinner.on("change", () => {
-            this.tabPanel.setTabFixedWidth(fixedSpinner.getValue());
+            this.tabPanel.getTab().setFixedWidth(fixedSpinner.getValue());
         });
 
         // --- Log row ---
@@ -279,7 +279,7 @@ class TabDemoPanel extends Component {
         });
 
         toggleBorderBtn.on("action", () => {
-            this.tabPanel.setTabUnderBorderFullWidth(!this.tabPanel.isTabUnderBorderFullWidth());
+            this.tabPanel.getTab().setUnderBorderFullWidth(!this.tabPanel.getTab().isUnderBorderFullWidth());
         });
     }
 

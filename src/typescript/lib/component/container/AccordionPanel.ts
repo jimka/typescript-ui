@@ -2,7 +2,7 @@
 
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Component } from "~/core/Component.js";
-import { Accordion, AccordionEvent, SectionToggleCallback } from "~/layout/Accordion.js";
+import { Accordion, SectionToggleCallback } from "~/layout/Accordion.js";
 import { AccordionConstraints } from "~/layout/AccordionConstraints.js";
 import { callable } from "~/core/Callable.js";
 
@@ -37,10 +37,14 @@ export interface AccordionPanelOptions extends ContainerOptions {
 /**
  * A [`Container`](/api/core/classes/Container) subclass that owns an internal
  * [`Accordion`](/api/layout/classes/Accordion) layout manager and exposes a
- * section-typed `addSection` / `openSection` / `closeSection` surface so
- * consumers do not have to wire `new Container({ layoutManager: new Accordion() })`
- * themselves. The bare Container + Accordion manager path still works
- * unchanged; `AccordionPanel` is the convenience entry point.
+ * section-typed `addSection` surface so consumers do not have to wire
+ * `new Container({ layoutManager: new Accordion() })` themselves. The bare
+ * Container + Accordion manager path still works unchanged; `AccordionPanel`
+ * is the convenience entry point.
+ *
+ * Section operations (open/close, single-open mode, toggle events) are reached
+ * through {@link getAccordion}, the typed accessor for the wrapped manager,
+ * rather than a mirrored forwarder per method.
  *
  * @example
  * ```typescript
@@ -53,6 +57,8 @@ export interface AccordionPanelOptions extends ContainerOptions {
  *         { label: 'Preferences', component: prefsPanel },
  *     ],
  * });
+ *
+ * acc.getAccordion().openSection(1);
  * ```
  *
  * @category Components
@@ -75,7 +81,7 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
         this.setLayoutManager(new Accordion());
 
         if (options?.singleOpen !== undefined) {
-            this.setSingleOpen(options.singleOpen);
+            this.getAccordion().setSingleOpen(options.singleOpen);
         }
 
         if (options?.sections) {
@@ -85,7 +91,7 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
         }
 
         if (options?.onSectionToggle) {
-            this.getAccordionManager().on("sectiontoggle", options.onSectionToggle);
+            this.getAccordion().on("sectiontoggle", options.onSectionToggle);
         }
     }
 
@@ -107,108 +113,13 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
     }
 
     /**
-     * Opens the section at `index`. Forwards to the wrapped
-     * `Accordion.openSection`.
-     *
-     * @param index - Zero-based section index.
-     *
-     * @returns This panel, for method chaining.
-     */
-    openSection(index: number): this {
-        this.getAccordionManager().openSection(index);
-
-        return this;
-    }
-
-    /**
-     * Closes the section at `index`. Forwards to the wrapped
-     * `Accordion.closeSection`.
-     *
-     * @param index - Zero-based section index.
-     *
-     * @returns This panel, for method chaining.
-     */
-    closeSection(index: number): this {
-        this.getAccordionManager().closeSection(index);
-
-        return this;
-    }
-
-    /**
-     * Returns whether the section at `index` is currently open. Forwards to
-     * the wrapped `Accordion.isSectionOpen`.
-     *
-     * @param index - Zero-based section index.
-     *
-     * @returns `true` when the section is expanded.
-     */
-    isSectionOpen(index: number): boolean {
-        return this.getAccordionManager().isSectionOpen(index);
-    }
-
-    /**
-     * Toggles single-open mode (only one section may be open at a time).
-     * Forwards to the wrapped `Accordion.setSingleOpen`.
-     *
-     * @param value - True to enable single-open mode.
-     *
-     * @returns This panel, for method chaining.
-     */
-    setSingleOpen(value: boolean): this {
-        this.getAccordionManager().setSingleOpen(value);
-
-        return this;
-    }
-
-    /**
-     * Returns whether single-open mode is enabled. Forwards to the wrapped
-     * `Accordion.isSingleOpen`.
-     *
-     * @returns `true` when only one section may be open at a time.
-     */
-    isSingleOpen(): boolean {
-        return this.getAccordionManager().isSingleOpen();
-    }
-
-    /**
-     * Registers a listener on the wrapped {@link Accordion} manager. Public
-     * forwarder so consumers can wire `sectiontoggle` listeners through the
-     * panel surface without reaching the protected manager accessor.
-     *
-     * @param event - The {@link Accordion} event name.
-     * @param listener - The callback to invoke when the event fires.
-     *
-     * @returns This panel, for method chaining.
-     */
-    on(event: "sectiontoggle", listener: SectionToggleCallback): this;
-    on(event: AccordionEvent,  listener: Function): this {
-        this.getAccordionManager().on(event, listener as SectionToggleCallback);
-
-        return this;
-    }
-
-    /**
-     * Removes a listener previously registered via {@link on}.
-     *
-     * @param event - The {@link Accordion} event the listener was registered for.
-     * @param listener - The exact callback reference to remove.
-     *
-     * @returns This panel, for method chaining.
-     */
-    off(event: AccordionEvent, listener: Function): this {
-        this.getAccordionManager().off(event, listener as SectionToggleCallback);
-
-        return this;
-    }
-
-    /**
-     * Typed accessor for the internally-owned `Accordion` manager. Subclasses
-     * use it to forward additional accordion-specific setters without
-     * re-implementing the cast.
+     * Typed accessor for the internally-owned `Accordion` manager. Use it to
+     * reach section operations (open/close, single-open mode, toggle events)
+     * without casting `getLayoutManager()`.
      *
      * @returns The wrapped `Accordion` instance.
      */
-    protected getAccordionManager(): Accordion {
+    getAccordion(): Accordion {
         return this.getLayoutManager() as Accordion;
     }
 }
