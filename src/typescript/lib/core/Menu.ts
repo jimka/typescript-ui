@@ -69,6 +69,7 @@ class Menu extends Component {
     private _openSubmenuItem: MenuItem | null = null;
     private _excludedEl: HTMLElement | null = null;
     private _menuWidth: number = DEFAULT_REBUILD_WIDTH;
+    private _rebuildOnClose: (() => void) | null = null;
     private readonly _onViewportMouseDown: (e: MouseEvent) => void;
 
     /**
@@ -127,9 +128,14 @@ class Menu extends Component {
      * @param x - Horizontal viewport coordinate (e.g. `MouseEvent.clientX`).
      * @param y - Vertical viewport coordinate (e.g. `MouseEvent.clientY`).
      * @param configs - Ordered list of item descriptors to render.
+     * @param onClose - Optional callback invoked once when the menu next closes
+     *   (item activated or dismissed by an outside click), letting the opener
+     *   revert an open-state affordance such as a rotated dropdown chevron.
      */
-    show(x: number, y: number, configs: MenuItemConfig[]): this {
+    show(x: number, y: number, configs: MenuItemConfig[], onClose?: () => void): this {
         this.assertRebuildMode("show");
+
+        this._rebuildOnClose = onClose ?? null;
 
         for (const item of this._menuItems) {
             if (item instanceof MenuItem) {
@@ -205,6 +211,12 @@ class Menu extends Component {
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
 
         this.fadeOutAndDetach();
+
+        // Fire the per-show close callback exactly once, clearing it first so a
+        // later bare `hide()` (or re-show) can't re-invoke a stale opener's hook.
+        const onClose = this._rebuildOnClose;
+        this._rebuildOnClose = null;
+        onClose?.();
 
         return this;
     }

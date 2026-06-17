@@ -25,6 +25,13 @@ const CHEVRON_GLYPH = "caret-down";
 const CHEVRON_SIZE = 16;
 
 /**
+ * Duration in milliseconds of the chevron's open/close spin. Matches the
+ * framework's shared 200ms indicator transition (see `AccordionIndicator`) so
+ * the caret animates at the same cadence as other dropdown / expand affordances.
+ */
+const CHEVRON_SPIN_MS = 200;
+
+/**
  * Construction-time options for {@link SplitButton}.
  *
  * @category Components
@@ -130,6 +137,9 @@ class SplitButton extends Button<SplitButtonOptions> {
         // `<svg>` with `auto` is hittable across its full box (not just the
         // painted caret pixels) — so the chevron reliably catches the click.
         this._chevron.setPointerEvents("auto");
+        // Fixed transform transition; `_setChevronOpen` toggles the rotation so
+        // the caret spins between its closed (down) and open (up) states.
+        this._chevron.setTransition("transform " + CHEVRON_SPIN_MS + "ms ease");
 
         this._content.addComponent(this._chevron);
 
@@ -209,7 +219,21 @@ class SplitButton extends Button<SplitButtonOptions> {
 
         this._menu ??= new Menu();
 
-        this._menu.show(rect.left, rect.bottom, this._menuItems);
+        // Spin the caret to its open state; the menu's onClose spins it back
+        // when an item is chosen or an outside click dismisses the dropdown.
+        this._setChevronOpen(true);
+
+        this._menu.show(rect.left, rect.bottom, this._menuItems, () => { this._setChevronOpen(false); });
+    }
+
+    /**
+     * Rotates the chevron between its closed (caret-down) and open (caret-up)
+     * states, animated by the transform transition set at construction.
+     *
+     * @param open - `true` to point the caret up (dropdown open), `false` down.
+     */
+    private _setChevronOpen(open: boolean): void {
+        this._chevron.setTransform(open ? "rotate(180deg)" : "rotate(0deg)");
     }
 }
 
