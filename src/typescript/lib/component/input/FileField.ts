@@ -41,7 +41,15 @@ class HiddenFileInput extends Component {
     constructor() {
         super({ tag: "input" });
 
-        this.setDisplay("none");
+        // `setDisplayed(false)`, not `setDisplay("none")`: both render the element
+        // `display: none`, but only the former marks the component undisplayed so
+        // it drops out of `getLaidOutComponents`. Left displayed, this zero-content
+        // input still claimed a layout slot in the field's HBox — and with no
+        // preferred width it contributed `_defaultComponentWidth`, inflating the
+        // row past the container and shrinking the button + filename label until
+        // their text clipped. The native control still opens via `click()` while
+        // `display: none`.
+        this.setDisplayed(false);
         this.setType("file");
     }
 
@@ -233,7 +241,11 @@ class FileField<TOptions extends FileFieldOptions = FileFieldOptions>
         Event.addListener(this._input, "change", () => this.onNativeChange());
 
         super.addComponent(this._button);
-        super.addComponent(this._label);
+        // The label is the flexible cell: the button keeps its preferred width
+        // while the label absorbs the remaining row width and truncates a long
+        // filename, instead of both shrinking proportionally and clipping the
+        // button's own text.
+        super.addComponent(this._label, { weight: 1 });
         super.addComponent(this._input);
 
         if (this._options.multiple !== undefined) {
