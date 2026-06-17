@@ -4,7 +4,7 @@ import { ButtonGroup, callable, Panel }            from '@jimka/typescript-ui/co
 import { VBox }                                    from '@jimka/typescript-ui/layout';
 import { Spacer }                                  from '@jimka/typescript-ui/component/container';
 import { ComboBox, Text }                          from '@jimka/typescript-ui/component/input';
-import { Button, ToggleButton }                    from '@jimka/typescript-ui/component/button';
+import { Button, ToggleButton, SplitButton }       from '@jimka/typescript-ui/component/button';
 import { ToolBar, ToolBarSeparator }               from '@jimka/typescript-ui/component/menubar';
 import { Glyph }                                   from '@jimka/typescript-ui/component/display';
 import { scissors }                                from '@jimka/typescript-ui/glyphs/solid/scissors';
@@ -20,12 +20,13 @@ Glyph.register(scissors, copyGlyph, pasteGlyph);
  *
  * Demonstrates: a flat (default) horizontal toolbar with a Bold/Italic/Underline
  * `ButtonGroup` whose selected button reads depressed, a separator, glyph-only
- * Cut/Copy/Paste buttons that render as compact squares, a `Spacer.flex()` that
- * pushes a trailing zoom `ComboBox` to the right edge, and a status text area
- * below that reflects the last action. A second `ToolBar({ flat: false })`
- * demonstrates the raised-button escape hatch. A third
- * `ToolBar({ overflow: "menu" })` packs enough buttons that narrowing the panel
- * pushes the trailing ones into a chevron dropdown.
+ * Cut/Copy/Paste buttons that render as compact squares, a `SplitButton` whose
+ * main face fires the primary action while its trailing chevron opens a
+ * dropdown, a `Spacer.flex()` that pushes a trailing zoom `ComboBox` to the
+ * right edge, and a status text area below that reflects the last action. A
+ * second `ToolBar({ flat: false })` demonstrates the raised-button escape
+ * hatch, and a third `ToolBar({ overflow: "menu" })` packs enough buttons that
+ * narrowing the panel pushes the trailing ones into a chevron dropdown.
  */
 class ToolBarPanel extends Panel {
 
@@ -64,6 +65,14 @@ class ToolBarPanel extends Panel {
         copy.on("action", () => { status("Copy"); });
         paste.on("action", () => { status("Paste"); });
 
+        const saveSplit = new SplitButton("Save", {
+            menuItems: [
+                { text: "Save As…",  action: () => { status("Save As"); }  },
+                { text: "Save All",  action: () => { status("Save All"); } },
+            ],
+        });
+        saveSplit.on("action", () => { status("Save"); });
+
         const zoom = new ComboBox({ items: ["50%", "75%", "100%", "125%", "150%"] });
         zoom.on("action", (value: string) => { status("Zoom " + value); });
 
@@ -73,6 +82,8 @@ class ToolBarPanel extends Panel {
             cut,
             copy,
             paste,
+            ToolBarSeparator(),
+            saveSplit,
             Spacer.flex(),
             zoom
         );

@@ -101,7 +101,7 @@ const OVERFLOW_TRIGGER_GLYPH: string = "ellipsis-v";
  */
 const _defaultToolBarOptions: Partial<ToolBarOptions> = {
     orientation:     "horizontal",
-    compact:         false,
+    compact:         true,
     overflow:        "clip",
     overflowSide:    "right",
     flat:            true,
@@ -339,7 +339,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         trigger.getAria().setLabel("More");
         trigger.getAria().setHasPopup("menu");
 
-        trigger.on("action", () => { this._openOverflowMenu(); });
+        trigger.on("action", () => { this._toggleOverflowMenu(); });
 
         this._overflowButton = trigger;
         this._overflowMenu   = new Menu();
@@ -637,11 +637,12 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
 
     /**
      * Builds one {@link MenuItemConfig} per currently-overflowed button and
-     * opens the rebuild-mode dropdown anchored under the trigger. Each row's
-     * `action` re-fires the source button's `"click"` (the DOM event behind its
+     * toggles the rebuild-mode dropdown anchored under the trigger — opening it,
+     * or closing it when the trigger is pressed again. Each row's `action`
+     * re-fires the source button's `"click"` (the DOM event behind its
      * `"action"`) so the dropdown drives the original handler.
      */
-    private _openOverflowMenu(): void {
+    private _toggleOverflowMenu(): void {
         const trigger = this._overflowButton;
         const menu    = this._overflowMenu;
 
@@ -665,13 +666,18 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
             });
         }
 
-        const rect = trigger.getElement()?.getBoundingClientRect();
+        const triggerEl = trigger.getElement();
 
-        if (rect === undefined) {
+        if (triggerEl === null) {
             return;
         }
 
-        menu.show(rect.left, rect.bottom, configs);
+        const rect = triggerEl.getBoundingClientRect();
+
+        // toggleFor excludes the trigger from the menu's outside-click dismissal
+        // and remembers it, so re-pressing the overflow button closes the menu
+        // instead of the close-then-reopen flash a bare show() would produce.
+        menu.toggleFor(triggerEl, rect.left, rect.bottom, configs);
     }
 }
 

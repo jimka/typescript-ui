@@ -489,6 +489,26 @@ export namespace LayerManager {
         handleOutside(e.target as Node | null, false);
     }
 
+    /**
+     * Window `blur` handler. When the whole browser window loses focus (the user
+     * clicks another application or alt-tabs away) no in-page `pointerdown` or
+     * `focusin` fires, so an open layer would otherwise stay up. Treat it as an
+     * interaction landing outside every layer, dismissing each `"click-outside"`
+     * / `"blur"` layer while a `"modal"` shields those beneath it and `"manual"`
+     * layers (windows) are left open.
+     *
+     * @remarks Viewport listeners are capture-phase, so element blurs from within
+     * the page surface here too; only a genuine window blur (`target` is the
+     * window itself) should dismiss layers.
+     */
+    function onWindowBlur(e: FocusEvent): void {
+        if (e.target !== window) {
+            return;
+        }
+
+        handleOutside(null, false);
+    }
+
     /** Document `focusin` handler — only `"blur"` layers act on it. */
     function onFocusIn(e: FocusEvent): void {
         handleOutside(e.target as Node | null, true);
@@ -518,6 +538,7 @@ export namespace LayerManager {
         Event.addViewportListener(_listenerOwner, "pointerdown", onPointerDown);
         Event.addViewportListener(_listenerOwner, "focusin",     onFocusIn);
         Event.addViewportListener(_listenerOwner, "keydown",     onKeyDown);
+        Event.addViewportListener(_listenerOwner, "blur",        onWindowBlur);
 
         _listenersInstalled = true;
     }
@@ -527,6 +548,7 @@ export namespace LayerManager {
         Event.removeViewportListener(_listenerOwner, "pointerdown", onPointerDown);
         Event.removeViewportListener(_listenerOwner, "focusin",     onFocusIn);
         Event.removeViewportListener(_listenerOwner, "keydown",     onKeyDown);
+        Event.removeViewportListener(_listenerOwner, "blur",        onWindowBlur);
 
         _listenersInstalled = false;
     }

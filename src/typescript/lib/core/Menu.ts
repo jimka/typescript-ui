@@ -69,7 +69,10 @@ class Menu extends Component {
     private _openSubmenuItem: MenuItem | null = null;
     private _excludedEl: HTMLElement | null = null;
     private _menuWidth: number = DEFAULT_REBUILD_WIDTH;
+    private _rebuildOnClose: (() => void) | null = null;
+    private _currentOpener: HTMLElement | null = null;
     private readonly _onViewportMouseDown: (e: MouseEvent) => void;
+    private readonly _onWindowBlur: (e: FocusEvent) => void;
 
     /**
      * Constructs a rebuild-mode (right-click context) menu. Items are supplied per `show()` call.
@@ -111,9 +114,26 @@ class Menu extends Component {
                     this._onClose!();
                 }
             } else {
-                if (!this.getElement()?.contains(target)) {
+                if (!this.getElement()?.contains(target) && !this._excludedEl?.contains(target)) {
                     this.hide();
                 }
+            }
+        };
+
+        // Closing the whole browser window's focus (clicking another app or
+        // alt-tabbing) fires no in-page mousedown, so the mousedown dismissal
+        // above never runs and the menu would stay open. A window blur closes
+        // it. Viewport listeners are capture-phase, so element blurs from within
+        // the menu surface here too; act only on a genuine window blur.
+        this._onWindowBlur = (e: FocusEvent) => {
+            if (e.target !== window) {
+                return;
+            }
+
+            if (this._persistent) {
+                this._onClose!();
+            } else {
+                this.hide();
             }
         };
     }
@@ -127,9 +147,21 @@ class Menu extends Component {
      * @param x - Horizontal viewport coordinate (e.g. `MouseEvent.clientX`).
      * @param y - Vertical viewport coordinate (e.g. `MouseEvent.clientY`).
      * @param configs - Ordered list of item descriptors to render.
+     * @param onClose - Optional callback invoked once when the menu next closes
+     *   (item activated or dismissed by an outside click), letting the opener
+     *   revert an open-state affordance such as a rotated dropdown chevron.
+     * @param excludeEl - Optional element whose subtree is exempt from the
+     *   outside-click-to-close check. Pass the trigger that opened the menu (e.g.
+     *   a [`SplitButton`](/api/component/button/classes/SplitButton) chevron) so a
+     *   mousedown on it does not self-close the menu before the trigger's own
+     *   click can toggle it shut — mirroring [`MenuBar`](/api/component/menubar/classes/MenuBar)'s
+     *   dropdown-button exclusion.
      */
-    show(x: number, y: number, configs: MenuItemConfig[]): this {
+    show(x: number, y: number, configs: MenuItemConfig[], onClose?: () => void, excludeEl?: HTMLElement | null): this {
         this.assertRebuildMode("show");
+
+        this._rebuildOnClose = onClose ?? null;
+        this._excludedEl = excludeEl ?? null;
 
         for (const item of this._menuItems) {
             if (item instanceof MenuItem) {
@@ -190,6 +222,47 @@ class Menu extends Component {
         this.fadeIn(el);
 
         Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.addViewportListener(this, "blur", this._onWindowBlur);
+
+        return this;
+    }
+
+    /**
+     * Opens or closes the menu for a given opener element. **Rebuild-mode only.**
+     *
+     * This is the toggle form of {@link show} for a left-click dropdown trigger
+     * (e.g. a [`SplitButton`](/api/component/button/classes/SplitButton) chevron
+     * or a [`ToolBar`](/api/component/menubar/classes/ToolBar) overflow button):
+     * the opener is excluded from the outside-click dismissal (so its own
+     * mousedown does not self-close the menu) and remembered, so a second press
+     * of the *same* opener closes the menu instead of reopening it. Pressing a
+     * *different* opener while the menu is open switches it to that opener. Plain
+     * {@link show} stays the right call for right-click context menus, which
+     * should reposition — not close — on a repeat trigger.
+     *
+     * @param openerEl - The element that triggers the menu; excluded from the
+     *   outside-click check and used as the toggle identity.
+     * @param x - Horizontal viewport coordinate to anchor the menu at.
+     * @param y - Vertical viewport coordinate to anchor the menu at.
+     * @param configs - Ordered list of item descriptors to render.
+     * @param onClose - Optional callback invoked once when the menu next closes.
+     *
+     * @returns This menu, for method chaining.
+     */
+    toggleFor(openerEl: HTMLElement, x: number, y: number, configs: MenuItemConfig[], onClose?: () => void): this {
+        this.assertRebuildMode("toggleFor");
+
+        // Same opener fired again while its menu is open: close it. Its mousedown
+        // was excluded from the dismissal above, so this click is the toggle-shut.
+        if (this._currentOpener === openerEl) {
+            this.hide();
+
+            return this;
+        }
+
+        // Closed, or open for a different opener: (re)show anchored for this one.
+        this.show(x, y, configs, onClose, openerEl);
+        this._currentOpener = openerEl;
 
         return this;
     }
@@ -203,8 +276,19 @@ class Menu extends Component {
         this.assertRebuildMode("hide");
 
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.removeViewportListener(this, "blur", this._onWindowBlur);
 
         this.fadeOutAndDetach();
+
+        // Forget the toggle opener so the next `toggleFor` for it opens rather
+        // than seeing a stale match and closing an already-closed menu.
+        this._currentOpener = null;
+
+        // Fire the per-show close callback exactly once, clearing it first so a
+        // later bare `hide()` (or re-show) can't re-invoke a stale opener's hook.
+        const onClose = this._rebuildOnClose;
+        this._rebuildOnClose = null;
+        onClose?.();
 
         return this;
     }
@@ -300,6 +384,7 @@ class Menu extends Component {
         this.fadeIn(this.getElement(true));
 
         Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.addViewportListener(this, "blur", this._onWindowBlur);
 
         return this;
     }
@@ -321,6 +406,7 @@ class Menu extends Component {
         this.setFocusedIndex(-1);
 
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.removeViewportListener(this, "blur", this._onWindowBlur);
 
         this.fadeOutAndDetach();
 

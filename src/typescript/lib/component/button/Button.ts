@@ -952,6 +952,20 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         const opticalOffset = (!vertical && !renderDesc && this._text.getText().valueOf() !== "") ? Util.opticalCenterOffset() : 0;
 
         this._content.setInsets(new Insets(opticalOffset, 0, 0, 0));
+
+        this._afterRebuildContentRow();
+    }
+
+    /**
+     * Hook invoked at the end of {@link _rebuildContentRow}, after the glyph /
+     * title / description children have been re-parented onto the content row.
+     * The base implementation does nothing; subclasses that attach their own
+     * persistent child to `_content` (e.g. [`SplitButton`](/api/component/button/classes/SplitButton)'s
+     * trailing chevron) override it to re-append that child, since the rebuild
+     * empties the row wholesale via `removeAllComponents` and would otherwise
+     * orphan it on a `setGlyph` / `setDescription` / writing-mode change.
+     */
+    protected _afterRebuildContentRow(): void {
     }
 
     /**
