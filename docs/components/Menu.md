@@ -24,7 +24,7 @@ Event.addListener(myComponent, 'contextmenu', (e: MouseEvent) => {
 });
 ```
 
-Reuse one `Menu` instance across the app — `show()` disposes the previous items and rebuilds. The menu closes itself on item click or outside click; you don't need to call `hide()`. Pass an optional fourth `onClose` argument to `show(x, y, items, onClose)` to be notified once when the menu next closes — useful for reverting an open-state affordance such as a rotated dropdown chevron. An optional fifth `excludeEl` argument names an element exempt from the outside-click-to-close check; pass the trigger that opened the menu so a mousedown on it does not self-close the menu before that trigger's own click can toggle it shut (this is how [`SplitButton`](/components/SplitButton) makes a second chevron press close the dropdown).
+Reuse one `Menu` instance across the app — `show()` disposes the previous items and rebuilds. The menu closes itself on item click, outside click, or when the browser window loses focus (clicking another application or alt-tabbing); you don't need to call `hide()`. Pass an optional fourth `onClose` argument to `show(x, y, items, onClose)` to be notified once when the menu next closes — useful for reverting an open-state affordance such as a rotated dropdown chevron. An optional fifth `excludeEl` argument names an element exempt from the outside-click-to-close check; pass the trigger that opened the menu so a mousedown on it does not self-close the menu before that trigger's own click can toggle it shut (this is how [`SplitButton`](/components/SplitButton) makes a second chevron press close the dropdown).
 
 ## Persistent mode (MenuBar dropdown)
 

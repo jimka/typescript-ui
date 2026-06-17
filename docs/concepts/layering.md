@@ -68,8 +68,8 @@ at register time; surfaces mirror it with their own `setZIndex` and re-mirror on
 
 Each layer reports a [`LayerDismissMode`](/api/core/type-aliases/LayerDismissMode)
 from `getDismissMode()`, and the manager's document-level `pointerdown` /
-`focusin` / `keydown` handlers walk the tree top-down and act only on layers
-whose mode matches:
+`focusin` / `keydown` / window `blur` handlers walk the tree top-down and act
+only on layers whose mode matches:
 
 - `"click-outside"` — closed by a `pointerdown` outside the layer's subtree and
   its anchor. Used by dropdowns.
@@ -80,6 +80,12 @@ whose mode matches:
   by dialogs, which keep their own Tab focus-trap.
 - `"manual"` — never auto-dismissed; the host drives `hide()`. Used by windows
   and manual popovers.
+
+When the whole browser window loses focus — the user clicks another application
+or alt-tabs away — no in-page `pointerdown` or `focusin` fires, so the window
+`blur` handler stands in: it dismisses every `"click-outside"` and `"blur"`
+layer as if the interaction had landed outside them all, while a `"modal"` still
+shields the layers beneath it and `"manual"` layers stay open.
 
 Dismissal is **advisory**: the manager calls `requestClose()` and the surface
 runs its own fade / teardown (and unregisters itself), so each surface keeps its
