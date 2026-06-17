@@ -710,7 +710,7 @@ class MiscPanel extends Panel {
             rail.registerDrawer(buildRailDrawer("Filters"), { glyph: "filter", text: "Filters" });
             rail.registerDrawer(buildRailDrawer("Info"), { glyph: "circle-info", text: "Info" });
 
-            const win = new Window("Rail-docked window", { minimizable: true });
+            const win = new Window("Rail-docked window", { minimizable: true, glyph: "file" });
             win.setX(220);
             win.setY(140);
             win.setWidth(360);

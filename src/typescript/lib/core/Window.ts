@@ -121,13 +121,16 @@ class Window extends AbstractWindow {
     }
 
     /**
-     * Sets the title-bar glyph (leading icon).
+     * Sets the title-bar glyph (leading icon). Also caches it on the options bag
+     * so {@link AbstractWindow.getGlyph} (read by a rail to label a minimized
+     * window's handle) stays in sync with runtime changes.
      *
      * @param glyph - The glyph name to show before the title text.
      *
      * @returns This window, for method chaining.
      */
     setGlyph(glyph: string): this {
+        this._options.glyph = glyph;
         this._header.setGlyph(glyph);
 
         return this;
