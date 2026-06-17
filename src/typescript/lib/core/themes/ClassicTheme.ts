@@ -277,6 +277,15 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
         shadow    : '4px 0 24px rgba(0, 0, 0, 0.25)',
         border    : 'rgb(220, 220, 220)',
     },
+    rail: {
+        background: 'var(--ts-ui-body-bg)',
+        border    : 'rgb(200, 200, 200)',
+        shadow    : '2px 0 12px rgba(0, 0, 0, 0.18)',
+        handle: {
+            hoverBackground   : 'rgba(30, 100, 200, 0.08)',
+            selectedBackground: 'rgba(30, 100, 200, 0.16)',
+        },
+    },
     spinner: {
         dividerColor: 'rgb(180, 180, 180)',
     },

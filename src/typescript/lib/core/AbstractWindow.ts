@@ -9,8 +9,10 @@ import { Fit } from "~/layout/Fit.js";
 import { FillType } from "~/layout/FillType.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
+import type { Rail } from "~/core/Rail.js";
 
 // Window body inset in pixels, set explicitly now that the base is Container
 // (zero default insets) rather than Panel (which supplied this 4px implicitly).
@@ -49,6 +51,16 @@ const CHROME_HEIGHT_FLOOR_PX:   number = 26;
  * @category Core
  */
 export type WindowState = "normal" | "minimized" | "maximized";
+
+/**
+ * Typed events an {@link AbstractWindow} emits. `"minimize"` fires when the
+ * window enters `"minimized"`, `"restore"` when it leaves it, and `"close"`
+ * when the window is closed. A [`Rail`](/api/core/classes/Rail) subscribes to
+ * these to mirror a window minimized into it as a launcher handle.
+ *
+ * @category Core
+ */
+export type WindowEvent = "minimize" | "restore" | "close";
 
 /**
  * Snap-resize modifier key. Matches the matching property names exposed by
@@ -213,6 +225,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     protected _preMinimizeState:  "normal" | "maximized" = "normal";
     private _restoreRect:       WindowRect | null = null;
     private _bodyHost:          Component | null = null;
+
+    /** Rail this window minimizes into, or null for the built-in bottom strip. */
+    private _rail:              Rail | null = null;
+    /** Typed-event fan-out for `"minimize"` / `"restore"` / `"close"`. */
+    private _windowListeners:   ListenerBag<WindowEvent> = new ListenerBag<WindowEvent>();
     private _stateAnimHandle:   Animation.TweenHandle | null = null;
     private _viewportResizeBound: boolean = false;
 
@@ -762,6 +779,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * Hides the window and destroys its DOM element when the close button is clicked.
      */
     onExitAction(): void {
+        // Notify subscribers (e.g. a Rail) before teardown, so a rail handle
+        // representing this window is removed as the window closes.
+        this.emit("close");
+
         if (this._animationFrameId !== null) {
             cancelAnimationFrame(this._animationFrameId);
             this._animationFrameId = null;
@@ -900,6 +921,13 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         this._options.windowState = state;
 
+        // A rail-minimized window is hidden outright (the rail handle is its
+        // minimized representation), so re-show it before any restore tween
+        // plays against its rect.
+        if (from === "minimized" && this._rail !== null) {
+            this.setDisplayed(true);
+        }
+
         if (state === "normal") {
             // Restore body visibility BEFORE the tween starts so the
             // animation plays against the body content, not against an
@@ -920,11 +948,20 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             this.reflectMaximizeState("minimized");
             this.detachViewportResizeListener();
 
-            const target = this.computeDockRect();
-            this.animateRect(target, () => {
-                this.setBodyHostDisplayed(false);
-                AbstractWindow.relayoutMinimizedStack();
-            });
+            if (this._rail !== null) {
+                // Rail-docked: skip the built-in bottom strip entirely. The
+                // window is hidden outright and represented by a rail handle;
+                // `_restoreRect` / `_preMinimizeState` captured above drive the
+                // later restore. (Geometry is left untouched, so restoring is a
+                // plain re-show at the pre-minimize rect.)
+                this.setDisplayed(false);
+            } else {
+                const target = this.computeDockRect();
+                this.animateRect(target, () => {
+                    this.setBodyHostDisplayed(false);
+                    AbstractWindow.relayoutMinimizedStack();
+                });
+            }
         } else {
             // maximized
             if (from === "normal") {
@@ -938,6 +975,14 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
                 this.attachViewportResizeListener();
                 AbstractWindow.relayoutMinimizedStack();
             });
+        }
+
+        // Notify subscribers (e.g. a Rail) of the transition: "minimize" on
+        // entering the minimized state, "restore" on leaving it.
+        if (state === "minimized") {
+            this.emit("minimize");
+        } else if (from === "minimized") {
+            this.emit("restore");
         }
 
         return this;
@@ -976,6 +1021,116 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         } else {
             this.setWindowState("minimized");
         }
+    }
+
+    /**
+     * Minimizes the window. Sugar over `setWindowState("minimized")`.
+     *
+     * @returns This window, for method chaining.
+     */
+    minimize(): this {
+        return this.setWindowState("minimized");
+    }
+
+    /**
+     * Restores the window from a minimized state to whatever it was before
+     * (`"normal"` or `"maximized"`). No-op when the window is not minimized.
+     *
+     * @returns This window, for method chaining.
+     */
+    restore(): this {
+        if (!this.isMinimized()) {
+            return this;
+        }
+
+        return this.setWindowState(this._preMinimizeState);
+    }
+
+    /**
+     * Attaches a {@link Rail} this window minimizes into, replacing the built-in
+     * bottom-of-viewport dock strip: while minimized the window is hidden and
+     * represented by a handle on the rail that restores it on click. Pass `null`
+     * to detach and fall back to the built-in strip. The rail subscribes to the
+     * window's minimize / restore / close events.
+     *
+     * @param rail - The rail to minimize into, or `null` to detach.
+     *
+     * @returns This window, for method chaining.
+     */
+    setRail(rail: Rail | null): this {
+        if (this._rail === rail) {
+            return this;
+        }
+
+        if (this._rail !== null) {
+            this._rail.unregisterWindow(this);
+        }
+
+        this._rail = rail;
+
+        if (rail !== null) {
+            rail.registerWindow(this);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the rail this window minimizes into, or `null` when it uses the
+     * built-in bottom dock strip.
+     *
+     * @returns The attached rail, or `null`.
+     */
+    getRail(): Rail | null {
+        return this._rail;
+    }
+
+    /**
+     * Returns the window's leading glyph, or `undefined` when none was set. Read
+     * by a {@link Rail} to label the handle for a window minimized into it.
+     *
+     * @returns The glyph name, or `undefined`.
+     */
+    getGlyph(): string | undefined {
+        return this._options.glyph;
+    }
+
+    /**
+     * Registers a listener for one of the window's lifecycle events.
+     *
+     * @param event - `"minimize"` / `"restore"` / `"close"`.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This window, for method chaining.
+     */
+    on(event: WindowEvent, listener: () => void): this {
+        this._windowListeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This window, for method chaining.
+     */
+    off(event: WindowEvent, listener: () => void): this {
+        this._windowListeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event`, in registration order.
+     *
+     * @param event - The event to emit.
+     */
+    protected emit(event: WindowEvent): void {
+        this._windowListeners.fire(event);
     }
 
     /**

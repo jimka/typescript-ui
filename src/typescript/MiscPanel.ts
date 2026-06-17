@@ -16,6 +16,7 @@ import {
     Notification,
     Panel,
     Popover,
+    Rail,
     ThemeManager,
     Tooltip,
     Window
@@ -670,6 +671,55 @@ class MiscPanel extends Panel {
         const nonModalDrawerButton = new Button("Non-modal drawer (left)");
         nonModalDrawerButton.on("action", () => openDemoDrawer(Placement.WEST, false, "left"));
         leftColumn.addComponent(nonModalDrawerButton);
+
+        // Rail demo — a persistent launcher strip along the left edge. Unlike a
+        // drawer it never slides away; its handles toggle two registered
+        // (non-modal) drawers, and a window minimizes *into* the rail as a
+        // handle that restores it on click. The button toggles the whole rail
+        // on and off so it doesn't permanently cover the demo.
+        let demoRail: Rail | null = null;
+        const buildRailDrawer = (label: string): Drawer => {
+            const drawer = new Drawer({ modal: false, layoutManager: new VBox({ stretching: true }) });
+
+            const heading = new Text(label + " drawer — opened from its rail handle");
+            heading.setFontWeight("bold");
+            heading.setPreferredSize(0, 28);
+
+            const closeButton = new Button("Close");
+            closeButton.setPreferredSize(0, 32);
+            closeButton.on("action", () => drawer.close());
+
+            drawer.addComponent(heading);
+            drawer.addComponent(closeButton);
+
+            return drawer;
+        };
+
+        const railButton = new Button("Toggle launcher rail (Rail)");
+        railButton.on("action", () => {
+            if (demoRail) {
+                demoRail.unmount();
+                demoRail = null;
+
+                return;
+            }
+
+            const rail = new Rail({ edge: Placement.WEST });
+            rail.registerDrawer(buildRailDrawer("Filters"), { glyph: "filter", text: "Filters" });
+            rail.registerDrawer(buildRailDrawer("Info"), { glyph: "circle-info", text: "Info" });
+
+            const win = new Window("Rail-docked window", { minimizable: true });
+            win.setX(220);
+            win.setY(140);
+            win.setWidth(360);
+            win.setHeight(240);
+            win.setRail(rail);
+            win.show();
+
+            rail.mount();
+            demoRail = rail;
+        });
+        leftColumn.addComponent(railButton);
 
         // Dock demo — a rearrangeable VS Code / GoldenLayout style layout. The
         // initial arrangement is a horizontal split: a two-tab group on the left

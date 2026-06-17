@@ -272,6 +272,15 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         shadow    : '4px 0 24px rgba(0, 0, 0, 0.55)',
         border    : 'rgb(70, 70, 70)',
     },
+    rail: {
+        background: 'var(--ts-ui-body-bg)',
+        border    : 'rgb(70, 70, 70)',
+        shadow    : '2px 0 12px rgba(0, 0, 0, 0.45)',
+        handle: {
+            hoverBackground   : 'rgba(120, 170, 240, 0.12)',
+            selectedBackground: 'rgba(120, 170, 240, 0.22)',
+        },
+    },
     spinner: {
         dividerColor: 'rgb(80, 80, 80)',
     },
