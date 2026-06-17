@@ -141,13 +141,18 @@ class Window extends AbstractWindow {
      * header is registered as a tab-dock drag source.
      */
     protected wireMoveTrigger(): void {
-        Event.addListener(this._header, "mousedown", (e: MouseEvent) => this.onMouseDown(e));
+        // Subtree listeners (not exact-target) because the header's title row sits
+        // inside a Border clip-frame wrapper: a press on the title text or glyph
+        // targets that wrapper, not the bare header element, so an exact-target
+        // listener would miss it. Matches the drag source below, which already
+        // observes the whole header subtree via addMouseDownSubtreeListener.
+        Event.addSubtreeListener(this._header, "mousedown", (e: MouseEvent) => this.onMouseDown(e));
 
         // Shift-drag the header to re-dock the window's body content onto a Tab
         // strip. The capture listener records the modifier (registered before the
         // drag source so it runs first); the drag source vetoes a plain (no-Shift)
         // press so the normal window move runs.
-        Event.addListener(this._header, "mousedown", this._boundCaptureHeaderShift);
+        Event.addSubtreeListener(this._header, "mousedown", this._boundCaptureHeaderShift);
         DragManager.makeDragSource(this._header, {
             dragData: (): DragData => this.buildHeaderDragData(),
             onDragStart: (): boolean | void => this.onHeaderDragStart(),
