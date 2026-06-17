@@ -22,7 +22,7 @@ rail.registerDrawer(filters, { glyph: 'filter', text: 'Filters' });
 
 ## Edges and thickness
 
-The `edge` option reuses the compass primitive [`Placement`](/api/primitive/enumerations/Placement) (minus `CENTER`), exposed as [`RailEdge`](/api/core/type-aliases/RailEdge). WEST/EAST rails lay their handles out vertically at a fixed width; NORTH/SOUTH rails lay them out horizontally at a fixed height. The cross-axis always spans the full viewport.
+The `edge` option reuses the compass primitive [`Placement`](/api/primitive/enumerations/Placement) (minus `CENTER`), exposed as [`RailEdge`](/api/core/type-aliases/RailEdge). WEST/EAST rails lay their handles out vertically (a column); NORTH/SOUTH rails lay them out horizontally (a row). The main axis always spans the full viewport.
 
 | `edge` | Anchors against | Handle axis |
 | --- | --- | --- |
@@ -31,7 +31,7 @@ The `edge` option reuses the compass primitive [`Placement`](/api/primitive/enum
 | `Placement.NORTH` | Top, full width | horizontal (row) |
 | `Placement.SOUTH` | Bottom, full width | horizontal (row) |
 
-`thickness` (default 48 px) is the strip's extent along its cross axis — width for WEST/EAST, height for NORTH/SOUTH.
+By default the rail **sizes its cross axis to its handles** — the width of the widest handle for a WEST/EAST rail, the height of the tallest for NORTH/SOUTH — re-derived as handles are added or removed and when the [orientation](#handle-text-orientation) changes (rotated labels need far less width). Set `thickness` to pin an explicit cross-axis size in pixels instead.
 
 ## Handle text orientation
 
