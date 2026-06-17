@@ -32,7 +32,7 @@ save.setMenuItems([
 ]);
 ```
 
-The dropdown is a rebuild-mode [`Menu`](/components/Menu): it is created lazily on the first chevron click, reused across opens, anchored under the button's bottom-left corner, clamped to the viewport, and dismissed on outside click. The chevron rotates 180° to point up while the dropdown is open and animates back to point down when it closes.
+The dropdown is a rebuild-mode [`Menu`](/components/Menu): it is created lazily on the first chevron click, reused across opens, anchored under the button's bottom-left corner, clamped to the viewport, and dismissed on outside click. Pressing the chevron a second time while the dropdown is open toggles it shut — the chevron is excluded from the menu's outside-click dismissal, so its click is the sole close path while open rather than triggering a close-then-reopen. The chevron rotates 180° to point up while the dropdown is open and animates back to point down when it closes.
 
 ## How the chevron click is distinguished
 
