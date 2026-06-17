@@ -71,6 +71,7 @@ class Menu extends Component {
     private _menuWidth: number = DEFAULT_REBUILD_WIDTH;
     private _rebuildOnClose: (() => void) | null = null;
     private readonly _onViewportMouseDown: (e: MouseEvent) => void;
+    private readonly _onWindowBlur: (e: FocusEvent) => void;
 
     /**
      * Constructs a rebuild-mode (right-click context) menu. Items are supplied per `show()` call.
@@ -115,6 +116,23 @@ class Menu extends Component {
                 if (!this.getElement()?.contains(target) && !this._excludedEl?.contains(target)) {
                     this.hide();
                 }
+            }
+        };
+
+        // Closing the whole browser window's focus (clicking another app or
+        // alt-tabbing) fires no in-page mousedown, so the mousedown dismissal
+        // above never runs and the menu would stay open. A window blur closes
+        // it. Viewport listeners are capture-phase, so element blurs from within
+        // the menu surface here too; act only on a genuine window blur.
+        this._onWindowBlur = (e: FocusEvent) => {
+            if (e.target !== window) {
+                return;
+            }
+
+            if (this._persistent) {
+                this._onClose!();
+            } else {
+                this.hide();
             }
         };
     }
@@ -203,6 +221,7 @@ class Menu extends Component {
         this.fadeIn(el);
 
         Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.addViewportListener(this, "blur", this._onWindowBlur);
 
         return this;
     }
@@ -216,6 +235,7 @@ class Menu extends Component {
         this.assertRebuildMode("hide");
 
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.removeViewportListener(this, "blur", this._onWindowBlur);
 
         this.fadeOutAndDetach();
 
@@ -319,6 +339,7 @@ class Menu extends Component {
         this.fadeIn(this.getElement(true));
 
         Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.addViewportListener(this, "blur", this._onWindowBlur);
 
         return this;
     }
@@ -340,6 +361,7 @@ class Menu extends Component {
         this.setFocusedIndex(-1);
 
         Event.removeViewportListener(this, "mousedown", this._onViewportMouseDown);
+        Event.removeViewportListener(this, "blur", this._onWindowBlur);
 
         this.fadeOutAndDetach();
 
