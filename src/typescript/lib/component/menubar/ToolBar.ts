@@ -11,6 +11,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
 import { Menu } from "~/core/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
+import { Spacer } from "~/component/container/Spacer.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ellipsis_v } from "~/glyphs/solid/ellipsis_v.js";
 import { callable } from "~/core/Callable.js";
@@ -41,6 +42,16 @@ export type ToolBarOrientation = "horizontal" | "vertical";
 export type ToolBarOverflow = "clip" | "menu";
 
 /**
+ * Which edge of a {@link ToolBar} the `"menu"` overflow trigger sits on.
+ * `"right"` (the default) places the chevron at the trailing edge, after the
+ * visible buttons; `"left"` places it at the leading edge. The overflowing
+ * buttons are the trailing run either way — only the trigger's position moves.
+ *
+ * @category Components
+ */
+export type ToolBarOverflowSide = "left" | "right";
+
+/**
  * Construction-time options for {@link ToolBar}.
  *
  * @category Components
@@ -49,6 +60,12 @@ export interface ToolBarOptions extends ContainerOptions {
     orientation?: ToolBarOrientation;
     compact?:     boolean;
     overflow?:    ToolBarOverflow;
+    /**
+     * Edge the `"menu"` overflow trigger sits on — `"right"` (default) or
+     * `"left"`. No visible effect unless `overflow` is `"menu"`. Runtime
+     * counterpart `setOverflowSide`.
+     */
+    overflowSide?: ToolBarOverflowSide;
     /**
      * When `true` (the default), `Button` / `ToggleButton` children added to the
      * bar are switched to flat appearance for the classical toolbar look — no
@@ -86,6 +103,7 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
     orientation:     "horizontal",
     compact:         false,
     overflow:        "clip",
+    overflowSide:    "right",
     flat:            true,
     backgroundColor: "var(--ts-ui-toolbar-bg, rgb(245, 245, 245))",
 };
@@ -130,11 +148,13 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     declare private _orientation:  ToolBarOrientation;
     declare private _compact:      boolean;
     declare private _overflowMode: ToolBarOverflow;
+    declare private _overflowSide: ToolBarOverflowSide;
     declare private _flat:         boolean;
     declare private _rovingTabIndex: RovingTabIndex;
     declare private _onKeyDown:    (e: KeyboardEvent) => void;
     declare private _overflowButton: Button | null;
     declare private _overflowMenu:   Menu | null;
+    declare private _overflowSpacer: Spacer | null;
 
     /**
      * Constructs a `ToolBar`.
@@ -176,10 +196,13 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
 
         const opts = { ...this._defaultOptions, ...options } as TOptions;
 
-        if (opts.orientation !== undefined) this.setOrientation(opts.orientation);
-        if (opts.compact     !== undefined) this.setCompact(opts.compact);
-        if (opts.overflow    !== undefined) this.setOverflow(opts.overflow);
-        if (opts.flat        !== undefined) this.setFlat(opts.flat);
+        if (opts.orientation  !== undefined) this.setOrientation(opts.orientation);
+        if (opts.compact      !== undefined) this.setCompact(opts.compact);
+        // Dispatched before `overflow` so the trigger, created on entry to
+        // `"menu"` mode, is positioned on the configured side from the start.
+        if (opts.overflowSide !== undefined) this.setOverflowSide(opts.overflowSide);
+        if (opts.overflow     !== undefined) this.setOverflow(opts.overflow);
+        if (opts.flat         !== undefined) this.setFlat(opts.flat);
 
         return this;
     }
@@ -320,8 +343,50 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
 
         this._overflowButton = trigger;
         this._overflowMenu   = new Menu();
+        // Flex spacer that pushes a right-side trigger to the bar's far edge; it
+        // is only parented while the side is `"right"` (see _positionOverflowTrigger).
+        this._overflowSpacer = Spacer.flex();
 
         super.addComponent(trigger);
+
+        this._positionOverflowTrigger();
+    }
+
+    /**
+     * Pins the overflow trigger to the configured edge. For `"right"` a flex
+     * {@link Spacer} is parented just before the trigger so the chevron is
+     * driven to the bar's far-right edge (rather than sitting flush against the
+     * last visible button); the final child order is `[content…, spacer, trigger]`.
+     * For `"left"` the spacer is detached and the trigger leads as the first
+     * child. A no-op when no trigger exists yet. Re-run whenever content is added
+     * (the trigger must stay at the edge) or the side changes; the trailing run
+     * of buttons still overflows regardless of the trigger's side.
+     */
+    private _positionOverflowTrigger(): void {
+        const trigger = this._overflowButton;
+        const spacer  = this._overflowSpacer;
+        if (trigger === undefined || trigger === null || spacer === undefined || spacer === null) {
+            return;
+        }
+
+        if (this._overflowSide === "right") {
+            if (spacer.getParentComponent() !== this) {
+                super.addComponent(spacer);
+            }
+
+            // Order the tail as [spacer, trigger]: move the trigger last, then
+            // slot the spacer immediately before it. `moveComponent` recomputes
+            // the index after splicing the moved child out, so the pre-move
+            // length-relative targets land both at the end.
+            this.moveComponent(trigger, this.getComponents().length - 1);
+            this.moveComponent(spacer,  this.getComponents().length - 2);
+        } else {
+            if (spacer.getParentComponent() === this) {
+                this.removeComponent(spacer);
+            }
+
+            this.moveComponent(trigger, 0);
+        }
     }
 
     /**
@@ -331,6 +396,38 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      */
     getOverflow(): ToolBarOverflow {
         return this._overflowMode;
+    }
+
+    /**
+     * Sets which edge the `"menu"` overflow trigger sits on. `"right"` (the
+     * default) trails the visible buttons; `"left"` leads them. Only the
+     * trigger's position changes — the overflowing buttons are the trailing run
+     * either way. No visible effect until `overflow` is `"menu"`.
+     *
+     * @param value - `"left"` or `"right"`.
+     *
+     * @returns This component, for method chaining.
+     */
+    setOverflowSide(value: ToolBarOverflowSide): this {
+        if (value === this._overflowSide) {
+            return this;
+        }
+
+        this._overflowSide = value;
+
+        this._positionOverflowTrigger();
+        this.doLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the edge the overflow trigger sits on.
+     *
+     * @returns `"left"` or `"right"`.
+     */
+    getOverflowSide(): ToolBarOverflowSide {
+        return this._overflowSide;
     }
 
     /**
@@ -398,6 +495,12 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
             component.setFlat(true);
         }
 
+        // Keep the overflow trigger pinned to its edge: a content child appended
+        // after the trigger (the trigger is created before the demo's buttons
+        // for a construction-time `overflow: "menu"`) would otherwise leave the
+        // chevron stranded mid-row. No-op when no trigger exists.
+        this._positionOverflowTrigger();
+
         return this;
     }
 
@@ -445,7 +548,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         const lm  = this.getLayoutManager();
         const gap = (lm instanceof HBox) ? lm.getComponentSpacing() : TOOLBAR_GAP_DEFAULT;
 
-        const children = this.getComponents().filter(child => child !== trigger);
+        const children = this.getComponents().filter(child => child !== trigger && child !== this._overflowSpacer);
         const overflowed = this._computeOverflowed(children, trigger, inner, gap);
 
         let changed = false;
