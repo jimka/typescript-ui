@@ -1065,7 +1065,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Restores the window from a minimized state to whatever it was before
-     * (`"normal"` or `"maximized"`). No-op when the window is not minimized.
+     * (`"normal"` or `"maximized"`) and brings it to the front so it becomes
+     * the active, focused window. No-op when the window is not minimized.
+     *
+     * @remarks Restoring is typically driven from a rail handle — a click
+     * outside the window, which never activates it on its own. The window also
+     * usually stays the layer manager's active layer while minimized (nothing
+     * else took over), so `bringToFront` is an activation no-op and `onActivate`
+     * never re-fires. Both the raise and the keyboard focus are therefore made
+     * explicit here.
      *
      * @returns This window, for method chaining.
      */
@@ -1074,7 +1082,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             return this;
         }
 
-        return this.setWindowState(this._preMinimizeState);
+        this.setWindowState(this._preMinimizeState);
+        this.bringToFront();
+        this.focus(true);
+
+        return this;
     }
 
     /**
