@@ -12,6 +12,7 @@ import { Container, ContainerOptions } from "~/core/Container.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
+import { Placement } from "~/primitive/Placement.js";
 import type { Rail } from "~/core/Rail.js";
 
 // Window body inset in pixels, set explicitly now that the base is Container
@@ -291,6 +292,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.setVisible(false);
         // Resizable — size containment unsafe; layout containment scopes reflow to the window subtree.
         this.setContain("layout");
+
+        // Focusable as a unit so activation can move keyboard focus to the
+        // window (see onActivate / focusSelf). -1 keeps it out of the Tab order
+        // — focus is driven programmatically on activation, not by tabbing.
+        this.getAria().setTabIndex(-1);
 
         Event.addSubtreeListener(this, "mousedown", () => this.bringToFront());
     }
@@ -731,6 +737,26 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     onActivate(active: boolean): void {
         this.paintActive(active);
+
+        if (active) {
+            this.focusSelf();
+        }
+    }
+
+    /**
+     * Moves keyboard focus to the window when it is activated, unless focus is
+     * already inside it (so a click that lands on a child input keeps that
+     * input focused rather than yanking focus up to the window root). Uses
+     * `preventScroll` because the window is an absolutely-positioned overlay —
+     * a native focus scroll would jolt any `overflow: hidden` ancestor.
+     */
+    private focusSelf(): void {
+        const element = this.getElement();
+        if (!element || element.contains(document.activeElement)) {
+            return;
+        }
+
+        this.focus(true);
     }
 
     /**
@@ -949,18 +975,24 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             this.detachViewportResizeListener();
 
             if (this._rail !== null) {
-                // Rail-docked: skip the built-in bottom strip entirely. The
-                // window is hidden outright and represented by a rail handle;
-                // `_restoreRect` / `_preMinimizeState` captured above drive the
-                // later restore. (Geometry is left untouched, so restoring is a
-                // plain re-show at the pre-minimize rect.)
-                this.setDisplayed(false);
+                // Rail-docked: skip the built-in bottom strip. Fly the window
+                // into a small slab at the rail edge, then hide it outright and
+                // let the rail show its handle (via the deferred "minimize"
+                // event). `_restoreRect` / `_preMinimizeState` captured above
+                // drive the fly-back on restore.
+                const target = this.computeRailDockRect();
+                this.animateRect(target, () => {
+                    this.setDisplayed(false);
+                    this.emit("minimize");
+                });
             } else {
                 const target = this.computeDockRect();
                 this.animateRect(target, () => {
                     this.setBodyHostDisplayed(false);
                     AbstractWindow.relayoutMinimizedStack();
                 });
+
+                this.emit("minimize");
             }
         } else {
             // maximized
@@ -977,11 +1009,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             });
         }
 
-        // Notify subscribers (e.g. a Rail) of the transition: "minimize" on
-        // entering the minimized state, "restore" on leaving it.
-        if (state === "minimized") {
-            this.emit("minimize");
-        } else if (from === "minimized") {
+        // Notify subscribers (e.g. a Rail) when the window leaves the minimized
+        // state. The "minimize" counterpart is emitted from the branch above —
+        // deferred to the rail fly-in's completion on the rail path.
+        if (from === "minimized" && state !== "minimized") {
             this.emit("restore");
         }
 
@@ -1899,6 +1930,37 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         const y = window.innerHeight - headerHeight;
 
         return { x, y, width: dockWidth, height: headerHeight };
+    }
+
+    /**
+     * Computes the small slab a rail-docked window collapses into when
+     * minimizing — a `thickness`-wide (rail cross-axis) chrome-height box hugging
+     * the rail's edge, kept at the window's current leading coordinate so it
+     * appears to slide into the rail. The window flies here, then hides; restore
+     * tweens back out from it. Assumes a rail is attached.
+     *
+     * @returns The rail-docked collapse rect.
+     */
+    private computeRailDockRect(): WindowRect {
+        const rail         = this._rail as Rail;
+        const thickness    = rail.getThickness();
+        const headerHeight = this.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
+        const cur          = this.currentRect();
+
+        switch (rail.getEdge()) {
+            case Placement.EAST:
+                return { x: window.innerWidth - thickness, y: cur.y, width: thickness, height: headerHeight };
+
+            case Placement.NORTH:
+                return { x: cur.x, y: 0, width: thickness, height: headerHeight };
+
+            case Placement.SOUTH:
+                return { x: cur.x, y: window.innerHeight - headerHeight, width: thickness, height: headerHeight };
+
+            case Placement.WEST:
+            default:
+                return { x: 0, y: cur.y, width: thickness, height: headerHeight };
+        }
     }
 
     /**

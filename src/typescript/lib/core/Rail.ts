@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { Animation } from "~/core/Animation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Position } from "~/primitive/Position.js";
 import { Placement } from "~/primitive/Placement.js";
@@ -100,6 +101,14 @@ const DEFAULT_RAIL_THICKNESS_PX: number = 48;
  * rather than drawing a band from the layer manager.
  */
 const RAIL_Z_INDEX: number = 8900;
+
+/**
+ * Slide duration (ms) for the rail's mount / unmount animation. Matches
+ * Drawer's slide feel — long enough to read as motion, short enough not to
+ * delay the launcher. Honoured under `prefers-reduced-motion` by
+ * {@link Animation.play}, which then snaps to the end state.
+ */
+const RAIL_ANIM_DURATION_MS: number = 200;
 
 /**
  * Subclass defaults layered into `Component._defaultOptions`. The two
@@ -313,6 +322,7 @@ class Rail extends Component<RailOptions> {
         Event.addViewportListener(this, "resize", this._boundResizeHandler);
 
         this._mounted = true;
+        this.animateIn();
 
         return this;
     }
@@ -330,11 +340,70 @@ class Rail extends Component<RailOptions> {
         }
 
         Event.removeViewportListener(this, "resize", this._boundResizeHandler);
-        this.removeElement();
 
         this._mounted = false;
 
+        // Slide the strip back off its edge, then detach. Under reduced motion
+        // Animation.play runs the completion synchronously.
+        const element = this.getElement();
+        const detach = (): void => { this.removeElement(); };
+
+        if (!element) {
+            detach();
+
+            return this;
+        }
+
+        Animation.play(element, {
+            to:         { transform: this.offscreenTransform() },
+            durationMs: RAIL_ANIM_DURATION_MS,
+            properties: ["transform"],
+            onComplete: detach,
+        });
+
         return this;
+    }
+
+    /**
+     * Slides the strip in from off its anchored edge to its resting position.
+     */
+    private animateIn(): void {
+        const element = this.getElement();
+
+        if (!element) {
+            return;
+        }
+
+        Animation.play(element, {
+            from:       { transform: this.offscreenTransform() },
+            to:         { transform: "translate(0, 0)" },
+            durationMs: RAIL_ANIM_DURATION_MS,
+            properties: ["transform"],
+        });
+    }
+
+    /**
+     * Returns the off-screen `transform` for the current edge — the strip
+     * translated one full thickness past the edge it anchors to, the start
+     * (mount) and end (unmount) state of the slide.
+     *
+     * @returns A `translateX` / `translateY` CSS value.
+     */
+    private offscreenTransform(): string {
+        switch (this.getEdge()) {
+            case Placement.EAST:
+                return "translateX(100%)";
+
+            case Placement.NORTH:
+                return "translateY(-100%)";
+
+            case Placement.SOUTH:
+                return "translateY(100%)";
+
+            case Placement.WEST:
+            default:
+                return "translateX(-100%)";
+        }
     }
 
     // ----- drawer composition -----
