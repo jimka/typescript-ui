@@ -33,11 +33,7 @@ class ToolBarPanel extends Panel {
      * Constructs the demo panel and wires up a sample toolbar.
      */
     constructor() {
-        super();
-
-        const vbox = new VBox();
-        vbox.setStretching(true);
-        this.setLayoutManager(vbox);
+        super({layoutManager: VBox({ stretching: true })});
 
         const bar        = new ToolBar();
         const statusText = new Text("Click a toolbar button to see it here.");
@@ -50,10 +46,11 @@ class ToolBarPanel extends Panel {
         const italic    = new ToggleButton("I");
         const underline = new ToggleButton("U");
 
-        const styleGroup = new ButtonGroup();
-        styleGroup.addButton(bold);
-        styleGroup.addButton(italic);
-        styleGroup.addButton(underline);
+        const styleGroup = new ButtonGroup({ buttons: [
+            bold,
+            italic,
+            underline
+        ]});
 
         bold.on("action", () => { status("Toggle Bold"); });
         italic.on("action", () => { status("Toggle Italic"); });
@@ -70,15 +67,15 @@ class ToolBarPanel extends Panel {
         const zoom = new ComboBox({ items: ["50%", "75%", "100%", "125%", "150%"] });
         zoom.on("action", (value: string) => { status("Zoom " + value); });
 
-        bar.addComponent(bold);
-        bar.addComponent(italic);
-        bar.addComponent(underline);
-        bar.addComponent(new ToolBarSeparator());
-        bar.addComponent(cut);
-        bar.addComponent(copy);
-        bar.addComponent(paste);
-        bar.addComponent(Spacer.flex());
-        bar.addComponent(zoom);
+        bar.addComponents(
+            styleGroup.getButtons(),
+            ToolBarSeparator(),
+            cut,
+            copy,
+            paste,
+            Spacer.flex(),
+            zoom
+        );
 
         const raisedBar: ToolBar = new ToolBar({ flat: false });
 
@@ -88,12 +85,14 @@ class ToolBarPanel extends Panel {
         save.on("action", () => { status("Save"); });
         open.on("action", () => { status("Open"); });
 
-        raisedBar.addComponent(save);
-        raisedBar.addComponent(open);
+        raisedBar.addComponents(
+            save,
+            open
+        );
 
         const overflowBar = new ToolBar({ overflow: "menu" });
 
-        const actions = ["New", "Open", "Save", "Print", "Undo", "Redo", "Find", "Replace"];
+        const actions = ["New", "Open", "Save", "Print", "Undo", "Redo", "Find", "Replace", "AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD", "EEEEEE", "FFFFFF", "GGGGGG", "HHHHHH", "IIIIII", "JJJJJJ"];
 
         for (const label of actions) {
             const button = new Button(label);
@@ -102,10 +101,12 @@ class ToolBarPanel extends Panel {
             overflowBar.addComponent(button);
         }
 
-        this.addComponent(bar);
-        this.addComponent(raisedBar);
-        this.addComponent(overflowBar);
-        this.addComponent(statusText);
+        this.addComponents(
+            bar,
+            raisedBar,
+            overflowBar,
+            statusText
+        );
     }
 }
 
