@@ -6,6 +6,7 @@ import { Animation } from "~/core/Animation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Position } from "~/primitive/Position.js";
 import { Placement } from "~/primitive/Placement.js";
+import { isUnbounded } from "~/primitive/Size.js";
 import { Util } from "~/core/Util.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
@@ -88,10 +89,13 @@ export interface RailOptions extends ComponentOptions {
     edge?: RailEdge;
 
     /**
-     * Rail thickness in pixels — width for WEST/EAST edges, height for
-     * NORTH/SOUTH edges. The cross-axis always spans the full viewport.
+     * Explicit rail thickness in pixels — width for WEST/EAST edges, height for
+     * NORTH/SOUTH edges (the main axis always spans the full viewport). Omit to
+     * size the rail to its handles: the cross-axis fits the widest (or, on a
+     * horizontal rail, tallest) handle, re-derived as handles are added/removed
+     * and when the orientation changes.
      *
-     * @defaultValue 48
+     * @defaultValue content-derived
      */
     thickness?: number;
 
@@ -111,11 +115,13 @@ export interface RailOptions extends ComponentOptions {
 }
 
 /**
- * Default rail thickness (px) along the cross axis. A component-level constant
- * rather than a theme token because it is a layout-affecting measurement, not a
- * colour — matching how `Drawer` keeps its `DEFAULT_DRAWER_SIZE_PX` out of
- * `Theme.ts`. 48 px is the conventional icon-rail width (a comfortable square
- * touch target for a single glyph handle).
+ * Fallback rail thickness (px) along the cross axis, used only when no explicit
+ * `thickness` is set and the content cannot be measured yet (e.g. an empty rail
+ * with no handles). Once handles exist the rail sizes to them. A component-level
+ * constant rather than a theme token because it is a layout-affecting
+ * measurement, not a colour — matching how `Drawer` keeps its
+ * `DEFAULT_DRAWER_SIZE_PX` out of `Theme.ts`. 48 px is the conventional icon-rail
+ * width (a comfortable square touch target for a single glyph handle).
  */
 const DEFAULT_RAIL_THICKNESS_PX: number = 48;
 
@@ -145,7 +151,6 @@ const RAIL_ANIM_DURATION_MS: number = 200;
  */
 const _defaultRailOptions: Partial<RailOptions> = {
     edge:            Placement.WEST,
-    thickness:       DEFAULT_RAIL_THICKNESS_PX,
     orientation:     "horizontal",
     backgroundColor: "var(--ts-ui-rail-bg)",
     shadow:          "var(--ts-ui-rail-shadow)",
@@ -307,9 +312,9 @@ class Rail extends Component<RailOptions> {
     }
 
     /**
-     * Sets the rail's thickness along its cross axis (width for WEST/EAST,
-     * height for NORTH/SOUTH). Takes effect on the next `mount()` /
-     * viewport-resize re-layout.
+     * Pins the rail's cross-axis thickness (width for WEST/EAST, height for
+     * NORTH/SOUTH) to an explicit pixel value, overriding the content-fit
+     * default. Re-applies the resting geometry when mounted.
      *
      * @param px - The thickness in pixels.
      *
@@ -317,17 +322,57 @@ class Rail extends Component<RailOptions> {
      */
     setThickness(px: number): this {
         this._options.thickness = px;
+        this.adaptThickness();
 
         return this;
     }
 
     /**
-     * Returns the rail's thickness in pixels.
+     * Returns the rail's effective cross-axis thickness in pixels — the explicit
+     * `thickness` when one was set, otherwise the content-fit measurement.
      *
      * @returns The current thickness.
      */
     getThickness(): number {
-        return this._options.thickness ?? DEFAULT_RAIL_THICKNESS_PX;
+        if (this._options.thickness !== undefined) {
+            return this._options.thickness;
+        }
+
+        return this.measureContentThickness();
+    }
+
+    /**
+     * Measures the cross-axis extent the rail's handles need — the widest handle
+     * for a vertical (WEST/EAST) rail, the tallest for a horizontal one — from
+     * the layout manager's preferred size. Falls back to
+     * {@link DEFAULT_RAIL_THICKNESS_PX} before the rail has a layout manager or
+     * any handles (when the preferred cross-axis is unbounded or zero).
+     *
+     * @returns The content-fit thickness in pixels.
+     */
+    private measureContentThickness(): number {
+        const preferred = this.getPreferredSize();
+        if (!preferred) {
+            return DEFAULT_RAIL_THICKNESS_PX;
+        }
+
+        const cross = this.isVertical() ? preferred.width : preferred.height;
+        if (cross <= 0 || isUnbounded(cross)) {
+            return DEFAULT_RAIL_THICKNESS_PX;
+        }
+
+        return Math.ceil(cross);
+    }
+
+    /**
+     * Re-derives the content-fit thickness by re-applying the resting geometry.
+     * No-op until mounted (mount applies the geometry itself); called whenever
+     * the handle set or orientation changes so the rail tracks its content.
+     */
+    private adaptThickness(): void {
+        if (this._mounted) {
+            this.applyRestingGeometry();
+        }
     }
 
     /**
@@ -509,6 +554,7 @@ class Rail extends Component<RailOptions> {
         this.addComponent(handle);
         this._drawers.set(drawer, { handle, onOpen, onClose, onAction });
 
+        this.adaptThickness();
         this.scheduleLayout();
         this.emit("register", drawer);
 
@@ -537,6 +583,7 @@ class Rail extends Component<RailOptions> {
         this.removeComponent(reg.handle);
         this._drawers.delete(drawer);
 
+        this.adaptThickness();
         this.emit("unregister", drawer);
 
         return this;
@@ -626,6 +673,7 @@ class Rail extends Component<RailOptions> {
         this.applyHandleOrientation(handle);
         this.addComponent(handle);
 
+        this.adaptThickness();
         this.scheduleLayout();
     }
 
@@ -643,6 +691,8 @@ class Rail extends Component<RailOptions> {
         reg.handle.off("action", reg.onAction);
         this.removeComponent(reg.handle);
         reg.handle = null;
+
+        this.adaptThickness();
     }
 
     // ----- internal: handle orientation -----
@@ -662,6 +712,7 @@ class Rail extends Component<RailOptions> {
             }
         }
 
+        this.adaptThickness();
         this.scheduleLayout();
     }
 
