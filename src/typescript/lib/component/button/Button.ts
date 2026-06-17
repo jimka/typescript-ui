@@ -1312,8 +1312,15 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * compact square inset so they read as toolbar icon buttons.
      */
     private _applyFlatChrome(): void {
-        // Suppress the resting frame — same masking as the chromeless branch.
-        this.clearBorder();
+        // Reserve the 1px frame at rest with a transparent border (rather than
+        // clearing it like the chromeless branch). Under `box-sizing: border-box`
+        // a border consumes content-box space, so a border that only appears on
+        // `:hover` / `:active` would nudge the centred label by 1px. Reserving it
+        // transparent keeps the geometry identical across states — the hover /
+        // pressed rules below only swap the border *colour*. Matches the 1px
+        // width of the `--ts-ui-button-flat-{hover,pressed}-border` tokens;
+        // widen this in lockstep if those ever exceed 1px.
+        this.setBorder("1px solid transparent");
         this._options.borderRadius    = undefined;
         this._options.shadow          = undefined;
         this._options.backgroundImage = undefined;
