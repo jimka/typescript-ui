@@ -112,6 +112,16 @@ export interface ButtonOptions extends ComponentOptions {
     flat?:                   boolean;
 
     /**
+     * Compact rendering: tighter symmetric insets so the button reads denser
+     * (e.g. packed into a [`ToolBar`](/api/component/menubar/classes/ToolBar)).
+     * Text buttons go `(5,10,5,10)` →
+     * `(2,6,2,6)`; glyph-only buttons collapse to a `(2,2,2,2)` square.
+     * Defaults to `false`. Runtime counterpart `setCompact`; read with
+     * `isCompact`.
+     */
+    compact?:                boolean;
+
+    /**
      * Anchor for the inner content row (glyph + label) within Button's outer
      * `Fit` layout. Defaults to {@link AnchorType.CENTER}. Pass
      * {@link AnchorType.WEST} for left-anchored menubar-style buttons.
@@ -125,6 +135,35 @@ export interface ButtonOptions extends ComponentOptions {
      */
     fill?:                   FillType;
 }
+
+/**
+ * Default button inset perimeter — generous `5/10` (vertical/horizontal) so a
+ * raised button reads as a comfortable click target. The asymmetric horizontal
+ * padding gives the label breathing room either side of its centred glyph.
+ */
+const BUTTON_DEFAULT_INSETS: Insets = new Insets(5, 10, 5, 10);
+
+/**
+ * Compact inset perimeter for a text-bearing button — `2/6`. Tightens the
+ * generous default so the button reads denser (e.g. packed into a `ToolBar`)
+ * while keeping enough horizontal padding that the label doesn't touch the
+ * frame. Driven by {@link Button.setCompact}.
+ */
+const BUTTON_COMPACT_INSETS_TEXT: Insets = new Insets(2, 6, 2, 6);
+
+/**
+ * Compact inset perimeter for a glyph-only button — a tight `2/2` square so a
+ * toolbar icon collapses to its glyph with minimal margin. Driven by
+ * {@link Button.setCompact}; supersedes the non-compact flat square below.
+ */
+const BUTTON_COMPACT_INSETS_GLYPH: Insets = new Insets(2, 2, 2, 2);
+
+/**
+ * Flat glyph-only square inset — `4/4`. A non-compact flat glyph button (a
+ * toolbar icon on a non-compact bar) collapses its asymmetric `5/10` default
+ * to this square so it reads as a tight icon without the full compact tightening.
+ */
+const BUTTON_FLAT_GLYPH_INSETS: Insets = new Insets(4, 4, 4, 4);
 
 /**
  * User-overridable visual defaults forwarded to `super` via the options bag.
@@ -142,7 +181,7 @@ const _defaultButtonOptions: Partial<ButtonOptions> = {
     borderRadius:           "var(--ts-ui-border-radius, 4px)",
     shadow:                 "var(--ts-ui-button-shadow, 1px 2px 5px 0 rgba(0, 0, 0, 0.2))",
     backgroundImage:        "var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))",
-    insets:                 new Insets(5, 10, 5, 10),
+    insets:                 BUTTON_DEFAULT_INSETS,
     anchor:                 AnchorType.CENTER,
     fill:                   FillType.NONE,
     pressedForegroundColor: "var(--ts-ui-button-pressed-fg, rgb(150, 150, 150))",
@@ -309,6 +348,16 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      */
     private declare _flat?: boolean;
 
+    /**
+     * Cached `compact` flag. `declare` rather than initialized because
+     * `setCompact` can fire during the super-time cascade via `applyOptions`,
+     * and an `= false` initializer would run after super returns and silently
+     * clobber the cascaded value (same trap as `_flat` above). The inset
+     * resolution it drives is deferred to `_resolveInsets`, which guards on the
+     * content row existing.
+     */
+    private declare _compact?: boolean;
+
     private _enabledCursor: string = "pointer";
 
     /**
@@ -391,11 +440,12 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this.setDescription(this._options.description);
         }
 
-        // Construction-time flat: `_applyFlatChrome` ran during the super
-        // cascade before `_glyph` / `_text` existed, so the compact glyph-only
-        // inset was skipped. Re-evaluate it now the content row is built.
-        if (this._flat) {
-            this._applyFlatCompactInsets();
+        // Construction-time flat / compact: the flat and compact setters ran
+        // during the super cascade before `_glyph` / `_text` existed, so
+        // `_resolveInsets` no-op'd. Re-evaluate now the content row is built so
+        // the icon-square / compact insets land.
+        if (this._flat || this._compact) {
+            this._resolveInsets();
         }
 
         // Initial auto-sized preferred-size pass. No-ops when the consumer
@@ -449,6 +499,10 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // the outer Fit layout; later applyOptions calls don't reanchor.
         if (opts.chromeless   !== undefined) this._options.chromeless   = opts.chromeless;
         if (opts.flat         !== undefined) this._options.flat          = opts.flat;
+        // Dispatched (not pure-written like `flat`) because it must resolve the
+        // inset perimeter; `_resolveInsets` guards on the content row so the
+        // cascade-time call before `_text` exists is a safe no-op.
+        if (opts.compact      !== undefined) this.setCompact(opts.compact);
         if (opts.anchor       !== undefined) this._options.anchor       = opts.anchor;
         if (opts.fill         !== undefined) this._options.fill         = opts.fill;
 
@@ -1342,7 +1396,47 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this._flat = false;
             this._options.flat = false;
             this._restoreChrome();
+            // `_restoreChrome` recovers borders/shadows but not insets, so a
+            // flat glyph-only button un-flattened here would keep its tight
+            // square. Re-resolve so it falls back to the default (or compact)
+            // perimeter for its new state.
+            this._resolveInsets();
         }
+
+        return this;
+    }
+
+    /**
+     * Returns whether this button is currently in `compact` mode (tighter
+     * symmetric insets).
+     *
+     * @returns True when compact rendering is applied.
+     */
+    isCompact(): boolean {
+        return this._compact ?? false;
+    }
+
+    /**
+     * Toggles compact rendering. When `true`, the button's inset perimeter
+     * tightens — text buttons to `(2,6,2,6)`, glyph-only buttons to a
+     * `(2,2,2,2)` square — so the button reads denser (e.g. packed into a
+     * [`ToolBar`](/api/component/menubar/classes/ToolBar)); `false` restores the
+     * default `(5,10,5,10)` (or the flat glyph square, if flat). Orthogonal to
+     * `flat`: a button can be compact, flat, both, or neither, and compact
+     * insets win over the flat square when both apply.
+     *
+     * @param value - The new compact state.
+     *
+     * @returns This component, for method chaining.
+     */
+    setCompact(value: boolean): this {
+        if ((this._compact ?? false) === value) {
+            return this;
+        }
+
+        this._compact = value;
+        this._options.compact = value;
+        this._resolveInsets();
 
         return this;
     }
@@ -1388,26 +1482,48 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this.setPressedShadow("var(--ts-ui-button-flat-pressed-shadow, inset 1px 1px 3px rgba(0, 0, 0, 0.25))");
         this.setPressedBorder("var(--ts-ui-button-flat-pressed-border, 1px solid rgb(180, 180, 180))");
 
-        // Compact square for glyph-only buttons. Runs through the shared helper
-        // so the construction-time flat path — where `_glyph` / `_text` don't
-        // yet exist during the super cascade — can re-apply it from the
-        // constructor body once the content row is built.
-        this._applyFlatCompactInsets();
+        // Re-resolve the inset perimeter for the new flat state. Runs through
+        // the shared resolver so the construction-time flat path — where
+        // `_glyph` / `_text` don't yet exist during the super cascade — can
+        // re-apply it from the constructor body once the content row is built.
+        this._resolveInsets();
     }
 
     /**
-     * Tightens a flat glyph-only button (a glyph with an empty label) to a
-     * compact 4px symmetric square inset (vs. the default 5/10) so a toolbar
-     * icon reads as a tight square; no-ops otherwise. Split out of
-     * {@link _applyFlatChrome} because that runs during the `super()` cascade —
-     * before the constructor assigns `_glyph` / `_text` — so the constructor
-     * re-invokes it once the content row exists. Text buttons keep their
-     * default insets.
+     * Resolves and applies the button's inset perimeter from the three live
+     * inputs — `_compact`, `_flat`, and whether the button is glyph-only (a
+     * glyph with an empty label). Compact wins over the flat square so a compact
+     * flat icon tightens to `(2,2,2,2)` rather than the non-compact flat
+     * `(4,4,4,4)`. The resolver computes an absolute target each call (never a
+     * delta), so the construction-time double-invocation (the cascade's
+     * `_applyFlatChrome` before the content row exists, then the constructor's
+     * re-evaluation) and later `setCompact` / `setFlat` flips all converge on
+     * the same answer without drift.
+     *
+     * No-ops until the content row is built — `_text` is assigned in the
+     * constructor body, after the super cascade that first fires the flat /
+     * compact setters; the constructor re-invokes this once the row exists.
      */
-    private _applyFlatCompactInsets(): void {
-        if (this._flat && this._glyph && this._text.getText().valueOf() === "") {
-            this.setInsets(new Insets(4, 4, 4, 4));
+    private _resolveInsets(): void {
+        if (this._text === undefined) {
+            return;
         }
+
+        const glyphOnly = this._glyph !== null && this._text.getText().valueOf() === "";
+
+        let insets: Insets;
+
+        if (this._compact && glyphOnly) {
+            insets = BUTTON_COMPACT_INSETS_GLYPH;
+        } else if (this._compact) {
+            insets = BUTTON_COMPACT_INSETS_TEXT;
+        } else if (this._flat && glyphOnly) {
+            insets = BUTTON_FLAT_GLYPH_INSETS;
+        } else {
+            insets = BUTTON_DEFAULT_INSETS;
+        }
+
+        this.setInsets(insets);
     }
 
     /**

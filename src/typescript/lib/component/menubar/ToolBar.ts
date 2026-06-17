@@ -76,18 +76,14 @@ export interface ToolBarOptions extends ContainerOptions {
 }
 
 /**
- * Default child spacing in pixels — matches the `--ts-ui-toolbar-gap` token.
- * Encoded as a JS literal because `getComputedStyle` returns empty strings for
- * custom properties before the element is in the DOM tree; the literal is the
- * safe construction-time fallback. See `MENU_BAR_BUTTON_HEIGHT` for the
- * same hard-coded-literal pattern.
+ * Fallback inter-child spacing in pixels for the overflow reserve math only.
+ * `_computeOverflowed` reserves a gap between children when measuring the
+ * fit-set; it reads the live `getComponentSpacing()` and falls back to this
+ * constant only when the layout manager isn't an `HBox`. The bar no longer
+ * drives any gap itself (spacing defaults to 0), so this is purely the typed
+ * fallback that keeps the overflow arithmetic well-defined.
  */
 const TOOLBAR_GAP_DEFAULT: number = 4;
-
-/**
- * Compact-mode child spacing in pixels — children sit flush together.
- */
-const TOOLBAR_COMPACT_GAP: number = 0;
 
 /**
  * Registry glyph rendered on the overflow ("more") trigger button. Verified
@@ -227,9 +223,12 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         }
 
         const oldLM = this.getLayoutManager();
+        // Default to flush (0) — the bar no longer drives a gap; child density
+        // comes from the buttons' own compact insets. A consumer-set spacing on
+        // an existing HBox/VBox is preserved across the orientation swap.
         const gap   = (oldLM instanceof HBox || oldLM instanceof VBox)
             ? oldLM.getComponentSpacing()
-            : TOOLBAR_GAP_DEFAULT;
+            : 0;
 
         const newLM: HBox | VBox = value === "horizontal" ? new HBox() : new VBox();
         newLM.setComponentSpacing(gap);
@@ -261,8 +260,12 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     }
 
     /**
-     * Toggles compact mode. In compact mode the panel insets shrink from
-     * `(4, 4, 4, 4)` to `(2, 2, 2, 2)` and child spacing collapses to `0`.
+     * Toggles compact mode. In compact mode the bar's own panel insets shrink
+     * from `(4, 4, 4, 4)` to `(2, 2, 2, 2)` and every `Button` / `ToggleButton`
+     * child is switched to compact rendering (tighter button insets), the same
+     * way {@link setFlat} drives the flat appearance onto its button children.
+     * Child spacing is left untouched — the bar packs its children flush and the
+     * density comes from the buttons themselves.
      *
      * @param value - `true` to enable compact mode, `false` to restore defaults.
      *
@@ -276,13 +279,13 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
         this._compact = value;
 
         const inset = value ? 2 : 4;
-        const gap   = value ? TOOLBAR_COMPACT_GAP : TOOLBAR_GAP_DEFAULT;
 
         this.setInsets(new Insets(inset, inset, inset, inset));
 
-        const lm = this.getLayoutManager();
-        if (lm instanceof HBox || lm instanceof VBox) {
-            lm.setComponentSpacing(gap);
+        for (const child of this.getComponents()) {
+            if (child instanceof Button) {
+                child.setCompact(value);
+            }
         }
 
         this.doLayout();
@@ -493,6 +496,10 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
 
         if (this._flat && component instanceof Button) {
             component.setFlat(true);
+        }
+
+        if (this._compact && component instanceof Button) {
+            component.setCompact(true);
         }
 
         // Keep the overflow trigger pinned to its edge: a content child appended
