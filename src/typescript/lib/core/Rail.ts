@@ -26,6 +26,25 @@ import type { ClickListener } from "~/component/button/Button.js";
 export type RailEdge = Exclude<Placement, Placement.CENTER>;
 
 /**
+ * Text orientation for handle labels on the vertical sides (WEST/EAST). Ignored
+ * for NORTH/SOUTH, where handle text is always horizontal. Mirrors the
+ * [`Tab`](/api/layout/classes/Tab) layout's orientation vocabulary.
+ *
+ * - `"horizontal"` — handles stack vertically but text stays upright.
+ * - `"vertical-cw"` — text rotated 90° clockwise, reading top-to-bottom
+ *   (`writing-mode: sideways-rl`).
+ * - `"vertical-ccw"` — text rotated the other way, reading bottom-to-top
+ *   (`writing-mode: sideways-lr`).
+ *
+ * @remarks Implemented with CSS `writing-mode` rather than `transform: rotate`
+ * so the browser reports the rotated box through `getBoundingClientRect`,
+ * keeping the handle's preferred-size measurement correct.
+ *
+ * @category Core
+ */
+export type RailOrientation = "horizontal" | "vertical-cw" | "vertical-ccw";
+
+/**
  * Events emitted by a {@link Rail}. `"register"` fires when a drawer or window
  * is added to the rail; `"unregister"` when it is removed.
  *
@@ -76,6 +95,14 @@ export interface RailOptions extends ComponentOptions {
      */
     thickness?: number;
 
+    /**
+     * Handle-label text orientation on the vertical (WEST/EAST) sides. Ignored
+     * for NORTH/SOUTH.
+     *
+     * @defaultValue "horizontal"
+     */
+    orientation?: RailOrientation;
+
     /** Construction-time event listeners dispatched to {@link Rail.on}. */
     listeners?: {
         register?:   (target: Drawer | AbstractWindow) => void;
@@ -119,6 +146,7 @@ const RAIL_ANIM_DURATION_MS: number = 200;
 const _defaultRailOptions: Partial<RailOptions> = {
     edge:            Placement.WEST,
     thickness:       DEFAULT_RAIL_THICKNESS_PX,
+    orientation:     "horizontal",
     backgroundColor: "var(--ts-ui-rail-bg)",
     shadow:          "var(--ts-ui-rail-shadow)",
 };
@@ -245,6 +273,10 @@ class Rail extends Component<RailOptions> {
             this.setThickness(opts.thickness);
         }
 
+        if (opts.orientation !== undefined) {
+            this.setOrientation(opts.orientation);
+        }
+
         return this;
     }
 
@@ -296,6 +328,39 @@ class Rail extends Component<RailOptions> {
      */
     getThickness(): number {
         return this._options.thickness ?? DEFAULT_RAIL_THICKNESS_PX;
+    }
+
+    /**
+     * Sets the handle-label text orientation for the vertical (WEST/EAST) sides
+     * and re-applies the writing mode to every existing handle. Ignored visually
+     * on NORTH/SOUTH, where handle text is always horizontal.
+     *
+     * @param orientation - The {@link RailOrientation} to apply.
+     *
+     * @returns This rail, for method chaining.
+     */
+    setOrientation(orientation: RailOrientation): this {
+        this._options.orientation = orientation;
+
+        // `_drawers` / `_windows` are class-field Maps initialised only after
+        // super() returns, but `applyOptions` dispatches this setter during the
+        // super() cascade. Skip the re-apply then — no handles exist yet, and
+        // each one picks up the orientation as it is created (see
+        // registerDrawer / showWindowHandle).
+        if (this._drawers !== undefined) {
+            this.applyOrientation();
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the current handle-label text orientation.
+     *
+     * @returns The current orientation.
+     */
+    getOrientation(): RailOrientation {
+        return this._options.orientation ?? "horizontal";
     }
 
     // ----- mount / unmount -----
@@ -440,6 +505,7 @@ class Rail extends Component<RailOptions> {
             drawer.setEdge(this.getEdge() as DrawerEdge);
         }
 
+        this.applyHandleOrientation(handle);
         this.addComponent(handle);
         this._drawers.set(drawer, { handle, onOpen, onClose, onAction });
 
@@ -557,6 +623,7 @@ class Rail extends Component<RailOptions> {
         handle.on("action", reg.onAction);
 
         reg.handle = handle;
+        this.applyHandleOrientation(handle);
         this.addComponent(handle);
 
         this.scheduleLayout();
@@ -576,6 +643,50 @@ class Rail extends Component<RailOptions> {
         reg.handle.off("action", reg.onAction);
         this.removeComponent(reg.handle);
         reg.handle = null;
+    }
+
+    // ----- internal: handle orientation -----
+
+    /**
+     * Re-applies the current orientation's writing mode to every handle (drawer
+     * and window). Called when the orientation changes.
+     */
+    private applyOrientation(): void {
+        for (const reg of this._drawers.values()) {
+            this.applyHandleOrientation(reg.handle);
+        }
+
+        for (const reg of this._windows.values()) {
+            if (reg.handle !== null) {
+                this.applyHandleOrientation(reg.handle);
+            }
+        }
+
+        this.scheduleLayout();
+    }
+
+    /**
+     * Applies the orientation's writing mode to a single handle: a rotated
+     * `writing-mode` on the vertical (WEST/EAST) sides, cleared otherwise (and
+     * always on NORTH/SOUTH, where handle text stays horizontal). Mirrors the
+     * `Tab` layout's `sideways-rl` / `sideways-lr` mapping.
+     *
+     * @param handle - The handle to orient.
+     */
+    private applyHandleOrientation(handle: RailHandle): void {
+        const orientation = this.getOrientation();
+
+        // `sideways-rl` reads top-to-bottom (clockwise); `sideways-lr` reads
+        // bottom-to-top (counter-clockwise). Only meaningful on a vertical rail.
+        const writingMode = orientation === "vertical-cw"  ? "sideways-rl"
+                          :  orientation === "vertical-ccw" ? "sideways-lr"
+                          :  null;
+
+        if (this.isVertical() && writingMode !== null) {
+            handle.setWritingMode(writingMode);
+        } else {
+            handle.clearWritingMode();
+        }
     }
 
     // ----- internal: geometry -----

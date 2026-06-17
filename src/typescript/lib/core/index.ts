@@ -42,7 +42,7 @@ export type { DialogConfig, DialogButtonConfig, DialogResult } from '~/core/Dial
 export { Drawer } from '~/core/Drawer.js';
 export type { DrawerOptions, DrawerEdge, DrawerEvent, DrawerCloseController } from '~/core/Drawer.js';
 export { Rail } from '~/core/Rail.js';
-export type { RailOptions, RailEdge, RailEvent, RailDrawerRegistration } from '~/core/Rail.js';
+export type { RailOptions, RailEdge, RailOrientation, RailEvent, RailDrawerRegistration } from '~/core/Rail.js';
 export { RailHandle } from '~/core/RailHandle.js';
 export type { RailHandleOptions } from '~/core/RailHandle.js';
 export { Dock } from '~/core/Dock.js';

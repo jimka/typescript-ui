@@ -706,7 +706,7 @@ class MiscPanel extends Panel {
                 return;
             }
 
-            const rail = new Rail({ edge: Placement.WEST });
+            const rail = new Rail({ edge: Placement.WEST, orientation: "vertical-cw" });
             rail.registerDrawer(buildRailDrawer("Filters"), { glyph: "filter", text: "Filters" });
             rail.registerDrawer(buildRailDrawer("Info"), { glyph: "circle-info", text: "Info" });
 
