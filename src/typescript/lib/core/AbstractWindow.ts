@@ -9,8 +9,11 @@ import { Fit } from "~/layout/Fit.js";
 import { FillType } from "~/layout/FillType.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
+import { ListenerBag } from "~/core/ListenerBag.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
+import { Placement } from "~/primitive/Placement.js";
+import type { Rail } from "~/core/Rail.js";
 
 // Window body inset in pixels, set explicitly now that the base is Container
 // (zero default insets) rather than Panel (which supplied this 4px implicitly).
@@ -49,6 +52,16 @@ const CHROME_HEIGHT_FLOOR_PX:   number = 26;
  * @category Core
  */
 export type WindowState = "normal" | "minimized" | "maximized";
+
+/**
+ * Typed events an {@link AbstractWindow} emits. `"minimize"` fires when the
+ * window enters `"minimized"`, `"restore"` when it leaves it, and `"close"`
+ * when the window is closed. A [`Rail`](/api/core/classes/Rail) subscribes to
+ * these to mirror a window minimized into it as a launcher handle.
+ *
+ * @category Core
+ */
+export type WindowEvent = "minimize" | "restore" | "close";
 
 /**
  * Snap-resize modifier key. Matches the matching property names exposed by
@@ -213,6 +226,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     protected _preMinimizeState:  "normal" | "maximized" = "normal";
     private _restoreRect:       WindowRect | null = null;
     private _bodyHost:          Component | null = null;
+
+    /** Rail this window minimizes into, or null for the built-in bottom strip. */
+    private _rail:              Rail | null = null;
+    /** Typed-event fan-out for `"minimize"` / `"restore"` / `"close"`. */
+    private _windowListeners:   ListenerBag<WindowEvent> = new ListenerBag<WindowEvent>();
     private _stateAnimHandle:   Animation.TweenHandle | null = null;
     private _viewportResizeBound: boolean = false;
 
@@ -274,6 +292,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.setVisible(false);
         // Resizable — size containment unsafe; layout containment scopes reflow to the window subtree.
         this.setContain("layout");
+
+        // Focusable as a unit so activation can move keyboard focus to the
+        // window (see onActivate / focusSelf). -1 keeps it out of the Tab order
+        // — focus is driven programmatically on activation, not by tabbing.
+        this.getAria().setTabIndex(-1);
 
         Event.addSubtreeListener(this, "mousedown", () => this.bringToFront());
     }
@@ -714,6 +737,26 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     onActivate(active: boolean): void {
         this.paintActive(active);
+
+        if (active) {
+            this.focusSelf();
+        }
+    }
+
+    /**
+     * Moves keyboard focus to the window when it is activated, unless focus is
+     * already inside it (so a click that lands on a child input keeps that
+     * input focused rather than yanking focus up to the window root). Uses
+     * `preventScroll` because the window is an absolutely-positioned overlay —
+     * a native focus scroll would jolt any `overflow: hidden` ancestor.
+     */
+    private focusSelf(): void {
+        const element = this.getElement();
+        if (!element || element.contains(document.activeElement)) {
+            return;
+        }
+
+        this.focus(true);
     }
 
     /**
@@ -762,6 +805,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * Hides the window and destroys its DOM element when the close button is clicked.
      */
     onExitAction(): void {
+        // Notify subscribers (e.g. a Rail) before teardown, so a rail handle
+        // representing this window is removed as the window closes.
+        this.emit("close");
+
         if (this._animationFrameId !== null) {
             cancelAnimationFrame(this._animationFrameId);
             this._animationFrameId = null;
@@ -900,6 +947,14 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         this._options.windowState = state;
 
+        // A rail-minimized window is hidden outright (the rail handle is its
+        // minimized representation), so re-show it and play the reverse genie —
+        // scaling/fading back up out of the rail — before the state branch runs.
+        if (from === "minimized" && this._rail !== null) {
+            this.setDisplayed(true);
+            this.animateRailExpand();
+        }
+
         if (state === "normal") {
             // Restore body visibility BEFORE the tween starts so the
             // animation plays against the body content, not against an
@@ -920,11 +975,25 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             this.reflectMaximizeState("minimized");
             this.detachViewportResizeListener();
 
-            const target = this.computeDockRect();
-            this.animateRect(target, () => {
-                this.setBodyHostDisplayed(false);
-                AbstractWindow.relayoutMinimizedStack();
-            });
+            if (this._rail !== null) {
+                // Rail-docked: skip the built-in bottom strip. Genie the window
+                // — scaling and fading it into the rail's handle corner — then
+                // hide it outright and let the rail show its handle (via the
+                // deferred "minimize" event). The geometry is left untouched, so
+                // the reverse genie on restore replays from the same rect.
+                this.animateRailCollapse(() => {
+                    this.setDisplayed(false);
+                    this.emit("minimize");
+                });
+            } else {
+                const target = this.computeDockRect();
+                this.animateRect(target, () => {
+                    this.setBodyHostDisplayed(false);
+                    AbstractWindow.relayoutMinimizedStack();
+                });
+
+                this.emit("minimize");
+            }
         } else {
             // maximized
             if (from === "normal") {
@@ -938,6 +1007,13 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
                 this.attachViewportResizeListener();
                 AbstractWindow.relayoutMinimizedStack();
             });
+        }
+
+        // Notify subscribers (e.g. a Rail) when the window leaves the minimized
+        // state. The "minimize" counterpart is emitted from the branch above —
+        // deferred to the rail fly-in's completion on the rail path.
+        if (from === "minimized" && state !== "minimized") {
+            this.emit("restore");
         }
 
         return this;
@@ -976,6 +1052,128 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         } else {
             this.setWindowState("minimized");
         }
+    }
+
+    /**
+     * Minimizes the window. Sugar over `setWindowState("minimized")`.
+     *
+     * @returns This window, for method chaining.
+     */
+    minimize(): this {
+        return this.setWindowState("minimized");
+    }
+
+    /**
+     * Restores the window from a minimized state to whatever it was before
+     * (`"normal"` or `"maximized"`) and brings it to the front so it becomes
+     * the active, focused window. No-op when the window is not minimized.
+     *
+     * @remarks Restoring is typically driven from a rail handle — a click
+     * outside the window, which never activates it on its own. The window also
+     * usually stays the layer manager's active layer while minimized (nothing
+     * else took over), so `bringToFront` is an activation no-op and `onActivate`
+     * never re-fires. Both the raise and the keyboard focus are therefore made
+     * explicit here.
+     *
+     * @returns This window, for method chaining.
+     */
+    restore(): this {
+        if (!this.isMinimized()) {
+            return this;
+        }
+
+        this.setWindowState(this._preMinimizeState);
+        this.bringToFront();
+        this.focus(true);
+
+        return this;
+    }
+
+    /**
+     * Attaches a {@link Rail} this window minimizes into, replacing the built-in
+     * bottom-of-viewport dock strip: while minimized the window is hidden and
+     * represented by a handle on the rail that restores it on click. Pass `null`
+     * to detach and fall back to the built-in strip. The rail subscribes to the
+     * window's minimize / restore / close events.
+     *
+     * @param rail - The rail to minimize into, or `null` to detach.
+     *
+     * @returns This window, for method chaining.
+     */
+    setRail(rail: Rail | null): this {
+        if (this._rail === rail) {
+            return this;
+        }
+
+        if (this._rail !== null) {
+            this._rail.unregisterWindow(this);
+        }
+
+        this._rail = rail;
+
+        if (rail !== null) {
+            rail.registerWindow(this);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the rail this window minimizes into, or `null` when it uses the
+     * built-in bottom dock strip.
+     *
+     * @returns The attached rail, or `null`.
+     */
+    getRail(): Rail | null {
+        return this._rail;
+    }
+
+    /**
+     * Returns the window's leading glyph, or `undefined` when none was set. Read
+     * by a {@link Rail} to label the handle for a window minimized into it.
+     *
+     * @returns The glyph name, or `undefined`.
+     */
+    getGlyph(): string | undefined {
+        return this._options.glyph;
+    }
+
+    /**
+     * Registers a listener for one of the window's lifecycle events.
+     *
+     * @param event - `"minimize"` / `"restore"` / `"close"`.
+     * @param listener - The callback to invoke when the event fires.
+     *
+     * @returns This window, for method chaining.
+     */
+    on(event: WindowEvent, listener: () => void): this {
+        this._windowListeners.add(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Removes a previously registered listener. The exact callback reference
+     * must match.
+     *
+     * @param event - The event the listener was registered for.
+     * @param listener - The callback to remove.
+     *
+     * @returns This window, for method chaining.
+     */
+    off(event: WindowEvent, listener: () => void): this {
+        this._windowListeners.remove(event, listener);
+
+        return this;
+    }
+
+    /**
+     * Fires every listener registered for `event`, in registration order.
+     *
+     * @param event - The event to emit.
+     */
+    protected emit(event: WindowEvent): void {
+        this._windowListeners.fire(event);
     }
 
     /**
@@ -1744,6 +1942,96 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         const y = window.innerHeight - headerHeight;
 
         return { x, y, width: dockWidth, height: headerHeight };
+    }
+
+    /**
+     * Builds the genie `transform` that collapses the window into its rail's
+     * handle corner: it translates the window's top-left corner onto the rail
+     * edge (top corner for a vertical rail, leading corner for a horizontal one)
+     * and scales it down to roughly the rail thickness, so the window appears to
+     * shrink into the handle stack. Paired with `transform-origin: 0 0` and an
+     * opacity fade by the collapse/expand animations. Assumes a rail is attached.
+     *
+     * @returns A `translate(...) scale(...)` CSS transform value.
+     */
+    private railGenieTransform(): string {
+        const rail      = this._rail as Rail;
+        const thickness = rail.getThickness();
+        const cur       = this.currentRect();
+        // Shrink to roughly the rail's thickness — clamped so an already-narrow
+        // window still visibly collapses rather than scaling up.
+        const scale     = Math.min(0.5, thickness / Math.max(cur.width, 1));
+
+        let targetX = 0;
+        let targetY = 0;
+
+        switch (rail.getEdge()) {
+            case Placement.EAST:
+                targetX = window.innerWidth - thickness;
+
+                break;
+
+            case Placement.SOUTH:
+                targetY = window.innerHeight - thickness;
+
+                break;
+
+            case Placement.NORTH:
+            case Placement.WEST:
+            default:
+                break;
+        }
+
+        const tx = targetX - cur.x;
+        const ty = targetY - cur.y;
+
+        return `translate(${tx}px, ${ty}px) scale(${scale})`;
+    }
+
+    /**
+     * Plays the minimize genie: scales and fades the window into its rail's
+     * handle corner over `WINDOW_ANIM_DURATION_MS`, then runs `onDone` (which
+     * hides the window and lets the rail show its handle). Honours
+     * `prefers-reduced-motion` via {@link Animation.play}.
+     *
+     * @param onDone - Callback fired once the collapse completes.
+     */
+    private animateRailCollapse(onDone: () => void): void {
+        const element = this.getElement();
+
+        if (!element) {
+            onDone();
+
+            return;
+        }
+
+        Animation.play(element, {
+            from:       { transformOrigin: "0 0", transform: "translate(0, 0) scale(1)", opacity: "1" },
+            to:         { transform: this.railGenieTransform(), opacity: "0" },
+            durationMs: WINDOW_ANIM_DURATION_MS,
+            properties: ["transform", "opacity"],
+            onComplete: onDone,
+        });
+    }
+
+    /**
+     * Plays the reverse genie on restore: scales and fades the window back up
+     * out of its rail's handle corner to its resting rect. The geometry never
+     * moved while minimized, so this replays from the same collapsed transform.
+     */
+    private animateRailExpand(): void {
+        const element = this.getElement();
+
+        if (!element) {
+            return;
+        }
+
+        Animation.play(element, {
+            from:       { transformOrigin: "0 0", transform: this.railGenieTransform(), opacity: "0" },
+            to:         { transform: "translate(0, 0) scale(1)", opacity: "1" },
+            durationMs: WINDOW_ANIM_DURATION_MS,
+            properties: ["transform", "opacity"],
+        });
     }
 
     /**

@@ -16,6 +16,7 @@ import {
     Notification,
     Panel,
     Popover,
+    Rail,
     ThemeManager,
     Tooltip,
     Window
@@ -81,10 +82,12 @@ import { file }          from '@jimka/typescript-ui/glyphs/solid/file';
 import { file_code }     from '@jimka/typescript-ui/glyphs/solid/file_code';
 import { file_lines }    from '@jimka/typescript-ui/glyphs/solid/file_lines';
 import { floppy_disk }   from '@jimka/typescript-ui/glyphs/solid/floppy_disk';
+import { filter }        from '@jimka/typescript-ui/glyphs/solid/filter';
+import { circle_info }   from '@jimka/typescript-ui/glyphs/solid/circle_info';
 import { ToolBar } from '~/component/menubar/ToolBar';
 import { VBoxPanel } from './VBoxPanel';
 
-Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines, floppy_disk);
+Glyph.register(xmark, arrow_right, arrow_down, folder, file, file_code, file_lines, floppy_disk, filter, circle_info);
 /**
  * Demo-only proxy that slices an in-memory dataset by page/pageSize and
  * pretends to be a slow network request so the spinner overlay is visible.
@@ -670,6 +673,61 @@ class MiscPanel extends Panel {
         const nonModalDrawerButton = new Button("Non-modal drawer (left)");
         nonModalDrawerButton.on("action", () => openDemoDrawer(Placement.WEST, false, "left"));
         leftColumn.addComponent(nonModalDrawerButton);
+
+        // Rail demo — a persistent launcher strip along the left edge. Unlike a
+        // drawer it never slides away; its handles toggle two registered
+        // (non-modal) drawers, and a window minimizes *into* the rail as a
+        // handle that restores it on click. The button toggles the whole rail
+        // on and off so it doesn't permanently cover the demo. The rail is built
+        // once and only mounted/unmounted, so its collapsed state is remembered
+        // across toggles.
+        let demoRail: Rail | null = null;
+        let railMounted = false;
+        const buildRailDrawer = (label: string): Drawer => {
+            const drawer = new Drawer({ modal: false, layoutManager: new VBox({ stretching: true }) });
+
+            const heading = new Text(label + " drawer — opened from its rail handle");
+            heading.setFontWeight("bold");
+            heading.setPreferredSize(0, 28);
+
+            const closeButton = new Button("Close");
+            closeButton.setPreferredSize(0, 32);
+            closeButton.on("action", () => drawer.close());
+
+            drawer.addComponent(heading);
+            drawer.addComponent(closeButton);
+
+            return drawer;
+        };
+
+        const railButton = new Button("Toggle launcher rail (Rail)");
+        railButton.on("action", () => {
+            // Build the rail (and its drawers + minimizable window) once, the
+            // first time it is shown. Reusing the instance means its
+            // collapsed/expanded state survives later unmount/mount toggles.
+            if (!demoRail) {
+                demoRail = new Rail({ edge: Placement.EAST, orientation: "vertical-cw" });
+                demoRail.registerDrawer(buildRailDrawer("Filters"), { glyph: "filter", text: "Filters" });
+                demoRail.registerDrawer(buildRailDrawer("Info"), { glyph: "circle-info", text: "Info" });
+
+                const win = new Window("Rail-docked window", { minimizable: true, glyph: "file" });
+                win.setX(220);
+                win.setY(140);
+                win.setWidth(360);
+                win.setHeight(240);
+                win.setRail(demoRail);
+                win.show();
+            }
+
+            if (railMounted) {
+                demoRail.unmount();
+                railMounted = false;
+            } else {
+                demoRail.mount();
+                railMounted = true;
+            }
+        });
+        leftColumn.addComponent(railButton);
 
         // Dock demo — a rearrangeable VS Code / GoldenLayout style layout. The
         // initial arrangement is a horizontal split: a two-tab group on the left

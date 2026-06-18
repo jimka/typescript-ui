@@ -108,5 +108,6 @@ win.setSnapResizeEnabled(false); // opt out
 - [API: Window](/api/core/classes/Window)
 - [`AbstractWindow`](/components/AbstractWindow) — the shared window base class
 - [`TabWindow`](/components/TabWindow) — the headerless tab-bar window sibling
+- [Rail](/components/Rail) — minimize a window into an edge launcher strip via `setRail`
 - [Mental model](/guide/mental-model)
 - Recipe: [Floating window](/recipes/floating-window)

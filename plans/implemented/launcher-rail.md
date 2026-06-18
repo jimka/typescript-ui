@@ -10,10 +10,9 @@ unlike a Drawer it does not slide off-screen and is never auto-dismissed; it is
 always present.
 
 The Rail lives in `src/typescript/lib/core/Rail.ts` (core band, alongside
-`Drawer.ts`, `Window.ts`, `LayerManager.ts`). It supports two mutually exclusive
-layout modes selected by an option: **overlay** (`Position.FIXED`, floats over
-app content, mirrors Drawer's portaled-surface pattern) and **reserve-space**
-(claims an edge strip; app content is inset around it, like an OS taskbar). It
+`Drawer.ts`, `Window.ts`, `LayerManager.ts`). It is an **overlay** strip
+(`Position.FIXED`, floats over app content, mirrors Drawer's portaled-surface
+pattern). It
 hosts caller-created `Drawer` instances (composition — `registerDrawer` /
 `unregisterDrawer`), rendering one handle per drawer and reflecting each drawer's
 open/closed state on its handle by subscribing through the drawer's public
@@ -31,50 +30,33 @@ WEST/EAST edges) of handle buttons. The edge model reuses the same
 
 ## Architecture Decisions
 
-### Two layout modes, one component — but reserve-space is an opt-in contract
+### Overlay-only, mirroring Drawer's mount
 
-`Rail` exposes a `mode: "overlay" | "reserve-space"` option. The two modes share
-all rail-rendering code (the handle HBox/VBox, the drawer/window registries, the
-edge geometry) and differ only in **how the rail's root element is mounted and
-how it claims its strip**:
+`Rail` is an overlay strip. It sets `Position.FIXED` in its constructor body
+(the documented FIXED carve-out applied after `super()`, like Drawer at
+[Drawer.ts:193](../src/typescript/lib/core/Drawer.ts#L193)), attaches to
+`document.documentElement`, and stamps a viewport-edge resting rect from the
+current edge + thickness + viewport (identical shape to Drawer's
+`restingRect` / `applyRestingGeometry`). App content renders *under* it.
 
-- **Overlay mode** mirrors Drawer exactly. The Rail sets `Position.FIXED` in its
-  constructor body (the documented FIXED carve-out applied after `super()`, like
-  Drawer at [Drawer.ts:193](../src/typescript/lib/core/Drawer.ts#L193)), mounts
-  on `document.documentElement`, and stamps a viewport-edge resting rect from the
-  current edge + thickness + viewport (identical shape to Drawer's
-  `restingRect` / `applyRestingGeometry`). App content renders *under* it.
+The DOM-attach *mechanism* mirrors Drawer (FIXED carve-out + documentElement
+portal + resting-rect geometry), but the *lifecycle* differs: Drawer attaches
+inside `open()` and detaches in `close()` ([Drawer.ts:379](../src/typescript/lib/core/Drawer.ts#L379)),
+because a drawer slides on and off screen. A Rail is always present, so it
+exposes explicit `mount()` / `unmount()` methods instead — there is no
+open/close cycle to fold the attach into.
 
-- **Reserve-space mode** mounts the Rail as an **absolutely-positioned child of
-  the host container** (default `Body.getInstance()`, overridable via a `host`
-  option) and reserves its strip by writing the host's `setInsets()` along the
-  docked edge. Because `Body`'s layout manager lays its content out within
-  `getInnerSize()` (inset-reduced), the host's content (the `Tab` in
-  [main.ts:31](../src/typescript/main.ts#L31)) is squeezed off the reserved edge
-  automatically — no Border-region plumbing required. The Rail element itself is
-  `Position.ABSOLUTE` and parked in the reserved strip by `doLayout` math (x/y/
-  width/height derived from the edge and the host's *outer* size), so the
-  "positioning is always absolute" rule holds (FIXED is reserved for the overlay
-  carve-out; reserve-space is plain ABSOLUTE inside Body).
-
-  **Honest-API flag.** A single `Rail` *can* do both modes, because reserving
-  space is "set the host's edge inset + park an absolute child in that inset" —
-  it does **not** require the host to place the Rail in a Border region. The one
-  caller obligation in reserve-space mode is that the **host must own a layout
-  manager that honours `getInnerSize()`** (every framework `LayoutManager` does:
-  `Tab`, `Border`, `HBox`, `VBox`, `Fit`). `Body` qualifies out of the box. This
-  is stated in JSDoc and demoed against `Body`. We deliberately do **not** add a
-  Border-region integration mode — that would be a second, redundant mechanism;
-  the inset approach composes with any host layout, including a `Border` whose
-  center is the app.
-
-  **Rule tension (flagged):** reserve-space mode mutates a *foreign* component's
-  insets (`host.setInsets`). This is the one place the Rail reaches outside its
-  own subtree. It is mitigated by (a) only ever writing the single docked-edge
-  inset, caching the host's prior inset on that edge and restoring it on
-  `unmount()` / mode-flip, and (b) routing through the host's public typed
-  `setInsets` setter — no DOM poke. It is the minimal mechanism that satisfies
-  "content inset around an edge strip" without inventing a root-panel region API.
+A reserve-space mode (claim an edge strip and inset app content around it) was
+considered and **explicitly dropped** — see `## Non-Goals`. A child component
+cannot position itself via its own `doLayout` (a component's x/y/width/height is
+set by its *parent's* layout manager, not its own `doLayout`, which lays out the
+component's *children* — [Component.ts:4290](../src/typescript/lib/core/Component.ts#L4290)),
+and the default `Body` host lays out via a `Tab` layout manager
+([main.ts:33](../src/typescript/main.ts#L33)) that would turn an added child into
+a hidden phantom tab ([Tab.ts:1420](../src/typescript/lib/layout/Tab.ts#L1420)).
+Reserving space correctly would require a real layout region, which is out of
+scope for this cut. The Rail therefore never mutates a foreign component's
+insets — it stays entirely within its own portaled subtree.
 
 ### Not a `DismissableLayer` — and not in the layer tree at all
 
@@ -85,9 +67,7 @@ unwanted. So `Rail` does **not** implement `DismissableLayer` and does **not**
 call `LayerManager.register`. In overlay mode it carries a fixed z-index just
 below the Window band (a plain module constant, `RAIL_Z_INDEX = 8900`, mirroring
 how `LayerManager`'s bands are plain constants because z-index is unthemed) so
-windows, popovers, and dialogs still stack above the rail. In reserve-space mode
-z-index is irrelevant (the strip is carved out, nothing overlaps it) but the
-same stamp is harmless.
+windows, popovers, and dialogs still stack above the rail.
 
 The hosted `Drawer`s keep their own `LayerManager` registration (they register
 on `open()` as today) — the Rail does not interfere with that.
@@ -119,6 +99,16 @@ For each registered drawer the Rail:
 does **not** close or destroy the drawer (the caller owns the drawer's
 lifecycle).
 
+**Listener-rule note (flagged).** ARCHITECTURE.md requires listeners reference a
+named function. These per-registration subscriptions are stored *arrow*
+references (one closure set per registered drawer/window, kept in the bookkeeping
+maps) because the captured handle differs per registration and the references
+must be removable on `unregisterDrawer`/`unregisterWindow`. This satisfies the
+rule's intent — every reference is retained so `ListenerBag.remove` matches and
+nothing leaks — and matches existing core precedent for `.on(...)` arrows (e.g.
+`TabWindow.ts`, `Dock.ts`, `Window.ts:81-84`). It is called out here as a
+deliberate, bounded exception rather than left implicit.
+
 ### Minimal additive Drawer change: expose `getEdge` is already public — none needed
 
 `Drawer` already exposes `getEdge()` ([Drawer.ts:276](../src/typescript/lib/core/Drawer.ts#L276)),
@@ -129,23 +119,32 @@ called out explicitly so the implementer does not add a speculative affordance.
 
 ### Window-minimize ↔ Rail contract
 
-`Window` today already has a built-in "minimize into a bottom-of-viewport rail"
-behaviour: `WindowState = "minimized"`, `setWindowState("minimized")`, the
-`computeDockRect` / `relayoutMinimizedStack` static stack, and the header
-minimize button wired to `toggleMinimize`
-([Window.ts:743](../src/typescript/lib/core/Window.ts#L743)). That is a
-*self-docking* mechanism with no `Rail` component. We do **not** rip it out
-(surgical-changes rule); instead we add an **opt-in** path: a window can be told
-to minimize into a specific `Rail` instead of the bottom-edge stack.
+The minimize machinery lives entirely on `AbstractWindow` (the shared base
+`Window` extends), **not** on `Window` itself: `WindowState = "minimized"`,
+`setWindowState` ([AbstractWindow.ts:888](../src/typescript/lib/core/AbstractWindow.ts#L888)),
+the `computeDockRect` / `relayoutMinimizedStack` static stack, `_restoreRect`,
+`_preMinimizeState`, `setBodyHostDisplayed`, and `toggleMinimize`
+([AbstractWindow.ts:969](../src/typescript/lib/core/AbstractWindow.ts#L969)) are
+all defined there; `Window.ts` only wires its header minimize button to that
+inherited `toggleMinimize` ([Window.ts:82](../src/typescript/lib/core/Window.ts#L82)).
+That is a *self-docking* mechanism with no `Rail` component. We do **not** rip it
+out (surgical-changes rule); instead we add an **opt-in** path on
+`AbstractWindow`: a window can be told to minimize into a specific `Rail` instead
+of the bottom-edge stack. Because the API lands on the base, every
+`AbstractWindow` subclass (including `Window`) inherits it.
 
-New additive `Window` API:
+New additive `AbstractWindow` API:
 
 - `setRail(rail: Rail | null): this` / `getRail(): Rail | null` — when a rail is
   attached, `setWindowState("minimized")` routes to the rail instead of the
   bottom strip.
-- A new typed-event surface on `Window`. Window today has **no** `ListenerBag`
-  (it uses the DOM-`Event`-based `on` inherited via Panel/Component for header
-  buttons). To let the Rail react to minimize/restore without polling, Window
+- A new typed-event surface on `AbstractWindow`. `AbstractWindow` today has **no**
+  `ListenerBag`, and its hierarchy is `AbstractWindow → Container → Component`
+  ([Window.ts:41](../src/typescript/lib/core/Window.ts#L41)) — it does **not**
+  extend `Panel`, and neither `Container` nor `Component` exposes an `on`/`off`
+  surface; the header buttons are wired with inline arrow callbacks
+  ([Window.ts:81-84](../src/typescript/lib/core/Window.ts#L81-L84)). To let the
+  Rail react to minimize/restore without polling, `AbstractWindow`
   gains a small `ListenerBag<WindowEvent>` where `WindowEvent = "minimize" | "restore" | "close"`,
   with protected `emit` and public `on`/`off` overloads — mirroring Drawer's
   event surface exactly (constructor-body listener dispatch, `declare`-free
@@ -166,13 +165,22 @@ Division of ownership:
   via `window.on("minimize"|"restore"|"close", …)` — the typed surface, not raw
   `Event`.
 
-When a `Rail` is attached, `Window.setWindowState("minimized")` skips
+When a `Rail` is attached, `AbstractWindow.setWindowState("minimized")` skips
 `computeDockRect`/`relayoutMinimizedStack` (those drive the built-in bottom
 strip) and instead hides the whole window element (`setVisible(false)` after the
 collapse, or simply `setDisplayed(false)`) and emits `"minimize"`; the visible
 representation becomes the Rail handle. Restore re-shows the window at
 `_restoreRect` and emits `"restore"`. The built-in bottom-strip path is
 unchanged when no rail is attached.
+
+**Restore-rect capture (implementer must preserve).** Today the no-rail
+`"minimized"` branch captures `_restoreRect = this.currentRect()` and records
+`_preMinimizeState` *inside* that branch ([AbstractWindow.ts:888](../src/typescript/lib/core/AbstractWindow.ts#L888)).
+Because the rail path is an **early fork** that bypasses that block, the fork
+must itself capture `_restoreRect` and set `_preMinimizeState` before hiding the
+window — otherwise `restore()` (= `setWindowState(this._preMinimizeState)`)
+reads a stale or null rect. Equivalently, capture both *above* the fork so both
+paths share it. This is the one correctness-critical detail of the fork.
 
 ### Edge model
 
@@ -194,8 +202,10 @@ subclass `RailHandle` in `src/typescript/lib/core/RailHandle.ts`, not a bare
 toggles a selected-state style (using Button's existing `pressedStyleRule`-style
 machinery is overkill; `RailHandle` applies the selected background through a
 dedicated lazy `StyleRule` or a class toggle — implementer picks the lighter
-path). `RailHandle` is internal to the Rail subsystem; it is exported from the
-core barrel for typing the register-options return but is not a headline API.
+path). `RailHandle` is internal to the Rail subsystem; the register methods
+return `this` (the Rail), so no public signature surfaces a handle — but it is
+still exported from the core barrel so callers can type or subclass it. It is
+not a headline API.
 
 ---
 
@@ -206,9 +216,6 @@ core barrel for typing the register-options return but is not a headline API.
 
 /** Viewport edge a Rail rail anchors to. Structurally identical to DrawerEdge. */
 export type RailEdge = Exclude<Placement, Placement.CENTER>;
-
-/** Layout mode: float over content, or reserve an inset edge strip. */
-export type RailMode = "overlay" | "reserve-space";
 
 /** Events emitted by a Rail. */
 export type RailEvent = "register" | "unregister";
@@ -231,22 +238,14 @@ export interface RailDrawerRegistration {
 export interface RailOptions extends ComponentOptions {
     /** @defaultValue Placement.WEST */
     edge?: RailEdge;
-    /** @defaultValue "overlay" */
-    mode?: RailMode;
     /**
      * Rail thickness in px (width for WEST/EAST, height for NORTH/SOUTH).
      * @defaultValue 48
      */
     thickness?: number;
-    /**
-     * Host whose insets are written in reserve-space mode and into which the
-     * rail mounts. Ignored in overlay mode (the rail mounts on documentElement).
-     * @defaultValue Body.getInstance()
-     */
-    host?: Component;
     listeners?: {
-        register?:   (drawer: Drawer | Window) => void;
-        unregister?: (drawer: Drawer | Window) => void;
+        register?:   (drawer: Drawer | AbstractWindow) => void;
+        unregister?: (drawer: Drawer | AbstractWindow) => void;
     };
 }
 
@@ -256,26 +255,24 @@ class Rail extends Component<RailOptions> {
     // typed setters (cache-only where geometry is derived in doLayout/mount)
     setEdge(edge: RailEdge): this;            // backing: _options.edge
     getEdge(): RailEdge;
-    setRailMode(mode: RailMode): this;        // backing: _options.mode (named setRailMode, not setMode, to avoid clashing with any inherited concept)
-    getRailMode(): RailMode;
     setThickness(px: number): this;           // backing: _options.thickness
     getThickness(): number;
 
-    /** Mounts the rail (overlay: documentElement; reserve-space: host + inset). */
+    /** Mounts the rail on documentElement (FIXED overlay). */
     mount(): this;
-    /** Unmounts the rail and restores the host's prior edge inset. */
+    /** Unmounts the rail. */
     unmount(): this;
 
     registerDrawer(drawer: Drawer, reg?: RailDrawerRegistration): this;
     unregisterDrawer(drawer: Drawer): this;
 
-    /** Adds a handle for a minimized window; called by Window via its events. */
-    registerWindow(window: Window): this;
-    unregisterWindow(window: Window): this;
+    /** Adds a handle for a minimized window; called by AbstractWindow via its events. */
+    registerWindow(window: AbstractWindow): this;
+    unregisterWindow(window: AbstractWindow): this;
 
-    on(event: RailEvent, listener: (target: Drawer | Window) => void): this;
-    off(event: RailEvent, listener: (target: Drawer | Window) => void): this;
-    protected emit(event: RailEvent, target: Drawer | Window): void;
+    on(event: RailEvent, listener: (target: Drawer | AbstractWindow) => void): this;
+    off(event: RailEvent, listener: (target: Drawer | AbstractWindow) => void): this;
+    protected emit(event: RailEvent, target: Drawer | AbstractWindow): void;
 }
 ```
 
@@ -293,10 +290,10 @@ class RailHandle extends Button<RailHandleOptions> {
 ```
 
 ```typescript
-// Additive Window API (src/typescript/lib/core/Window.ts)
+// Additive AbstractWindow API (src/typescript/lib/core/AbstractWindow.ts)
 export type WindowEvent = "minimize" | "restore" | "close";
 
-class Window /* ... */ {
+class AbstractWindow /* ... */ {
     setRail(rail: Rail | null): this;    // backing: _rail field (not an option — runtime wiring)
     getRail(): Rail | null;
     minimize(): this;                    // sugar: setWindowState("minimized")
@@ -315,15 +312,15 @@ No `Drawer` signature change.
 ## Theme Tokens
 
 New `rail` block, mirroring how the `drawer` block was added (interface in
-[Theme.ts:425](../src/typescript/lib/core/Theme.ts#L425), one block per theme in
+[Theme.ts:492](../src/typescript/lib/core/Theme.ts#L492), one block per theme in
 `ModernTheme.ts` / `ClassicTheme.ts` / `DarkTheme.ts`, var emission in
-[`themeToVars`](../src/typescript/lib/core/Theme.ts#L857)).
+[`themeToVars`](../src/typescript/lib/core/Theme.ts#L869)).
 
 | CSS Custom Property              | Modern (light) Default                  | Dark Default                          | Purpose                              |
 |---------------------------------|-----------------------------------------|---------------------------------------|--------------------------------------|
 | `--ts-ui-rail-bg`               | `var(--ts-ui-body-bg)`                  | (dark surface)                        | Rail background                      |
 | `--ts-ui-rail-border`           | `rgb(220, 220, 220)`                    | (dark divider)                        | Rail divider on its content-facing edge |
-| `--ts-ui-rail-shadow`           | `2px 0 12px rgba(0,0,0,0.18)`           | (deeper)                              | Rail drop shadow (overlay mode only) |
+| `--ts-ui-rail-shadow`           | `2px 0 12px rgba(0,0,0,0.18)`           | (deeper)                              | Rail drop shadow                     |
 | `--ts-ui-rail-handle-hover-bg`  | `rgba(30,100,200,0.08)`                 | (dark hover)                          | Handle hover wash                    |
 | `--ts-ui-rail-handle-selected-bg` | `rgba(30,100,200,0.16)`               | (dark selected)                       | Handle selected wash (drawer open)   |
 
@@ -338,19 +335,18 @@ matching the existing drawer/window entries in each theme file.
 - Rail root: a `Component` (the `Rail` itself) with an `HBox`/`VBox` layout
   manager chosen by edge at mount time. Handles are added via the inherited
   `addComponent`.
-- Per-registration bookkeeping: `Map<Drawer, { handle: RailHandle; onOpen: () => void; onClose: () => void; onAction: ClickListener }>` and a parallel `Map<Window, { handle; onMinimize; onRestore; onClose }>`. The stored closures are the exact references passed to `on`, so `off` matches.
-- Reserve-space inset: cache `_priorHostInset: number` for the docked edge before writing `host.setInsets(...)`; restore it in `unmount`.
-- Geometry (`doLayout` override for reserve-space; `applyRestingGeometry`-style for overlay): WEST → `{x:0, y:0, width:thickness, height:hostInnerHeight}`; EAST mirrored; NORTH/SOUTH span full width at `thickness` height. Re-derive on viewport resize via an `Event.addViewportListener(this, "resize", …)` (overlay) — reserve-space re-derives through the host's own resize-driven relayout.
+- Per-registration bookkeeping: `Map<Drawer, { handle: RailHandle; onOpen: () => void; onClose: () => void; onAction: ClickListener }>` and a parallel `Map<AbstractWindow, { handle; onMinimize; onRestore; onClose }>`. The stored closures are the exact references passed to `on`, so `off` matches.
+- Geometry (`applyRestingGeometry`-style, mirroring Drawer): WEST → `{x:0, y:0, width:thickness, height:viewportHeight}`; EAST mirrored; NORTH/SOUTH span full viewport width at `thickness` height. Re-derive on viewport resize via an `Event.addViewportListener(this, "resize", …)`.
 
 ---
 
 ## Ordered Implementation Steps
 
 1. **Theme tokens.** Add the `rail` block to the `Theme` interface
-   ([Theme.ts:425](../src/typescript/lib/core/Theme.ts#L425) area), to all three
+   ([Theme.ts:492](../src/typescript/lib/core/Theme.ts#L492) area), to all three
    theme files (`ModernTheme.ts`, `ClassicTheme.ts`, `DarkTheme.ts`) beside their
    `drawer` blocks, and emit the five vars in `themeToVars`
-   ([Theme.ts:857](../src/typescript/lib/core/Theme.ts#L857) area). Verify:
+   ([Theme.ts:869](../src/typescript/lib/core/Theme.ts#L869) area). Verify:
    `grep -rn 'ts-ui-rail' src/typescript/lib/core/Theme.ts` — expect the five
    var names; `npm run typecheck`.
 2. **`RailHandle`** (`src/typescript/lib/core/RailHandle.ts`). `Button` subclass
@@ -360,26 +356,29 @@ matching the existing drawer/window entries in each theme file.
 3. **`Rail`** (`src/typescript/lib/core/Rail.ts`). Options-bag-as-cache,
    `applyOptions` after `super`, constructor-body listener dispatch (the
    `_listeners` ListenerBag is undefined during the super cascade — the documented
-   trap). Implement `mount`/`unmount`, edge geometry, both modes,
+   trap). Implement `mount`/`unmount`, edge geometry,
    `registerDrawer`/`unregisterDrawer` (subscribe via `drawer.on`), `registerWindow`/`unregisterWindow`,
    typed `on`/`off`/`emit`. Callable export.
-4. **Window additive API.** Add `WindowEvent`, a `ListenerBag<WindowEvent>` field
-   (`_windowListeners`), `on`/`off`/`emit` overloads, `setRail`/`getRail`,
-   `minimize`/`restore`. In `setWindowState`, fire `"minimize"`/`"restore"`; when
+4. **AbstractWindow additive API** (`src/typescript/lib/core/AbstractWindow.ts` —
+   where the minimize machinery lives). Add `WindowEvent`, a `ListenerBag<WindowEvent>`
+   field (`_windowListeners`), `on`/`off`/`emit` overloads, `setRail`/`getRail`,
+   `minimize`/`restore`. In `setWindowState` ([AbstractWindow.ts:888](../src/typescript/lib/core/AbstractWindow.ts#L888)),
+   fire `"minimize"`/`"restore"`; when
    `_rail` is set, branch the `"minimized"` path to hide the window + emit instead
    of `computeDockRect`/`relayoutMinimizedStack`. Fire `"close"` in `onExitAction`.
    Dispatch any `options.listeners` for window events from the constructor body
-   (Window has no `listeners` option today; add one to `WindowOptions` only if
+   (`WindowOptions` has no `listeners` option today; add one only if
    trivially additive — otherwise expose events via `on` only and skip the option,
    keeping the change minimal).
-5. **Barrel exports.** Export `Rail`, `RailOptions`, `RailEdge`, `RailMode`,
-   `RailEvent`, `RailDrawerRegistration`, `RailHandle`, `WindowEvent` from
-   `src/typescript/lib/core/index.ts` (beside the Drawer/Window entries at
-   [index.ts:21,36](../src/typescript/lib/core/index.ts#L21)).
+5. **Barrel exports.** Export `Rail`, `RailOptions`, `RailEdge`, `RailEvent`,
+   `RailDrawerRegistration`, `RailHandle` from
+   `src/typescript/lib/core/index.ts` (beside the Drawer entry at
+   [index.ts:42-43](../src/typescript/lib/core/index.ts#L42)), and add the new
+   `WindowEvent` type beside the existing `AbstractWindow` type exports
+   ([index.ts:28](../src/typescript/lib/core/index.ts#L28)).
 6. **Demo wiring** in `MiscPanel.ts` beside the existing Drawer block
-   ([MiscPanel.ts:580](../src/typescript/MiscPanel.ts#L580)): create a Rail,
-   register two Drawers, attach a Window via `setRail`, and add buttons to flip
-   `mode` between overlay and reserve-space.
+   ([MiscPanel.ts:636](../src/typescript/MiscPanel.ts#L636)): create a Rail,
+   register two Drawers, and attach a Window via `setRail`.
 7. **Docs** (see Documentation Impact).
 
 ---
@@ -390,14 +389,14 @@ matching the existing drawer/window entries in each theme file.
 |--------|------|
 | Create | `src/typescript/lib/core/Rail.ts` |
 | Create | `src/typescript/lib/core/RailHandle.ts` |
-| Modify | `src/typescript/lib/core/Window.ts` (additive events + `setRail`/`minimize`/`restore`) |
+| Modify | `src/typescript/lib/core/AbstractWindow.ts` (additive events + `setRail`/`minimize`/`restore`; the minimize machinery lives here, not in `Window.ts`) |
 | Modify | `src/typescript/lib/core/Theme.ts` (rail interface block + themeToVars) |
 | Modify | `src/typescript/lib/core/themes/ModernTheme.ts` (rail block) |
 | Modify | `src/typescript/lib/core/themes/ClassicTheme.ts` (rail block) |
 | Modify | `src/typescript/lib/core/themes/DarkTheme.ts` (rail block) |
 | Modify | `src/typescript/lib/core/index.ts` (barrel exports) |
 | Modify | `src/typescript/MiscPanel.ts` (demo) |
-| Create | `docs/core/rail.md` + sidebar/catalog entries (see Documentation Impact) |
+| Create | `docs/components/Rail.md` + sidebar/catalog entries (see Documentation Impact) |
 
 No deletions — the built-in Window bottom-strip rail stays.
 
@@ -409,56 +408,56 @@ No deletions — the built-in Window bottom-strip rail stays.
 - `grep -rn 'ts-ui-rail' src/typescript/lib/core/Theme.ts` — five var names emitted; `grep -rn 'rail' src/typescript/lib/core/themes/*.ts` — block present in all three.
 - `npm run docs:build` — 0 errors, 0 link warnings (the typedoc "unsupported TypeScript version" notice is the only acceptable warning).
 - Manual smoke on the **Misc.** demo screen (`npm run dev`, http://localhost:8015):
-  1. **Overlay mode:** rail floats over content; registered-drawer handles toggle their drawers; a drawer opened from elsewhere flips its handle's selected state (state sync).
-  2. **Reserve-space mode:** flip the mode; app content (the Tab) insets away from the rail's edge; rail sits flush in the reserved strip; flipping back restores the host's inset (no leftover gap).
-  3. **Window-minimize/restore:** a window with `setRail(rail)` minimizes into a Rail handle (window hidden, handle appears); clicking the handle restores the window to its prior rect; closing a minimized window removes its handle.
-  4. **Drawer-handle state sync:** open/close a hosted drawer via its own Close button and confirm the rail handle's selected wash follows.
-  5. **Theme toggle:** switch Modern/Classic/Dark; rail bg/border/shadow and handle hover/selected washes re-skin from the tokens.
+  1. **Overlay:** rail floats over content; registered-drawer handles toggle their drawers; a drawer opened from elsewhere flips its handle's selected state (state sync).
+  2. **Window-minimize/restore:** a window with `setRail(rail)` minimizes into a Rail handle (window hidden, handle appears); clicking the handle restores the window to its prior rect; closing a minimized window removes its handle.
+  3. **Drawer-handle state sync:** open/close a hosted drawer via its own Close button and confirm the rail handle's selected wash follows.
+  4. **Theme toggle:** switch Modern/Classic/Dark; rail bg/border/shadow and handle hover/selected washes re-skin from the tokens.
 
 ---
 
 ## Documentation Impact
 
-- `Rail`, `RailHandle`, and the new `Window` symbols are exported from the
-  per-subpath barrel `src/typescript/lib/core/index.ts` (there is no root barrel).
-- Add a curated page `docs/core/rail.md` covering both modes, the Drawer
-  composition, and the Window-minimize integration; add it to the `docs/core/`
-  catalog `index.md` and the sidebar in `docs/.vitepress/config.mts`.
-- Update the existing `Drawer` and `Window` curated pages with a cross-reference
-  to `Rail` (markdown links across buckets, not `{@link}` — per
-  `_shared/docs-conventions.md`).
+- `Rail`, `RailHandle`, and the new `AbstractWindow` symbol (`WindowEvent`) are
+  exported from the per-subpath barrel `src/typescript/lib/core/index.ts` (there
+  is no root barrel).
+- Add a curated page `docs/components/Rail.md` covering the overlay strip, the
+  Drawer composition, and the Window-minimize integration; add it to the
+  `docs/components/index.md` catalog and the `/components/` sidebar group in
+  `docs/.vitepress/config.mts` (beside the `Drawer`/`Window` entries at
+  config.mts:58-62).
+- Update the existing `docs/components/Drawer.md` and `docs/components/Window.md`
+  curated pages with a cross-reference to `Rail` (markdown links across buckets,
+  not `{@link}` — per `_shared/docs-conventions.md`).
 - JSDoc on every new public symbol (options, setters, register API, events) per
-  the callable-export + JSDoc conventions.
+  the callable-export + JSDoc conventions, including `@category Core` on each
+  (matching Drawer at [Drawer.ts:21](../src/typescript/lib/core/Drawer.ts#L21)).
 
 ---
 
 ## Potential Challenges
 
-- **Foreign-inset mutation in reserve-space mode** is the riskiest piece — cache and restore the host's prior docked-edge inset precisely, and re-resolve geometry on host resize. Mitigation: write only the single edge inset, restore on `unmount`/mode-flip.
-- **Window's `"minimized"` branch is dense** (`_restoreRect`, `_preMinimizeState`, `setBodyHostDisplayed`, the static stack). Add the rail branch as an early fork that bypasses `computeDockRect`/`relayoutMinimizedStack` without disturbing the no-rail path. Mitigation: gate the entire new behaviour on `this._rail !== null`.
+- **`AbstractWindow`'s `"minimized"` branch is dense** (`_restoreRect`, `_preMinimizeState`, `setBodyHostDisplayed`, the static stack). Add the rail branch as an early fork that bypasses `computeDockRect`/`relayoutMinimizedStack` without disturbing the no-rail path. Mitigation: gate the entire new behaviour on `this._rail !== null`.
 - **Listener-reference symmetry** — store the exact `on` closures per registration so `off`/`ListenerBag.remove` match (the framework's `ListenerBag.add` appends; mismatched refs leak). Mitigation: the per-registration bookkeeping maps above.
-- **Mode flip while mounted** must tear down the previous mount cleanly (overlay element on `documentElement` vs. child-of-host + host inset). Mitigation: `setRailMode` calls `unmount()` then `mount()` when already mounted.
-- **Super-cascade traps** — the `_listeners` ListenerBag, any `declare`-needed fields, and setters that must defer DOM work (mirror Drawer's notes at [Drawer.ts:195](../src/typescript/lib/core/Drawer.ts#L195)). Mitigation: dispatch `options.listeners` from the constructor body; cache geometry in setters and apply in `mount`/`doLayout`.
+- **Super-cascade traps** — the `_listeners` ListenerBag, any `declare`-needed fields, and setters that must defer DOM work (mirror Drawer's notes at [Drawer.ts:195](../src/typescript/lib/core/Drawer.ts#L195)). Mitigation: dispatch `options.listeners` from the constructor body; cache geometry in setters and apply in `mount`.
 
 ---
 
 ## Critical Files
 
 - [`src/typescript/lib/core/Drawer.ts`](../src/typescript/lib/core/Drawer.ts) — the overlay pattern to mirror (options-bag-as-cache, `applyOptions`, constructor-body listener dispatch, typed `on`/`off`/`emit`, `restingRect`/`applyRestingGeometry`/`offscreenTransform`, callable export, `DrawerEdge`).
-- [`src/typescript/lib/core/Window.ts`](../src/typescript/lib/core/Window.ts) — `WindowState` machine, `setWindowState`, `computeDockRect`/`relayoutMinimizedStack`, `onExitAction`, header minimize wiring; the additive-events surface lands here.
+- [`src/typescript/lib/core/AbstractWindow.ts`](../src/typescript/lib/core/AbstractWindow.ts) — `WindowState` machine, `setWindowState` (:888), `computeDockRect`/`relayoutMinimizedStack`, `onExitAction`, `toggleMinimize` (:969); the additive-events + `setRail` surface lands here. (`Window.ts` only wires its header button to `toggleMinimize` at :82.)
 - [`src/typescript/lib/core/LayerManager.ts`](../src/typescript/lib/core/LayerManager.ts) — bands and the `DismissableLayer` contract the Rail deliberately does *not* implement.
-- [`src/typescript/lib/core/Body.ts`](../src/typescript/lib/core/Body.ts) + [`src/typescript/main.ts`](../src/typescript/main.ts) — the host whose insets reserve-space mode writes; confirms Body sizes from viewport and clears insets, and lays out via a `Tab`.
-- [`src/typescript/lib/layout/Border.ts`](../src/typescript/lib/layout/Border.ts), `HBox.ts`/`VBox.ts` — the rail's internal layout and the `getInnerSize`-honouring contract reserve-space relies on.
+- [`src/typescript/lib/layout/HBox.ts`](../src/typescript/lib/layout/HBox.ts) / [`VBox.ts`](../src/typescript/lib/layout/VBox.ts) — the rail's internal handle layout.
 - [`src/typescript/lib/component/button/Button.ts`](../src/typescript/lib/component/button/Button.ts) — `RailHandle`'s superclass.
 - [`src/typescript/lib/core/Theme.ts`](../src/typescript/lib/core/Theme.ts) + the three theme files — the `drawer` block is the template for the new `rail` block.
-- [`src/typescript/MiscPanel.ts`](../src/typescript/MiscPanel.ts) — demo home, beside the Drawer block at line 580.
+- [`src/typescript/MiscPanel.ts`](../src/typescript/MiscPanel.ts) — demo home, beside the Drawer block at line 636.
 
 ---
 
 ## Non-Goals
 
-- **Not removing or replacing** Window's built-in bottom-of-viewport minimize stack — the Rail path is opt-in via `setRail`; the default self-docking behaviour is untouched (surgical-changes rule).
-- **No Border-region integration mode.** Reserve-space is done via host insets, which composes with any host layout; a second region-based mechanism would be redundant.
+- **Not removing or replacing** the built-in bottom-of-viewport minimize stack on `AbstractWindow` — the Rail path is opt-in via `setRail`; the default self-docking behaviour is untouched (surgical-changes rule).
+- **No reserve-space mode.** A mode that claims an edge strip and insets app content around it was considered and dropped: a child cannot position itself via its own `doLayout`, and the default `Body` host's `Tab` layout manager would turn an added child into a hidden tab (see `## Architecture Decisions`). Correctly reserving space needs a real layout region, which is out of scope for this cut. The Rail floats as a FIXED overlay only.
 - **No drag-to-reorder of handles, no overflow/scroll for an over-full rail, no collapse/expand of the rail itself** — out of scope for the first cut.
 - **No multi-edge single Rail** — one Rail anchors one edge; a caller wanting rails on two edges constructs two Rails.
 - **No dependence on `plans/size-constraint-invariant.md`** — the Rail uses a fixed `thickness` and full cross-axis span, so the unimplemented min ≤ preferred ≤ max fix does not gate it.

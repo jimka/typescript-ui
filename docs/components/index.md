@@ -17,6 +17,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`TabWindow`](/components/TabWindow) | Headerless floating window whose tab bar is its title bar (strip tear-off) |
 | [`Dialog`](/api/core/classes/Dialog) | Modal dialog with async result |
 | [`Drawer`](/components/Drawer) | Edge-anchored panel that slides in from a viewport edge; modal or non-modal |
+| [`Rail`](/components/Rail) | Persistent edge launcher strip of handles that toggle drawers and host minimized windows |
 | [`Dock`](/components/Dock) | Rearrangeable panel layout — reorder, tear-off, edge-split, and save/restore |
 | [`Tooltip`](/api/core/classes/Tooltip) | Singleton hover hint, attach via `Tooltip.attach(component, text)` |
 | [`Popover`](/components/Popover) | Anchored, non-modal floating bubble with arrow tail and dismiss modes |

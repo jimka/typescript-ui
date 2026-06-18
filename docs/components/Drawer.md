@@ -75,3 +75,4 @@ Listeners can also be supplied at construction via the `listeners` option bag.
 - [API: Drawer](/api/core/classes/Drawer)
 - [API: DrawerOptions](/api/core/interfaces/DrawerOptions), [DrawerEdge](/api/core/type-aliases/DrawerEdge), [DrawerEvent](/api/core/type-aliases/DrawerEvent), [DrawerCloseController](/api/core/interfaces/DrawerCloseController)
 - [Dialog](/components/Dialog) — centred, promise-driven modal
+- [Rail](/components/Rail) — persistent edge strip whose handles toggle drawers

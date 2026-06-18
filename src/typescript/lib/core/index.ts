@@ -25,7 +25,7 @@ export type { ButtonGroupOptions, ButtonGroupEvent } from '~/core/ButtonGroup.js
 export { AbstractWindow } from '~/core/AbstractWindow.js';
 export { Window } from '~/core/Window.js';
 export { TabWindow } from '~/core/TabWindow.js';
-export type { WindowOptions, WindowState, WindowMaximizeBounds, WindowSnapModifier, WindowRect } from '~/core/AbstractWindow.js';
+export type { WindowOptions, WindowState, WindowEvent, WindowMaximizeBounds, WindowSnapModifier, WindowRect } from '~/core/AbstractWindow.js';
 export { Menu } from '~/core/Menu.js';
 export { AnimatedDropdown, fadeShow, fadeHideAndDetach } from '~/core/AnimatedDropdown.js';
 export type { AnimatedDropdownOptions, FadeOptions } from '~/core/AnimatedDropdown.js';
@@ -41,6 +41,10 @@ export { Dialog, DialogTitleBar, DialogButtons } from '~/core/Dialog.js';
 export type { DialogConfig, DialogButtonConfig, DialogResult } from '~/core/Dialog.js';
 export { Drawer } from '~/core/Drawer.js';
 export type { DrawerOptions, DrawerEdge, DrawerEvent, DrawerCloseController } from '~/core/Drawer.js';
+export { Rail } from '~/core/Rail.js';
+export type { RailOptions, RailEdge, RailOrientation, RailEvent, RailDrawerRegistration } from '~/core/Rail.js';
+export { RailHandle } from '~/core/RailHandle.js';
+export type { RailHandleOptions } from '~/core/RailHandle.js';
 export { Dock } from '~/core/Dock.js';
 export type { DockOptions, DockPanelSpec, DockLayoutSpec } from '~/core/Dock.js';
 
