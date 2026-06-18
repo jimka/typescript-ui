@@ -3,10 +3,10 @@
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Insets } from "~/primitive/Insets";
 import { LayoutManager } from "~/layout/LayoutManager.js";
-import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
 import { InlineStyle } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Reach in pixels of each scroll-edge shadow — used as the inset shadow's
@@ -445,7 +445,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             return;
         }
 
-        const trackW = Util.getScrollBarWidth();
+        const trackW = DOM.source.getScrollBarWidth();
         if (trackW === 0) {
             return;
         }
@@ -536,7 +536,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      * @param element - The panel element the overlay is appended to.
      */
     private createScrollShadowOverlay(element: HTMLElement): void {
-        const overlay = document.createElement("div");
+        const overlay = DOM.sink.createElement("div");
         const extent  = SCROLL_SHADOW_EXTENT_PX + "px";
 
         this._shadowOverlayStyle.attach(overlay);
@@ -568,7 +568,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
                 `inset -${extent} 0 ${extent} -${extent} var(--ts-ss-right, transparent)`,
         });
 
-        element.appendChild(overlay);
+        DOM.sink.appendChild(element, overlay);
         this._shadowOverlay = overlay;
     }
 
@@ -584,7 +584,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         }
 
         if (this._shadowOverlay) {
-            this._shadowOverlay.remove();
+            DOM.sink.removeElement(this._shadowOverlay);
             this._shadowOverlay = null;
 
             // The buffer was bound to the now-removed overlay; a fresh one is

@@ -2,6 +2,7 @@
 
 import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import {
@@ -468,7 +469,7 @@ class Glyph extends Component<GlyphOptions> {
         const el = this.getElement();
 
         if (el && prev) {
-            el.classList.remove(CLASS_PREFIX + prev);
+            DOM.sink.removeClass(el, CLASS_PREFIX + prev);
         }
 
         if (kind === null) {
@@ -492,7 +493,7 @@ class Glyph extends Component<GlyphOptions> {
 
         if (!Animation.isReducedMotion()) {
             if (el) {
-                el.classList.add(CLASS_PREFIX + kind);
+                DOM.sink.addClass(el, CLASS_PREFIX + kind);
             }
 
             this.setWillChange("transform");
@@ -560,11 +561,11 @@ class Glyph extends Component<GlyphOptions> {
         const className = CLASS_PREFIX + kind;
 
         if (Animation.isReducedMotion()) {
-            element.classList.remove(className);
+            DOM.sink.removeClass(element, className);
             this.setWillChange(null);
             this.setElementStyle("animationDuration", null);
         } else {
-            element.classList.add(className);
+            DOM.sink.addClass(element, className);
             this.setWillChange("transform");
 
             if (this._glyphAnimationDuration > 0) {
@@ -637,14 +638,14 @@ class Glyph extends Component<GlyphOptions> {
             ensureGlyphSymbolMounted(this._name);
 
             const svgNs = "http://www.w3.org/2000/svg";
-            const svg = document.createElementNS(svgNs, "svg");
-            svg.setAttribute("fill", "currentColor");
-            svg.setAttribute("aria-hidden", "true");
-            svg.setAttribute("focusable", "false");
+            const svg = DOM.sink.createElementNS(svgNs, "svg");
+            DOM.sink.setAttribute(svg, "fill", "currentColor");
+            DOM.sink.setAttribute(svg, "aria-hidden", "true");
+            DOM.sink.setAttribute(svg, "focusable", "false");
 
-            const use = document.createElementNS(svgNs, "use");
-            use.setAttribute("href", "#" + GLYPH_SYMBOL_ID_PREFIX + this._name);
-            svg.appendChild(use);
+            const use = DOM.sink.createElementNS(svgNs, "use");
+            DOM.sink.setAttribute(use, "href", "#" + GLYPH_SYMBOL_ID_PREFIX + this._name);
+            DOM.sink.appendChild(svg, use);
 
             return svg as unknown as HTMLElement;
         }
@@ -667,11 +668,11 @@ class Glyph extends Component<GlyphOptions> {
         const element = super.render();
 
         if (this._def.kind === "char") {
-            element.textContent = this._def.char;
+            DOM.sink.setTextContent(element, this._def.char);
         }
 
         if (this._glyphAnimation && !Animation.isReducedMotion()) {
-            element.classList.add(CLASS_PREFIX + this._glyphAnimation);
+            DOM.sink.addClass(element, CLASS_PREFIX + this._glyphAnimation);
         }
 
         const preferredSize = this._options.preferredSize;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { Animation } from "~/core/Animation.js";
@@ -185,7 +186,7 @@ export class Tooltip extends Component {
         inst.setWidth(tooltipWidth);
         inst.setHeight(tooltipHeight);
 
-        const vp = Util.getViewportSize();
+        const vp = DOM.source.getViewportSize();
         const clampedX = Math.min(x + Tooltip.CURSOR_OFFSET, vp.width - tooltipWidth);
         const clampedY = Math.min(y + Tooltip.CURSOR_OFFSET, vp.height - tooltipHeight);
 
@@ -196,7 +197,7 @@ export class Tooltip extends Component {
 
         inst.scheduleLayout();
 
-        document.documentElement.appendChild(el);
+        DOM.sink.appendChild(document.documentElement, el);
 
         inst.setVisible(true);
 

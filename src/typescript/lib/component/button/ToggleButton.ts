@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { BorderOptions, borderToStyle } from "~/primitive/Border.js";
@@ -140,7 +141,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
 
         let element = this.getElement();
         if (element) {
-            element.classList.toggle("selected", value);
+            DOM.sink.toggleClass(element, "selected", value);
         }
 
         return this;
@@ -251,7 +252,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      */
     render() {
         let element = super.render();
-        element.classList.toggle("selected", this.isSelected());
+        DOM.sink.toggleClass(element, "selected", this.isSelected());
         return element;
     }
 }

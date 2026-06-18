@@ -8,6 +8,7 @@ import { FillType } from "~/layout/FillType.js";
 import { Size } from "~/primitive/Size.js";
 import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
+import { DOM } from "~/core/DOM.js";
 
 // Pixel thickness of a single draggable gutter. The main-axis sizing math
 // subtracts the gutters' combined footprint before dividing space among
@@ -607,7 +608,7 @@ class Split extends LayoutManager {
             let gutter = this._gutters[idx];
 
             let gutterElement = gutter.getElement();
-            (gutterElement.parentNode as Node).removeChild(gutterElement);
+            DOM.sink.removeChild(gutterElement.parentNode as Node, gutterElement);
             gutter.destroy();
         }
 
@@ -764,7 +765,7 @@ class Split extends LayoutManager {
 
             this._gutters.push(gutter);
 
-            element.appendChild(gutter.getElement(true));
+            DOM.sink.appendChild(element, gutter.getElement(true));
         }
 
         let x = containerInsets.getLeft();

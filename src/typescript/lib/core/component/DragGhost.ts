@@ -4,6 +4,7 @@ import { Component } from "~/core/Component.js";
 import { Position } from "~/primitive/Position.js";
 import { Text } from "~/component/input/Text.js";
 import { callable } from "~/core/Callable.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Z-order ceiling for the drag ghost. The follow-the-cursor preview rides above
@@ -99,7 +100,7 @@ class DragGhost extends Component {
         const el = this.getElement(true);
 
         this.scheduleLayout();
-        document.documentElement.appendChild(el);
+        DOM.sink.appendChild(document.documentElement, el);
     }
 
     /**

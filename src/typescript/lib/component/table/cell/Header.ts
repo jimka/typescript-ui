@@ -4,6 +4,7 @@ import { DefaultCell } from "~/component/table/cell/Default.js";
 import { ResizeHandle } from "~/component/table/cell/ResizeHandle.js";
 import { SortPriorityBadge } from "~/component/table/cell/SortPriorityBadge.js";
 import { CellEvent } from "~/component/table/cell/Cell.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { StyleRule } from "~/core/StyleTarget.js";
@@ -167,8 +168,8 @@ class HeaderCell extends DefaultCell {
         // Their `position:absolute` means they don't disturb the cell's `Card`
         // layout flow, and side-loading (instead of `addComponent`) keeps the
         // Card from hiding them as non-visible siblings of the renderer.
-        el.appendChild(this._resizeHandle.getElement(true));
-        el.appendChild(this._priorityBadge.getElement(true));
+        DOM.sink.appendChild(el, this._resizeHandle.getElement(true));
+        DOM.sink.appendChild(el, this._priorityBadge.getElement(true));
 
         if (this._tooltipText) {
             Tooltip.attachToElement(el, this._tooltipText);
@@ -221,7 +222,10 @@ class HeaderCell extends DefaultCell {
      */
     private _mountHeaderGlyph(el: HTMLElement | undefined): void {
         if (this._headerGlyphInstance) {
-            this._headerGlyphInstance.getElement()?.remove();
+            const glyphEl = this._headerGlyphInstance.getElement();
+            if (glyphEl) {
+                DOM.sink.removeElement(glyphEl);
+            }
             this._headerGlyphInstance = null;
         }
 
@@ -244,9 +248,9 @@ class HeaderCell extends DefaultCell {
         glyph.setPointerEvents("none");
 
         const gEl = glyph.getElement(true);
-        gEl.classList.add("HeaderCellGlyph");
+        DOM.sink.addClass(gEl, "HeaderCellGlyph");
 
-        el.appendChild(gEl);
+        DOM.sink.appendChild(el, gEl);
         this._headerGlyphInstance = glyph;
 
         const offset = GLYPH_W + GLYPH_GAP + themePad;

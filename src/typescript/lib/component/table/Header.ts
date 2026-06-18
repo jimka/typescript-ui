@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Row } from "~/component/table/Row.js";
 import { AbstractModel } from "~/data/AbstractModel.js";
@@ -269,7 +270,7 @@ class Header extends Component {
             // Component, so the Component style setters don't apply and direct
             // `.style` writes are correct here.
             /* eslint-disable local/no-element-style */
-            const cover = document.createElement("div");
+            const cover = DOM.sink.createElement("div") as HTMLDivElement;
             cover.style.position        = "absolute";
             cover.style.top             = "0";
             cover.style.boxSizing       = "border-box";
@@ -290,7 +291,7 @@ class Header extends Component {
             // rather than a seam in the gradient.
             cover.style.borderLeft      = "1px solid var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))";
             /* eslint-enable local/no-element-style */
-            this.getElement(true).appendChild(cover);
+            DOM.sink.appendChild(this.getElement(true), cover);
             this._scrollbarCover = cover;
         }
 

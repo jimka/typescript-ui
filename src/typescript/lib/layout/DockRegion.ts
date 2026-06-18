@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Container } from "~/core/Container.js";
+import { DOM } from "~/core/DOM.js";
 import { AbstractWindow } from "~/core/AbstractWindow.js";
 import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
@@ -210,7 +211,7 @@ export class DockRegion {
      * @returns The resolved drop zone.
      */
     private computeZone(x: number, y: number): DropZone {
-        const rect = this._region.getElement(true).getBoundingClientRect();
+        const rect = DOM.source.getViewportRect(this._region);
 
         const fx = (x - rect.left) / rect.width;   // 0..1 across
         const fy = (y - rect.top)  / rect.height;  // 0..1 down

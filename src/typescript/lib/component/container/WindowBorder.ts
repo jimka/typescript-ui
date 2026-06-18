@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
@@ -214,7 +215,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
         const element = this.getElement();
         if (element) {
-            element.classList.toggle(SNAP_TARGET_CLASS, value);
+            DOM.sink.toggleClass(element, SNAP_TARGET_CLASS, value);
         }
 
         return this;
@@ -288,7 +289,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
         }
 
         if (this._snapTarget) {
-            element.classList.add(SNAP_TARGET_CLASS);
+            DOM.sink.addClass(element, SNAP_TARGET_CLASS);
         }
 
         return element;

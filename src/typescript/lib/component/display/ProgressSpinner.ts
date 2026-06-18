@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
@@ -27,8 +28,7 @@ const ARC_BORDER_WIDTH = 3;
  * @returns The current theme font size in pixels, or `14` as a fallback.
  */
 function readThemeFontSizePx(): number {
-    const raw    = getComputedStyle(document.documentElement)
-                       .getPropertyValue("--ts-ui-font-size").trim();
+    const raw    = DOM.source.getThemeVar("--ts-ui-font-size");
     const parsed = parseFloat(raw);
 
     return isNaN(parsed) ? 14 : parsed;
@@ -206,7 +206,7 @@ class ProgressSpinner extends Component {
         const targetEl  = target.getElement(true);
         const spinnerEl = this.getElement(true);
 
-        targetEl.appendChild(spinnerEl);
+        DOM.sink.appendChild(targetEl, spinnerEl);
 
         this.setX(0);
         this.setY(0);

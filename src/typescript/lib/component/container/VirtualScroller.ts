@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { SmoothScroller, consumeWheel } from "~/core/SmoothScroller.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
@@ -75,24 +76,24 @@ export class VirtualScroller {
         // LOCAL coordinate system before its transform applies — splitting
         // the two roles lets the transform shift the rows around inside a
         // stable clip.
-        const clipBox = document.createElement("div");
+        const clipBox = DOM.sink.createElement("div");
         clipBox.style.position = "absolute";
         clipBox.style.top      = "0";
         clipBox.style.left     = "0";
         clipBox.style.width    = "100%";
         clipBox.style.height   = "100%";
         clipBox.style.overflow = "hidden";
-        element.appendChild(clipBox);
+        DOM.sink.appendChild(element, clipBox);
         this._clipBox = clipBox;
 
-        const container = document.createElement("div");
+        const container = DOM.sink.createElement("div");
         container.style.position   = "absolute";
         container.style.top        = "0";
         container.style.left       = "0";
         container.style.width      = "100%";
         container.style.transform  = "translate3d(0, 0, 0)";
         container.style.willChange = "transform";
-        clipBox.appendChild(container);
+        DOM.sink.appendChild(clipBox, container);
         this._rowsContainer = container;
 
         // Drives wheel-initiated scrolling through an eased RAF loop. The seam
@@ -106,14 +107,14 @@ export class VirtualScroller {
         });
 
         this._scrollbarV = new Scrollbar("vertical");
-        element.appendChild(this._scrollbarV.getElement(true));
+        DOM.sink.appendChild(element, this._scrollbarV.getElement(true));
         this._scrollbarV.on("scroll", (p: number) => {
             this._smooth.reset();
             this.setScrollY(p);
         });
 
         this._scrollbarH = new Scrollbar("horizontal");
-        element.appendChild(this._scrollbarH.getElement(true));
+        DOM.sink.appendChild(element, this._scrollbarH.getElement(true));
         this._scrollbarH.on("scroll", (p: number) => {
             this._smooth.reset();
             this.setScrollX(p);

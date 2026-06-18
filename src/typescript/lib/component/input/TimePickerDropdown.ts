@@ -2,6 +2,7 @@
 
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Event } from "~/core/Event.js";
+import { DOM } from "~/core/DOM.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
 import { TimeColumns } from "~/component/input/TimeColumns.js";
@@ -103,7 +104,7 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
         this.setWidth(this._showSeconds ? PANEL_WIDTH_SECONDS : PANEL_WIDTH);
         this.setHeight(PANEL_HEIGHT);
 
-        this.placeAnchored(anchorEl.getBoundingClientRect());
+        this.placeAnchored(DOM.source.getElementRect(anchorEl));
 
         // Mount before laying out: the columns are built once in the
         // constructor, so — unlike the calendar dropdown, whose show-time

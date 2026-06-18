@@ -4,6 +4,7 @@ import { Component } from "~/core/Component.js";
 import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
 import { LayerManager } from "~/core/LayerManager.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Z-order for the drop-target validity tint. The tint highlights a drop target,
@@ -98,7 +99,7 @@ class DragFeedback extends Component {
 
             const hostEl = host.getElement(true);
             if (myEl.parentElement !== hostEl) {
-                hostEl.appendChild(myEl);
+                DOM.sink.appendChild(hostEl, myEl);
             }
 
             return;
@@ -112,7 +113,7 @@ class DragFeedback extends Component {
 
         const targetEl = target.getElement(true);
         if (myEl.parentElement !== targetEl) {
-            targetEl.appendChild(myEl);
+            DOM.sink.appendChild(targetEl, myEl);
         }
     }
 

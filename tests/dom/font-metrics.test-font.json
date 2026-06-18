@@ -1,0 +1,22 @@
+{
+  "_comment": "Baked font metrics for the pinned offline test font. Regenerate with scripts/gen-font-metrics.mjs in a real browser; the values here are a hand-pinned stand-in (px at the listed size) sufficient for the deterministic offline metric tests.",
+  "fonts": {
+    "TestSans|14px|normal|normal": {
+      "ascent": 13,
+      "descent": 3,
+      "capTop": 10,
+      "advance": {
+        " ": 4,
+        "H": 10,
+        "e": 7,
+        "l": 4,
+        "o": 8,
+        "W": 12,
+        "r": 5,
+        "d": 8,
+        "x": 7,
+        "X": 9
+      }
+    }
+  }
+}

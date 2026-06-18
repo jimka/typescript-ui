@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Construction-time options for {@link SortPriorityBadge}.
@@ -113,7 +114,7 @@ class SortPriorityBadge extends Component<SortPriorityBadgeOptions> {
     protected render(): HTMLElement {
         const element = super.render();
 
-        element.textContent = this._priorityText();
+        DOM.sink.setTextContent(element, this._priorityText());
 
         return element;
     }
@@ -140,7 +141,7 @@ class SortPriorityBadge extends Component<SortPriorityBadgeOptions> {
 
         const element = this.getElement();
         if (element) {
-            element.textContent = this._priorityText();
+            DOM.sink.setTextContent(element, this._priorityText());
         }
 
         this.setVisible(this._shouldShow(value));

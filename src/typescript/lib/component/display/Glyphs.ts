@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { DOM } from "~/core/DOM.js";
+
 /**
  * Tagged union describing how a glyph is rendered.
  *
@@ -109,9 +111,9 @@ export function ensureGlyphSprite(): void {
         return;
     }
 
-    const sprite = document.createElementNS(SVG_NS, "svg");
-    sprite.setAttribute("aria-hidden", "true");
-    sprite.setAttribute("focusable", "false");
+    const sprite = DOM.sink.createElementNS(SVG_NS, "svg") as SVGSVGElement;
+    DOM.sink.setAttribute(sprite, "aria-hidden", "true");
+    DOM.sink.setAttribute(sprite, "focusable", "false");
     // `sprite` is a raw off-screen SVG element mounted directly on document.body,
     // not a Component, so the Component style setters don't apply here.
     /* eslint-disable local/no-element-style */
@@ -121,7 +123,7 @@ export function ensureGlyphSprite(): void {
     sprite.style.overflow = "hidden";
     /* eslint-enable local/no-element-style */
 
-    document.body.appendChild(sprite);
+    DOM.sink.appendChild(document.body, sprite);
 
     _spriteElement = sprite;
     _spriteMounted = true;
@@ -161,15 +163,15 @@ function _addSymbolToSprite(name: string, def: GlyphDef): void {
         return;
     }
 
-    const symbol = document.createElementNS(SVG_NS, "symbol");
-    symbol.setAttribute("id", id);
-    symbol.setAttribute("viewBox", def.viewBox);
+    const symbol = DOM.sink.createElementNS(SVG_NS, "symbol");
+    DOM.sink.setAttribute(symbol, "id", id);
+    DOM.sink.setAttribute(symbol, "viewBox", def.viewBox);
 
-    const path = document.createElementNS(SVG_NS, "path");
-    path.setAttribute("d", def.path);
-    symbol.appendChild(path);
+    const path = DOM.sink.createElementNS(SVG_NS, "path");
+    DOM.sink.setAttribute(path, "d", def.path);
+    DOM.sink.appendChild(symbol, path);
 
-    _spriteElement.appendChild(symbol);
+    DOM.sink.appendChild(_spriteElement, symbol);
 }
 
 /**
@@ -185,6 +187,6 @@ function _removeSymbolFromSprite(name: string): void {
     const id = GLYPH_SYMBOL_ID_PREFIX + name;
     const symbol = _spriteElement.querySelector(`#${CSS.escape(id)}`);
     if (symbol) {
-        _spriteElement.removeChild(symbol);
+        DOM.sink.removeChild(_spriteElement, symbol);
     }
 }

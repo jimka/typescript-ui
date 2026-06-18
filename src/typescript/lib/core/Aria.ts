@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Valid WAI-ARIA landmark and widget roles used by this framework.
@@ -755,15 +756,15 @@ export class Aria {
      */
     applyToElement(element: HTMLElement): void {
         if (this._role !== null) {
-            element.setAttribute("role", this._role);
+            DOM.sink.setAttribute(element, "role", this._role);
         }
 
         if (this._tabIndex !== null) {
-            element.setAttribute("tabindex", String(this._tabIndex));
+            DOM.sink.setAttribute(element, "tabindex", String(this._tabIndex));
         }
 
         for (const [name, value] of this._attributes) {
-            element.setAttribute("aria-" + name, value);
+            DOM.sink.setAttribute(element, "aria-" + name, value);
         }
     }
 

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Animation } from "~/core/Animation.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { Position } from "~/primitive/Position.js";
 import { Placement } from "~/primitive/Placement.js";
-import { Util } from "~/core/Util.js";
 import { DialogBackdrop } from "~/component/container/DialogBackdrop.js";
 import { callable } from "~/core/Callable.js";
 
@@ -355,7 +355,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         this.applyEdgeBorder();
         this.applyRestingGeometry();
 
-        document.documentElement.appendChild(this.getElement(true));
+        DOM.sink.appendChild(document.documentElement, this.getElement(true));
         this.scheduleLayout();
 
         this.animateIn();
@@ -430,7 +430,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
      * @returns The resting `{ x, y, width, height }` in pixels.
      */
     private restingRect(): { x: number; y: number; width: number; height: number } {
-        const vp   = Util.getViewportSize();
+        const vp   = DOM.source.getViewportSize();
         const size = this.getDrawerSize();
 
         switch (this.getEdge()) {
@@ -584,7 +584,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         this._backdrop.addClickListener(this._boundBackdropClose);
 
         const backdropEl = this._backdrop.getElement(true);
-        document.documentElement.appendChild(backdropEl);
+        DOM.sink.appendChild(document.documentElement, backdropEl);
 
         Animation.play(backdropEl, {
             from:       { opacity: "0" },

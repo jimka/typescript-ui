@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { DOM } from "~/core/DOM.js";
 import { Column } from "~/component/table/Column.js";
 import { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
@@ -143,14 +144,14 @@ export class TableExporter {
     private static download(content: string, filename: string, mimeType: string): void {
         const blob = new Blob([content], { type: mimeType });
         const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
+        const a    = DOM.sink.createElement('a') as HTMLAnchorElement;
 
         a.href     = url;
         a.download = filename;
 
-        document.body.appendChild(a);
+        DOM.sink.appendChild(document.body, a);
         a.click();
-        document.body.removeChild(a);
+        DOM.sink.removeChild(document.body, a);
 
         URL.revokeObjectURL(url);
     }

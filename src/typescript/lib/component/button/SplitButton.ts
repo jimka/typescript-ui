@@ -2,6 +2,7 @@
 
 import { Event } from "~/core/Event.js";
 import { Button, ButtonOptions } from "~/component/button/Button.js";
+import { DOM } from "~/core/DOM.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Menu } from "~/core/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
@@ -214,10 +215,12 @@ class SplitButton extends Button<SplitButtonOptions> {
      * rect can always be read.
      */
     private _toggleMenu(): void {
-        const rect = this.getElement()?.getBoundingClientRect();
-        if (!rect) {
+        const el = this.getElement();
+        if (!el) {
             return;
         }
+
+        const rect = DOM.source.getViewportRect(this);
 
         this._menu ??= new Menu();
 

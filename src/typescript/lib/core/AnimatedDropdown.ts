@@ -5,6 +5,7 @@ import { Animation } from "~/core/Animation.js";
 import { Position } from "~/primitive/Position.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { callable } from "~/core/Callable.js";
+import { DOM, type Rect } from "~/core/DOM.js";
 
 /** Default fade duration in milliseconds. Matches `MENU_ANIM_DURATION_MS` from `Menu`. */
 const DEFAULT_DURATION_MS: number = 120;
@@ -225,7 +226,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
         const el = this.getElement(true);
 
         if (!document.documentElement.contains(el)) {
-            document.documentElement.appendChild(el);
+            DOM.sink.appendChild(document.documentElement, el);
         }
 
         this.setVisible(true);
@@ -332,9 +333,9 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * Callers set `setWidth`/`setHeight` first, then invoke this helper.
      *
      * @param rect - The anchor element's bounding rect (typically from
-     *   `anchorEl.getBoundingClientRect()`).
+     *   `DOM.source.getElementRect(anchorEl)`).
      */
-    placeAnchored(rect: DOMRect): this {
+    placeAnchored(rect: Rect): this {
         const w = this.getWidth();
         const h = this.getHeight();
 

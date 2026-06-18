@@ -5,6 +5,7 @@ import { Table as TableComponent } from "~/component/table/Table.js";
 import { Column } from "~/component/table/Column.js";
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
+import { DOM } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 
@@ -97,7 +98,7 @@ class Table extends LayoutManager {
         const containerInsets = container.getContentInsets();
         const columns         = container.getColumns();
         const columnCount     = container.getHeader().getColumns().length;
-        const availableWidth  = containerSize.width - Util.getScrollBarWidth();
+        const availableWidth  = containerSize.width - DOM.source.getScrollBarWidth();
 
         let columnWidths = container.getColumnWidths();
 
@@ -232,7 +233,7 @@ class Table extends LayoutManager {
             // rest of the header's gradient. Sits on top of the inner rows
             // by DOM order, beneath the scrollbar widget which lives in
             // the body.
-            const trackW = Util.getScrollBarWidth();
+            const trackW = DOM.source.getScrollBarWidth();
             const cover  = header.getScrollbarCover();
             cover.style.left   = (containerSize.width - trackW) + "px";
             cover.style.width  = trackW + "px";

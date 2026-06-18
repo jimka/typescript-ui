@@ -10,6 +10,7 @@ import { Placement } from "~/primitive/Placement.js";
 import { Size, UNBOUNDED, saturate } from "~/primitive/Size.js";
 import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
+import { DOM } from "~/core/DOM.js";
 
 // Pixel thickness of a region's transparent collapse track in its expanded
 // state — just enough to carry the (overflowing) chevron at the region's inner
@@ -376,7 +377,7 @@ class Border extends LayoutManager {
 
         gutter.setVisible(false);
 
-        container.getElement().appendChild(gutter.getElement(true)!);
+        DOM.sink.appendChild(container.getElement(), gutter.getElement(true)!);
 
         this._gutters.set(placement, gutter);
 
@@ -1114,7 +1115,12 @@ class Border extends LayoutManager {
 
         for (const gutter of this._gutters.values()) {
             const element = gutter.getElement();
-            element?.parentNode?.removeChild(element);
+            const parent = element?.parentNode;
+
+            if (element && parent) {
+                DOM.sink.removeChild(parent, element);
+            }
+
             gutter.destroy();
         }
 

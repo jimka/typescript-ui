@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
@@ -597,7 +598,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         AbstractWindow.openWindows.add(this);
 
-        document.documentElement.appendChild(el);
+        DOM.sink.appendChild(document.documentElement, el);
 
         this.setVisible(true);
 
@@ -1846,14 +1847,14 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     render(): HTMLElement {
         let element = super.render();
 
-        element.appendChild(this._borderComponents.west.getElement(true));
-        element.appendChild(this._borderComponents.northwest.getElement(true));
-        element.appendChild(this._borderComponents.north.getElement(true));
-        element.appendChild(this._borderComponents.northeast.getElement(true));
-        element.appendChild(this._borderComponents.east.getElement(true));
-        element.appendChild(this._borderComponents.southeast.getElement(true));
-        element.appendChild(this._borderComponents.south.getElement(true));
-        element.appendChild(this._borderComponents.southwest.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.west.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.northwest.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.north.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.northeast.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.east.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.southeast.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.south.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.southwest.getElement(true));
 
         return element;
     }
@@ -1915,7 +1916,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             const el = this.getElement();
             const parent = el ? el.parentElement : null;
             if (parent && parent !== document.documentElement) {
-                const r = parent.getBoundingClientRect();
+                const r = DOM.source.getElementRect(parent);
                 return { x: 0, y: 0, width: r.width, height: r.height };
             }
         }
@@ -2041,8 +2042,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns The dock slot width in pixels.
      */
     private getMinDockWidth(): number {
-        const cssVar = getComputedStyle(document.documentElement)
-            .getPropertyValue("--ts-ui-window-min-dock-width").trim();
+        const cssVar = DOM.source.getThemeVar("--ts-ui-window-min-dock-width");
         if (cssVar) {
             const parsed = parseFloat(cssVar);
             if (!isNaN(parsed) && parsed > 0) {
@@ -2380,7 +2380,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             if (!el) {
                 continue;
             }
-            const rect = el.getBoundingClientRect();
+            const rect = DOM.source.getElementRect(el);
             const dx = Math.max(rect.left - cx, 0, cx - rect.right);
             const dy = Math.max(rect.top  - cy, 0, cy - rect.bottom);
             const dist = Math.hypot(dx, dy);

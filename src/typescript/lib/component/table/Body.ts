@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
@@ -716,7 +717,7 @@ class Body extends Component {
 
             const rowEl = row.getElement(true);
 
-            growFragment.appendChild(rowEl);
+            DOM.sink.appendChild(growFragment, rowEl);
 
             // Click handler is a single subtree listener on Body.init(); see
             // there for the row-lookup walk.
@@ -738,7 +739,7 @@ class Body extends Component {
             this._rowDisplayed.push(false);
         }
 
-        rowsContainer.appendChild(growFragment);
+        DOM.sink.appendChild(rowsContainer, growFragment);
     }
 
     /**

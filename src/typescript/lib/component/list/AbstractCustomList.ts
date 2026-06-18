@@ -2,6 +2,7 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Panel } from "~/core/Panel.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
@@ -243,7 +244,7 @@ class CustomListRow extends Component {
 
         const el = this.getElement();
         if (el) {
-            el.textContent = text;
+            DOM.sink.setTextContent(el, text);
         }
 
         return this;
@@ -339,7 +340,7 @@ class CustomListRow extends Component {
      */
     protected render(): HTMLElement {
         const element = super.render();
-        element.textContent = this._text;
+        DOM.sink.setTextContent(element, this._text);
         this.applyRowClass();
 
         return element;

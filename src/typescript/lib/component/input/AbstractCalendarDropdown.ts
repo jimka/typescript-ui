@@ -2,6 +2,7 @@
 
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
@@ -193,7 +194,7 @@ class PickerNavButton extends Component {
     protected render(): HTMLElement {
         const element = super.render();
 
-        element.classList.add("PickerNavButton");
+        DOM.sink.addClass(element, "PickerNavButton");
 
         return element;
     }
@@ -231,7 +232,7 @@ class PickerMonthLabel extends Text {
     protected render(): HTMLElement {
         const element = super.render();
 
-        element.classList.add("PickerNavButton");
+        DOM.sink.addClass(element, "PickerNavButton");
 
         return element;
     }
@@ -355,7 +356,7 @@ class PickerDay extends Text {
         const element = this.getElement();
 
         if (element) {
-            element.classList.toggle("disabled", disabled);
+            DOM.sink.toggleClass(element, "disabled", disabled);
         }
 
         return this;
@@ -380,10 +381,10 @@ class PickerDay extends Text {
     protected render(): HTMLElement {
         const element = super.render();
 
-        element.classList.add("PickerDay");
+        DOM.sink.addClass(element, "PickerDay");
 
         if (this._disabled) {
-            element.classList.add("disabled");
+            DOM.sink.addClass(element, "disabled");
         }
 
         return element;
@@ -649,7 +650,7 @@ abstract class AbstractCalendarDropdown<
 
         this.doLayout();
 
-        this.placeAnchored(anchorEl.getBoundingClientRect());
+        this.placeAnchored(DOM.source.getElementRect(anchorEl));
 
         this.showAnimated();
 

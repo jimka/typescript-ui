@@ -2,6 +2,7 @@
 
 import { LayoutManager } from "~/layout/LayoutManager.js";
 import { Absolute } from "~/layout/Absolute.js";
+import { DOM } from "~/core/DOM.js";
 import { BorderOptions, borderToStyle, borderSideWidth } from "~/primitive/Border.js";
 import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -431,7 +432,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             const element = this.getElement();
             if (element) {
                 for (const key of Object.keys(opts.attributes)) {
-                    element.setAttribute(key, opts.attributes[key]);
+                    DOM.sink.setAttribute(element, key, opts.attributes[key]);
                 }
             }
         }
@@ -515,7 +516,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         let element = this.getElement();
         if (element) {
-            element.remove();
+            DOM.sink.removeElement(element);
         }
     }
 
@@ -626,7 +627,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this.clearClipFrame();
         this.clearContentFrame();
 
-        element.remove();
+        DOM.sink.removeElement(element);
 
         return this;
     }
@@ -674,7 +675,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 parent.insertBefore(frame, element);
             }
 
-            frame.appendChild(element);
+            DOM.sink.appendChild(frame, element);
         }
 
         this._clipFrameStyle.setMany({
@@ -731,7 +732,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The freshly created, styled frame element.
      */
     private createFrame(style: InlineStyle, base: Record<string, string>): HTMLElement {
-        const frame = document.createElement("div");
+        const frame = DOM.sink.createElement("div");
 
         style.attach(frame);
         style.setMany({ position: "absolute", ...base });
@@ -751,7 +752,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns A new, unattached InlineStyle buffer.
      */
     private disposeFrame(frame: HTMLElement): InlineStyle {
-        frame.remove();
+        DOM.sink.removeElement(frame);
 
         return new InlineStyle();
     }
@@ -798,11 +799,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 const node = component.getAttachNode();
 
                 if (node) {
-                    frame.appendChild(node);
+                    DOM.sink.appendChild(frame, node);
                 }
             }
 
-            element.appendChild(frame);
+            DOM.sink.appendChild(element, frame);
 
             element.scrollLeft = scrollLeft;
             element.scrollTop  = scrollTop;
@@ -842,7 +843,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 const node = component.getAttachNode();
 
                 if (node) {
-                    element.appendChild(node);
+                    DOM.sink.appendChild(element, node);
                 }
             }
 
@@ -941,7 +942,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        element.setAttribute(key, String(value));
+        DOM.sink.setAttribute(element, key, String(value));
 
         return this;
     }
@@ -959,7 +960,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        element.removeAttribute(key);
+        DOM.sink.removeAttribute(element, key);
 
         return this;
     }
@@ -1204,7 +1205,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         let element = this.getElement();
         if (element) {
-            element.setAttribute(dataKey, value);
+            DOM.sink.setAttribute(element, dataKey, value);
         }
 
         return this;
@@ -1223,7 +1224,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         let element = this.getElement();
         if (element) {
-            element.removeAttribute(dataKey);
+            DOM.sink.removeAttribute(element, dataKey);
         }
 
         return this;
@@ -3733,7 +3734,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @remarks Clears all existing inline styles on the element before re-applying, ensuring a clean state.
      */
     applyStyle(element: HTMLElement): this {
-        element.removeAttribute("style");
+        DOM.sink.removeAttribute(element, "style");
 
         // Materialise the stylesheet rule once so subsequent `_styleRule.set`
         // calls write through directly (rather than queueing into the dirty
@@ -3801,6 +3802,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         if (!Number.isNaN(this._height)) {
             this._inlineStyle.set("height", this._height + "px");
+        }
+
+        // Replay the cached translate so a `setTranslate`'d transform survives
+        // the inline-style wipe above, the same way width/top/left/height are
+        // replayed. Skipped at the (0,0) default so components that drive
+        // `transform` through `setElementCSSRule` (rotation) are left untouched.
+        if (this._translateX !== 0 || this._translateY !== 0) {
+            this._inlineStyle.set("transform", "translate3d(" + this._translateX + "px," + this._translateY + "px,0)");
         }
 
         const minSize = opts.minSize;
@@ -3976,7 +3985,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         let compElement = component.getElement(true);
         // Attach into the content frame when one is active (overflow scrolling),
         // else directly under the element.
-        this.getChildHost()?.appendChild(compElement);
+        const childHost = this.getChildHost();
+
+        if (childHost) {
+            DOM.sink.appendChild(childHost, compElement);
+        }
+
         this.scheduleLayout();
 
         return this;
@@ -4447,7 +4461,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         element.id = this.getId();
-        element.classList.add(this.constructor.name);
+        DOM.sink.addClass(element, this.constructor.name);
 
         // Bind the inline-style buffer so any writes queued during detached
         // construction flush into the live element, and subsequent setters
@@ -4461,17 +4475,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // dropped at render time. Use the `Map` iterator directly.
         for (const [key, value] of this._attributes) {
             if (value != null) {
-                element.setAttribute(key.valueOf(), value.valueOf());
+                DOM.sink.setAttribute(element, key.valueOf(), value.valueOf());
             }
         }
 
         if (this._disabledAttribute) {
-            element.setAttribute("disabled", "");
+            DOM.sink.setAttribute(element, "disabled", "");
         }
 
         if (this._options.attributes) {
             for (const key of Object.keys(this._options.attributes)) {
-                element.setAttribute(key, this._options.attributes[key]);
+                DOM.sink.setAttribute(element, key, this._options.attributes[key]);
             }
         }
 
@@ -4484,7 +4498,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             let component = components[i];
             let compElement = component.getElement(true);
 
-            element.appendChild(compElement);
+            DOM.sink.appendChild(element, compElement);
         }
 
         return this;
@@ -4502,7 +4516,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The newly created root element.
      */
     protected createRootElement(): HTMLElement {
-        return document.createElement(this._tag);
+        return DOM.sink.createElement(this._tag);
     }
 
     /**

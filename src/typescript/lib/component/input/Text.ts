@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { DOM } from "~/core/DOM.js";
 import { Util } from "~/core/Util.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
@@ -274,9 +275,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         const fs = (this._options.fontSize as number | undefined) ?? (this._defaultOptions.fontSize as number | undefined) ?? 14;
 
         if (this._lineHeightCSSVar) {
-            const raw    = getComputedStyle(document.documentElement)
-                               .getPropertyValue(this._lineHeightCSSVar)
-                               .trim();
+            const raw    = DOM.source.getThemeVar(this._lineHeightCSSVar);
             const parsed = parseFloat(raw);
 
             if (!isNaN(parsed)) {
@@ -313,9 +312,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     private resolveBoundFontSizePx(): number | null {
         if (!this._fontSizeCSSVar) return null;   // explicit px size — no var bound
 
-        const raw = parseFloat(
-            getComputedStyle(document.documentElement).getPropertyValue(this._fontSizeCSSVar).trim()
-        );
+        const raw = parseFloat(DOM.source.getThemeVar(this._fontSizeCSSVar));
         if (!isNaN(raw)) return raw;              // simple var — cheap, no probe
 
         return Util.resolveFontSizePx(this._fontSizeCSSRule ?? `var(${this._fontSizeCSSVar})`);
@@ -570,7 +567,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             return this;
         }
 
-        element.textContent = text.valueOf();
+        DOM.sink.setTextContent(element, text.valueOf());
 
         return this;
     }
@@ -1158,7 +1155,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     protected render() {
         let element = super.render();
 
-        element.textContent = this.getText().valueOf();
+        DOM.sink.setTextContent(element, this.getText().valueOf());
 
         return element;
     }

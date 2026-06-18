@@ -4,6 +4,7 @@ import { Component } from "~/core/Component.js";
 import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
 import { LayerManager } from "~/core/LayerManager.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * One of the five drop zones a dock gesture resolves the cursor into: the four
@@ -159,12 +160,12 @@ class DropZoneOverlay extends Component {
 
         const regionEl = region.getElement(true);
         if (myEl.parentElement !== regionEl) {
-            regionEl.appendChild(myEl);
+            DOM.sink.appendChild(regionEl, myEl);
         }
 
         const highlightEl = this._highlight.getElement(true);
         if (highlightEl.parentElement !== myEl) {
-            myEl.appendChild(highlightEl);
+            DOM.sink.appendChild(myEl, highlightEl);
         }
     }
 

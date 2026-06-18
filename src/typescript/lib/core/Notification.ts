@@ -2,7 +2,6 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
-import { Util } from "~/core/Util.js";
 import { Animation } from "~/core/Animation.js";
 import { Text } from "~/component/input/Text.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -15,6 +14,7 @@ import { circle_check } from "~/glyphs/solid/circle_check.js";
 import { triangle_exclamation } from "~/glyphs/solid/triangle_exclamation.js";
 import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
+import { DOM } from "~/core/DOM.js";
 
 Glyph.register(circle_info, circle_check, triangle_exclamation, circle_exclamation, xmark);
 
@@ -190,7 +190,7 @@ export class Notification extends Component {
 
         n.scheduleLayout();
 
-        document.documentElement.appendChild(el);
+        DOM.sink.appendChild(document.documentElement, el);
 
         Notification.restack();
         n.animateIn();
@@ -475,7 +475,7 @@ export class Notification extends Component {
      * stack upward from the bottom-right corner without overlapping.
      */
     private static restack(): void {
-        const vp = Util.getViewportSize();
+        const vp = DOM.source.getViewportSize();
         const x  = vp.width - Notification.WIDTH - Notification.MARGIN;
 
         let y = vp.height - Notification.MARGIN;

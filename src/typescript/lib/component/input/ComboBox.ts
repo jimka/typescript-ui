@@ -2,6 +2,7 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
@@ -201,7 +202,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         const chromeW  = perim.left + perim.right;
         const naturalH = items.length * COMBOBOX_DROPDOWN_ROW_HEIGHT_PX + chromeH;
         const panelH   = Math.min(naturalH, COMBOBOX_DROPDOWN_MAX_HEIGHT_PX);
-        const rect     = anchorEl.getBoundingClientRect();
+        const rect     = DOM.source.getElementRect(anchorEl);
 
         // Dropdown lives outside the host's layout tree (overlay on
         // documentElement), so it isn't bound to the anchor's width.
@@ -370,7 +371,7 @@ class ComboBoxLabel extends Component {
 
         const el = this.getElement();
         if (el) {
-            el.textContent = text;
+            DOM.sink.setTextContent(el, text);
         }
 
         return this;
@@ -404,7 +405,7 @@ class ComboBoxLabel extends Component {
 
     protected render(): HTMLElement {
         const element = super.render();
-        element.textContent = this._text;
+        DOM.sink.setTextContent(element, this._text);
 
         return element;
     }

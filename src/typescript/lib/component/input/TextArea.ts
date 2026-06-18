@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Util } from "~/core/Util.js";
@@ -227,15 +228,15 @@ class TextArea extends TextInput<TextAreaOptions> {
         const el = element || this.getElement()!;
 
         if (this._options.rows !== undefined) {
-            el.setAttribute("rows", String(this._options.rows));
+            DOM.sink.setAttribute(el, "rows", String(this._options.rows));
         }
 
         if (this._options.cols !== undefined) {
-            el.setAttribute("cols", String(this._options.cols));
+            DOM.sink.setAttribute(el, "cols", String(this._options.cols));
         }
 
         if (this._options.wrap !== undefined) {
-            el.setAttribute("wrap", this._options.wrap);
+            DOM.sink.setAttribute(el, "wrap", this._options.wrap);
         }
 
         return this;
