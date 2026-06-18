@@ -26,6 +26,15 @@ export interface CheckboxOptions extends AbstractInputOptions {
     value?:         boolean;
     indeterminate?: boolean;
     label?:         string | null;
+    /**
+     * Construction-time listener bag — the declarative form of `on()`. Adds the
+     * checkbox's `action` shorthand to the inherited `change` / `binding`.
+     */
+    listeners?: {
+        action?:  () => void;
+        change?:  (value: boolean) => void;
+        binding?: () => void;
+    };
 }
 
 /**

@@ -676,17 +676,7 @@ class TabBar extends Container<TabBarOptions> {
             }
         }
 
-        if (options.listeners) {
-            const l = options.listeners;
-
-            if (l.tabpressed)       this.on("tabpressed", l.tabpressed);
-            if (l.reordered)        this.on("reordered", l.reordered);
-            if (l.tabclose)         this.on("tabclose", l.tabclose);
-            if (l.dockrequested)    this.on("dockrequested", l.dockrequested);
-            if (l.tabdragstart)     this.on("tabdragstart", l.tabdragstart);
-            if (l.tearoffrequested) this.on("tearoffrequested", l.tearoffrequested);
-            if (l.detached)         this.on("detached", l.detached);
-        }
+        this.applyListeners(options?.listeners);
     }
 
     /**

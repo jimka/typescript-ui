@@ -116,13 +116,7 @@ class Tree extends Component<TreeOptions> {
         this.getAria().setTabIndex(0);
         this.getAria().setMultiselectable(true);
 
-        if (options?.listeners?.selection !== undefined) {
-            this.on("selection", options.listeners.selection);
-        }
-
-        if (options?.listeners?.loaderror !== undefined) {
-            this.on("loaderror", options.listeners.loaderror);
-        }
+        this.applyListeners(options?.listeners);
     }
 
     /**

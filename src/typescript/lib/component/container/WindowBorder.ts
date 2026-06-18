@@ -103,9 +103,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
         Event.addListener(this, 'mousedown', this._dragStartListener);
 
-        if (options?.listeners?.drag !== undefined) {
-            this.on("drag", options.listeners.drag);
-        }
+        this.applyListeners(options?.listeners);
 
         // Queue the snap-target highlight into the lazy state rule. Materialises
         // at render time through Component's batched style channel.

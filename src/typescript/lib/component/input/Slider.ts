@@ -23,6 +23,15 @@ export interface SliderOptions extends AbstractInputOptions {
     minValue?:    number;
     /** @deprecated use {@link SliderOptions.max} */
     maxValue?:    number;
+    /**
+     * Construction-time listener bag — the declarative form of `on()`. Adds the
+     * slider's `action` shorthand to the inherited `change` / `binding`.
+     */
+    listeners?: {
+        action?:  () => void;
+        change?:  (value: number) => void;
+        binding?: () => void;
+    };
 }
 
 const TRACK_THICKNESS = 4;

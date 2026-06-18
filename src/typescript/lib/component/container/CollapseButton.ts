@@ -150,9 +150,7 @@ class CollapseButton extends Component<CollapseButtonOptions> {
         // Listener wiring runs here — NOT inside `applyOptions` — because
         // Component's constructor calls `applyOptions` from inside super(),
         // before the class-field `_listeners` initializer has run.
-        if (options?.listeners?.collapse !== undefined) {
-            this.on("collapse", options.listeners.collapse);
-        }
+        this.applyListeners(options?.listeners);
 
         Event.addListener(this, "dblclick", this.onDoubleClick);
         Event.addListener(this, "mousedown", this.onMouseDown);

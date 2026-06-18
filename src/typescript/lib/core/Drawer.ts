@@ -194,28 +194,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
 
         // Listener dispatch lives in the constructor body, not applyOptions:
         // the ListenerBag field is undefined during the super() cascade.
-        if (options?.listeners !== undefined) {
-            this.applyListeners(options.listeners);
-        }
-    }
-
-    /**
-     * Wires the construction-time listener bag onto the typed `on` surface.
-     *
-     * @param listeners - The `options.listeners` bag.
-     */
-    private applyListeners(listeners: NonNullable<DrawerOptions["listeners"]>): void {
-        if (listeners.open !== undefined) {
-            this.on("open", listeners.open);
-        }
-
-        if (listeners.close !== undefined) {
-            this.on("close", listeners.close);
-        }
-
-        if (listeners.beforeclose !== undefined) {
-            this.on("beforeclose", listeners.beforeclose);
-        }
+        this.applyListeners(options?.listeners);
     }
 
     /**

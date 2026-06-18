@@ -479,6 +479,32 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Wires a closed `listeners` bag via `this.on()` — the declarative form of
+     * the component's typed `on()` surface. A host that exposes `on()` calls
+     * this once from its constructor body after `super()` returns (when its
+     * `ListenerBag` field has initialised). The base never calls it — base
+     * `Component` has no `on`, so the `(this as any).on` cast is sound only
+     * because the helper is invoked exclusively from hosts that define one.
+     *
+     * @param listeners - The component's `options.listeners` bag, or `undefined`.
+     */
+    protected applyListeners(
+        listeners: Record<string, ((...args: any[]) => void) | undefined> | undefined
+    ): void {
+        if (!listeners) {
+            return;
+        }
+
+        for (const event of Object.keys(listeners)) {
+            const fn = listeners[event];
+
+            if (fn) {
+                (this as any).on(event, fn);
+            }
+        }
+    }
+
+    /**
      * Removes the component's DOM element when the component is destroyed.
      */
     protected destructor() {

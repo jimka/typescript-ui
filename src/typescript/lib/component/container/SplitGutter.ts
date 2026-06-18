@@ -165,17 +165,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
             Event.addListener(this, 'mousedown', this.onDragStart);
         }
 
-        if (options?.listeners?.dragstart !== undefined) {
-            this.on("dragstart", options.listeners.dragstart);
-        }
-
-        if (options?.listeners?.drag !== undefined) {
-            this.on("drag", options.listeners.drag);
-        }
-
-        if (options?.listeners?.collapse !== undefined) {
-            this.on("collapse", options.listeners.collapse);
-        }
+        this.applyListeners(options?.listeners);
 
         // Seed the expanded-state hover hint (setOpaque already refreshes it
         // when an opaque gutter is constructed).

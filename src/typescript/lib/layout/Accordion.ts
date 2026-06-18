@@ -133,8 +133,16 @@ class Accordion extends LayoutManager {
             this.setAnimationDuration(options.animationDuration);
         }
 
-        if (options.listeners?.sectiontoggle !== undefined) {
-            this.on("sectiontoggle", options.listeners.sectiontoggle);
+        if (options.listeners !== undefined) {
+            const listeners = options.listeners;
+
+            for (const event of Object.keys(listeners) as Array<keyof typeof listeners>) {
+                const listener = listeners[event];
+
+                if (listener !== undefined) {
+                    this.on(event, listener);
+                }
+            }
         }
 
         if (options.singleOpen !== undefined) {

@@ -134,6 +134,13 @@ export interface ButtonOptions extends ComponentOptions {
      * size, anchor decides displacement). `BOTH` stretches it to fill.
      */
     fill?:                   FillType;
+
+    /**
+     * Construction-time listener bag — the declarative form of `on()`. The
+     * `action` entry is wired as if `on("action", fn)` had been called (it
+     * fires on the underlying DOM `click`).
+     */
+    listeners?:              { action?: ClickListener };
 }
 
 /**
@@ -457,6 +464,19 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // font-size / glyph-metric shifts cascade into the button's preferred
         // size without explicit consumer prodding.
         ThemeManager.onThemeChange(this._onThemeChange);
+
+        // Wire the listener bag — but only when this IS a plain Button.
+        // Subclasses wire their own bag from their constructor body after their
+        // `super()` returns, because a subclass event (e.g. SpinButton's
+        // `tick`) may live in a `ListenerBag` that does not exist yet during
+        // this base constructor. The check is instance-identity, not
+        // `new.target`: construction routes through the `callable()` Proxy,
+        // which has no `construct` trap, so `new.target` is the proxy rather
+        // than this class — but the instance's prototype still resolves to the
+        // raw class prototype, so a plain Button matches and any subclass does not.
+        if (Object.getPrototypeOf(this) === Button.prototype) {
+            this.applyListeners(options?.listeners);
+        }
     }
 
     /**

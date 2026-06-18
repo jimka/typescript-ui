@@ -109,9 +109,7 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
         // initialisers fire between super() returning and the next
         // statement here). Wiring after super() guarantees `_listeners`
         // is the live `ListenerBag` instance.
-        if (options?.listeners?.dragstart !== undefined) this.on("dragstart", options.listeners.dragstart);
-        if (options?.listeners?.dragmove  !== undefined) this.on("dragmove",  options.listeners.dragmove);
-        if (options?.listeners?.dragend   !== undefined) this.on("dragend",   options.listeners.dragend);
+        this.applyListeners(options?.listeners);
     }
 
     /**
