@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
+import { StyleRule } from "~/core/StyleTarget.js";
 import { Position } from "~/primitive/Position.js";
 import { Placement } from "~/primitive/Placement.js";
 import { isUnbounded } from "~/primitive/Size.js";
@@ -11,6 +12,7 @@ import { Util } from "~/core/Util.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { RailHandle } from "~/core/RailHandle.js";
+import { CollapseButton, CollapseDirection } from "~/component/container/CollapseButton.js";
 import { callable } from "~/core/Callable.js";
 import type { Drawer, DrawerEdge } from "~/core/Drawer.js";
 import type { AbstractWindow } from "~/core/AbstractWindow.js";
@@ -107,6 +109,14 @@ export interface RailOptions extends ComponentOptions {
      */
     orientation?: RailOrientation;
 
+    /**
+     * Whether the rail starts collapsed — minimized to a thin gutter strip along
+     * the edge (handles hidden) that a click on its chevron expands.
+     *
+     * @defaultValue false
+     */
+    collapsed?: boolean;
+
     /** Construction-time event listeners dispatched to {@link Rail.on}. */
     listeners?: {
         register?:   (target: Drawer | AbstractWindow) => void;
@@ -142,6 +152,51 @@ const RAIL_Z_INDEX: number = 8900;
  * {@link Animation.play}, which then snaps to the end state.
  */
 const RAIL_ANIM_DURATION_MS: number = 200;
+
+/**
+ * Cross-axis thickness (px) of the collapsed rail — the thin strip the rail
+ * minimizes into, skinned like a `Split` / `Border` collapsed gutter; a click on
+ * the chevron expands the rail again.
+ */
+const RAIL_COLLAPSED_THICKNESS_PX: number = 10;
+
+/**
+ * Half the collapse chevron's grip width (`CollapseButton`'s 10px grip), used to
+ * inset the chevron's centre from the rail's inner edge so the whole grip sits
+ * just inside the strip. The chevron is centred on its anchor by the
+ * `CollapseButton` transform, so anchoring its centre half a grip-width in from
+ * the edge leaves it flush inside — never overhanging the `overflow: hidden`
+ * rail (which would clip it and let clicks fall through to whatever is behind).
+ */
+const RAIL_CHEVRON_HALF_PX: number = 5;
+
+/**
+ * Maps a rail edge to the chevron's collapse heading — the direction the rail
+ * travels (and the chevron points) when collapsing: toward the outer screen
+ * edge it anchors to. The restore heading is the opposite, handled by the
+ * chevron itself.
+ *
+ * @param edge - The rail's edge.
+ *
+ * @returns The collapse-heading {@link CollapseDirection}.
+ */
+function collapseHeadingFor(edge: RailEdge): CollapseDirection {
+    switch (edge) {
+        case Placement.EAST:  return "east";
+        case Placement.NORTH: return "north";
+        case Placement.SOUTH: return "south";
+        case Placement.WEST:
+        default:              return "west";
+    }
+}
+
+/** The chevron's restore heading is the opposite of its collapse heading. */
+const OPPOSITE_HEADING: Record<CollapseDirection, CollapseDirection> = {
+    west:  "east",
+    east:  "west",
+    north: "south",
+    south: "north",
+};
 
 /**
  * Subclass defaults layered into `Component._defaultOptions`. The two
@@ -215,6 +270,16 @@ class Rail extends Component<RailOptions> {
     /** Whether the rail is currently mounted (attached to the document). */
     private _mounted: boolean = false;
 
+    /** The collapse/restore chevron pinned to the rail's inner edge. */
+    private _collapseButton: CollapseButton;
+
+    /**
+     * The content-fit thickness captured at collapse time. Hidden handles are
+     * excluded from the preferred-size measurement, so the expand animation
+     * tweens back to this remembered extent rather than a mis-measured one.
+     */
+    private _expandedThickness: number = DEFAULT_RAIL_THICKNESS_PX;
+
     /** Stable viewport-resize handler reference, for add/remove symmetry. */
     private _boundResizeHandler: () => void = (): void => this.applyRestingGeometry();
 
@@ -233,6 +298,15 @@ class Rail extends Component<RailOptions> {
         // fixed z-index rather than drawing one from the layer manager.
         this.setPosition(Position.FIXED);
         this.setZIndex(RAIL_Z_INDEX);
+
+        // The collapse chevron sits at the rail's inner edge: double-clicking it
+        // (matching the Split / Border gutter chevrons) collapses the rail to a
+        // gutter, or restores it. Its heading points the way the rail travels on
+        // collapse — toward the outer screen edge.
+        this._collapseButton = new CollapseButton({
+            direction: collapseHeadingFor(this.getEdge()),
+            listeners: { collapse: (): void => { this.toggleCollapsed(); } },
+        });
 
         // Listener dispatch lives in the constructor body, not applyOptions:
         // the ListenerBag field is undefined during the super() cascade.
@@ -280,6 +354,12 @@ class Rail extends Component<RailOptions> {
 
         if (opts.orientation !== undefined) {
             this.setOrientation(opts.orientation);
+        }
+
+        if (opts.collapsed !== undefined) {
+            // Cache only during the cascade — the visual transition needs the
+            // element + chevron + handles, which mount() applies once they exist.
+            this._options.collapsed = opts.collapsed;
         }
 
         return this;
@@ -334,6 +414,10 @@ class Rail extends Component<RailOptions> {
      * @returns The current thickness.
      */
     getThickness(): number {
+        if (this.isCollapsed()) {
+            return RAIL_COLLAPSED_THICKNESS_PX;
+        }
+
         if (this._options.thickness !== undefined) {
             return this._options.thickness;
         }
@@ -372,6 +456,297 @@ class Rail extends Component<RailOptions> {
     private adaptThickness(): void {
         if (this._mounted) {
             this.applyRestingGeometry();
+        }
+    }
+
+    // ----- collapse / expand -----
+
+    /**
+     * Returns whether the rail is collapsed to its gutter strip.
+     *
+     * @returns True when collapsed.
+     */
+    isCollapsed(): boolean {
+        return this._options.collapsed ?? false;
+    }
+
+    /**
+     * Collapses the rail to a thin gutter strip (handles hidden) or restores it
+     * to full size, animating the cross-axis between the two when mounted. No-op
+     * if already in the requested state.
+     *
+     * @param value - True to collapse, false to expand.
+     *
+     * @returns This rail, for method chaining.
+     */
+    setCollapsed(value: boolean): this {
+        if (value === this.isCollapsed()) {
+            return this;
+        }
+
+        if (value) {
+            // Capture the expanded extent first: hidden handles drop out of the
+            // preferred-size measurement, so the expand tween reads this back
+            // rather than re-measuring an empty rail.
+            this._expandedThickness = this.getThickness();
+        }
+
+        this._options.collapsed = value;
+
+        if (this._mounted) {
+            this.animateCollapseTransition(value);
+        }
+
+        return this;
+    }
+
+    /**
+     * Toggles the collapsed state.
+     *
+     * @returns This rail, for method chaining.
+     */
+    toggleCollapsed(): this {
+        return this.setCollapsed(!this.isCollapsed());
+    }
+
+    /**
+     * Flips the chevron heading, applies the collapsed/expanded skin, positions
+     * the chevron, and (immediately, no animation) shows or hides the handles
+     * for the current collapsed state. Used by `mount` to seed a rail
+     * constructed `collapsed`.
+     */
+    private applyCollapseAppearance(): void {
+        const collapsed = this.isCollapsed();
+        const heading   = collapseHeadingFor(this.getEdge());
+
+        this._collapseButton.setDirection(collapsed ? OPPOSITE_HEADING[heading] : heading);
+        this.applyCollapseStyling(collapsed);
+        this.positionChevron(collapsed);
+        this.setAllHandlesDisplayed(!collapsed);
+    }
+
+    /**
+     * Skins the strip for the collapsed or expanded state, mirroring how a
+     * [`Split`](/api/layout/classes/Split) / [`Border`](/api/layout/classes/Border)
+     * gutter paints its collapsed strip (`SplitGutter.setOpaque`): collapsed, the
+     * rail reads as a themed button surface (the same fill, gradient, and border
+     * the framework's buttons use) that invites a click to restore; expanded, it
+     * returns to the rail background and its single inner-edge divider.
+     *
+     * @param collapsed - True for the collapsed strip skin, false for the
+     *   expanded rail skin.
+     */
+    private applyCollapseStyling(collapsed: boolean): void {
+        if (collapsed) {
+            this.setBackgroundColor("var(--ts-ui-button-bg, #e8e8e8)");
+            this.setBackgroundImage("var(--ts-ui-button-bg, linear-gradient(rgb(241, 241, 241), rgb(200, 200, 200)))");
+            this.setBorder("1px solid var(--ts-ui-button-border, #c8c8c8)");
+        } else {
+            this.clearBackgroundImage();
+            this.setBackgroundColor("var(--ts-ui-rail-bg)");
+            this.applyEdgeBorder();
+        }
+    }
+
+    /**
+     * Places and sizes the collapse chevron for the current state, writing
+     * `left` / `top` / `width` onto the chevron's own `#id` style rule (shared by
+     * selector with the rule {@link CollapseButton} uses for its rotation, so the
+     * two coexist) and overriding the shared `.CollapseButton` class rule.
+     *
+     * - **Collapsed:** centred in the strip and sized to fill its full thickness,
+     *   so the restore handle reads as the Split collapsed-gutter handle.
+     * - **Expanded:** pinned just inside the rail's inner (content-facing) edge —
+     *   the side opposite the viewport edge it anchors to (right for WEST, left
+     *   for EAST, bottom for NORTH, top for SOUTH) — at the narrow grip width,
+     *   its centre inset by {@link RAIL_CHEVRON_HALF_PX} so the whole grip sits
+     *   flush inside the strip rather than overhanging it.
+     *
+     * In both states the chevron is raised above the handles (`z-index`) so a
+     * click always lands on it, never on a handle laid out beneath it; and it is
+     * kept fully inside the `overflow: hidden` rail so a click never falls through
+     * to whatever sits behind an overhang. Percentages (not pixels) for the
+     * placement so the chevron tracks the rail's size and position through the
+     * collapse tween and viewport resizes. `width` maps to the across-gutter axis
+     * for every edge because {@link CollapseButton}'s rotation orients its box.
+     *
+     * @param collapsed - True for the collapsed (centred, strip-filling) chevron,
+     *   false for the expanded (inner-edge, grip) chevron.
+     */
+    private positionChevron(collapsed: boolean): void {
+        let left: string;
+        let top:  string;
+
+        if (collapsed) {
+            // Centred in the strip — the CollapseButton class-rule default.
+            left = "50%";
+            top  = "50%";
+        } else {
+            // Flush just inside the inner edge: anchor the chevron's centre half
+            // a grip-width in from the edge (see RAIL_CHEVRON_HALF_PX).
+            const inset = `calc(100% - ${RAIL_CHEVRON_HALF_PX}px)`;
+            const near  = `${RAIL_CHEVRON_HALF_PX}px`;
+
+            switch (this.getEdge()) {
+                case Placement.EAST:
+                    left = near;
+                    top  = "50%";
+
+                    break;
+
+                case Placement.NORTH:
+                    left = "50%";
+                    top  = inset;
+
+                    break;
+
+                case Placement.SOUTH:
+                    left = "50%";
+                    top  = near;
+
+                    break;
+
+                case Placement.WEST:
+                default:
+                    left = inset;
+                    top  = "50%";
+
+                    break;
+            }
+        }
+
+        // Fill the strip thickness when collapsed; clear to the CollapseButton
+        // grip width (its class-rule default) when expanded.
+        const width = collapsed ? RAIL_COLLAPSED_THICKNESS_PX + "px" : null;
+
+        new StyleRule({
+            scope:  "component",
+            name:   this._collapseButton.getId(),
+            styles: { left, top, width, zIndex: "1" },
+        });
+    }
+
+    /**
+     * Animates the cross-axis between the full and collapsed extents. The chevron
+     * heading, skin, and placement flip up front.
+     *
+     * The handles stay shown and laid out at the full extent across the whole
+     * tween in both directions; because the rail clips its overflow, the moving
+     * edge reveals them as the strip widens (expand) and clips them away as it
+     * narrows (collapse), so they follow the animation symmetrically rather than
+     * popping in or out. On collapse they are hidden only once the strip has
+     * closed.
+     *
+     * @param collapsed - True when collapsing, false when expanding.
+     */
+    private animateCollapseTransition(collapsed: boolean): void {
+        const heading = collapseHeadingFor(this.getEdge());
+
+        this._collapseButton.setDirection(collapsed ? OPPOSITE_HEADING[heading] : heading);
+        this.applyCollapseStyling(collapsed);
+        this.positionChevron(collapsed);
+
+        const element = this.getElement();
+
+        // The visible extent the tween starts from — the live cross-axis size
+        // (full when collapsing, the collapsed strip when expanding). Captured
+        // before the expand path lays out the full geometry below.
+        const fromThickness = this.isVertical() ? this.getWidth() : this.getHeight();
+        const toThickness   = collapsed ? RAIL_COLLAPSED_THICKNESS_PX : this._expandedThickness;
+
+        if (!collapsed) {
+            // Reveal and lay the handles out at the full extent up front; the
+            // tween's `from` immediately shrinks the visible strip back to the
+            // collapsed width, so they wipe into view as it grows. (Collapse
+            // keeps the already-laid-out handles in place so the narrowing strip
+            // wipes them out; they are hidden in `finalize`.)
+            this.setAllHandlesDisplayed(true);
+            this.applyRestingGeometry();
+            this.scheduleLayout();
+        }
+
+        const finalize = (): void => {
+            // Now that the strip has closed, drop the handles out of the layout.
+            if (collapsed) {
+                this.setAllHandlesDisplayed(false);
+            }
+
+            this.applyRestingGeometry();
+
+            if (!collapsed) {
+                this.scheduleLayout();
+            }
+        };
+
+        if (!element) {
+            finalize();
+
+            return;
+        }
+
+        const tween = this.collapseTween(fromThickness, toThickness);
+
+        Animation.play(element, {
+            from:       tween.from,
+            to:         tween.to,
+            durationMs: RAIL_ANIM_DURATION_MS,
+            properties: tween.properties,
+            onComplete: finalize,
+        });
+    }
+
+    /**
+     * Builds the from/to inline styles for the collapse/expand tween: the
+     * cross-axis dimension (and, for EAST/SOUTH rails whose anchored corner
+     * moves, the matching `left`/`top`) between two explicit thicknesses.
+     *
+     * @param fromThickness - The cross-axis extent the tween starts from.
+     * @param toThickness - The cross-axis extent the tween ends at.
+     *
+     * @returns The `from` / `to` style partials and the animated property names.
+     */
+    private collapseTween(fromThickness: number, toThickness: number): {
+        from: Partial<CSSStyleDeclaration>;
+        to: Partial<CSSStyleDeclaration>;
+        properties: string[];
+    } {
+        const vp   = Util.getViewportSize();
+        const from: Partial<CSSStyleDeclaration> = {};
+        const to:   Partial<CSSStyleDeclaration> = {};
+
+        if (this.isVertical()) {
+            from.width = fromThickness + "px";
+            to.width   = toThickness + "px";
+
+            if (this.getEdge() === Placement.EAST) {
+                from.left = (vp.width - fromThickness) + "px";
+                to.left   = (vp.width - toThickness) + "px";
+            }
+        } else {
+            from.height = fromThickness + "px";
+            to.height   = toThickness + "px";
+
+            if (this.getEdge() === Placement.SOUTH) {
+                from.top = (vp.height - fromThickness) + "px";
+                to.top   = (vp.height - toThickness) + "px";
+            }
+        }
+
+        return { from, to, properties: Object.keys(to) };
+    }
+
+    /**
+     * Shows or hides every handle (drawer and window).
+     *
+     * @param displayed - True to show the handles, false to hide them.
+     */
+    private setAllHandlesDisplayed(displayed: boolean): void {
+        for (const reg of this._drawers.values()) {
+            reg.handle.setDisplayed(displayed);
+        }
+
+        for (const reg of this._windows.values()) {
+            reg.handle?.setDisplayed(displayed);
         }
     }
 
@@ -426,7 +801,21 @@ class Rail extends Component<RailOptions> {
         this.applyEdgeBorder();
         this.applyRestingGeometry();
 
-        document.documentElement.appendChild(this.getElement(true));
+        const element = this.getElement(true);
+        document.documentElement.appendChild(element);
+
+        // The collapse chevron is a raw child (self-centred via its own class
+        // rule), outside the handle layout, so it doesn't count toward the
+        // content-fit thickness. Append once; a remount reuses the element.
+        const chevron = this._collapseButton.getElement(true);
+        if (chevron && chevron.parentElement !== element) {
+            element.appendChild(chevron);
+        }
+
+        // Seed the chevron heading, skin, placement, and handle visibility for
+        // the initial (possibly collapsed) state.
+        this.applyCollapseAppearance();
+
         this.scheduleLayout();
 
         Event.addViewportListener(this, "resize", this._boundResizeHandler);
@@ -551,6 +940,7 @@ class Rail extends Component<RailOptions> {
         }
 
         this.applyHandleOrientation(handle);
+        handle.setDisplayed(!this.isCollapsed());
         this.addComponent(handle);
         this._drawers.set(drawer, { handle, onOpen, onClose, onAction });
 
@@ -671,6 +1061,7 @@ class Rail extends Component<RailOptions> {
 
         reg.handle = handle;
         this.applyHandleOrientation(handle);
+        handle.setDisplayed(!this.isCollapsed());
         this.addComponent(handle);
 
         this.adaptThickness();
@@ -743,6 +1134,23 @@ class Rail extends Component<RailOptions> {
     // ----- internal: geometry -----
 
     /**
+     * Opts the rail out of content-derived size clamping. Like
+     * [`Container`](/api/core/classes/Container) / [`Panel`](/api/core/classes/Panel),
+     * the rail sizes itself explicitly — its main axis spans the viewport and
+     * its cross axis is the thickness it computes — so {@link Component.setWidth} /
+     * {@link Component.setHeight} must not be clamped back to the layout
+     * manager's content size. Without this, collapsing (which hides every
+     * handle) would empty the handle layout, drive its content max toward zero,
+     * and clamp the rail's viewport-spanning main axis to nothing — the strip
+     * would vanish instead of resting at {@link RAIL_COLLAPSED_THICKNESS_PX}.
+     *
+     * @returns Always `false`.
+     */
+    protected clampsToContentSize(): boolean {
+        return false;
+    }
+
+    /**
      * Returns whether the rail lays its handles out vertically — true for the
      * WEST and EAST edges (a column at a fixed width).
      *
@@ -794,31 +1202,38 @@ class Rail extends Component<RailOptions> {
     }
 
     /**
-     * Applies the 1px divider border on the rail's inner edge — the side that
-     * faces the rest of the UI — leaving the other three sides borderless.
+     * Applies the expanded-state border: a 1px divider (`--ts-ui-rail-border`) on
+     * the rail's inner edge — the side facing the rest of the UI — with the other
+     * three sides a 1px *transparent* border rather than no border.
+     *
+     * Reserving the same 1px box on every side that the collapsed strip's button
+     * border occupies keeps the rail's border-box geometry identical across the
+     * collapse/expand transition, so the handles and chevron don't jump by a
+     * pixel when the visible border appears or disappears.
      */
     private applyEdgeBorder(): void {
-        const divider = "1px solid var(--ts-ui-rail-border)";
+        const transparent = "1px solid transparent";
+        const divider     = "1px solid var(--ts-ui-rail-border)";
 
         switch (this.getEdge()) {
             case Placement.EAST:
-                this.setBorder({ border: "none", borderLeft: divider });
+                this.setBorder({ border: transparent, borderLeft: divider });
 
                 break;
 
             case Placement.NORTH:
-                this.setBorder({ border: "none", borderBottom: divider });
+                this.setBorder({ border: transparent, borderBottom: divider });
 
                 break;
 
             case Placement.SOUTH:
-                this.setBorder({ border: "none", borderTop: divider });
+                this.setBorder({ border: transparent, borderTop: divider });
 
                 break;
 
             case Placement.WEST:
             default:
-                this.setBorder({ border: "none", borderRight: divider });
+                this.setBorder({ border: transparent, borderRight: divider });
 
                 break;
         }

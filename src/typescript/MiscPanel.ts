@@ -678,8 +678,11 @@ class MiscPanel extends Panel {
         // drawer it never slides away; its handles toggle two registered
         // (non-modal) drawers, and a window minimizes *into* the rail as a
         // handle that restores it on click. The button toggles the whole rail
-        // on and off so it doesn't permanently cover the demo.
+        // on and off so it doesn't permanently cover the demo. The rail is built
+        // once and only mounted/unmounted, so its collapsed state is remembered
+        // across toggles.
         let demoRail: Rail | null = null;
+        let railMounted = false;
         const buildRailDrawer = (label: string): Drawer => {
             const drawer = new Drawer({ modal: false, layoutManager: new VBox({ stretching: true }) });
 
@@ -699,27 +702,30 @@ class MiscPanel extends Panel {
 
         const railButton = new Button("Toggle launcher rail (Rail)");
         railButton.on("action", () => {
-            if (demoRail) {
-                demoRail.unmount();
-                demoRail = null;
+            // Build the rail (and its drawers + minimizable window) once, the
+            // first time it is shown. Reusing the instance means its
+            // collapsed/expanded state survives later unmount/mount toggles.
+            if (!demoRail) {
+                demoRail = new Rail({ edge: Placement.EAST, orientation: "vertical-cw" });
+                demoRail.registerDrawer(buildRailDrawer("Filters"), { glyph: "filter", text: "Filters" });
+                demoRail.registerDrawer(buildRailDrawer("Info"), { glyph: "circle-info", text: "Info" });
 
-                return;
+                const win = new Window("Rail-docked window", { minimizable: true, glyph: "file" });
+                win.setX(220);
+                win.setY(140);
+                win.setWidth(360);
+                win.setHeight(240);
+                win.setRail(demoRail);
+                win.show();
             }
 
-            const rail = new Rail({ edge: Placement.WEST, orientation: "vertical-cw" });
-            rail.registerDrawer(buildRailDrawer("Filters"), { glyph: "filter", text: "Filters" });
-            rail.registerDrawer(buildRailDrawer("Info"), { glyph: "circle-info", text: "Info" });
-
-            const win = new Window("Rail-docked window", { minimizable: true, glyph: "file" });
-            win.setX(220);
-            win.setY(140);
-            win.setWidth(360);
-            win.setHeight(240);
-            win.setRail(rail);
-            win.show();
-
-            rail.mount();
-            demoRail = rail;
+            if (railMounted) {
+                demoRail.unmount();
+                railMounted = false;
+            } else {
+                demoRail.mount();
+                railMounted = true;
+            }
         });
         leftColumn.addComponent(railButton);
 
