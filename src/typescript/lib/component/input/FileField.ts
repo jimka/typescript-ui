@@ -136,7 +136,7 @@ class HiddenFileInput extends Component {
         const el = this.getElement() as HTMLInputElement | null;
 
         if (el) {
-            el.value = "";
+            DOM.sink.setValue(el, "");
         }
     }
 

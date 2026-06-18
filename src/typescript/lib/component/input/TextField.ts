@@ -3,6 +3,7 @@
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
+import { DOM } from "~/core/DOM.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
@@ -84,7 +85,7 @@ class TextField extends TextInput<TextFieldOptions> {
      */
     onInput() {
         let element = this.getElement();
-        this.setText(element.value);
+        this.setText(DOM.source.getValue(element));
     }
 
 }

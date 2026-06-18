@@ -206,10 +206,14 @@ class FieldSet extends Component {
 
         const element = this._legend.getElement();
 
-        if (element && element.isConnected && element.offsetHeight > 0) {
-            this._legendClearance = element.offsetHeight;
+        if (element && DOM.source.isConnected(element)) {
+            const offsetHeight = DOM.source.getOffsetSize(element).offsetHeight;
 
-            return this._legendClearance;
+            if (offsetHeight > 0) {
+                this._legendClearance = offsetHeight;
+
+                return this._legendClearance;
+            }
         }
 
         return FieldSet.LEGEND_CLEARANCE_FALLBACK;

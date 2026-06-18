@@ -254,7 +254,7 @@ class TextArea extends TextInput<TextAreaOptions> {
      */
     onInput() {
         let element = this.getElement();
-        this.setText(element.value);
+        this.setText(DOM.source.getValue(element));
     }
 
 }

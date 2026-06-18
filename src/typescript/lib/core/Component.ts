@@ -785,8 +785,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (!this._contentFrame) {
             // Re-parenting the child set can reset the host's native scroll
             // offset; capture and restore it around the move.
-            const scrollLeft = element.scrollLeft;
-            const scrollTop  = element.scrollTop;
+            const scrollLeft = DOM.source.getScrollLeft(element);
+            const scrollTop  = DOM.source.getScrollTop(element);
 
             // `left/top: 0` parks the frame at the container's padding-box
             // origin, so children keep their existing coordinates inside it.
@@ -805,8 +805,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
             DOM.sink.appendChild(element, frame);
 
-            element.scrollLeft = scrollLeft;
-            element.scrollTop  = scrollTop;
+            DOM.sink.setScrollLeft(element, scrollLeft);
+            DOM.sink.setScrollTop(element, scrollTop);
         }
 
         this._contentFrameStyle.setMany({
@@ -834,8 +834,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const element = this.getElement();
 
         if (element) {
-            const scrollLeft = element.scrollLeft;
-            const scrollTop  = element.scrollTop;
+            const scrollLeft = DOM.source.getScrollLeft(element);
+            const scrollTop  = DOM.source.getScrollTop(element);
 
             // Re-parent the children back onto the element by their outermost
             // node before the frame is removed.
@@ -847,8 +847,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 }
             }
 
-            element.scrollLeft = scrollLeft;
-            element.scrollTop  = scrollTop;
+            DOM.sink.setScrollLeft(element, scrollLeft);
+            DOM.sink.setScrollTop(element, scrollTop);
         }
 
         this._contentFrameStyle = this.disposeFrame(frame);
@@ -2833,8 +2833,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const element = this.getElement();
 
         if (element) {
-            element.scrollLeft = value;
-            this._scrollLeft = element.scrollLeft;
+            DOM.sink.setScrollLeft(element, value);
+            this._scrollLeft = DOM.source.getScrollLeft(element);
         } else {
             this._scrollLeft = value;
         }
@@ -2856,8 +2856,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const element = this.getElement();
 
         if (element) {
-            element.scrollTop = value;
-            this._scrollTop = element.scrollTop;
+            DOM.sink.setScrollTop(element, value);
+            this._scrollTop = DOM.source.getScrollTop(element);
         } else {
             this._scrollTop = value;
         }
@@ -2882,8 +2882,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const element = this.getElement();
 
         if (element) {
-            this._scrollLeft = element.scrollLeft;
-            this._scrollTop = element.scrollTop;
+            this._scrollLeft = DOM.source.getScrollLeft(element);
+            this._scrollTop = DOM.source.getScrollTop(element);
         }
 
         return this;
@@ -2897,8 +2897,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     getMaxScrollLeft(): number {
         const element = this.getElement();
+        if (!element) {
+            return 0;
+        }
 
-        return element ? element.scrollWidth - element.clientWidth : 0;
+        const metrics = DOM.source.getScrollMetrics(element);
+
+        return metrics.scrollWidth - metrics.clientWidth;
     }
 
     /**
@@ -2909,8 +2914,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     getMaxScrollTop(): number {
         const element = this.getElement();
+        if (!element) {
+            return 0;
+        }
 
-        return element ? element.scrollHeight - element.clientHeight : 0;
+        const metrics = DOM.source.getScrollMetrics(element);
+
+        return metrics.scrollHeight - metrics.clientHeight;
     }
 
     /**
@@ -3174,7 +3184,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     private attachWheelScrolling(): void {
         this._wheelScroller = new SmoothScroller({
-            read:  (axis) => axis === "x" ? (this.getElement()?.scrollLeft ?? 0) : (this.getElement()?.scrollTop ?? 0),
+            read:  (axis) => {
+                const element = this.getElement();
+
+                return element ? (axis === "x" ? DOM.source.getScrollLeft(element) : DOM.source.getScrollTop(element)) : 0;
+            },
             write: (axis, value) => this.writeNativeScroll(axis, value),
             clamp: (axis, value) => Math.max(0, Math.min(axis === "x" ? this.getMaxScrollLeft() : this.getMaxScrollTop(), value)),
         });
@@ -3207,11 +3221,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (axis === "x") {
-            element.scrollLeft = value;
-            this._scrollLeft = element.scrollLeft;
+            DOM.sink.setScrollLeft(element, value);
+            this._scrollLeft = DOM.source.getScrollLeft(element);
         } else {
-            element.scrollTop = value;
-            this._scrollTop = element.scrollTop;
+            DOM.sink.setScrollTop(element, value);
+            this._scrollTop = DOM.source.getScrollTop(element);
         }
     }
 
@@ -3702,7 +3716,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        element.focus({ preventScroll });
+        DOM.sink.focus(element, { preventScroll });
 
         return this;
     }
@@ -3719,7 +3733,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        element.blur();
+        DOM.sink.blur(element);
 
         return this;
     }

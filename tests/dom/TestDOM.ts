@@ -6,7 +6,7 @@
 // layout, no `getBoundingClientRect`, no `getComputedStyle`. Not exported from
 // the library barrel.
 
-import { DOM, type DOMSink, type DOMSource, type Rect } from '~/core/DOM';
+import { DOM, type DOMSink, type DOMSource, type Rect, type ScrollMetrics, type OffsetSize } from '~/core/DOM';
 import type { Component } from '~/core/Component';
 import type { Size } from '~/primitive/Size';
 import type { TextMeasureOptions, TextMetrics } from '~/core/Util';
@@ -58,6 +58,7 @@ function makeStubElement(tag: string): HTMLElement {
         isConnected: false,
         scrollLeft: 0,
         scrollTop:  0,
+        value:      '',
         setAttribute(): void {},
         removeAttribute(): void {},
         getElementsByTagName(): never[] { return []; },
@@ -128,6 +129,33 @@ export class RecordingDOMSink implements DOMSink {
 
     setTextContent(_node: Node, text: string): void {
         this.record('setTextContent', text);
+    }
+
+    setScrollLeft(element: Element, value: number): void {
+        this.record('setScrollLeft', value);
+        (element as unknown as { scrollLeft: number }).scrollLeft = value;
+    }
+
+    setScrollTop(element: Element, value: number): void {
+        this.record('setScrollTop', value);
+        (element as unknown as { scrollTop: number }).scrollTop = value;
+    }
+
+    focus(_element: HTMLElement, options?: { preventScroll?: boolean }): void {
+        this.record('focus', options);
+    }
+
+    blur(_element: HTMLElement): void {
+        this.record('blur');
+    }
+
+    setValue(element: HTMLElement, value: string): void {
+        this.record('setValue', value);
+        (element as unknown as { value: string }).value = value;
+    }
+
+    setSelectionRange(_element: HTMLElement, start: number, end: number): void {
+        this.record('setSelectionRange', start, end);
     }
 }
 
@@ -212,6 +240,39 @@ export class ModelledDOMSource implements DOMSource {
 
     isModelled(): boolean {
         return true;
+    }
+
+    /** Reads the scroll offset recorded onto the stub by the recording sink. */
+    getScrollLeft(element: Element): number {
+        return (element as unknown as { scrollLeft?: number }).scrollLeft ?? 0;
+    }
+
+    /** Reads the scroll offset recorded onto the stub by the recording sink. */
+    getScrollTop(element: Element): number {
+        return (element as unknown as { scrollTop?: number }).scrollTop ?? 0;
+    }
+
+    /**
+     * Committed-geometry tests don't assert native overflow, so the modelled
+     * source reports a zeroed metrics box (no scrollable content).
+     */
+    getScrollMetrics(_element: Element): ScrollMetrics {
+        return { scrollTop: 0, scrollLeft: 0, scrollWidth: 0, scrollHeight: 0, clientWidth: 0, clientHeight: 0 };
+    }
+
+    /** No offset-box model offline; reports zeros. */
+    getOffsetSize(_element: Element): OffsetSize {
+        return { offsetTop: 0, offsetHeight: 0 };
+    }
+
+    /** The modelled source never attaches elements to a document. */
+    isConnected(_element: Element): boolean {
+        return false;
+    }
+
+    /** Reads the value recorded onto the stub by the recording sink. */
+    getValue(element: HTMLElement): string {
+        return (element as unknown as { value?: string }).value ?? '';
     }
 
     /**

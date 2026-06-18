@@ -30,6 +30,35 @@ export interface Rect {
 }
 
 /**
+ * Plain box-model snapshot — an element's native scroll offsets together with
+ * its scrollable content size and visible viewport size, read in one shot.
+ * Deliberately *not* a live element: like {@link Rect}, the read seam returns
+ * plain data so the same call can be answered offline or across a worker
+ * boundary.
+ *
+ * @category Core
+ */
+export interface ScrollMetrics {
+    scrollTop:    number;
+    scrollLeft:   number;
+    scrollWidth:  number;
+    scrollHeight: number;
+    clientWidth:  number;
+    clientHeight: number;
+}
+
+/**
+ * Plain offset-box snapshot — an element's top edge and height relative to its
+ * `offsetParent`. Plain data for the same reason as {@link ScrollMetrics}.
+ *
+ * @category Core
+ */
+export interface OffsetSize {
+    offsetTop:    number;
+    offsetHeight: number;
+}
+
+/**
  * Terminal DOM-write primitive. Every structural mutation and inline-style
  * write in the framework funnels through this seam instead of touching
  * `element.style` / `element.classList` / `appendChild` directly. The
@@ -140,6 +169,60 @@ export interface DOMSink {
      * @param text - The text content.
      */
     setTextContent(node: Node, text: string): void;
+
+    /**
+     * Sets an element's native horizontal scroll offset.
+     *
+     * @param element - The target element.
+     * @param value - The desired `scrollLeft` in pixels.
+     *
+     * @remarks One-way: the browser clamps the offset to the scrollable range.
+     * Read the settled value back via {@link DOMSource.getScrollLeft}.
+     */
+    setScrollLeft(element: Element, value: number): void;
+
+    /**
+     * Sets an element's native vertical scroll offset.
+     *
+     * @param element - The target element.
+     * @param value - The desired `scrollTop` in pixels.
+     *
+     * @remarks One-way; see {@link setScrollLeft}.
+     */
+    setScrollTop(element: Element, value: number): void;
+
+    /**
+     * Moves browser focus to an element.
+     *
+     * @param element - The element to focus.
+     * @param options - Focus options; `preventScroll` suppresses the native
+     *   scroll-into-view so a host that owns its own scroll offset is not fought.
+     */
+    focus(element: HTMLElement, options?: { preventScroll?: boolean }): void;
+
+    /**
+     * Removes browser focus from an element.
+     *
+     * @param element - The element to blur.
+     */
+    blur(element: HTMLElement): void;
+
+    /**
+     * Writes the value of a form control.
+     *
+     * @param element - The target form control.
+     * @param value - The value to set.
+     */
+    setValue(element: HTMLElement, value: string): void;
+
+    /**
+     * Sets the text-selection range of a form control.
+     *
+     * @param element - The target form control.
+     * @param start - The selection start offset.
+     * @param end - The selection end offset.
+     */
+    setSelectionRange(element: HTMLElement, start: number, end: number): void;
 }
 
 /**
@@ -214,6 +297,55 @@ export interface DOMSource {
      * @returns `true` for a modelled source, `false` for production.
      */
     isModelled(): boolean;
+
+    /**
+     * Reads an element's native horizontal scroll offset (browser-clamped).
+     *
+     * @param element - The element to read.
+     * @returns The current `scrollLeft` in pixels.
+     */
+    getScrollLeft(element: Element): number;
+
+    /**
+     * Reads an element's native vertical scroll offset (browser-clamped).
+     *
+     * @param element - The element to read.
+     * @returns The current `scrollTop` in pixels.
+     */
+    getScrollTop(element: Element): number;
+
+    /**
+     * Reads an element's scroll offsets, scrollable content size, and visible
+     * viewport size in one shot.
+     *
+     * @param element - The element to measure.
+     * @returns The element's {@link ScrollMetrics} as plain data.
+     */
+    getScrollMetrics(element: Element): ScrollMetrics;
+
+    /**
+     * Reads an element's offset-box top edge and height.
+     *
+     * @param element - The element to measure.
+     * @returns The element's {@link OffsetSize} as plain data.
+     */
+    getOffsetSize(element: Element): OffsetSize;
+
+    /**
+     * Whether an element is currently attached to a document.
+     *
+     * @param element - The element to test.
+     * @returns `true` when the element is connected.
+     */
+    isConnected(element: Element): boolean;
+
+    /**
+     * Reads the value of a form control.
+     *
+     * @param element - The form control to read.
+     * @returns The control's current value.
+     */
+    getValue(element: HTMLElement): string;
 }
 
 /**
@@ -321,6 +453,36 @@ export class ProductionDOMSink implements DOMSink {
     setTextContent(node: Node, text: string): void {
         node.textContent = text;
     }
+
+    /** @inheritDoc */
+    setScrollLeft(element: Element, value: number): void {
+        element.scrollLeft = value;
+    }
+
+    /** @inheritDoc */
+    setScrollTop(element: Element, value: number): void {
+        element.scrollTop = value;
+    }
+
+    /** @inheritDoc */
+    focus(element: HTMLElement, options?: { preventScroll?: boolean }): void {
+        element.focus(options);
+    }
+
+    /** @inheritDoc */
+    blur(element: HTMLElement): void {
+        element.blur();
+    }
+
+    /** @inheritDoc */
+    setValue(element: HTMLElement, value: string): void {
+        (element as HTMLInputElement).value = value;
+    }
+
+    /** @inheritDoc */
+    setSelectionRange(element: HTMLElement, start: number, end: number): void {
+        (element as HTMLInputElement).setSelectionRange(start, end);
+    }
 }
 
 /**
@@ -368,6 +530,48 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     isModelled(): boolean {
         return false;
+    }
+
+    /** @inheritDoc */
+    getScrollLeft(element: Element): number {
+        return element.scrollLeft;
+    }
+
+    /** @inheritDoc */
+    getScrollTop(element: Element): number {
+        return element.scrollTop;
+    }
+
+    /** @inheritDoc */
+    getScrollMetrics(element: Element): ScrollMetrics {
+        return {
+            scrollTop:    element.scrollTop,
+            scrollLeft:   element.scrollLeft,
+            scrollWidth:  element.scrollWidth,
+            scrollHeight: element.scrollHeight,
+            clientWidth:  element.clientWidth,
+            clientHeight: element.clientHeight
+        };
+    }
+
+    /** @inheritDoc */
+    getOffsetSize(element: Element): OffsetSize {
+        const el = element as HTMLElement;
+
+        return {
+            offsetTop:    el.offsetTop,
+            offsetHeight: el.offsetHeight
+        };
+    }
+
+    /** @inheritDoc */
+    isConnected(element: Element): boolean {
+        return element.isConnected;
+    }
+
+    /** @inheritDoc */
+    getValue(element: HTMLElement): string {
+        return (element as HTMLInputElement).value;
     }
 }
 

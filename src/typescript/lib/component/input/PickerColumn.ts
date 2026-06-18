@@ -346,14 +346,16 @@ class PickerColumn extends Component {
 
         // `offsetTop` is the cell's top edge relative to its offsetParent (the
         // panel). Centring = top minus half the viewport plus half the cell.
-        const cellTop      = cellEl.offsetTop;
-        const cellHeight   = cellEl.offsetHeight;
-        const viewportH    = panelEl.clientHeight;
+        const cellBox      = DOM.source.getOffsetSize(cellEl);
+        const panelMetrics = DOM.source.getScrollMetrics(panelEl);
+        const cellTop      = cellBox.offsetTop;
+        const cellHeight   = cellBox.offsetHeight;
+        const viewportH    = panelMetrics.clientHeight;
         const desiredTop   = cellTop - (viewportH - cellHeight) / 2;
-        const maxScrollTop = panelEl.scrollHeight - viewportH;
+        const maxScrollTop = panelMetrics.scrollHeight - viewportH;
         const clamped      = Math.max(0, Math.min(maxScrollTop, desiredTop));
 
-        panelEl.scrollTop = clamped;
+        DOM.sink.setScrollTop(panelEl, clamped);
 
         return this;
     }
