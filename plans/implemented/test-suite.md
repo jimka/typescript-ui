@@ -130,11 +130,11 @@ export default mergeConfig(viteConfig, defineConfig({
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": ["tests/**/*", "src/**/*"]
+  "include": ["tests/**/*", "src/typescript/lib/**/*"]
 }
 ```
 
-This governs `tsc` type-checking of the test tree only; runtime module resolution is handled by the merged Vite aliases above, not by this file.
+This governs `tsc` type-checking of the test tree plus the library the tests import. It is scoped to `src/typescript/lib/**` (mirroring the repo's `tsconfig.lib.json`) rather than all of `src/**`, so it does not drag in the demo panels under `src/typescript/*.ts` — those are never type-checked by the build and carry pre-existing errors. Runtime module resolution is handled by the merged Vite aliases above, not by this file.
 
 ### `package.json` script additions
 
@@ -201,7 +201,7 @@ Each file starts with `// @vitest-environment jsdom`.
 
 **`Component.test.ts`** — tests that don't require layout measurement (jsdom returns 0 for `offsetWidth`):
 - UUID-based id format
-- `getWidth()` returns 0 before sizing; `setWidth(100)` stores the value
+- `getWidth()` returns `NaN` before sizing (`_width` defaults to `NaN` at [Component.ts:211](../src/typescript/lib/core/Component.ts#L211); `getSize()` always returns a non-null object, so the `0` fallback never fires); `setWidth(100)` stores the value
 - Default insets are `(0, 0, 0, 0)` ([Component.ts:344](../src/typescript/lib/core/Component.ts#L344))
 - `setInsets()` changes stored values
 - `setBackgroundColor()` stores and returns value
