@@ -47,6 +47,7 @@ export default defineConfig({
                     { text: 'Data binding',        link: '/concepts/data-binding' },
                     { text: 'Accessibility',       link: '/concepts/accessibility' },
                     { text: 'Performance',         link: '/concepts/performance' },
+                    { text: 'DOM seams',           link: '/concepts/dom-seams' },
                 ] },
             ],
             '/components/': [

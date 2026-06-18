@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
-import { Util } from "~/core/Util.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
 import { Insets } from "~/primitive/Insets.js";
 import { VBox } from "~/layout/VBox.js";
@@ -199,7 +199,7 @@ class Menu extends Component {
 
         const el = this.getElement(true);
 
-        const vp = Util.getViewportSize();
+        const vp = DOM.source.getViewportSize();
 
         // Fold VIEWPORT_MARGIN into the position clamp so a fitting menu's bottom
         // lands at `vp.height - VIEWPORT_MARGIN`; then `available` equals
@@ -216,7 +216,7 @@ class Menu extends Component {
 
         this.scheduleLayout();
 
-        document.documentElement.appendChild(el);
+        DOM.sink.appendChild(document.documentElement, el);
 
         this.setVisible(true);
         this.fadeIn(el);
@@ -329,16 +329,16 @@ class Menu extends Component {
         const totalHeight = this.getPreferredSize()?.height ?? (this._menuItems.length * MenuItem.HEIGHT + 8);
 
         const el = this.getElement(true);
-        document.documentElement.appendChild(el);
+        DOM.sink.appendChild(document.documentElement, el);
 
-        const vp = Util.getViewportSize();
+        const vp = DOM.source.getViewportSize();
 
         if (parentPanel) {
             const parentEl = parentPanel.getElement();
             const parentRect = parentEl
-                ? parentEl.getBoundingClientRect()
+                ? DOM.source.getElementRect(parentEl)
                 : { left: 0, right: 0, top: 0, bottom: 0 };
-            const anchorRect = anchorEl.getBoundingClientRect();
+            const anchorRect = DOM.source.getElementRect(anchorEl);
 
             let x = parentRect.right;
 
@@ -355,7 +355,7 @@ class Menu extends Component {
             this.setY(Math.max(0, y));
             this.setAutoCommitStyle(true);
         } else {
-            const anchorRect = anchorEl.getBoundingClientRect();
+            const anchorRect = DOM.source.getElementRect(anchorEl);
 
             let x = anchorRect.left;
 

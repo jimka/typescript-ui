@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Panel } from "~/core/Panel.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
@@ -210,7 +211,7 @@ class PickerCell extends Text {
         const element = this.getElement();
 
         if (element) {
-            element.classList.toggle("disabled", disabled);
+            DOM.sink.toggleClass(element, "disabled", disabled);
         }
 
         return this;
@@ -235,7 +236,7 @@ class PickerCell extends Text {
         const element = super.render();
 
         if (this._disabled) {
-            element.classList.add("disabled");
+            DOM.sink.addClass(element, "disabled");
         }
 
         return element;

@@ -2,6 +2,7 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { StyleRule } from "~/core/StyleTarget.js";
@@ -621,31 +622,31 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
         const el = (element || this.getElement()!) as HTMLInputElement & HTMLTextAreaElement;
 
         if (this._options.type !== undefined) {
-            el.setAttribute("type", this._options.type);
+            DOM.sink.setAttribute(el, "type", this._options.type);
         }
 
         if (this._options.name != null) {
-            el.setAttribute("name", this._options.name);
+            DOM.sink.setAttribute(el, "name", this._options.name);
         }
 
         if (this._options.placeholder !== undefined) {
-            el.setAttribute("placeholder", this._options.placeholder);
+            DOM.sink.setAttribute(el, "placeholder", this._options.placeholder);
         }
 
         if (this._options.readOnly) {
-            el.setAttribute("readonly", "");
+            DOM.sink.setAttribute(el, "readonly", "");
         }
 
         if (this._options.maxLength !== undefined) {
-            el.setAttribute("maxlength", String(this._options.maxLength));
+            DOM.sink.setAttribute(el, "maxlength", String(this._options.maxLength));
         }
 
         if (this._options.inputMode !== undefined) {
-            el.setAttribute("inputmode", this._options.inputMode);
+            DOM.sink.setAttribute(el, "inputmode", this._options.inputMode);
         }
 
         if (this._options.autoComplete !== undefined) {
-            el.setAttribute("autocomplete", this._options.autoComplete);
+            DOM.sink.setAttribute(el, "autocomplete", this._options.autoComplete);
         }
 
         return this;

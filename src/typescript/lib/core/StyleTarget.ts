@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { DOM } from "~/core/DOM.js";
+
 /**
  * Shared base for a deferred-write style buffer. Either flushes into a
  * [`CSSStyleRule`](https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleRule)
@@ -95,25 +97,10 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
     }
 
     private write(style: CSSStyleDeclaration, key: string, value: string | null): void {
-        // CSS custom properties (`--foo`) cannot be set via the indexed
-        // accessor — `(style as any)["--foo"] = v` just stores a JS own-property
-        // on the wrapper and never reaches the underlying declaration. Custom
-        // properties must go through `style.setProperty` / `removeProperty`.
-        // Regular camelCase keys keep the existing assignment form which
-        // matches the pre-existing `Object.assign(target.style, dirty)` shape.
-        if (key.startsWith("--")) {
-            if (value === null) {
-                style.removeProperty(key);
-            } else {
-                style.setProperty(key, value);
-            }
-        } else {
-            if (value === null) {
-                (style as any)[key] = "";
-            } else {
-                (style as any)[key] = value;
-            }
-        }
+        // The terminal style write goes through the swappable sink seam. The
+        // custom-property / camelCase logic that used to live here now lives in
+        // `ProductionDOMSink.setStyle`; a test sink records the write instead.
+        DOM.sink.setStyle(style, key, value);
     }
 }
 
@@ -165,8 +152,8 @@ const _ruleCache: Map<string, CSSStyleRule> = new Map();
 function _getMainSheet(): CSSStyleSheet {
     let head = document.getElementsByTagName("head")[0] as HTMLHeadElement;
     if (!head) {
-        head = document.createElement("head");
-        document.appendChild(head);
+        head = DOM.sink.createElement("head") as HTMLHeadElement;
+        DOM.sink.appendChild(document, head);
     }
 
     let style: HTMLStyleElement | null = null;
@@ -179,9 +166,9 @@ function _getMainSheet(): CSSStyleSheet {
     }
 
     if (!style) {
-        style = document.createElement("style");
+        style = DOM.sink.createElement("style") as HTMLStyleElement;
         style.id = "Base";
-        head.appendChild(style);
+        DOM.sink.appendChild(head, style);
     }
 
     return style.sheet as CSSStyleSheet;

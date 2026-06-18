@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Button, ButtonOptions } from "~/component/button/Button.js";
+import { DOM } from "~/core/DOM.js";
 import { AccordionIndicator } from "~/component/container/AccordionIndicator.js";
 import { Insets } from "~/primitive/Insets.js";
 import { AnchorType } from "~/layout/AnchorType.js";
@@ -87,7 +88,7 @@ class AccordionHeader extends Button<AccordionHeaderOptions> {
             return this;
         }
 
-        el.appendChild(this._indicator.getElement(true)!);
+        DOM.sink.appendChild(el, this._indicator.getElement(true)!);
 
         return this;
     }

@@ -2,6 +2,7 @@
 
 import { Button } from "~/component/button/Button.js";
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
@@ -681,7 +682,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
             return;
         }
 
-        const rect = triggerEl.getBoundingClientRect();
+        const rect = DOM.source.getViewportRect(trigger);
 
         // toggleFor excludes the trigger from the menu's outside-click dismissal
         // and remembers it, so re-pressing the overflow button closes the menu

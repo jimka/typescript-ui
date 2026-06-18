@@ -104,6 +104,8 @@ Insets and spacing express *layout structure* — they never exist to nudge some
 
 Before `element.style.*`, `document.createElement`, or `element.addEventListener`, check for a Component setter or `Event` API. Raw DOM is for things the framework has no API for.
 
+When raw access is unavoidable, it still goes through the **DOM seams** ([core/DOM.ts](src/typescript/lib/core/DOM.ts), see [docs/concepts/dom-seams](docs/concepts/dom-seams.md)). Every structural write and inline-style flush is a `DOM.sink` call; every geometry / text-metric / theme-var read is a `DOM.source` call. Raw `getBoundingClientRect` / `getComputedStyle` / `createElement` / `appendChild` / `classList` mutation outside the production seam implementations (and the documented `core/Util.ts` measurement delegate) is a grep-checkable violation. The seam lets tests swap in a recording sink and a modelled, browser-free read source.
+
 ## All attributes and styles go through typed setters
 
 | Category | Use |

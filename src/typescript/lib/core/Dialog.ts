@@ -5,7 +5,6 @@ import { Animation } from "~/core/Animation.js";
 import { Event } from "~/core/Event.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { Position } from "~/primitive/Position.js";
-import { Util } from "~/core/Util.js";
 import { Text } from "~/component/input/Text.js";
 import { Button } from "~/component/button/Button.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -18,6 +17,7 @@ import { callable } from "~/core/Callable.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
 import { circle_check } from "~/glyphs/solid/circle_check.js";
 import { circle_info } from "~/glyphs/solid/circle_info.js";
+import { DOM } from "~/core/DOM.js";
 
 Glyph.register(xmark, circle_check, circle_info);
 
@@ -638,10 +638,10 @@ class Dialog extends Component implements DismissableLayer {
         this._backdrop.setZIndex(panelZ - 1);
 
         const backdropEl = this._backdrop.getElement(true);
-        document.documentElement.appendChild(backdropEl);
+        DOM.sink.appendChild(document.documentElement, backdropEl);
 
         const dialogEl = this.getElement(true);
-        document.documentElement.appendChild(dialogEl);
+        DOM.sink.appendChild(document.documentElement, dialogEl);
 
         this.scheduleLayout();
         this.center();
@@ -687,7 +687,7 @@ class Dialog extends Component implements DismissableLayer {
      * Centers the dialog panel within the viewport.
      */
     private center(): void {
-        const vp = Util.getViewportSize();
+        const vp = DOM.source.getViewportSize();
         const x  = Math.max(0, Math.round((vp.width  - this.getWidth())  / 2));
         const y  = Math.max(0, Math.round((vp.height - this.getHeight()) / 2));
 

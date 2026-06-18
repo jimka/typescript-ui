@@ -3,6 +3,7 @@
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Button } from "~/component/button/Button.js";
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
 import { Text } from "~/component/input/Text.js";
@@ -159,15 +160,15 @@ class HiddenFileInput extends Component {
         }
 
         if (this._type !== null) {
-            el.setAttribute("type", this._type);
+            DOM.sink.setAttribute(el, "type", this._type);
         }
 
         if (this._multiple) {
-            el.setAttribute("multiple", "");
+            DOM.sink.setAttribute(el, "multiple", "");
         }
 
         if (this._accept !== null) {
-            el.setAttribute("accept", this._accept);
+            DOM.sink.setAttribute(el, "accept", this._accept);
         }
 
         return this;

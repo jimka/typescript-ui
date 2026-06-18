@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
@@ -597,7 +598,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         AbstractWindow.openWindows.add(this);
 
-        document.documentElement.appendChild(el);
+        DOM.sink.appendChild(document.documentElement, el);
 
         this.setVisible(true);
 
@@ -1579,9 +1580,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // toward 0. Applied as an extra Math.min before setWidth/setHeight clamp to
         // their own min/max, so the WEST/NORTH position re-derivation below stays
         // consistent with the clamped size.
-        const eastWidthCap   = window.innerWidth  - this._resizeOriginX;
+        const vp             = DOM.source.getViewportSize();
+        const eastWidthCap   = vp.width  - this._resizeOriginX;
         const westWidthCap   = originRight;
-        const southHeightCap = window.innerHeight - this._resizeOriginY;
+        const southHeightCap = vp.height - this._resizeOriginY;
         const northHeightCap = originBottom;
 
         this.setAutoCommitStyle(false);
@@ -1644,8 +1646,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     private viewportPositionBounds(): { minX: number; maxX: number; minY: number; maxY: number } {
         const w  = this.getWidth();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
+        const vp = DOM.source.getViewportSize();
+        const vw = vp.width;
+        const vh = vp.height;
 
         if (this.isConstrainToViewport()) {
             // Whole window inside the viewport: every border stops at the edge.
@@ -1846,14 +1849,14 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     render(): HTMLElement {
         let element = super.render();
 
-        element.appendChild(this._borderComponents.west.getElement(true));
-        element.appendChild(this._borderComponents.northwest.getElement(true));
-        element.appendChild(this._borderComponents.north.getElement(true));
-        element.appendChild(this._borderComponents.northeast.getElement(true));
-        element.appendChild(this._borderComponents.east.getElement(true));
-        element.appendChild(this._borderComponents.southeast.getElement(true));
-        element.appendChild(this._borderComponents.south.getElement(true));
-        element.appendChild(this._borderComponents.southwest.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.west.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.northwest.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.north.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.northeast.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.east.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.southeast.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.south.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.southwest.getElement(true));
 
         return element;
     }
@@ -1915,16 +1918,18 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             const el = this.getElement();
             const parent = el ? el.parentElement : null;
             if (parent && parent !== document.documentElement) {
-                const r = parent.getBoundingClientRect();
+                const r = DOM.source.getElementRect(parent);
                 return { x: 0, y: 0, width: r.width, height: r.height };
             }
         }
 
+        const vp = DOM.source.getViewportSize();
+
         return {
             x:      0,
             y:      0,
-            width:  window.innerWidth,
-            height: window.innerHeight,
+            width:  vp.width,
+            height: vp.height,
         };
     }
 
@@ -1939,7 +1944,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         const slotIndex = this.computeDockSlotIndex();
         const headerHeight = this.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
         const x = slotIndex * (dockWidth + SNAP_DOCK_GAP_PX);
-        const y = window.innerHeight - headerHeight;
+        const y = DOM.source.getViewportSize().height - headerHeight;
 
         return { x, y, width: dockWidth, height: headerHeight };
     }
@@ -1967,12 +1972,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         switch (rail.getEdge()) {
             case Placement.EAST:
-                targetX = window.innerWidth - thickness;
+                targetX = DOM.source.getViewportSize().width - thickness;
 
                 break;
 
             case Placement.SOUTH:
-                targetY = window.innerHeight - thickness;
+                targetY = DOM.source.getViewportSize().height - thickness;
 
                 break;
 
@@ -2041,8 +2046,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns The dock slot width in pixels.
      */
     private getMinDockWidth(): number {
-        const cssVar = getComputedStyle(document.documentElement)
-            .getPropertyValue("--ts-ui-window-min-dock-width").trim();
+        const cssVar = DOM.source.getThemeVar("--ts-ui-window-min-dock-width");
         if (cssVar) {
             const parsed = parseFloat(cssVar);
             if (!isNaN(parsed) && parsed > 0) {
@@ -2085,7 +2089,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             const dockWidth   = win.getMinDockWidth();
             const headerHeight = win.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
             const x = index * (dockWidth + SNAP_DOCK_GAP_PX);
-            const y = window.innerHeight - headerHeight;
+            const y = DOM.source.getViewportSize().height - headerHeight;
 
             win.setAutoCommitStyle(false);
             win.setX(x);
@@ -2380,7 +2384,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             if (!el) {
                 continue;
             }
-            const rect = el.getBoundingClientRect();
+            const rect = DOM.source.getElementRect(el);
             const dx = Math.max(rect.left - cx, 0, cx - rect.right);
             const dy = Math.max(rect.top  - cy, 0, cy - rect.bottom);
             const dist = Math.hypot(dx, dy);

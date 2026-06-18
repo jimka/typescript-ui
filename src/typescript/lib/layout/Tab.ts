@@ -17,6 +17,7 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { tabDragRegistry } from "~/core/DragManager.js";
 import { TabBar } from "~/component/container/TabBar.js";
 import { callable } from "~/core/Callable.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * String-literal union of the events emitted by {@link Tab}.
@@ -848,7 +849,7 @@ class Tab extends LayoutManager {
     attach(container: Component): this {
         super.attach(container);
 
-        container.getElement(true).appendChild(this._bar.getElement(true));
+        DOM.sink.appendChild(container.getElement(true), this._bar.getElement(true));
 
         this._bar.on("tabpressed",       this._onBarTabPressed);
         this._bar.on("reordered",        this._onBarReordered);

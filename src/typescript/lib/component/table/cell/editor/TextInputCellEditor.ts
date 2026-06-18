@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Base class for cell editors backed by a native `<input>` element.
@@ -83,15 +84,15 @@ export abstract class TextInputCellEditor<T> extends CellEditor<T> {
         const el = element || this.getElement()!;
 
         if (this._type !== null) {
-            el.setAttribute("type", this._type);
+            DOM.sink.setAttribute(el, "type", this._type);
         }
 
         if (this._inputMode !== null) {
-            el.setAttribute("inputmode", this._inputMode);
+            DOM.sink.setAttribute(el, "inputmode", this._inputMode);
         }
 
         if (this._autoComplete !== null) {
-            el.setAttribute("autocomplete", this._autoComplete);
+            DOM.sink.setAttribute(el, "autocomplete", this._autoComplete);
         }
 
         return this;

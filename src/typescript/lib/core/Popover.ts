@@ -13,6 +13,7 @@ import { HBox } from "~/layout/HBox.js";
 import { Text } from "~/component/input/Text.js";
 import { Button } from "~/component/button/Button.js";
 import { callable } from "~/core/Callable.js";
+import { DOM, type Rect } from "~/core/DOM.js";
 
 /** Fallback arrow side length used until the theme token is read. */
 const DEFAULT_ARROW_SIZE_PX: number = 14;
@@ -466,7 +467,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         const el = this.getElement(true);
 
         if (!document.documentElement.contains(el)) {
-            document.documentElement.appendChild(el);
+            DOM.sink.appendChild(document.documentElement, el);
         }
 
         this.ensureArrow();
@@ -608,7 +609,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             return;
         }
 
-        const anchorRect = this._anchorElement.getBoundingClientRect();
+        const anchorRect = DOM.source.getElementRect(this._anchorElement);
 
         // Anchor removed from the DOM or rendered with zero size — close.
         if (anchorRect.width === 0 && anchorRect.height === 0) {
@@ -619,7 +620,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         const preferred = this.getPreferredSize();
         const width     = preferred?.width  ?? this.getWidth();
         const height    = preferred?.height ?? this.getHeight();
-        const vp        = Util.getViewportSize();
+        const vp        = DOM.source.getViewportSize();
 
         const resolved = this.resolvePlacement(anchorRect, width, height, vp);
 
@@ -688,7 +689,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * @returns The resolved placement.
      */
     private resolvePlacement(
-        anchor: DOMRect,
+        anchor: Rect,
         width: number,
         height: number,
         vp: { width: number; height: number },
@@ -789,7 +790,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             return;
         }
 
-        const anchorRect = this._anchorElement.getBoundingClientRect();
+        const anchorRect = DOM.source.getElementRect(this._anchorElement);
         const size       = DEFAULT_ARROW_SIZE_PX;
         const half       = size / 2;
         const popoverX   = this.getX();
@@ -819,7 +820,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
 
         this._arrowComponent.setShadow(arrowShadow);
 
-        const vp     = Util.getViewportSize();
+        const vp     = DOM.source.getViewportSize();
         const border = this.getBorderSize();
 
         // `position: absolute` measures from the popover's padding box (i.e.

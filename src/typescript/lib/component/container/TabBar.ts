@@ -3,6 +3,7 @@
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Panel } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { Button } from "~/component/button/Button.js";
@@ -268,11 +269,15 @@ class TabIndicator extends Component {
     }
 
     /**
-     * Writes the inner-edge placement, token thickness, main-axis extent, and
-     * current slide transform — the styles the base `applyStyle` doesn't replay.
-     * North/south draw a horizontal bar on the bottom/top edge sized by `width`
-     * and slid with `translateX`; west/east draw a vertical bar on the right/left
-     * edge sized by `height` and slid with `translateY`.
+     * Writes the inner-edge placement, token thickness, and main-axis extent —
+     * the token-driven box styles the base `applyStyle` doesn't replay — and
+     * slides the bar along the main axis through {@link Component.setTranslate}.
+     * The translate goes through the framework-tracked transform channel (so
+     * `getTranslateX` / `getTranslateY` report the slide and the base
+     * `applyStyle` replays it), while the box edges are re-applied here on every
+     * re-render. North/south draw a horizontal bar on the bottom/top edge sized
+     * by `width` and slid with `translateX`; west/east draw a vertical bar on
+     * the right/left edge sized by `height` and slid with `translateY`.
      *
      * @returns This indicator, for chaining.
      */
@@ -281,6 +286,8 @@ class TabIndicator extends Component {
         const vertical = this._side === "west" || this._side === "east";
 
         if (vertical) {
+            this.setTranslate(0, this._mainPos);
+
             return this.setElementStyles({
                 top      : "0",
                 bottom   : "auto",
@@ -288,9 +295,10 @@ class TabIndicator extends Component {
                 right    : this._side === "west" ? "0" : "auto",
                 width    : thickness,
                 height   : this._mainExtent + "px",
-                transform: `translateY(${this._mainPos}px)`,
             });
         }
+
+        this.setTranslate(this._mainPos, 0);
 
         return this.setElementStyles({
             left     : "0",
@@ -299,7 +307,6 @@ class TabIndicator extends Component {
             bottom   : this._side === "north" ? "0" : "auto",
             width    : this._mainExtent + "px",
             height   : thickness,
-            transform: `translateX(${this._mainPos}px)`,
         });
     }
 }
@@ -718,14 +725,14 @@ class TabBar extends Container<TabBarOptions> {
         // than enrolled in a box. The selection indicator and reorder bar go
         // *inside* the clip frame so they share the wrappers' coordinate space
         // (and clip / scroll with them) rather than the strip's.
-        host.appendChild(this._tabClip.getElement(true));
-        host.appendChild(this._toolGroup.getElement(true));
-        host.appendChild(this._leadGroup.getElement(true));
+        DOM.sink.appendChild(host, this._tabClip.getElement(true));
+        DOM.sink.appendChild(host, this._toolGroup.getElement(true));
+        DOM.sink.appendChild(host, this._leadGroup.getElement(true));
 
         const clip = this._tabClip.getElement(true);
-        clip.appendChild(this._indicator.getElement(true));
-        clip.appendChild(this._dropTint.getElement(true));
-        clip.appendChild(this._reorderBar.getElement(true));
+        DOM.sink.appendChild(clip, this._indicator.getElement(true));
+        DOM.sink.appendChild(clip, this._dropTint.getElement(true));
+        DOM.sink.appendChild(clip, this._reorderBar.getElement(true));
 
         Event.addSubtreeListener(this, "keydown", (e: KeyboardEvent) => this.onToolbarKeyDown(e));
 
@@ -753,7 +760,11 @@ class TabBar extends Container<TabBarOptions> {
         this.teardownTabDnD();
         this._moveTriggerTeardown?.();
         this._moveTriggerTeardown = null;
-        this.getElement()?.remove();
+
+        const el = this.getElement();
+        if (el) {
+            DOM.sink.removeElement(el);
+        }
 
         return this;
     }
@@ -1494,7 +1505,7 @@ class TabBar extends Container<TabBarOptions> {
             // Overlay it inside the cell rather than enrolling it in the Fit
             // layout (which would stretch it over the whole tab); `layoutChrome`
             // pins it to the right edge.
-            wrapper.getElement(true).appendChild(closeButton.getElement(true));
+            DOM.sink.appendChild(wrapper.getElement(true), closeButton.getElement(true));
         }
 
         // Subtree listener so a right-click on the label, the glyph, or the
@@ -2493,8 +2504,8 @@ class TabBar extends Container<TabBarOptions> {
         trail.on("action", this.scrollTrailClicked);
 
         const element = this.getElement(true);
-        element.appendChild(lead.getElement(true));
-        element.appendChild(trail.getElement(true));
+        DOM.sink.appendChild(element, lead.getElement(true));
+        DOM.sink.appendChild(element, trail.getElement(true));
 
         this._scrollLeadButton = lead;
         this._scrollTrailButton = trail;
@@ -2703,8 +2714,8 @@ class TabBar extends Container<TabBarOptions> {
         }
 
         const vertical = this.isVertical();
-        const clip = clipElement.getBoundingClientRect();
-        const wrap = wrapperElement.getBoundingClientRect();
+        const clip = DOM.source.getElementRect(clipElement);
+        const wrap = DOM.source.getElementRect(wrapperElement);
 
         const clipStart = vertical ? clip.top : clip.left;
         const clipEnd = vertical ? clip.bottom : clip.right;
@@ -3030,7 +3041,7 @@ class TabBar extends Container<TabBarOptions> {
             return;
         }
 
-        const rect = element.getBoundingClientRect();
+        const rect = DOM.source.getElementRect(element);
         const vertical = this.isVertical();
 
         // The clip frame scrolls its content natively, but `rect` is the border

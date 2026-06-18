@@ -4,6 +4,7 @@ import { Component } from "~/core/Component.js";
 import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
 import { LayerManager } from "~/core/LayerManager.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Z-order shared with {@link DragFeedback}: just **below** the lowest
@@ -82,7 +83,7 @@ class ReorderIndicator extends Component {
             return;
         }
 
-        targetEl.appendChild(myEl);
+        DOM.sink.appendChild(targetEl, myEl);
     }
 
     /**

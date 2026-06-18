@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Legend } from "~/component/container/Legend.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
@@ -196,6 +197,13 @@ class FieldSet extends Component {
             return this._legendClearance;
         }
 
+        // A modelled (no-browser) source has no native `<legend>` box to
+        // measure, so short-circuit to the fallback rather than reading
+        // `offsetHeight`, which is 0 or unavailable offline.
+        if (DOM.source.isModelled()) {
+            return FieldSet.LEGEND_CLEARANCE_FALLBACK;
+        }
+
         const element = this._legend.getElement();
 
         if (element && element.isConnected && element.offsetHeight > 0) {
@@ -230,7 +238,7 @@ class FieldSet extends Component {
     render() {
         let element = super.render();
 
-        element.appendChild(this._legend.getElement(true));
+        DOM.sink.appendChild(element, this._legend.getElement(true));
 
         return element;
     }

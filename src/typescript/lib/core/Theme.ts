@@ -18,6 +18,7 @@ import manropeLatinUrl    from '@fontsource-variable/manrope/files/manrope-latin
 
 import { InlineStyle } from '~/core/StyleTarget.js';
 import { Util } from '~/core/Util.js';
+import { DOM } from '~/core/DOM.js';
 // The three built-in theme literals live in their own files under
 // `core/themes/`; they are imported here so `ThemeManager` can default to
 // `ModernTheme`, and re-exported below so existing
@@ -1167,9 +1168,9 @@ function ensureFontLoaded(): void {
         + `}`
     ).join('');
 
-    const style = document.createElement('style');
-    style.textContent = rules;
-    document.head.appendChild(style);
+    const style = DOM.sink.createElement('style');
+    DOM.sink.setTextContent(style, rules);
+    DOM.sink.appendChild(document.head, style);
 }
 
 /**

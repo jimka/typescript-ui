@@ -1,0 +1,424 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+import { Util } from "~/core/Util.js";
+import type { TextMeasureOptions, TextMetrics } from "~/core/Util.js";
+import type { Size } from "~/primitive/Size.js";
+import type { Component } from "~/core/Component.js";
+
+/**
+ * Plain serialisable rectangle in viewport coordinates. Deliberately *not* a
+ * live [`DOMRect`](https://developer.mozilla.org/en-US/docs/Web/API/DOMRect):
+ * the read seam returns plain data so the same call can be answered by a
+ * geometry model (offline tests) or, in future, across a worker boundary.
+ *
+ * @remarks The `top` / `left` / `right` / `bottom` edges mirror `DOMRect`'s
+ * derived fields so existing anchor-positioning call sites read this as a
+ * drop-in for the rect they used to get from `getBoundingClientRect()`. A live
+ * `DOMRect` is structurally assignable to a `Rect`.
+ *
+ * @category Core
+ */
+export interface Rect {
+    x:      number;
+    y:      number;
+    width:  number;
+    height: number;
+    top:    number;
+    left:   number;
+    right:  number;
+    bottom: number;
+}
+
+/**
+ * Terminal DOM-write primitive. Every structural mutation and inline-style
+ * write in the framework funnels through this seam instead of touching
+ * `element.style` / `element.classList` / `appendChild` directly. The
+ * production implementation ({@link ProductionDOMSink}) is a thin pass-through;
+ * test implementations record the writes without touching a DOM.
+ *
+ * @remarks Methods are one-way (no return value drives control flow), so a
+ * future worker transport can forward each as a `postMessage`.
+ *
+ * @category Core
+ */
+export interface DOMSink {
+    /**
+     * Writes a single style property onto a live `style` declaration.
+     *
+     * @param style - The target `CSSStyleDeclaration` (inline or rule).
+     * @param key - The CSS property name (camelCase, or `--custom-property`).
+     * @param value - The value to set, or null to remove the property.
+     */
+    setStyle(style: CSSStyleDeclaration, key: string, value: string | null): void;
+
+    /**
+     * Creates a detached HTML element.
+     *
+     * @param tag - The element tag name.
+     * @returns The new element.
+     */
+    createElement(tag: string): HTMLElement;
+
+    /**
+     * Creates a detached namespaced element (SVG sprite / glyph construction).
+     *
+     * @param ns - The element namespace URI.
+     * @param tag - The element tag name.
+     * @returns The new element.
+     */
+    createElementNS(ns: string, tag: string): Element;
+
+    /**
+     * Appends a child node to a parent.
+     *
+     * @param parent - The parent node.
+     * @param child - The child node to append.
+     */
+    appendChild(parent: Node, child: Node): void;
+
+    /**
+     * Removes a child node from a parent.
+     *
+     * @param parent - The parent node.
+     * @param child - The child node to remove.
+     */
+    removeChild(parent: Node, child: Node): void;
+
+    /**
+     * Detaches an element from its parent.
+     *
+     * @param element - The element to remove.
+     */
+    removeElement(element: Element): void;
+
+    /**
+     * Adds a class to an element.
+     *
+     * @param element - The target element.
+     * @param name - The class name to add.
+     */
+    addClass(element: Element, name: string): void;
+
+    /**
+     * Removes a class from an element.
+     *
+     * @param element - The target element.
+     * @param name - The class name to remove.
+     */
+    removeClass(element: Element, name: string): void;
+
+    /**
+     * Toggles a class on an element.
+     *
+     * @param element - The target element.
+     * @param name - The class name to toggle.
+     * @param on - When provided, forces the class on (`true`) or off (`false`).
+     */
+    toggleClass(element: Element, name: string, on?: boolean): void;
+
+    /**
+     * Sets an attribute on an element.
+     *
+     * @param element - The target element.
+     * @param key - The attribute name.
+     * @param value - The attribute value.
+     */
+    setAttribute(element: Element, key: string, value: string): void;
+
+    /**
+     * Removes an attribute from an element.
+     *
+     * @param element - The target element.
+     * @param key - The attribute name.
+     */
+    removeAttribute(element: Element, key: string): void;
+
+    /**
+     * Sets the text content of a node.
+     *
+     * @param node - The target node.
+     * @param text - The text content.
+     */
+    setTextContent(node: Node, text: string): void;
+}
+
+/**
+ * Read seam. Geometry is keyed on the owning {@link Component} (so a model can
+ * reproduce it from committed state); text metrics, theme variables, and
+ * environment constants funnel through the remaining methods. The production
+ * implementation ({@link ProductionDOMSource}) reads the live DOM; test
+ * implementations answer from a geometry model and a baked metrics table.
+ *
+ * @category Core
+ */
+export interface DOMSource {
+    /**
+     * Returns the viewport-space rectangle of a component's root element.
+     *
+     * @param component - The component to measure.
+     * @returns The component's bounding rectangle as plain data.
+     */
+    getViewportRect(component: Component): Rect;
+
+    /**
+     * Returns the viewport-space rectangle of an arbitrary element. Escape
+     * hatch for non-component nodes (anchor elements, ancestor scroll boxes).
+     *
+     * @param element - The element to measure.
+     * @returns The element's bounding rectangle as plain data.
+     */
+    getElementRect(element: Element): Rect;
+
+    /**
+     * Measures the rendered size and baseline of a text string.
+     *
+     * @param text - The string to measure.
+     * @param options - Font properties; default to the active theme variables.
+     * @returns The measured `{width, height, baseline}` in pixels.
+     */
+    measureText(text: string, options?: TextMeasureOptions): TextMetrics;
+
+    /**
+     * Returns the active font's vertical metrics in pixels.
+     *
+     * @returns The font `{ascent, descent, capTop}` in pixels.
+     */
+    measureFontMetrics(): { ascent: number; descent: number; capTop: number };
+
+    /**
+     * Resolves a theme CSS variable (e.g. `--ts-ui-font-size`) to its value.
+     *
+     * @param name - The CSS custom-property name, including the leading `--`.
+     * @returns The resolved value, trimmed; empty string when unset.
+     */
+    getThemeVar(name: string): string;
+
+    /**
+     * Returns the current viewport size in pixels.
+     *
+     * @returns The viewport `{width, height}`.
+     */
+    getViewportSize(): Size;
+
+    /**
+     * Returns the native scrollbar width in pixels.
+     *
+     * @returns The scrollbar width.
+     */
+    getScrollBarWidth(): number;
+
+    /**
+     * Whether this is a modelled (no-browser) source. Lets the few
+     * irreducibly-browser reads short-circuit to a fallback offline.
+     *
+     * @returns `true` for a modelled source, `false` for production.
+     */
+    isModelled(): boolean;
+}
+
+/**
+ * Boxes a live `DOMRect` into a plain {@link Rect}, preserving every edge.
+ */
+function toRect(domRect: DOMRect): Rect {
+    return {
+        x:      domRect.x,
+        y:      domRect.y,
+        width:  domRect.width,
+        height: domRect.height,
+        top:    domRect.top,
+        left:   domRect.left,
+        right:  domRect.right,
+        bottom: domRect.bottom
+    };
+}
+
+/**
+ * Production {@link DOMSink}: every method is a one-line pass-through to the
+ * native DOM, behaving bit-for-bit like the pre-seam direct writes.
+ *
+ * @category Core
+ */
+export class ProductionDOMSink implements DOMSink {
+    /**
+     * Writes a single style property onto a live `style` declaration — the
+     * verbatim body of the former `StyleTarget.write`.
+     *
+     * @param style - The target `CSSStyleDeclaration`.
+     * @param key - The CSS property name (camelCase, or `--custom-property`).
+     * @param value - The value to set, or null to remove the property.
+     *
+     * @remarks Custom properties (`--foo`) must go through
+     * `setProperty`/`removeProperty`; the indexed accessor only works for
+     * camelCase keys.
+     */
+    setStyle(style: CSSStyleDeclaration, key: string, value: string | null): void {
+        if (key.startsWith("--")) {
+            if (value === null) {
+                style.removeProperty(key);
+            } else {
+                style.setProperty(key, value);
+            }
+        } else {
+            if (value === null) {
+                (style as any)[key] = "";
+            } else {
+                (style as any)[key] = value;
+            }
+        }
+    }
+
+    /** @inheritDoc */
+    createElement(tag: string): HTMLElement {
+        return document.createElement(tag);
+    }
+
+    /** @inheritDoc */
+    createElementNS(ns: string, tag: string): Element {
+        return document.createElementNS(ns, tag);
+    }
+
+    /** @inheritDoc */
+    appendChild(parent: Node, child: Node): void {
+        parent.appendChild(child);
+    }
+
+    /** @inheritDoc */
+    removeChild(parent: Node, child: Node): void {
+        parent.removeChild(child);
+    }
+
+    /** @inheritDoc */
+    removeElement(element: Element): void {
+        element.remove();
+    }
+
+    /** @inheritDoc */
+    addClass(element: Element, name: string): void {
+        element.classList.add(name);
+    }
+
+    /** @inheritDoc */
+    removeClass(element: Element, name: string): void {
+        element.classList.remove(name);
+    }
+
+    /** @inheritDoc */
+    toggleClass(element: Element, name: string, on?: boolean): void {
+        element.classList.toggle(name, on);
+    }
+
+    /** @inheritDoc */
+    setAttribute(element: Element, key: string, value: string): void {
+        element.setAttribute(key, value);
+    }
+
+    /** @inheritDoc */
+    removeAttribute(element: Element, key: string): void {
+        element.removeAttribute(key);
+    }
+
+    /** @inheritDoc */
+    setTextContent(node: Node, text: string): void {
+        node.textContent = text;
+    }
+}
+
+/**
+ * Production {@link DOMSource}: reads the live DOM and delegates text
+ * measurement to the existing {@link Util} canvas/probe code.
+ *
+ * @category Core
+ */
+export class ProductionDOMSource implements DOMSource {
+    /** @inheritDoc */
+    getViewportRect(component: Component): Rect {
+        return toRect(component.getElement()!.getBoundingClientRect());
+    }
+
+    /** @inheritDoc */
+    getElementRect(element: Element): Rect {
+        return toRect(element.getBoundingClientRect());
+    }
+
+    /** @inheritDoc */
+    measureText(text: string, options?: TextMeasureOptions): TextMetrics {
+        return Util.measureTextMetrics(text, options);
+    }
+
+    /** @inheritDoc */
+    measureFontMetrics(): { ascent: number; descent: number; capTop: number } {
+        return Util.measureFontMetrics();
+    }
+
+    /** @inheritDoc */
+    getThemeVar(name: string): string {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    /** @inheritDoc */
+    getViewportSize(): Size {
+        return Util.getViewportSize();
+    }
+
+    /** @inheritDoc */
+    getScrollBarWidth(): number {
+        return Util.getScrollBarWidth();
+    }
+
+    /** @inheritDoc */
+    isModelled(): boolean {
+        return false;
+    }
+}
+
+/**
+ * The shape of the global {@link DOM} swap point.
+ *
+ * @category Core
+ */
+export interface DOMSeams {
+    /** The active write seam. Defaults to a {@link ProductionDOMSink}. */
+    sink: DOMSink;
+    /** The active read seam. Defaults to a {@link ProductionDOMSource}. */
+    source: DOMSource;
+    /**
+     * Swaps in test implementations. Omitted seams keep their current value.
+     *
+     * @param impls - The sink and/or source to install.
+     */
+    install(impls: { sink?: DOMSink; source?: DOMSource }): void;
+    /** Restores the production implementations. */
+    reset(): void;
+}
+
+/**
+ * Global swap point for the DOM seams, mirroring `ThemeManager`'s active-theme
+ * singleton. Production code reads {@link DOM.sink} / {@link DOM.source}; test
+ * setup swaps them via {@link DOM.install} and restores via {@link DOM.reset}.
+ *
+ * @remarks A mutable-property `const` object rather than a `namespace` with
+ * `export let`: the latter is not supported by the Oxc transformer the Vite
+ * build uses. The binding is stable; the `sink` / `source` properties are the
+ * swappable state.
+ *
+ * @category Core
+ */
+export const DOM: DOMSeams = {
+    sink:   new ProductionDOMSink(),
+    source: new ProductionDOMSource(),
+
+    install(impls: { sink?: DOMSink; source?: DOMSource }): void {
+        if (impls.sink) {
+            DOM.sink = impls.sink;
+        }
+
+        if (impls.source) {
+            DOM.source = impls.source;
+        }
+    },
+
+    reset(): void {
+        DOM.sink   = new ProductionDOMSink();
+        DOM.source = new ProductionDOMSource();
+    },
+};

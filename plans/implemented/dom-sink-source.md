@@ -100,8 +100,13 @@ import type { Component } from './Component';
 import type { Size } from '../primitive/Size';
 import type { TextMetrics, TextMeasureOptions } from './Util'; // NOT the built-in DOM-lib TextMetrics
 
-/** Plain serialisable rect — never a live DOMRect. */
-export interface Rect { x: number; y: number; width: number; height: number; }
+/** Plain serialisable rect — never a live DOMRect. The top/left/right/bottom
+ *  edges mirror DOMRect so it drops into existing anchor-positioning call sites
+ *  unchanged (a live DOMRect is structurally assignable to a Rect). */
+export interface Rect {
+    x: number; y: number; width: number; height: number;
+    top: number; left: number; right: number; bottom: number;
+}
 
 /** Terminal DOM-write primitive. Production passes through; tests record. */
 export interface DOMSink {
@@ -134,13 +139,17 @@ export interface DOMSource {
 export class ProductionDOMSink implements DOMSink { /* one-line pass-throughs */ }
 export class ProductionDOMSource implements DOMSource { /* real DOM reads + existing Util code */ }
 
-/** Global swap point — mirrors ThemeManager. */
-export namespace DOM {
-    export let sink: DOMSink;       // defaults to ProductionDOMSink
-    export let source: DOMSource;   // defaults to ProductionDOMSource
-    export function install(impls: { sink?: DOMSink; source?: DOMSource }): void;
-    export function reset(): void;
+/** Global swap point — mirrors ThemeManager. A mutable-property `const` object
+ *  rather than a `namespace` with `export let`: the Vite/Oxc transformer does
+ *  not support non-const namespace exports. The binding is stable; sink/source
+ *  are the swappable state. */
+export interface DOMSeams {
+    sink: DOMSink;       // defaults to ProductionDOMSink
+    source: DOMSource;   // defaults to ProductionDOMSource
+    install(impls: { sink?: DOMSink; source?: DOMSource }): void;
+    reset(): void;
 }
+export const DOM: DOMSeams;
 ```
 
 Stage-2 test file `tests/dom/TestDOM.ts` (under the `tests/` tree from [`plans/test-suite.md`](test-suite.md); not exported from the lib barrel):
@@ -227,7 +236,7 @@ export interface FontMetricsTable {
 - `grep -rn '\.getBoundingClientRect(' src/typescript/lib --include=*.ts | grep -v 'core/DOM.ts\|core/Util.ts\|core/AnimatedDropdown.ts'` — zero. The `\.…(` form skips the bare-token prose in `layout/Tab.ts`/`core/Rail.ts`/`core/Component.ts`; `core/Util.ts` (measurement delegate) and `core/AnimatedDropdown.ts:335` (prose `.()`) are excluded explicitly.
 - `grep -rn 'getComputedStyle(' src/typescript/lib --include=*.ts | grep -v 'core/DOM.ts\|core/Util.ts' | grep -vE ':[0-9]+:[[:space:]]*(//|\*)'` — only the documented element-read holdouts (`Component.getBorderSize` incl. its `var()` fallback at Component.ts:2335/2385, `Popover.collectScrollAncestors` at Popover.ts:913). The `(` form skips inline JSDoc prose; the trailing `grep -vE` drops `//` dead-code and ` *` JSDoc-continuation lines (e.g. Component.ts:2530/2542 commented-out `getComputedStyle`); `core/Util.ts` holds the production probe/measurement reads (`resolveFontSizePx`, canvas/probe metrics) and is excluded as the measurement delegate.
 - `grep -rnE '\.classList|\.createElement|appendChild|removeChild' src/typescript/lib --include=*.ts | grep -v 'core/DOM.ts\|core/Util.ts\|DOM\.sink\.' | grep -vE ':[0-9]+:[[:space:]]*(//|\*)'` — zero. The sink's `createElement`/`appendChild`/`removeChild` method names deliberately mirror the DOM API (per the pass-through decision: `appendChild(p,c)` *is* `p.appendChild(c)`), so migrated call sites read `DOM.sink.appendChild`/`createElement`/… and would still match the substring patterns — the `DOM\.sink\.` exclusion drops them while still catching any *raw* `element.appendChild`/`createElement` left unmigrated. (`classList`→`addClass` and the source's `getBoundingClientRect`→`getViewportRect` rename, so their greps need no such exclusion; only the same-named sink methods do.) The only un-prefixed structural calls then live in `ProductionDOMSink` inside the excluded `core/DOM.ts`; `core/Util.ts` is excluded as the production measurement/`calculateScrollBarWidth`-bootstrap delegate; the trailing `grep -vE` drops JSDoc/comment lines (e.g. the `appendChild` prose at Component.ts:4500). (`\.createElement` also catches `createElementNS`, now a sink method.) The migrated `Theme.ts` structural writes (`createElement`/`appendChild` at 1170/1172) are covered by the `DOM\.sink\.` exclusion like every other call site.
-- `grep -rnE '\.setAttribute\(|\.removeAttribute\(|\.textContent[[:space:]]*=|\.remove\(\)' src/typescript/lib --include=*.ts | grep -v 'core/DOM.ts\|core/Util.ts\|DOM\.sink\.' | grep -vE ':[0-9]+:[[:space:]]*(//|\*)'` — zero. Covers the rest of the sink's structural surface (`setAttribute`/`removeAttribute`/`setTextContent`/`removeElement`) that the `classList`/`createElement`/`appendChild`/`removeChild` grep above doesn't. `setAttribute`/`removeAttribute` keep their DOM-API names so migrated `DOM.sink.setAttribute(…)` call sites are dropped by the `DOM\.sink\.` exclusion (raw `el.setAttribute` still caught); `textContent =` writes migrate to the renamed `setTextContent` and `.remove()` to `removeElement`, so both literal forms vanish (the `\.textContent[[:space:]]*=` form targets only *writes*, leaving the rare `.textContent` *read* alone). `core/Util.ts` is excluded as the probe/measurement delegate (its canvas-probe elements set attributes/text directly).
+- `grep -rnE '\.setAttribute\(|\.removeAttribute\(|\.textContent[[:space:]]*=|\.remove\(\)' src/typescript/lib --include=*.ts | grep -v 'core/DOM.ts\|core/Util.ts\|DOM\.sink\.' | grep -vE ':[0-9]+:[[:space:]]*(//|\*)' | grep -vE '\bthis\.(setAttribute|removeAttribute|remove)\('` — zero. Covers the rest of the sink's structural surface (`setAttribute`/`removeAttribute`/`setTextContent`/`removeElement`) that the `classList`/`createElement`/`appendChild`/`removeChild` grep above doesn't. **The trailing `\bthis\.(setAttribute|removeAttribute|remove)\(` exclusion is load-bearing:** `Component.setAttribute`/`removeAttribute` (the typed data-attribute API) and `Aria.setAttribute`/`removeAttribute` (Aria's own private store, flushed via `applyAriaAttribute`) share the DOM-API method names but are the *sanctioned typed layer above the seam*, not raw element writes — they stay. Genuine raw element writes (`element.setAttribute`, `el.textContent =`, `x.getElement().remove()`) all migrate: `setAttribute`/`removeAttribute` keep their DOM-API names so migrated `DOM.sink.setAttribute(…)` call sites are dropped by the `DOM\.sink\.` exclusion (raw `el.setAttribute` still caught); `textContent =` writes migrate to the renamed `setTextContent` and element `.remove()` to `removeElement`, so both literal forms vanish (the `\.textContent[[:space:]]*=` form targets only *writes*, leaving the rare `.textContent` *read* alone). The terminal `Component.setElementAttribute`/`removeElementAttribute` primitive (which every typed attribute setter routes through, mirroring `StyleTarget.write` → `DOM.sink.setStyle`) writes through `DOM.sink` too. `core/Util.ts` is excluded as the probe/measurement delegate (its canvas-probe elements set attributes/text directly).
 - `npm run test:lint` — the existing `scripts/eslint/no-element-style.test.mjs` and `forward-super-options.test.mjs` ESLint-rule tests still pass.
 - App renders identically on every demo screen; theme toggle works (Bucket-3 reads still resolve).
 - TabDemoPanel: vertical + horizontal tab strip slides correctly after the `setTranslate` migration.
@@ -268,6 +277,21 @@ export interface FontMetricsTable {
 - [component/container/TabBar.ts](../src/typescript/lib/component/container/TabBar.ts) — `TabIndicator` (209) strip slide (`_mainPos` 210, batched `applyBarGeometry` writes 279/291/302) to migrate onto `setTranslate`; `applyStyle`-replay comment (272).
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — DOM-access rules (103, 126, 184) the seam formalises.
 - `plans/test-suite.md` — the Vitest/jsdom direction this plan's Stage-2 harness slots into.
+
+---
+
+## Implementation Notes (deviations from the as-written plan)
+
+Justified refinements made during implementation, recorded here for the implemented-plan record:
+
+- **`Rect` carries DOMRect edges.** Call sites read `.top/.left/.right/.bottom` and pass the rect to `placeAnchored` / `resolvePlacement` (typed `DOMRect`). `Rect` gained `top/left/right/bottom` (a DOMRect is structurally assignable to it), so the swap is a true drop-in; those two signatures became `Rect`.
+- **`DOM` is a mutable-property `const` object, not a `namespace`.** The Vite/Oxc transformer rejects `export let` inside a namespace. A `const DOM: DOMSeams` object with swappable `sink`/`source` properties is functionally identical and Oxc-safe. `DOMSeams` is the new exported interface.
+- **`applyStyle` gained a translate-replay branch.** `setTranslate` writes `transform` inline, which `applyStyle` wipes on re-render and previously did not replay (a latent gap — `setTranslate` users re-applied on next interaction). A `_translateX/_translateY` replay branch was added next to the width/top/left/height replays, so the `TabIndicator` slide survives re-render through the cached channel and `getTranslateX/Y` is the single source of truth the oracle reads.
+- **`Scrollbar`'s read is `getViewportRect(this)`**, not the escape hatch — it reads `this.getElement()` (its own root), so the component-keyed form is correct.
+- **`ProductionDOMSource.getScrollBarWidth` delegates to the cached `Util.getScrollBarWidth()`** (not the re-measuring `calculateScrollBarWidth`); its real callers (`layout/Table`, `core/Panel`) migrated to `DOM.source.getScrollBarWidth()`.
+- **`Util.measureFontMetrics` is exported** so `ProductionDOMSource` delegates to it; `Util.measureTextBaseline` / `opticalCenterOffset` call `DOM.source.measureFontMetrics()` so the modelled source intercepts them offline.
+- **`ModelledDOMSource.getThemeVar` resolves from an injected `themeVars` map** (explicit per-test) rather than a full `Theme`, keeping the test seam dependency-light. `getElementRect` returns a zero rect offline (modelled geometry is scoped to components).
+- **Two structural verification greps**, split by whether the sink method keeps its DOM-API name (`appendChild`/`setAttribute` need the `DOM\.sink\.` + `this\.` exclusions) or is renamed (`addClass`, `getViewportRect` need none).
 
 ---
 

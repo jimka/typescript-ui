@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -8,7 +9,6 @@ import { StyleRule } from "~/core/StyleTarget.js";
 import { Position } from "~/primitive/Position.js";
 import { Placement } from "~/primitive/Placement.js";
 import { isUnbounded } from "~/primitive/Size.js";
-import { Util } from "~/core/Util.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { RailHandle } from "~/core/RailHandle.js";
@@ -695,7 +695,7 @@ class Rail extends Component<RailOptions> {
         to: Partial<CSSStyleDeclaration>;
         properties: string[];
     } {
-        const vp   = Util.getViewportSize();
+        const vp   = DOM.source.getViewportSize();
         const from: Partial<CSSStyleDeclaration> = {};
         const to:   Partial<CSSStyleDeclaration> = {};
 
@@ -787,14 +787,14 @@ class Rail extends Component<RailOptions> {
         this.applyRestingGeometry();
 
         const element = this.getElement(true);
-        document.documentElement.appendChild(element);
+        DOM.sink.appendChild(document.documentElement, element);
 
         // The collapse chevron is a raw child (self-centred via its own class
         // rule), outside the handle layout, so it doesn't count toward the
         // content-fit thickness. Append once; a remount reuses the element.
         const chevron = this._collapseButton.getElement(true);
         if (chevron && chevron.parentElement !== element) {
-            element.appendChild(chevron);
+            DOM.sink.appendChild(element, chevron);
         }
 
         // Seed the chevron heading, skin, placement, and handle visibility for
@@ -1155,7 +1155,7 @@ class Rail extends Component<RailOptions> {
      * @returns The resting `{ x, y, width, height }` in pixels.
      */
     private restingRect(): { x: number; y: number; width: number; height: number } {
-        const vp        = Util.getViewportSize();
+        const vp        = DOM.source.getViewportSize();
         const thickness = this.getThickness();
 
         switch (this.getEdge()) {

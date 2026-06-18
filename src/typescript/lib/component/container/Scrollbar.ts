@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { DOM } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Util } from "~/core/Util.js";
@@ -866,7 +867,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
             if (!t || !el) {
                 return;
             }
-            const rect = el.getBoundingClientRect();
+            const rect = DOM.source.getViewportRect(this);
             click = vertical ? t.clientY - rect.top : t.clientX - rect.left;
         } else {
             const mouse = e as MouseEvent;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
@@ -87,10 +88,10 @@ class TreeRow extends Component {
         if (el) {
             const oldEl = this._renderer.getElement();
             if (oldEl && oldEl.parentNode === el) {
-                el.removeChild(oldEl);
+                DOM.sink.removeChild(el, oldEl);
             }
 
-            el.appendChild(renderer.getElement(true));
+            DOM.sink.appendChild(el, renderer.getElement(true));
         }
 
         this._renderer = renderer;
@@ -137,7 +138,7 @@ class TreeRow extends Component {
         if (this._toggle) {
             const el = this.getElement();
             if (el) {
-                el.removeChild(this._toggle.getElement(true));
+                DOM.sink.removeChild(el, this._toggle.getElement(true));
             }
             this._toggle = null;
         }
@@ -145,7 +146,7 @@ class TreeRow extends Component {
         if (this._spinner) {
             const el = this.getElement();
             if (el) {
-                el.removeChild(this._spinner.getElement(true));
+                DOM.sink.removeChild(el, this._spinner.getElement(true));
             }
             this._spinner = null;
         }
@@ -159,7 +160,7 @@ class TreeRow extends Component {
 
             const el = this.getElement();
             if (el) {
-                el.appendChild(spinner.getElement(true));
+                DOM.sink.appendChild(el, spinner.getElement(true));
             }
         } else if (hasChildren) {
             const toggle = new Glyph(expanded ? "caret-down" : "caret-right");
@@ -170,7 +171,7 @@ class TreeRow extends Component {
 
             const el = this.getElement();
             if (el) {
-                el.appendChild(toggle.getElement(true));
+                DOM.sink.appendChild(el, toggle.getElement(true));
             }
         }
 
@@ -258,7 +259,7 @@ class TreeRow extends Component {
             return this;
         }
 
-        el.appendChild(this._renderer.getElement(true));
+        DOM.sink.appendChild(el, this._renderer.getElement(true));
 
         return this;
     }

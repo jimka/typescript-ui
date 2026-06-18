@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 
@@ -112,10 +113,10 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
     protected render(): HTMLElement {
         const element = super.render();
 
-        element.textContent = "▶";
+        DOM.sink.setTextContent(element, "▶");
 
         if (this._expanded) {
-            element.classList.add("expanded");
+            DOM.sink.addClass(element, "expanded");
         }
 
         return element;
@@ -144,7 +145,7 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
         const element = this.getElement();
 
         if (element) {
-            element.classList.toggle("expanded", value);
+            DOM.sink.toggleClass(element, "expanded", value);
         }
 
         return this;

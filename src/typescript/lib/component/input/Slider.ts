@@ -2,6 +2,7 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { callable } from "~/core/Callable.js";
 
@@ -628,7 +629,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             return this.getValue();
         }
 
-        const rect       = element.getBoundingClientRect();
+        const rect       = DOM.source.getViewportRect(this);
         const horizontal = this.getOrientation() === "horizontal";
         const fraction   = horizontal
             ? (rect.width  > 0 ? (e.clientX - rect.left) / rect.width  : 0)

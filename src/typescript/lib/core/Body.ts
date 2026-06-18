@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Util } from "~/core/Util.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { ThemeManager, ModernTheme } from "~/core/Theme.js";
 
@@ -56,7 +57,7 @@ export class Body extends Component {
     protected init(): this {
         super.init();
 
-        this.setSize(Util.getViewportSize());
+        this.setSize(DOM.source.getViewportSize());
         this.clearInsets();
 
         Event.addViewportListener(this, "resize", this._onViewportResize);
@@ -70,6 +71,6 @@ export class Body extends Component {
      * through the typed setter.
      */
     private _onViewportResize = (): void => {
-        this.setSize(Util.getViewportSize());
+        this.setSize(DOM.source.getViewportSize());
     };
 }

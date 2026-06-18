@@ -2,6 +2,7 @@
 
 import { Size } from "~/primitive/Size.js";
 import { InlineStyle } from "~/core/StyleTarget.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Font options for off-screen text measurement.
@@ -194,9 +195,7 @@ export namespace Util {
             return linePaddingCache;
         }
 
-        const raw    = getComputedStyle(document.documentElement)
-                           .getPropertyValue("--ts-ui-line-padding")
-                           .trim();
+        const raw    = DOM.source.getThemeVar("--ts-ui-line-padding");
         const parsed = parseFloat(raw);
 
         // 2 mirrors the `--ts-ui-line-padding` default shipped by every theme
@@ -218,9 +217,7 @@ export namespace Util {
             return rootFontSizeCache;
         }
 
-        const raw    = getComputedStyle(document.documentElement)
-                           .getPropertyValue("--ts-ui-font-size")
-                           .trim();
+        const raw    = DOM.source.getThemeVar("--ts-ui-font-size");
         const parsed = parseFloat(raw);
 
         rootFontSizeCache = isNaN(parsed) ? 14 : parsed;
@@ -292,7 +289,7 @@ export namespace Util {
             return textBaselineCache;
         }
 
-        const m   = measureFontMetrics();
+        const m   = DOM.source.measureFontMetrics();
         const gap = lineHeightPx() - (m.ascent + m.descent);
 
         textBaselineCache = Math.round(gap / 2 + m.ascent);
@@ -324,7 +321,7 @@ export namespace Util {
             return opticalOffsetCache;
         }
 
-        const m      = measureFontMetrics();
+        const m      = DOM.source.measureFontMetrics();
         const boxMid = (m.ascent - m.descent) / 2;
         const inkMid = m.capTop / 2;
 
@@ -364,18 +361,17 @@ export namespace Util {
      * the font box falls back to the `"X"` ink box, which is stable enough for
      * Latin text.
      */
-    function measureFontMetrics(): { ascent: number; descent: number; capTop: number } {
+    export function measureFontMetrics(): { ascent: number; descent: number; capTop: number } {
         if (metricsCtx === null) {
             metricsCtx = document.createElement("canvas").getContext("2d");
         }
 
         const ctx  = metricsCtx as CanvasRenderingContext2D;
-        const root = getComputedStyle(document.documentElement);
 
         // 14px / system-ui mirror the `--ts-ui-font-*` defaults shipped by the
         // themes; they only apply when the computed value is empty (pre-apply).
-        const family = root.getPropertyValue("--ts-ui-font-family").trim() || "system-ui, sans-serif";
-        const size   = root.getPropertyValue("--ts-ui-font-size").trim()   || "14px";
+        const family = DOM.source.getThemeVar("--ts-ui-font-family") || "system-ui, sans-serif";
+        const size   = DOM.source.getThemeVar("--ts-ui-font-size")   || "14px";
 
         ctx.font = `normal normal ${size} ${family}`;
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { CollapseButton, CollapseDirection } from "~/component/container/CollapseButton.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -187,7 +188,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
             return this;
         }
 
-        el.appendChild(this._collapseButton.getElement(true)!);
+        DOM.sink.appendChild(el, this._collapseButton.getElement(true)!);
 
         return this;
     }

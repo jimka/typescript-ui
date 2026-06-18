@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { callable } from "~/core/Callable.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Construction-time options for {@link ListItem}.
@@ -61,7 +62,7 @@ class ListItem extends Component<ListItemOptions> {
             this._value = opts.text;
             const element = this.getElement();
             if (element) {
-                element.textContent = opts.text;
+                DOM.sink.setTextContent(element, opts.text);
             }
         }
 
@@ -96,7 +97,7 @@ class ListItem extends Component<ListItemOptions> {
         let element = super.render();
 
         element.dataset.key = this._key;
-        element.textContent = this._value;
+        DOM.sink.setTextContent(element, this._value);
 
         return element;
     }

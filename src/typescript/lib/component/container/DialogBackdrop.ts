@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
@@ -33,11 +34,13 @@ class DialogBackdrop extends Component<DialogBackdropOptions> {
     constructor(options?: DialogBackdropOptions) {
         super(options, _defaultDialogBackdropOptions);
 
+        const vp = DOM.source.getViewportSize();
+
         this.setPosition(Position.FIXED);
         this.setX(0);
         this.setY(0);
-        this.setWidth(window.innerWidth);
-        this.setHeight(window.innerHeight);
+        this.setWidth(vp.width);
+        this.setHeight(vp.height);
         this.setZIndex(10100);
         this.setBackgroundColor("var(--ts-ui-dialog-backdrop-bg)");
     }
@@ -57,8 +60,10 @@ class DialogBackdrop extends Component<DialogBackdropOptions> {
      * Updates backdrop dimensions to match the current viewport size.
      */
     resize(): void {
-        this.setWidth(window.innerWidth);
-        this.setHeight(window.innerHeight);
+        const vp = DOM.source.getViewportSize();
+
+        this.setWidth(vp.width);
+        this.setHeight(vp.height);
     }
 
     /**

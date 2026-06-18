@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
@@ -837,7 +838,7 @@ class Tree extends Component<TreeOptions> {
             const row   = new TreeRow(this._rendererFactory);
             const rowEl = row.getElement(true);
 
-            growFragment.appendChild(rowEl);
+            DOM.sink.appendChild(growFragment, rowEl);
 
             // Pin row's static top to 0 once; per-frame Y offset comes from translateY.
             row.setY(0);
@@ -855,7 +856,7 @@ class Tree extends Component<TreeOptions> {
             this._rowDisplayed.push(false);
         }
 
-        rowsContainer.appendChild(growFragment);
+        DOM.sink.appendChild(rowsContainer, growFragment);
     }
 
     /**

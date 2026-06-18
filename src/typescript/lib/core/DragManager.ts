@@ -5,6 +5,7 @@ import { DragFeedback } from "~/core/component/DragFeedback.js";
 import { DragGhost } from "~/core/component/DragGhost.js";
 import { Event } from "~/core/Event.js";
 import { ReorderIndicator } from "~/core/component/ReorderIndicator.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Arbitrary, caller-defined payload attached to a drag source — the
@@ -366,7 +367,7 @@ function commitSession(session: DragSession): void {
     } else {
         const el = ghost.getElement(true);
 
-        document.documentElement.appendChild(el);
+        DOM.sink.appendChild(document.documentElement, el);
     }
 
     if (session.sourceOptions.cursor) {

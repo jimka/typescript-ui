@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { callable } from "~/core/Callable.js";
@@ -106,7 +107,7 @@ class RailHandle extends Button<RailHandleOptions> {
 
         const element = this.getElement();
         if (element) {
-            element.classList.toggle("selected", value);
+            DOM.sink.toggleClass(element, "selected", value);
         }
 
         return this;
@@ -119,7 +120,7 @@ class RailHandle extends Button<RailHandleOptions> {
      */
     render() {
         const element = super.render();
-        element.classList.toggle("selected", this.isSelected());
+        DOM.sink.toggleClass(element, "selected", this.isSelected());
 
         return element;
     }

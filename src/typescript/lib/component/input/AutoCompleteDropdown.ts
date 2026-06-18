@@ -2,6 +2,7 @@
 
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { StyleRule } from "~/core/StyleTarget.js";
+import { DOM } from "~/core/DOM.js";
 import { Fit } from "~/layout/Fit.js";
 import { List } from "~/component/list/List.js";
 import { callable } from "~/core/Callable.js";
@@ -138,7 +139,7 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
 
         const perim   = this.getPerimiterSize();
         const chromeH = perim.top + perim.bottom;
-        const rect    = anchorEl.getBoundingClientRect();
+        const rect    = DOM.source.getElementRect(anchorEl);
 
         this.setWidth(rect.width);
         this.setHeight(suggestions.length * AUTOCOMPLETE_DROPDOWN_ROW_HEIGHT_PX + chromeH);

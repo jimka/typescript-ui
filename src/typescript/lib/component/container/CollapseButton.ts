@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { StyleRule } from "~/core/StyleTarget.js";
@@ -183,7 +184,7 @@ class CollapseButton extends Component<CollapseButtonOptions> {
     protected render(): HTMLElement {
         const element = super.render();
 
-        element.textContent = "▶";
+        DOM.sink.setTextContent(element, "▶");
 
         return element;
     }

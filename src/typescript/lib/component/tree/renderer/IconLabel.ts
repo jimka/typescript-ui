@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { DOM } from "~/core/DOM.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Text } from "~/component/input/Text.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
@@ -88,7 +89,7 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
             if (el) {
                 const oldEl = this._icon.getElement();
                 if (oldEl && oldEl.parentNode === el) {
-                    el.removeChild(oldEl);
+                    DOM.sink.removeChild(el, oldEl);
                 }
             }
 
@@ -152,8 +153,8 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
             return this;
         }
 
-        el.appendChild(this._icon.getElement(true));
-        el.appendChild(this._label.getElement(true));
+        DOM.sink.appendChild(el, this._icon.getElement(true));
+        DOM.sink.appendChild(el, this._label.getElement(true));
 
         return this;
     }

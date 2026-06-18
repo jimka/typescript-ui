@@ -15,5 +15,6 @@ If you are new here, start with the [mental model](/guide/mental-model) in the G
 - [Data binding](/concepts/data-binding) — Model / Store / Proxy / `Binding` overview.
 - [Accessibility](/concepts/accessibility) — ARIA, keyboard navigation, `RovingTabIndex`.
 - [Performance](/concepts/performance) — `pauseLayout`, virtual scrolling, dispose patterns.
+- [DOM seams](/concepts/dom-seams) — the swappable `DOMSink` / `DOMSource` write and read boundary behind offline geometry tests.
 
 If you are building custom components or layouts, the **lifecycle**, **layout system**, and **events** pages are the load-bearing reading. For app-level work, **theming** and **data binding** are the most useful entry points.
