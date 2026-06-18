@@ -1580,9 +1580,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // toward 0. Applied as an extra Math.min before setWidth/setHeight clamp to
         // their own min/max, so the WEST/NORTH position re-derivation below stays
         // consistent with the clamped size.
-        const eastWidthCap   = window.innerWidth  - this._resizeOriginX;
+        const vp             = DOM.source.getViewportSize();
+        const eastWidthCap   = vp.width  - this._resizeOriginX;
         const westWidthCap   = originRight;
-        const southHeightCap = window.innerHeight - this._resizeOriginY;
+        const southHeightCap = vp.height - this._resizeOriginY;
         const northHeightCap = originBottom;
 
         this.setAutoCommitStyle(false);
@@ -1645,8 +1646,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     private viewportPositionBounds(): { minX: number; maxX: number; minY: number; maxY: number } {
         const w  = this.getWidth();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
+        const vp = DOM.source.getViewportSize();
+        const vw = vp.width;
+        const vh = vp.height;
 
         if (this.isConstrainToViewport()) {
             // Whole window inside the viewport: every border stops at the edge.
@@ -1921,11 +1923,13 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             }
         }
 
+        const vp = DOM.source.getViewportSize();
+
         return {
             x:      0,
             y:      0,
-            width:  window.innerWidth,
-            height: window.innerHeight,
+            width:  vp.width,
+            height: vp.height,
         };
     }
 
@@ -1940,7 +1944,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         const slotIndex = this.computeDockSlotIndex();
         const headerHeight = this.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
         const x = slotIndex * (dockWidth + SNAP_DOCK_GAP_PX);
-        const y = window.innerHeight - headerHeight;
+        const y = DOM.source.getViewportSize().height - headerHeight;
 
         return { x, y, width: dockWidth, height: headerHeight };
     }
@@ -1968,12 +1972,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         switch (rail.getEdge()) {
             case Placement.EAST:
-                targetX = window.innerWidth - thickness;
+                targetX = DOM.source.getViewportSize().width - thickness;
 
                 break;
 
             case Placement.SOUTH:
-                targetY = window.innerHeight - thickness;
+                targetY = DOM.source.getViewportSize().height - thickness;
 
                 break;
 
@@ -2085,7 +2089,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             const dockWidth   = win.getMinDockWidth();
             const headerHeight = win.chromeHeight() || CHROME_HEIGHT_FLOOR_PX;
             const x = index * (dockWidth + SNAP_DOCK_GAP_PX);
-            const y = window.innerHeight - headerHeight;
+            const y = DOM.source.getViewportSize().height - headerHeight;
 
             win.setAutoCommitStyle(false);
             win.setX(x);

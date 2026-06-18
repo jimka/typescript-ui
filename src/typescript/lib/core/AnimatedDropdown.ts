@@ -339,8 +339,9 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
         const w = this.getWidth();
         const h = this.getHeight();
 
-        const vpWidth  = window.innerWidth;
-        const vpHeight = window.innerHeight;
+        const vp       = DOM.source.getViewportSize();
+        const vpWidth  = vp.width;
+        const vpHeight = vp.height;
 
         // Vertical: prefer below; flip above when below overflows AND above
         // has room; otherwise pick the side with more space and clamp.

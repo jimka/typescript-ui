@@ -218,7 +218,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         const naturalW     = labelW + COMBOBOX_DROPDOWN_ROW_PADDING_PX + chromeW;
         const floorW       = rect.width;
         const ceilingW     = Math.max(rect.width, this._minWidth);
-        const dropdownW    = Math.min(Math.max(naturalW, floorW), ceilingW, window.innerWidth);
+        const dropdownW    = Math.min(Math.max(naturalW, floorW), ceilingW, DOM.source.getViewportSize().width);
 
         this.setWidth(dropdownW);
         this.setHeight(panelH);
