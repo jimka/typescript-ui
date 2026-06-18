@@ -100,18 +100,20 @@ function ensureGlyphKeyframes(): void {
  * Module-level listener that re-evaluates every animated glyph when the OS
  * `prefers-reduced-motion` preference flips. Dead `WeakRef`s are pruned.
  */
-if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
-    window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", (): void => {
-        for (const ref of Array.from(_animatedRefs)) {
-            const glyph = ref.deref();
-            if (!glyph) {
-                _animatedRefs.delete(ref);
-                continue;
-            }
-
-            glyph._syncReducedMotion();
+function _onReducedMotionChange(): void {
+    for (const ref of Array.from(_animatedRefs)) {
+        const glyph = ref.deref();
+        if (!glyph) {
+            _animatedRefs.delete(ref);
+            continue;
         }
-    });
+
+        glyph._syncReducedMotion();
+    }
+}
+
+if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+    window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", _onReducedMotionChange);
 }
 
 /**
