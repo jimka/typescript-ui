@@ -56,8 +56,17 @@ class ButtonGroup {
      */
     constructor(options?: ButtonGroupOptions) {
         if (options?.buttons !== undefined) this.addButtons(options.buttons);
-        if (options?.listeners?.selection !== undefined) {
-            this.on("selection", options.listeners.selection);
+
+        if (options?.listeners !== undefined) {
+            const listeners = options.listeners;
+
+            for (const event of Object.keys(listeners) as Array<keyof typeof listeners>) {
+                const listener = listeners[event];
+
+                if (listener !== undefined) {
+                    this.on(event, listener);
+                }
+            }
         }
     }
 

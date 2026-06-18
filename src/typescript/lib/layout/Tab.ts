@@ -333,12 +333,19 @@ class Tab extends LayoutManager {
     protected applyOptions(options: TabOptions): void {
         super.applyOptions(options);
 
-        if (options.listeners?.tabclose !== undefined) {
-            this.on("tabclose", options.listeners.tabclose);
-        }
+        if (options.listeners !== undefined) {
+            const listeners = options.listeners;
 
-        if (options.listeners?.empty !== undefined) {
-            this.on("empty", options.listeners.empty);
+            for (const event of Object.keys(listeners) as Array<keyof typeof listeners>) {
+                const listener = listeners[event];
+
+                if (listener !== undefined) {
+                    // The bag's field types pair each key with its matching
+                    // listener, but the union key can't select a single narrow
+                    // `on` overload — cast to the implementation signature.
+                    (this.on as (event: TabEvent, listener: Function) => this)(event, listener);
+                }
+            }
         }
 
         if (options.widthMode !== undefined) {

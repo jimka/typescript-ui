@@ -32,7 +32,8 @@ export interface SpinButtonOptions extends ButtonOptions {
      * construction time.
      */
     listeners?: {
-        tick?: () => void;
+        action?: ClickListener;
+        tick?:   () => void;
     };
 }
 
@@ -109,9 +110,7 @@ class SpinButton extends Button<SpinButtonOptions> {
         Event.addViewportListener(this, "mouseup", () => this.onMouseUp());
         Event.addViewportListener(this, "mouseleave", () => this.onMouseUp());
 
-        if (options?.listeners?.tick !== undefined) {
-            this.on("tick", options.listeners.tick);
-        }
+        this.applyListeners(options?.listeners);
     }
 
     /**

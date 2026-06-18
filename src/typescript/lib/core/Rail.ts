@@ -316,21 +316,6 @@ class Rail extends Component<RailOptions> {
     }
 
     /**
-     * Wires the construction-time listener bag onto the typed `on` surface.
-     *
-     * @param listeners - The `options.listeners` bag.
-     */
-    private applyListeners(listeners: NonNullable<RailOptions["listeners"]>): void {
-        if (listeners.register !== undefined) {
-            this.on("register", listeners.register);
-        }
-
-        if (listeners.unregister !== undefined) {
-            this.on("unregister", listeners.unregister);
-        }
-    }
-
-    /**
      * Applies a {@link RailOptions} bag, dispatching the rail-specific fields
      * after inherited Component fields. `listeners` is handled in the
      * constructor instead — it cannot run during the super() cascade.

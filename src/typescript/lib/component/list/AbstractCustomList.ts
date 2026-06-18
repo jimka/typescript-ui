@@ -63,6 +63,15 @@ export interface AbstractCustomListOptions extends AbstractInputOptions {
     store?:        AbstractStore;
     displayField?: string;
     valueField?:   string;
+    /**
+     * Construction-time listener bag — the declarative form of `on()`. Adds the
+     * list's `action` shorthand to the inherited `change` / `binding`.
+     */
+    listeners?: {
+        action?:  () => void;
+        change?:  (value: any) => void;
+        binding?: () => void;
+    };
 }
 
 /**

@@ -407,9 +407,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         Event.addListener(this, "mousedown",  this._onTrackClick);
         Event.addListener(this, "touchstart", this._onTrackClick);
 
-        if (options?.listeners?.scroll !== undefined) {
-            this.on("scroll", options.listeners.scroll);
-        }
+        this.applyListeners(options?.listeners);
     }
 
     /**

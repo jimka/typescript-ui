@@ -670,8 +670,12 @@ class MiscPanel extends Panel {
             leftColumn.addComponent(drawerButton);
         }
 
-        const nonModalDrawerButton = new Button("Non-modal drawer (left)");
-        nonModalDrawerButton.on("action", () => openDemoDrawer(Placement.WEST, false, "left"));
+        // Wire `action` declaratively through the typed `listeners` bag — the
+        // bag mirrors the component's `on()` surface, so `action` is offered and
+        // typed here while any non-`on()` key would be a compile error.
+        const nonModalDrawerButton = new Button("Non-modal drawer (left)", {
+            listeners: { action: () => openDemoDrawer(Placement.WEST, false, "left") },
+        });
         leftColumn.addComponent(nonModalDrawerButton);
 
         // Rail demo — a persistent launcher strip along the left edge. Unlike a

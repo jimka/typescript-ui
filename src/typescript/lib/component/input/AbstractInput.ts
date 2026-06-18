@@ -23,9 +23,9 @@ export interface AbstractInputOptions extends ComponentOptions {
     enabled?:  boolean;
     readOnly?: boolean;
     /**
-     * Multi-event listener bag dispatched at construction time. Entries
-     * are appended to the subclass's listener bag as if `on(event, fn)`
-     * had been called.
+     * Construction-time listener bag — the declarative form of `on()`. Each
+     * entry is wired as if `on(event, fn)` had been called. Concrete subclasses
+     * that expose `on("action", …)` widen this with their own `action?` key.
      */
     listeners?: {
         change?:  (value: any) => void;
@@ -69,9 +69,10 @@ abstract class AbstractInput<
         // Listener wiring runs here — NOT inside `applyOptions` — because
         // Component's constructor calls `applyOptions` from inside super(),
         // before the class-field `_listeners` initializer has run. Wiring
-        // after super() guarantees `_listeners` exists.
-        if (options?.listeners?.change  !== undefined) this.on("change",  options.listeners.change);
-        if (options?.listeners?.binding !== undefined) this.on("binding", options.listeners.binding);
+        // after super() guarantees `_listeners` exists. A subclass that adds
+        // `action` to its bag is wired by this same call (it iterates every
+        // key), so leaves must not call `applyListeners` again.
+        this.applyListeners(options?.listeners);
     }
 
     /**

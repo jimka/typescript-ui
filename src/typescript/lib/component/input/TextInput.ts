@@ -48,6 +48,15 @@ export interface TextInputOptions extends AbstractInputOptions {
     maxLength?:    number;
     inputMode?:    string;
     autoComplete?: string;
+    /**
+     * Construction-time listener bag — the declarative form of `on()`. Adds the
+     * text input's `action` shorthand to the inherited `change` / `binding`.
+     */
+    listeners?: {
+        action?:  () => void;
+        change?:  (value: string) => void;
+        binding?: () => void;
+    };
 }
 
 /**

@@ -51,6 +51,10 @@ class ToggleButton extends Button<ToggleButtonOptions> {
         if (options) {
             this.applyOptions(options);
         }
+
+        // Button's constructor skipped the listener bag (it wires only a plain
+        // Button); wire it here, after super() and applyOptions, as the leaf.
+        this.applyListeners(options?.listeners);
     }
 
     /**

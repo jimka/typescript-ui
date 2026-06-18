@@ -128,6 +128,47 @@ Panel({
 });
 ```
 
+### Wiring event listeners
+
+The `listeners` bag is the declarative form of a component's typed `on()` surface. It accepts **exactly** the events that component exposes through `on()` — its own event names, each typed to the listener that `on()` expects — and is dispatched once at the end of the constructor. Any other key is a **compile error**: an event the component doesn't expose, a raw DOM event name it doesn't surface, or a typo.
+
+```typescript
+Button("Save", {
+    listeners: {
+        action: () => save(),   // ✓ Button exposes on("action")
+    }
+});
+
+SplitGutter({
+    listeners: {
+        drag:     pos => console.log("dragged to", pos),  // ✓
+        collapse: ()  => console.log("collapsed"),        // ✓
+    }
+});
+
+Drawer({
+    edge: "left",
+    listeners: {
+        open:  () => console.log("opened"),
+        close: () => console.log("closed"),
+    }
+});
+```
+
+Because the bag mirrors `on()`, the compiler rejects anything outside that surface:
+
+```typescript
+Button("Save", {
+    listeners: {
+        click:    () => {},   // ✗ Button has no on("click") — compile error
+        collapse: () => {},   // ✗ not a Button event — compile error
+        actoin:   () => {},   // ✗ typo — compile error
+    }
+});
+```
+
+A component that exposes no `on()` surface (a plain `Component`, a `ToolBar`) has no `listeners` option at all — wire post-construction DOM listeners with `Event.addListener` instead. Listeners registered through the bag fire in registration order alongside any added later with `on()`. This is construction-time wiring only; use `on()` for listeners added after the component exists, and `off()` to detach.
+
 ## Layout managers
 
 Layout managers follow the same pattern. The base `LayoutManagerOptions` interface is empty today; each concrete manager's interface adds its own settable fields.
