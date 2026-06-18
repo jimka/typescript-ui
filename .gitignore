@@ -5,6 +5,9 @@ vendor
 .worktrees/
 *:Zone.Identifier
 
+# Test coverage output
+coverage
+
 # Generated docs output
 docs/api
 docs/.vitepress/dist
