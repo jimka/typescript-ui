@@ -6,7 +6,6 @@ import { SortPriorityBadge } from "~/component/table/cell/SortPriorityBadge.js";
 import { CellEvent } from "~/component/table/cell/Cell.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
-import { Util } from "~/core/Util.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Tooltip } from "~/core/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -424,7 +423,7 @@ class HeaderCell extends DefaultCell {
         // Suppresses pointer events on document.body (not a Component) for the
         // duration of the column resize so the cursor can't snag on other cells.
         // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
-        Util.select('body').style.pointerEvents = 'none';
+        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", 'none');
     }
 
     private onResizeDrag(e: MouseEvent): void {
@@ -437,7 +436,7 @@ class HeaderCell extends DefaultCell {
 
         // Restores pointer events on document.body (not a Component) once the resize ends.
         // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
-        Util.select('body').style.pointerEvents = '';
+        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", '');
 
         this._resizeHandle.dragEnd();
 

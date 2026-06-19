@@ -77,22 +77,22 @@ export class VirtualScroller {
         // the two roles lets the transform shift the rows around inside a
         // stable clip.
         const clipBox = DOM.sink.createElement("div");
-        clipBox.style.position = "absolute";
-        clipBox.style.top      = "0";
-        clipBox.style.left     = "0";
-        clipBox.style.width    = "100%";
-        clipBox.style.height   = "100%";
-        clipBox.style.overflow = "hidden";
+        DOM.sink.setStyle(clipBox, "position", "absolute");
+        DOM.sink.setStyle(clipBox, "top", "0");
+        DOM.sink.setStyle(clipBox, "left", "0");
+        DOM.sink.setStyle(clipBox, "width", "100%");
+        DOM.sink.setStyle(clipBox, "height", "100%");
+        DOM.sink.setStyle(clipBox, "overflow", "hidden");
         DOM.sink.appendChild(element, clipBox);
         this._clipBox = clipBox;
 
         const container = DOM.sink.createElement("div");
-        container.style.position   = "absolute";
-        container.style.top        = "0";
-        container.style.left       = "0";
-        container.style.width      = "100%";
-        container.style.transform  = "translate3d(0, 0, 0)";
-        container.style.willChange = "transform";
+        DOM.sink.setStyle(container, "position", "absolute");
+        DOM.sink.setStyle(container, "top", "0");
+        DOM.sink.setStyle(container, "left", "0");
+        DOM.sink.setStyle(container, "width", "100%");
+        DOM.sink.setStyle(container, "transform", "translate3d(0, 0, 0)");
+        DOM.sink.setStyle(container, "willChange", "transform");
         DOM.sink.appendChild(clipBox, container);
         this._rowsContainer = container;
 
@@ -362,8 +362,8 @@ export class VirtualScroller {
         // scrollbar). When neither bar is visible this collapses to the
         // full owner size, matching the previous `width/height: 100%`
         // behaviour.
-        this._clipBox.style.width  = effW + "px";
-        this._clipBox.style.height = effH + "px";
+        DOM.sink.setStyle(this._clipBox, "width", effW + "px");
+        DOM.sink.setStyle(this._clipBox, "height", effH + "px");
     }
 
     /**
@@ -371,7 +371,7 @@ export class VirtualScroller {
      * transform.
      */
     private updateTransform(): void {
-        this._rowsContainer.style.transform = `translate3d(${-this._scrollX}px, ${-this._scrollY}px, 0)`;
+        DOM.sink.setStyle(this._rowsContainer, "transform", `translate3d(${-this._scrollX}px, ${-this._scrollY}px, 0)`);
     }
 
     /**

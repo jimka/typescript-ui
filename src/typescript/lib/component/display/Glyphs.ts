@@ -117,10 +117,10 @@ export function ensureGlyphSprite(): void {
     // `sprite` is a raw off-screen SVG element mounted directly on document.body,
     // not a Component, so the Component style setters don't apply here.
     /* eslint-disable local/no-element-style */
-    sprite.style.position = "absolute";
-    sprite.style.width    = "0";
-    sprite.style.height   = "0";
-    sprite.style.overflow = "hidden";
+    DOM.sink.setStyle(sprite, "position", "absolute");
+    DOM.sink.setStyle(sprite, "width", "0");
+    DOM.sink.setStyle(sprite, "height", "0");
+    DOM.sink.setStyle(sprite, "overflow", "hidden");
     /* eslint-enable local/no-element-style */
 
     DOM.sink.appendChild(DOM.source.getBody(), sprite);

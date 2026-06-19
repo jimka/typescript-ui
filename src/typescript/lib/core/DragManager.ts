@@ -334,7 +334,7 @@ function onSourceMouseDown(this: Component, e: MouseEvent): void {
         feedback:      null,
         indicator:     null,
         currentTarget: null,
-        previousBodyCursor: document.body.style.cursor,
+        previousBodyCursor: DOM.source.getInlineStyle(DOM.source.getBody(), "cursor"),
     };
 
     // Viewport listeners route through Event.baseViewportListener, which stops
@@ -371,7 +371,7 @@ function commitSession(session: DragSession): void {
     }
 
     if (session.sourceOptions.cursor) {
-        document.body.style.cursor = session.sourceOptions.cursor;
+        DOM.sink.setStyle(DOM.source.getBody(), "cursor", session.sourceOptions.cursor);
     }
 }
 
@@ -624,7 +624,7 @@ function endSession(dropped: boolean, clientX: number, clientY: number): void {
     }
 
     if (session.sourceOptions.cursor) {
-        document.body.style.cursor = session.previousBodyCursor;
+        DOM.sink.setStyle(DOM.source.getBody(), "cursor", session.previousBodyCursor);
     }
 
     if (session.committed) {

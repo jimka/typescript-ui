@@ -72,13 +72,46 @@ export interface OffsetSize {
  */
 export interface DOMSink {
     /**
-     * Writes a single style property onto a live `style` declaration.
+     * Writes a single inline style property onto an element. The element's
+     * `style` declaration is resolved inside the seam so call sites never touch
+     * `element.style` directly.
      *
-     * @param style - The target `CSSStyleDeclaration` (inline or rule).
+     * @param element - The target element.
      * @param key - The CSS property name (camelCase, or `--custom-property`).
      * @param value - The value to set, or null to remove the property.
      */
-    setStyle(style: CSSStyleDeclaration, key: string, value: string | null): void;
+    setStyle(element: HTMLElement | SVGElement, key: string, value: string | null): void;
+
+    /**
+     * Writes a single style property onto a `CSSStyleRule`'s declaration. The
+     * rule-style counterpart of {@link setStyle} — a `CSSStyleRule` has no
+     * element, so it gets its own method.
+     *
+     * @param rule - The target `CSSStyleRule`.
+     * @param key - The CSS property name (camelCase, or `--custom-property`).
+     * @param value - The value to set, or null to remove the property.
+     */
+    setRuleStyle(rule: CSSStyleRule, key: string, value: string | null): void;
+
+    /**
+     * Finds, or inserts, the framework's shared-stylesheet `CSSStyleRule` for a
+     * selector. Encapsulates the `cssRules` scan and `insertRule` so callers
+     * never walk a `CSSStyleSheet` directly; the returned rule is handed to
+     * {@link setRuleStyle}.
+     *
+     * @param selector - The CSS selector text.
+     * @returns The existing or newly-inserted rule.
+     */
+    ensureStyleRule(selector: string): CSSStyleRule;
+
+    /**
+     * Inserts a `@keyframes` block into the shared stylesheet if one with the
+     * given name does not already exist (idempotent).
+     *
+     * @param name - The animation name (no `@keyframes` prefix).
+     * @param body - The keyframe body (the text between the braces).
+     */
+    ensureKeyframes(name: string, body: string): void;
 
     /**
      * Creates a detached HTML element.
@@ -559,6 +592,15 @@ export interface DOMSource {
     getComputedOverflow(element: Element): { overflow: string; overflowX: string; overflowY: string };
 
     /**
+     * Reads a single inline style property off an element.
+     *
+     * @param element - The element to read.
+     * @param key - The CSS property name (camelCase, or `--custom-property`).
+     * @returns The inline value (empty string when unset).
+     */
+    getInlineStyle(element: HTMLElement, key: string): string;
+
+    /**
      * Returns the document's root `<html>` element — the mount point for
      * top-layer overlays.
      *
@@ -715,20 +757,32 @@ function toRect(domRect: DOMRect): Rect {
  * @category Core
  */
 export class ProductionDOMSink implements DOMSink {
+    /** @inheritDoc */
+    setStyle(element: HTMLElement | SVGElement, key: string, value: string | null): void {
+        this.writeDeclaration(element.style, key, value);
+    }
+
+    /** @inheritDoc */
+    setRuleStyle(rule: CSSStyleRule, key: string, value: string | null): void {
+        this.writeDeclaration(rule.style, key, value);
+    }
+
     /**
-     * Writes a single style property onto a live `style` declaration — the
-     * verbatim body of the former `StyleTarget.write`.
-     *
-     * @param style - The target `CSSStyleDeclaration`.
-     * @param key - The CSS property name (camelCase, or `--custom-property`).
-     * @param value - The value to set, or null to remove the property.
-     *
-     * @remarks Custom properties (`--foo`) must go through
+     * The single terminal style write, shared by {@link setStyle} (inline) and
+     * {@link setRuleStyle} (rule). Custom properties (`--foo`) must go through
      * `setProperty`/`removeProperty`; the indexed accessor only works for
      * camelCase keys.
+     *
+     * @param style - The resolved `CSSStyleDeclaration`.
+     * @param key - The CSS property name (camelCase, or `--custom-property`).
+     * @param value - The value to set, or null to remove the property.
      */
-    setStyle(style: CSSStyleDeclaration, key: string, value: string | null): void {
-        if (key.startsWith("--")) {
+    private writeDeclaration(style: CSSStyleDeclaration, key: string, value: string | null): void {
+        // A hyphenated key is either a custom property (`--foo`) or a standard
+        // kebab-case name (`background-color`); both must go through
+        // `setProperty`/`removeProperty`. Only camelCase keys (`backgroundColor`)
+        // work through the indexed accessor.
+        if (key.includes("-")) {
             if (value === null) {
                 style.removeProperty(key);
             } else {
@@ -741,6 +795,70 @@ export class ProductionDOMSink implements DOMSink {
                 (style as any)[key] = value;
             }
         }
+    }
+
+    /** @inheritDoc */
+    ensureStyleRule(selector: string): CSSStyleRule {
+        const sheet = this.mainSheet();
+
+        for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
+            const rule = sheet.cssRules[idx] as CSSStyleRule;
+
+            if (rule.selectorText === selector) {
+                return rule;
+            }
+        }
+
+        const insertedAt = sheet.insertRule(selector + "{}", sheet.cssRules.length);
+
+        return sheet.cssRules[insertedAt] as CSSStyleRule;
+    }
+
+    /** @inheritDoc */
+    ensureKeyframes(name: string, body: string): void {
+        const sheet = this.mainSheet();
+
+        for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
+            const rule = sheet.cssRules[idx] as CSSKeyframesRule;
+
+            if (rule.type === CSSRule.KEYFRAMES_RULE && rule.name === name) {
+                return;
+            }
+        }
+
+        sheet.insertRule('@keyframes ' + name + ' { ' + body + ' }', sheet.cssRules.length);
+    }
+
+    /**
+     * Returns the framework's shared `<style id="Base">` stylesheet, creating
+     * the `<head>` and `<style>` element on first call. The lone place the
+     * framework touches a `CSSStyleSheet` — relocated here from `StyleTarget`
+     * so the stylesheet plumbing lives behind the seam.
+     */
+    private mainSheet(): CSSStyleSheet {
+        let head = document.getElementsByTagName("head")[0] as HTMLHeadElement;
+
+        if (!head) {
+            head = document.createElement("head");
+            document.appendChild(head);
+        }
+
+        let style: HTMLStyleElement | null = null;
+        const styles = head.getElementsByTagName("style");
+
+        for (let idx = 0; idx < styles.length; idx += 1) {
+            if (styles[idx].id === "Base") {
+                style = styles[idx];
+            }
+        }
+
+        if (!style) {
+            style = document.createElement("style");
+            style.id = "Base";
+            head.appendChild(style);
+        }
+
+        return style.sheet as CSSStyleSheet;
     }
 
     /** @inheritDoc */
@@ -1061,6 +1179,15 @@ export class ProductionDOMSource implements DOMSource {
             overflowX: cs.overflowX,
             overflowY: cs.overflowY
         };
+    }
+
+    /** @inheritDoc */
+    getInlineStyle(element: HTMLElement, key: string): string {
+        if (key.includes("-")) {
+            return element.style.getPropertyValue(key);
+        }
+
+        return (element.style as any)[key];
     }
 
     /** @inheritDoc */

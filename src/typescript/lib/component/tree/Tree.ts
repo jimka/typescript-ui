@@ -695,17 +695,17 @@ class Tree extends Component<TreeOptions> {
             // styles directly instead.
             /* eslint-disable local/no-element-style */
             if (isSelected) {
-                rowEl.style.setProperty("background-color", SELECTED_BG);
+                DOM.sink.setStyle(rowEl, "background-color", SELECTED_BG);
             } else {
-                rowEl.style.removeProperty("background-color");
+                DOM.sink.setStyle(rowEl, "background-color", null);
             }
 
             if (isFocused) {
-                rowEl.style.setProperty("outline", "2px solid var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))");
-                rowEl.style.setProperty("outline-offset", "-2px");
+                DOM.sink.setStyle(rowEl, "outline", "2px solid var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))");
+                DOM.sink.setStyle(rowEl, "outline-offset", "-2px");
             } else {
-                rowEl.style.removeProperty("outline");
-                rowEl.style.removeProperty("outline-offset");
+                DOM.sink.setStyle(rowEl, "outline", null);
+                DOM.sink.setStyle(rowEl, "outline-offset", null);
             }
             /* eslint-enable local/no-element-style */
 

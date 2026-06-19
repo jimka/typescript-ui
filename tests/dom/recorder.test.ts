@@ -20,7 +20,7 @@ describe('RecordingDOMSink', () => {
 
         DOM.sink.addClass(el, 'Panel');
         DOM.sink.setAttribute(el, 'role', 'group');
-        DOM.sink.setStyle(el.style, 'width', '100px');
+        DOM.sink.setStyle(el, 'width', '100px');
         DOM.sink.appendChild(el, child);
         DOM.sink.toggleClass(el, 'active', true);
 

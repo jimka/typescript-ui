@@ -79,8 +79,22 @@ export class RecordingDOMSink implements DOMSink {
         this.writes.push({ op, args });
     }
 
-    setStyle(_style: CSSStyleDeclaration, key: string, value: string | null): void {
+    setStyle(_element: HTMLElement | SVGElement, key: string, value: string | null): void {
         this.record('setStyle', key, value);
+    }
+
+    setRuleStyle(_rule: CSSStyleRule, key: string, value: string | null): void {
+        this.record('setRuleStyle', key, value);
+    }
+
+    ensureStyleRule(selector: string): CSSStyleRule {
+        this.record('ensureStyleRule', selector);
+
+        return { selectorText: selector, style: {} } as unknown as CSSStyleRule;
+    }
+
+    ensureKeyframes(name: string, _body: string): void {
+        this.record('ensureKeyframes', name);
     }
 
     createElement(tag: string): HTMLElement {
@@ -404,6 +418,10 @@ export class ModelledDOMSource implements DOMSource {
     /** Offline head — a bare stub element. */
     getHead(): HTMLElement {
         return makeStubElement('head');
+    }
+
+    getInlineStyle(_element: HTMLElement, _key: string): string {
+        return '';
     }
 
     getId(element: Element): string {
