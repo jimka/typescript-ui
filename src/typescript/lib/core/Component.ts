@@ -514,6 +514,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._borderThemeCleanup = null;
         }
 
+        // Tear any active clip / content frame down first (mirroring
+        // removeElement) so each frame's created wrapper handle is released
+        // rather than left pinned in the registry after teardown.
+        this.clearClipFrame();
+        this.clearContentFrame();
+
         let element = this.getElement();
         if (element) {
             DOM.sink.removeElement(element);

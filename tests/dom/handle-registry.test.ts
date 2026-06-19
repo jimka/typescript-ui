@@ -12,6 +12,7 @@ import {
     ProductionDOMSource,
     _handleRegistrySize,
 } from '~/core/DOM';
+import { Component } from '~/core/Component';
 
 const sink   = (): ProductionDOMSink   => DOM.sink   as ProductionDOMSink;
 const source = (): ProductionDOMSource => DOM.source as ProductionDOMSource;
@@ -84,5 +85,36 @@ describe('production handle registry', () => {
 
     it('resolving a never-minted handle throws rather than silently no-opping', () => {
         expect(() => sink().apply(99999 as never, { text: 'x' })).toThrow(/not registered/);
+    });
+});
+
+describe('component dispose releases every retained handle', () => {
+    afterEach(() => {
+        DOM.reset();
+    });
+
+    // The systematic guard for the created-element lifecycle: a full
+    // render-then-destroy cycle, including an active clip frame, must return the
+    // registry to exactly its pre-render size. A missed release on any retained
+    // created element (root, clip/content frame, child) fails this.
+    it('destructor returns the registry to its pre-render size (root + clip frame)', () => {
+        const host  = document.createElement('div');
+        document.body.appendChild(host);
+        const hostH = source().intern(host);   // weak; persists across the cycle
+
+        const before = _handleRegistrySize();
+
+        const c  = new Component({});
+        const el = c.getElement(true)!;          // render → strongly retains the root
+        sink().appendChild(hostH, el);           // mount so setClipFrame has a parent
+        c.setClipFrame(0, 0, 10, 10);            // creates + retains the frame wrapper
+
+        expect(_handleRegistrySize()).toBeGreaterThan(before);
+
+        (c as unknown as { destructor(): void }).destructor();
+
+        expect(_handleRegistrySize()).toBe(before);
+
+        document.body.removeChild(host);
     });
 });
