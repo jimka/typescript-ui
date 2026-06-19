@@ -24,8 +24,12 @@ const BASELINE_PATH = path.join(process.cwd(), "scripts/eslint/no-raw-dom.baseli
 // when its type — or any type in its base-type chain — has one of these names
 // AND is declared in a TypeScript `lib.dom.*` file (so a framework class named
 // `Node` or a `Window` component is NOT confused with the DOM type).
+// NOTE: `EventTarget` is deliberately NOT here. Many non-DOM Web Platform types
+// extend it (Performance, Worker, MessagePort, AbortSignal, XMLHttpRequest), and
+// flagging those over-scopes "DOM interaction". The real DOM event receivers —
+// Element / Window / Document / MediaQueryList — are flagged on their own names,
+// so `addEventListener` on them is still caught.
 const DOM_TYPE_NAMES = new Set([
-    "EventTarget",
     "Node", "Element", "HTMLElement", "SVGElement", "MathMLElement",
     "Document", "DocumentFragment", "ShadowRoot", "Window",
     "DOMTokenList", "NamedNodeMap", "Attr",
