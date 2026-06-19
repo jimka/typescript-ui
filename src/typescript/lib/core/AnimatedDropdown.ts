@@ -225,8 +225,8 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
 
         const el = this.getElement(true);
 
-        if (!DOM.source.contains(document.documentElement, el)) {
-            DOM.sink.appendChild(document.documentElement, el);
+        if (!DOM.source.contains(DOM.source.getDocumentElement(), el)) {
+            DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
         }
 
         this.setVisible(true);

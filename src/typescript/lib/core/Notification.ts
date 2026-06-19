@@ -190,7 +190,7 @@ export class Notification extends Component {
 
         n.scheduleLayout();
 
-        DOM.sink.appendChild(document.documentElement, el);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
 
         Notification.restack();
         n.animateIn();

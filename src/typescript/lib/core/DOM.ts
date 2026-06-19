@@ -493,6 +493,28 @@ export interface DOMSource {
      * @returns The three overflow strings.
      */
     getComputedOverflow(element: Element): { overflow: string; overflowX: string; overflowY: string };
+
+    /**
+     * Returns the document's root `<html>` element — the mount point for
+     * top-layer overlays.
+     *
+     * @returns The document element.
+     */
+    getDocumentElement(): HTMLElement;
+
+    /**
+     * Returns the document `<body>` element.
+     *
+     * @returns The body element.
+     */
+    getBody(): HTMLElement;
+
+    /**
+     * Returns the document `<head>` element.
+     *
+     * @returns The head element.
+     */
+    getHead(): HTMLElement;
 }
 
 /**
@@ -841,6 +863,21 @@ export class ProductionDOMSource implements DOMSource {
             overflowX: cs.overflowX,
             overflowY: cs.overflowY
         };
+    }
+
+    /** @inheritDoc */
+    getDocumentElement(): HTMLElement {
+        return document.documentElement;
+    }
+
+    /** @inheritDoc */
+    getBody(): HTMLElement {
+        return document.body;
+    }
+
+    /** @inheritDoc */
+    getHead(): HTMLElement {
+        return document.head;
     }
 }
 

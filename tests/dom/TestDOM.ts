@@ -357,6 +357,21 @@ export class ModelledDOMSource implements DOMSource {
         return { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' };
     }
 
+    /** Offline document root — a bare stub element for overlay mounting. */
+    getDocumentElement(): HTMLElement {
+        return makeStubElement('html');
+    }
+
+    /** Offline body — a bare stub element. */
+    getBody(): HTMLElement {
+        return makeStubElement('body');
+    }
+
+    /** Offline head — a bare stub element. */
+    getHead(): HTMLElement {
+        return makeStubElement('head');
+    }
+
     /**
      * Resolves the baked font entry for the active theme font, falling back to
      * the sole entry when the table holds exactly one font.

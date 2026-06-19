@@ -149,9 +149,9 @@ export class TableExporter {
         a.href     = url;
         a.download = filename;
 
-        DOM.sink.appendChild(document.body, a);
+        DOM.sink.appendChild(DOM.source.getBody(), a);
         a.click();
-        DOM.sink.removeChild(document.body, a);
+        DOM.sink.removeChild(DOM.source.getBody(), a);
 
         URL.revokeObjectURL(url);
     }

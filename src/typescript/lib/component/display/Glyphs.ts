@@ -123,7 +123,7 @@ export function ensureGlyphSprite(): void {
     sprite.style.overflow = "hidden";
     /* eslint-enable local/no-element-style */
 
-    DOM.sink.appendChild(document.body, sprite);
+    DOM.sink.appendChild(DOM.source.getBody(), sprite);
 
     _spriteElement = sprite;
     _spriteMounted = true;

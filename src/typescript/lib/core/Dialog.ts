@@ -638,10 +638,10 @@ class Dialog extends Component implements DismissableLayer {
         this._backdrop.setZIndex(panelZ - 1);
 
         const backdropEl = this._backdrop.getElement(true);
-        DOM.sink.appendChild(document.documentElement, backdropEl);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), backdropEl);
 
         const dialogEl = this.getElement(true);
-        DOM.sink.appendChild(document.documentElement, dialogEl);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), dialogEl);
 
         this.scheduleLayout();
         this.center();

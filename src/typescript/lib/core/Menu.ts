@@ -217,7 +217,7 @@ class Menu extends Component {
 
         this.scheduleLayout();
 
-        DOM.sink.appendChild(document.documentElement, el);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
 
         this.setVisible(true);
         this.fadeIn(el);
@@ -330,7 +330,7 @@ class Menu extends Component {
         const totalHeight = this.getPreferredSize()?.height ?? (this._menuItems.length * MenuItem.HEIGHT + 8);
 
         const el = this.getElement(true);
-        DOM.sink.appendChild(document.documentElement, el);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
 
         const vp = DOM.source.getViewportSize();
 

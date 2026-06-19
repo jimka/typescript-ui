@@ -1170,7 +1170,7 @@ function ensureFontLoaded(): void {
 
     const style = DOM.sink.createElement('style');
     DOM.sink.setTextContent(style, rules);
-    DOM.sink.appendChild(document.head, style);
+    DOM.sink.appendChild(DOM.source.getHead(), style);
 }
 
 /**
@@ -1225,7 +1225,7 @@ export class ThemeManager {
 
         const rootStyle = new InlineStyle();
         rootStyle.setMany(themeToVars(theme));
-        rootStyle.attach(document.documentElement);
+        rootStyle.attach(DOM.source.getDocumentElement());
 
         document.documentElement.style.colorScheme = theme.colorScheme;
         document.documentElement.style.color       = theme.text.color;

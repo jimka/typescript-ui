@@ -466,8 +466,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
 
         const el = this.getElement(true);
 
-        if (!DOM.source.contains(document.documentElement, el)) {
-            DOM.sink.appendChild(document.documentElement, el);
+        if (!DOM.source.contains(DOM.source.getDocumentElement(), el)) {
+            DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
         }
 
         this.ensureArrow();
@@ -910,7 +910,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         const out: HTMLElement[] = [];
         let cursor: HTMLElement | null = DOM.source.getParentElement(node) as HTMLElement | null;
 
-        while (cursor && cursor !== document.documentElement) {
+        while (cursor && cursor !== DOM.source.getDocumentElement()) {
             const style = DOM.source.getComputedOverflow(cursor);
             const overflow = style.overflow + style.overflowX + style.overflowY;
 
@@ -921,7 +921,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             cursor = DOM.source.getParentElement(cursor) as HTMLElement | null;
         }
 
-        out.push(document.documentElement);
+        out.push(DOM.source.getDocumentElement());
 
         return out;
     }

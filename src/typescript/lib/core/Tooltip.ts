@@ -197,7 +197,7 @@ export class Tooltip extends Component {
 
         inst.scheduleLayout();
 
-        DOM.sink.appendChild(document.documentElement, el);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
 
         inst.setVisible(true);
 

@@ -367,7 +367,7 @@ function commitSession(session: DragSession): void {
     } else {
         const el = ghost.getElement(true);
 
-        DOM.sink.appendChild(document.documentElement, el);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
     }
 
     if (session.sourceOptions.cursor) {
