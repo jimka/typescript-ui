@@ -85,7 +85,7 @@ describe('HandleSink — batched multi-write', () => {
         const before = reg.resolveCount;
 
         sink.apply(h, {
-            styles:   { width: '120px', height: '40px', '--ts-accent': 'red' },
+            style:    { width: '120px', height: '40px', '--ts-accent': 'red' },
             addClass: ['Panel', 'active'],
             setAttr:  { role: 'group' },
         });
@@ -111,8 +111,8 @@ describe('HandleSink — batched multi-write', () => {
         // Simulate the un-batched path: five separate apply() calls.
         const before = reg.resolveCount;
 
-        sink.apply(h, { styles: { width:  '120px' } });
-        sink.apply(h, { styles: { height: '40px' } });
+        sink.apply(h, { style: { width:  '120px' } });
+        sink.apply(h, { style: { height: '40px' } });
         sink.apply(h, { addClass: ['Panel'] });
         sink.apply(h, { addClass: ['active'] });
         sink.apply(h, { setAttr:  { role: 'group' } });

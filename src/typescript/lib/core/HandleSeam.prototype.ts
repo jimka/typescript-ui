@@ -50,7 +50,7 @@ export type Handle = number & { readonly __handleBrand: unique symbol };
  */
 export interface ElementPatch {
     /** Inline style writes. `null` removes the property. camelCase or `--custom`. */
-    styles?:      Readonly<Record<string, string | null>>;
+    style?:       Readonly<Record<string, string | null>>;
     /** Classes to remove (applied before {@link addClass}). */
     removeClass?: readonly string[];
     /** Classes to add. */
@@ -219,9 +219,9 @@ export class HandleRegistry {
  * removals before sets, then dataset / text / scroll.
  */
 function applyPatchTo(element: HTMLElement, patch: ElementPatch): void {
-    if (patch.styles) {
-        for (const key of Object.keys(patch.styles)) {
-            writeStyle(element.style, key, patch.styles[key]);
+    if (patch.style) {
+        for (const key of Object.keys(patch.style)) {
+            writeStyle(element.style, key, patch.style[key]);
         }
     }
 
@@ -365,7 +365,7 @@ export class HandleSink {
  */
 export class PatchBuilder {
     private readonly _patch: {
-        styles?:      Record<string, string | null>;
+        style?:       Record<string, string | null>;
         addClass?:    string[];
         removeClass?: string[];
         toggleClass?: Record<string, boolean>;
@@ -381,7 +381,7 @@ export class PatchBuilder {
 
     /** Queues an inline-style write (`null` removes). */
     style(key: string, value: string | null): this {
-        (this._patch.styles ??= {})[key] = value;
+        (this._patch.style ??= {})[key] = value;
 
         return this;
     }
