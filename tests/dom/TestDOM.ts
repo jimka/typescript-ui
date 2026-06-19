@@ -347,6 +347,16 @@ export class ModelledDOMSource implements DOMSource {
         return null;
     }
 
+    /** No computed border offline; reports zero widths. */
+    getBorderWidths(_element: Element): { top: string; right: string; bottom: string; left: string } {
+        return { top: '0px', right: '0px', bottom: '0px', left: '0px' };
+    }
+
+    /** No computed overflow offline; reports visible. */
+    getComputedOverflow(_element: Element): { overflow: string; overflowX: string; overflowY: string } {
+        return { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' };
+    }
+
     /**
      * Resolves the baked font entry for the active theme font, falling back to
      * the sole entry when the table holds exactly one font.

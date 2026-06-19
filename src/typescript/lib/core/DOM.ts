@@ -475,6 +475,24 @@ export interface DOMSource {
      * @returns The first child, or null.
      */
     getFirstChild(node: Node): Node | null;
+
+    /**
+     * Returns an element's resolved border widths as computed-style strings
+     * (e.g. `"1px"`), one per side.
+     *
+     * @param element - The element to measure.
+     * @returns The four border-width strings.
+     */
+    getBorderWidths(element: Element): { top: string; right: string; bottom: string; left: string };
+
+    /**
+     * Returns an element's resolved `overflow` / `overflow-x` / `overflow-y`
+     * computed-style strings.
+     *
+     * @param element - The element to read.
+     * @returns The three overflow strings.
+     */
+    getComputedOverflow(element: Element): { overflow: string; overflowX: string; overflowY: string };
 }
 
 /**
@@ -800,6 +818,29 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getFirstChild(node: Node): Node | null {
         return node.firstChild;
+    }
+
+    /** @inheritDoc */
+    getBorderWidths(element: Element): { top: string; right: string; bottom: string; left: string } {
+        const cs = getComputedStyle(element);
+
+        return {
+            top:    cs.borderTopWidth,
+            right:  cs.borderRightWidth,
+            bottom: cs.borderBottomWidth,
+            left:   cs.borderLeftWidth
+        };
+    }
+
+    /** @inheritDoc */
+    getComputedOverflow(element: Element): { overflow: string; overflowX: string; overflowY: string } {
+        const cs = getComputedStyle(element);
+
+        return {
+            overflow:  cs.overflow,
+            overflowX: cs.overflowX,
+            overflowY: cs.overflowY
+        };
     }
 }
 

@@ -911,7 +911,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         let cursor: HTMLElement | null = DOM.source.getParentElement(node) as HTMLElement | null;
 
         while (cursor && cursor !== document.documentElement) {
-            const style = getComputedStyle(cursor);
+            const style = DOM.source.getComputedOverflow(cursor);
             const overflow = style.overflow + style.overflowX + style.overflowY;
 
             if (/(auto|scroll|overlay)/.test(overflow)) {

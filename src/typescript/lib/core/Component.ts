@@ -2333,13 +2333,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (element && element.isConnected) {
             // Authoritative: getComputedStyle resolves var()/none/keywords to "<n>px"
             // once the element is in the document and inherits :root's custom props.
-            const cs = getComputedStyle(element);
+            const cs = DOM.source.getBorderWidths(element);
 
             this._borderWidths = {
-                top:    borderSideWidth(cs.borderTopWidth),
-                right:  borderSideWidth(cs.borderRightWidth),
-                bottom: borderSideWidth(cs.borderBottomWidth),
-                left:   borderSideWidth(cs.borderLeftWidth),
+                top:    borderSideWidth(cs.top),
+                right:  borderSideWidth(cs.right),
+                bottom: borderSideWidth(cs.bottom),
+                left:   borderSideWidth(cs.left),
             };
 
             return this._borderWidths;
@@ -2383,7 +2383,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const varName = trimmed.match(/^var\(\s*(--[\w-]+)/)?.[1];
 
         if (varName) {
-            const resolved = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+            const resolved = DOM.source.getThemeVar(varName);
 
             if (resolved) {
                 return this.estimateBorderSideWidth(resolved);
