@@ -1256,6 +1256,14 @@ export class ProductionDOMSource implements DOMSource {
 
     /** @inheritDoc */
     matchMedia(query: string): MediaQueryResult {
+        // Non-browser environments (SSR, workers, bare Node) have no
+        // `matchMedia`; degrade to an inert result so callers need no
+        // environment guard of their own — the capability check lives here, in
+        // the seam, rather than leaking a raw `window` probe into call sites.
+        if (typeof matchMedia !== "function") {
+            return { matches: false, addChangeListener: (): void => {} };
+        }
+
         const mql = matchMedia(query);
 
         return {

@@ -113,9 +113,9 @@ function _onReducedMotionChange(): void {
     }
 }
 
-if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
-    DOM.source.matchMedia("(prefers-reduced-motion: reduce)").addChangeListener(_onReducedMotionChange);
-}
+// The seam's `matchMedia` degrades to an inert result off-browser, so this
+// module-level registration needs no environment guard of its own.
+DOM.source.matchMedia("(prefers-reduced-motion: reduce)").addChangeListener(_onReducedMotionChange);
 
 /**
  * Construction-time options for {@link Glyph}.
