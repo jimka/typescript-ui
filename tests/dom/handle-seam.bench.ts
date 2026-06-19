@@ -1,26 +1,26 @@
 // @vitest-environment jsdom
 //
-// PROTOTYPE performance benchmarks. Quantifies the registry `Map.get` overhead
-// the handle design adds, and shows that batching amortizes it. Run with:
+// Performance benchmarks against the REAL production seam. Quantifies the
+// registry `Map.get` overhead the handle design adds, and shows that batching
+// amortizes it. Run with:
 //
-//     npx vitest bench tests/dom/handle-seam.prototype.bench.ts
+//     npx vitest bench tests/dom/handle-seam.bench.ts
 //
 // Patches are pre-allocated at module scope so each benchmark measures resolve +
 // write cost, NOT object allocation — the delta between runs is the handle
 // resolve (`Map.get`) count, nothing else.
 import { describe, bench } from 'vitest';
-import { HandleRegistry, HandleSink, type ElementPatch } from '~/core/HandleSeam.prototype';
+import { ProductionDOMSink, type ElementPatch } from '~/core/DOM';
 
 // Direct element — the floor. No handle, no registry, no Map.get.
 const directEl = document.createElement('div');
 
-// Handle path — one element behind the registry.
-const reg  = new HandleRegistry();
-const sink = new HandleSink(reg);
+// Handle path — one element retained behind the production registry.
+const sink = new ProductionDOMSink();
 const h    = sink.createElement('div');
 
 // A 5-property write mirroring a layout commit (left/top/width/height + position).
-const batchedPatch = {
+const batchedPatch: ElementPatch = {
     style: { left: '1px', top: '2px', width: '3px', height: '4px', position: 'absolute' },
 };
 
@@ -41,7 +41,7 @@ describe('single-property write — per-op Map.get cost', () => {
     });
 
     // WITH Map.get: one resolve to reach the same element.
-    bench('handle, batched apply (one Map.get)', () => {
+    bench('handle, single apply (one Map.get)', () => {
         sink.apply(h, singlePatches[0]);
     });
 });

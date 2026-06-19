@@ -83,7 +83,7 @@ class DateEditor extends TextInputCellEditor<Date | null> {
     private setText(text: string): this {
         this._text = text;
 
-        const el = this.getElement() as HTMLInputElement | null;
+        const el = this.getElement();
         if (el) {
             DOM.sink.setValue(el, text);
         }
@@ -105,7 +105,7 @@ class DateEditor extends TextInputCellEditor<Date | null> {
      * `onInput` can work off {@link getText}.
      */
     private syncTextFromDom(): void {
-        const el = this.getElement() as HTMLInputElement | null;
+        const el = this.getElement();
         this._text = el ? DOM.source.getValue(el) : "";
     }
 

@@ -786,7 +786,7 @@ class Rail extends Component<RailOptions> {
         this.applyEdgeBorder();
         this.applyRestingGeometry();
 
-        const element = this.getElement(true);
+        const element = this.getElement(true)!;
         DOM.sink.appendChild(DOM.source.getDocumentElement(), element);
 
         // The collapse chevron is a raw child (self-centred via its own class

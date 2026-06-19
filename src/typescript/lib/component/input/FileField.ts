@@ -4,6 +4,7 @@ import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractI
 import { Button } from "~/component/button/Button.js";
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
 import { Text } from "~/component/input/Text.js";
@@ -129,7 +130,7 @@ class HiddenFileInput extends Component {
      * @returns The native `FileList`, or `null`.
      */
     getFiles(): FileList | null {
-        const el = this.getElement() as HTMLInputElement | null;
+        const el = this.getElement();
 
         return el ? DOM.source.getFiles(el) : null;
     }
@@ -139,7 +140,7 @@ class HiddenFileInput extends Component {
      * programmatically *clearing* a file input, never populating it.
      */
     clearFiles(): void {
-        const el = this.getElement() as HTMLInputElement | null;
+        const el = this.getElement();
 
         if (el) {
             DOM.sink.setValue(el, "");
@@ -156,25 +157,25 @@ class HiddenFileInput extends Component {
      *
      * @returns This component, for method chaining.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
-        const el = (element ?? this.getElement()) as HTMLInputElement | null;
+        const el = element ?? this.getElement();
 
         if (!el) {
             return this;
         }
 
         if (this._type !== null) {
-            DOM.sink.setAttribute(el, "type", this._type);
+            DOM.sink.apply(el, { setAttr: { type: this._type } });
         }
 
         if (this._multiple) {
-            DOM.sink.setAttribute(el, "multiple", "");
+            DOM.sink.apply(el, { setAttr: { multiple: "" } });
         }
 
         if (this._accept !== null) {
-            DOM.sink.setAttribute(el, "accept", this._accept);
+            DOM.sink.apply(el, { setAttr: { accept: this._accept } });
         }
 
         return this;

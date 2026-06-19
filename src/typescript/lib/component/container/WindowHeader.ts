@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Header, HeaderOptions } from "~/component/display/Header.js";
+import type { Handle } from "~/core/DOM.js";
 import { Button, ClickListener } from "~/component/button/Button.js";
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
@@ -473,7 +474,7 @@ class WindowHeader extends Header {
      * short-circuit `dblclick`-on-header maximize toggling when the click
      * target sits inside one of the trailing buttons.
      */
-    getMinimizeButtonElement(): HTMLElement | undefined {
+    getMinimizeButtonElement(): Handle | undefined {
         return this._minimizeButton.getElement();
     }
 
@@ -483,7 +484,7 @@ class WindowHeader extends Header {
      * @returns The maximize button's HTMLElement, or undefined when the header
      *          has not yet been rendered.
      */
-    getMaximizeButtonElement(): HTMLElement | undefined {
+    getMaximizeButtonElement(): Handle | undefined {
         return this._maximizeButton.getElement();
     }
 
@@ -493,7 +494,7 @@ class WindowHeader extends Header {
      * @returns The exit button's HTMLElement, or undefined when the header
      *          has not yet been rendered.
      */
-    getExitButtonElement(): HTMLElement | undefined {
+    getExitButtonElement(): Handle | undefined {
         return this._exitButton.getElement();
     }
 }

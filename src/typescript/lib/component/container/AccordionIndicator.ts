@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 
@@ -110,13 +111,13 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
      *
      * @returns The rendered root element.
      */
-    protected render(): HTMLElement {
+    protected render(): Handle {
         const element = super.render();
 
-        DOM.sink.setTextContent(element, "▶");
+        DOM.sink.apply(element, { text: "▶" });
 
         if (this._expanded) {
-            DOM.sink.addClass(element, "expanded");
+            DOM.sink.apply(element, { addClass: ["expanded"] });
         }
 
         return element;
@@ -145,7 +146,7 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
         const element = this.getElement();
 
         if (element) {
-            DOM.sink.toggleClass(element, "expanded", value);
+            DOM.sink.apply(element, { toggleClass: { expanded: value } });
         }
 
         return this;

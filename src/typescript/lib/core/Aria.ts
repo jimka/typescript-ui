@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 
 /**
  * Valid WAI-ARIA landmark and widget roles used by this framework.
@@ -752,20 +753,24 @@ export class Aria {
      *
      * @remarks Called by {@link Component} during element initialisation, ensuring
      * attributes set before render are applied to the real DOM node.
-     * @param element - The component's root DOM element.
+     * @param element - The component's root DOM element handle.
      */
-    applyToElement(element: HTMLElement): void {
+    applyToElement(element: Handle): void {
+        const setAttr: Record<string, string> = {};
+
         if (this._role !== null) {
-            DOM.sink.setAttribute(element, "role", this._role);
+            setAttr.role = this._role;
         }
 
         if (this._tabIndex !== null) {
-            DOM.sink.setAttribute(element, "tabindex", String(this._tabIndex));
+            setAttr.tabindex = String(this._tabIndex);
         }
 
         for (const [name, value] of this._attributes) {
-            DOM.sink.setAttribute(element, "aria-" + name, value);
+            setAttr["aria-" + name] = value;
         }
+
+        DOM.sink.apply(element, { setAttr });
     }
 
     /**

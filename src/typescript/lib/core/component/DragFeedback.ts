@@ -88,7 +88,7 @@ class DragFeedback extends Component {
      *   {@link DropTargetOptions.feedbackHost}). Defaults to the target.
      */
     attachTo(target: Component, host?: Component): void {
-        const myEl = this.getElement(true);
+        const myEl = this.getElement(true)!;
 
         if (host && host !== target) {
             // Overlay the target's box from within the host layer.
@@ -97,7 +97,7 @@ class DragFeedback extends Component {
             this.setWidth(target.getWidth());
             this.setHeight(target.getHeight());
 
-            const hostEl = host.getElement(true);
+            const hostEl = host.getElement(true)!;
             if (DOM.source.getParentElement(myEl) !== hostEl) {
                 DOM.sink.appendChild(hostEl, myEl);
             }
@@ -111,7 +111,7 @@ class DragFeedback extends Component {
         this.setWidth(target.getWidth());
         this.setHeight(target.getHeight());
 
-        const targetEl = target.getElement(true);
+        const targetEl = target.getElement(true)!;
         if (DOM.source.getParentElement(myEl) !== targetEl) {
             DOM.sink.appendChild(targetEl, myEl);
         }

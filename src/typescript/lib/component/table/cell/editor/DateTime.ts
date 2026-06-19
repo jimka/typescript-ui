@@ -3,6 +3,7 @@
 import { TextInputCellEditor } from "~/component/table/cell/editor/TextInputCellEditor.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
 import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
@@ -54,10 +55,10 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
      * the editor and the {@link CellEditorPool} would commit + tear down the
      * dropdown mid-interaction.
      *
-     * @param relatedTarget - The node receiving focus, or null.
+     * @param relatedTarget - The node handle receiving focus, or null.
      * @returns True when focus landed inside the dropdown's layer tree.
      */
-    retainsFocus(relatedTarget: Node | null): boolean {
+    retainsFocus(relatedTarget: Handle | null): boolean {
         return this._dropdown !== null
             && this._dropdown.isOpen()
             && LayerManager.containsAcrossLayers(this._dropdown, relatedTarget);
@@ -100,7 +101,7 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
     private setText(text: string): this {
         this._text = text;
 
-        const el = this.getElement() as HTMLInputElement | null;
+        const el = this.getElement();
         if (el) {
             DOM.sink.setValue(el, text);
         }
@@ -122,7 +123,7 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
      * `onInput` can work off {@link getText}.
      */
     private syncTextFromDom(): void {
-        const el = this.getElement() as HTMLInputElement | null;
+        const el = this.getElement();
         this._text = el ? DOM.source.getValue(el) : "";
     }
 
@@ -222,7 +223,7 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
      * @param e - The blur event.
      */
     private onEditorBlur(e: FocusEvent): void {
-        if (this.retainsFocus(e.relatedTarget as Node | null)) {
+        if (this.retainsFocus(e.relatedTarget === null ? null : DOM.source.intern(e.relatedTarget))) {
             return;
         }
 

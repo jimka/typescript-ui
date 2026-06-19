@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { StyleRule } from "~/core/StyleTarget.js";
@@ -181,10 +182,10 @@ class CollapseButton extends Component<CollapseButtonOptions> {
      *
      * @returns The rendered root element.
      */
-    protected render(): HTMLElement {
+    protected render(): Handle {
         const element = super.render();
 
-        DOM.sink.setTextContent(element, "▶");
+        DOM.sink.apply(element, { text: "▶" });
 
         return element;
     }

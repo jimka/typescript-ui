@@ -3,6 +3,7 @@
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Fit } from "~/layout/Fit.js";
 import { List } from "~/component/list/List.js";
 import { callable } from "~/core/Callable.js";
@@ -126,7 +127,7 @@ class AutoCompleteDropdown extends AnimatedDropdown<AutoCompleteDropdownOptions>
      *
      * @returns This dropdown, for method chaining.
      */
-    show(anchorEl: HTMLElement, suggestions: string[]): this {
+    show(anchorEl: Handle, suggestions: string[]): this {
         // Force the floating element into existence before any layout pass.
         // showAnimated() below mounts it, but that runs after doLayout() —
         // on first show getInnerSize() would otherwise return null and the

@@ -851,7 +851,7 @@ class Tab extends LayoutManager {
     attach(container: Component): this {
         super.attach(container);
 
-        DOM.sink.appendChild(container.getElement(true), this._bar.getElement(true));
+        DOM.sink.appendChild(container.getElement(true)!, this._bar.getElement(true)!);
 
         this._bar.on("tabpressed",       this._onBarTabPressed);
         this._bar.on("reordered",        this._onBarReordered);

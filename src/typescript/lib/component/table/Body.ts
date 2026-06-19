@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
@@ -479,9 +480,9 @@ class Body extends Component {
      * Initializes the body element, constructs the {@link VirtualScroller}, and
      * wires keyboard and focus listeners.
      *
-     * @param element - Optional. The HTMLElement to initialize with; falls back to `getElement()`.
+     * @param element - Optional. The element handle to initialize with; falls back to `getElement()`.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         const el = element || this.getElement();
@@ -717,7 +718,7 @@ class Body extends Component {
 
             const rowEl = row.getElement(true);
 
-            DOM.sink.appendChild(growFragment, rowEl);
+            DOM.sink.appendChild(growFragment, rowEl!);
 
             // Click handler is a single subtree listener on Body.init(); see
             // there for the row-lookup walk.
@@ -740,6 +741,7 @@ class Body extends Component {
         }
 
         DOM.sink.appendChild(rowsContainer, growFragment);
+        DOM.sink.release(growFragment);
     }
 
     /**
@@ -868,7 +870,7 @@ class Body extends Component {
             return;
         }
 
-        let node: HTMLElement | null = e.target as HTMLElement | null;
+        let node: Handle | null = e.target === null ? null : DOM.source.intern(e.target);
 
         while (node) {
             const row = this._rowPool.find(r => r.getElement() === node);
@@ -878,7 +880,7 @@ class Body extends Component {
                 return;
             }
 
-            node = DOM.source.getParentElement(node) as HTMLElement | null;
+            node = DOM.source.getParentElement(node);
         }
     }
 
@@ -928,19 +930,20 @@ class Body extends Component {
         });
 
         // Determine which column was clicked and update focused cell
+        const targetHandle = e.target === null ? null : DOM.source.intern(e.target);
         const cells = row.getComponents();
 
         for (let ci = 0; ci < cells.length; ci++) {
             const cellEl = cells[ci].getElement();
 
-            if (cellEl && (cellEl === e.target || DOM.source.contains(cellEl, e.target as Node))) {
+            if (cellEl && (cellEl === targetHandle || DOM.source.contains(cellEl, targetHandle))) {
                 this._focusedColIndex = ci;
                 break;
             }
         }
 
         // Don't steal focus from an active cell editor (e.g. <input type="date">).
-        const targetTag = DOM.source.getTagName(e.target as HTMLElement);
+        const targetTag = targetHandle === null ? "" : DOM.source.getTagName(targetHandle);
         if (targetTag !== 'INPUT' && targetTag !== 'TEXTAREA' && targetTag !== 'SELECT') {
             this.focus();
         }
@@ -1131,7 +1134,7 @@ class Body extends Component {
         }
 
         const row = this._rowPool[i];
-        const rowEl = row.getElement() as HTMLElement;
+        const rowEl = row.getElement()!;
         const isSelected = this._selectedRecords.has(record);
 
         // Per-record ephemeral selection highlight on a pooled row re-bound to a
@@ -1139,10 +1142,12 @@ class Body extends Component {
         // setters would persist it into _options and replay it onto the next record
         // bound to this reused row, so write/remove the inline styles directly.
         if (isSelected) {
-            DOM.sink.setStyle(rowEl, 'background-color', 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))');
-            DOM.sink.setStyle(rowEl, 'box-shadow', 'var(--ts-ui-table-row-selected-border, none)');
+            DOM.sink.apply(rowEl, { style: {
+                'background-color': 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))',
+                'box-shadow':       'var(--ts-ui-table-row-selected-border, none)',
+            } });
         } else {
-            DOM.sink.setStyle(rowEl, 'box-shadow', null);
+            DOM.sink.apply(rowEl, { style: { 'box-shadow': null } });
             row.updateVisualState();
         }
 
@@ -1197,11 +1202,10 @@ class Body extends Component {
         // to the reused cell, so write/remove the inline styles directly.
         for (const row of this._rowPool) {
             for (const cell of row.getComponents()) {
-                const el = cell.getElement() as HTMLElement | null;
+                const el = cell.getElement();
 
                 if (el) {
-                    DOM.sink.setStyle(el, "outline", null);
-                    DOM.sink.setStyle(el, "outline-offset", null);
+                    DOM.sink.apply(el, { style: { "outline": null, "outline-offset": null } });
                 }
             }
         }
@@ -1237,12 +1241,14 @@ class Body extends Component {
         const cell = cells[this._focusedColIndex];
 
         if (cell) {
-            const el = cell.getElement() as HTMLElement | null;
+            const el = cell.getElement();
 
             if (el) {
                 // Pooled-cell ephemeral focus style; see note at method top.
-                DOM.sink.setStyle(el, "outline", "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))");
-                DOM.sink.setStyle(el, "outline-offset", "-1px");
+                DOM.sink.apply(el, { style: {
+                    "outline":        "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))",
+                    "outline-offset": "-1px",
+                } });
             }
         }
     }

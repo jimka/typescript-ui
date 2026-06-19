@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Util } from "~/core/Util.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
@@ -287,14 +288,14 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     }
 
     /**
-     * Returns the DOM element cast to HTMLElement.
+     * Returns the DOM element handle.
      *
      * @param createIfMissing - Optional. When true, renders the element if it does not yet exist.
      *
-     * @returns The component's HTMLElement.
+     * @returns The component's element handle.
      */
-    getElement(createIfMissing: boolean = false): HTMLElement {
-        return super.getElement(createIfMissing) as HTMLElement;
+    getElement(createIfMissing: boolean = false): Handle | undefined {
+        return super.getElement(createIfMissing);
     }
 
     /**
@@ -567,7 +568,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             return this;
         }
 
-        DOM.sink.setTextContent(element, text.valueOf());
+        DOM.sink.apply(element, { text: text.valueOf() });
 
         return this;
     }
@@ -1115,9 +1116,9 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     /**
      * Applies all text-specific style properties to the element's CSS rule in addition to base styles.
      *
-     * @param element - The HTMLElement to apply styles to.
+     * @param element - The element handle to apply styles to.
      */
-    applyStyle(element: HTMLElement): this {
+    applyStyle(element: Handle): this {
         super.applyStyle(element);
 
         const fontSize   = this.getFontSize();
@@ -1155,7 +1156,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     protected render() {
         let element = super.render();
 
-        DOM.sink.setTextContent(element, this.getText().valueOf());
+        DOM.sink.apply(element, { text: this.getText().valueOf() });
 
         return element;
     }

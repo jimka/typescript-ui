@@ -3,6 +3,7 @@
 import { LayoutManager } from "~/layout/LayoutManager.js";
 import { Absolute } from "~/layout/Absolute.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { BorderOptions, borderToStyle, borderSideWidth } from "~/primitive/Border.js";
 import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -198,7 +199,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // layoutManager, insets, padding, ...) live in `this._options` instead.
     private _components: Array<Component>;
 
-    private _element              : HTMLElement | undefined;
+    private _element              : Handle | undefined;
     private _tag                  : string                  = "div";
     private _attributes           : Map<String, String>;
     private _boxSizing            : string | null;
@@ -259,7 +260,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // frame carries no id and no listeners — it is a non-interactive sheath, so
     // it stays runtime-only state off the options bag. `_clipFrameStyle` buffers
     // the wrapper's geometry writes through the framework's deferred-write seam.
-    private _clipFrame            : HTMLElement | null = null;
+    private _clipFrame            : Handle | null = null;
     private _clipFrameStyle       : InlineStyle  = new InlineStyle();
     // Optional content frame: a presentational wrapper interposed between this
     // component's element and ITS children, sized to the full content extent
@@ -269,7 +270,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // one exposes an oversized child set for scrolling. Same runtime-only,
     // id-less, listener-free discipline; the geometry writes buffer through
     // `_contentFrameStyle`.
-    private _contentFrame         : HTMLElement | null = null;
+    private _contentFrame         : Handle | null = null;
     private _contentFrameStyle    : InlineStyle  = new InlineStyle();
     // Subclass-owned state rules (e.g. Button's `:active` / `:hover`,
     // ToggleButton's `.selected`) keyed by selector suffix and materialised
@@ -432,9 +433,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
             const element = this.getElement();
             if (element) {
-                for (const key of Object.keys(opts.attributes)) {
-                    DOM.sink.setAttribute(element, key, opts.attributes[key]);
-                }
+                DOM.sink.apply(element, { setAttr: opts.attributes });
             }
         }
 
@@ -518,6 +517,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         let element = this.getElement();
         if (element) {
             DOM.sink.removeElement(element);
+            // Release the root handle's registry entry so a retained (created)
+            // root is not pinned after teardown; clear the cache so a stale
+            // handle is never resolved. Idempotent for an interned (weak) root.
+            DOM.sink.release(element);
+            this._element = undefined;
         }
     }
 
@@ -598,14 +602,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @param createIfMissing - Optional. When true, renders and returns a new element if none exists in the DOM.
      *
-     * @returns The component's HTMLElement, or undefined if it does not exist and createIfMissing is false.
+     * @returns The component's element handle, or undefined if it does not exist and createIfMissing is false.
      */
-    getElement(createIfMissing: boolean = false) {
+    getElement(createIfMissing: boolean = false): Handle | undefined {
         if (!this._element) {
-            // `as HTMLElement` preserves the prior `Util.select` contract: the
-            // lookup may miss (null), but getElement's callers treat the result
+            // The lookup may miss (null); getElement's callers treat the result
             // as present, gating on `createIfMissing` / their own null checks.
-            let element = DOM.source.getElementById(this.getId()) as HTMLElement;
+            let element = DOM.source.getElementById(this.getId()) as Handle;
             if (!element && createIfMissing) {
                 element = this.render();
             }
@@ -733,9 +736,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param style - The buffer to attach to the new frame and write through.
      * @param base - Extra CSS properties applied alongside `position: absolute`.
      *
-     * @returns The freshly created, styled frame element.
+     * @returns The freshly created, styled frame element handle.
      */
-    private createFrame(style: InlineStyle, base: Record<string, string>): HTMLElement {
+    private createFrame(style: InlineStyle, base: Record<string, string>): Handle {
         const frame = DOM.sink.createElement("div");
 
         style.attach(frame);
@@ -751,12 +754,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * bound to the now-removed frame. The caller must re-parent any wrapped
      * nodes out of the frame before calling this.
      *
-     * @param frame - The frame element to remove.
+     * @param frame - The frame element handle to remove.
      *
      * @returns A new, unattached InlineStyle buffer.
      */
-    private disposeFrame(frame: HTMLElement): InlineStyle {
+    private disposeFrame(frame: Handle): InlineStyle {
         DOM.sink.removeElement(frame);
+        DOM.sink.release(frame);
 
         return new InlineStyle();
     }
@@ -809,8 +813,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
             DOM.sink.appendChild(element, frame);
 
-            DOM.sink.setScrollLeft(element, scrollLeft);
-            DOM.sink.setScrollTop(element, scrollTop);
+            DOM.sink.apply(element, { scrollLeft, scrollTop });
         }
 
         this._contentFrameStyle.setMany({
@@ -851,8 +854,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
                 }
             }
 
-            DOM.sink.setScrollLeft(element, scrollLeft);
-            DOM.sink.setScrollTop(element, scrollTop);
+            DOM.sink.apply(element, { scrollLeft, scrollTop });
         }
 
         this._contentFrameStyle = this.disposeFrame(frame);
@@ -871,7 +873,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The frame element when clipped, else the component's element, or
      *   undefined when the element is not yet in the DOM.
      */
-    protected getAttachNode(): HTMLElement | null | undefined {
+    protected getAttachNode(): Handle | null | undefined {
         return this._clipFrame ?? this.getElement();
     }
 
@@ -884,7 +886,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The content frame when active, else the component's element, or
      *   undefined when the element is not yet in the DOM.
      */
-    private getChildHost(): HTMLElement | undefined {
+    private getChildHost(): Handle | undefined {
         return this._contentFrame ?? this.getElement();
     }
 
@@ -946,7 +948,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        DOM.sink.setAttribute(element, key, String(value));
+        DOM.sink.apply(element, { setAttr: { [key]: String(value) } });
 
         return this;
     }
@@ -964,7 +966,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        DOM.sink.removeAttribute(element, key);
+        DOM.sink.apply(element, { removeAttr: [key] });
 
         return this;
     }
@@ -1209,7 +1211,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         let element = this.getElement();
         if (element) {
-            DOM.sink.setAttribute(element, dataKey, value);
+            DOM.sink.apply(element, { setAttr: { [dataKey]: value } });
         }
 
         return this;
@@ -1228,7 +1230,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         let element = this.getElement();
         if (element) {
-            DOM.sink.removeAttribute(element, dataKey);
+            DOM.sink.apply(element, { removeAttr: [dataKey] });
         }
 
         return this;
@@ -2837,7 +2839,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const element = this.getElement();
 
         if (element) {
-            DOM.sink.setScrollLeft(element, value);
+            DOM.sink.apply(element, { scrollLeft: value });
             this._scrollLeft = DOM.source.getScrollLeft(element);
         } else {
             this._scrollLeft = value;
@@ -2860,7 +2862,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const element = this.getElement();
 
         if (element) {
-            DOM.sink.setScrollTop(element, value);
+            DOM.sink.apply(element, { scrollTop: value });
             this._scrollTop = DOM.source.getScrollTop(element);
         } else {
             this._scrollTop = value;
@@ -3225,10 +3227,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (axis === "x") {
-            DOM.sink.setScrollLeft(element, value);
+            DOM.sink.apply(element, { scrollLeft: value });
             this._scrollLeft = DOM.source.getScrollLeft(element);
         } else {
-            DOM.sink.setScrollTop(element, value);
+            DOM.sink.apply(element, { scrollTop: value });
             this._scrollTop = DOM.source.getScrollTop(element);
         }
     }
@@ -3745,14 +3747,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Writes all current style properties to the given element and its associated CSS rule.
      *
-     * @param element - The HTMLElement to apply styles to.
+     * @param element - The element handle to apply styles to.
      *
      * @returns This component, for method chaining.
      *
      * @remarks Clears all existing inline styles on the element before re-applying, ensuring a clean state.
      */
-    applyStyle(element: HTMLElement): this {
-        DOM.sink.removeAttribute(element, "style");
+    applyStyle(element: Handle): this {
+        DOM.sink.apply(element, { removeAttr: ["style"] });
 
         // Materialise the stylesheet rule once so subsequent `_styleRule.set`
         // calls write through directly (rather than queueing into the dirty
@@ -4006,7 +4008,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const childHost = this.getChildHost();
 
         if (childHost) {
-            DOM.sink.appendChild(childHost, compElement);
+            DOM.sink.appendChild(childHost, compElement!);
         }
 
         this.scheduleLayout();
@@ -4064,7 +4066,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const host = this.getChildHost();
 
         if (host) {
-            DOM.sink.insertBefore(host, compElement, nextSibling ?? null);
+            DOM.sink.insertBefore(host, compElement!, nextSibling ?? null);
         }
 
         this.scheduleLayout();
@@ -4477,14 +4479,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *
      * @remarks Throws an Error if no element is available (i.e. render has not been called).
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         element = element || this.getElement();
         if (!element) {
             throw new Error("Component has not been rendered!");
         }
 
         DOM.sink.setId(element, this.getId());
-        DOM.sink.addClass(element, this.constructor.name);
+        DOM.sink.apply(element, { addClass: [this.constructor.name] });
 
         // Bind the inline-style buffer so any writes queued during detached
         // construction flush into the live element, and subsequent setters
@@ -4496,21 +4498,25 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // the prior `for (let key in this._attributes)` form silently iterated
         // nothing — every attribute cached during detached construction was
         // dropped at render time. Use the `Map` iterator directly.
+        const setAttr: Record<string, string> = {};
+
         for (const [key, value] of this._attributes) {
             if (value != null) {
-                DOM.sink.setAttribute(element, key.valueOf(), value.valueOf());
+                setAttr[key.valueOf()] = value.valueOf();
             }
         }
 
         if (this._disabledAttribute) {
-            DOM.sink.setAttribute(element, "disabled", "");
+            setAttr.disabled = "";
         }
 
         if (this._options.attributes) {
             for (const key of Object.keys(this._options.attributes)) {
-                DOM.sink.setAttribute(element, key, this._options.attributes[key]);
+                setAttr[key] = this._options.attributes[key];
             }
         }
+
+        DOM.sink.apply(element, { setAttr });
 
         this._aria?.applyToElement(element);
 
@@ -4521,7 +4527,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             let component = components[i];
             let compElement = component.getElement(true);
 
-            DOM.sink.appendChild(element, compElement);
+            DOM.sink.appendChild(element, compElement!);
         }
 
         return this;
@@ -4536,18 +4542,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * common to all Element types (`id`, `classList`, `setAttribute`,
      * `appendChild`, `style`).
      *
-     * @returns The newly created root element.
+     * @returns The newly created root element handle.
      */
-    protected createRootElement(): HTMLElement {
+    protected createRootElement(): Handle {
         return DOM.sink.createElement(this._tag);
     }
 
     /**
      * Creates the DOM element from the tag name and initializes it via init().
      *
-     * @returns The newly created and initialised HTMLElement.
+     * @returns The newly created and initialised element handle.
      */
-    protected render() {
+    protected render(): Handle {
         let element = this.createRootElement();
 
         this.init(element);

@@ -2,6 +2,7 @@
 
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Util } from "~/core/Util.js";
@@ -222,21 +223,21 @@ class TextArea extends TextInput<TextAreaOptions> {
         return this.wrapInnerBaseline(Util.measureTextBaseline());
     }
 
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         const el = element || this.getElement()!;
 
         if (this._options.rows !== undefined) {
-            DOM.sink.setAttribute(el, "rows", String(this._options.rows));
+            DOM.sink.apply(el, { setAttr: { rows: String(this._options.rows) } });
         }
 
         if (this._options.cols !== undefined) {
-            DOM.sink.setAttribute(el, "cols", String(this._options.cols));
+            DOM.sink.apply(el, { setAttr: { cols: String(this._options.cols) } });
         }
 
         if (this._options.wrap !== undefined) {
-            DOM.sink.setAttribute(el, "wrap", this._options.wrap);
+            DOM.sink.apply(el, { setAttr: { wrap: this._options.wrap } });
         }
 
         return this;
@@ -254,7 +255,7 @@ class TextArea extends TextInput<TextAreaOptions> {
      */
     onInput() {
         let element = this.getElement();
-        this.setText(DOM.source.getValue(element));
+        this.setText(DOM.source.getValue(element!));
     }
 
 }

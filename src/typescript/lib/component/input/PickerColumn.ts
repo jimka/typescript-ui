@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Panel } from "~/core/Panel.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
@@ -211,7 +212,7 @@ class PickerCell extends Text {
         const element = this.getElement();
 
         if (element) {
-            DOM.sink.toggleClass(element, "disabled", disabled);
+            DOM.sink.apply(element, { toggleClass: { disabled: disabled } });
         }
 
         return this;
@@ -232,11 +233,11 @@ class PickerCell extends Text {
      *
      * @returns The rendered root element.
      */
-    protected render(): HTMLElement {
+    protected render(): Handle {
         const element = super.render();
 
         if (this._disabled) {
-            DOM.sink.addClass(element, "disabled");
+            DOM.sink.apply(element, { addClass: ["disabled"] });
         }
 
         return element;
@@ -355,7 +356,7 @@ class PickerColumn extends Component {
         const maxScrollTop = panelMetrics.scrollHeight - viewportH;
         const clamped      = Math.max(0, Math.min(maxScrollTop, desiredTop));
 
-        DOM.sink.setScrollTop(panelEl, clamped);
+        DOM.sink.apply(panelEl, { scrollTop: clamped });
 
         return this;
     }

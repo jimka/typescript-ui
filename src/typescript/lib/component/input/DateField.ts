@@ -6,6 +6,7 @@ import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
 import { DatePickerDropdown } from "~/component/input/DatePickerDropdown.js";
+import type { Handle } from "~/core/DOM.js";
 import { callable } from "~/core/Callable.js";
 
 Glyph.register(calendar);
@@ -154,7 +155,7 @@ class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldO
      * @param anchorEl - The element to anchor the panel to.
      * @param value - The current field value (or null when empty).
      */
-    protected showDropdown(dropdown: DatePickerDropdown, anchorEl: HTMLElement, value: Date | null): void {
+    protected showDropdown(dropdown: DatePickerDropdown, anchorEl: Handle, value: Date | null): void {
         dropdown.showAt(anchorEl, value);
     }
 

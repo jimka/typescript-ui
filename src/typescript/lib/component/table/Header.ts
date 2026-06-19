@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Row } from "~/component/table/Row.js";
 import { AbstractModel } from "~/data/AbstractModel.js";
@@ -50,7 +51,7 @@ class Header extends Component {
     private _hiddenColumns: Set<string> = new Set();
     private _columns: Column[] = [];
     private _listeners: ListenerBag<HeaderEvent> = new ListenerBag<HeaderEvent>();
-    private _scrollbarCover: HTMLDivElement | null = null;
+    private _scrollbarCover: Handle | null = null;
 
     constructor(model: AbstractModel, store: AbstractStore) {
         super({ tag: "thead" });
@@ -264,36 +265,53 @@ class Header extends Component {
      * boundary while the reservation band stays visually continuous with
      * the rest of the header.
      */
-    getScrollbarCover(): HTMLDivElement {
+    getScrollbarCover(): Handle {
         if (this._scrollbarCover === null) {
             // `cover` is a raw presentational `<div>` owned by this header, not a
             // Component, so the Component style setters don't apply and direct
             // `.style` writes are correct here.
-            const cover = DOM.sink.createElement("div") as HTMLDivElement;
-            DOM.sink.setStyle(cover, "position", "absolute");
-            DOM.sink.setStyle(cover, "top", "0");
-            DOM.sink.setStyle(cover, "boxSizing", "border-box");
-            // Inner rows are Components with `z-index: 0`, which creates a
-            // stacking context that paints AFTER positioned siblings with
-            // `z-index: auto`. Without an explicit z-index here the cover
-            // would be painted beneath the rows and cells could be seen
-            // bleeding into the scrollbar-reservation band.
-            DOM.sink.setStyle(cover, "zIndex", "1");
-            // Presentational only; don't intercept pointer events so column
-            // resize handles whose cells happen to be horizontally scrolled
-            // under the cover still receive clicks.
-            DOM.sink.setStyle(cover, "pointerEvents", "none");
-            DOM.sink.setStyle(cover, "backgroundColor", TABLE_HEADER_BG);
-            DOM.sink.setStyle(cover, "backgroundImage", TABLE_HEADER_BG);
-            // Left border matches the column-cell right border so the cover
-            // reads as a visual continuation of the column separators
-            // rather than a seam in the gradient.
-            DOM.sink.setStyle(cover, "borderLeft", "1px solid var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))");
-            DOM.sink.appendChild(this.getElement(true), cover);
+            const cover = DOM.sink.createElement("div");
+            DOM.sink.apply(cover, { style: {
+                "position":   "absolute",
+                "top":        "0",
+                "boxSizing":  "border-box",
+                // Inner rows are Components with `z-index: 0`, which creates a
+                // stacking context that paints AFTER positioned siblings with
+                // `z-index: auto`. Without an explicit z-index here the cover
+                // would be painted beneath the rows and cells could be seen
+                // bleeding into the scrollbar-reservation band.
+                "zIndex":     "1",
+                // Presentational only; don't intercept pointer events so column
+                // resize handles whose cells happen to be horizontally scrolled
+                // under the cover still receive clicks.
+                "pointerEvents":   "none",
+                "backgroundColor": TABLE_HEADER_BG,
+                "backgroundImage": TABLE_HEADER_BG,
+                // Left border matches the column-cell right border so the cover
+                // reads as a visual continuation of the column separators
+                // rather than a seam in the gradient.
+                "borderLeft": "1px solid var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))",
+            } });
+            DOM.sink.appendChild(this.getElement(true)!, cover);
             this._scrollbarCover = cover;
         }
 
         return this._scrollbarCover;
+    }
+
+    /**
+     * Releases the lazily-created scrollbar-cover handle when the header is
+     * destroyed. The cover is a header-owned descendant element removed from
+     * the DOM along with the root by `super.destructor()`; releasing its
+     * retained handle here keeps the registry from pinning the detached node.
+     */
+    protected override destructor(): void {
+        super.destructor();
+
+        if (this._scrollbarCover !== null) {
+            DOM.sink.release(this._scrollbarCover);
+            this._scrollbarCover = null;
+        }
     }
 
     /**

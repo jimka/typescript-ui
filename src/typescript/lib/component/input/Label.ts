@@ -2,6 +2,7 @@
 
 import { Text, TextOptions } from "~/component/input/Text.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -67,12 +68,12 @@ class Label extends Text<LabelOptions> {
 
         this.forId = id;
 
-        let element = this.getElement() as HTMLLabelElement;
+        let element = this.getElement();
         if (!element) {
             return this;
         }
 
-        DOM.sink.setAttribute(element, "for", id);
+        DOM.sink.apply(element, { setAttr: { for: id } });
 
         return this;
     }
@@ -82,10 +83,10 @@ class Label extends Text<LabelOptions> {
      *
      * @returns The created HTMLLabelElement with htmlFor initialised.
      */
-    protected render() {
-        let element = <HTMLLabelElement>super.render();
+    protected render(): Handle {
+        let element = super.render();
 
-        DOM.sink.setAttribute(element, "for", this.forId);
+        DOM.sink.apply(element, { setAttr: { for: this.forId } });
 
         return element;
     }

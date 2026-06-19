@@ -2,6 +2,7 @@
 
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 
 /**
  * Base class for cell editors backed by a native `<input>` element.
@@ -78,21 +79,21 @@ export abstract class TextInputCellEditor<T> extends CellEditor<T> {
         return this;
     }
 
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         const el = element || this.getElement()!;
 
         if (this._type !== null) {
-            DOM.sink.setAttribute(el, "type", this._type);
+            DOM.sink.apply(el, { setAttr: { "type": this._type } });
         }
 
         if (this._inputMode !== null) {
-            DOM.sink.setAttribute(el, "inputmode", this._inputMode);
+            DOM.sink.apply(el, { setAttr: { "inputmode": this._inputMode } });
         }
 
         if (this._autoComplete !== null) {
-            DOM.sink.setAttribute(el, "autocomplete", this._autoComplete);
+            DOM.sink.apply(el, { setAttr: { "autocomplete": this._autoComplete } });
         }
 
         return this;

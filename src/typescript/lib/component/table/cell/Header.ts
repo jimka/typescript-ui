@@ -5,6 +5,7 @@ import { ResizeHandle } from "~/component/table/cell/ResizeHandle.js";
 import { SortPriorityBadge } from "~/component/table/cell/SortPriorityBadge.js";
 import { CellEvent } from "~/component/table/cell/Cell.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Tooltip } from "~/core/Tooltip.js";
@@ -145,7 +146,7 @@ class HeaderCell extends DefaultCell {
      *
      * @param element - Optional element passed from the framework init chain.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         const el = element || this.getElement();
@@ -167,8 +168,8 @@ class HeaderCell extends DefaultCell {
         // Their `position:absolute` means they don't disturb the cell's `Card`
         // layout flow, and side-loading (instead of `addComponent`) keeps the
         // Card from hiding them as non-visible siblings of the renderer.
-        DOM.sink.appendChild(el, this._resizeHandle.getElement(true));
-        DOM.sink.appendChild(el, this._priorityBadge.getElement(true));
+        DOM.sink.appendChild(el, this._resizeHandle.getElement(true)!);
+        DOM.sink.appendChild(el, this._priorityBadge.getElement(true)!);
 
         if (this._tooltipText) {
             Tooltip.attachToElement(el, this._tooltipText);
@@ -219,7 +220,7 @@ class HeaderCell extends DefaultCell {
      *   no glyph is mounted; the next render's {@link init} call will mount
      *   the glyph using its element parameter.
      */
-    private _mountHeaderGlyph(el: HTMLElement | undefined): void {
+    private _mountHeaderGlyph(el: Handle | undefined): void {
         if (this._headerGlyphInstance) {
             const glyphEl = this._headerGlyphInstance.getElement();
             if (glyphEl) {
@@ -246,8 +247,8 @@ class HeaderCell extends DefaultCell {
         glyph.setForegroundColor("var(--ts-ui-table-header-glyph-color, currentColor)");
         glyph.setPointerEvents("none");
 
-        const gEl = glyph.getElement(true);
-        DOM.sink.addClass(gEl, "HeaderCellGlyph");
+        const gEl = glyph.getElement(true)!;
+        DOM.sink.apply(gEl, { addClass: ["HeaderCellGlyph"] });
 
         DOM.sink.appendChild(el, gEl);
         this._headerGlyphInstance = glyph;
@@ -422,7 +423,7 @@ class HeaderCell extends DefaultCell {
 
         // Suppresses pointer events on document.body (not a Component) for the
         // duration of the column resize so the cursor can't snag on other cells.
-        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", 'none');
+        DOM.sink.apply(DOM.source.getBody(), { style: { "pointerEvents": 'none' } });
     }
 
     private onResizeDrag(e: MouseEvent): void {
@@ -434,7 +435,7 @@ class HeaderCell extends DefaultCell {
         Event.removeViewportListener(this, 'mouseup', this.onResizeDragStop);
 
         // Restores pointer events on document.body (not a Component) once the resize ends.
-        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", '');
+        DOM.sink.apply(DOM.source.getBody(), { style: { "pointerEvents": '' } });
 
         this._resizeHandle.dragEnd();
 

@@ -6,6 +6,7 @@ import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { calendar } from "~/glyphs/solid/calendar.js";
 import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown.js";
+import type { Handle } from "~/core/DOM.js";
 import { callable } from "~/core/Callable.js";
 
 Glyph.register(calendar);
@@ -175,7 +176,7 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
      * @param anchorEl - The element to anchor the panel to.
      * @param value - The current field value (or null when empty).
      */
-    protected showDropdown(dropdown: DateTimePickerDropdown, anchorEl: HTMLElement, value: Date | null): void {
+    protected showDropdown(dropdown: DateTimePickerDropdown, anchorEl: Handle, value: Date | null): void {
         dropdown.showAt(anchorEl, value);
     }
 

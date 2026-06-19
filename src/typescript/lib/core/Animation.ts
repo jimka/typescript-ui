@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { InlineStyle } from "~/core/StyleTarget.js";
 
 /**
@@ -89,7 +90,7 @@ export namespace Animation {
      * Honours `prefers-reduced-motion: reduce`: when set, the `to` styles are
      * applied synchronously and `onComplete` fires on the same tick.
      */
-    export function play(el: HTMLElement, config: PlayConfig): void {
+    export function play(el: Handle, config: PlayConfig): void {
         const easing   = config.easing ?? "ease-out";
         const fallback = config.fallbackBufferMs ?? 40;
 
@@ -423,7 +424,7 @@ export namespace Animation {
                 const component = factory();
                 host.addComponent(component);
 
-                const el = component.getElement(true);
+                const el = component.getElement(true)!;
                 host.scheduleLayout();
 
                 play(el, {

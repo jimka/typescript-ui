@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 
 /**
  * Event routing system that manages DOM event listeners on behalf of components.
@@ -94,9 +95,14 @@ export namespace Event {
             originalStop();
         };
 
+        // Intern the raw browser target into a handle at the boundary so no
+        // downstream code holds the live node; every read below climbs in
+        // handle space.
+        const targetHandle = evnt.target === null ? null : DOM.source.intern(evnt.target);
+
         let listeners = listenerMap.get(evnt.type);
-        if (listeners) {
-            let elementId = DOM.source.getId(evnt.target as HTMLElement);
+        if (listeners && targetHandle !== null) {
+            let elementId = DOM.source.getId(targetHandle);
             let compFunc = listeners.get(elementId);
 
             if (compFunc) {
@@ -117,10 +123,12 @@ export namespace Event {
             return;
         }
 
-        let element: HTMLElement | null = evnt.target as HTMLElement;
-        while (element) {
-            if (DOM.source.getId(element)) {
-                let compFunc = subtreeListeners.get(DOM.source.getId(element));
+        let handle: Handle | null = targetHandle;
+        while (handle) {
+            const id = DOM.source.getId(handle);
+
+            if (id) {
+                let compFunc = subtreeListeners.get(id);
                 if (compFunc) {
                     for (let listener of compFunc.listeners) {
                         listener.apply(compFunc.component, [evnt]);
@@ -128,7 +136,7 @@ export namespace Event {
                 }
             }
 
-            element = DOM.source.getParentElement(element) as HTMLElement | null;
+            handle = DOM.source.getParentElement(handle);
         }
     };
 

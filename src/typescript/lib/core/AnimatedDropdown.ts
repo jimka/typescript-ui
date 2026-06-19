@@ -5,7 +5,7 @@ import { Animation } from "~/core/Animation.js";
 import { Position } from "~/primitive/Position.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { callable } from "~/core/Callable.js";
-import { DOM, type Rect } from "~/core/DOM.js";
+import { DOM, type Rect, type Handle } from "~/core/DOM.js";
 
 /** Default fade duration in milliseconds. Matches `MENU_ANIM_DURATION_MS` from `Menu`. */
 const DEFAULT_DURATION_MS: number = 120;
@@ -105,7 +105,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     // Anchor element (the trigger) excluded from the manager's outside-click
     // test so the click that toggles the dropdown does not immediately
     // re-close it. Null for dropdowns whose host owns the toggle gating.
-    private _anchorElement: HTMLElement | null = null;
+    private _anchorElement: Handle | null = null;
 
     /**
      * @param options - Optional construction-time options.
@@ -223,7 +223,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
         this._dismissing = false;
         this._open       = true;
 
-        const el = this.getElement(true);
+        const el = this.getElement(true)!;
 
         if (!DOM.source.contains(DOM.source.getDocumentElement(), el)) {
             DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
@@ -392,8 +392,8 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      *
      * @returns The dropdown's element, or null when not yet rendered.
      */
-    getLayerElement(): HTMLElement | null {
-        return this.getElement();
+    getLayerElement(): Handle | null {
+        return this.getElement() ?? null;
     }
 
     /**
@@ -430,7 +430,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      *
      * @returns The anchor element, or null.
      */
-    getAnchorElement(): HTMLElement | null {
+    getAnchorElement(): Handle | null {
         return this._anchorElement;
     }
 
@@ -468,7 +468,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @param el - The anchor element, or null to clear it.
      * @returns This dropdown, for method chaining.
      */
-    setAnchorElement(el: HTMLElement | null): this {
+    setAnchorElement(el: Handle | null): this {
         this._anchorElement = el;
 
         return this;

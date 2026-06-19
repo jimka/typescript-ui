@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
@@ -91,7 +92,7 @@ class TreeRow extends Component {
                 DOM.sink.removeChild(el, oldEl);
             }
 
-            DOM.sink.appendChild(el, renderer.getElement(true));
+            DOM.sink.appendChild(el, renderer.getElement(true)!);
         }
 
         this._renderer = renderer;
@@ -138,7 +139,7 @@ class TreeRow extends Component {
         if (this._toggle) {
             const el = this.getElement();
             if (el) {
-                DOM.sink.removeChild(el, this._toggle.getElement(true));
+                DOM.sink.removeChild(el, this._toggle.getElement(true)!);
             }
             this._toggle = null;
         }
@@ -146,7 +147,7 @@ class TreeRow extends Component {
         if (this._spinner) {
             const el = this.getElement();
             if (el) {
-                DOM.sink.removeChild(el, this._spinner.getElement(true));
+                DOM.sink.removeChild(el, this._spinner.getElement(true)!);
             }
             this._spinner = null;
         }
@@ -160,7 +161,7 @@ class TreeRow extends Component {
 
             const el = this.getElement();
             if (el) {
-                DOM.sink.appendChild(el, spinner.getElement(true));
+                DOM.sink.appendChild(el, spinner.getElement(true)!);
             }
         } else if (hasChildren) {
             const toggle = new Glyph(expanded ? "caret-down" : "caret-right");
@@ -171,7 +172,7 @@ class TreeRow extends Component {
 
             const el = this.getElement();
             if (el) {
-                DOM.sink.appendChild(el, toggle.getElement(true));
+                DOM.sink.appendChild(el, toggle.getElement(true)!);
             }
         }
 
@@ -251,7 +252,7 @@ class TreeRow extends Component {
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         const el = element || this.getElement();
@@ -259,7 +260,7 @@ class TreeRow extends Component {
             return this;
         }
 
-        DOM.sink.appendChild(el, this._renderer.getElement(true));
+        DOM.sink.appendChild(el, this._renderer.getElement(true)!);
 
         return this;
     }

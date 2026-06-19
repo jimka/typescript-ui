@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 
@@ -48,14 +49,14 @@ class Image extends Component<ImageOptions> {
     }
 
     /**
-     * Returns the DOM element cast to HTMLImageElement.
+     * Returns the component's element handle.
      *
      * @param createIfMissing - Optional. When true, renders the element if it does not yet exist.
      *
-     * @returns The component's HTMLImageElement.
+     * @returns The component's element handle.
      */
-    getElement(createIfMissing: boolean = false) {
-        return <HTMLImageElement>super.getElement(createIfMissing);
+    getElement(createIfMissing: boolean = false): Handle | undefined {
+        return super.getElement(createIfMissing);
     }
 
     /**
@@ -66,7 +67,7 @@ class Image extends Component<ImageOptions> {
     getPreferredSize(): Size | null {
         let element = this.getElement();
 
-        const natural = DOM.source.getNaturalSize(element);
+        const natural = DOM.source.getNaturalSize(element!);
         return {
             width: natural.width,
             height: natural.height
@@ -106,10 +107,10 @@ class Image extends Component<ImageOptions> {
      *
      * @returns The created HTMLImageElement with its src initialised.
      */
-    render() {
-        let element = <HTMLImageElement>super.render();
+    render(): Handle {
+        let element = super.render();
 
-        DOM.sink.setAttribute(element, "src", this._src.valueOf());
+        DOM.sink.apply(element, { setAttr: { src: this._src.valueOf() } });
 
         return element;
     }

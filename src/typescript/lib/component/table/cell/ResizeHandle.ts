@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import type { Handle } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -120,7 +121,7 @@ class ResizeHandle extends Component<ResizeHandleOptions> {
      * @param element - Optional element passed from the framework init chain.
      * @returns This component, for method chaining.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         Event.addListener(this, "mousedown", this._onMouseDown);

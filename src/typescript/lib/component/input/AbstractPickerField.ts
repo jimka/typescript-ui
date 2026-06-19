@@ -2,6 +2,7 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { AnimatedDropdown } from "~/core/AnimatedDropdown.js";
+import type { Handle } from "~/core/DOM.js";
 import { PickerInput } from "~/component/input/PickerInput.js";
 import { PickerButton } from "~/component/input/PickerButton.js";
 import { Event } from "~/core/Event.js";
@@ -158,7 +159,7 @@ abstract class AbstractPickerField<
      * @param anchorEl - The element to anchor the panel to.
      * @param value - The current field value (or null when empty).
      */
-    protected abstract showDropdown(dropdown: TDropdown, anchorEl: HTMLElement, value: TValue | null): void;
+    protected abstract showDropdown(dropdown: TDropdown, anchorEl: Handle, value: TValue | null): void;
 
     /**
      * Subclass hook: called when the user selects a value from the dropdown.
@@ -486,9 +487,9 @@ abstract class AbstractPickerField<
         // closeDropdown and exclude the field root (the trigger) so the
         // toggle click doesn't immediately re-close it.
         dropdown.setCloseHandler(() => this.closeDropdown());
-        dropdown.setAnchorElement(this.getElement(true));
+        dropdown.setAnchorElement(this.getElement(true) ?? null);
 
-        this.showDropdown(dropdown, this._input.getElement(true), this._value);
+        this.showDropdown(dropdown, this._input.getElement(true)!, this._value);
     }
 
     /**

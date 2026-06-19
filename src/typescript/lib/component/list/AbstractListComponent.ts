@@ -133,6 +133,10 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      */
     getSelectedValue() {
         let element = this.getElement();
+        if (!element) {
+            return undefined;
+        }
+
         return DOM.source.getSelectedOptionDataset(element, "key");
     }
 
@@ -143,6 +147,10 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      */
     getSelectedIndex() {
         let element = this.getElement();
+        if (!element) {
+            return -1;
+        }
+
         return DOM.source.getSelectedIndex(element);
     }
 
@@ -165,17 +173,6 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
         }
 
         return this;
-    }
-
-    /**
-     * Returns the DOM element cast to HTMLSelectElement.
-     *
-     * @param createIfMissing - Optional. When true, renders the element if it does not yet exist.
-     *
-     * @returns The component's HTMLSelectElement.
-     */
-    getElement(createIfMissing: boolean = false) {
-        return <HTMLSelectElement>super.getElement(createIfMissing);
     }
 
     /**

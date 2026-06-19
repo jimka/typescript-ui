@@ -144,14 +144,14 @@ export class TableExporter {
     private static download(content: string, filename: string, mimeType: string): void {
         const blob = new Blob([content], { type: mimeType });
         const url  = URL.createObjectURL(blob);
-        const a    = DOM.sink.createElement('a') as HTMLAnchorElement;
+        const a    = DOM.sink.createElement('a');
 
-        DOM.sink.setAttribute(a, "href", url);
-        DOM.sink.setAttribute(a, "download", filename);
+        DOM.sink.apply(a, { setAttr: { "href": url, "download": filename } });
 
         DOM.sink.appendChild(DOM.source.getBody(), a);
         DOM.sink.click(a);
         DOM.sink.removeChild(DOM.source.getBody(), a);
+        DOM.sink.release(a);
 
         URL.revokeObjectURL(url);
     }

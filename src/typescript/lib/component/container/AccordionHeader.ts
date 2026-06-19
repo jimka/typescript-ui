@@ -2,6 +2,7 @@
 
 import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { AccordionIndicator } from "~/component/container/AccordionIndicator.js";
 import { Insets } from "~/primitive/Insets.js";
 import { AnchorType } from "~/layout/AnchorType.js";
@@ -79,7 +80,7 @@ class AccordionHeader extends Button<AccordionHeaderOptions> {
      *
      * @param element - Optional element passed from the framework init chain.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         const el = element || this.getElement();

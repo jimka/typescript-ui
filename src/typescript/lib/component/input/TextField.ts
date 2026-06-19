@@ -85,7 +85,7 @@ class TextField extends TextInput<TextFieldOptions> {
      */
     onInput() {
         let element = this.getElement();
-        this.setText(DOM.source.getValue(element));
+        this.setText(DOM.source.getValue(element!));
     }
 
 }

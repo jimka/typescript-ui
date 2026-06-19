@@ -3,6 +3,7 @@
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Panel } from "~/core/Panel.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
@@ -244,7 +245,7 @@ class CustomListRow extends Component {
 
         const el = this.getElement();
         if (el) {
-            DOM.sink.setTextContent(el, text);
+            DOM.sink.apply(el, { text });
         }
 
         return this;
@@ -336,11 +337,11 @@ class CustomListRow extends Component {
     /**
      * Renders the row's `<div>` with its label and current class set.
      *
-     * @returns The created `HTMLElement`.
+     * @returns The created element handle.
      */
-    protected render(): HTMLElement {
+    protected render(): Handle {
         const element = super.render();
-        DOM.sink.setTextContent(element, this._text);
+        DOM.sink.apply(element, { text: this._text });
         this.applyRowClass();
 
         return element;
@@ -1376,9 +1377,9 @@ abstract class AbstractCustomList<
         const visibleBottom = scrollTop + metrics.clientHeight;
 
         if (top < scrollTop) {
-            DOM.sink.setScrollTop(panelEl, top);
+            DOM.sink.apply(panelEl, { scrollTop: top });
         } else if (bottom > visibleBottom) {
-            DOM.sink.setScrollTop(panelEl, bottom - metrics.clientHeight);
+            DOM.sink.apply(panelEl, { scrollTop: bottom - metrics.clientHeight });
         }
     }
 }

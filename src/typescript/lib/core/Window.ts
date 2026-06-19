@@ -2,7 +2,7 @@
 
 import { Border } from "~/layout/Border.js";
 import { Component } from "~/core/Component.js";
-import { DOM } from "~/core/DOM.js";
+import { DOM, type Handle } from "~/core/DOM.js";
 import { WindowHeader } from "~/component/container/WindowHeader.js";
 import { Event } from "~/core/Event.js";
 import { Placement } from "~/primitive/Placement.js";
@@ -267,7 +267,7 @@ class Window extends AbstractWindow {
      * @param e - The header `dblclick` event.
      */
     private onHeaderDoubleClick(e: MouseEvent): void {
-        const target = e.target as Node | null;
+        const target = e.target === null ? null : DOM.source.intern(e.target);
         if (target && this.targetIsInTrailingButton(target)) {
             return;
         }
@@ -287,11 +287,11 @@ class Window extends AbstractWindow {
      * Returns whether `target` lies inside one of the header's trailing
      * (minimize / maximize / exit) buttons.
      *
-     * @param target - The event target node to test.
+     * @param target - The event target handle to test.
      * @returns True when the target is inside a trailing button.
      */
-    private targetIsInTrailingButton(target: Node): boolean {
-        const buttons: Array<HTMLElement | undefined> = [
+    private targetIsInTrailingButton(target: Handle): boolean {
+        const buttons: Array<Handle | undefined> = [
             this._header.getMinimizeButtonElement(),
             this._header.getMaximizeButtonElement(),
             this._header.getExitButtonElement(),

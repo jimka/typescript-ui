@@ -5,8 +5,14 @@
 // validated geometry oracle) and text metrics from a baked table — no browser
 // layout, no `getBoundingClientRect`, no `getComputedStyle`. Not exported from
 // the library barrel.
+//
+// Both seams speak opaque numeric `Handle`s, exactly like the production pair.
+// The sink mints a synthetic handle from a private counter for every created
+// element / interned target and parks a plain stub object behind it; the source
+// reads the recorded scroll / value / id state back off that stub. The shared
+// `TestHandleTable` is what lets a write through the sink be read by the source.
 
-import { DOM, type DOMSink, type DOMSource, type Rect, type ScrollMetrics, type OffsetSize } from '~/core/DOM';
+import { DOM, type DOMSink, type DOMSource, type ElementPatch, type Handle, type PatchBuilder, type Rect, type ScrollMetrics, type OffsetSize } from '~/core/DOM';
 import type { Component } from '~/core/Component';
 import type { Size } from '~/primitive/Size';
 import type { TextMeasureOptions, TextMetrics } from '~/core/Util';
@@ -46,31 +52,73 @@ export interface ModelledDOMConfig {
 }
 
 /**
- * Minimal stand-in for an `HTMLElement` returned by {@link RecordingDOMSink}.
- * The recorder never reads layout off it; it exists only so the framework's
- * direct (non-sink) property touches during render don't throw.
+ * Plain stub parked behind a test handle. The recorder never reads layout off
+ * it; it carries only the scalar state a write records and a read reflects back
+ * (id / value / scroll offsets / tag), so handle round-trips behave.
  */
-function makeStubElement(tag: string): HTMLElement {
-    const stub = {
-        tagName:    tag.toUpperCase(),
-        id:         '',
-        style:      {} as Record<string, string>,
-        isConnected: false,
-        scrollLeft: 0,
-        scrollTop:  0,
-        value:      '',
-        setAttribute(): void {},
-        removeAttribute(): void {},
-        getElementsByTagName(): never[] { return []; },
-        remove(): void {},
-    };
-
-    return stub as unknown as HTMLElement;
+interface HandleStub {
+    tagName:    string;
+    id:         string;
+    value:      string;
+    scrollLeft: number;
+    scrollTop:  number;
 }
 
 /**
- * No-op write sink: every structural mutation and style write is captured in
- * {@link RecordingDOMSink.writes} for assertions; nothing touches a real DOM.
+ * Mints synthetic numeric handles from a private counter and parks a
+ * {@link HandleStub} behind each, shared by the recording sink and modelled
+ * source so a sink write is visible to a source read. Rebuilt per
+ * {@link installTestDOM} call.
+ */
+class TestHandleTable {
+    private readonly _stubs = new Map<Handle, HandleStub>();
+    private _next = 1;
+
+    /**
+     * Mints a fresh handle for a created element / interned target.
+     *
+     * @param tag - The element tag name (uppercased onto the stub).
+     * @returns The new handle.
+     */
+    mint(tag: string): Handle {
+        const handle = this._next as Handle;
+
+        this._next += 1;
+        this._stubs.set(handle, {
+            tagName:    tag.toUpperCase(),
+            id:         '',
+            value:      '',
+            scrollLeft: 0,
+            scrollTop:  0,
+        });
+
+        return handle;
+    }
+
+    /**
+     * Resolves a handle to its stub.
+     *
+     * @param handle - The handle to resolve.
+     * @returns The parked stub.
+     */
+    stub(handle: Handle): HandleStub {
+        const stub = this._stubs.get(handle);
+
+        if (!stub) {
+            throw new Error(`TestHandleTable: handle ${handle} is not registered`);
+        }
+
+        return stub;
+    }
+}
+
+/** The shared table, rebuilt by {@link installTestDOM}. */
+let _table = new TestHandleTable();
+
+/**
+ * No-op write sink: every structural mutation and batched {@link ElementPatch}
+ * is captured in {@link RecordingDOMSink.writes} for assertions; nothing touches
+ * a real DOM. Created elements mint a synthetic handle off the shared table.
  */
 export class RecordingDOMSink implements DOMSink {
     readonly writes: Array<{ op: string; args: unknown[] }> = [];
@@ -79,8 +127,28 @@ export class RecordingDOMSink implements DOMSink {
         this.writes.push({ op, args });
     }
 
-    setStyle(_element: HTMLElement | SVGElement, key: string, value: string | null): void {
-        this.record('setStyle', key, value);
+    apply(handle: Handle, patch: ElementPatch): void {
+        this.record('apply', handle, patch);
+
+        // Reflect the scalar writes a source read will reflect back, so a
+        // round-trip (write scroll/value → read it) behaves like production.
+        const stub = _table.stub(handle);
+
+        if (patch.scrollLeft !== undefined) {
+            stub.scrollLeft = patch.scrollLeft;
+        }
+
+        if (patch.scrollTop !== undefined) {
+            stub.scrollTop = patch.scrollTop;
+        }
+    }
+
+    edit(handle: Handle): PatchBuilder {
+        return makeBuilder((patch) => this.apply(handle, patch));
+    }
+
+    release(handle: Handle): void {
+        this.record('release', handle);
     }
 
     setRuleStyle(_rule: CSSStyleRule, key: string, value: string | null): void {
@@ -97,90 +165,56 @@ export class RecordingDOMSink implements DOMSink {
         this.record('ensureKeyframes', name);
     }
 
-    createElement(tag: string): HTMLElement {
+    createElement(tag: string): Handle {
         this.record('createElement', tag);
 
-        return makeStubElement(tag);
+        return _table.mint(tag);
     }
 
-    createElementNS(ns: string, tag: string): Element {
+    createElementNS(ns: string, tag: string): Handle {
         this.record('createElementNS', ns, tag);
 
-        return makeStubElement(tag);
+        return _table.mint(tag);
     }
 
-    appendChild(_parent: Node, _child: Node): void {
+    appendChild(_parent: Handle, _child: Handle): void {
         this.record('appendChild');
     }
 
-    removeChild(_parent: Node, _child: Node): void {
+    removeChild(_parent: Handle, _child: Handle): void {
         this.record('removeChild');
     }
 
-    removeElement(_element: Element): void {
+    removeElement(_handle: Handle): void {
         this.record('removeElement');
     }
 
-    addClass(_element: Element, name: string): void {
-        this.record('addClass', name);
-    }
-
-    removeClass(_element: Element, name: string): void {
-        this.record('removeClass', name);
-    }
-
-    toggleClass(_element: Element, name: string, on?: boolean): void {
-        this.record('toggleClass', name, on);
-    }
-
-    setAttribute(_element: Element, key: string, value: string): void {
-        this.record('setAttribute', key, value);
-    }
-
-    removeAttribute(_element: Element, key: string): void {
-        this.record('removeAttribute', key);
-    }
-
-    setTextContent(_node: Node, text: string): void {
-        this.record('setTextContent', text);
-    }
-
-    setScrollLeft(element: Element, value: number): void {
-        this.record('setScrollLeft', value);
-        (element as unknown as { scrollLeft: number }).scrollLeft = value;
-    }
-
-    setScrollTop(element: Element, value: number): void {
-        this.record('setScrollTop', value);
-        (element as unknown as { scrollTop: number }).scrollTop = value;
-    }
-
-    focus(_element: HTMLElement, options?: { preventScroll?: boolean }): void {
+    focus(_handle: Handle, options?: { preventScroll?: boolean }): void {
         this.record('focus', options);
     }
 
-    blur(_element: HTMLElement): void {
+    blur(_handle: Handle): void {
         this.record('blur');
     }
 
-    setValue(element: HTMLElement, value: string): void {
+    setValue(handle: Handle, value: string): void {
         this.record('setValue', value);
-        (element as unknown as { value: string }).value = value;
+        _table.stub(handle).value = value;
     }
 
-    setSelectionRange(_element: HTMLElement, start: number, end: number): void {
+    setSelectionRange(_handle: Handle, start: number, end: number): void {
         this.record('setSelectionRange', start, end);
     }
 
-    addListener<T extends Event = Event>(_target: EventTarget, type: string, _handler: (event: T) => void, _options?: boolean | AddEventListenerOptions): void {
+    addListener<T extends Event = Event>(_target: Handle, type: string, _handler: (event: T) => void, _options?: boolean | AddEventListenerOptions): void {
         this.record('addListener', type);
     }
 
-    removeListener<T extends Event = Event>(_target: EventTarget, type: string, _handler: (event: T) => void, _options?: boolean | EventListenerOptions): void {
+    removeListener<T extends Event = Event>(_target: Handle, type: string, _handler: (event: T) => void, _options?: boolean | EventListenerOptions): void {
         this.record('removeListener', type);
     }
 
-    dispatchEvent(_target: EventTarget, event: Event): void {
+    dispatchEvent(_target: Handle, event: Event): void {
         this.record('dispatchEvent', event.type);
     }
 
@@ -194,39 +228,78 @@ export class RecordingDOMSink implements DOMSink {
         this.record('cancelAnimationFrame', handle);
     }
 
-    setId(_element: Element, id: string): void {
+    setId(handle: Handle, id: string): void {
         this.record('setId', id);
+        _table.stub(handle).id = id;
     }
 
-    insertBefore(_parent: Node, _node: Node, _reference: Node | null): void {
+    insertBefore(_parent: Handle, _node: Handle, _reference: Handle | null): void {
         this.record('insertBefore');
     }
 
-    setDataset(_element: HTMLElement, key: string, value: string): void {
-        this.record('setDataset', key, value);
-    }
-
-    createDocumentFragment(): DocumentFragment {
+    createDocumentFragment(): Handle {
         this.record('createDocumentFragment');
 
-        return makeStubElement('fragment') as unknown as DocumentFragment;
+        return _table.mint('fragment');
     }
 
-    click(_element: HTMLElement): void {
+    click(_handle: Handle): void {
         this.record('click');
     }
 
-    setSelectedIndex(_element: HTMLSelectElement, index: number): void {
+    setSelectedIndex(_handle: Handle, index: number): void {
         this.record('setSelectedIndex', index);
     }
 
-    setPointerCapture(_element: Element, pointerId: number): void {
+    setPointerCapture(_handle: Handle, pointerId: number): void {
         this.record('setPointerCapture', pointerId);
     }
 
-    releasePointerCapture(_element: Element, pointerId: number): void {
+    releasePointerCapture(_handle: Handle, pointerId: number): void {
         this.record('releasePointerCapture', pointerId);
     }
+}
+
+/**
+ * A minimal {@link PatchBuilder} stand-in for the recording sink: accumulates
+ * the same patch shape and flushes through the supplied commit. Mirrors the
+ * production builder's fields without importing its private class.
+ */
+function makeBuilder(commit: (patch: ElementPatch) => void): PatchBuilder {
+    const patch: {
+        style?:    Record<string, string | null>;
+        addClass?: string[];
+        setAttr?:  Record<string, string>;
+        text?:     string;
+    } = {};
+
+    const builder = {
+        style(key: string, value: string | null) {
+            (patch.style ??= {})[key] = value;
+
+            return builder;
+        },
+        addClass(name: string) {
+            (patch.addClass ??= []).push(name);
+
+            return builder;
+        },
+        attr(key: string, value: string) {
+            (patch.setAttr ??= {})[key] = value;
+
+            return builder;
+        },
+        text(value: string) {
+            patch.text = value;
+
+            return builder;
+        },
+        commit(): void {
+            commit(patch);
+        },
+    };
+
+    return builder as unknown as PatchBuilder;
 }
 
 /**
@@ -239,6 +312,11 @@ export class ModelledDOMSource implements DOMSource {
 
     constructor(config: ModelledDOMConfig) {
         this._config = config;
+    }
+
+    /** Interns a raw target by minting a fresh stub handle off the shared table. */
+    intern(_target: EventTarget): Handle {
+        return _table.mint('');
     }
 
     /** Runs the geometry oracle: walks `getParentComponent()` to the root. */
@@ -271,7 +349,7 @@ export class ModelledDOMSource implements DOMSource {
      * it reports a zero rect. Offline assertions are scoped to component
      * geometry via {@link getViewportRect}.
      */
-    getElementRect(_element: Element): Rect {
+    getElementRect(_handle: Handle): Rect {
         return makeRect(0, 0, 0, 0);
     }
 
@@ -319,40 +397,40 @@ export class ModelledDOMSource implements DOMSource {
     }
 
     /** Reads the scroll offset recorded onto the stub by the recording sink. */
-    getScrollLeft(element: Element): number {
-        return (element as unknown as { scrollLeft?: number }).scrollLeft ?? 0;
+    getScrollLeft(handle: Handle): number {
+        return _table.stub(handle).scrollLeft;
     }
 
     /** Reads the scroll offset recorded onto the stub by the recording sink. */
-    getScrollTop(element: Element): number {
-        return (element as unknown as { scrollTop?: number }).scrollTop ?? 0;
+    getScrollTop(handle: Handle): number {
+        return _table.stub(handle).scrollTop;
     }
 
     /**
      * Committed-geometry tests don't assert native overflow, so the modelled
      * source reports a zeroed metrics box (no scrollable content).
      */
-    getScrollMetrics(_element: Element): ScrollMetrics {
+    getScrollMetrics(_handle: Handle): ScrollMetrics {
         return { scrollTop: 0, scrollLeft: 0, scrollWidth: 0, scrollHeight: 0, clientWidth: 0, clientHeight: 0 };
     }
 
     /** No offset-box model offline; reports zeros. */
-    getOffsetSize(_element: Element): OffsetSize {
+    getOffsetSize(_handle: Handle): OffsetSize {
         return { offsetTop: 0, offsetHeight: 0 };
     }
 
     /** The modelled source never attaches elements to a document. */
-    isConnected(_element: Element): boolean {
+    isConnected(_handle: Handle): boolean {
         return false;
     }
 
     /** Reads the value recorded onto the stub by the recording sink. */
-    getValue(element: HTMLElement): string {
-        return (element as unknown as { value?: string }).value ?? '';
+    getValue(handle: Handle): string {
+        return _table.stub(handle).value;
     }
 
     /** No focus model offline; reports nothing focused. */
-    getActiveElement(): Element | null {
+    getActiveElement(): Handle | null {
         return null;
     }
 
@@ -361,120 +439,120 @@ export class ModelledDOMSource implements DOMSource {
         return { matches: false, addChangeListener: (): void => {} };
     }
 
-    /** No window object offline. */
-    isWindow(_target: EventTarget | null): boolean {
+    /** No window object offline; no handle is the window. */
+    isWindow(_target: Handle | null): boolean {
         return false;
     }
 
-    /** Offline window target — a bare event-target stub for listener registration. */
-    getWindow(): Window {
-        return new EventTarget() as unknown as Window;
+    /** Offline window target — a fresh stub handle for listener registration. */
+    getWindow(): Handle {
+        return _table.mint('window');
     }
 
     /** No DOM tree offline; containment is always false. */
-    contains(_ancestor: Node, _node: Node | null): boolean {
+    contains(_ancestor: Handle, _node: Handle | null): boolean {
         return false;
     }
 
     /** No DOM tree offline; selector queries find nothing. */
-    querySelector(_root: ParentNode, _selector: string): Element | null {
+    querySelector(_root: Handle, _selector: string): Handle | null {
         return null;
     }
 
     /** No DOM tree offline; selector queries find nothing. */
-    querySelectorAll(_root: ParentNode, _selector: string): Element[] {
+    querySelectorAll(_root: Handle, _selector: string): Handle[] {
         return [];
     }
 
     /** No DOM tree offline. */
-    getParentElement(_element: Element): Element | null {
+    getParentElement(_handle: Handle): Handle | null {
         return null;
     }
 
     /** No DOM tree offline. */
-    getParentNode(_node: Node): Node | null {
+    getParentNode(_handle: Handle): Handle | null {
         return null;
     }
 
     /** No DOM tree offline. */
-    getFirstChild(_node: Node): Node | null {
+    getFirstChild(_handle: Handle): Handle | null {
         return null;
     }
 
     /** No computed border offline; reports zero widths. */
-    getBorderWidths(_element: Element): { top: string; right: string; bottom: string; left: string } {
+    getBorderWidths(_handle: Handle): { top: string; right: string; bottom: string; left: string } {
         return { top: '0px', right: '0px', bottom: '0px', left: '0px' };
     }
 
     /** No computed overflow offline; reports visible. */
-    getComputedOverflow(_element: Element): { overflow: string; overflowX: string; overflowY: string } {
+    getComputedOverflow(_handle: Handle): { overflow: string; overflowX: string; overflowY: string } {
         return { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' };
     }
 
-    /** Offline document root — a bare stub element for overlay mounting. */
-    getDocumentElement(): HTMLElement {
-        return makeStubElement('html');
+    /** Offline document root — a fresh stub handle for overlay mounting. */
+    getDocumentElement(): Handle {
+        return _table.mint('html');
     }
 
-    /** Offline body — a bare stub element. */
-    getBody(): HTMLElement {
-        return makeStubElement('body');
+    /** Offline body — a fresh stub handle. */
+    getBody(): Handle {
+        return _table.mint('body');
     }
 
-    /** Offline head — a bare stub element. */
-    getHead(): HTMLElement {
-        return makeStubElement('head');
+    /** Offline head — a fresh stub handle. */
+    getHead(): Handle {
+        return _table.mint('head');
     }
 
-    getInlineStyle(_element: HTMLElement, _key: string): string {
+    getInlineStyle(_handle: Handle, _key: string): string {
         return '';
     }
 
-    getElementById(_id: string): HTMLElement | null {
+    getElementById(_id: string): Handle | null {
         return null;
     }
 
-    getId(element: Element): string {
-        return (element as { id?: string }).id ?? '';
+    getId(handle: Handle): string {
+        return _table.stub(handle).id;
     }
 
-    getDataset(_element: HTMLElement, _key: string): string | undefined {
+    getDataset(_handle: Handle, _key: string): string | undefined {
         return undefined;
     }
 
-    getTagName(element: Element): string {
-        return (element as { tagName?: string }).tagName ?? '';
+    getTagName(handle: Handle): string {
+        return _table.stub(handle).tagName;
     }
 
-    hasAttribute(_element: Element, _key: string): boolean {
+    hasAttribute(_handle: Handle, _key: string): boolean {
         return false;
     }
 
-    getAttribute(_element: Element, _key: string): string | null {
+    getAttribute(_handle: Handle, _key: string): string | null {
         return null;
     }
 
-    getSelectedIndex(_element: HTMLSelectElement): number {
+    getSelectedIndex(_handle: Handle): number {
         return -1;
     }
 
-    getSelectedOptionDataset(_element: HTMLSelectElement, _key: string): string | undefined {
+    getSelectedOptionDataset(_handle: Handle, _key: string): string | undefined {
         return undefined;
     }
 
-    getNaturalSize(_element: HTMLImageElement): { width: number; height: number } {
+    getNaturalSize(_handle: Handle): { width: number; height: number } {
         return { width: 0, height: 0 };
     }
 
-    getFiles(_element: HTMLInputElement): FileList | null {
+    getFiles(_handle: Handle): FileList | null {
         return null;
     }
 
-    hasPointerCapture(_element: Element, _pointerId: number): boolean {
+    hasPointerCapture(_handle: Handle, _pointerId: number): boolean {
         return false;
     }
 
-    elementsFromPoint(_x: number, _y: number): Element[] {
+    elementsFromPoint(_x: number, _y: number): Handle[] {
         return [];
     }
 
@@ -532,6 +610,8 @@ function makeRect(x: number, y: number, width: number, height: number): Rect {
  * @returns The installed recording sink.
  */
 export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
+    _table = new TestHandleTable();
+
     const sink   = new RecordingDOMSink();
     const source = new ModelledDOMSource(config);
 

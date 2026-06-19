@@ -3,6 +3,7 @@
 import { Text, TextOptions } from "~/component/input/Text.js"
 import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
+import type { Handle } from "~/core/DOM.js";
 
 /**
  * Construction-time options for {@link Legend}.
@@ -46,9 +47,9 @@ class Legend extends Text<LegendOptions> {
      * strips the browser's default `<legend>` inset; this longhand write runs
      * after `super` and overrides only the left side.
      *
-     * @param element - The HTMLElement to apply styles to.
+     * @param element - The element handle to apply styles to.
      */
-    applyStyle(element: HTMLElement): this {
+    applyStyle(element: Handle): this {
         super.applyStyle(element);
 
         this.setElementCSSRule("marginLeft", `${Legend.LEFT_MARGIN}px`);

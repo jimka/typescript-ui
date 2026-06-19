@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Text } from "~/component/input/Text.js";
 import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
 import { TreeNodeRenderContext } from "~/component/tree/TreeNodeRenderContext.js";
@@ -93,7 +94,7 @@ export class LabelTreeNodeRenderer extends TreeNodeRenderer {
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         const el = element || this.getElement();
@@ -101,7 +102,7 @@ export class LabelTreeNodeRenderer extends TreeNodeRenderer {
             return this;
         }
 
-        DOM.sink.appendChild(el, this._label.getElement(true));
+        DOM.sink.appendChild(el, this._label.getElement(true)!);
 
         return this;
     }

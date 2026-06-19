@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -67,10 +68,10 @@ class Menu extends Component {
     private _focusedIndex: number = -1;
     private _openSubmenuPanel: Menu | null = null;
     private _openSubmenuItem: MenuItem | null = null;
-    private _excludedEl: HTMLElement | null = null;
+    private _excludedEl: Handle | null = null;
     private _menuWidth: number = DEFAULT_REBUILD_WIDTH;
     private _rebuildOnClose: (() => void) | null = null;
-    private _currentOpener: HTMLElement | null = null;
+    private _currentOpener: Handle | null = null;
     private readonly _onViewportMouseDown: (e: MouseEvent) => void;
     private readonly _onWindowBlur: (e: FocusEvent) => void;
 
@@ -107,7 +108,7 @@ class Menu extends Component {
         }
 
         this._onViewportMouseDown = (e: MouseEvent) => {
-            const target = e.target as Node;
+            const target = DOM.source.intern(e.target as EventTarget);
 
             if (this._persistent) {
                 if (!this.containsTarget(target) && !(this._excludedEl != null && DOM.source.contains(this._excludedEl, target))) {
@@ -127,7 +128,7 @@ class Menu extends Component {
         // it. Viewport listeners are capture-phase, so element blurs from within
         // the menu surface here too; act only on a genuine window blur.
         this._onWindowBlur = (e: FocusEvent) => {
-            if (!DOM.source.isWindow(e.target)) {
+            if (!DOM.source.isWindow(e.target === null ? null : DOM.source.intern(e.target))) {
                 return;
             }
 
@@ -158,7 +159,7 @@ class Menu extends Component {
      *   click can toggle it shut — mirroring [`MenuBar`](/api/component/menubar/classes/MenuBar)'s
      *   dropdown-button exclusion.
      */
-    show(x: number, y: number, configs: MenuItemConfig[], onClose?: () => void, excludeEl?: HTMLElement | null): this {
+    show(x: number, y: number, configs: MenuItemConfig[], onClose?: () => void, excludeEl?: Handle | null): this {
         this.assertRebuildMode("show");
 
         this._rebuildOnClose = onClose ?? null;
@@ -198,7 +199,7 @@ class Menu extends Component {
 
         const totalHeight = this.getPreferredSize()?.height ?? 0;
 
-        const el = this.getElement(true);
+        const el = this.getElement(true)!;
 
         const vp = DOM.source.getViewportSize();
 
@@ -250,7 +251,7 @@ class Menu extends Component {
      *
      * @returns This menu, for method chaining.
      */
-    toggleFor(openerEl: HTMLElement, x: number, y: number, configs: MenuItemConfig[], onClose?: () => void): this {
+    toggleFor(openerEl: Handle, x: number, y: number, configs: MenuItemConfig[], onClose?: () => void): this {
         this.assertRebuildMode("toggleFor");
 
         // Same opener fired again while its menu is open: close it. Its mousedown
@@ -324,12 +325,12 @@ class Menu extends Component {
      * @param anchorEl - The `HTMLElement` of the triggering button or menu item.
      * @param parentPanel - When set, positions the panel as a submenu of this parent.
      */
-    open(anchorEl: HTMLElement, parentPanel?: Menu): this {
+    open(anchorEl: Handle, parentPanel?: Menu): this {
         this.assertPersistentMode("open");
 
         const totalHeight = this.getPreferredSize()?.height ?? (this._menuItems.length * MenuItem.HEIGHT + 8);
 
-        const el = this.getElement(true);
+        const el = this.getElement(true)!;
         DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
 
         const vp = DOM.source.getViewportSize();
@@ -382,7 +383,7 @@ class Menu extends Component {
 
         this.setVisible(true);
         this.doLayout();
-        this.fadeIn(this.getElement(true));
+        this.fadeIn(this.getElement(true)!);
 
         Event.addViewportListener(this, "mousedown", this._onViewportMouseDown);
         Event.addViewportListener(this, "blur", this._onWindowBlur);
@@ -420,7 +421,7 @@ class Menu extends Component {
      *
      * @param _el - The panel's root element (unused; retained for call-site clarity).
      */
-    private fadeIn(_el: HTMLElement): void {
+    private fadeIn(_el: Handle): void {
         fadeShow(this, { durationMs: MENU_ANIM_DURATION_MS });
     }
 
@@ -538,7 +539,7 @@ class Menu extends Component {
      *
      * @param el - The element to exclude, or `null` to clear.
      */
-    setExcludedElement(el: HTMLElement | null): this {
+    setExcludedElement(el: Handle | null): this {
         this.assertPersistentMode("setExcludedElement");
 
         this._excludedEl = el;
@@ -552,7 +553,7 @@ class Menu extends Component {
      *
      * @returns The excluded element, or null.
      */
-    getExcludedElement(): HTMLElement | null {
+    getExcludedElement(): Handle | null {
         return this._excludedEl;
     }
 
@@ -698,7 +699,7 @@ class Menu extends Component {
      * @param target - The node to test for containment.
      * @returns Whether the target is within this panel's subtree.
      */
-    private containsTarget(target: Node): boolean {
+    private containsTarget(target: Handle): boolean {
         const menuEl = this.getElement();
         if (menuEl != null && DOM.source.contains(menuEl, target)) {
             return true;

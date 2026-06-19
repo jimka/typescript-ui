@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
@@ -628,7 +629,7 @@ class Tree extends Component<TreeOptions> {
      * @param e - The click event whose target is inside the tree's DOM subtree.
      */
     private _handleClick(e: MouseEvent): void {
-        const target = e.target as HTMLElement;
+        const target = e.target === null ? null : DOM.source.intern(e.target);
 
         for (const row of this._rowPool) {
             const node = row.getNode();
@@ -678,7 +679,7 @@ class Tree extends Component<TreeOptions> {
      */
     private _updateSelectionStyle(): void {
         for (const row of this._rowPool) {
-            const rowEl = row.getElement() as HTMLElement | undefined;
+            const rowEl = row.getElement();
 
             if (!rowEl) {
                 continue;
@@ -694,17 +695,15 @@ class Tree extends Component<TreeOptions> {
             // the next node bound to this reused row, so write/remove the inline
             // styles directly instead.
             if (isSelected) {
-                DOM.sink.setStyle(rowEl, "background-color", SELECTED_BG);
+                DOM.sink.apply(rowEl, { style: { "background-color": SELECTED_BG } });
             } else {
-                DOM.sink.setStyle(rowEl, "background-color", null);
+                DOM.sink.apply(rowEl, { style: { "background-color": null } });
             }
 
             if (isFocused) {
-                DOM.sink.setStyle(rowEl, "outline", "2px solid var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))");
-                DOM.sink.setStyle(rowEl, "outline-offset", "-2px");
+                DOM.sink.apply(rowEl, { style: { "outline": "2px solid var(--ts-ui-focus-ring, rgba(30, 100, 200, 0.6))", "outline-offset": "-2px" } });
             } else {
-                DOM.sink.setStyle(rowEl, "outline", null);
-                DOM.sink.setStyle(rowEl, "outline-offset", null);
+                DOM.sink.apply(rowEl, { style: { "outline": null, "outline-offset": null } });
             }
 
             row.getAria().setSelected(isSelected);
@@ -834,7 +833,7 @@ class Tree extends Component<TreeOptions> {
 
         while (this._rowPool.length < poolTarget) {
             const row   = new TreeRow(this._rendererFactory);
-            const rowEl = row.getElement(true);
+            const rowEl = row.getElement(true)!;
 
             DOM.sink.appendChild(growFragment, rowEl);
 
@@ -855,6 +854,7 @@ class Tree extends Component<TreeOptions> {
         }
 
         DOM.sink.appendChild(rowsContainer, growFragment);
+        DOM.sink.release(growFragment);
     }
 
     /**
@@ -960,7 +960,7 @@ class Tree extends Component<TreeOptions> {
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         const el = element || this.getElement();

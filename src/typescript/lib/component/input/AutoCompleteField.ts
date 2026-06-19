@@ -573,7 +573,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
             return;
         }
 
-        this._dropdown.show(this._textField.getElement(true), list);
+        this._dropdown.show(this._textField.getElement(true)!, list);
         this._textField.getAria().setExpanded(true);
     }
 

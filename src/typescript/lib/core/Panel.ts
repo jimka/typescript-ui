@@ -7,6 +7,7 @@ import { Event } from "~/core/Event.js";
 import { InlineStyle } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 
 /**
  * Reach in pixels of each scroll-edge shadow — used as the inset shadow's
@@ -129,7 +130,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     // `applyOptions` to dodge the class-field super-cascade trap — an
     // initialiser would run after super() and clobber the seeded value.
     declare private _scrollShadows:       boolean;
-    declare private _shadowOverlay:       HTMLElement | null;
+    declare private _shadowOverlay:       Handle | null;
     declare private _shadowScrollHandler: (() => void) | null;   // cached bound scroll handler — wired once
 
     // Runtime-only: never touched during the super cascade (the overlay only
@@ -387,7 +388,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      *
      * @returns This panel, for method chaining.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         // `getElement()` is still undefined inside `init` (the base assigns
@@ -513,7 +514,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      *
      * @param element - The rendered panel element to append the overlay to.
      */
-    private installScrollShadows(element: HTMLElement): void {
+    private installScrollShadows(element: Handle): void {
         if (!this._shadowOverlay) {
             this.createScrollShadowOverlay(element);
         }
@@ -537,7 +538,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      *
      * @param element - The panel element the overlay is appended to.
      */
-    private createScrollShadowOverlay(element: HTMLElement): void {
+    private createScrollShadowOverlay(element: Handle): void {
         const overlay = DOM.sink.createElement("div");
         const extent  = SCROLL_SHADOW_EXTENT_PX + "px";
 
@@ -587,6 +588,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         if (this._shadowOverlay) {
             DOM.sink.removeElement(this._shadowOverlay);
+            DOM.sink.release(this._shadowOverlay);
             this._shadowOverlay = null;
 
             // The buffer was bound to the now-removed overlay; a fresh one is
@@ -608,7 +610,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
      *   element. Passed explicitly from `init`, where `getElement` is not yet
      *   populated.
      */
-    private updateScrollShadows(element?: HTMLElement): void {
+    private updateScrollShadows(element?: Handle): void {
         const el = element ?? this.getElement();
         if (!el || !this._shadowOverlay) {
             return;

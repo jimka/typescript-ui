@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { DOM } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Card } from "~/layout/Card.js";
@@ -70,7 +71,7 @@ export class Cell<T> extends Component {
             editor.setCommitRequestHandler(() => this.commitEdit());
 
             Event.addListener(editor, 'blur', (e: FocusEvent) => {
-                if (editor.retainsFocus(e.relatedTarget as Node | null)) {
+                if (editor.retainsFocus(e.relatedTarget === null ? null : DOM.source.intern(e.relatedTarget))) {
                     return;
                 }
 

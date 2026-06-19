@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import type { Handle } from "~/core/DOM.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { callable } from "~/core/Callable.js";
 
@@ -242,7 +243,7 @@ class Spacer extends Component<SpacerOptions> {
      *
      * @returns This component, for method chaining.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         if (this._flex) {
