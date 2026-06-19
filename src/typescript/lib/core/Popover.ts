@@ -2,7 +2,6 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
-import { Util } from "~/core/Util.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
@@ -685,7 +684,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * @param anchor - The anchor's `DOMRect`.
      * @param width - The popover's preferred width in pixels.
      * @param height - The popover's preferred height in pixels.
-     * @param vp - The viewport size returned by {@link Util.getViewportSize}.
+     * @param vp - The viewport size returned by `DOM.source.getViewportSize`.
      * @returns The resolved placement.
      */
     private resolvePlacement(

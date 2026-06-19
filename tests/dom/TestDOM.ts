@@ -290,6 +290,12 @@ export class ModelledDOMSource implements DOMSource {
         };
     }
 
+    resolveFontSizePx(fontSizeCSS: string): number {
+        const px = parseFloat(fontSizeCSS);
+
+        return isNaN(px) ? 14 : px;
+    }
+
     measureFontMetrics(): { ascent: number; descent: number; capTop: number } {
         const font = this.font();
 
@@ -422,6 +428,10 @@ export class ModelledDOMSource implements DOMSource {
 
     getInlineStyle(_element: HTMLElement, _key: string): string {
         return '';
+    }
+
+    getElementById(_id: string): HTMLElement | null {
+        return null;
     }
 
     getId(element: Element): string {

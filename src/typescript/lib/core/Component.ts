@@ -9,7 +9,6 @@ import { Insets } from "~/primitive/Insets.js";
 import { BaseObject } from "~/core/BaseObject.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Type } from "~/core/Type.js";
-import { Util } from "~/core/Util.js";
 import { Position } from "~/primitive/Position.js";
 import { Aria } from "~/core/Aria.js";
 import { Event } from "~/core/Event.js";
@@ -601,7 +600,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     getElement(createIfMissing: boolean = false) {
         if (!this._element) {
-            let element = Util.select("#" + this.getId());
+            // `as HTMLElement` preserves the prior `Util.select` contract: the
+            // lookup may miss (null), but getElement's callers treat the result
+            // as present, gating on `createIfMissing` / their own null checks.
+            let element = DOM.source.getElementById(this.getId()) as HTMLElement;
             if (!element && createIfMissing) {
                 element = this.render();
             }
@@ -3919,7 +3921,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Re-applies all styles to the existing DOM element, syncing state after external changes.
      */
     sync() {
-        let element = Util.select("#" + this.getId());
+        let element = DOM.source.getElementById(this.getId());
         if (!element) {
             return;
         }

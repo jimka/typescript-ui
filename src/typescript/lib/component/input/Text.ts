@@ -169,7 +169,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
 
         // Off-screen text measurement is deferred until the first
         // getPreferredSize / getBaseline call so construction stays JS-only
-        // (no forced layout from `Util.measureTextMetrics`).
+        // (no forced layout from `DOM.source.measureText`).
         this._measurementDirty = true;
     }
 
@@ -302,7 +302,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
      * `--ts-ui-font-size` base) parses straight off the document root; a relative
      * font token's var holds a `calc(...)` that `getPropertyValue` returns
      * unevaluated (so `parseFloat` reads `NaN`), so it falls back to a
-     * cascade-evaluating probe via {@link Util.resolveFontSizePx}. The probe path
+     * cascade-evaluating probe via `DOM.source.resolveFontSizePx`. The probe path
      * works **pre-attach** — before this component's own element is styled —
      * which is when a parent (e.g. a `Header`) first reads the line-box size.
      *
@@ -315,7 +315,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
         const raw = parseFloat(DOM.source.getThemeVar(this._fontSizeCSSVar));
         if (!isNaN(raw)) return raw;              // simple var — cheap, no probe
 
-        return Util.resolveFontSizePx(this._fontSizeCSSRule ?? `var(${this._fontSizeCSSVar})`);
+        return DOM.source.resolveFontSizePx(this._fontSizeCSSRule ?? `var(${this._fontSizeCSSVar})`);
     }
 
     /**
@@ -374,7 +374,7 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             const fontSize   = this.getFontSize();
             const lineHeight = this.getLineHeight();
 
-            const { width, height, baseline } = Util.measureTextMetrics(text.toString(), {
+            const { width, height, baseline } = DOM.source.measureText(text.toString(), {
                 fontFamily : this.getFontFamily()  ?? undefined,
                 fontSize   : this._fontSizeCSSRule ?? (fontSize !== null ? `${fontSize}px` : undefined),
                 fontWeight : this.getFontWeight()  ?? undefined,

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { Util } from "~/core/Util.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { ThemeManager, ModernTheme } from "~/core/Theme.js";
@@ -46,7 +45,7 @@ export class Body extends Component {
      * @returns The `<body>` HTMLElement.
      */
     getElement() {
-        return Util.select("body");
+        return DOM.source.getBody();
     }
 
     /**

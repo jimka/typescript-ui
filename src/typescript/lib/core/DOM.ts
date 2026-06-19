@@ -1,9 +1,26 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Util } from "~/core/Util.js";
 import type { TextMeasureOptions, TextMetrics } from "~/core/Util.js";
 import type { Size } from "~/primitive/Size.js";
 import type { Component } from "~/core/Component.js";
+
+// Production measurement caches. These live here because the irreducible
+// browser-measurement leaf (the off-screen probe, the canvas metrics context,
+// the scrollbar-width probe) is the production side of the read seam — the lone
+// place the framework touches the real DOM for measurement.
+let _metricsCtx:    CanvasRenderingContext2D | null = null;
+let _scrollBarWidth: number = -1;
+
+/**
+ * Applies a set of camelCase inline-style properties to an element, used by the
+ * off-screen measurement probes below. Raw `style` access is intentional — this
+ * is inside the seam's production implementation.
+ */
+function _applyProbeStyles(element: HTMLElement, styles: Record<string, string>): void {
+    for (const key of Object.keys(styles)) {
+        (element.style as any)[key] = styles[key];
+    }
+}
 
 /**
  * Plain serialisable rectangle in viewport coordinates. Deliberately *not* a
@@ -404,6 +421,15 @@ export interface DOMSource {
     measureText(text: string, options?: TextMeasureOptions): TextMetrics;
 
     /**
+     * Resolves a CSS `font-size` value (possibly a `calc()`/`var()`) to a pixel
+     * number by evaluating it on an off-screen probe.
+     *
+     * @param fontSizeCSS - A CSS font-size value.
+     * @returns The resolved size in pixels (14 when unresolvable).
+     */
+    resolveFontSizePx(fontSizeCSS: string): number;
+
+    /**
      * Returns the active font's vertical metrics in pixels.
      *
      * @returns The font `{ascent, descent, capTop}` in pixels.
@@ -621,6 +647,14 @@ export interface DOMSource {
      * @returns The head element.
      */
     getHead(): HTMLElement;
+
+    /**
+     * Looks up an element by its `id`.
+     *
+     * @param id - The element id (no `#` prefix).
+     * @returns The matching element, or null.
+     */
+    getElementById(id: string): HTMLElement | null;
 
     /**
      * Reads an element's `id`.
@@ -1030,13 +1064,92 @@ export class ProductionDOMSource implements DOMSource {
     }
 
     /** @inheritDoc */
-    measureText(text: string, options?: TextMeasureOptions): TextMetrics {
-        return Util.measureTextMetrics(text, options);
+    measureText(text: string, options: TextMeasureOptions = {}): TextMetrics {
+        const {
+            fontFamily  = "var(--ts-ui-font-family, system-ui, sans-serif)",
+            fontSize    = "var(--ts-ui-font-size, 14px)",
+            fontWeight  = "normal",
+            fontStyle   = "normal",
+            fontVariant = "normal",
+            fontStretch = "normal",
+            lineHeight  = "calc(1em + var(--ts-ui-line-padding, 2px))",
+            maxWidth,
+        } = options;
+
+        const probe = document.createElement("span");
+
+        _applyProbeStyles(probe, {
+            position:    "fixed",
+            visibility:  "hidden",
+            // With a wrap width the probe must honour `\n` and soft-wrap so the
+            // measured height covers every visual line; otherwise stay on a
+            // single `nowrap` line for the natural-size measurement.
+            whiteSpace:  maxWidth === undefined ? "nowrap" : "pre-wrap",
+            width:       maxWidth === undefined ? "" : `${maxWidth}px`,
+            fontFamily, fontSize, fontWeight, fontStyle, fontVariant, fontStretch, lineHeight,
+        });
+
+        probe.textContent = text;
+
+        const ref = document.createElement("span");
+
+        _applyProbeStyles(ref, {
+            display:       "inline-block",
+            width:         "0",
+            height:        "0",
+            verticalAlign: "baseline",
+        });
+
+        probe.appendChild(ref);
+        document.body.appendChild(probe);
+
+        const probeRect = probe.getBoundingClientRect();
+        const refRect   = ref.getBoundingClientRect();
+
+        document.body.removeChild(probe);
+
+        return {
+            width:    Math.ceil(probeRect.width),
+            height:   Math.ceil(probeRect.height),
+            baseline: Math.round(refRect.top - probeRect.top),
+        };
+    }
+
+    /** @inheritDoc */
+    resolveFontSizePx(fontSizeCSS: string): number {
+        const probe = document.createElement("span");
+
+        _applyProbeStyles(probe, { position: "fixed", visibility: "hidden", fontSize: fontSizeCSS });
+
+        document.body.appendChild(probe);
+        const px = parseFloat(getComputedStyle(probe).fontSize);
+        document.body.removeChild(probe);
+
+        return isNaN(px) ? 14 : px;   // 14 mirrors the base font fallback
     }
 
     /** @inheritDoc */
     measureFontMetrics(): { ascent: number; descent: number; capTop: number } {
-        return Util.measureFontMetrics();
+        if (_metricsCtx === null) {
+            _metricsCtx = document.createElement("canvas").getContext("2d");
+        }
+
+        const ctx = _metricsCtx as CanvasRenderingContext2D;
+
+        // 14px / system-ui mirror the `--ts-ui-font-*` defaults shipped by the
+        // themes; they only apply when the computed value is empty (pre-apply).
+        const family = this.getThemeVar("--ts-ui-font-family") || "system-ui, sans-serif";
+        const size   = this.getThemeVar("--ts-ui-font-size")   || "14px";
+
+        ctx.font = `normal normal ${size} ${family}`;
+
+        const m = ctx.measureText("X");
+
+        const hasFontBox = typeof m.fontBoundingBoxAscent === "number";
+        const ascent     = hasFontBox ? m.fontBoundingBoxAscent  : m.actualBoundingBoxAscent;
+        const descent    = hasFontBox ? m.fontBoundingBoxDescent : m.actualBoundingBoxDescent;
+
+        return { ascent, descent, capTop: m.actualBoundingBoxAscent };
     }
 
     /** @inheritDoc */
@@ -1046,12 +1159,47 @@ export class ProductionDOMSource implements DOMSource {
 
     /** @inheritDoc */
     getViewportSize(): Size {
-        return Util.getViewportSize();
+        const width  = Math.max(document.documentElement.clientWidth,  window.innerWidth  || 0);
+        const height = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
+
+        return { width, height };
     }
 
     /** @inheritDoc */
     getScrollBarWidth(): number {
-        return Util.getScrollBarWidth();
+        if (_scrollBarWidth >= 0) {
+            return _scrollBarWidth;
+        }
+
+        const outer = document.createElement("div");
+
+        _applyProbeStyles(outer, {
+            position: "absolute",
+            top:      "-1000px",
+            left:     "-1000px",
+            width:    "100px",
+            height:   "50px",
+            overflow: "hidden",
+        });
+
+        const inner = document.createElement("div");
+
+        _applyProbeStyles(inner, { width: "100%", height: "200px" });
+
+        outer.appendChild(inner);
+        document.body.appendChild(outer);
+
+        const widthNoScroll = inner.offsetWidth;
+
+        _applyProbeStyles(outer, { overflow: "auto" });
+
+        const widthScroll = inner.offsetWidth;
+
+        document.body.removeChild(outer);
+
+        _scrollBarWidth = widthNoScroll - widthScroll;
+
+        return _scrollBarWidth;
     }
 
     /** @inheritDoc */
@@ -1203,6 +1351,11 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getHead(): HTMLElement {
         return document.head;
+    }
+
+    /** @inheritDoc */
+    getElementById(id: string): HTMLElement | null {
+        return document.getElementById(id);
     }
 
     /** @inheritDoc */

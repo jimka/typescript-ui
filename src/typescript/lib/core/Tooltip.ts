@@ -168,7 +168,7 @@ export class Tooltip extends Component {
         // count; an uncapped tooltip never wraps, so the split count stands.
         if (widestLine + Tooltip.H_PADDING > Tooltip.MAX_WIDTH) {
             const availTextWidth = tooltipWidth - Tooltip.H_PADDING;
-            const wrappedHeight  = Util.measureTextMetrics(text, { maxWidth: availTextWidth }).height;
+            const wrappedHeight  = DOM.source.measureText(text, { maxWidth: availTextWidth }).height;
             inst._lineCount      = Math.max(lines.length, Math.round(wrappedHeight / inst._perLine));
         } else {
             inst._lineCount = lines.length;
@@ -472,7 +472,7 @@ export class Tooltip extends Component {
      * that default rather than passed explicitly.
      */
     private _perLineHeight(): number {
-        const { height } = Util.measureTextMetrics("X");
+        const { height } = DOM.source.measureText("X");
 
         return Math.ceil(height);
     }
