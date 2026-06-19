@@ -48,6 +48,20 @@ const FLAGGED_TYPE_NAMES = new Set(
     [...DOM_TYPE_NAMES].filter((n) => n !== "CSSStyleDeclaration")
 );
 
+// The *holding* clause is narrower than the *receiver* clause. It forbids a
+// module outside the seam from naming an element / node element-tree type — the
+// reference the handle migration replaced. The stylesheet family
+// (CSSStyleSheet / CSSRule / CSSStyleRule / CSSRuleList / StyleSheet) is
+// deliberately excluded: `StyleRule` legitimately holds a `CSSStyleRule` behind
+// the rule-style seam (`DOM.sink.setRuleStyle`), which this migration leaves
+// unchanged — a `CSSStyleRule` is not an element and never carried a Handle.
+// Those types are still flagged as *receivers* by the member-access clause.
+const HOLD_TYPE_NAMES = new Set(
+    [...FLAGGED_TYPE_NAMES].filter(
+        (n) => !["StyleSheet", "CSSStyleSheet", "CSSRule", "CSSStyleRule", "CSSRuleList"].includes(n)
+    )
+);
+
 // Receiver-less DOM globals flagged by identifier (with a lib-symbol confirmation).
 const GLOBAL_IDENTIFIERS = new Set(["document", "window"]);
 const GLOBAL_CALLS = new Set([
@@ -69,8 +83,12 @@ function isFromDomLib(symbol) {
     });
 }
 
-/** Whether a TS type — or any base type in its chain — is a flagged DOM-lib type. */
-function typeIsDom(type, seen) {
+/**
+ * Whether a TS type — or any base type in its chain — is a flagged DOM-lib type.
+ * `names` selects which name set applies: the full receiver set by default, or
+ * the narrower {@link HOLD_TYPE_NAMES} for the holding clause.
+ */
+function typeIsDom(type, seen, names = FLAGGED_TYPE_NAMES) {
     if (!type || seen.has(type)) {
         return false;
     }
@@ -78,19 +96,19 @@ function typeIsDom(type, seen) {
     seen.add(type);
 
     if (type.isUnionOrIntersection && type.isUnionOrIntersection()) {
-        return type.types.some((t) => typeIsDom(t, seen));
+        return type.types.some((t) => typeIsDom(t, seen, names));
     }
 
     const symbol = type.aliasSymbol || (type.getSymbol && type.getSymbol());
     const name   = symbol && symbol.getName ? symbol.getName() : null;
 
-    if (name && FLAGGED_TYPE_NAMES.has(name) && isFromDomLib(symbol)) {
+    if (name && names.has(name) && isFromDomLib(symbol)) {
         return true;
     }
 
     const bases = type.getBaseTypes ? type.getBaseTypes() : null;
 
-    if (bases && bases.some((b) => typeIsDom(b, seen))) {
+    if (bases && bases.some((b) => typeIsDom(b, seen, names))) {
         return true;
     }
 
@@ -137,6 +155,7 @@ export default {
             global:       "Raw DOM global — route through the DOM seam (DOM.source / DOM.sink); the global must not be touched directly.",
             style:        "Raw element.style access — route style writes through DOM.sink.setStyle / setRuleStyle.",
             dom:          "Raw DOM interaction — route through DOM.sink / DOM.source. Only core/DOM.ts may touch the DOM directly.",
+            hold:         "Holding a raw DOM element type — store an opaque Handle (DOM.source returns / interns handles) instead of an Element / Node. Only core/DOM.ts may name a DOM element type.",
         },
     },
     create(context) {
@@ -199,7 +218,29 @@ export default {
             }
         }
 
+        /** Resolves the TS type a type-annotation node denotes (`: HTMLElement`). */
+        function typeOfTypeNode(typeNode) {
+            try {
+                const tsNode = services.esTreeNodeToTSNodeMap.get(typeNode);
+
+                return tsNode ? checker.getTypeFromTypeNode(tsNode) : null;
+            } catch {
+                return null;
+            }
+        }
+
         return {
+            // Holding clause: any *type position* that names a DOM element type —
+            // a field/param/local annotation, a return type, an `as` cast, a
+            // generic argument — outside core/DOM.ts. The rule already forbids
+            // touching the DOM; this forbids holding a reference to one, so the
+            // only element a module can name is an opaque Handle.
+            TSTypeReference(node) {
+                if (typeIsDom(typeOfTypeNode(node), new Set(), HOLD_TYPE_NAMES)) {
+                    report(node, "hold");
+                }
+            },
+
             MemberExpression(node) {
                 if (isUnderTypeof(node)) {
                     return;

@@ -45,35 +45,47 @@ tester.run("no-raw-dom", rule, {
         "const b = typeof window !== 'undefined' && typeof window.matchMedia === 'function';",
         // CSS.escape is a pure string utility, not DOM interaction.
         "const e = CSS.escape('a.b');",
+        // Holding a CSSStyleRule is allowed: it is a rule-style target behind the
+        // setRuleStyle seam (StyleRule), not an element, and never carried a
+        // Handle. (Member access on it is still flagged — see the invalid corpus.)
+        "declare function ensure(): CSSStyleRule; const r = ensure();",
     ],
     invalid: [
-        // Direct property read.
-        { code: "declare const el: HTMLElement; const c = el.style;", errors: [{ messageId: "style" }] },
+        // Direct property read. The `: HTMLElement` annotation also trips the
+        // holding clause (a module may name only an opaque Handle).
+        { code: "declare const el: HTMLElement; const c = el.style;", errors: [{ messageId: "hold" }, { messageId: "style" }] },
         // Direct property write.
-        { code: "declare const el: HTMLElement; el.id = 'x';", errors: [{ messageId: "dom" }] },
+        { code: "declare const el: HTMLElement; el.id = 'x';", errors: [{ messageId: "hold" }, { messageId: "dom" }] },
         // Method call (traversal).
-        { code: "declare const el: HTMLElement; el.querySelector('.x');", errors: [{ messageId: "traversal" }] },
+        { code: "declare const el: HTMLElement; el.querySelector('.x');", errors: [{ messageId: "hold" }, { messageId: "traversal" }] },
         // Event method.
-        { code: "declare const el: HTMLElement; el.addEventListener('click', () => {});", errors: [{ messageId: "event" }] },
+        { code: "declare const el: HTMLElement; el.addEventListener('click', () => {});", errors: [{ messageId: "hold" }, { messageId: "event" }] },
         // Computed member access.
-        { code: "declare const el: HTMLElement; const n = el['scrollLeft'];", errors: [{ messageId: "dom" }] },
+        { code: "declare const el: HTMLElement; const n = el['scrollLeft'];", errors: [{ messageId: "hold" }, { messageId: "dom" }] },
         // Destructuring a DOM receiver.
-        { code: "declare const el: HTMLElement; const { scrollLeft } = el;", errors: [{ messageId: "dom" }] },
-        // Aliased element.
-        { code: "declare const el: HTMLElement; const a = el; const w = a.style;", errors: [{ messageId: "style" }] },
-        // Element returned from a helper.
-        { code: "declare function getEl(): HTMLElement; const t = getEl().scrollTop;", errors: [{ messageId: "dom" }] },
+        { code: "declare const el: HTMLElement; const { scrollLeft } = el;", errors: [{ messageId: "hold" }, { messageId: "dom" }] },
+        // Aliased element. Only the annotated `el` trips the holding clause; the
+        // un-annotated alias `a` trips the style access.
+        { code: "declare const el: HTMLElement; const a = el; const w = a.style;", errors: [{ messageId: "hold" }, { messageId: "style" }] },
+        // Element returned from a helper. The `: HTMLElement` return type holds.
+        { code: "declare function getEl(): HTMLElement; const t = getEl().scrollTop;", errors: [{ messageId: "hold" }, { messageId: "dom" }] },
         // Subclass via base chain (HTMLInputElement -> HTMLElement -> Element).
-        { code: "declare const inp: HTMLInputElement; const v = inp.value;", errors: [{ messageId: "dom" }] },
-        // Stylesheet rule walk.
+        { code: "declare const inp: HTMLInputElement; const v = inp.value;", errors: [{ messageId: "hold" }, { messageId: "dom" }] },
+        // Stylesheet rule walk. CSSStyleSheet is a receiver violation but NOT a
+        // holding one — the rule-style seam (StyleRule) legitimately holds it.
         { code: "declare const sheet: CSSStyleSheet; const r = sheet.cssRules;", errors: [{ messageId: "dom" }] },
         // document global as a member receiver.
         { code: "const ae = document.activeElement;", errors: [{ messageId: "event" }] },
         // window global as a member receiver.
         { code: "const iw = window.innerWidth;", errors: [{ messageId: "dom" }] },
         // Receiver-less global calls.
-        { code: "declare const el: HTMLElement; const cs = getComputedStyle(el);", errors: [{ messageId: "global" }] },
+        { code: "declare const el: HTMLElement; const cs = getComputedStyle(el);", errors: [{ messageId: "hold" }, { messageId: "global" }] },
         { code: "const h = requestAnimationFrame(() => {});", errors: [{ messageId: "global" }] },
+        // Holding clause in isolation: a function param / field / return that
+        // names an element type, with no member access at all.
+        { code: "function f(el: HTMLElement): void {}", errors: [{ messageId: "hold" }] },
+        { code: "declare const el: Element; const a = el;", errors: [{ messageId: "hold" }] },
+        { code: "function g(): Node | null { return null; }", errors: [{ messageId: "hold" }] },
     ],
 });
 
