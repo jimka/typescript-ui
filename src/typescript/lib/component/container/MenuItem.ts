@@ -138,6 +138,8 @@ class MenuItem extends Component {
         cssVarPrefix: MenuItemCSSVarPrefix = "menu-bar",
         options?: MenuItemOptions
     ) {
+        // Child components are built first; options are applied via applyOptions at the constructor tail.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         this._config = config;

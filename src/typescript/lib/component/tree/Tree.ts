@@ -693,7 +693,6 @@ class Tree extends Component<TreeOptions> {
             // Component setters would persist it into _options and replay it onto
             // the next node bound to this reused row, so write/remove the inline
             // styles directly instead.
-            /* eslint-disable local/no-element-style */
             if (isSelected) {
                 DOM.sink.setStyle(rowEl, "background-color", SELECTED_BG);
             } else {
@@ -707,7 +706,6 @@ class Tree extends Component<TreeOptions> {
                 DOM.sink.setStyle(rowEl, "outline", null);
                 DOM.sink.setStyle(rowEl, "outline-offset", null);
             }
-            /* eslint-enable local/no-element-style */
 
             row.getAria().setSelected(isSelected);
         }

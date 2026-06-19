@@ -68,6 +68,8 @@ class Split extends LayoutManager {
     private _collapseAnimation: (() => void) | null = null;
 
     constructor(direction?: String | SplitOptions, options?: SplitOptions) {
+        // LayoutManager's constructor takes no options; applied via applyOptions below.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         if (direction === undefined || typeof direction === 'string' || direction instanceof String) {

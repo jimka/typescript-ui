@@ -49,6 +49,8 @@ export class AjaxProxy extends Proxy {
      * @param options - The options object specifying the endpoint URL and HTTP options.
      */
     constructor(options: AjaxProxyOptions) {
+        // Proxy has no options bag; fields are read from options directly below.
+        // eslint-disable-next-line local/forward-super-options
         super();
         this._url = options.url;
         this._root = options.root;

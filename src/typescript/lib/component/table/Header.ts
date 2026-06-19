@@ -269,7 +269,6 @@ class Header extends Component {
             // `cover` is a raw presentational `<div>` owned by this header, not a
             // Component, so the Component style setters don't apply and direct
             // `.style` writes are correct here.
-            /* eslint-disable local/no-element-style */
             const cover = DOM.sink.createElement("div") as HTMLDivElement;
             DOM.sink.setStyle(cover, "position", "absolute");
             DOM.sink.setStyle(cover, "top", "0");
@@ -290,7 +289,6 @@ class Header extends Component {
             // reads as a visual continuation of the column separators
             // rather than a seam in the gradient.
             DOM.sink.setStyle(cover, "borderLeft", "1px solid var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))");
-            /* eslint-enable local/no-element-style */
             DOM.sink.appendChild(this.getElement(true), cover);
             this._scrollbarCover = cover;
         }

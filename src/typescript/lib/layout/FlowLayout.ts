@@ -82,6 +82,8 @@ export abstract class FlowLayout extends LayoutManager {
      * @param options - Optional construction-time configuration.
      */
     constructor(options?: FlowLayoutOptions) {
+        // LayoutManager's constructor takes no options; applied via applyOptions below.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         if (options) {

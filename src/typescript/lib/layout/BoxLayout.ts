@@ -75,6 +75,8 @@ export abstract class BoxLayout extends LayoutManager {
     protected _overflowSizing: BoxOverflowSizing = "preferred";
 
     constructor(options?: BoxLayoutOptions) {
+        // LayoutManager's constructor takes no options; applied via applyOptions below.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         if (options) {

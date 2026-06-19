@@ -1138,7 +1138,6 @@ class Body extends Component {
         // different record on every render. Routing this through cached Component
         // setters would persist it into _options and replay it onto the next record
         // bound to this reused row, so write/remove the inline styles directly.
-        /* eslint-disable local/no-element-style */
         if (isSelected) {
             DOM.sink.setStyle(rowEl, 'background-color', 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))');
             DOM.sink.setStyle(rowEl, 'box-shadow', 'var(--ts-ui-table-row-selected-border, none)');
@@ -1146,7 +1145,6 @@ class Body extends Component {
             DOM.sink.setStyle(rowEl, 'box-shadow', null);
             row.updateVisualState();
         }
-        /* eslint-enable local/no-element-style */
 
         row.getAria().setSelected(isSelected);
     }
@@ -1202,9 +1200,7 @@ class Body extends Component {
                 const el = cell.getElement() as HTMLElement | null;
 
                 if (el) {
-                    /* eslint-disable-next-line local/no-element-style -- pooled-cell ephemeral focus style; see note above */
                     DOM.sink.setStyle(el, "outline", null);
-                    /* eslint-disable-next-line local/no-element-style -- pooled-cell ephemeral focus style; see note above */
                     DOM.sink.setStyle(el, "outline-offset", null);
                 }
             }
@@ -1245,10 +1241,8 @@ class Body extends Component {
 
             if (el) {
                 // Pooled-cell ephemeral focus style; see note at method top.
-                /* eslint-disable local/no-element-style */
                 DOM.sink.setStyle(el, "outline", "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))");
                 DOM.sink.setStyle(el, "outline-offset", "-1px");
-                /* eslint-enable local/no-element-style */
             }
         }
     }

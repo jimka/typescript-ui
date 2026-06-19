@@ -44,6 +44,8 @@ class Table extends LayoutManager {
      * @param options - Optional construction-time options.
      */
     constructor(options?: TableLayoutOptions) {
+        // LayoutManager's constructor takes no options; applied via applyOptions below.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         if (options) {

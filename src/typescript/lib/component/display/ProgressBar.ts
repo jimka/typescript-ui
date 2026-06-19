@@ -44,6 +44,8 @@ class ProgressBar extends Component {
      * @param indeterminate - When true the bar animates continuously and value is ignored.
      */
     constructor(value: number = 0, indeterminate: boolean = false, options?: ProgressBarOptions) {
+        // Child components are built first; options are applied via applyOptions at the constructor tail.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         this._value         = Math.max(0, Math.min(100, value));
