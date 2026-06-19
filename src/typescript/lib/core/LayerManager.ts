@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * How a layer responds to an outside interaction.
@@ -284,7 +285,7 @@ export namespace LayerManager {
         if (!layerNode) {
             const el = layer.getLayerElement();
 
-            return el ? el.contains(node) : false;
+            return el ? DOM.source.contains(el, node) : false;
         }
 
         return nodeContains(layerNode, node);
@@ -357,7 +358,7 @@ export namespace LayerManager {
     function nodeContains(node: LayerNode, target: Node): boolean {
         const el = node.layer.getLayerElement();
 
-        if (el && el.contains(target)) {
+        if (el && DOM.source.contains(el, target)) {
             return true;
         }
 
@@ -449,7 +450,7 @@ export namespace LayerManager {
 
             const anchor = node.layer.getAnchorElement?.();
 
-            if (anchor && target && anchor.contains(target)) {
+            if (anchor && target && DOM.source.contains(anchor, target)) {
                 landedInside = true;
 
                 break;
@@ -502,7 +503,7 @@ export namespace LayerManager {
      * window itself) should dismiss layers.
      */
     function onWindowBlur(e: FocusEvent): void {
-        if (e.target !== window) {
+        if (!DOM.source.isWindow(e.target)) {
             return;
         }
 

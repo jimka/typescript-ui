@@ -466,7 +466,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
 
         const el = this.getElement(true);
 
-        if (!document.documentElement.contains(el)) {
+        if (!DOM.source.contains(document.documentElement, el)) {
             DOM.sink.appendChild(document.documentElement, el);
         }
 
@@ -775,7 +775,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this._arrowComponent = arrow;
 
         const popoverEl = this.getElement(true);
-        popoverEl.insertBefore(arrow.getElement(true), popoverEl.firstChild);
+        popoverEl.insertBefore(arrow.getElement(true), DOM.source.getFirstChild(popoverEl));
     }
 
     /**
@@ -881,7 +881,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             this._scrollAncestors = this.collectScrollAncestors(this._anchorElement);
 
             for (const ancestor of this._scrollAncestors) {
-                ancestor.addEventListener("scroll", this._onScroll, { passive: true });
+                DOM.sink.addListener(ancestor, "scroll", this._onScroll, { passive: true });
             }
         }
     }
@@ -893,7 +893,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         Event.removeViewportListener(this, "resize", this._onWindowResize);
 
         for (const ancestor of this._scrollAncestors) {
-            ancestor.removeEventListener("scroll", this._onScroll);
+            DOM.sink.removeListener(ancestor, "scroll", this._onScroll);
         }
 
         this._scrollAncestors = [];
@@ -908,17 +908,17 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      */
     private collectScrollAncestors(node: HTMLElement): HTMLElement[] {
         const out: HTMLElement[] = [];
-        let cursor: HTMLElement | null = node.parentElement;
+        let cursor: HTMLElement | null = DOM.source.getParentElement(node) as HTMLElement | null;
 
         while (cursor && cursor !== document.documentElement) {
-            const style = getComputedStyle(cursor);
+            const style = DOM.source.getComputedOverflow(cursor);
             const overflow = style.overflow + style.overflowX + style.overflowY;
 
             if (/(auto|scroll|overlay)/.test(overflow)) {
                 out.push(cursor);
             }
 
-            cursor = cursor.parentElement;
+            cursor = DOM.source.getParentElement(cursor) as HTMLElement | null;
         }
 
         out.push(document.documentElement);

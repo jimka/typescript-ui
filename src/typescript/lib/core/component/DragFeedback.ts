@@ -98,7 +98,7 @@ class DragFeedback extends Component {
             this.setHeight(target.getHeight());
 
             const hostEl = host.getElement(true);
-            if (myEl.parentElement !== hostEl) {
+            if (DOM.source.getParentElement(myEl) !== hostEl) {
                 DOM.sink.appendChild(hostEl, myEl);
             }
 
@@ -112,7 +112,7 @@ class DragFeedback extends Component {
         this.setHeight(target.getHeight());
 
         const targetEl = target.getElement(true);
-        if (myEl.parentElement !== targetEl) {
+        if (DOM.source.getParentElement(myEl) !== targetEl) {
             DOM.sink.appendChild(targetEl, myEl);
         }
     }

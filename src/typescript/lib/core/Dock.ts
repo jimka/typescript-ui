@@ -13,6 +13,7 @@ import { serializeLayout, restoreLayout, LayoutState } from "~/layout/LayoutSeri
 import { DragManager, DragEventDetail, tabDragRegistry } from "~/core/DragManager.js";
 import { DropZoneOverlay } from "~/core/component/DropZoneOverlay.js";
 import { callable } from "~/core/Callable.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Declarative description of one dockable content panel.
@@ -435,7 +436,7 @@ class Dock extends Container<DockOptions> {
 
         this._sweepScheduled = true;
 
-        requestAnimationFrame(() => {
+        DOM.sink.requestAnimationFrame(() => {
             this._sweepScheduled = false;
             this.runSweep();
         });

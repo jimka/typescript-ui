@@ -793,7 +793,7 @@ class Rail extends Component<RailOptions> {
         // rule), outside the handle layout, so it doesn't count toward the
         // content-fit thickness. Append once; a remount reuses the element.
         const chevron = this._collapseButton.getElement(true);
-        if (chevron && chevron.parentElement !== element) {
+        if (chevron && DOM.source.getParentElement(chevron) !== element) {
             DOM.sink.appendChild(element, chevron);
         }
 

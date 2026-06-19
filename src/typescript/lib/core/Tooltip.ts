@@ -411,9 +411,9 @@ export class Tooltip extends Component {
             },
         };
 
-        element.addEventListener("mouseover", att.mouseoverFn);
-        element.addEventListener("mousemove", att.mousemoveFn);
-        element.addEventListener("mouseout",  att.mouseoutFn);
+        DOM.sink.addListener(element, "mouseover", att.mouseoverFn);
+        DOM.sink.addListener(element, "mousemove", att.mousemoveFn);
+        DOM.sink.addListener(element, "mouseout",  att.mouseoutFn);
 
         Tooltip.elementAttachments.set(element, att);
 
@@ -442,9 +442,9 @@ export class Tooltip extends Component {
             return;
         }
 
-        element.removeEventListener("mouseover", att.mouseoverFn);
-        element.removeEventListener("mousemove", att.mousemoveFn);
-        element.removeEventListener("mouseout",  att.mouseoutFn);
+        DOM.sink.removeListener(element, "mouseover", att.mouseoverFn);
+        DOM.sink.removeListener(element, "mousemove", att.mousemoveFn);
+        DOM.sink.removeListener(element, "mouseout",  att.mouseoutFn);
 
         if (att.showTimer !== null) {
             clearTimeout(att.showTimer);

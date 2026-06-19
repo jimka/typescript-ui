@@ -274,7 +274,7 @@ export class Notification extends Component {
      *             rely on `e.currentTarget` — that's `window` here).
      */
     private static acquireHoverHold(e: MouseEvent, el: HTMLElement | undefined): void {
-        if (el && e.relatedTarget instanceof Node && el.contains(e.relatedTarget)) {
+        if (el && e.relatedTarget instanceof Node && DOM.source.contains(el, e.relatedTarget)) {
             return;
         }
 
@@ -298,7 +298,7 @@ export class Notification extends Component {
      *             rely on `e.currentTarget` — that's `window` here).
      */
     private static releaseHoverHold(e: MouseEvent, el: HTMLElement | undefined): void {
-        if (el && e.relatedTarget instanceof Node && el.contains(e.relatedTarget)) {
+        if (el && e.relatedTarget instanceof Node && DOM.source.contains(el, e.relatedTarget)) {
             return;
         }
 

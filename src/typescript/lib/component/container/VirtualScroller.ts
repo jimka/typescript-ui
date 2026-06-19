@@ -413,7 +413,7 @@ export class VirtualScroller {
 
         const cancelMomentum = (): void => {
             if (momentumRaf !== null) {
-                cancelAnimationFrame(momentumRaf);
+                DOM.sink.cancelAnimationFrame(momentumRaf);
                 momentumRaf = null;
             }
         };
@@ -518,10 +518,10 @@ export class VirtualScroller {
                     return;
                 }
 
-                momentumRaf = requestAnimationFrame(step);
+                momentumRaf = DOM.sink.requestAnimationFrame(step);
             };
 
-            momentumRaf = requestAnimationFrame(step);
+            momentumRaf = DOM.sink.requestAnimationFrame(step);
         };
 
         Event.addSubtreeListener(this._owner, "touchend", () => {

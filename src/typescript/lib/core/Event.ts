@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * Event routing system that manages DOM event listeners on behalf of components.
@@ -51,7 +52,7 @@ export namespace Event {
 
             installedListenerTypes.add(type);
             installedListenerOpts.set(type, opts);
-            window.addEventListener(type, baseListener, opts);
+            DOM.sink.addListener(DOM.source.getWindow(), type, baseListener, opts);
 
             return;
         }
@@ -76,7 +77,7 @@ export namespace Event {
 
         installedListenerTypes.delete(type);
         installedListenerOpts.delete(type);
-        window.removeEventListener(type, baseListener, opts);
+        DOM.sink.removeListener(DOM.source.getWindow(), type, baseListener, opts);
     }
 
     let baseListener = function (evnt: Event) {
@@ -127,7 +128,7 @@ export namespace Event {
                 }
             }
 
-            element = element.parentElement;
+            element = DOM.source.getParentElement(element) as HTMLElement | null;
         }
     };
 
@@ -190,9 +191,9 @@ export namespace Event {
         }
 
         if (typeof typeOrEvent === 'string') {
-            element.dispatchEvent(new CustomEvent(typeOrEvent, payload));
+            DOM.sink.dispatchEvent(element, new CustomEvent(typeOrEvent, payload));
         } else {
-            element.dispatchEvent(typeOrEvent);
+            DOM.sink.dispatchEvent(element, typeOrEvent);
         }
     }
 
@@ -391,7 +392,7 @@ export namespace Event {
             typeMap = new Map<String, CompFunc>();
             viewportListenerMap.set(type, typeMap);
 
-            window.addEventListener(type, baseViewportListener, captureOpts(type));
+            DOM.sink.addListener(DOM.source.getWindow(), type, baseViewportListener, captureOpts(type));
         }
 
         let compFunc = typeMap.get(component.getId());
@@ -441,7 +442,7 @@ export namespace Event {
 
         if (typeMap.size == 0) {
             viewportListenerMap.delete(type);
-            window.removeEventListener(type, baseViewportListener, captureOpts(type));
+            DOM.sink.removeListener(DOM.source.getWindow(), type, baseViewportListener, captureOpts(type));
         }
     }
 }

@@ -223,6 +223,51 @@ export interface DOMSink {
      * @param end - The selection end offset.
      */
     setSelectionRange(element: HTMLElement, start: number, end: number): void;
+
+    /**
+     * Registers a native event listener on a target. The framework's
+     * {@link Event} class is the component-level routing layer; this seam covers
+     * the low-level native hook it (and a few primitives) sits on.
+     *
+     * @param target - The event target (element, window, media-query list).
+     * @param type - The event type.
+     * @param handler - The listener.
+     * @param options - Optional capture/passive/once options.
+     */
+    addListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | AddEventListenerOptions): void;
+
+    /**
+     * Removes a native event listener previously registered with {@link addListener}.
+     *
+     * @param target - The event target.
+     * @param type - The event type.
+     * @param handler - The listener to remove.
+     * @param options - Optional capture options matching the registration.
+     */
+    removeListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | EventListenerOptions): void;
+
+    /**
+     * Dispatches an event on a target.
+     *
+     * @param target - The event target.
+     * @param event - The event to dispatch.
+     */
+    dispatchEvent(target: EventTarget, event: Event): void;
+
+    /**
+     * Schedules a callback for the next animation frame.
+     *
+     * @param callback - The frame callback.
+     * @returns The request handle, for {@link cancelAnimationFrame}.
+     */
+    requestAnimationFrame(callback: FrameRequestCallback): number;
+
+    /**
+     * Cancels a previously scheduled animation-frame callback.
+     *
+     * @param handle - The handle returned by {@link requestAnimationFrame}.
+     */
+    cancelAnimationFrame(handle: number): void;
 }
 
 /**
@@ -346,6 +391,125 @@ export interface DOMSource {
      * @returns The control's current value.
      */
     getValue(element: HTMLElement): string;
+
+    /**
+     * Returns the element that currently has focus, or null.
+     *
+     * @returns The active element, or null when nothing is focused.
+     */
+    getActiveElement(): Element | null;
+
+    /**
+     * Evaluates a media query, returning its current match state and a
+     * change-subscription hook. The live `MediaQueryList` never escapes the seam.
+     *
+     * @param query - The media-query string.
+     * @returns The match state and a `change` subscription.
+     */
+    matchMedia(query: string): MediaQueryResult;
+
+    /**
+     * Whether an event target is the global `window` (identity check that keeps
+     * the raw global out of call sites).
+     *
+     * @param target - The target to test.
+     * @returns `true` when the target is `window`.
+     */
+    isWindow(target: EventTarget | null): boolean;
+
+    /**
+     * Returns the global `window` as an event target, so window-level listeners
+     * can be registered without a call site naming the raw global.
+     *
+     * @returns The `window` event target.
+     */
+    getWindow(): Window;
+
+    /**
+     * Whether a node is the ancestor of (or equal to) another node.
+     *
+     * @param ancestor - The candidate ancestor.
+     * @param node - The node to test, or null.
+     * @returns `true` when `ancestor` contains `node`.
+     */
+    contains(ancestor: Node, node: Node | null): boolean;
+
+    /**
+     * Finds the first descendant of `root` matching a selector.
+     *
+     * @param root - The subtree root.
+     * @param selector - The CSS selector.
+     * @returns The first match, or null.
+     */
+    querySelector(root: ParentNode, selector: string): Element | null;
+
+    /**
+     * Finds all descendants of `root` matching a selector, as a plain array.
+     *
+     * @param root - The subtree root.
+     * @param selector - The CSS selector.
+     * @returns The matches (a snapshot array, never a live `NodeList`).
+     */
+    querySelectorAll(root: ParentNode, selector: string): Element[];
+
+    /**
+     * Returns an element's parent element, or null.
+     *
+     * @param element - The element to read.
+     * @returns The parent element, or null.
+     */
+    getParentElement(element: Element): Element | null;
+
+    /**
+     * Returns a node's parent node, or null.
+     *
+     * @param node - The node to read.
+     * @returns The parent node, or null.
+     */
+    getParentNode(node: Node): Node | null;
+
+    /**
+     * Returns a node's first child, or null.
+     *
+     * @param node - The node to read.
+     * @returns The first child, or null.
+     */
+    getFirstChild(node: Node): Node | null;
+
+    /**
+     * Returns an element's resolved border widths as computed-style strings
+     * (e.g. `"1px"`), one per side.
+     *
+     * @param element - The element to measure.
+     * @returns The four border-width strings.
+     */
+    getBorderWidths(element: Element): { top: string; right: string; bottom: string; left: string };
+
+    /**
+     * Returns an element's resolved `overflow` / `overflow-x` / `overflow-y`
+     * computed-style strings.
+     *
+     * @param element - The element to read.
+     * @returns The three overflow strings.
+     */
+    getComputedOverflow(element: Element): { overflow: string; overflowX: string; overflowY: string };
+}
+
+/**
+ * Seam-friendly result of {@link DOMSource.matchMedia}: the current match state
+ * plus a change subscription, so the live `MediaQueryList` stays behind the seam.
+ *
+ * @category Core
+ */
+export interface MediaQueryResult {
+    /** Whether the query currently matches. */
+    matches: boolean;
+    /**
+     * Subscribes to match-state changes.
+     *
+     * @param handler - Called on each `change` of the query.
+     */
+    addChangeListener(handler: (event: MediaQueryListEvent) => void): void;
 }
 
 /**
@@ -483,6 +647,31 @@ export class ProductionDOMSink implements DOMSink {
     setSelectionRange(element: HTMLElement, start: number, end: number): void {
         (element as HTMLInputElement).setSelectionRange(start, end);
     }
+
+    /** @inheritDoc */
+    addListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | AddEventListenerOptions): void {
+        target.addEventListener(type, handler as EventListener, options);
+    }
+
+    /** @inheritDoc */
+    removeListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | EventListenerOptions): void {
+        target.removeEventListener(type, handler as EventListener, options);
+    }
+
+    /** @inheritDoc */
+    dispatchEvent(target: EventTarget, event: Event): void {
+        target.dispatchEvent(event);
+    }
+
+    /** @inheritDoc */
+    requestAnimationFrame(callback: FrameRequestCallback): number {
+        return requestAnimationFrame(callback);
+    }
+
+    /** @inheritDoc */
+    cancelAnimationFrame(handle: number): void {
+        cancelAnimationFrame(handle);
+    }
 }
 
 /**
@@ -572,6 +761,86 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getValue(element: HTMLElement): string {
         return (element as HTMLInputElement).value;
+    }
+
+    /** @inheritDoc */
+    getActiveElement(): Element | null {
+        return document.activeElement;
+    }
+
+    /** @inheritDoc */
+    matchMedia(query: string): MediaQueryResult {
+        const mql = matchMedia(query);
+
+        return {
+            matches: mql.matches,
+            addChangeListener(handler: (event: MediaQueryListEvent) => void): void {
+                mql.addEventListener("change", handler);
+            }
+        };
+    }
+
+    /** @inheritDoc */
+    isWindow(target: EventTarget | null): boolean {
+        return target === window;
+    }
+
+    /** @inheritDoc */
+    getWindow(): Window {
+        return window;
+    }
+
+    /** @inheritDoc */
+    contains(ancestor: Node, node: Node | null): boolean {
+        return ancestor.contains(node);
+    }
+
+    /** @inheritDoc */
+    querySelector(root: ParentNode, selector: string): Element | null {
+        return root.querySelector(selector);
+    }
+
+    /** @inheritDoc */
+    querySelectorAll(root: ParentNode, selector: string): Element[] {
+        return Array.from(root.querySelectorAll(selector));
+    }
+
+    /** @inheritDoc */
+    getParentElement(element: Element): Element | null {
+        return element.parentElement;
+    }
+
+    /** @inheritDoc */
+    getParentNode(node: Node): Node | null {
+        return node.parentNode;
+    }
+
+    /** @inheritDoc */
+    getFirstChild(node: Node): Node | null {
+        return node.firstChild;
+    }
+
+    /** @inheritDoc */
+    getBorderWidths(element: Element): { top: string; right: string; bottom: string; left: string } {
+        const cs = getComputedStyle(element);
+
+        return {
+            top:    cs.borderTopWidth,
+            right:  cs.borderRightWidth,
+            bottom: cs.borderBottomWidth,
+            left:   cs.borderLeftWidth
+        };
+    }
+
+    /** @inheritDoc */
+    getComputedOverflow(element: Element): { overflow: string; overflowX: string; overflowY: string } {
+        const cs = getComputedStyle(element);
+
+        return {
+            overflow:  cs.overflow,
+            overflowX: cs.overflowX,
+            overflowY: cs.overflowY
+        };
     }
 }
 

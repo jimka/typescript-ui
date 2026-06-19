@@ -639,14 +639,14 @@ class Tree extends Component<TreeOptions> {
             const toggle = row.getToggle();
             if (toggle) {
                 const toggleEl = toggle.getElement();
-                if (toggleEl && (target === toggleEl || toggleEl.contains(target))) {
+                if (toggleEl && (target === toggleEl || DOM.source.contains(toggleEl, target))) {
                     this._onToggle(node);
                     return;
                 }
             }
 
             const rowEl = row.getElement();
-            if (!rowEl || (!rowEl.contains(target) && target !== rowEl)) {
+            if (!rowEl || (!DOM.source.contains(rowEl, target) && target !== rowEl)) {
                 continue;
             }
 

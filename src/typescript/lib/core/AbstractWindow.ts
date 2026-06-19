@@ -753,7 +753,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     private focusSelf(): void {
         const element = this.getElement();
-        if (!element || element.contains(document.activeElement)) {
+        if (!element || DOM.source.contains(element, DOM.source.getActiveElement())) {
             return;
         }
 
@@ -811,7 +811,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.emit("close");
 
         if (this._animationFrameId !== null) {
-            cancelAnimationFrame(this._animationFrameId);
+            DOM.sink.cancelAnimationFrame(this._animationFrameId);
             this._animationFrameId = null;
         }
 
@@ -942,7 +942,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // If a drag is in flight, commit it first so `_restoreRect` captures
         // the post-drag position instead of the stale start position.
         if (this._animationFrameId !== null) {
-            cancelAnimationFrame(this._animationFrameId);
+            DOM.sink.cancelAnimationFrame(this._animationFrameId);
             this._animationFrameId = null;
         }
 
@@ -1500,7 +1500,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this._pendingBorder = border;
 
         if (this._animationFrameId === null) {
-            this._animationFrameId = requestAnimationFrame((ts) => this.flushResize(ts));
+            this._animationFrameId = DOM.sink.requestAnimationFrame((ts) => this.flushResize(ts));
         }
     }
 
@@ -1548,7 +1548,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     private flushResize(timestamp: number): void {
         if (timestamp - this._lastFlushTime < 1000 / this._resizeFps) {
-            this._animationFrameId = requestAnimationFrame((ts) => this.flushResize(ts));
+            this._animationFrameId = DOM.sink.requestAnimationFrame((ts) => this.flushResize(ts));
             return;
         }
 
@@ -1916,7 +1916,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private computeMaximizeRect(): WindowRect {
         if (this.getMaximizeBounds() === "parent") {
             const el = this.getElement();
-            const parent = el ? el.parentElement : null;
+            const parent = el ? DOM.source.getParentElement(el) : null;
             if (parent && parent !== document.documentElement) {
                 const r = DOM.source.getElementRect(parent);
                 return { x: 0, y: 0, width: r.width, height: r.height };
@@ -2416,7 +2416,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // double-register the viewport listeners. The snap forwarding is only
         // useful when the cursor sits *outside* the 4 px strip.
         const targetEl = target.getElement();
-        if (targetEl && e.target instanceof Node && targetEl.contains(e.target)) {
+        if (targetEl && e.target instanceof Node && DOM.source.contains(targetEl, e.target)) {
             this._snapTargetBorder = null;
             return;
         }

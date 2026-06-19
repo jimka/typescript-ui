@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Animation } from "~/core/Animation.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * The axis a {@link SmoothScroller} position applies to.
@@ -160,7 +161,7 @@ export class SmoothScroller {
 
         if (this._raf === null) {
             this._lastT = performance.now();
-            this._raf   = requestAnimationFrame(now => this.step(now));
+            this._raf   = DOM.sink.requestAnimationFrame(now => this.step(now));
         }
     }
 
@@ -171,7 +172,7 @@ export class SmoothScroller {
      */
     reset(): void {
         if (this._raf !== null) {
-            cancelAnimationFrame(this._raf);
+            DOM.sink.cancelAnimationFrame(this._raf);
             this._raf = null;
         }
 
@@ -225,6 +226,6 @@ export class SmoothScroller {
             return;
         }
 
-        this._raf = requestAnimationFrame(next => this.step(next));
+        this._raf = DOM.sink.requestAnimationFrame(next => this.step(next));
     }
 }

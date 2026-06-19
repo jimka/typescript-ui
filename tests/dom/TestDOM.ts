@@ -157,6 +157,28 @@ export class RecordingDOMSink implements DOMSink {
     setSelectionRange(_element: HTMLElement, start: number, end: number): void {
         this.record('setSelectionRange', start, end);
     }
+
+    addListener<T extends Event = Event>(_target: EventTarget, type: string, _handler: (event: T) => void, _options?: boolean | AddEventListenerOptions): void {
+        this.record('addListener', type);
+    }
+
+    removeListener<T extends Event = Event>(_target: EventTarget, type: string, _handler: (event: T) => void, _options?: boolean | EventListenerOptions): void {
+        this.record('removeListener', type);
+    }
+
+    dispatchEvent(_target: EventTarget, event: Event): void {
+        this.record('dispatchEvent', event.type);
+    }
+
+    requestAnimationFrame(_callback: FrameRequestCallback): number {
+        this.record('requestAnimationFrame');
+
+        return 0;
+    }
+
+    cancelAnimationFrame(handle: number): void {
+        this.record('cancelAnimationFrame', handle);
+    }
 }
 
 /**
@@ -273,6 +295,66 @@ export class ModelledDOMSource implements DOMSource {
     /** Reads the value recorded onto the stub by the recording sink. */
     getValue(element: HTMLElement): string {
         return (element as unknown as { value?: string }).value ?? '';
+    }
+
+    /** No focus model offline; reports nothing focused. */
+    getActiveElement(): Element | null {
+        return null;
+    }
+
+    /** Modelled media query: never matches; change subscription is a no-op. */
+    matchMedia(_query: string): { matches: boolean; addChangeListener(handler: (event: MediaQueryListEvent) => void): void } {
+        return { matches: false, addChangeListener: (): void => {} };
+    }
+
+    /** No window object offline. */
+    isWindow(_target: EventTarget | null): boolean {
+        return false;
+    }
+
+    /** Offline window target — a bare event-target stub for listener registration. */
+    getWindow(): Window {
+        return new EventTarget() as unknown as Window;
+    }
+
+    /** No DOM tree offline; containment is always false. */
+    contains(_ancestor: Node, _node: Node | null): boolean {
+        return false;
+    }
+
+    /** No DOM tree offline; selector queries find nothing. */
+    querySelector(_root: ParentNode, _selector: string): Element | null {
+        return null;
+    }
+
+    /** No DOM tree offline; selector queries find nothing. */
+    querySelectorAll(_root: ParentNode, _selector: string): Element[] {
+        return [];
+    }
+
+    /** No DOM tree offline. */
+    getParentElement(_element: Element): Element | null {
+        return null;
+    }
+
+    /** No DOM tree offline. */
+    getParentNode(_node: Node): Node | null {
+        return null;
+    }
+
+    /** No DOM tree offline. */
+    getFirstChild(_node: Node): Node | null {
+        return null;
+    }
+
+    /** No computed border offline; reports zero widths. */
+    getBorderWidths(_element: Element): { top: string; right: string; bottom: string; left: string } {
+        return { top: '0px', right: '0px', bottom: '0px', left: '0px' };
+    }
+
+    /** No computed overflow offline; reports visible. */
+    getComputedOverflow(_element: Element): { overflow: string; overflowX: string; overflowY: string } {
+        return { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' };
     }
 
     /**
