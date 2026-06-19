@@ -477,6 +477,18 @@ class Body extends Component {
     }
 
     /**
+     * Releases the {@link VirtualScroller}'s retained container handles when the
+     * body is destroyed, so its clip-box and rows-container nodes are not pinned
+     * in the registry after teardown.
+     */
+    protected override destructor(): void {
+        super.destructor();
+
+        this._scroller?.dispose();
+        this._scroller = null;
+    }
+
+    /**
      * Initializes the body element, constructs the {@link VirtualScroller}, and
      * wires keyboard and focus listeners.
      *

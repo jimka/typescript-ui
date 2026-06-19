@@ -956,6 +956,18 @@ class Tree extends Component<TreeOptions> {
     }
 
     /**
+     * Releases the {@link VirtualScroller}'s retained container handles when the
+     * tree is destroyed, so its clip-box and rows-container nodes are not pinned
+     * in the registry after teardown.
+     */
+    protected override destructor(): void {
+        super.destructor();
+
+        this._scroller?.dispose();
+        this._scroller = null;
+    }
+
+    /**
      * Constructs the {@link VirtualScroller} and wires click and keyboard listeners.
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().

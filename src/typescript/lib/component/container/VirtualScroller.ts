@@ -126,6 +126,17 @@ export class VirtualScroller {
     }
 
     /**
+     * Releases the two created container handles (clip box and rows container).
+     * The owning component calls this from its destructor — the `<div>`s are
+     * detached from the document along with the owner's root, so releasing their
+     * retained handles keeps the registry from pinning the detached nodes.
+     */
+    dispose(): void {
+        DOM.sink.release(this._clipBox);
+        DOM.sink.release(this._rowsContainer);
+    }
+
+    /**
      * Returns the rows-container element. Owners append pool rows here so
      * they participate in the transform-based scroll.
      *
