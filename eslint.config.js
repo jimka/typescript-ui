@@ -1,6 +1,7 @@
 import tseslint from "typescript-eslint";
 import forwardSuperOptions from "./scripts/eslint/forward-super-options.js";
 import noElementStyle from "./scripts/eslint/no-element-style.js";
+import noRawDom from "./scripts/eslint/no-raw-dom.js";
 
 // typescript-eslint's `recommended` config surfaces ~860 pre-existing
 // stylistic issues (prefer-const, no-explicit-any, …) across the 172-file
@@ -18,6 +19,7 @@ export default tseslint.config(
                 rules: {
                     "forward-super-options": forwardSuperOptions,
                     "no-element-style"     : noElementStyle,
+                    "no-raw-dom"           : noRawDom,
                 },
             },
         },
@@ -75,6 +77,24 @@ export default tseslint.config(
                     leadingUnderscore: "require",
                 },
             ],
+        },
+    },
+    {
+        // Total DOM-seam coverage: every DOM read/write in the lib must funnel
+        // through DOM.sink / DOM.source. Type-aware, so it needs type services —
+        // a dedicated typed block scoped to the lib (the other blocks stay
+        // untyped and pay nothing). core/DOM.ts is the sole exempt file.
+        files: ["src/typescript/lib/**/*.ts"],
+        ignores: ["src/typescript/lib/core/DOM.ts"],
+        languageOptions: {
+            parser: tseslint.parser,
+            parserOptions: {
+                projectService: true,
+                tsconfigRootDir: import.meta.dirname,
+            },
+        },
+        rules: {
+            "local/no-raw-dom": "error",
         },
     },
 );
