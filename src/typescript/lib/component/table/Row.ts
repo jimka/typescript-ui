@@ -197,7 +197,6 @@ class Row extends Component {
         // every render. Going through a cached Component setter (setBackgroundColor)
         // would persist this into _options and replay it onto the next record bound
         // to this reused row, so write/remove the inline style directly instead.
-        /* eslint-disable local/no-element-style */
         if (this._data?.isNew()) {
             DOM.sink.setStyle(el, 'background-color', 'var(--ts-ui-table-row-new, rgba(70, 200, 70, 0.15))');
         } else if (this._data?.isDirty()) {
@@ -207,7 +206,6 @@ class Row extends Component {
         } else {
             DOM.sink.setStyle(el, 'background-color', null);
         }
-        /* eslint-enable local/no-element-style */
     }
 
     /**

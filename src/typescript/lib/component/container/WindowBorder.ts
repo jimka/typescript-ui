@@ -232,7 +232,6 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
         // Suppresses pointer events on document.body (not a Component) for the
         // duration of the drag so the cursor can't snag on other elements.
-        // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
         DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "none");
     }
 
@@ -247,7 +246,6 @@ class WindowBorder extends Component<WindowBorderOptions> {
         Event.removeViewportListener(this, 'touchmove', this._fireDragListener);
 
         // Restores pointer events on document.body (not a Component) once the drag ends.
-        // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
         DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "");
 
         // Drop the snap-target highlight (if any) once the drag commits, so a
