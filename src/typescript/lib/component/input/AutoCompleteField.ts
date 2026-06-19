@@ -113,6 +113,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     constructor(options?: AutoCompleteFieldOptions) {
         // Children are built below, so consumer options can't safely cascade
         // through super(). Apply them manually at the end of the constructor.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         // The composite owns the visible chrome — gray edge from the shared

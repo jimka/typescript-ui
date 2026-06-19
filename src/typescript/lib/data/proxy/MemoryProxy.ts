@@ -38,6 +38,8 @@ export class MemoryProxy extends Proxy {
      * @param options - Optional. Options object containing the initial data array.
      */
     constructor(options: MemoryProxyOptions = { data: [] }) {
+        // Proxy has no options bag; fields are read from options directly below.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         this._data = options.data.slice();

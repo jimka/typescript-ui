@@ -61,6 +61,8 @@ class ProgressSpinner extends Component {
      * matches surrounding text by default; updates automatically on theme change.
      */
     constructor(size?: number, options?: ProgressSpinnerOptions) {
+        // Child components are built first; options are applied via applyOptions at the constructor tail.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         this._trackThemeFontSize = size === undefined;

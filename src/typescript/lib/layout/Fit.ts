@@ -30,6 +30,8 @@ class Fit extends LayoutManager {
     private _fill: FillType = FillType.BOTH;
 
     constructor(options?: FitOptions) {
+        // LayoutManager's constructor takes no options; applied via applyOptions below.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         if (options) {

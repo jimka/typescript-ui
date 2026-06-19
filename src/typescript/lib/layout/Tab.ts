@@ -310,6 +310,8 @@ class Tab extends LayoutManager {
      * @param options - Optional construction-time options.
      */
     constructor(options?: TabOptions) {
+        // LayoutManager's constructor takes no options; applied via applyOptions below.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         // A theme change can change tab-button metrics (and thus the strip

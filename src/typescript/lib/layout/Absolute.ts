@@ -22,6 +22,8 @@ export interface AbsoluteOptions extends LayoutManagerOptions {
 class Absolute extends LayoutManager {
 
     constructor(options?: AbsoluteOptions) {
+        // LayoutManager's constructor takes no options; applied via applyOptions below.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         if (options) {

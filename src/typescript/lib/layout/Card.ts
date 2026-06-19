@@ -28,6 +28,8 @@ class Card extends LayoutManager {
     private _currentVisible: Component | null = null;
 
     constructor(options?: CardOptions) {
+        // LayoutManager's constructor takes no options; applied via applyOptions below.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         if (options) {

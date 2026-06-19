@@ -316,6 +316,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      *   class's defaults win.
      */
     constructor(options?: TOptions, subclassDefaults?: Partial<TOptions>) {
+        // BaseObject's constructor takes no options; this constructor applies them via applyOptions below.
+        // eslint-disable-next-line local/forward-super-options
         super();
 
         // Structural setup that doesn't map to ComponentOptions.
