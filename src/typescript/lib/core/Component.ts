@@ -662,7 +662,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         if (!this._clipFrame) {
-            const parent = element.parentNode;
+            const parent = DOM.source.getParentNode(element);
 
             // `position: absolute` (applied by createFrame) makes the frame the
             // containing block for the absolutely positioned element parked
@@ -703,7 +703,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         const element = this.getElement();
-        const parent  = frame.parentNode;
+        const parent  = DOM.source.getParentNode(frame);
 
         if (element && parent) {
             parent.insertBefore(element, frame);

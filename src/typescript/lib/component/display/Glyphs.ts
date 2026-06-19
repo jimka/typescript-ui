@@ -159,7 +159,7 @@ function _addSymbolToSprite(name: string, def: GlyphDef): void {
     }
 
     const id = GLYPH_SYMBOL_ID_PREFIX + name;
-    if (_spriteElement.querySelector(`#${CSS.escape(id)}`)) {
+    if (DOM.source.querySelector(_spriteElement, `#${CSS.escape(id)}`)) {
         return;
     }
 
@@ -185,7 +185,7 @@ function _removeSymbolFromSprite(name: string): void {
     }
 
     const id = GLYPH_SYMBOL_ID_PREFIX + name;
-    const symbol = _spriteElement.querySelector(`#${CSS.escape(id)}`);
+    const symbol = DOM.source.querySelector(_spriteElement, `#${CSS.escape(id)}`);
     if (symbol) {
         DOM.sink.removeChild(_spriteElement, symbol);
     }

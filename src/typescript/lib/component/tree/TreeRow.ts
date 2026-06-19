@@ -87,7 +87,7 @@ class TreeRow extends Component {
 
         if (el) {
             const oldEl = this._renderer.getElement();
-            if (oldEl && oldEl.parentNode === el) {
+            if (oldEl && DOM.source.getParentNode(oldEl) === el) {
                 DOM.sink.removeChild(el, oldEl);
             }
 

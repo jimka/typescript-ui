@@ -317,6 +317,36 @@ export class ModelledDOMSource implements DOMSource {
         return new EventTarget() as unknown as Window;
     }
 
+    /** No DOM tree offline; containment is always false. */
+    contains(_ancestor: Node, _node: Node | null): boolean {
+        return false;
+    }
+
+    /** No DOM tree offline; selector queries find nothing. */
+    querySelector(_root: ParentNode, _selector: string): Element | null {
+        return null;
+    }
+
+    /** No DOM tree offline; selector queries find nothing. */
+    querySelectorAll(_root: ParentNode, _selector: string): Element[] {
+        return [];
+    }
+
+    /** No DOM tree offline. */
+    getParentElement(_element: Element): Element | null {
+        return null;
+    }
+
+    /** No DOM tree offline. */
+    getParentNode(_node: Node): Node | null {
+        return null;
+    }
+
+    /** No DOM tree offline. */
+    getFirstChild(_node: Node): Node | null {
+        return null;
+    }
+
     /**
      * Resolves the baked font entry for the active theme font, falling back to
      * the sole entry when the table holds exactly one font.

@@ -285,7 +285,7 @@ export namespace LayerManager {
         if (!layerNode) {
             const el = layer.getLayerElement();
 
-            return el ? el.contains(node) : false;
+            return el ? DOM.source.contains(el, node) : false;
         }
 
         return nodeContains(layerNode, node);
@@ -358,7 +358,7 @@ export namespace LayerManager {
     function nodeContains(node: LayerNode, target: Node): boolean {
         const el = node.layer.getLayerElement();
 
-        if (el && el.contains(target)) {
+        if (el && DOM.source.contains(el, target)) {
             return true;
         }
 
@@ -450,7 +450,7 @@ export namespace LayerManager {
 
             const anchor = node.layer.getAnchorElement?.();
 
-            if (anchor && target && anchor.contains(target)) {
+            if (anchor && target && DOM.source.contains(anchor, target)) {
                 landedInside = true;
 
                 break;

@@ -128,7 +128,7 @@ export namespace Event {
                 }
             }
 
-            element = element.parentElement;
+            element = DOM.source.getParentElement(element) as HTMLElement | null;
         }
     };
 

@@ -700,9 +700,12 @@ class Dialog extends Component implements DismissableLayer {
      */
     private focusFirst(): void {
         const el        = this.getElement();
-        const focusable = el?.querySelectorAll<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        );
+        const focusable = el
+            ? (DOM.source.querySelectorAll(
+                el,
+                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            ) as HTMLElement[])
+            : undefined;
 
         if (focusable && focusable.length > 0) {
             DOM.sink.focus(focusable[0]);
@@ -721,9 +724,10 @@ class Dialog extends Component implements DismissableLayer {
             return [];
         }
 
-        return Array.from(el.querySelectorAll<HTMLElement>(
+        return (DOM.source.querySelectorAll(
+            el,
             'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        )).filter(el => !el.hasAttribute('disabled'));
+        ) as HTMLElement[]).filter(el => !el.hasAttribute('disabled'));
     }
 
     /**

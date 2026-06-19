@@ -424,6 +424,57 @@ export interface DOMSource {
      * @returns The `window` event target.
      */
     getWindow(): Window;
+
+    /**
+     * Whether a node is the ancestor of (or equal to) another node.
+     *
+     * @param ancestor - The candidate ancestor.
+     * @param node - The node to test, or null.
+     * @returns `true` when `ancestor` contains `node`.
+     */
+    contains(ancestor: Node, node: Node | null): boolean;
+
+    /**
+     * Finds the first descendant of `root` matching a selector.
+     *
+     * @param root - The subtree root.
+     * @param selector - The CSS selector.
+     * @returns The first match, or null.
+     */
+    querySelector(root: ParentNode, selector: string): Element | null;
+
+    /**
+     * Finds all descendants of `root` matching a selector, as a plain array.
+     *
+     * @param root - The subtree root.
+     * @param selector - The CSS selector.
+     * @returns The matches (a snapshot array, never a live `NodeList`).
+     */
+    querySelectorAll(root: ParentNode, selector: string): Element[];
+
+    /**
+     * Returns an element's parent element, or null.
+     *
+     * @param element - The element to read.
+     * @returns The parent element, or null.
+     */
+    getParentElement(element: Element): Element | null;
+
+    /**
+     * Returns a node's parent node, or null.
+     *
+     * @param node - The node to read.
+     * @returns The parent node, or null.
+     */
+    getParentNode(node: Node): Node | null;
+
+    /**
+     * Returns a node's first child, or null.
+     *
+     * @param node - The node to read.
+     * @returns The first child, or null.
+     */
+    getFirstChild(node: Node): Node | null;
 }
 
 /**
@@ -719,6 +770,36 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getWindow(): Window {
         return window;
+    }
+
+    /** @inheritDoc */
+    contains(ancestor: Node, node: Node | null): boolean {
+        return ancestor.contains(node);
+    }
+
+    /** @inheritDoc */
+    querySelector(root: ParentNode, selector: string): Element | null {
+        return root.querySelector(selector);
+    }
+
+    /** @inheritDoc */
+    querySelectorAll(root: ParentNode, selector: string): Element[] {
+        return Array.from(root.querySelectorAll(selector));
+    }
+
+    /** @inheritDoc */
+    getParentElement(element: Element): Element | null {
+        return element.parentElement;
+    }
+
+    /** @inheritDoc */
+    getParentNode(node: Node): Node | null {
+        return node.parentNode;
+    }
+
+    /** @inheritDoc */
+    getFirstChild(node: Node): Node | null {
+        return node.firstChild;
     }
 }
 

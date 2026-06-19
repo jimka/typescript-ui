@@ -2,6 +2,7 @@
 
 import { Border } from "~/layout/Border.js";
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { WindowHeader } from "~/component/container/WindowHeader.js";
 import { Event } from "~/core/Event.js";
 import { Placement } from "~/primitive/Placement.js";
@@ -296,7 +297,7 @@ class Window extends AbstractWindow {
             this._header.getExitButtonElement(),
         ];
         for (const btn of buttons) {
-            if (btn && btn.contains(target)) {
+            if (btn && DOM.source.contains(btn, target)) {
                 return true;
             }
         }

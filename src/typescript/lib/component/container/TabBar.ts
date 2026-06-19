@@ -1214,26 +1214,26 @@ class TabBar extends Container<TabBarOptions> {
         for (const entry of this._entries) {
             const wrapperEl = entry.wrapper.getElement();
 
-            if (wrapperEl && wrapperEl.contains(target)) {
+            if (wrapperEl && DOM.source.contains(wrapperEl, target)) {
                 return true;
             }
         }
 
         const toolGroupEl = this._toolGroup.getElement();
 
-        if (toolGroupEl && toolGroupEl.contains(target)) {
+        if (toolGroupEl && DOM.source.contains(toolGroupEl, target)) {
             return true;
         }
 
         const leadArrowEl = this._scrollLeadButton?.getElement() ?? null;
 
-        if (leadArrowEl && leadArrowEl.contains(target)) {
+        if (leadArrowEl && DOM.source.contains(leadArrowEl, target)) {
             return true;
         }
 
         const trailArrowEl = this._scrollTrailButton?.getElement() ?? null;
 
-        if (trailArrowEl && trailArrowEl.contains(target)) {
+        if (trailArrowEl && DOM.source.contains(trailArrowEl, target)) {
             return true;
         }
 
@@ -2905,7 +2905,7 @@ class TabBar extends Container<TabBarOptions> {
 
                 const closeElement = entry.closeButton?.getElement();
 
-                if (closeElement && target instanceof Node && closeElement.contains(target)) {
+                if (closeElement && target instanceof Node && DOM.source.contains(closeElement, target)) {
                     return false;
                 }
 

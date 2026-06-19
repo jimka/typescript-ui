@@ -79,7 +79,7 @@ class ReorderIndicator extends Component {
         this.setX(0);
         this.setWidth(target.getWidth());
 
-        if (myEl.parentElement === targetEl) {
+        if (DOM.source.getParentElement(myEl) === targetEl) {
             return;
         }
 

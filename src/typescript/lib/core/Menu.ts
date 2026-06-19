@@ -110,11 +110,12 @@ class Menu extends Component {
             const target = e.target as Node;
 
             if (this._persistent) {
-                if (!this.containsTarget(target) && !this._excludedEl?.contains(target)) {
+                if (!this.containsTarget(target) && !(this._excludedEl != null && DOM.source.contains(this._excludedEl, target))) {
                     this._onClose!();
                 }
             } else {
-                if (!this.getElement()?.contains(target) && !this._excludedEl?.contains(target)) {
+                const menuEl = this.getElement();
+                if (!(menuEl != null && DOM.source.contains(menuEl, target)) && !(this._excludedEl != null && DOM.source.contains(this._excludedEl, target))) {
                     this.hide();
                 }
             }
@@ -698,7 +699,8 @@ class Menu extends Component {
      * @returns Whether the target is within this panel's subtree.
      */
     private containsTarget(target: Node): boolean {
-        if (this.getElement()?.contains(target)) {
+        const menuEl = this.getElement();
+        if (menuEl != null && DOM.source.contains(menuEl, target)) {
             return true;
         }
 

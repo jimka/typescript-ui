@@ -159,12 +159,12 @@ class DropZoneOverlay extends Component {
         this.setHeight(region.getHeight());
 
         const regionEl = region.getElement(true);
-        if (myEl.parentElement !== regionEl) {
+        if (DOM.source.getParentElement(myEl) !== regionEl) {
             DOM.sink.appendChild(regionEl, myEl);
         }
 
         const highlightEl = this._highlight.getElement(true);
-        if (highlightEl.parentElement !== myEl) {
+        if (DOM.source.getParentElement(highlightEl) !== myEl) {
             DOM.sink.appendChild(myEl, highlightEl);
         }
     }

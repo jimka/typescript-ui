@@ -2,6 +2,7 @@
 
 import { _Body } from "~/component/table/Body.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
+import { DOM } from "~/core/DOM.js";
 import { DragEventDetail, DragManager } from "~/core/DragManager.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
@@ -762,7 +763,7 @@ class TreeBody extends _Body {
         for (const row of this.getRowPool()) {
             const toggleEl = this.getToggleElement(row);
 
-            if (toggleEl && target !== null && (target === toggleEl || toggleEl.contains(target))) {
+            if (toggleEl && target !== null && (target === toggleEl || DOM.source.contains(toggleEl, target))) {
                 const record = row.getData();
 
                 if (record) {

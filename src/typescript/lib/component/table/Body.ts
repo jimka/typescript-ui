@@ -878,7 +878,7 @@ class Body extends Component {
                 return;
             }
 
-            node = node.parentElement;
+            node = DOM.source.getParentElement(node) as HTMLElement | null;
         }
     }
 
@@ -933,7 +933,7 @@ class Body extends Component {
         for (let ci = 0; ci < cells.length; ci++) {
             const cellEl = cells[ci].getElement();
 
-            if (cellEl && (cellEl === e.target || cellEl.contains(e.target as Node))) {
+            if (cellEl && (cellEl === e.target || DOM.source.contains(cellEl, e.target as Node))) {
                 this._focusedColIndex = ci;
                 break;
             }

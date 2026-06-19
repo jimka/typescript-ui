@@ -88,7 +88,7 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
 
             if (el) {
                 const oldEl = this._icon.getElement();
-                if (oldEl && oldEl.parentNode === el) {
+                if (oldEl && DOM.source.getParentNode(oldEl) === el) {
                     DOM.sink.removeChild(el, oldEl);
                 }
             }

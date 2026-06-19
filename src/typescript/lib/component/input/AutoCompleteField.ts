@@ -478,7 +478,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
             const active = DOM.source.getActiveElement();
             const dropEl = this._dropdown.getElement();
 
-            if (dropEl && dropEl.contains(active)) {
+            if (dropEl && DOM.source.contains(dropEl, active)) {
                 return;
             }
 

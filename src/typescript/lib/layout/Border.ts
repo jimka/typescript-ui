@@ -1115,7 +1115,7 @@ class Border extends LayoutManager {
 
         for (const gutter of this._gutters.values()) {
             const element = gutter.getElement();
-            const parent = element?.parentNode;
+            const parent = element ? DOM.source.getParentNode(element) : null;
 
             if (element && parent) {
                 DOM.sink.removeChild(parent, element);
