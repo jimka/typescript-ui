@@ -126,7 +126,7 @@ class Menu extends Component {
         // it. Viewport listeners are capture-phase, so element blurs from within
         // the menu surface here too; act only on a genuine window blur.
         this._onWindowBlur = (e: FocusEvent) => {
-            if (e.target !== window) {
+            if (!DOM.source.isWindow(e.target)) {
                 return;
             }
 

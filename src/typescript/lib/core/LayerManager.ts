@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
+import { DOM } from "~/core/DOM.js";
 
 /**
  * How a layer responds to an outside interaction.
@@ -502,7 +503,7 @@ export namespace LayerManager {
      * window itself) should dismiss layers.
      */
     function onWindowBlur(e: FocusEvent): void {
-        if (e.target !== window) {
+        if (!DOM.source.isWindow(e.target)) {
             return;
         }
 

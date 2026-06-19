@@ -114,7 +114,7 @@ function _onReducedMotionChange(): void {
 }
 
 if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
-    DOM.sink.addListener(window.matchMedia("(prefers-reduced-motion: reduce)"), "change", _onReducedMotionChange);
+    DOM.source.matchMedia("(prefers-reduced-motion: reduce)").addChangeListener(_onReducedMotionChange);
 }
 
 /**

@@ -253,6 +253,21 @@ export interface DOMSink {
      * @param event - The event to dispatch.
      */
     dispatchEvent(target: EventTarget, event: Event): void;
+
+    /**
+     * Schedules a callback for the next animation frame.
+     *
+     * @param callback - The frame callback.
+     * @returns The request handle, for {@link cancelAnimationFrame}.
+     */
+    requestAnimationFrame(callback: FrameRequestCallback): number;
+
+    /**
+     * Cancels a previously scheduled animation-frame callback.
+     *
+     * @param handle - The handle returned by {@link requestAnimationFrame}.
+     */
+    cancelAnimationFrame(handle: number): void;
 }
 
 /**
@@ -383,6 +398,49 @@ export interface DOMSource {
      * @returns The active element, or null when nothing is focused.
      */
     getActiveElement(): Element | null;
+
+    /**
+     * Evaluates a media query, returning its current match state and a
+     * change-subscription hook. The live `MediaQueryList` never escapes the seam.
+     *
+     * @param query - The media-query string.
+     * @returns The match state and a `change` subscription.
+     */
+    matchMedia(query: string): MediaQueryResult;
+
+    /**
+     * Whether an event target is the global `window` (identity check that keeps
+     * the raw global out of call sites).
+     *
+     * @param target - The target to test.
+     * @returns `true` when the target is `window`.
+     */
+    isWindow(target: EventTarget | null): boolean;
+
+    /**
+     * Returns the global `window` as an event target, so window-level listeners
+     * can be registered without a call site naming the raw global.
+     *
+     * @returns The `window` event target.
+     */
+    getWindow(): Window;
+}
+
+/**
+ * Seam-friendly result of {@link DOMSource.matchMedia}: the current match state
+ * plus a change subscription, so the live `MediaQueryList` stays behind the seam.
+ *
+ * @category Core
+ */
+export interface MediaQueryResult {
+    /** Whether the query currently matches. */
+    matches: boolean;
+    /**
+     * Subscribes to match-state changes.
+     *
+     * @param handler - Called on each `change` of the query.
+     */
+    addChangeListener(handler: (event: MediaQueryListEvent) => void): void;
 }
 
 /**
@@ -535,6 +593,16 @@ export class ProductionDOMSink implements DOMSink {
     dispatchEvent(target: EventTarget, event: Event): void {
         target.dispatchEvent(event);
     }
+
+    /** @inheritDoc */
+    requestAnimationFrame(callback: FrameRequestCallback): number {
+        return requestAnimationFrame(callback);
+    }
+
+    /** @inheritDoc */
+    cancelAnimationFrame(handle: number): void {
+        cancelAnimationFrame(handle);
+    }
 }
 
 /**
@@ -629,6 +697,28 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getActiveElement(): Element | null {
         return document.activeElement;
+    }
+
+    /** @inheritDoc */
+    matchMedia(query: string): MediaQueryResult {
+        const mql = matchMedia(query);
+
+        return {
+            matches: mql.matches,
+            addChangeListener(handler: (event: MediaQueryListEvent) => void): void {
+                mql.addEventListener("change", handler);
+            }
+        };
+    }
+
+    /** @inheritDoc */
+    isWindow(target: EventTarget | null): boolean {
+        return target === window;
+    }
+
+    /** @inheritDoc */
+    getWindow(): Window {
+        return window;
     }
 }
 

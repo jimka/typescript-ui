@@ -4375,7 +4375,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         pendingLayouts.add(this);
 
         if (rafHandle === null) {
-            rafHandle = requestAnimationFrame(flushPendingLayouts);
+            rafHandle = DOM.sink.requestAnimationFrame(flushPendingLayouts);
         }
 
         return this;

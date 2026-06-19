@@ -811,7 +811,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.emit("close");
 
         if (this._animationFrameId !== null) {
-            cancelAnimationFrame(this._animationFrameId);
+            DOM.sink.cancelAnimationFrame(this._animationFrameId);
             this._animationFrameId = null;
         }
 
@@ -942,7 +942,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // If a drag is in flight, commit it first so `_restoreRect` captures
         // the post-drag position instead of the stale start position.
         if (this._animationFrameId !== null) {
-            cancelAnimationFrame(this._animationFrameId);
+            DOM.sink.cancelAnimationFrame(this._animationFrameId);
             this._animationFrameId = null;
         }
 
@@ -1500,7 +1500,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this._pendingBorder = border;
 
         if (this._animationFrameId === null) {
-            this._animationFrameId = requestAnimationFrame((ts) => this.flushResize(ts));
+            this._animationFrameId = DOM.sink.requestAnimationFrame((ts) => this.flushResize(ts));
         }
     }
 
@@ -1548,7 +1548,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     private flushResize(timestamp: number): void {
         if (timestamp - this._lastFlushTime < 1000 / this._resizeFps) {
-            this._animationFrameId = requestAnimationFrame((ts) => this.flushResize(ts));
+            this._animationFrameId = DOM.sink.requestAnimationFrame((ts) => this.flushResize(ts));
             return;
         }
 

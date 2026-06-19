@@ -70,7 +70,7 @@ export namespace Animation {
      * @returns Whether motion-reducing UI rules should apply.
      */
     export function isReducedMotion(): boolean {
-        return matchMedia("(prefers-reduced-motion: reduce)").matches;
+        return DOM.source.matchMedia("(prefers-reduced-motion: reduce)").matches;
     }
 
     /**
@@ -141,8 +141,8 @@ export namespace Animation {
 
         if (config.from) {
             buf.setMany(config.from as Record<string, string | null>);
-            requestAnimationFrame(() => {
-                requestAnimationFrame(applyTransitionAndTo);
+            DOM.sink.requestAnimationFrame(() => {
+                DOM.sink.requestAnimationFrame(applyTransitionAndTo);
             });
         } else {
             applyTransitionAndTo();
@@ -318,7 +318,7 @@ export namespace Animation {
             config.onStep(values);
 
             if (t < 1) {
-                frameId = requestAnimationFrame(step);
+                frameId = DOM.sink.requestAnimationFrame(step);
 
                 return;
             }
@@ -327,7 +327,7 @@ export namespace Animation {
             config.onComplete?.();
         };
 
-        frameId = requestAnimationFrame(step);
+        frameId = DOM.sink.requestAnimationFrame(step);
 
         return {
             cancel: (): void => {
@@ -335,7 +335,7 @@ export namespace Animation {
                     return;
                 }
 
-                cancelAnimationFrame(frameId);
+                DOM.sink.cancelAnimationFrame(frameId);
                 frameId = null;
             },
         };
@@ -418,8 +418,8 @@ export namespace Animation {
         host.addComponent(spinner);
         host.scheduleLayout();
 
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
+        DOM.sink.requestAnimationFrame(() => {
+            DOM.sink.requestAnimationFrame(() => {
                 const component = factory();
                 host.addComponent(component);
 

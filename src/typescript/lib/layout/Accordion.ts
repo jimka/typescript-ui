@@ -832,7 +832,7 @@ class Accordion extends LayoutManager {
                 this._panelWrappers[i].setTransition("none");
             }
 
-            requestAnimationFrame(() => {
+            DOM.sink.requestAnimationFrame(() => {
                 for (let i = 0; i < this._headers.length; i++) {
                     this._headers[i].setTransition(this.buildHeaderTransition());
                     this._panelWrappers[i].setTransition(this.buildWrapperTransition());

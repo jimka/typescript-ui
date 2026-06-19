@@ -52,7 +52,7 @@ export namespace Event {
 
             installedListenerTypes.add(type);
             installedListenerOpts.set(type, opts);
-            DOM.sink.addListener(window, type, baseListener, opts);
+            DOM.sink.addListener(DOM.source.getWindow(), type, baseListener, opts);
 
             return;
         }
@@ -77,7 +77,7 @@ export namespace Event {
 
         installedListenerTypes.delete(type);
         installedListenerOpts.delete(type);
-        DOM.sink.removeListener(window, type, baseListener, opts);
+        DOM.sink.removeListener(DOM.source.getWindow(), type, baseListener, opts);
     }
 
     let baseListener = function (evnt: Event) {
@@ -392,7 +392,7 @@ export namespace Event {
             typeMap = new Map<String, CompFunc>();
             viewportListenerMap.set(type, typeMap);
 
-            DOM.sink.addListener(window, type, baseViewportListener, captureOpts(type));
+            DOM.sink.addListener(DOM.source.getWindow(), type, baseViewportListener, captureOpts(type));
         }
 
         let compFunc = typeMap.get(component.getId());
@@ -442,7 +442,7 @@ export namespace Event {
 
         if (typeMap.size == 0) {
             viewportListenerMap.delete(type);
-            DOM.sink.removeListener(window, type, baseViewportListener, captureOpts(type));
+            DOM.sink.removeListener(DOM.source.getWindow(), type, baseViewportListener, captureOpts(type));
         }
     }
 }

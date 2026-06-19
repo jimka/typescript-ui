@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { Animation } from "~/core/Animation.js";
+import { DOM } from "~/core/DOM.js";
 
 // Pixel thickness of the opaque collapse strip a collapsed pane/region tucks
 // into — the size the gutter assumes in its strip state, leaving room for its
@@ -265,19 +266,19 @@ function animateLayout(movers: CollapseMover[], onComplete?: () => void): () => 
         }
 
         if (progress < 1) {
-            raf = requestAnimationFrame(frame);
+            raf = DOM.sink.requestAnimationFrame(frame);
         } else {
             onComplete?.();
         }
     };
 
-    raf = requestAnimationFrame(frame);
+    raf = DOM.sink.requestAnimationFrame(frame);
 
     return () => {
         cancelled = true;
 
         if (raf) {
-            cancelAnimationFrame(raf);
+            DOM.sink.cancelAnimationFrame(raf);
         }
     };
 }

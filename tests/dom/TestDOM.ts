@@ -169,6 +169,16 @@ export class RecordingDOMSink implements DOMSink {
     dispatchEvent(_target: EventTarget, event: Event): void {
         this.record('dispatchEvent', event.type);
     }
+
+    requestAnimationFrame(_callback: FrameRequestCallback): number {
+        this.record('requestAnimationFrame');
+
+        return 0;
+    }
+
+    cancelAnimationFrame(handle: number): void {
+        this.record('cancelAnimationFrame', handle);
+    }
 }
 
 /**
@@ -290,6 +300,21 @@ export class ModelledDOMSource implements DOMSource {
     /** No focus model offline; reports nothing focused. */
     getActiveElement(): Element | null {
         return null;
+    }
+
+    /** Modelled media query: never matches; change subscription is a no-op. */
+    matchMedia(_query: string): { matches: boolean; addChangeListener(handler: (event: MediaQueryListEvent) => void): void } {
+        return { matches: false, addChangeListener: (): void => {} };
+    }
+
+    /** No window object offline. */
+    isWindow(_target: EventTarget | null): boolean {
+        return false;
+    }
+
+    /** Offline window target — a bare event-target stub for listener registration. */
+    getWindow(): Window {
+        return new EventTarget() as unknown as Window;
     }
 
     /**
