@@ -4059,7 +4059,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const nextSibling = clampedIndex + 1 < this._components.length
             ? this._components[clampedIndex + 1].getAttachNode()
             : null;
-        const host = this.getChildHost(); if (host) { DOM.sink.insertBefore(host, compElement, nextSibling ?? null); }
+        const host = this.getChildHost();
+
+        if (host) {
+            DOM.sink.insertBefore(host, compElement, nextSibling ?? null);
+        }
+
         this.scheduleLayout();
 
         return this;
