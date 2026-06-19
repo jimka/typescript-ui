@@ -73,4 +73,22 @@ export class Body extends Component {
     private _onViewportResize = (): void => {
         this.setSize(DOM.source.getViewportSize());
     };
+
+    /**
+     * Overrides {@link Component.clampsToContentSize} to `false`: the body *is*
+     * the viewport, so its size must track {@link Util.getViewportSize} exactly
+     * and let oversized content overflow (the page scrolls / a child `Panel`
+     * scrolls internally) rather than inflating the body up to its
+     * content-derived minimum. With the `Component` default (`true`),
+     * {@link Component.setSize} ran the viewport extent through
+     * {@link Component.clampHeight}, which floored it to `getMinSize()` — the
+     * tall content's minimum — so once that minimum was measured the body could
+     * never shrink back below its content when the viewport shrank.
+     *
+     * @returns `false`, so size clamping uses the body's own explicit
+     *   constraints only, not its content-derived ones.
+     */
+    protected clampsToContentSize(): boolean {
+        return false;
+    }
 }
