@@ -9,7 +9,6 @@ import { Insets } from "~/primitive/Insets.js";
 import { BaseObject } from "~/core/BaseObject.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Type } from "~/core/Type.js";
-import { Util } from "~/core/Util.js";
 import { Position } from "~/primitive/Position.js";
 import { Aria } from "~/core/Aria.js";
 import { Event } from "~/core/Event.js";
@@ -601,7 +600,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     getElement(createIfMissing: boolean = false) {
         if (!this._element) {
-            let element = Util.select("#" + this.getId());
+            // `as HTMLElement` preserves the prior `Util.select` contract: the
+            // lookup may miss (null), but getElement's callers treat the result
+            // as present, gating on `createIfMissing` / their own null checks.
+            let element = DOM.source.getElementById(this.getId()) as HTMLElement;
             if (!element && createIfMissing) {
                 element = this.render();
             }
@@ -672,7 +674,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._clipFrame = frame;
 
             if (parent) {
-                parent.insertBefore(frame, element);
+                DOM.sink.insertBefore(parent, frame, element);
             }
 
             DOM.sink.appendChild(frame, element);
@@ -706,7 +708,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const parent  = DOM.source.getParentNode(frame);
 
         if (element && parent) {
-            parent.insertBefore(element, frame);
+            DOM.sink.insertBefore(parent, element, frame);
         }
 
         // disposeFrame removes the wrapper and returns a fresh buffer — the old
@@ -898,7 +900,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return;
         }
 
-        return element.hasAttribute(key);
+        return DOM.source.hasAttribute(element, key);
     }
 
     /**
@@ -915,7 +917,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return;
         }
 
-        return element.getAttribute(key);
+        return DOM.source.getAttribute(element, key);
     }
 
     /**
@@ -1125,7 +1127,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return this;
         }
 
-        element.id = id;
+        DOM.sink.setId(element, id);
         this.applyStyle(element);
 
         return this;
@@ -2330,7 +2332,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
 
         const element = this.getElement();
 
-        if (element && element.isConnected) {
+        if (element && DOM.source.isConnected(element)) {
             // Authoritative: getComputedStyle resolves var()/none/keywords to "<n>px"
             // once the element is in the document and inherits :root's custom props.
             const cs = DOM.source.getBorderWidths(element);
@@ -3919,7 +3921,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Re-applies all styles to the existing DOM element, syncing state after external changes.
      */
     sync() {
-        let element = Util.select("#" + this.getId());
+        let element = DOM.source.getElementById(this.getId());
         if (!element) {
             return;
         }
@@ -4057,7 +4059,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         const nextSibling = clampedIndex + 1 < this._components.length
             ? this._components[clampedIndex + 1].getAttachNode()
             : null;
-        this.getChildHost()?.insertBefore(compElement, nextSibling ?? null);
+        const host = this.getChildHost();
+
+        if (host) {
+            DOM.sink.insertBefore(host, compElement, nextSibling ?? null);
+        }
+
         this.scheduleLayout();
 
         return this;
@@ -4474,7 +4481,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             throw new Error("Component has not been rendered!");
         }
 
-        element.id = this.getId();
+        DOM.sink.setId(element, this.getId());
         DOM.sink.addClass(element, this.constructor.name);
 
         // Bind the inline-style buffer so any writes queued during detached

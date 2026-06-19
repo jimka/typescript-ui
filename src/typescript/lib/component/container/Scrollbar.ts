@@ -5,7 +5,6 @@ import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Glyph } from "~/component/display/Glyph.js";
-import { Util } from "~/core/Util.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -803,7 +802,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         // Suppresses pointer events on document.body (not a Component) for the
         // duration of the drag so the cursor can't snag on other elements.
         // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
-        Util.select("body").style.pointerEvents = "none";
+        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "none");
     };
 
     /**
@@ -840,7 +839,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
 
         // Restores pointer events on document.body (not a Component) once the drag ends.
         // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
-        Util.select("body").style.pointerEvents = "";
+        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "");
     };
 
     /**

@@ -271,25 +271,25 @@ class Header extends Component {
             // `.style` writes are correct here.
             /* eslint-disable local/no-element-style */
             const cover = DOM.sink.createElement("div") as HTMLDivElement;
-            cover.style.position        = "absolute";
-            cover.style.top             = "0";
-            cover.style.boxSizing       = "border-box";
+            DOM.sink.setStyle(cover, "position", "absolute");
+            DOM.sink.setStyle(cover, "top", "0");
+            DOM.sink.setStyle(cover, "boxSizing", "border-box");
             // Inner rows are Components with `z-index: 0`, which creates a
             // stacking context that paints AFTER positioned siblings with
             // `z-index: auto`. Without an explicit z-index here the cover
             // would be painted beneath the rows and cells could be seen
             // bleeding into the scrollbar-reservation band.
-            cover.style.zIndex          = "1";
+            DOM.sink.setStyle(cover, "zIndex", "1");
             // Presentational only; don't intercept pointer events so column
             // resize handles whose cells happen to be horizontally scrolled
             // under the cover still receive clicks.
-            cover.style.pointerEvents   = "none";
-            cover.style.backgroundColor = TABLE_HEADER_BG;
-            cover.style.backgroundImage = TABLE_HEADER_BG;
+            DOM.sink.setStyle(cover, "pointerEvents", "none");
+            DOM.sink.setStyle(cover, "backgroundColor", TABLE_HEADER_BG);
+            DOM.sink.setStyle(cover, "backgroundImage", TABLE_HEADER_BG);
             // Left border matches the column-cell right border so the cover
             // reads as a visual continuation of the column separators
             // rather than a seam in the gradient.
-            cover.style.borderLeft      = "1px solid var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))";
+            DOM.sink.setStyle(cover, "borderLeft", "1px solid var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))");
             /* eslint-enable local/no-element-style */
             DOM.sink.appendChild(this.getElement(true), cover);
             this._scrollbarCover = cover;

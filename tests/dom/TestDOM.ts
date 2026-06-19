@@ -79,8 +79,22 @@ export class RecordingDOMSink implements DOMSink {
         this.writes.push({ op, args });
     }
 
-    setStyle(_style: CSSStyleDeclaration, key: string, value: string | null): void {
+    setStyle(_element: HTMLElement | SVGElement, key: string, value: string | null): void {
         this.record('setStyle', key, value);
+    }
+
+    setRuleStyle(_rule: CSSStyleRule, key: string, value: string | null): void {
+        this.record('setRuleStyle', key, value);
+    }
+
+    ensureStyleRule(selector: string): CSSStyleRule {
+        this.record('ensureStyleRule', selector);
+
+        return { selectorText: selector, style: {} } as unknown as CSSStyleRule;
+    }
+
+    ensureKeyframes(name: string, _body: string): void {
+        this.record('ensureKeyframes', name);
     }
 
     createElement(tag: string): HTMLElement {
@@ -179,6 +193,40 @@ export class RecordingDOMSink implements DOMSink {
     cancelAnimationFrame(handle: number): void {
         this.record('cancelAnimationFrame', handle);
     }
+
+    setId(_element: Element, id: string): void {
+        this.record('setId', id);
+    }
+
+    insertBefore(_parent: Node, _node: Node, _reference: Node | null): void {
+        this.record('insertBefore');
+    }
+
+    setDataset(_element: HTMLElement, key: string, value: string): void {
+        this.record('setDataset', key, value);
+    }
+
+    createDocumentFragment(): DocumentFragment {
+        this.record('createDocumentFragment');
+
+        return makeStubElement('fragment') as unknown as DocumentFragment;
+    }
+
+    click(_element: HTMLElement): void {
+        this.record('click');
+    }
+
+    setSelectedIndex(_element: HTMLSelectElement, index: number): void {
+        this.record('setSelectedIndex', index);
+    }
+
+    setPointerCapture(_element: Element, pointerId: number): void {
+        this.record('setPointerCapture', pointerId);
+    }
+
+    releasePointerCapture(_element: Element, pointerId: number): void {
+        this.record('releasePointerCapture', pointerId);
+    }
 }
 
 /**
@@ -240,6 +288,12 @@ export class ModelledDOMSource implements DOMSource {
             height:   Math.ceil(font.ascent + font.descent),
             baseline: Math.round(font.ascent),
         };
+    }
+
+    resolveFontSizePx(fontSizeCSS: string): number {
+        const px = parseFloat(fontSizeCSS);
+
+        return isNaN(px) ? 14 : px;
     }
 
     measureFontMetrics(): { ascent: number; descent: number; capTop: number } {
@@ -355,6 +409,73 @@ export class ModelledDOMSource implements DOMSource {
     /** No computed overflow offline; reports visible. */
     getComputedOverflow(_element: Element): { overflow: string; overflowX: string; overflowY: string } {
         return { overflow: 'visible', overflowX: 'visible', overflowY: 'visible' };
+    }
+
+    /** Offline document root — a bare stub element for overlay mounting. */
+    getDocumentElement(): HTMLElement {
+        return makeStubElement('html');
+    }
+
+    /** Offline body — a bare stub element. */
+    getBody(): HTMLElement {
+        return makeStubElement('body');
+    }
+
+    /** Offline head — a bare stub element. */
+    getHead(): HTMLElement {
+        return makeStubElement('head');
+    }
+
+    getInlineStyle(_element: HTMLElement, _key: string): string {
+        return '';
+    }
+
+    getElementById(_id: string): HTMLElement | null {
+        return null;
+    }
+
+    getId(element: Element): string {
+        return (element as { id?: string }).id ?? '';
+    }
+
+    getDataset(_element: HTMLElement, _key: string): string | undefined {
+        return undefined;
+    }
+
+    getTagName(element: Element): string {
+        return (element as { tagName?: string }).tagName ?? '';
+    }
+
+    hasAttribute(_element: Element, _key: string): boolean {
+        return false;
+    }
+
+    getAttribute(_element: Element, _key: string): string | null {
+        return null;
+    }
+
+    getSelectedIndex(_element: HTMLSelectElement): number {
+        return -1;
+    }
+
+    getSelectedOptionDataset(_element: HTMLSelectElement, _key: string): string | undefined {
+        return undefined;
+    }
+
+    getNaturalSize(_element: HTMLImageElement): { width: number; height: number } {
+        return { width: 0, height: 0 };
+    }
+
+    getFiles(_element: HTMLInputElement): FileList | null {
+        return null;
+    }
+
+    hasPointerCapture(_element: Element, _pointerId: number): boolean {
+        return false;
+    }
+
+    elementsFromPoint(_x: number, _y: number): Element[] {
+        return [];
     }
 
     /**

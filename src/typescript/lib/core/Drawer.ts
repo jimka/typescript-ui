@@ -355,7 +355,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         this.applyEdgeBorder();
         this.applyRestingGeometry();
 
-        DOM.sink.appendChild(document.documentElement, this.getElement(true));
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), this.getElement(true));
         this.scheduleLayout();
 
         this.animateIn();
@@ -584,7 +584,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         this._backdrop.addClickListener(this._boundBackdropClose);
 
         const backdropEl = this._backdrop.getElement(true);
-        DOM.sink.appendChild(document.documentElement, backdropEl);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), backdropEl);
 
         Animation.play(backdropEl, {
             from:       { opacity: "0" },

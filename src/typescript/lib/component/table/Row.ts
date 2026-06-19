@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { AbstractModel } from "~/data/AbstractModel.js";
 import { Field } from "~/data/Field.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
@@ -198,13 +199,13 @@ class Row extends Component {
         // to this reused row, so write/remove the inline style directly instead.
         /* eslint-disable local/no-element-style */
         if (this._data?.isNew()) {
-            el.style.setProperty('background-color', 'var(--ts-ui-table-row-new, rgba(70, 200, 70, 0.15))');
+            DOM.sink.setStyle(el, 'background-color', 'var(--ts-ui-table-row-new, rgba(70, 200, 70, 0.15))');
         } else if (this._data?.isDirty()) {
-            el.style.setProperty('background-color', 'var(--ts-ui-table-row-dirty, rgba(255, 165, 0, 0.15))');
+            DOM.sink.setStyle(el, 'background-color', 'var(--ts-ui-table-row-dirty, rgba(255, 165, 0, 0.15))');
         } else if (this._stripe) {
-            el.style.setProperty('background-color', 'var(--ts-ui-table-row-stripe, rgba(0, 0, 0, 0.035))');
+            DOM.sink.setStyle(el, 'background-color', 'var(--ts-ui-table-row-stripe, rgba(0, 0, 0, 0.035))');
         } else {
-            el.style.removeProperty('background-color');
+            DOM.sink.setStyle(el, 'background-color', null);
         }
         /* eslint-enable local/no-element-style */
     }

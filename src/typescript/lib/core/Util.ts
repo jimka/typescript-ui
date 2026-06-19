@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Size } from "~/primitive/Size.js";
-import { InlineStyle } from "~/core/StyleTarget.js";
 import { DOM } from "~/core/DOM.js";
 
 /**
@@ -43,8 +42,6 @@ export interface TextMetrics {
  */
 export namespace Util {
 
-    let scrollBarWidth: number = -1;
-
     // Cached text-metric results, invalidated together on theme change via
     // `invalidateTextMetricsCache`. `-1` is the "not yet measured" sentinel
     // (a real padding / font size / baseline / offset is always >= 0).
@@ -52,10 +49,6 @@ export namespace Util {
     let rootFontSizeCache: number = -1;
     let textBaselineCache: number = -1;
     let opticalOffsetCache: number = -1;
-
-    // Single off-screen canvas 2D context reused for every font-metric probe.
-    // Lazily created so a non-DOM import of this module doesn't touch the DOM.
-    let metricsCtx: CanvasRenderingContext2D | null = null;
 
     /**
      * Measures the rendered size of a text string using an off-screen probe `<span>`.
@@ -65,112 +58,9 @@ export namespace Util {
      * @returns The measured `{width, height}` in pixels, ceiled to whole pixels.
      */
     export function measureTextSize(text: string, options: TextMeasureOptions = {}): Size {
-        const metrics = measureTextMetrics(text, options);
+        const metrics = DOM.source.measureText(text, options);
 
         return { width: metrics.width, height: metrics.height };
-    }
-
-    /**
-     * Measures the rendered width, height, and baseline of a text string using an
-     * off-screen probe `<span>`.
-     *
-     * @param text - The string to measure.
-     * @param options - Font properties to apply. Defaults to the active theme variables.
-     * @returns The measured metrics: `width`, `height`, and `baseline` (offset from
-     * the top of the box to the typographic baseline) in pixels.
-     *
-     * @remarks A second 0×0 inline-block reference span is placed inside the probe
-     * with `vertical-align: baseline`. The reference span's top equals the probe's
-     * baseline, so `baseline = referenceTop - probeTop`.
-     */
-    export function measureTextMetrics(text: string, options: TextMeasureOptions = {}): TextMetrics {
-        const {
-            fontFamily  = "var(--ts-ui-font-family, system-ui, sans-serif)",
-            fontSize    = "var(--ts-ui-font-size, 14px)",
-            fontWeight  = "normal",
-            fontStyle   = "normal",
-            fontVariant = "normal",
-            fontStretch = "normal",
-            lineHeight  = "calc(1em + var(--ts-ui-line-padding, 2px))",
-            maxWidth,
-        } = options;
-
-        const probe    = document.createElement("span");
-        const probeBuf = new InlineStyle();
-
-        probeBuf.attach(probe);
-        probeBuf.setMany({
-            position:    "fixed",
-            visibility:  "hidden",
-            // With a wrap width the probe must honour `\n` and soft-wrap so the
-            // measured height covers every visual line; otherwise stay on a
-            // single `nowrap` line for the natural-size measurement.
-            whiteSpace:  maxWidth === undefined ? "nowrap" : "pre-wrap",
-            width:       maxWidth === undefined ? "" : `${maxWidth}px`,
-            fontFamily:  fontFamily,
-            fontSize:    fontSize,
-            fontWeight:  fontWeight,
-            fontStyle:   fontStyle,
-            fontVariant: fontVariant,
-            fontStretch: fontStretch,
-            lineHeight:  lineHeight,
-        });
-
-        probe.textContent = text;
-
-        const ref    = document.createElement("span");
-        const refBuf = new InlineStyle();
-
-        refBuf.attach(ref);
-        refBuf.setMany({
-            display:       "inline-block",
-            width:         "0",
-            height:        "0",
-            verticalAlign: "baseline",
-        });
-
-        probe.appendChild(ref);
-
-        document.body.appendChild(probe);
-
-        const probeRect = probe.getBoundingClientRect();
-        const refRect   = ref.getBoundingClientRect();
-
-        document.body.removeChild(probe);
-
-        return {
-            width:    Math.ceil(probeRect.width),
-            height:   Math.ceil(probeRect.height),
-            baseline: Math.round(refRect.top - probeRect.top),
-        };
-    }
-
-    /**
-     * Resolves a CSS `font-size` value to a pixel number by applying it to an
-     * off-screen probe element, where the cascade evaluates it.
-     *
-     * Needed for a relative font token: its custom property holds a `calc(...)`,
-     * and `getComputedStyle(documentElement).getPropertyValue(name)` returns that
-     * `calc(...)` *unevaluated*, so `parseFloat` reads `NaN`. A probe in the
-     * document resolves it the way a real element would — and works before the
-     * consuming component is attached, unlike reading the component's own
-     * (not-yet-styled) element.
-     *
-     * @param fontSizeCSS - A CSS font-size value, e.g. `'var(--ts-ui-button-font-size, 14px)'`.
-     * @returns The resolved font size in pixels, or `14` when it can't be resolved.
-     */
-    export function resolveFontSizePx(fontSizeCSS: string): number {
-        const probe = document.createElement("span");
-        const buf   = new InlineStyle();
-
-        buf.attach(probe);
-        buf.setMany({ position: "fixed", visibility: "hidden", fontSize: fontSizeCSS });
-
-        document.body.appendChild(probe);
-        const px = parseFloat(getComputedStyle(probe).fontSize);
-        document.body.removeChild(probe);
-
-        return isNaN(px) ? 14 : px;   // 14 mirrors the base font fallback
     }
 
     /**
@@ -347,44 +237,6 @@ export namespace Util {
     }
 
     /**
-     * Reads the active theme font's intrinsic ascent, descent, and cap-top from
-     * a single canvas `measureText("X")` call.
-     *
-     * @returns `ascent`/`descent` (font-intrinsic box, from `fontBoundingBox*`)
-     * and `capTop` (cap-height ink, from `actualBoundingBoxAscent`), all in
-     * pixels.
-     *
-     * @remarks `ctx.font` does not accept `var(...)`, so the font shorthand is
-     * built from the *computed* `--ts-ui-font-*` values read off the document
-     * root, the same token resolution the line-box helpers use. Older engines
-     * exposed only `actualBoundingBox*`; when `fontBoundingBoxAscent` is absent
-     * the font box falls back to the `"X"` ink box, which is stable enough for
-     * Latin text.
-     */
-    export function measureFontMetrics(): { ascent: number; descent: number; capTop: number } {
-        if (metricsCtx === null) {
-            metricsCtx = document.createElement("canvas").getContext("2d");
-        }
-
-        const ctx  = metricsCtx as CanvasRenderingContext2D;
-
-        // 14px / system-ui mirror the `--ts-ui-font-*` defaults shipped by the
-        // themes; they only apply when the computed value is empty (pre-apply).
-        const family = DOM.source.getThemeVar("--ts-ui-font-family") || "system-ui, sans-serif";
-        const size   = DOM.source.getThemeVar("--ts-ui-font-size")   || "14px";
-
-        ctx.font = `normal normal ${size} ${family}`;
-
-        const m = ctx.measureText("X");
-
-        const hasFontBox = typeof m.fontBoundingBoxAscent === "number";
-        const ascent     = hasFontBox ? m.fontBoundingBoxAscent  : m.actualBoundingBoxAscent;
-        const descent    = hasFontBox ? m.fontBoundingBoxDescent : m.actualBoundingBoxDescent;
-
-        return { ascent, descent, capTop: m.actualBoundingBoxAscent };
-    }
-
-    /**
      * Generates a UUID string, ensuring the first character is never a digit.
      *
      * @returns A UUID v4 string with a guaranteed non-numeric first character.
@@ -431,97 +283,4 @@ export namespace Util {
         return value.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
     }
 
-    /**
-     * Queries the DOM for the first element matching the CSS selector.
-     *
-     * @param selector - A valid CSS selector string.
-     *
-     * @returns The first matching `HTMLElement`, or `null` cast as `HTMLElement` if none found.
-     */
-    export function select(selector: string): HTMLElement {
-        return document.querySelector(selector) as HTMLElement;
-    }
-
-    /**
-     * Returns the current browser viewport dimensions.
-     *
-     * @returns An object with `width` and `height` properties representing the viewport size in pixels.
-     */
-    export function getViewportSize(): Size {
-        var width = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
-        var height = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
-
-        return {
-            width: width,
-            height: height
-        };
-    }
-
-    /**
-     * Measures and caches the native scrollbar width by temporarily inserting a div pair.
-     *
-     * @returns The scrollbar width in pixels.
-     *
-     * @remarks Appends two nested divs to `document.body`, measures the inner width
-     * with and without overflow, then immediately removes them. The result is stored
-     * in the module-level `scrollBarWidth` variable for use by `getScrollBarWidth`.
-     */
-    export function calculateScrollBarWidth() {
-        var scr = null;
-        var inn = null;
-        var wNoScroll = 0;
-        var wScroll = 0;
-
-        // Outer scrolling div
-        scr = document.createElement('div');
-        scr.style.position = 'absolute';
-        scr.style.top = '-1000px';
-        scr.style.left = '-1000px';
-        scr.style.width = '100px';
-        scr.style.height = '50px';
-
-        // Start with no scrollbar
-        scr.style.overflow = 'hidden';
-
-        // Inner content div
-        inn = document.createElement('div');
-        inn.style.width = '100%';
-        inn.style.height = '200px';
-
-        // Put the inner div in the scrolling div
-        scr.appendChild(inn);
-
-        // Append the scrolling div to the doc
-        document.body.appendChild(scr);
-
-        // Width of the inner div sans scrollbar
-        wNoScroll = inn.offsetWidth;
-
-        // Add the scrollbar
-        scr.style.overflow = 'auto';
-
-        // Width of the inner div width scrollbar
-        wScroll = inn.offsetWidth;
-
-        // Remove the scrolling div from the doc
-        document.body.removeChild(<Node>document.body.lastChild);
-
-        // Pixel width of the scroller
-        scrollBarWidth = (wNoScroll - wScroll);
-
-        return scrollBarWidth;
-    }
-
-    /**
-     * Returns the cached scrollbar width, calculating it on first call.
-     *
-     * @returns The scrollbar width in pixels.
-     */
-    export function getScrollBarWidth() {
-        if (scrollBarWidth < 0) {
-            calculateScrollBarWidth();
-        }
-
-        return scrollBarWidth;
-    }
 }

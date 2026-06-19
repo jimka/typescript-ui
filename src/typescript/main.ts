@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Body, Util } from '@jimka/typescript-ui/core';
+import { Body, DOM } from '@jimka/typescript-ui/core';
 import { Tab } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { VBoxPanel } from "./VBoxPanel.js";
@@ -26,7 +26,7 @@ import { LayoutSerializationPanel } from "./LayoutSerializationPanel.js";
 import { Benchmark } from "./perf/Benchmark.js";
 import { BaselinePanel } from "./BaselinePanel.js";
 
-Util.getScrollBarWidth();
+DOM.source.getScrollBarWidth();
 (window as any).bench = Benchmark;
 
 let body = Body.getInstance();

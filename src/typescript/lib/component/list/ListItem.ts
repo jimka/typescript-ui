@@ -96,7 +96,7 @@ class ListItem extends Component<ListItemOptions> {
     render() {
         let element = super.render();
 
-        element.dataset.key = this._key;
+        DOM.sink.setDataset(element, "key", this._key);
         DOM.sink.setTextContent(element, this._value);
 
         return element;

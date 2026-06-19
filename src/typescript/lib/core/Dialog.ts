@@ -638,10 +638,10 @@ class Dialog extends Component implements DismissableLayer {
         this._backdrop.setZIndex(panelZ - 1);
 
         const backdropEl = this._backdrop.getElement(true);
-        DOM.sink.appendChild(document.documentElement, backdropEl);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), backdropEl);
 
         const dialogEl = this.getElement(true);
-        DOM.sink.appendChild(document.documentElement, dialogEl);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), dialogEl);
 
         this.scheduleLayout();
         this.center();
@@ -727,7 +727,7 @@ class Dialog extends Component implements DismissableLayer {
         return (DOM.source.querySelectorAll(
             el,
             'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        ) as HTMLElement[]).filter(el => !el.hasAttribute('disabled'));
+        ) as HTMLElement[]).filter(el => !DOM.source.hasAttribute(el, 'disabled'));
     }
 
     /**

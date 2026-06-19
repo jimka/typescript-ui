@@ -334,7 +334,7 @@ function onSourceMouseDown(this: Component, e: MouseEvent): void {
         feedback:      null,
         indicator:     null,
         currentTarget: null,
-        previousBodyCursor: document.body.style.cursor,
+        previousBodyCursor: DOM.source.getInlineStyle(DOM.source.getBody(), "cursor"),
     };
 
     // Viewport listeners route through Event.baseViewportListener, which stops
@@ -367,11 +367,11 @@ function commitSession(session: DragSession): void {
     } else {
         const el = ghost.getElement(true);
 
-        DOM.sink.appendChild(document.documentElement, el);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
     }
 
     if (session.sourceOptions.cursor) {
-        document.body.style.cursor = session.sourceOptions.cursor;
+        DOM.sink.setStyle(DOM.source.getBody(), "cursor", session.sourceOptions.cursor);
     }
 }
 
@@ -394,10 +394,10 @@ function buildDetail(session: DragSession, clientX: number, clientY: number): Dr
  * z-stack, or `null` when no registered target sits under the cursor.
  */
 function pickDropTarget(clientX: number, clientY: number): DropTargetRecord | null {
-    const stack = document.elementsFromPoint(clientX, clientY);
+    const stack = DOM.source.elementsFromPoint(clientX, clientY);
 
     for (const el of stack) {
-        const record = dropTargets.get(el.id);
+        const record = dropTargets.get(DOM.source.getId(el));
 
         if (record) {
             return record;
@@ -624,7 +624,7 @@ function endSession(dropped: boolean, clientX: number, clientY: number): void {
     }
 
     if (session.sourceOptions.cursor) {
-        document.body.style.cursor = session.previousBodyCursor;
+        DOM.sink.setStyle(DOM.source.getBody(), "cursor", session.previousBodyCursor);
     }
 
     if (session.committed) {

@@ -706,7 +706,7 @@ class Body extends Component {
         }
 
         const rowsContainer = this._scroller.getRowsContainer();
-        const growFragment  = document.createDocumentFragment();
+        const growFragment  = DOM.sink.createDocumentFragment();
 
         while (this._rowPool.length < poolTarget) {
             const row = this.createRow();
@@ -940,7 +940,7 @@ class Body extends Component {
         }
 
         // Don't steal focus from an active cell editor (e.g. <input type="date">).
-        const targetTag = (e.target as HTMLElement).tagName;
+        const targetTag = DOM.source.getTagName(e.target as HTMLElement);
         if (targetTag !== 'INPUT' && targetTag !== 'TEXTAREA' && targetTag !== 'SELECT') {
             this.focus();
         }
@@ -1140,10 +1140,10 @@ class Body extends Component {
         // bound to this reused row, so write/remove the inline styles directly.
         /* eslint-disable local/no-element-style */
         if (isSelected) {
-            rowEl.style.setProperty('background-color', 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))');
-            rowEl.style.setProperty('box-shadow', 'var(--ts-ui-table-row-selected-border, none)');
+            DOM.sink.setStyle(rowEl, 'background-color', 'var(--ts-ui-table-row-selected, rgba(30, 100, 200, 0.15))');
+            DOM.sink.setStyle(rowEl, 'box-shadow', 'var(--ts-ui-table-row-selected-border, none)');
         } else {
-            rowEl.style.removeProperty('box-shadow');
+            DOM.sink.setStyle(rowEl, 'box-shadow', null);
             row.updateVisualState();
         }
         /* eslint-enable local/no-element-style */
@@ -1203,9 +1203,9 @@ class Body extends Component {
 
                 if (el) {
                     /* eslint-disable-next-line local/no-element-style -- pooled-cell ephemeral focus style; see note above */
-                    el.style.removeProperty("outline");
+                    DOM.sink.setStyle(el, "outline", null);
                     /* eslint-disable-next-line local/no-element-style -- pooled-cell ephemeral focus style; see note above */
-                    el.style.removeProperty("outline-offset");
+                    DOM.sink.setStyle(el, "outline-offset", null);
                 }
             }
         }
@@ -1246,8 +1246,8 @@ class Body extends Component {
             if (el) {
                 // Pooled-cell ephemeral focus style; see note at method top.
                 /* eslint-disable local/no-element-style */
-                el.style.setProperty("outline", "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))");
-                el.style.setProperty("outline-offset", "-1px");
+                DOM.sink.setStyle(el, "outline", "var(--ts-ui-indicator-selection, 1px dashed rgb(120, 170, 240))");
+                DOM.sink.setStyle(el, "outline-offset", "-1px");
                 /* eslint-enable local/no-element-style */
             }
         }

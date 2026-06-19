@@ -1,9 +1,26 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Util } from "~/core/Util.js";
 import type { TextMeasureOptions, TextMetrics } from "~/core/Util.js";
 import type { Size } from "~/primitive/Size.js";
 import type { Component } from "~/core/Component.js";
+
+// Production measurement caches. These live here because the irreducible
+// browser-measurement leaf (the off-screen probe, the canvas metrics context,
+// the scrollbar-width probe) is the production side of the read seam — the lone
+// place the framework touches the real DOM for measurement.
+let _metricsCtx:    CanvasRenderingContext2D | null = null;
+let _scrollBarWidth: number = -1;
+
+/**
+ * Applies a set of camelCase inline-style properties to an element, used by the
+ * off-screen measurement probes below. Raw `style` access is intentional — this
+ * is inside the seam's production implementation.
+ */
+function _applyProbeStyles(element: HTMLElement, styles: Record<string, string>): void {
+    for (const key of Object.keys(styles)) {
+        (element.style as any)[key] = styles[key];
+    }
+}
 
 /**
  * Plain serialisable rectangle in viewport coordinates. Deliberately *not* a
@@ -72,13 +89,46 @@ export interface OffsetSize {
  */
 export interface DOMSink {
     /**
-     * Writes a single style property onto a live `style` declaration.
+     * Writes a single inline style property onto an element. The element's
+     * `style` declaration is resolved inside the seam so call sites never touch
+     * `element.style` directly.
      *
-     * @param style - The target `CSSStyleDeclaration` (inline or rule).
+     * @param element - The target element.
      * @param key - The CSS property name (camelCase, or `--custom-property`).
      * @param value - The value to set, or null to remove the property.
      */
-    setStyle(style: CSSStyleDeclaration, key: string, value: string | null): void;
+    setStyle(element: HTMLElement | SVGElement, key: string, value: string | null): void;
+
+    /**
+     * Writes a single style property onto a `CSSStyleRule`'s declaration. The
+     * rule-style counterpart of {@link setStyle} — a `CSSStyleRule` has no
+     * element, so it gets its own method.
+     *
+     * @param rule - The target `CSSStyleRule`.
+     * @param key - The CSS property name (camelCase, or `--custom-property`).
+     * @param value - The value to set, or null to remove the property.
+     */
+    setRuleStyle(rule: CSSStyleRule, key: string, value: string | null): void;
+
+    /**
+     * Finds, or inserts, the framework's shared-stylesheet `CSSStyleRule` for a
+     * selector. Encapsulates the `cssRules` scan and `insertRule` so callers
+     * never walk a `CSSStyleSheet` directly; the returned rule is handed to
+     * {@link setRuleStyle}.
+     *
+     * @param selector - The CSS selector text.
+     * @returns The existing or newly-inserted rule.
+     */
+    ensureStyleRule(selector: string): CSSStyleRule;
+
+    /**
+     * Inserts a `@keyframes` block into the shared stylesheet if one with the
+     * given name does not already exist (idempotent).
+     *
+     * @param name - The animation name (no `@keyframes` prefix).
+     * @param body - The keyframe body (the text between the braces).
+     */
+    ensureKeyframes(name: string, body: string): void;
 
     /**
      * Creates a detached HTML element.
@@ -268,6 +318,70 @@ export interface DOMSink {
      * @param handle - The handle returned by {@link requestAnimationFrame}.
      */
     cancelAnimationFrame(handle: number): void;
+
+    /**
+     * Sets an element's `id`.
+     *
+     * @param element - The target element.
+     * @param id - The id to set.
+     */
+    setId(element: Element, id: string): void;
+
+    /**
+     * Inserts a node before a reference child of a parent.
+     *
+     * @param parent - The parent node.
+     * @param node - The node to insert.
+     * @param reference - The child to insert before, or null to append.
+     */
+    insertBefore(parent: Node, node: Node, reference: Node | null): void;
+
+    /**
+     * Writes a `data-*` attribute via the element's dataset.
+     *
+     * @param element - The target element.
+     * @param key - The dataset key (camelCase).
+     * @param value - The value to set.
+     */
+    setDataset(element: HTMLElement, key: string, value: string): void;
+
+    /**
+     * Creates an empty document fragment for batched insertion.
+     *
+     * @returns The new fragment.
+     */
+    createDocumentFragment(): DocumentFragment;
+
+    /**
+     * Synthesises a click on an element (file-input open, download anchor).
+     *
+     * @param element - The element to click.
+     */
+    click(element: HTMLElement): void;
+
+    /**
+     * Sets the selected option index of a `<select>`.
+     *
+     * @param element - The select element.
+     * @param index - The zero-based option index.
+     */
+    setSelectedIndex(element: HTMLSelectElement, index: number): void;
+
+    /**
+     * Routes subsequent pointer events for a pointer id to an element.
+     *
+     * @param element - The capturing element.
+     * @param pointerId - The pointer id to capture.
+     */
+    setPointerCapture(element: Element, pointerId: number): void;
+
+    /**
+     * Releases a pointer capture previously set on an element.
+     *
+     * @param element - The element holding the capture.
+     * @param pointerId - The pointer id to release.
+     */
+    releasePointerCapture(element: Element, pointerId: number): void;
 }
 
 /**
@@ -305,6 +419,15 @@ export interface DOMSource {
      * @returns The measured `{width, height, baseline}` in pixels.
      */
     measureText(text: string, options?: TextMeasureOptions): TextMetrics;
+
+    /**
+     * Resolves a CSS `font-size` value (possibly a `calc()`/`var()`) to a pixel
+     * number by evaluating it on an off-screen probe.
+     *
+     * @param fontSizeCSS - A CSS font-size value.
+     * @returns The resolved size in pixels (14 when unresolvable).
+     */
+    resolveFontSizePx(fontSizeCSS: string): number;
 
     /**
      * Returns the active font's vertical metrics in pixels.
@@ -493,6 +616,139 @@ export interface DOMSource {
      * @returns The three overflow strings.
      */
     getComputedOverflow(element: Element): { overflow: string; overflowX: string; overflowY: string };
+
+    /**
+     * Reads a single inline style property off an element.
+     *
+     * @param element - The element to read.
+     * @param key - The CSS property name (camelCase, or `--custom-property`).
+     * @returns The inline value (empty string when unset).
+     */
+    getInlineStyle(element: HTMLElement, key: string): string;
+
+    /**
+     * Returns the document's root `<html>` element — the mount point for
+     * top-layer overlays.
+     *
+     * @returns The document element.
+     */
+    getDocumentElement(): HTMLElement;
+
+    /**
+     * Returns the document `<body>` element.
+     *
+     * @returns The body element.
+     */
+    getBody(): HTMLElement;
+
+    /**
+     * Returns the document `<head>` element.
+     *
+     * @returns The head element.
+     */
+    getHead(): HTMLElement;
+
+    /**
+     * Looks up an element by its `id`.
+     *
+     * @param id - The element id (no `#` prefix).
+     * @returns The matching element, or null.
+     */
+    getElementById(id: string): HTMLElement | null;
+
+    /**
+     * Reads an element's `id`.
+     *
+     * @param element - The element to read.
+     * @returns The element's id (empty string when unset).
+     */
+    getId(element: Element): string;
+
+    /**
+     * Reads a `data-*` attribute via the element's dataset.
+     *
+     * @param element - The element to read.
+     * @param key - The dataset key (camelCase).
+     * @returns The value, or undefined when unset.
+     */
+    getDataset(element: HTMLElement, key: string): string | undefined;
+
+    /**
+     * Reads an element's tag name (uppercase).
+     *
+     * @param element - The element to read.
+     * @returns The tag name.
+     */
+    getTagName(element: Element): string;
+
+    /**
+     * Whether an element has a given attribute.
+     *
+     * @param element - The element to test.
+     * @param key - The attribute name.
+     * @returns `true` when the attribute is present.
+     */
+    hasAttribute(element: Element, key: string): boolean;
+
+    /**
+     * Reads an attribute value.
+     *
+     * @param element - The element to read.
+     * @param key - The attribute name.
+     * @returns The value, or null when unset.
+     */
+    getAttribute(element: Element, key: string): string | null;
+
+    /**
+     * Reads a `<select>`'s selected option index.
+     *
+     * @param element - The select element.
+     * @returns The zero-based selected index.
+     */
+    getSelectedIndex(element: HTMLSelectElement): number;
+
+    /**
+     * Reads a `data-*` value off a `<select>`'s currently-selected option.
+     *
+     * @param element - The select element.
+     * @param key - The dataset key (camelCase).
+     * @returns The selected option's dataset value, or undefined.
+     */
+    getSelectedOptionDataset(element: HTMLSelectElement, key: string): string | undefined;
+
+    /**
+     * Reads an image's intrinsic pixel size.
+     *
+     * @param element - The image element.
+     * @returns The natural `{width, height}` in pixels.
+     */
+    getNaturalSize(element: HTMLImageElement): { width: number; height: number };
+
+    /**
+     * Reads the selected files of a file input.
+     *
+     * @param element - The file-input element.
+     * @returns The selected `FileList`, or null.
+     */
+    getFiles(element: HTMLInputElement): FileList | null;
+
+    /**
+     * Whether an element currently holds a given pointer capture.
+     *
+     * @param element - The element to test.
+     * @param pointerId - The pointer id.
+     * @returns `true` when the element captures the pointer.
+     */
+    hasPointerCapture(element: Element, pointerId: number): boolean;
+
+    /**
+     * Returns the stack of elements at a viewport point (hit-testing).
+     *
+     * @param x - The viewport x coordinate.
+     * @param y - The viewport y coordinate.
+     * @returns The elements at the point, topmost first.
+     */
+    elementsFromPoint(x: number, y: number): Element[];
 }
 
 /**
@@ -535,20 +791,32 @@ function toRect(domRect: DOMRect): Rect {
  * @category Core
  */
 export class ProductionDOMSink implements DOMSink {
+    /** @inheritDoc */
+    setStyle(element: HTMLElement | SVGElement, key: string, value: string | null): void {
+        this.writeDeclaration(element.style, key, value);
+    }
+
+    /** @inheritDoc */
+    setRuleStyle(rule: CSSStyleRule, key: string, value: string | null): void {
+        this.writeDeclaration(rule.style, key, value);
+    }
+
     /**
-     * Writes a single style property onto a live `style` declaration — the
-     * verbatim body of the former `StyleTarget.write`.
-     *
-     * @param style - The target `CSSStyleDeclaration`.
-     * @param key - The CSS property name (camelCase, or `--custom-property`).
-     * @param value - The value to set, or null to remove the property.
-     *
-     * @remarks Custom properties (`--foo`) must go through
+     * The single terminal style write, shared by {@link setStyle} (inline) and
+     * {@link setRuleStyle} (rule). Custom properties (`--foo`) must go through
      * `setProperty`/`removeProperty`; the indexed accessor only works for
      * camelCase keys.
+     *
+     * @param style - The resolved `CSSStyleDeclaration`.
+     * @param key - The CSS property name (camelCase, or `--custom-property`).
+     * @param value - The value to set, or null to remove the property.
      */
-    setStyle(style: CSSStyleDeclaration, key: string, value: string | null): void {
-        if (key.startsWith("--")) {
+    private writeDeclaration(style: CSSStyleDeclaration, key: string, value: string | null): void {
+        // A hyphenated key is either a custom property (`--foo`) or a standard
+        // kebab-case name (`background-color`); both must go through
+        // `setProperty`/`removeProperty`. Only camelCase keys (`backgroundColor`)
+        // work through the indexed accessor.
+        if (key.includes("-")) {
             if (value === null) {
                 style.removeProperty(key);
             } else {
@@ -561,6 +829,70 @@ export class ProductionDOMSink implements DOMSink {
                 (style as any)[key] = value;
             }
         }
+    }
+
+    /** @inheritDoc */
+    ensureStyleRule(selector: string): CSSStyleRule {
+        const sheet = this.mainSheet();
+
+        for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
+            const rule = sheet.cssRules[idx] as CSSStyleRule;
+
+            if (rule.selectorText === selector) {
+                return rule;
+            }
+        }
+
+        const insertedAt = sheet.insertRule(selector + "{}", sheet.cssRules.length);
+
+        return sheet.cssRules[insertedAt] as CSSStyleRule;
+    }
+
+    /** @inheritDoc */
+    ensureKeyframes(name: string, body: string): void {
+        const sheet = this.mainSheet();
+
+        for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
+            const rule = sheet.cssRules[idx] as CSSKeyframesRule;
+
+            if (rule.type === CSSRule.KEYFRAMES_RULE && rule.name === name) {
+                return;
+            }
+        }
+
+        sheet.insertRule('@keyframes ' + name + ' { ' + body + ' }', sheet.cssRules.length);
+    }
+
+    /**
+     * Returns the framework's shared `<style id="Base">` stylesheet, creating
+     * the `<head>` and `<style>` element on first call. The lone place the
+     * framework touches a `CSSStyleSheet` — relocated here from `StyleTarget`
+     * so the stylesheet plumbing lives behind the seam.
+     */
+    private mainSheet(): CSSStyleSheet {
+        let head = document.getElementsByTagName("head")[0] as HTMLHeadElement;
+
+        if (!head) {
+            head = document.createElement("head");
+            document.appendChild(head);
+        }
+
+        let style: HTMLStyleElement | null = null;
+        const styles = head.getElementsByTagName("style");
+
+        for (let idx = 0; idx < styles.length; idx += 1) {
+            if (styles[idx].id === "Base") {
+                style = styles[idx];
+            }
+        }
+
+        if (!style) {
+            style = document.createElement("style");
+            style.id = "Base";
+            head.appendChild(style);
+        }
+
+        return style.sheet as CSSStyleSheet;
     }
 
     /** @inheritDoc */
@@ -672,6 +1004,46 @@ export class ProductionDOMSink implements DOMSink {
     cancelAnimationFrame(handle: number): void {
         cancelAnimationFrame(handle);
     }
+
+    /** @inheritDoc */
+    setId(element: Element, id: string): void {
+        element.id = id;
+    }
+
+    /** @inheritDoc */
+    insertBefore(parent: Node, node: Node, reference: Node | null): void {
+        parent.insertBefore(node, reference);
+    }
+
+    /** @inheritDoc */
+    setDataset(element: HTMLElement, key: string, value: string): void {
+        element.dataset[key] = value;
+    }
+
+    /** @inheritDoc */
+    createDocumentFragment(): DocumentFragment {
+        return document.createDocumentFragment();
+    }
+
+    /** @inheritDoc */
+    click(element: HTMLElement): void {
+        element.click();
+    }
+
+    /** @inheritDoc */
+    setSelectedIndex(element: HTMLSelectElement, index: number): void {
+        element.selectedIndex = index;
+    }
+
+    /** @inheritDoc */
+    setPointerCapture(element: Element, pointerId: number): void {
+        element.setPointerCapture(pointerId);
+    }
+
+    /** @inheritDoc */
+    releasePointerCapture(element: Element, pointerId: number): void {
+        element.releasePointerCapture(pointerId);
+    }
 }
 
 /**
@@ -692,13 +1064,92 @@ export class ProductionDOMSource implements DOMSource {
     }
 
     /** @inheritDoc */
-    measureText(text: string, options?: TextMeasureOptions): TextMetrics {
-        return Util.measureTextMetrics(text, options);
+    measureText(text: string, options: TextMeasureOptions = {}): TextMetrics {
+        const {
+            fontFamily  = "var(--ts-ui-font-family, system-ui, sans-serif)",
+            fontSize    = "var(--ts-ui-font-size, 14px)",
+            fontWeight  = "normal",
+            fontStyle   = "normal",
+            fontVariant = "normal",
+            fontStretch = "normal",
+            lineHeight  = "calc(1em + var(--ts-ui-line-padding, 2px))",
+            maxWidth,
+        } = options;
+
+        const probe = document.createElement("span");
+
+        _applyProbeStyles(probe, {
+            position:    "fixed",
+            visibility:  "hidden",
+            // With a wrap width the probe must honour `\n` and soft-wrap so the
+            // measured height covers every visual line; otherwise stay on a
+            // single `nowrap` line for the natural-size measurement.
+            whiteSpace:  maxWidth === undefined ? "nowrap" : "pre-wrap",
+            width:       maxWidth === undefined ? "" : `${maxWidth}px`,
+            fontFamily, fontSize, fontWeight, fontStyle, fontVariant, fontStretch, lineHeight,
+        });
+
+        probe.textContent = text;
+
+        const ref = document.createElement("span");
+
+        _applyProbeStyles(ref, {
+            display:       "inline-block",
+            width:         "0",
+            height:        "0",
+            verticalAlign: "baseline",
+        });
+
+        probe.appendChild(ref);
+        document.body.appendChild(probe);
+
+        const probeRect = probe.getBoundingClientRect();
+        const refRect   = ref.getBoundingClientRect();
+
+        document.body.removeChild(probe);
+
+        return {
+            width:    Math.ceil(probeRect.width),
+            height:   Math.ceil(probeRect.height),
+            baseline: Math.round(refRect.top - probeRect.top),
+        };
+    }
+
+    /** @inheritDoc */
+    resolveFontSizePx(fontSizeCSS: string): number {
+        const probe = document.createElement("span");
+
+        _applyProbeStyles(probe, { position: "fixed", visibility: "hidden", fontSize: fontSizeCSS });
+
+        document.body.appendChild(probe);
+        const px = parseFloat(getComputedStyle(probe).fontSize);
+        document.body.removeChild(probe);
+
+        return isNaN(px) ? 14 : px;   // 14 mirrors the base font fallback
     }
 
     /** @inheritDoc */
     measureFontMetrics(): { ascent: number; descent: number; capTop: number } {
-        return Util.measureFontMetrics();
+        if (_metricsCtx === null) {
+            _metricsCtx = document.createElement("canvas").getContext("2d");
+        }
+
+        const ctx = _metricsCtx as CanvasRenderingContext2D;
+
+        // 14px / system-ui mirror the `--ts-ui-font-*` defaults shipped by the
+        // themes; they only apply when the computed value is empty (pre-apply).
+        const family = this.getThemeVar("--ts-ui-font-family") || "system-ui, sans-serif";
+        const size   = this.getThemeVar("--ts-ui-font-size")   || "14px";
+
+        ctx.font = `normal normal ${size} ${family}`;
+
+        const m = ctx.measureText("X");
+
+        const hasFontBox = typeof m.fontBoundingBoxAscent === "number";
+        const ascent     = hasFontBox ? m.fontBoundingBoxAscent  : m.actualBoundingBoxAscent;
+        const descent    = hasFontBox ? m.fontBoundingBoxDescent : m.actualBoundingBoxDescent;
+
+        return { ascent, descent, capTop: m.actualBoundingBoxAscent };
     }
 
     /** @inheritDoc */
@@ -708,12 +1159,47 @@ export class ProductionDOMSource implements DOMSource {
 
     /** @inheritDoc */
     getViewportSize(): Size {
-        return Util.getViewportSize();
+        const width  = Math.max(document.documentElement.clientWidth,  window.innerWidth  || 0);
+        const height = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
+
+        return { width, height };
     }
 
     /** @inheritDoc */
     getScrollBarWidth(): number {
-        return Util.getScrollBarWidth();
+        if (_scrollBarWidth >= 0) {
+            return _scrollBarWidth;
+        }
+
+        const outer = document.createElement("div");
+
+        _applyProbeStyles(outer, {
+            position: "absolute",
+            top:      "-1000px",
+            left:     "-1000px",
+            width:    "100px",
+            height:   "50px",
+            overflow: "hidden",
+        });
+
+        const inner = document.createElement("div");
+
+        _applyProbeStyles(inner, { width: "100%", height: "200px" });
+
+        outer.appendChild(inner);
+        document.body.appendChild(outer);
+
+        const widthNoScroll = inner.offsetWidth;
+
+        _applyProbeStyles(outer, { overflow: "auto" });
+
+        const widthScroll = inner.offsetWidth;
+
+        document.body.removeChild(outer);
+
+        _scrollBarWidth = widthNoScroll - widthScroll;
+
+        return _scrollBarWidth;
     }
 
     /** @inheritDoc */
@@ -770,6 +1256,14 @@ export class ProductionDOMSource implements DOMSource {
 
     /** @inheritDoc */
     matchMedia(query: string): MediaQueryResult {
+        // Non-browser environments (SSR, workers, bare Node) have no
+        // `matchMedia`; degrade to an inert result so callers need no
+        // environment guard of their own — the capability check lives here, in
+        // the seam, rather than leaking a raw `window` probe into call sites.
+        if (typeof matchMedia !== "function") {
+            return { matches: false, addChangeListener: (): void => {} };
+        }
+
         const mql = matchMedia(query);
 
         return {
@@ -841,6 +1335,90 @@ export class ProductionDOMSource implements DOMSource {
             overflowX: cs.overflowX,
             overflowY: cs.overflowY
         };
+    }
+
+    /** @inheritDoc */
+    getInlineStyle(element: HTMLElement, key: string): string {
+        if (key.includes("-")) {
+            return element.style.getPropertyValue(key);
+        }
+
+        return (element.style as any)[key];
+    }
+
+    /** @inheritDoc */
+    getDocumentElement(): HTMLElement {
+        return document.documentElement;
+    }
+
+    /** @inheritDoc */
+    getBody(): HTMLElement {
+        return document.body;
+    }
+
+    /** @inheritDoc */
+    getHead(): HTMLElement {
+        return document.head;
+    }
+
+    /** @inheritDoc */
+    getElementById(id: string): HTMLElement | null {
+        return document.getElementById(id);
+    }
+
+    /** @inheritDoc */
+    getId(element: Element): string {
+        return element.id;
+    }
+
+    /** @inheritDoc */
+    getDataset(element: HTMLElement, key: string): string | undefined {
+        return element.dataset[key];
+    }
+
+    /** @inheritDoc */
+    getTagName(element: Element): string {
+        return element.tagName;
+    }
+
+    /** @inheritDoc */
+    hasAttribute(element: Element, key: string): boolean {
+        return element.hasAttribute(key);
+    }
+
+    /** @inheritDoc */
+    getAttribute(element: Element, key: string): string | null {
+        return element.getAttribute(key);
+    }
+
+    /** @inheritDoc */
+    getSelectedIndex(element: HTMLSelectElement): number {
+        return element.selectedIndex;
+    }
+
+    /** @inheritDoc */
+    getSelectedOptionDataset(element: HTMLSelectElement, key: string): string | undefined {
+        return (element[element.selectedIndex] as HTMLElement | undefined)?.dataset[key];
+    }
+
+    /** @inheritDoc */
+    getNaturalSize(element: HTMLImageElement): { width: number; height: number } {
+        return { width: element.naturalWidth, height: element.naturalHeight };
+    }
+
+    /** @inheritDoc */
+    getFiles(element: HTMLInputElement): FileList | null {
+        return element.files;
+    }
+
+    /** @inheritDoc */
+    hasPointerCapture(element: Element, pointerId: number): boolean {
+        return element.hasPointerCapture(pointerId);
+    }
+
+    /** @inheritDoc */
+    elementsFromPoint(x: number, y: number): Element[] {
+        return document.elementsFromPoint(x, y);
     }
 }
 

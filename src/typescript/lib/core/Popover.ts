@@ -2,7 +2,6 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
-import { Util } from "~/core/Util.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
@@ -466,8 +465,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
 
         const el = this.getElement(true);
 
-        if (!DOM.source.contains(document.documentElement, el)) {
-            DOM.sink.appendChild(document.documentElement, el);
+        if (!DOM.source.contains(DOM.source.getDocumentElement(), el)) {
+            DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
         }
 
         this.ensureArrow();
@@ -685,7 +684,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * @param anchor - The anchor's `DOMRect`.
      * @param width - The popover's preferred width in pixels.
      * @param height - The popover's preferred height in pixels.
-     * @param vp - The viewport size returned by {@link Util.getViewportSize}.
+     * @param vp - The viewport size returned by `DOM.source.getViewportSize`.
      * @returns The resolved placement.
      */
     private resolvePlacement(
@@ -775,7 +774,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this._arrowComponent = arrow;
 
         const popoverEl = this.getElement(true);
-        popoverEl.insertBefore(arrow.getElement(true), DOM.source.getFirstChild(popoverEl));
+        DOM.sink.insertBefore(popoverEl, arrow.getElement(true), DOM.source.getFirstChild(popoverEl));
     }
 
     /**
@@ -910,7 +909,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         const out: HTMLElement[] = [];
         let cursor: HTMLElement | null = DOM.source.getParentElement(node) as HTMLElement | null;
 
-        while (cursor && cursor !== document.documentElement) {
+        while (cursor && cursor !== DOM.source.getDocumentElement()) {
             const style = DOM.source.getComputedOverflow(cursor);
             const overflow = style.overflow + style.overflowX + style.overflowY;
 
@@ -921,7 +920,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             cursor = DOM.source.getParentElement(cursor) as HTMLElement | null;
         }
 
-        out.push(document.documentElement);
+        out.push(DOM.source.getDocumentElement());
 
         return out;
     }

@@ -100,7 +100,7 @@ class DragGhost extends Component {
         const el = this.getElement(true);
 
         this.scheduleLayout();
-        DOM.sink.appendChild(document.documentElement, el);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
     }
 
     /**

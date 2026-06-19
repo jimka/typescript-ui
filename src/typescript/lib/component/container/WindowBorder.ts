@@ -3,7 +3,6 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import { Util } from "~/core/Util.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
@@ -234,7 +233,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
         // Suppresses pointer events on document.body (not a Component) for the
         // duration of the drag so the cursor can't snag on other elements.
         // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
-        Util.select("body").style.pointerEvents = "none";
+        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "none");
     }
 
     /**
@@ -249,7 +248,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
         // Restores pointer events on document.body (not a Component) once the drag ends.
         // eslint-disable-next-line local/no-element-style -- raw document.body, no Component setter applies
-        Util.select("body").style.pointerEvents = "";
+        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "");
 
         // Drop the snap-target highlight (if any) once the drag commits, so a
         // subsequent Ctrl-release on the same hover doesn't leave the strip glowing.

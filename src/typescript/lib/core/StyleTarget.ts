@@ -31,7 +31,7 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
      */
     set(key: string, value: string | null): void {
         if (this._target) {
-            this.write(this._target.style, key, value);
+            this.writeStyle(key, value);
         } else {
             this._dirty[key] = value;
         }
@@ -76,7 +76,7 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
     flush(): void {
         if (!this._target) return;
         for (const key of Object.keys(this._dirty)) {
-            this.write(this._target.style, key, this._dirty[key]);
+            this.writeStyle(key, this._dirty[key]);
         }
         this._dirty = {};
     }
@@ -91,17 +91,21 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
     protected materialize(target: T): void {
         this._target = target;
         for (const key of Object.keys(this._dirty)) {
-            this.write(target.style, key, this._dirty[key]);
+            this.writeStyle(key, this._dirty[key]);
         }
         this._dirty = {};
     }
 
-    private write(style: CSSStyleDeclaration, key: string, value: string | null): void {
-        // The terminal style write goes through the swappable sink seam. The
-        // custom-property / camelCase logic that used to live here now lives in
-        // `ProductionDOMSink.setStyle`; a test sink records the write instead.
-        DOM.sink.setStyle(style, key, value);
-    }
+    /**
+     * Terminal write for a single property onto the now-attached target. Each
+     * subclass resolves its own target kind through the seam — an element via
+     * {@link DOMSink.setStyle}, a rule via {@link DOMSink.setRuleStyle} — so the
+     * base never touches a `.style` declaration directly.
+     *
+     * @param key - The CSS property name (camelCase, or `--custom-property`).
+     * @param value - The value to set, or null to remove the property.
+     */
+    protected abstract writeStyle(key: string, value: string | null): void;
 }
 
 /**
@@ -146,35 +150,6 @@ export type StyleRuleSpec = StyleRuleScope & {
 const _ruleCache: Map<string, CSSStyleRule> = new Map();
 
 /**
- * Returns the framework's shared `<style id="Base">` stylesheet, creating
- * the `<style>` element on first call.
- */
-function _getMainSheet(): CSSStyleSheet {
-    let head = document.getElementsByTagName("head")[0] as HTMLHeadElement;
-    if (!head) {
-        head = DOM.sink.createElement("head") as HTMLHeadElement;
-        DOM.sink.appendChild(document, head);
-    }
-
-    let style: HTMLStyleElement | null = null;
-    const styles = head.getElementsByTagName("style");
-    for (let idx = 0; idx < styles.length; idx += 1) {
-        const s = styles[idx];
-        if (s.id === "Base") {
-            style = s;
-        }
-    }
-
-    if (!style) {
-        style = DOM.sink.createElement("style") as HTMLStyleElement;
-        style.id = "Base";
-        DOM.sink.appendChild(head, style);
-    }
-
-    return style.sheet as CSSStyleSheet;
-}
-
-/**
  * Translates a {@link StyleRuleScope} into its CSS selector string.
  */
 function _selectorOf(spec: StyleRuleScope): string {
@@ -186,40 +161,19 @@ function _selectorOf(spec: StyleRuleScope): string {
 }
 
 /**
- * Returns a cached `CSSStyleRule` for the given selector, scanning the shared
- * stylesheet on cache miss and warming the cache when a match is found.
- * Returns `null` when no rule with the selector exists.
+ * Returns the shared-stylesheet `CSSStyleRule` for the selector, warming the
+ * module cache. The `cssRules` scan and `insertRule` live behind the seam
+ * ({@link DOMSink.ensureStyleRule}); the cache here spares repeat lookups when
+ * two `StyleRule` instances share a selector.
  */
-function _getCSSRule(selector: string): CSSStyleRule | null {
+function _ruleFor(selector: string): CSSStyleRule {
     const cached = _ruleCache.get(selector);
+
     if (cached) {
         return cached;
     }
 
-    const sheet = _getMainSheet();
-
-    for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
-        const rule = sheet.cssRules[idx] as CSSStyleRule;
-
-        if (rule.selectorText === selector) {
-            _ruleCache.set(selector, rule);
-            return rule;
-        }
-    }
-
-    return null;
-}
-
-/**
- * Inserts a new empty rule for the given selector into the shared stylesheet
- * and caches it. Always returns a non-null rule because the constructor calls
- * `_getCSSRule` first; this helper is only invoked on cache miss.
- */
-function _createCSSRule(selector: string): CSSStyleRule {
-    const sheet = _getMainSheet();
-    const idx   = sheet.insertRule(selector + "{}", sheet.cssRules.length);
-    const rule  = sheet.cssRules[idx] as CSSStyleRule;
-
+    const rule = DOM.sink.ensureStyleRule(selector);
     _ruleCache.set(selector, rule);
 
     return rule;
@@ -269,7 +223,7 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
     constructor(spec: StyleRuleSpec) {
         super();
         const selector = _selectorOf(spec);
-        this._factory  = () => _getCSSRule(selector) ?? _createCSSRule(selector);
+        this._factory  = () => _ruleFor(selector);
 
         if (spec.styles) {
             this.setMany(spec.styles);
@@ -291,6 +245,11 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
         return this._target!;
     }
 
+    /** @inheritDoc */
+    protected writeStyle(key: string, value: string | null): void {
+        DOM.sink.setRuleStyle(this._target!, key, value);
+    }
+
     /**
      * Inserts a `@keyframes` block into the framework's shared `<style id="Base">`
      * stylesheet if no rule with the given name already exists.
@@ -303,16 +262,7 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
      * and so do not flow through the `StyleRule` instance cache.
      */
     static ensureKeyframes(name: string, body: string): void {
-        const sheet = _getMainSheet();
-
-        for (let idx = 0; idx < sheet.cssRules.length; idx += 1) {
-            const rule = sheet.cssRules[idx] as CSSKeyframesRule;
-            if (rule.type === CSSRule.KEYFRAMES_RULE && rule.name === name) {
-                return;
-            }
-        }
-
-        sheet.insertRule('@keyframes ' + name + ' { ' + body + ' }', sheet.cssRules.length);
+        DOM.sink.ensureKeyframes(name, body);
     }
 }
 
@@ -329,6 +279,11 @@ class InlineStyle extends StyleTarget<HTMLElement> {
      */
     attach(element: HTMLElement): void {
         this.materialize(element);
+    }
+
+    /** @inheritDoc */
+    protected writeStyle(key: string, value: string | null): void {
+        DOM.sink.setStyle(this._target!, key, value);
     }
 }
 

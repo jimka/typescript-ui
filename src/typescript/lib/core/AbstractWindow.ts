@@ -598,7 +598,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         AbstractWindow.openWindows.add(this);
 
-        DOM.sink.appendChild(document.documentElement, el);
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
 
         this.setVisible(true);
 
@@ -1917,7 +1917,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         if (this.getMaximizeBounds() === "parent") {
             const el = this.getElement();
             const parent = el ? DOM.source.getParentElement(el) : null;
-            if (parent && parent !== document.documentElement) {
+            if (parent && parent !== DOM.source.getDocumentElement()) {
                 const r = DOM.source.getElementRect(parent);
                 return { x: 0, y: 0, width: r.width, height: r.height };
             }
