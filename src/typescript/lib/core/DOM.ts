@@ -268,6 +268,70 @@ export interface DOMSink {
      * @param handle - The handle returned by {@link requestAnimationFrame}.
      */
     cancelAnimationFrame(handle: number): void;
+
+    /**
+     * Sets an element's `id`.
+     *
+     * @param element - The target element.
+     * @param id - The id to set.
+     */
+    setId(element: Element, id: string): void;
+
+    /**
+     * Inserts a node before a reference child of a parent.
+     *
+     * @param parent - The parent node.
+     * @param node - The node to insert.
+     * @param reference - The child to insert before, or null to append.
+     */
+    insertBefore(parent: Node, node: Node, reference: Node | null): void;
+
+    /**
+     * Writes a `data-*` attribute via the element's dataset.
+     *
+     * @param element - The target element.
+     * @param key - The dataset key (camelCase).
+     * @param value - The value to set.
+     */
+    setDataset(element: HTMLElement, key: string, value: string): void;
+
+    /**
+     * Creates an empty document fragment for batched insertion.
+     *
+     * @returns The new fragment.
+     */
+    createDocumentFragment(): DocumentFragment;
+
+    /**
+     * Synthesises a click on an element (file-input open, download anchor).
+     *
+     * @param element - The element to click.
+     */
+    click(element: HTMLElement): void;
+
+    /**
+     * Sets the selected option index of a `<select>`.
+     *
+     * @param element - The select element.
+     * @param index - The zero-based option index.
+     */
+    setSelectedIndex(element: HTMLSelectElement, index: number): void;
+
+    /**
+     * Routes subsequent pointer events for a pointer id to an element.
+     *
+     * @param element - The capturing element.
+     * @param pointerId - The pointer id to capture.
+     */
+    setPointerCapture(element: Element, pointerId: number): void;
+
+    /**
+     * Releases a pointer capture previously set on an element.
+     *
+     * @param element - The element holding the capture.
+     * @param pointerId - The pointer id to release.
+     */
+    releasePointerCapture(element: Element, pointerId: number): void;
 }
 
 /**
@@ -515,6 +579,100 @@ export interface DOMSource {
      * @returns The head element.
      */
     getHead(): HTMLElement;
+
+    /**
+     * Reads an element's `id`.
+     *
+     * @param element - The element to read.
+     * @returns The element's id (empty string when unset).
+     */
+    getId(element: Element): string;
+
+    /**
+     * Reads a `data-*` attribute via the element's dataset.
+     *
+     * @param element - The element to read.
+     * @param key - The dataset key (camelCase).
+     * @returns The value, or undefined when unset.
+     */
+    getDataset(element: HTMLElement, key: string): string | undefined;
+
+    /**
+     * Reads an element's tag name (uppercase).
+     *
+     * @param element - The element to read.
+     * @returns The tag name.
+     */
+    getTagName(element: Element): string;
+
+    /**
+     * Whether an element has a given attribute.
+     *
+     * @param element - The element to test.
+     * @param key - The attribute name.
+     * @returns `true` when the attribute is present.
+     */
+    hasAttribute(element: Element, key: string): boolean;
+
+    /**
+     * Reads an attribute value.
+     *
+     * @param element - The element to read.
+     * @param key - The attribute name.
+     * @returns The value, or null when unset.
+     */
+    getAttribute(element: Element, key: string): string | null;
+
+    /**
+     * Reads a `<select>`'s selected option index.
+     *
+     * @param element - The select element.
+     * @returns The zero-based selected index.
+     */
+    getSelectedIndex(element: HTMLSelectElement): number;
+
+    /**
+     * Reads a `data-*` value off a `<select>`'s currently-selected option.
+     *
+     * @param element - The select element.
+     * @param key - The dataset key (camelCase).
+     * @returns The selected option's dataset value, or undefined.
+     */
+    getSelectedOptionDataset(element: HTMLSelectElement, key: string): string | undefined;
+
+    /**
+     * Reads an image's intrinsic pixel size.
+     *
+     * @param element - The image element.
+     * @returns The natural `{width, height}` in pixels.
+     */
+    getNaturalSize(element: HTMLImageElement): { width: number; height: number };
+
+    /**
+     * Reads the selected files of a file input.
+     *
+     * @param element - The file-input element.
+     * @returns The selected `FileList`, or null.
+     */
+    getFiles(element: HTMLInputElement): FileList | null;
+
+    /**
+     * Whether an element currently holds a given pointer capture.
+     *
+     * @param element - The element to test.
+     * @param pointerId - The pointer id.
+     * @returns `true` when the element captures the pointer.
+     */
+    hasPointerCapture(element: Element, pointerId: number): boolean;
+
+    /**
+     * Returns the stack of elements at a viewport point (hit-testing).
+     *
+     * @param x - The viewport x coordinate.
+     * @param y - The viewport y coordinate.
+     * @returns The elements at the point, topmost first.
+     */
+    elementsFromPoint(x: number, y: number): Element[];
 }
 
 /**
@@ -693,6 +851,46 @@ export class ProductionDOMSink implements DOMSink {
     /** @inheritDoc */
     cancelAnimationFrame(handle: number): void {
         cancelAnimationFrame(handle);
+    }
+
+    /** @inheritDoc */
+    setId(element: Element, id: string): void {
+        element.id = id;
+    }
+
+    /** @inheritDoc */
+    insertBefore(parent: Node, node: Node, reference: Node | null): void {
+        parent.insertBefore(node, reference);
+    }
+
+    /** @inheritDoc */
+    setDataset(element: HTMLElement, key: string, value: string): void {
+        element.dataset[key] = value;
+    }
+
+    /** @inheritDoc */
+    createDocumentFragment(): DocumentFragment {
+        return document.createDocumentFragment();
+    }
+
+    /** @inheritDoc */
+    click(element: HTMLElement): void {
+        element.click();
+    }
+
+    /** @inheritDoc */
+    setSelectedIndex(element: HTMLSelectElement, index: number): void {
+        element.selectedIndex = index;
+    }
+
+    /** @inheritDoc */
+    setPointerCapture(element: Element, pointerId: number): void {
+        element.setPointerCapture(pointerId);
+    }
+
+    /** @inheritDoc */
+    releasePointerCapture(element: Element, pointerId: number): void {
+        element.releasePointerCapture(pointerId);
     }
 }
 
@@ -878,6 +1076,61 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getHead(): HTMLElement {
         return document.head;
+    }
+
+    /** @inheritDoc */
+    getId(element: Element): string {
+        return element.id;
+    }
+
+    /** @inheritDoc */
+    getDataset(element: HTMLElement, key: string): string | undefined {
+        return element.dataset[key];
+    }
+
+    /** @inheritDoc */
+    getTagName(element: Element): string {
+        return element.tagName;
+    }
+
+    /** @inheritDoc */
+    hasAttribute(element: Element, key: string): boolean {
+        return element.hasAttribute(key);
+    }
+
+    /** @inheritDoc */
+    getAttribute(element: Element, key: string): string | null {
+        return element.getAttribute(key);
+    }
+
+    /** @inheritDoc */
+    getSelectedIndex(element: HTMLSelectElement): number {
+        return element.selectedIndex;
+    }
+
+    /** @inheritDoc */
+    getSelectedOptionDataset(element: HTMLSelectElement, key: string): string | undefined {
+        return (element[element.selectedIndex] as HTMLElement | undefined)?.dataset[key];
+    }
+
+    /** @inheritDoc */
+    getNaturalSize(element: HTMLImageElement): { width: number; height: number } {
+        return { width: element.naturalWidth, height: element.naturalHeight };
+    }
+
+    /** @inheritDoc */
+    getFiles(element: HTMLInputElement): FileList | null {
+        return element.files;
+    }
+
+    /** @inheritDoc */
+    hasPointerCapture(element: Element, pointerId: number): boolean {
+        return element.hasPointerCapture(pointerId);
+    }
+
+    /** @inheritDoc */
+    elementsFromPoint(x: number, y: number): Element[] {
+        return document.elementsFromPoint(x, y);
     }
 }
 

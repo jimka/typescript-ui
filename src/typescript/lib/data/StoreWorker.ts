@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+/* eslint-disable local/no-raw-dom -- Web Worker entry: self/postMessage are worker-scope messaging, not DOM. */
 //
 // Worker entry point for AbstractStore sort/filter offload. Runs in a Web Worker
 // context (Vite imports it via `?worker` query). Owns a per-store snapshot of

@@ -96,7 +96,7 @@ export namespace Event {
 
         let listeners = listenerMap.get(evnt.type);
         if (listeners) {
-            let elementId = (evnt.target as HTMLElement).id;
+            let elementId = DOM.source.getId(evnt.target as HTMLElement);
             let compFunc = listeners.get(elementId);
 
             if (compFunc) {
@@ -119,8 +119,8 @@ export namespace Event {
 
         let element: HTMLElement | null = evnt.target as HTMLElement;
         while (element) {
-            if (element.id) {
-                let compFunc = subtreeListeners.get(element.id);
+            if (DOM.source.getId(element)) {
+                let compFunc = subtreeListeners.get(DOM.source.getId(element));
                 if (compFunc) {
                     for (let listener of compFunc.listeners) {
                         listener.apply(compFunc.component, [evnt]);

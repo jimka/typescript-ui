@@ -775,7 +775,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         this._arrowComponent = arrow;
 
         const popoverEl = this.getElement(true);
-        popoverEl.insertBefore(arrow.getElement(true), DOM.source.getFirstChild(popoverEl));
+        DOM.sink.insertBefore(popoverEl, arrow.getElement(true), DOM.source.getFirstChild(popoverEl));
     }
 
     /**

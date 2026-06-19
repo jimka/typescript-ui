@@ -374,7 +374,7 @@ class Menu extends Component {
             this.setAutoCommitStyle(true);
         }
 
-        const anchorId = anchorEl.id;
+        const anchorId = DOM.source.getId(anchorEl);
 
         if (anchorId) {
             this.getAria().setLabelledBy(anchorId);

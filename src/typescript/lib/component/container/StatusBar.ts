@@ -236,7 +236,7 @@ class StatusBar extends Container<StatusBarOptions> {
      */
     setMessage(text: string, timeoutMs?: number): this {
         if (this._messageTimer !== null) {
-            window.clearTimeout(this._messageTimer);
+            clearTimeout(this._messageTimer);
             this._messageTimer = null;
         }
 
@@ -244,7 +244,7 @@ class StatusBar extends Container<StatusBarOptions> {
         this._messageText.setText(text);
 
         if (timeoutMs !== undefined && timeoutMs > 0) {
-            this._messageTimer = window.setTimeout(() => {
+            this._messageTimer = setTimeout(() => {
                 this._messageTimer = null;
                 this._message      = this._defaultMessage;
                 this._messageText.setText(this._defaultMessage);
@@ -311,7 +311,7 @@ class StatusBar extends Container<StatusBarOptions> {
      */
     protected destructor() {
         if (this._messageTimer !== null) {
-            window.clearTimeout(this._messageTimer);
+            clearTimeout(this._messageTimer);
             this._messageTimer = null;
         }
 

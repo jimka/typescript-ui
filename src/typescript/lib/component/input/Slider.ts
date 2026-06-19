@@ -545,7 +545,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
 
             const element = this.getElement();
             if (element) {
-                element.setPointerCapture(e.pointerId);
+                DOM.sink.setPointerCapture(element, e.pointerId);
                 this._draggingPointer = e.pointerId;
             }
 
@@ -566,8 +566,8 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
             }
 
             const element = this.getElement();
-            if (element && element.hasPointerCapture(e.pointerId)) {
-                element.releasePointerCapture(e.pointerId);
+            if (element && DOM.source.hasPointerCapture(element, e.pointerId)) {
+                DOM.sink.releasePointerCapture(element, e.pointerId);
             }
 
             this._draggingPointer = null;

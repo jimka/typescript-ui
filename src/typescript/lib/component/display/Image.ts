@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Size } from "~/primitive/Size.js";
 import { callable } from "~/core/Callable.js";
 
@@ -65,9 +66,10 @@ class Image extends Component<ImageOptions> {
     getPreferredSize(): Size | null {
         let element = this.getElement();
 
+        const natural = DOM.source.getNaturalSize(element);
         return {
-            width: element.naturalWidth,
-            height: element.naturalHeight
+            width: natural.width,
+            height: natural.height
         };
     }
 
@@ -88,13 +90,14 @@ class Image extends Component<ImageOptions> {
         }
 
         const element = this.getElement();
-        if (!element || !element.naturalWidth) {
+        if (!element || !DOM.source.getNaturalSize(element).width) {
             return { width: 20, height: 20 };
         }
 
+        const natural = DOM.source.getNaturalSize(element);
         return {
-            width:  Math.min(element.naturalWidth,  IMAGE_AUTO_MIN_CAP_PX),
-            height: Math.min(element.naturalHeight, IMAGE_AUTO_MIN_CAP_PX),
+            width:  Math.min(natural.width,  IMAGE_AUTO_MIN_CAP_PX),
+            height: Math.min(natural.height, IMAGE_AUTO_MIN_CAP_PX),
         };
     }
 
@@ -106,7 +109,7 @@ class Image extends Component<ImageOptions> {
     render() {
         let element = <HTMLImageElement>super.render();
 
-        element.src = this._src.valueOf();
+        DOM.sink.setAttribute(element, "src", this._src.valueOf());
 
         return element;
     }

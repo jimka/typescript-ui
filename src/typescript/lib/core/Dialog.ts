@@ -727,7 +727,7 @@ class Dialog extends Component implements DismissableLayer {
         return (DOM.source.querySelectorAll(
             el,
             'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        ) as HTMLElement[]).filter(el => !el.hasAttribute('disabled'));
+        ) as HTMLElement[]).filter(el => !DOM.source.hasAttribute(el, 'disabled'));
     }
 
     /**

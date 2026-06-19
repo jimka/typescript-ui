@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Text, TextOptions } from "~/component/input/Text.js";
+import { DOM } from "~/core/DOM.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -71,7 +72,7 @@ class Label extends Text<LabelOptions> {
             return this;
         }
 
-        element.htmlFor = id;
+        DOM.sink.setAttribute(element, "for", id);
 
         return this;
     }
@@ -84,7 +85,7 @@ class Label extends Text<LabelOptions> {
     protected render() {
         let element = <HTMLLabelElement>super.render();
 
-        element.htmlFor = this.forId;
+        DOM.sink.setAttribute(element, "for", this.forId);
 
         return element;
     }

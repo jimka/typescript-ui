@@ -146,11 +146,11 @@ export class TableExporter {
         const url  = URL.createObjectURL(blob);
         const a    = DOM.sink.createElement('a') as HTMLAnchorElement;
 
-        a.href     = url;
-        a.download = filename;
+        DOM.sink.setAttribute(a, "href", url);
+        DOM.sink.setAttribute(a, "download", filename);
 
         DOM.sink.appendChild(DOM.source.getBody(), a);
-        a.click();
+        DOM.sink.click(a);
         DOM.sink.removeChild(DOM.source.getBody(), a);
 
         URL.revokeObjectURL(url);

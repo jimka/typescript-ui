@@ -1030,7 +1030,7 @@ abstract class AbstractCalendarDropdown<
         this._yearTypeBuffer = "";
 
         if (this._yearTypeTimer !== null) {
-            window.clearTimeout(this._yearTypeTimer);
+            clearTimeout(this._yearTypeTimer);
             this._yearTypeTimer = null;
         }
     }
@@ -1457,10 +1457,10 @@ abstract class AbstractCalendarDropdown<
         this._yearTypeBuffer += digit;
 
         if (this._yearTypeTimer !== null) {
-            window.clearTimeout(this._yearTypeTimer);
+            clearTimeout(this._yearTypeTimer);
         }
 
-        this._yearTypeTimer = window.setTimeout(() => this.resetYearTypeBuffer(), YEAR_TYPE_IDLE_MS);
+        this._yearTypeTimer = setTimeout(() => this.resetYearTypeBuffer(), YEAR_TYPE_IDLE_MS);
 
         // Prefix-match jump: as soon as the buffer matches a legal year
         // exactly (length === 4) or prefix-matches a single year, jump.

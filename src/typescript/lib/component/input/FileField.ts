@@ -115,7 +115,7 @@ class HiddenFileInput extends Component {
      * Opens the OS file picker by synthesising a click on the native input.
      */
     openPicker(): void {
-        this.getElement()?.click();
+        const el = this.getElement(); if (el) { DOM.sink.click(el); }
     }
 
     /**
@@ -125,7 +125,7 @@ class HiddenFileInput extends Component {
      * @returns The native `FileList`, or `null`.
      */
     getFiles(): FileList | null {
-        return (this.getElement() as HTMLInputElement | null)?.files ?? null;
+        const el = this.getElement() as HTMLInputElement | null; return el ? DOM.source.getFiles(el) : null;
     }
 
     /**

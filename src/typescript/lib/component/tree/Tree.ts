@@ -832,7 +832,7 @@ class Tree extends Component<TreeOptions> {
         }
 
         const rowsContainer = this._scroller.getRowsContainer();
-        const growFragment  = document.createDocumentFragment();
+        const growFragment  = DOM.sink.createDocumentFragment();
 
         while (this._rowPool.length < poolTarget) {
             const row   = new TreeRow(this._rendererFactory);

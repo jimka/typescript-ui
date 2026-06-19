@@ -179,6 +179,40 @@ export class RecordingDOMSink implements DOMSink {
     cancelAnimationFrame(handle: number): void {
         this.record('cancelAnimationFrame', handle);
     }
+
+    setId(_element: Element, id: string): void {
+        this.record('setId', id);
+    }
+
+    insertBefore(_parent: Node, _node: Node, _reference: Node | null): void {
+        this.record('insertBefore');
+    }
+
+    setDataset(_element: HTMLElement, key: string, value: string): void {
+        this.record('setDataset', key, value);
+    }
+
+    createDocumentFragment(): DocumentFragment {
+        this.record('createDocumentFragment');
+
+        return makeStubElement('fragment') as unknown as DocumentFragment;
+    }
+
+    click(_element: HTMLElement): void {
+        this.record('click');
+    }
+
+    setSelectedIndex(_element: HTMLSelectElement, index: number): void {
+        this.record('setSelectedIndex', index);
+    }
+
+    setPointerCapture(_element: Element, pointerId: number): void {
+        this.record('setPointerCapture', pointerId);
+    }
+
+    releasePointerCapture(_element: Element, pointerId: number): void {
+        this.record('releasePointerCapture', pointerId);
+    }
 }
 
 /**
@@ -370,6 +404,50 @@ export class ModelledDOMSource implements DOMSource {
     /** Offline head — a bare stub element. */
     getHead(): HTMLElement {
         return makeStubElement('head');
+    }
+
+    getId(element: Element): string {
+        return (element as { id?: string }).id ?? '';
+    }
+
+    getDataset(_element: HTMLElement, _key: string): string | undefined {
+        return undefined;
+    }
+
+    getTagName(element: Element): string {
+        return (element as { tagName?: string }).tagName ?? '';
+    }
+
+    hasAttribute(_element: Element, _key: string): boolean {
+        return false;
+    }
+
+    getAttribute(_element: Element, _key: string): string | null {
+        return null;
+    }
+
+    getSelectedIndex(_element: HTMLSelectElement): number {
+        return -1;
+    }
+
+    getSelectedOptionDataset(_element: HTMLSelectElement, _key: string): string | undefined {
+        return undefined;
+    }
+
+    getNaturalSize(_element: HTMLImageElement): { width: number; height: number } {
+        return { width: 0, height: 0 };
+    }
+
+    getFiles(_element: HTMLInputElement): FileList | null {
+        return null;
+    }
+
+    hasPointerCapture(_element: Element, _pointerId: number): boolean {
+        return false;
+    }
+
+    elementsFromPoint(_x: number, _y: number): Element[] {
+        return [];
     }
 
     /**

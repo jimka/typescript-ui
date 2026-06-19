@@ -98,7 +98,7 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
             this._currentGlyph = next;
 
             if (el) {
-                el.insertBefore(this._icon.getElement(true), this._label.getElement());
+                DOM.sink.insertBefore(el, this._icon.getElement(true), this._label.getElement());
             }
         }
 

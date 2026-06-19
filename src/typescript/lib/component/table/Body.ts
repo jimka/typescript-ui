@@ -706,7 +706,7 @@ class Body extends Component {
         }
 
         const rowsContainer = this._scroller.getRowsContainer();
-        const growFragment  = document.createDocumentFragment();
+        const growFragment  = DOM.sink.createDocumentFragment();
 
         while (this._rowPool.length < poolTarget) {
             const row = this.createRow();
@@ -940,7 +940,7 @@ class Body extends Component {
         }
 
         // Don't steal focus from an active cell editor (e.g. <input type="date">).
-        const targetTag = (e.target as HTMLElement).tagName;
+        const targetTag = DOM.source.getTagName(e.target as HTMLElement);
         if (targetTag !== 'INPUT' && targetTag !== 'TEXTAREA' && targetTag !== 'SELECT') {
             this.focus();
         }

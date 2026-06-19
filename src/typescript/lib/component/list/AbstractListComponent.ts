@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component, ComponentOptions } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
@@ -132,7 +133,7 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      */
     getSelectedValue() {
         let element = this.getElement();
-        return (<HTMLElement>element[element.selectedIndex]).dataset.key;
+        return DOM.source.getSelectedOptionDataset(element, "key");
     }
 
     /**
@@ -142,7 +143,7 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      */
     getSelectedIndex() {
         let element = this.getElement();
-        return element.selectedIndex;
+        return DOM.source.getSelectedIndex(element);
     }
 
     /**
@@ -157,7 +158,7 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
             return this;
         }
 
-        element.selectedIndex = idx;
+        DOM.sink.setSelectedIndex(element, idx);
 
         if (!!fireEvent) {
             Event.fireEvent(this, "change");

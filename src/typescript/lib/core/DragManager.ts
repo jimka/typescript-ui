@@ -394,10 +394,10 @@ function buildDetail(session: DragSession, clientX: number, clientY: number): Dr
  * z-stack, or `null` when no registered target sits under the cursor.
  */
 function pickDropTarget(clientX: number, clientY: number): DropTargetRecord | null {
-    const stack = document.elementsFromPoint(clientX, clientY);
+    const stack = DOM.source.elementsFromPoint(clientX, clientY);
 
     for (const el of stack) {
-        const record = dropTargets.get(el.id);
+        const record = dropTargets.get(DOM.source.getId(el));
 
         if (record) {
             return record;
