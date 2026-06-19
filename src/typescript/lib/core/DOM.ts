@@ -76,6 +76,351 @@ export interface OffsetSize {
 }
 
 /**
+ * Opaque, serialisable element reference. A branded `number`, so a raw number
+ * cannot be passed where a handle is expected and the reference forwards across
+ * a worker boundary as plain data. The live `Node` it stands for never escapes
+ * the seam — every sink/source method resolves the handle internally.
+ *
+ * @category Core
+ */
+export type Handle = number & { readonly __handleBrand: unique symbol };
+
+/**
+ * A batch of mutations applied to a single element with one handle resolve.
+ * Every field is plain serialisable data — no live element, no function — so a
+ * worker transport forwards an entire patch as one `postMessage`.
+ *
+ * Application order is fixed: styles first, then class removals before
+ * additions (so a `removeClass` + `addClass` of the same name lands "on"),
+ * attribute removals before sets, then dataset / text / scroll.
+ *
+ * @category Core
+ */
+export interface ElementPatch {
+    /** Inline style writes. `null` removes the property. camelCase or `--custom`. */
+    style?:       Readonly<Record<string, string | null>>;
+    /** Classes to remove (applied before {@link ElementPatch.addClass}). */
+    removeClass?: readonly string[];
+    /** Classes to add. */
+    addClass?:    readonly string[];
+    /** Classes to force on/off. */
+    toggleClass?: Readonly<Record<string, boolean>>;
+    /** Attributes to remove (applied before {@link ElementPatch.setAttr}). */
+    removeAttr?:  readonly string[];
+    /** Attributes to set. */
+    setAttr?:     Readonly<Record<string, string>>;
+    /** `data-*` writes (camelCase keys). */
+    dataset?:     Readonly<Record<string, string>>;
+    /** Text content. */
+    text?:        string;
+    /** Native horizontal scroll offset. */
+    scrollLeft?:  number;
+    /** Native vertical scroll offset. */
+    scrollTop?:   number;
+}
+
+/**
+ * Canonicalising handle registry — the lone holder of live DOM references in
+ * the handle design. Maps a handle to its node (forward) and a node back to its
+ * handle (reverse) so a node is never assigned two handles; that reverse map is
+ * what makes handle equality mirror element equality.
+ *
+ * Two minting modes draw the leak-safety line. {@link HandleRegistry.retain} is
+ * for nodes the framework owns (it created them): a strong forward entry,
+ * released explicitly at the element's dispose site. {@link HandleRegistry.intern}
+ * is for browser-supplied nodes the live DOM already owns: a weak forward entry
+ * (`WeakRef`) plus a finalizer that drops the handle once the node is collected,
+ * so interning can never pin a dead node.
+ *
+ * Module-private: only the production sink and source touch it.
+ */
+class HandleRegistry {
+    private readonly _forward = new Map<Handle, Node | WeakRef<Node>>();
+    private readonly _reverse = new WeakMap<Node, Handle>();
+    private _next = 1;
+
+    /** Drops the forward entry when a weakly-interned node is garbage-collected. */
+    private readonly _finalizer = new FinalizationRegistry<Handle>((handle) => {
+        this._forward.delete(handle);
+    });
+
+    /**
+     * Mints a canonical handle for a node the framework owns (a created,
+     * possibly-detached element). Strongly held so a detached node survives
+     * until it is mounted or explicitly released.
+     *
+     * @param node - The owned node.
+     * @returns Its canonical handle (stable across repeated calls).
+     */
+    retain(node: Node): Handle {
+        const existing = this._reverse.get(node);
+
+        if (existing !== undefined) {
+            return existing;
+        }
+
+        const handle = this._mint(node);
+
+        this._forward.set(handle, node);
+
+        return handle;
+    }
+
+    /**
+     * Mints a canonical handle for a node supplied by the browser (an event
+     * target, a `querySelector` result, the active element). The live DOM owns
+     * it, so the registry holds only a weak reference plus a finalizer — no leak
+     * even if the handle is never released.
+     *
+     * @param node - The browser-supplied node.
+     * @returns Its canonical handle (stable while the node is alive).
+     */
+    intern(node: Node): Handle {
+        const existing = this._reverse.get(node);
+
+        if (existing !== undefined) {
+            return existing;
+        }
+
+        const handle = this._mint(node);
+
+        this._forward.set(handle, new WeakRef(node));
+        this._finalizer.register(node, handle);
+
+        return handle;
+    }
+
+    /**
+     * Resolves a handle to its node. Throws on a released or collected handle —
+     * a use-after-free becomes a loud failure instead of the silent no-op a
+     * stale element pointer would give.
+     *
+     * @param handle - The handle to resolve.
+     * @returns The live node.
+     */
+    resolve(handle: Handle): Node {
+        const entry = this._forward.get(handle);
+
+        if (entry === undefined) {
+            throw new Error(`DOM handle ${handle} is not registered (released or never minted).`);
+        }
+
+        const node = entry instanceof WeakRef ? entry.deref() : entry;
+
+        if (node === undefined) {
+            throw new Error(`DOM handle ${handle} refers to a collected node.`);
+        }
+
+        return node;
+    }
+
+    /**
+     * Releases an owned handle at its element's dispose site. Idempotent. A
+     * missed release on a retained (strong) handle pins a detached element
+     * forever, so the migration must place this at every created-element
+     * teardown.
+     *
+     * @param handle - The handle to release.
+     */
+    release(handle: Handle): void {
+        const entry = this._forward.get(handle);
+
+        if (entry === undefined) {
+            return;
+        }
+
+        const node = entry instanceof WeakRef ? entry.deref() : entry;
+
+        if (node) {
+            this._reverse.delete(node);
+        }
+
+        this._forward.delete(handle);
+    }
+
+    /** Live forward-map size — a test hook that verifies release / GC eviction. */
+    get size(): number {
+        return this._forward.size;
+    }
+
+    private _mint(node: Node): Handle {
+        const handle = this._next as Handle;
+
+        this._next += 1;
+        this._reverse.set(node, handle);
+
+        return handle;
+    }
+}
+
+/** The shared production registry. Rebuilt together with the seams by {@link DOM.reset}. */
+let _registry = new HandleRegistry();
+
+/** Forward-map size of the shared production registry; for tests only. @internal */
+export function _handleRegistrySize(): number {
+    return _registry.size;
+}
+
+/**
+ * The single terminal style write, shared by the inline-style and patch paths.
+ * A hyphenated key is either a custom property (`--foo`) or a standard
+ * kebab-case name (`background-color`); both go through `setProperty` /
+ * `removeProperty`. Only camelCase keys work through the indexed accessor.
+ */
+function writeDeclaration(style: CSSStyleDeclaration, key: string, value: string | null): void {
+    if (key.includes("-")) {
+        if (value === null) {
+            style.removeProperty(key);
+        } else {
+            style.setProperty(key, value);
+        }
+    } else if (value === null) {
+        (style as unknown as Record<string, string>)[key] = "";
+    } else {
+        (style as unknown as Record<string, string>)[key] = value;
+    }
+}
+
+/**
+ * Applies an {@link ElementPatch} to a resolved element — the terminal raw-DOM
+ * write for the batched {@link DOMSink.apply} path. Fixed order: styles, class
+ * removals before additions, attribute removals before sets, then dataset /
+ * text / scroll.
+ */
+function applyPatchTo(element: HTMLElement, patch: ElementPatch): void {
+    if (patch.style) {
+        for (const key of Object.keys(patch.style)) {
+            writeDeclaration(element.style, key, patch.style[key]);
+        }
+    }
+
+    if (patch.removeClass) {
+        for (const name of patch.removeClass) {
+            element.classList.remove(name);
+        }
+    }
+
+    if (patch.addClass) {
+        for (const name of patch.addClass) {
+            element.classList.add(name);
+        }
+    }
+
+    if (patch.toggleClass) {
+        for (const name of Object.keys(patch.toggleClass)) {
+            element.classList.toggle(name, patch.toggleClass[name]);
+        }
+    }
+
+    if (patch.removeAttr) {
+        for (const key of patch.removeAttr) {
+            element.removeAttribute(key);
+        }
+    }
+
+    if (patch.setAttr) {
+        for (const key of Object.keys(patch.setAttr)) {
+            element.setAttribute(key, patch.setAttr[key]);
+        }
+    }
+
+    if (patch.dataset) {
+        for (const key of Object.keys(patch.dataset)) {
+            element.dataset[key] = patch.dataset[key];
+        }
+    }
+
+    if (patch.text !== undefined) {
+        element.textContent = patch.text;
+    }
+
+    if (patch.scrollLeft !== undefined) {
+        element.scrollLeft = patch.scrollLeft;
+    }
+
+    if (patch.scrollTop !== undefined) {
+        element.scrollTop = patch.scrollTop;
+    }
+}
+
+/**
+ * Fluent accumulator over an {@link ElementPatch}. Each method appends to the
+ * pending patch; {@link PatchBuilder.commit} flushes it as one batched write.
+ * The fluent form is sugar for cold call sites — the batched {@link DOMSink.apply}
+ * is the real primitive — and it allocates one builder per edit.
+ *
+ * @category Core
+ */
+export class PatchBuilder {
+    private readonly _patch: {
+        style?:    Record<string, string | null>;
+        addClass?: string[];
+        setAttr?:  Record<string, string>;
+        text?:     string;
+    } = {};
+
+    /**
+     * @param _commit - Flush callback that performs the single handle resolve.
+     */
+    constructor(private readonly _commit: (patch: ElementPatch) => void) {}
+
+    /**
+     * Queues an inline-style write (`null` removes).
+     *
+     * @param key - The CSS property name (camelCase, or `--custom-property`).
+     * @param value - The value to set, or null to remove the property.
+     * @returns This builder.
+     */
+    style(key: string, value: string | null): this {
+        (this._patch.style ??= {})[key] = value;
+
+        return this;
+    }
+
+    /**
+     * Queues a class addition.
+     *
+     * @param name - The class name.
+     * @returns This builder.
+     */
+    addClass(name: string): this {
+        (this._patch.addClass ??= []).push(name);
+
+        return this;
+    }
+
+    /**
+     * Queues an attribute set.
+     *
+     * @param key - The attribute name.
+     * @param value - The attribute value.
+     * @returns This builder.
+     */
+    attr(key: string, value: string): this {
+        (this._patch.setAttr ??= {})[key] = value;
+
+        return this;
+    }
+
+    /**
+     * Queues a text-content write.
+     *
+     * @param value - The text content.
+     * @returns This builder.
+     */
+    text(value: string): this {
+        this._patch.text = value;
+
+        return this;
+    }
+
+    /** Flushes the accumulated patch through one batched write (one resolve). */
+    commit(): void {
+        this._commit(this._patch);
+    }
+}
+
+/**
  * Terminal DOM-write primitive. Every structural mutation and inline-style
  * write in the framework funnels through this seam instead of touching
  * `element.style` / `element.classList` / `appendChild` directly. The
@@ -791,44 +1136,47 @@ function toRect(domRect: DOMRect): Rect {
  * @category Core
  */
 export class ProductionDOMSink implements DOMSink {
+    /**
+     * Applies a batch of mutations to one element with a single handle resolve.
+     * The hot-path primitive — a layout commit (width + height + classes + an
+     * attribute) costs one `Map.get`, not one per write.
+     *
+     * @param handle - The target element handle.
+     * @param patch - The batch of mutations.
+     */
+    apply(handle: Handle, patch: ElementPatch): void {
+        applyPatchTo(_registry.resolve(handle) as HTMLElement, patch);
+    }
+
+    /**
+     * Fluent convenience that accumulates a patch and flushes it through a
+     * single {@link ProductionDOMSink.apply}. For cold call sites — it allocates
+     * one builder per edit.
+     *
+     * @param handle - The target element handle.
+     * @returns A builder whose `commit()` performs the single resolve.
+     */
+    edit(handle: Handle): PatchBuilder {
+        return new PatchBuilder((patch) => this.apply(handle, patch));
+    }
+
+    /**
+     * Releases an owned (retained) handle at its element's dispose site.
+     *
+     * @param handle - The handle to release.
+     */
+    release(handle: Handle): void {
+        _registry.release(handle);
+    }
+
     /** @inheritDoc */
     setStyle(element: HTMLElement | SVGElement, key: string, value: string | null): void {
-        this.writeDeclaration(element.style, key, value);
+        writeDeclaration(element.style, key, value);
     }
 
     /** @inheritDoc */
     setRuleStyle(rule: CSSStyleRule, key: string, value: string | null): void {
-        this.writeDeclaration(rule.style, key, value);
-    }
-
-    /**
-     * The single terminal style write, shared by {@link setStyle} (inline) and
-     * {@link setRuleStyle} (rule). Custom properties (`--foo`) must go through
-     * `setProperty`/`removeProperty`; the indexed accessor only works for
-     * camelCase keys.
-     *
-     * @param style - The resolved `CSSStyleDeclaration`.
-     * @param key - The CSS property name (camelCase, or `--custom-property`).
-     * @param value - The value to set, or null to remove the property.
-     */
-    private writeDeclaration(style: CSSStyleDeclaration, key: string, value: string | null): void {
-        // A hyphenated key is either a custom property (`--foo`) or a standard
-        // kebab-case name (`background-color`); both must go through
-        // `setProperty`/`removeProperty`. Only camelCase keys (`backgroundColor`)
-        // work through the indexed accessor.
-        if (key.includes("-")) {
-            if (value === null) {
-                style.removeProperty(key);
-            } else {
-                style.setProperty(key, value);
-            }
-        } else {
-            if (value === null) {
-                (style as any)[key] = "";
-            } else {
-                (style as any)[key] = value;
-            }
-        }
+        writeDeclaration(rule.style, key, value);
     }
 
     /** @inheritDoc */
@@ -1053,6 +1401,19 @@ export class ProductionDOMSink implements DOMSink {
  * @category Core
  */
 export class ProductionDOMSource implements DOMSource {
+    /**
+     * Converts a raw browser node arriving at an event boundary into a (weak)
+     * handle. The one place a `Node` legitimately enters the seam from outside —
+     * the event system hands it `evnt.target`, and the handle is interned so no
+     * call site downstream holds the raw node.
+     *
+     * @param target - The browser-supplied node.
+     * @returns Its canonical handle.
+     */
+    intern(target: Node): Handle {
+        return _registry.intern(target);
+    }
+
     /** @inheritDoc */
     getViewportRect(component: Component): Rect {
         return toRect(component.getElement()!.getBoundingClientRect());
@@ -1469,6 +1830,9 @@ export const DOM: DOMSeams = {
     },
 
     reset(): void {
+        // Rebuild the shared registry alongside the seams so a test never
+        // resolves a handle minted against the previous DOM.
+        _registry  = new HandleRegistry();
         DOM.sink   = new ProductionDOMSink();
         DOM.source = new ProductionDOMSource();
     },
