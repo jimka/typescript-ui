@@ -183,7 +183,16 @@ function _removeSymbolFromSprite(name: string): void {
     const id = GLYPH_SYMBOL_ID_PREFIX + name;
     const symbol = DOM.source.querySelector(_spriteElement, `#${CSS.escape(id)}`);
     if (symbol) {
+        // Release the symbol's retained `<path>` child too — releasing only the
+        // symbol would pin the detached path handle in the registry. Queried
+        // before removal so it resolves to its canonical retained handle.
+        const path = DOM.source.querySelector(symbol, "path");
+
         DOM.sink.removeChild(_spriteElement, symbol);
         DOM.sink.release(symbol);
+
+        if (path) {
+            DOM.sink.release(path);
+        }
     }
 }
