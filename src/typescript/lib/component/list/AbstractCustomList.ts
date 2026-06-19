@@ -1369,15 +1369,16 @@ abstract class AbstractCustomList<
             return;
         }
 
+        const metrics       = DOM.source.getScrollMetrics(panelEl);
         const top           = idx * ROW_HEIGHT_PX;
         const bottom        = top + ROW_HEIGHT_PX;
-        const scrollTop     = panelEl.scrollTop;
-        const visibleBottom = scrollTop + panelEl.clientHeight;
+        const scrollTop     = metrics.scrollTop;
+        const visibleBottom = scrollTop + metrics.clientHeight;
 
         if (top < scrollTop) {
-            panelEl.scrollTop = top;
+            DOM.sink.setScrollTop(panelEl, top);
         } else if (bottom > visibleBottom) {
-            panelEl.scrollTop = bottom - panelEl.clientHeight;
+            DOM.sink.setScrollTop(panelEl, bottom - metrics.clientHeight);
         }
     }
 }

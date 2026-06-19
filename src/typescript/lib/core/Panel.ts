@@ -466,8 +466,10 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             const vAxisEnabled = this._autoScroll === "y" || this._autoScroll === "auto";
             const hAxisEnabled = this._autoScroll === "x" || this._autoScroll === "auto";
 
-            vReserved = vAxisEnabled && el.scrollHeight > el.clientHeight;
-            hReserved = hAxisEnabled && el.scrollWidth  > el.clientWidth;
+            const metrics = DOM.source.getScrollMetrics(el);
+
+            vReserved = vAxisEnabled && metrics.scrollHeight > metrics.clientHeight;
+            hReserved = hAxisEnabled && metrics.scrollWidth  > metrics.clientWidth;
         }
 
         const newRight  = vReserved ? trackW : 0;
@@ -612,7 +614,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
             return;
         }
 
-        const { scrollTop, scrollLeft, scrollWidth, scrollHeight, clientWidth, clientHeight } = el;
+        const { scrollTop, scrollLeft, scrollWidth, scrollHeight, clientWidth, clientHeight } = DOM.source.getScrollMetrics(el);
 
         // Size the overlay to the viewport box; `position: sticky` keeps it
         // pinned there as the content scrolls, so no transform is needed.

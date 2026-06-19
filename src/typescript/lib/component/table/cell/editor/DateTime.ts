@@ -2,6 +2,7 @@
 
 import { TextInputCellEditor } from "~/component/table/cell/editor/TextInputCellEditor.js";
 import { Event } from "~/core/Event.js";
+import { DOM } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
 import { DateTimePickerDropdown } from "~/component/input/DateTimePickerDropdown.js";
 import { callable } from "~/core/Callable.js";
@@ -101,7 +102,7 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
 
         const el = this.getElement() as HTMLInputElement | null;
         if (el) {
-            el.value = text;
+            DOM.sink.setValue(el, text);
         }
 
         return this;
@@ -122,7 +123,7 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
      */
     private syncTextFromDom(): void {
         const el = this.getElement() as HTMLInputElement | null;
-        this._text = el?.value ?? "";
+        this._text = el ? DOM.source.getValue(el) : "";
     }
 
     /**

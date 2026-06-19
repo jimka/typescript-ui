@@ -2,6 +2,7 @@
 
 import { TextInput, TextInputOptions } from "~/component/input/TextInput.js";
 import { Event } from "~/core/Event.js";
+import { DOM } from "~/core/DOM.js";
 import { callable } from "~/core/Callable.js";
 
 /**
@@ -45,7 +46,7 @@ class PickerInput extends TextInput<TextInputOptions> {
      */
     private syncTextFromDom(): void {
         const el = this.getElement();
-        this.setText(el?.value ?? "");
+        this.setText(el ? DOM.source.getValue(el) : "");
     }
 }
 

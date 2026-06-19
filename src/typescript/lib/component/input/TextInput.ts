@@ -447,7 +447,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
             return this;
         }
 
-        element.value = this._options.text;
+        DOM.sink.setValue(element, this._options.text);
 
         return this;
     }
@@ -575,7 +575,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
             end = text.length + 1;
         }
 
-        element.setSelectionRange(start, end);
+        DOM.sink.setSelectionRange(element, start, end);
 
         return this;
     }
@@ -660,7 +660,7 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     protected render() {
         let element = super.render() as HTMLInputElement & HTMLTextAreaElement;
 
-        element.value = this._options.text ?? "";
+        DOM.sink.setValue(element, this._options.text ?? "");
 
         return element;
     }
