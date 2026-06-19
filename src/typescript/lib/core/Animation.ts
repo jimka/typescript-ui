@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { DOM } from "~/core/DOM.js";
 import { InlineStyle } from "~/core/StyleTarget.js";
 
 /**
@@ -134,7 +135,7 @@ export namespace Animation {
                 config.onComplete?.();
             };
 
-            el.addEventListener("transitionend", finish, { once: true });
+            DOM.sink.addListener(el, "transitionend", finish, { once: true });
             setTimeout(finish, config.durationMs + fallback);
         };
 
@@ -217,7 +218,7 @@ export namespace Animation {
                 return;
             }
             done = true;
-            el.removeEventListener("transitionend", onEnd);
+            DOM.sink.removeListener(el, "transitionend", onEnd);
             config.onComplete();
         };
         const onEnd = (event: TransitionEvent): void => {
@@ -227,7 +228,7 @@ export namespace Animation {
             finish();
         };
 
-        el.addEventListener("transitionend", onEnd);
+        DOM.sink.addListener(el, "transitionend", onEnd);
         setTimeout(finish, config.durationMs + (config.fallbackBufferMs ?? 40));
     }
 

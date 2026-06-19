@@ -753,7 +753,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     private focusSelf(): void {
         const element = this.getElement();
-        if (!element || element.contains(document.activeElement)) {
+        if (!element || element.contains(DOM.source.getActiveElement())) {
             return;
         }
 

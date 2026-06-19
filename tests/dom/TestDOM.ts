@@ -157,6 +157,18 @@ export class RecordingDOMSink implements DOMSink {
     setSelectionRange(_element: HTMLElement, start: number, end: number): void {
         this.record('setSelectionRange', start, end);
     }
+
+    addListener<T extends Event = Event>(_target: EventTarget, type: string, _handler: (event: T) => void, _options?: boolean | AddEventListenerOptions): void {
+        this.record('addListener', type);
+    }
+
+    removeListener<T extends Event = Event>(_target: EventTarget, type: string, _handler: (event: T) => void, _options?: boolean | EventListenerOptions): void {
+        this.record('removeListener', type);
+    }
+
+    dispatchEvent(_target: EventTarget, event: Event): void {
+        this.record('dispatchEvent', event.type);
+    }
 }
 
 /**
@@ -273,6 +285,11 @@ export class ModelledDOMSource implements DOMSource {
     /** Reads the value recorded onto the stub by the recording sink. */
     getValue(element: HTMLElement): string {
         return (element as unknown as { value?: string }).value ?? '';
+    }
+
+    /** No focus model offline; reports nothing focused. */
+    getActiveElement(): Element | null {
+        return null;
     }
 
     /**

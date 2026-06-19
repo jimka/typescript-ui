@@ -622,7 +622,7 @@ class Dialog extends Component implements DismissableLayer {
      * Appends backdrop and dialog to the DOM, centers the panel, and captures focus.
      */
     private open(): void {
-        this._previousFocus = document.activeElement;
+        this._previousFocus = DOM.source.getActiveElement();
 
         if (this._config.closeOnBackdrop) {
             this._backdrop.addClickListener(() => this.hide('close'));
@@ -747,12 +747,12 @@ class Dialog extends Component implements DismissableLayer {
             const last  = focusable[focusable.length - 1];
 
             if (e.shiftKey) {
-                if (document.activeElement === first) {
+                if (DOM.source.getActiveElement() === first) {
                     e.preventDefault();
                     DOM.sink.focus(last);
                 }
             } else {
-                if (document.activeElement === last) {
+                if (DOM.source.getActiveElement() === last) {
                     e.preventDefault();
                     DOM.sink.focus(first);
                 }

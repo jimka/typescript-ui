@@ -223,6 +223,36 @@ export interface DOMSink {
      * @param end - The selection end offset.
      */
     setSelectionRange(element: HTMLElement, start: number, end: number): void;
+
+    /**
+     * Registers a native event listener on a target. The framework's
+     * {@link Event} class is the component-level routing layer; this seam covers
+     * the low-level native hook it (and a few primitives) sits on.
+     *
+     * @param target - The event target (element, window, media-query list).
+     * @param type - The event type.
+     * @param handler - The listener.
+     * @param options - Optional capture/passive/once options.
+     */
+    addListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | AddEventListenerOptions): void;
+
+    /**
+     * Removes a native event listener previously registered with {@link addListener}.
+     *
+     * @param target - The event target.
+     * @param type - The event type.
+     * @param handler - The listener to remove.
+     * @param options - Optional capture options matching the registration.
+     */
+    removeListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | EventListenerOptions): void;
+
+    /**
+     * Dispatches an event on a target.
+     *
+     * @param target - The event target.
+     * @param event - The event to dispatch.
+     */
+    dispatchEvent(target: EventTarget, event: Event): void;
 }
 
 /**
@@ -346,6 +376,13 @@ export interface DOMSource {
      * @returns The control's current value.
      */
     getValue(element: HTMLElement): string;
+
+    /**
+     * Returns the element that currently has focus, or null.
+     *
+     * @returns The active element, or null when nothing is focused.
+     */
+    getActiveElement(): Element | null;
 }
 
 /**
@@ -483,6 +520,21 @@ export class ProductionDOMSink implements DOMSink {
     setSelectionRange(element: HTMLElement, start: number, end: number): void {
         (element as HTMLInputElement).setSelectionRange(start, end);
     }
+
+    /** @inheritDoc */
+    addListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | AddEventListenerOptions): void {
+        target.addEventListener(type, handler as EventListener, options);
+    }
+
+    /** @inheritDoc */
+    removeListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | EventListenerOptions): void {
+        target.removeEventListener(type, handler as EventListener, options);
+    }
+
+    /** @inheritDoc */
+    dispatchEvent(target: EventTarget, event: Event): void {
+        target.dispatchEvent(event);
+    }
 }
 
 /**
@@ -572,6 +624,11 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getValue(element: HTMLElement): string {
         return (element as HTMLInputElement).value;
+    }
+
+    /** @inheritDoc */
+    getActiveElement(): Element | null {
+        return document.activeElement;
     }
 }
 

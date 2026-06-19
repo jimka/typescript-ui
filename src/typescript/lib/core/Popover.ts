@@ -881,7 +881,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             this._scrollAncestors = this.collectScrollAncestors(this._anchorElement);
 
             for (const ancestor of this._scrollAncestors) {
-                ancestor.addEventListener("scroll", this._onScroll, { passive: true });
+                DOM.sink.addListener(ancestor, "scroll", this._onScroll, { passive: true });
             }
         }
     }
@@ -893,7 +893,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         Event.removeViewportListener(this, "resize", this._onWindowResize);
 
         for (const ancestor of this._scrollAncestors) {
-            ancestor.removeEventListener("scroll", this._onScroll);
+            DOM.sink.removeListener(ancestor, "scroll", this._onScroll);
         }
 
         this._scrollAncestors = [];

@@ -2,6 +2,7 @@
 
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Event } from "~/core/Event.js";
+import { DOM } from "~/core/DOM.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { TextField } from "~/component/input/TextField.js";
@@ -474,7 +475,7 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
      */
     private onBlur(): void {
         setTimeout(() => {
-            const active = document.activeElement;
+            const active = DOM.source.getActiveElement();
             const dropEl = this._dropdown.getElement();
 
             if (dropEl && dropEl.contains(active)) {
