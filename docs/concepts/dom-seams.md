@@ -42,22 +42,13 @@ Component-level focus rides the seam through the wrappers: `Component.focus()` /
 ## What it enables
 
 - **Offline tests.** A modelled source answers geometry from the oracle and text metrics from a baked, font-pinned table, so layout and baseline behaviour can be unit-tested in Node/jsdom without real browser rendering.
-- **A lint-checkable discipline.** Raw `getBoundingClientRect` / `getComputedStyle` / structural mutation outside the production implementations is now a grep-able (and eventually lint-able) violation.
+- **A lint-enforced discipline.** A type-aware ESLint rule (`local/no-raw-dom`) fails the build on *any* raw DOM access — a member call on an `Element`/`Node`/`Document`/`Window`/`CSSStyleSheet`-typed receiver, or a free `document` / `window` / `getComputedStyle` / `matchMedia` global — anywhere outside the seam implementation. The discipline is no longer a convention; it is CI.
 - **A worker-ready boundary.** Every source method takes serialisable inputs and returns plain data; every sink method is one-way. The transport itself is out of scope, but the seam is shaped so it can be added without touching call sites.
 
-## Documented production-only holdouts
+## The seam is total — `core/DOM.ts` is the only module that touches the DOM
 
-A handful of reads are irreducibly browser-specific and stay outside the seam, each with an offline fallback:
+Every category that was once a holdout now funnels through the seam: computed border widths and overflow (`getBorderWidths` / `getComputedOverflow`), the `<legend>` box (`getOffsetSize` / `isConnected`), native event listeners (`addListener` / `removeListener` / `dispatchEvent`), DOM traversal (`querySelector` / `contains` / `closest` / `matches` / `getParentElement`), globals (`matchMedia` / `requestAnimationFrame` / `getActiveElement` / `getDocumentElement`), structural and form-control writes (`setId` / `insertBefore` / `setValue` / `setSelectionRange` / `setSelectedIndex`), and the irreducible text/scrollbar **measurement leaf** — the off-screen probe, the canvas font-metrics context, and the scrollbar-width probe — which now lives inside `ProductionDOMSource` itself.
 
-- `Component.getBorderSize` reads element-specific computed border widths (with a pre-attach spec-string estimate offline).
-- `Popover.collectScrollAncestors` reads ancestor `overflow` to find scroll containers.
-- `FieldSet.legendClearance` measures the native `<legend>` box, short-circuiting to a fallback when `DOM.source.isModelled()` is true.
-- `Util`'s own canvas / probe text-measurement code is the production leaf that `ProductionDOMSource` delegates to.
+The result: **`src/typescript/lib/core/DOM.ts` is the single module that reads or writes the real DOM.** Everything else routes through `DOM.sink` / `DOM.source`. The `local/no-raw-dom` rule enforces this with an empty baseline — any new raw access is a build error.
 
-## Deliberately un-seamed
-
-Some native DOM access is intentionally left outside the seam — these are boundary decisions, not oversights:
-
-- **Event listeners.** `addEventListener` / `removeEventListener` stay raw. The framework's [`Event`](/api/core/classes/Event) class is already the listener abstraction; the remaining raw uses are low-level native hooks (`transitionend` in `Animation`, `matchMedia` in `Glyph`, ancestor `scroll` in `Popover` / `Tooltip`) that the seam would only obscure.
-- **DOM traversal.** `querySelector` / `querySelectorAll` / `contains` / `closest` / `matches` / `parentElement` are read-only structural navigation, not measurement or mutation. They have no offline-test or worker payoff, so they stay direct — the dialog focus-trap finds its focusable descendants with `querySelectorAll` and then routes only the resulting `focus()` through the sink.
-- **Imperative scroll-into-view.** `scrollIntoView` / `scrollTo` are native one-shot helpers outside the cached scroll model the seam mirrors.
+A few things stay deliberately outside the rule because they are **not DOM interaction**: `setTimeout` / `clearTimeout` (timers), `performance.now()` (high-resolution time), and Web Worker entry modules (`self` / `postMessage` are worker-scope messaging, not the document). `scrollIntoView` / `scrollTo` have no call sites today; the rule forbids any future one.
