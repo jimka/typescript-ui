@@ -1,129 +1,204 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Button, ButtonOptions } from "~/component/button/Button.js";
-import { DOM } from "~/core/DOM.js";
-import type { Handle } from "~/core/DOM.js";
+import { Component, ComponentOptions } from "~/core/Component.js";
+import { Button } from "~/component/button/Button.js";
 import { AccordionIndicator } from "~/component/container/AccordionIndicator.js";
-import { Insets } from "~/primitive/Insets.js";
+import { HBox } from "~/layout/HBox.js";
+import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { AnchorType } from "~/layout/AnchorType.js";
+import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+
+/**
+ * Left padding of the header row, in pixels. Reproduces the 8px gap the former
+ * Button-based header added to its label's left inset, so the title text keeps
+ * the same start offset under the new HBox structure.
+ */
+const HEADER_PADDING_LEFT: number = 8;
+
+/**
+ * Right padding of the header row, in pixels. Mirrors the former `right: 10px`
+ * offset the chevron overlay used, so the trailing chevron keeps the same gap
+ * from the header's right edge now that it is an in-flow cell.
+ */
+const HEADER_PADDING_RIGHT: number = 10;
+
+/**
+ * Horizontal gap between the header's HBox cells (title, tool group, chevron),
+ * in pixels. Keeps the chevron and tools from butting against the label or each
+ * other; small because the title's flex weight already absorbs the slack.
+ */
+const HEADER_CELL_SPACING: number = 4;
 
 /**
  * Construction-time options for {@link AccordionHeader}.
  *
  * @category Components
  */
-export interface AccordionHeaderOptions extends ButtonOptions {
-    expanded?: boolean;
+export interface AccordionHeaderOptions extends ComponentOptions {
+    /** Initial expanded state of the chevron indicator. */
+    expanded?:    boolean;
+    /** Which end of the header the chevron sits at. Defaults to `"right"`. */
+    chevronSide?: "left" | "right";
 }
 
 /**
- * A flat header button used by [`Accordion`](/api/layout/classes/Accordion) (from `@jimka/typescript-ui/layout`) to represent a collapsible section.
+ * A section header used by [`Accordion`](/api/layout/classes/Accordion) (from `@jimka/typescript-ui/layout`)
+ * to represent one collapsible section.
  *
- * Extends {@link Button} with an {@link AccordionIndicator} Component child,
- * side-loaded onto the button element so it sits outside Button's `Fit`
- * layout. The indicator child handles its own queue-then-flush ordering for
- * the expanded class toggle and the per-instance animation timing.
+ * The header is a plain styled {@link Component} that lays its children out with
+ * an {@link HBox} row, left-to-right:
+ *
+ * 1. the {@link AccordionIndicator} chevron — **only** when `chevronSide` is `"left"`;
+ * 2. a `chromeless` title {@link Button} (the section label, the clickable toggle
+ *    target and the focusable element), given a flex `weight` so it spans the
+ *    whole clickable region while its label stays left-anchored;
+ * 3. the tool group container (an `HBox` row of per-section / re-parented tools);
+ * 4. the chevron — **only** when `chevronSide` is `"right"` (the default), so the
+ *    chevron sits outermost and tools sit inboard of it.
+ *
+ * Because the tools are *siblings* of the title button rather than descendants,
+ * a click on a tool is simply not a click on the title button — there is nothing
+ * to stop from propagating and no marker to maintain.
  *
  * @category Components
  */
-class AccordionHeader extends Button<AccordionHeaderOptions> {
+class AccordionHeader extends Component<AccordionHeaderOptions> {
 
     declare private _indicator: AccordionIndicator;
+    declare private _title:     Button;
+    declare private _toolGroup: Component;
+    private _chevronSide: "left" | "right" = "right";
 
     /**
-     * @param label - Text displayed in the header button.
+     * @param label - Text displayed in the header's title button.
+     * @param options - Optional construction-time options.
      */
     constructor(label: string, options?: AccordionHeaderOptions) {
-        // Left-anchor the label row via Button's own `anchor` option (consumed
-        // once when the constructor adds the content row to the outer Fit), so
-        // the header text reads left-aligned. An explicit caller `anchor`
-        // still wins.
-        super(label, { ...options, anchor: options?.anchor ?? AnchorType.WEST });
+        super({ tag: "div", ...options });
 
+        // The chevron, title and tool group are independent child Components in
+        // an HBox row — one DOM element per class, no side-loaded overlay.
         this._indicator = new AccordionIndicator();
-        this._indicator.setExpanded(this._options.expanded ?? false);
+        this._title     = new Button(label, { chromeless: true, anchor: AnchorType.WEST });
+        this._toolGroup = new Component();
 
-        // Reproduce the former 8px left gap (previously applied to the inner
-        // label) by widening the button's own left inset by 8 over its
-        // resolved default — keeping the other three sides untouched.
-        const insets = this.getInsets();
+        this._toolGroup.setLayoutManager(new HBox({ spacing: HEADER_CELL_SPACING, stretching: true }));
+        this._toolGroup.setBackgroundColor("transparent");
 
-        this.setInsets(new Insets(insets.getTop(), insets.getRight(), insets.getBottom(), insets.getLeft() + 8));
+        // Stretching so each cell fills the header height and centres its own
+        // content (the title button and tool buttons centre vertically; the
+        // chevron centres via its own rule).
+        this.setLayoutManager(new HBox({ spacing: HEADER_CELL_SPACING, stretching: true }));
+        this.setInsets(new Insets(0, HEADER_PADDING_RIGHT, 0, HEADER_PADDING_LEFT));
+
+        // Flex weight on the title makes the whole left region clickable while
+        // the label stays left (anchor WEST); tools/chevron keep their preferred
+        // width at the trailing edge.
+        const titleConstraints = new LayoutConstraints();
+
+        titleConstraints.weight = 1;
+
+        this.addComponent(this._title, titleConstraints);
+        this.addComponent(this._toolGroup);
+
+        this._chevronSide = options?.chevronSide ?? "right";
+        this.placeIndicator();
+
+        this.setExpanded(options?.expanded ?? false);
     }
 
     /**
-     * Applies an {@link AccordionHeaderOptions} bag, dispatching the indicator
-     * `expanded` state after inherited Button/Component fields. The indicator
-     * child caches the expanded state regardless of when this fires; if the
-     * super-cascade dispatch lands before the constructor body builds the
-     * child, the value is buffered on `_options.expanded` and applied by the
-     * constructor's `setExpanded` flush.
-     *
-     * @param options - The options bag carrying the values to apply.
+     * Inserts the chevron cell at the head (when `chevronSide` is `"left"`) or
+     * the tail (when `"right"`) of the HBox row, removing it from its current
+     * slot first so repeated calls re-position rather than duplicate.
      */
-    protected applyOptions(options: AccordionHeaderOptions): this {
-        super.applyOptions(options);
-
-        const opts = { ...this._defaultOptions, ...options } as AccordionHeaderOptions;
-
-        if (opts.expanded !== undefined) {
-            this.setExpanded(opts.expanded);
+    private placeIndicator(): void {
+        if (this.getComponents().includes(this._indicator)) {
+            this.removeComponent(this._indicator);
         }
 
-        return this;
-    }
-
-    /**
-     * Appends the indicator child element to the button element after the DOM
-     * node is created.
-     *
-     * @param element - Optional element passed from the framework init chain.
-     */
-    protected init(element?: Handle): this {
-        super.init(element);
-
-        const el = element || this.getElement();
-
-        if (!el) {
-            return this;
+        if (this._chevronSide === "left") {
+            this.insertComponent(this._indicator, 0);
+        } else {
+            this.addComponent(this._indicator);
         }
-
-        DOM.sink.appendChild(el, this._indicator.getElement(true)!);
-
-        return this;
     }
 
     /**
-     * Toggles the expanded visual state of the indicator arrow.
+     * Returns the title button — the clickable toggle target and the focusable
+     * element. The owning [`Accordion`](/api/layout/classes/Accordion) wires its
+     * `action` / `keydown` listeners and calls `focus()` on it.
      *
-     * @param expanded - True to rotate the indicator to the expanded position.
+     * @returns The title button.
+     */
+    getTitleButton(): Button {
+        return this._title;
+    }
+
+    /**
+     * Toggles the expanded visual state: rotates the chevron and updates the
+     * title button's `aria-expanded`.
+     *
+     * @param expanded - True to show the section as expanded.
+     *
+     * @returns This header, for method chaining.
      */
     setExpanded(expanded: boolean): this {
-        this._options.expanded = expanded;
         this._indicator?.setExpanded(expanded);
+        this._title?.getAria().setExpanded(expanded);
 
         return this;
     }
 
     /**
-     * Returns whether the indicator is currently in the expanded state.
+     * Returns whether the chevron is in the expanded state.
      *
      * @returns True if expanded.
      */
     isExpanded(): boolean {
-        return this._options.expanded ?? false;
+        return this._indicator?.getExpanded() ?? false;
     }
 
     /**
-     * Overrides the indicator's `transform` transition timing so it matches
-     * the duration and easing of the owning Accordion's panel-height
-     * transition. Called by [`Accordion`](/api/layout/classes/Accordion) (from `@jimka/typescript-ui/layout`)
-     * from `createSection`; not exposed via {@link AccordionHeaderOptions}
-     * since the timing is a wiring detail, not a configuration knob.
+     * Moves the chevron to the given end of the header and re-runs layout.
+     *
+     * @param side - `"left"` or `"right"`.
+     *
+     * @returns This header, for method chaining.
+     */
+    setChevronSide(side: "left" | "right"): this {
+        if (this._chevronSide === side) {
+            return this;
+        }
+
+        this._chevronSide = side;
+        this.placeIndicator();
+        this.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns which end the chevron currently sits at.
+     *
+     * @returns `"left"` or `"right"`.
+     */
+    getChevronSide(): "left" | "right" {
+        return this._chevronSide;
+    }
+
+    /**
+     * Overrides the chevron's `transform` transition timing so it matches the
+     * duration and easing of the owning Accordion's panel-height transition.
+     * Called by [`Accordion`](/api/layout/classes/Accordion) from
+     * `createSection`; not exposed via {@link AccordionHeaderOptions} since the
+     * timing is a wiring detail, not a configuration knob.
      *
      * @param durationMs - Transition duration in milliseconds.
      * @param easing - CSS easing function string.
+     *
+     * @returns This header, for method chaining.
      */
     setAnimationTiming(durationMs: number, easing: string): this {
         this._indicator?.setAnimationTiming(durationMs, easing);

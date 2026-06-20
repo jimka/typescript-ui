@@ -58,6 +58,7 @@ export interface AccordionOptions extends LayoutManagerOptions {
     singleOpen?:        boolean;
     headerHeight?:      number;
     animationDuration?: number;
+    chevronSide?:       "left" | "right";
     /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
@@ -106,6 +107,7 @@ class Accordion extends LayoutManager {
     private _singleOpen: boolean = false;
     private _headerHeight: number = 28;
     private _animationDuration: number = 200;
+    private _chevronSide: "left" | "right" = "right";
     private _listeners: ListenerBag<AccordionEvent> = new ListenerBag<AccordionEvent>();
 
     constructor(options?: AccordionOptions) {
@@ -134,6 +136,10 @@ class Accordion extends LayoutManager {
 
         if (options.animationDuration !== undefined) {
             this.setAnimationDuration(options.animationDuration);
+        }
+
+        if (options.chevronSide !== undefined) {
+            this.setChevronSide(options.chevronSide);
         }
 
         if (options.listeners !== undefined) {
@@ -186,7 +192,6 @@ class Accordion extends LayoutManager {
                 this.primeWrapper(i);
                 this._openState[i] = false;
                 this._headers[i].setExpanded(false);
-                this._headers[i].getAria().setExpanded(false);
                 this.emit("sectiontoggle", i, false);
             } else {
                 foundOpen = true;
@@ -239,6 +244,36 @@ class Accordion extends LayoutManager {
     }
 
     /**
+     * Returns which end of each header the chevron sits at.
+     *
+     * @returns `"left"` or `"right"`.
+     */
+    getChevronSide(): "left" | "right" {
+        return this._chevronSide;
+    }
+
+    /**
+     * Sets which end of each header the chevron sits at. The section label
+     * always stays left-aligned; only the chevron moves. Applies to existing
+     * headers immediately and to headers created afterwards.
+     *
+     * @param side - `"left"` or `"right"`.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setChevronSide(side: "left" | "right"): this {
+        this._chevronSide = side;
+
+        for (const header of this._headers) {
+            header.setChevronSide(side);
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
      * Opens the section at the given index.
      *
      * @param index - Zero-based section index.
@@ -254,7 +289,6 @@ class Accordion extends LayoutManager {
                     this.primeWrapper(i);
                     this._openState[i] = false;
                     this._headers[i].setExpanded(false);
-                    this._headers[i].getAria().setExpanded(false);
                     this.emit("sectiontoggle", i, false);
                 }
             }
@@ -263,7 +297,6 @@ class Accordion extends LayoutManager {
         this.primeWrapper(index);
         this._openState[index] = true;
         this._headers[index].setExpanded(true);
-        this._headers[index].getAria().setExpanded(true);
         this.emit("sectiontoggle", index, true);
         this.getContainer()?.scheduleLayout();
 
@@ -283,7 +316,6 @@ class Accordion extends LayoutManager {
         this.primeWrapper(index);
         this._openState[index] = false;
         this._headers[index].setExpanded(false);
-        this._headers[index].getAria().setExpanded(false);
         this.emit("sectiontoggle", index, false);
         this.getContainer()?.scheduleLayout();
 
@@ -507,7 +539,7 @@ class Accordion extends LayoutManager {
         const label = constraints?.label ?? component.getId();
         const initiallyOpen = constraints?.initiallyOpen ?? false;
 
-        const header = new AccordionHeader(label);
+        const header = new AccordionHeader(label, { chevronSide: this._chevronSide });
 
         header.setAnimationTiming(this._animationDuration, ACCORDION_EASING);
 
@@ -517,8 +549,16 @@ class Accordion extends LayoutManager {
         // as broken motion.
         header.setTransition(this.buildHeaderTransition());
 
+        const title = header.getTitleButton();
+
+        // The title button is the toggle + focus target; its `action` covers the
+        // label/glyph area. A click listener on the header element covers the
+        // chevron (pointer-events:none, so it falls through to the header) and
+        // the padding gaps. Tools carry their own ids, so neither exact-target
+        // listener fires for a tool click — toggling stays structural.
+        title.on("action", () => this.onHeaderClicked(index));
         Event.addListener(header, 'click', () => this.onHeaderClicked(index));
-        Event.addListener(header, 'keydown', (e: KeyboardEvent) => this.onHeaderKeyDown(e, index));
+        Event.addListener(title, 'keydown', (e: KeyboardEvent) => this.onHeaderKeyDown(e, index));
 
         const wrapper = new Component();
 
@@ -542,11 +582,10 @@ class Accordion extends LayoutManager {
         this._panelWrappers.push(wrapper);
 
         header.setExpanded(initiallyOpen);
-        header.getAria().setExpanded(initiallyOpen);
-        header.getAria().setControls(wrapper.getId());
+        title.getAria().setControls(wrapper.getId());
 
         wrapper.getAria().setRole('region');
-        wrapper.getAria().setLabelledBy(header.getId());
+        wrapper.getAria().setLabelledBy(title.getId());
     }
 
     /**
@@ -767,7 +806,7 @@ class Accordion extends LayoutManager {
         }
 
         e.preventDefault();
-        this._headers[target].focus();
+        this._headers[target].getTitleButton().focus();
     }
 
     /**
@@ -785,7 +824,6 @@ class Accordion extends LayoutManager {
                     this.primeWrapper(i);
                     this._openState[i] = false;
                     this._headers[i].setExpanded(false);
-                    this._headers[i].getAria().setExpanded(false);
                     this.emit("sectiontoggle", i, false);
                 }
             }
@@ -796,7 +834,6 @@ class Accordion extends LayoutManager {
         this.primeWrapper(index);
         this._openState[index] = nowOpen;
         this._headers[index].setExpanded(nowOpen);
-        this._headers[index].getAria().setExpanded(nowOpen);
         this.emit("sectiontoggle", index, nowOpen);
         this.getContainer()?.scheduleLayout();
     }

@@ -15,13 +15,22 @@ export interface AccordionIndicatorOptions extends ComponentOptions {
     expanded?: boolean;
 }
 
+/**
+ * Width of the chevron's HBox cell, in pixels. Wide enough to seat the chevron
+ * glyph plus a little breathing room; the height is governed by the header's
+ * stretching HBox, so only the width is fixed here.
+ */
+const CHEVRON_CELL_WIDTH: number = 14;
+
 let _classRule: StyleRule | null = null;
 
 /**
  * Registers the shared `.AccordionIndicator` class rule once on first use. The
- * rule holds the overlay geometry (position, right, top, transform,
- * pointer-events, font-size, line-height) plus the chevron colour and the
- * default `transform` transition shared across every indicator.
+ * rule holds the chevron's typography (font-size), horizontal centring,
+ * colour, and the default `transform` transition. Vertical centring is done by
+ * tracking `line-height` to the stretched cell height (see {@link setHeight}),
+ * and position is owned by the framework's absolute layout (the indicator is an
+ * ordinary in-flow cell, no longer an overlay), so neither lives here.
  *
  * Idempotent and module-local; safe across hot reloads.
  */
@@ -34,13 +43,9 @@ function ensureAccordionIndicatorClassRule(): void {
         scope:  "class",
         name:   "AccordionIndicator",
         styles: {
-            position:      "absolute",
-            right:         "10px",
-            top:           "50%",
-            transform:     "translateY(-50%)",
+            textAlign:     "center",
             pointerEvents: "none",
             fontSize:      "10px",
-            lineHeight:    "1",
             color:         "var(--ts-ui-accordion-indicator-color, rgb(100,100,100))",
             transition:    "transform 200ms ease",
         },
@@ -50,14 +55,14 @@ function ensureAccordionIndicatorClassRule(): void {
 /**
  * The expand/collapse chevron used by {@link AccordionHeader}.
  *
- * Lives as a side-loaded overlay on the host button element (its
- * `position:absolute` plus the host's Fit layout keep it out of the button's
- * content flow). When expanded, a per-instance state rule rotates the chevron
- * 90° via a CSS class toggle on `.expanded`.
+ * An ordinary in-flow cell in the header's HBox row (positioned by the
+ * framework's absolute layout like any other Component). When expanded, a
+ * per-instance state rule rotates the chevron 90° via a CSS class toggle on
+ * `.expanded`.
  *
- * The static overlay geometry lives in a shared `.AccordionIndicator` class
- * rule registered on first use. The per-instance `.expanded` rotation rule is
- * allocated through `Component.createStyleRule` so the framework
+ * The static typography + centring lives in a shared `.AccordionIndicator`
+ * class rule registered on first use. The per-instance `.expanded` rotation
+ * rule is allocated through `Component.createStyleRule` so the framework
  * materialises it at render time.
  *
  * @category Components
@@ -65,6 +70,7 @@ function ensureAccordionIndicatorClassRule(): void {
 class AccordionIndicator extends Component<AccordionIndicatorOptions> {
 
     declare private _expanded: boolean;
+    private _lineHeight: number | null = null;
 
     /**
      * Constructs an accordion indicator. The chevron starts collapsed unless
@@ -76,12 +82,49 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
     constructor(options?: AccordionIndicatorOptions) {
         ensureAccordionIndicatorClassRule();
 
-        super({ tag: "span", ...(options ?? {}) });
+        super({ tag: "span", preferredSize: { width: CHEVRON_CELL_WIDTH, height: CHEVRON_CELL_WIDTH }, ...(options ?? {}) });
 
         this._expanded ??= false;
 
         const expandedRule = this.createStyleRule(".expanded");
-        expandedRule.set("transform", "translateY(-50%) rotate(90deg)");
+        expandedRule.set("transform", "rotate(90deg)");
+    }
+
+    /**
+     * Sets the chevron's `line-height`. Vertical centring relies on a single
+     * text line whose `line-height` equals the element's height, so
+     * {@link setHeight} keeps this in lockstep with the stretched cell height —
+     * the same idiom row renderers use to centre a glyph in a sized row.
+     *
+     * @param px - Line height in pixels.
+     *
+     * @returns This indicator, for method chaining.
+     */
+    private setLineHeight(px: number): this {
+        if (this._lineHeight === px) {
+            return this;
+        }
+
+        this._lineHeight = px;
+        this.setElementCSSRule("lineHeight", px + "px");
+
+        return this;
+    }
+
+    /**
+     * Sets the chevron's height and re-syncs `line-height` to it so the single
+     * chevron glyph stays vertically centred at whatever height the header's
+     * stretching HBox assigns.
+     *
+     * @param height - Height in pixels.
+     *
+     * @returns This indicator, for method chaining.
+     */
+    setHeight(height: number): this {
+        super.setHeight(height);
+        this.setLineHeight(height);
+
+        return this;
     }
 
     /**
