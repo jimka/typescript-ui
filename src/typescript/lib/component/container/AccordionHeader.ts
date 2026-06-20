@@ -70,6 +70,7 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
     declare private _indicator: AccordionIndicator;
     declare private _title:     Button;
     declare private _toolGroup: Component;
+    private _tools: Component[] = [];
     private _chevronSide: "left" | "right" = "right";
 
     /**
@@ -188,6 +189,65 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
      */
     getChevronSide(): "left" | "right" {
         return this._chevronSide;
+    }
+
+    /**
+     * Adds a tool to this header's tool group (the cell between the title and the
+     * trailing chevron). Used both for per-section tools and for the manager's
+     * re-parented global tool. A no-op if the tool is already present.
+     *
+     * @param tool - The tool component to add.
+     *
+     * @returns This header, for method chaining.
+     */
+    addTool(tool: Component): this {
+        if (this._tools.includes(tool)) {
+            return this;
+        }
+
+        this._tools.push(tool);
+        this._toolGroup.addComponent(tool);
+        this.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Removes a previously-added tool from this header's tool group. A no-op if
+     * the tool is not present.
+     *
+     * @param tool - The tool component to remove.
+     *
+     * @returns This header, for method chaining.
+     */
+    removeTool(tool: Component): this {
+        const index = this._tools.indexOf(tool);
+
+        if (index === -1) {
+            return this;
+        }
+
+        this._tools.splice(index, 1);
+        this._toolGroup.removeComponent(tool);
+        this.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Shows or hides the tool group as a whole. The manager calls this to
+     * implement hover-reveal: hidden at rest, shown while the header is hovered.
+     * Uses `display` (not `visibility`) so a hidden group reserves no width and
+     * the flex-weighted title fills the row.
+     *
+     * @param revealed - True to show the tool group, false to hide it.
+     *
+     * @returns This header, for method chaining.
+     */
+    setToolsRevealed(revealed: boolean): this {
+        this._toolGroup.setDisplayed(revealed);
+
+        return this;
     }
 
     /**

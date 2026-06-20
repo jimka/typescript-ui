@@ -59,6 +59,7 @@ export interface AccordionOptions extends LayoutManagerOptions {
     headerHeight?:      number;
     animationDuration?: number;
     chevronSide?:       "left" | "right";
+    toolsVisibility?:   "always" | "hover";
     /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
@@ -108,6 +109,9 @@ class Accordion extends LayoutManager {
     private _headerHeight: number = 28;
     private _animationDuration: number = 200;
     private _chevronSide: "left" | "right" = "right";
+    private _tools: Component[] = [];
+    private _toolsVisibility: "always" | "hover" = "hover";
+    private _hoveredHeader: number = -1;
     private _listeners: ListenerBag<AccordionEvent> = new ListenerBag<AccordionEvent>();
 
     constructor(options?: AccordionOptions) {
@@ -140,6 +144,10 @@ class Accordion extends LayoutManager {
 
         if (options.chevronSide !== undefined) {
             this.setChevronSide(options.chevronSide);
+        }
+
+        if (options.toolsVisibility !== undefined) {
+            this.setToolsVisibility(options.toolsVisibility);
         }
 
         if (options.listeners !== undefined) {
@@ -271,6 +279,183 @@ class Accordion extends LayoutManager {
         this.getContainer()?.scheduleLayout();
 
         return this;
+    }
+
+    /**
+     * Returns when per-section tools are shown.
+     *
+     * @returns `"always"` or `"hover"`.
+     */
+    getToolsVisibility(): "always" | "hover" {
+        return this._toolsVisibility;
+    }
+
+    /**
+     * Sets when per-section tools are shown. `"hover"` (the default) reveals a
+     * header's tools only while it is hovered; `"always"` keeps them visible.
+     * Global tools (see {@link addTool}) always follow hover regardless of this
+     * setting, since a single global instance can only sit in the hovered header.
+     *
+     * @param mode - `"always"` or `"hover"`.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setToolsVisibility(mode: "always" | "hover"): this {
+        this._toolsVisibility = mode;
+
+        // Re-apply the resting state to every header; a subsequent hover
+        // corrects the currently-hovered one.
+        for (const header of this._headers) {
+            header.setToolsRevealed(mode === "always");
+        }
+
+        return this;
+    }
+
+    /**
+     * Registers a global tool shown on whichever header is currently hovered.
+     * A single `Component` is one DOM node, so a global tool cannot appear on
+     * every header at once — it is re-parented into the hovered header and
+     * therefore follows hover/active visibility. Mirrors `Tab.addTool`.
+     *
+     * @param button - The tool component to register globally.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    addTool(button: Component): this {
+        if (this._tools.includes(button)) {
+            return this;
+        }
+
+        this._tools.push(button);
+
+        // If a header is hovered right now, show the new tool there immediately.
+        if (this._hoveredHeader !== -1) {
+            this._headers[this._hoveredHeader]?.addTool(button);
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Removes a previously-registered global tool.
+     *
+     * @param button - The tool component to remove.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    removeTool(button: Component): this {
+        const index = this._tools.indexOf(button);
+
+        if (index === -1) {
+            return this;
+        }
+
+        this._tools.splice(index, 1);
+
+        if (this._hoveredHeader !== -1) {
+            this._headers[this._hoveredHeader]?.removeTool(button);
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Adds the global tools to the header at `index` and, in hover mode, reveals
+     * its tool group. Called when the pointer enters a header.
+     *
+     * @param index - The header being entered.
+     */
+    private revealHeaderTools(index: number): void {
+        const header = this._headers[index];
+
+        if (!header) {
+            return;
+        }
+
+        for (const tool of this._tools) {
+            header.addTool(tool);
+        }
+
+        if (this._toolsVisibility === "hover") {
+            header.setToolsRevealed(true);
+        }
+    }
+
+    /**
+     * Removes the global tools from the header at `index` and, in hover mode,
+     * hides its tool group again. Called when the pointer leaves a header.
+     *
+     * @param index - The header being left.
+     */
+    private hideHeaderTools(index: number): void {
+        const header = this._headers[index];
+
+        if (!header) {
+            return;
+        }
+
+        for (const tool of this._tools) {
+            header.removeTool(tool);
+        }
+
+        if (this._toolsVisibility === "hover") {
+            header.setToolsRevealed(false);
+        }
+    }
+
+    /**
+     * Handles the pointer entering a header (filtered to genuine enters, not
+     * moves between the header's own descendants): relocates the global tools
+     * onto it and reveals its tools, moving them off the previously hovered
+     * header first.
+     *
+     * @param index - The header receiving the pointer.
+     * @param e - The originating `mouseover` event.
+     */
+    private onHeaderHoverEnter(index: number, e: MouseEvent): void {
+        const element = this._headers[index]?.getElement();
+
+        if (element && e.relatedTarget instanceof Node && DOM.source.contains(element, DOM.source.intern(e.relatedTarget))) {
+            return;
+        }
+
+        if (this._hoveredHeader === index) {
+            return;
+        }
+
+        if (this._hoveredHeader !== -1) {
+            this.hideHeaderTools(this._hoveredHeader);
+        }
+
+        this._hoveredHeader = index;
+        this.revealHeaderTools(index);
+    }
+
+    /**
+     * Handles the pointer leaving a header (filtered to genuine exits): removes
+     * the global tools and hides the tools again.
+     *
+     * @param index - The header losing the pointer.
+     * @param e - The originating `mouseout` event.
+     */
+    private onHeaderHoverLeave(index: number, e: MouseEvent): void {
+        const element = this._headers[index]?.getElement();
+
+        if (element && e.relatedTarget instanceof Node && DOM.source.contains(element, DOM.source.intern(e.relatedTarget))) {
+            return;
+        }
+
+        if (this._hoveredHeader !== index) {
+            return;
+        }
+
+        this.hideHeaderTools(index);
+        this._hoveredHeader = -1;
     }
 
     /**
@@ -560,6 +745,13 @@ class Accordion extends LayoutManager {
         Event.addListener(header, 'click', () => this.onHeaderClicked(index));
         Event.addListener(title, 'keydown', (e: KeyboardEvent) => this.onHeaderKeyDown(e, index));
 
+        // Hover drives tool visibility: per-section tools reveal on hover (in
+        // hover mode) and the single global tool set re-parents onto the hovered
+        // header. Subtree listeners catch hover anywhere in the header; the
+        // handlers filter intra-header moves via relatedTarget.
+        Event.addSubtreeListener(header, 'mouseover', (e: MouseEvent) => this.onHeaderHoverEnter(index, e));
+        Event.addSubtreeListener(header, 'mouseout', (e: MouseEvent) => this.onHeaderHoverLeave(index, e));
+
         const wrapper = new Component();
 
         wrapper.setOverflow('hidden');
@@ -586,6 +778,15 @@ class Accordion extends LayoutManager {
 
         wrapper.getAria().setRole('region');
         wrapper.getAria().setLabelledBy(title.getId());
+
+        for (const tool of constraints?.tools ?? []) {
+            header.addTool(tool);
+        }
+
+        // In hover mode a header's tools stay hidden until the pointer enters.
+        if (this._toolsVisibility === "hover") {
+            header.setToolsRevealed(false);
+        }
     }
 
     /**

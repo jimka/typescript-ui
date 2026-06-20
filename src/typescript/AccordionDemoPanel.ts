@@ -12,10 +12,12 @@ import { circle_user } from '@jimka/typescript-ui/glyphs/solid/circle_user';
 import { gear } from '@jimka/typescript-ui/glyphs/solid/gear';
 import { clock_rotate_left } from '@jimka/typescript-ui/glyphs/solid/clock_rotate_left';
 import { circle_info } from '@jimka/typescript-ui/glyphs/solid/circle_info';
+import { pen_to_square } from '@jimka/typescript-ui/glyphs/solid/pen_to_square';
+import { ellipsis_vertical } from '@jimka/typescript-ui/glyphs/solid/ellipsis_vertical';
 
-// Register the section-header glyphs once at module load so the demo's
+// Register the section-header and tool glyphs once at module load so the demo's
 // AccordionPanel can reference them by registry name.
-Glyph.register(circle_user, gear, clock_rotate_left, circle_info);
+Glyph.register(circle_user, gear, clock_rotate_left, circle_info, pen_to_square, ellipsis_vertical);
 
 /**
  * Demonstrates the framework {@link AccordionPanel} (a Panel subclass that
@@ -60,7 +62,8 @@ class AccordionDemoPanel extends Panel {
         this.accordion = new AccordionPanel({
             sections: [
                 { label: "Personal Info", component: this.buildInfoSection(),        initiallyOpen: true, glyph: "circle-user"        },
-                { label: "Preferences",   component: this.buildPreferencesSection(),                       glyph: "gear"               },
+                { label: "Preferences",   component: this.buildPreferencesSection(),                       glyph: "gear",
+                  tools: [this.makeToolButton("pen-to-square", "Edit preferences")] },
                 { label: "Recent Items",  component: this.buildListSection(),                              glyph: "clock-rotate-left"  },
                 { label: "About",         component: this.buildAboutSection(),                             glyph: "circle-info"        },
             ],
@@ -90,6 +93,27 @@ class AccordionDemoPanel extends Panel {
             this.accordion.getAccordion().setSingleOpen(next);
             this.singleOpenToggle.setText(`Single-open: ${next ? 'ON' : 'OFF'}`);
         });
+
+        // A global tool follows the hovered header, appearing alongside that
+        // header's own (per-section) tools.
+        this.accordion.getAccordion().addTool(this.makeToolButton("ellipsis-vertical", "Global menu"));
+    }
+
+    /**
+     * Builds a small flat icon button for use as an accordion header tool. The
+     * action logs so the demo shows that a tool click does not toggle its
+     * section.
+     *
+     * @param glyph - Registry glyph name for the tool icon.
+     * @param label - Identifier logged when the tool is clicked.
+     * @returns The tool button.
+     */
+    private makeToolButton(glyph: string, label: string): Button {
+        const button = new Button({ glyph, flat: true });
+
+        button.on("action", () => { console.log(`Accordion tool clicked: ${label}`); });
+
+        return button;
     }
 
     /**
