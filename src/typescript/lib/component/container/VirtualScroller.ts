@@ -126,14 +126,16 @@ export class VirtualScroller {
     }
 
     /**
-     * Releases the two created container handles (clip box and rows container).
-     * The owning component calls this from its destructor — the `<div>`s are
-     * detached from the document along with the owner's root, so releasing their
-     * retained handles keeps the registry from pinning the detached nodes.
+     * Returns the two created container handles (clip box and rows container).
+     * The owning component tracks these via `trackHandle` so they are released
+     * with the owner — on its destructor or, for a discarded owner, on GC — and
+     * not left pinned in the registry. The scroller is not a `Component`, so it
+     * cannot track its own handles.
+     *
+     * @returns The scroller's owned element handles.
      */
-    dispose(): void {
-        DOM.sink.release(this._clipBox);
-        DOM.sink.release(this._rowsContainer);
+    ownedHandles(): readonly Handle[] {
+        return [this._clipBox, this._rowsContainer];
     }
 
     /**

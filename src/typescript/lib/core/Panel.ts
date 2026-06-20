@@ -572,6 +572,9 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         });
 
         DOM.sink.appendChild(element, overlay);
+        // Track the panel-owned overlay so a discarded panel releases it on GC
+        // even if removeScrollShadows never runs; untracked there on eager removal.
+        this.trackHandle(overlay);
         this._shadowOverlay = overlay;
     }
 
@@ -588,6 +591,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         if (this._shadowOverlay) {
             DOM.sink.removeElement(this._shadowOverlay);
+            this.untrackHandle(this._shadowOverlay);
             DOM.sink.release(this._shadowOverlay);
             this._shadowOverlay = null;
 

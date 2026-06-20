@@ -956,18 +956,6 @@ class Tree extends Component<TreeOptions> {
     }
 
     /**
-     * Releases the {@link VirtualScroller}'s retained container handles when the
-     * tree is destroyed, so its clip-box and rows-container nodes are not pinned
-     * in the registry after teardown.
-     */
-    protected override destructor(): void {
-        super.destructor();
-
-        this._scroller?.dispose();
-        this._scroller = null;
-    }
-
-    /**
      * Constructs the {@link VirtualScroller} and wires click and keyboard listeners.
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
@@ -981,6 +969,12 @@ class Tree extends Component<TreeOptions> {
         }
 
         this._scroller = new VirtualScroller(this, el, () => this._renderWindow());
+
+        // Track the scroller's created container handles so they are released
+        // with this tree (on destructor or GC); the scroller is not a Component.
+        for (const handle of this._scroller.ownedHandles()) {
+            this.trackHandle(handle);
+        }
 
         Event.addSubtreeListener(this, "click", (e: MouseEvent) => {
             this._handleClick(e);

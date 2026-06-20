@@ -117,4 +117,34 @@ describe('component dispose releases every retained handle', () => {
 
         document.body.removeChild(host);
     });
+
+    // The discard path: a component removed via removeComponent detaches but
+    // cannot release (releasing there would break moveComponent), so release is
+    // keyed on the Component being garbage-collected. Gated on --expose-gc; the
+    // normal suite can't force GC, so it self-skips. Run:
+    //   node --expose-gc ./node_modules/vitest/vitest.mjs run \
+    //     --no-file-parallelism tests/dom/handle-registry.test.ts
+    it('releases a discarded component root once it is garbage-collected', async () => {
+        const gc = (globalThis as { gc?: () => void }).gc;
+
+        if (!gc) {
+            return;   // --expose-gc absent; covered by the eager-destructor test above
+        }
+
+        const before = _handleRegistrySize();
+
+        let c: Component | null = new Component({});
+        c.getElement(true);   // render → strongly retains the (detached) root
+
+        expect(_handleRegistrySize()).toBeGreaterThan(before);
+
+        c = null;             // discard: drop the only reference, no destructor
+
+        for (let pass = 0; pass < 10; pass += 1) {
+            gc();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+
+        expect(_handleRegistrySize()).toBe(before);
+    });
 });

@@ -208,9 +208,6 @@ class Glyph extends Component<GlyphOptions> {
     declare private _glyphAnimation:         GlyphAnimation | null;
     declare private _glyphAnimationDuration: number;
     declare private _animatedRef:            WeakRef<Glyph> | null;
-    // The retained `<use>` handle for an SVG-mode glyph; released in destructor.
-    // `declare` (no initializer) so a char-mode glyph leaves it undefined.
-    declare private _useHandle:              Handle | null;
 
     /**
      * Registers one or more glyph definitions so they can be instantiated by
@@ -649,27 +646,14 @@ class Glyph extends Component<GlyphOptions> {
             DOM.sink.apply(use, { setAttr: { href: "#" + GLYPH_SYMBOL_ID_PREFIX + this._name } });
             DOM.sink.appendChild(svg, use);
 
-            this._useHandle = use;
+            // Track the `<use>` child so it is released with the glyph (the root
+            // `svg` is tracked by Component.render). Released on destructor or GC.
+            this.trackHandle(use);
 
             return svg;
         }
 
         return super.createRootElement();
-    }
-
-    /**
-     * Releases the retained `<use>` handle of an SVG-mode glyph when the glyph
-     * is destroyed. The `<use>` is a root-owned child removed from the DOM with
-     * the root by `super.destructor()`; releasing its handle keeps the registry
-     * from pinning the detached node. No-op for a char-mode glyph.
-     */
-    protected override destructor(): void {
-        super.destructor();
-
-        if (this._useHandle) {
-            DOM.sink.release(this._useHandle);
-            this._useHandle = null;
-        }
     }
 
     /**

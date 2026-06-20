@@ -293,25 +293,13 @@ class Header extends Component {
                 "borderLeft": "1px solid var(--ts-ui-table-resize-handle-color, rgba(0, 0, 0, 0.2))",
             } });
             DOM.sink.appendChild(this.getElement(true)!, cover);
+            // Track the header-owned cover so it is released with the header
+            // (on destructor or GC), not left pinned in the registry.
+            this.trackHandle(cover);
             this._scrollbarCover = cover;
         }
 
         return this._scrollbarCover;
-    }
-
-    /**
-     * Releases the lazily-created scrollbar-cover handle when the header is
-     * destroyed. The cover is a header-owned descendant element removed from
-     * the DOM along with the root by `super.destructor()`; releasing its
-     * retained handle here keeps the registry from pinning the detached node.
-     */
-    protected override destructor(): void {
-        super.destructor();
-
-        if (this._scrollbarCover !== null) {
-            DOM.sink.release(this._scrollbarCover);
-            this._scrollbarCover = null;
-        }
     }
 
     /**

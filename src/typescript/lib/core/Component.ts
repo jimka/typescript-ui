@@ -192,6 +192,27 @@ function flushPendingLayouts() {
  *
  * @category Core
  */
+/**
+ * Releases a discarded component's retained handles once the `Component`
+ * instance is garbage-collected — restoring the pre-handle lifecycle where a
+ * node lived exactly as long as its `Component`.
+ *
+ * @remarks A component removed via `removeComponent` (the shared primitive that
+ * `moveComponent` is built on) detaches its element but cannot release the
+ * handle there — releasing would break a move, which re-inserts the same
+ * instance. Reachability is the move-vs-discard signal: a moved component stays
+ * referenced; a discarded one becomes unreachable. So the release is keyed on GC
+ * of the `Component`. The held value is the owned-handle array (numbers only,
+ * with no back-reference to the `Component`, so the `Component` stays
+ * collectable). `release` is idempotent, so a handle already freed by the eager
+ * `destructor` or an explicit dispose is a harmless no-op here.
+ */
+const _componentFinalizer = new FinalizationRegistry<readonly Handle[]>((handles) => {
+    for (const handle of handles) {
+        DOM.sink.release(handle);
+    }
+});
+
 class Component<TOptions extends ComponentOptions = ComponentOptions> extends BaseObject {
 
     // Structural state that is NOT option-backed — runtime references, render
@@ -200,6 +221,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private _components: Array<Component>;
 
     private _element              : Handle | undefined;
+    // Handles for every element this component created — root, clip / content
+    // frames, and subclass-created children (registered via trackHandle).
+    // Released eagerly in destructor, or by _componentFinalizer when a discarded
+    // component is garbage-collected. Safe with a plain initializer: this is a
+    // base-class field, set before the constructor body runs applyOptions, so no
+    // cascade-dispatched render can clobber it.
+    private readonly _ownedHandles : Handle[]               = [];
     private _tag                  : string                  = "div";
     private _attributes           : Map<String, String>;
     private _boxSizing            : string | null;
@@ -515,19 +543,60 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         // Tear any active clip / content frame down first (mirroring
-        // removeElement) so each frame's created wrapper handle is released
-        // rather than left pinned in the registry after teardown.
+        // removeElement) so each frame's wrapper is removed from the DOM and its
+        // handle untracked and released.
         this.clearClipFrame();
         this.clearContentFrame();
 
         let element = this.getElement();
         if (element) {
             DOM.sink.removeElement(element);
-            // Release the root handle's registry entry so a retained (created)
-            // root is not pinned after teardown; clear the cache so a stale
-            // handle is never resolved. Idempotent for an interned (weak) root.
-            DOM.sink.release(element);
-            this._element = undefined;
+        }
+
+        // Eagerly release every remaining tracked handle (root and any
+        // subclass-created children) and disarm the GC finalizer, then clear the
+        // cache so a stale handle is never resolved.
+        _componentFinalizer.unregister(this);
+
+        for (const handle of this._ownedHandles) {
+            DOM.sink.release(handle);
+        }
+
+        this._ownedHandles.length = 0;
+        this._element             = undefined;
+    }
+
+    /**
+     * Records a handle for an element this component created so it is released
+     * on teardown — eagerly by {@link destructor}, or by the module finalizer
+     * when a discarded component is garbage-collected. The first tracked handle
+     * arms the finalizer. Subclasses call this at every element-creation site.
+     *
+     * @param handle - The created element handle.
+     * @returns The same handle, for chaining at the creation site.
+     */
+    protected trackHandle(handle: Handle): Handle {
+        if (this._ownedHandles.length === 0) {
+            _componentFinalizer.register(this, this._ownedHandles, this);
+        }
+
+        this._ownedHandles.push(handle);
+
+        return handle;
+    }
+
+    /**
+     * Stops tracking a handle that has already been released through an explicit
+     * dispose path (a disposed frame, a removed scroll-shadow overlay), so the
+     * owned-handle set does not accumulate stale entries across repeated toggles.
+     *
+     * @param handle - The handle to drop from the tracked set.
+     */
+    protected untrackHandle(handle: Handle): void {
+        const idx = this._ownedHandles.indexOf(handle);
+
+        if (idx !== -1) {
+            this._ownedHandles.splice(idx, 1);
         }
     }
 
@@ -747,6 +816,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private createFrame(style: InlineStyle, base: Record<string, string>): Handle {
         const frame = DOM.sink.createElement("div");
 
+        this.trackHandle(frame);
         style.attach(frame);
         style.setMany({ position: "absolute", ...base });
 
@@ -766,6 +836,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     private disposeFrame(frame: Handle): InlineStyle {
         DOM.sink.removeElement(frame);
+        this.untrackHandle(frame);
         DOM.sink.release(frame);
 
         return new InlineStyle();
@@ -4562,6 +4633,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     protected render(): Handle {
         let element = this.createRootElement();
 
+        this.trackHandle(element);
         this.init(element);
 
         return element;

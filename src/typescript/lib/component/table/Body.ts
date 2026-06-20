@@ -477,18 +477,6 @@ class Body extends Component {
     }
 
     /**
-     * Releases the {@link VirtualScroller}'s retained container handles when the
-     * body is destroyed, so its clip-box and rows-container nodes are not pinned
-     * in the registry after teardown.
-     */
-    protected override destructor(): void {
-        super.destructor();
-
-        this._scroller?.dispose();
-        this._scroller = null;
-    }
-
-    /**
      * Initializes the body element, constructs the {@link VirtualScroller}, and
      * wires keyboard and focus listeners.
      *
@@ -509,6 +497,12 @@ class Body extends Component {
                 this.emit("horizontalscroll", this._scroller.getScrollX());
             }
         });
+
+        // Track the scroller's created container handles so they are released
+        // with this body (on destructor or GC); the scroller is not a Component.
+        for (const handle of this._scroller.ownedHandles()) {
+            this.trackHandle(handle);
+        }
 
         Event.addListener(this, "focus", () => {
             this._updateActiveDescendant();
