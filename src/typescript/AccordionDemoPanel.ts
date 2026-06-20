@@ -28,6 +28,7 @@ class AccordionDemoPanel extends Panel {
 
     private accordion:        AccordionPanel;
     private singleOpenToggle: Button;
+    private compactToggle:    Button;
 
     constructor() {
         super();
@@ -55,6 +56,9 @@ class AccordionDemoPanel extends Panel {
 
         this.singleOpenToggle = new Button("Single-open: OFF", { preferredSize: { width: 160, height: 28 } });
         toolbar.addComponent(this.singleOpenToggle);
+
+        this.compactToggle = new Button("Compact: OFF", { preferredSize: { width: 130, height: 28 } });
+        toolbar.addComponent(this.compactToggle);
 
         this.addComponent(toolbar);
 
@@ -94,6 +98,14 @@ class AccordionDemoPanel extends Panel {
             this.singleOpenToggle.setText(`Single-open: ${next ? 'ON' : 'OFF'}`);
         });
 
+        this.compactToggle.on("action", () => {
+            const next = !this.accordion.getAccordion().isCompact();
+
+            this.accordion.getAccordion().setCompact(next);
+            this.compactToggle.setText(`Compact: ${next ? 'ON' : 'OFF'}`);
+            this.doLayout();
+        });
+
         // A global tool follows the hovered header, appearing alongside that
         // header's own (per-section) tools.
         this.accordion.getAccordion().addTool(this.makeToolButton("ellipsis-vertical", "Global menu"));
@@ -109,7 +121,9 @@ class AccordionDemoPanel extends Panel {
      * @returns The tool button.
      */
     private makeToolButton(glyph: string, label: string): Button {
-        const button = new Button({ glyph, flat: true });
+        // Compact glyph-only buttons so the tool fits inside the (compact or
+        // normal) header height rather than inflating the header row.
+        const button = new Button({ glyph, flat: true, compact: true });
 
         button.on("action", () => { console.log(`Accordion tool clicked: ${label}`); });
 

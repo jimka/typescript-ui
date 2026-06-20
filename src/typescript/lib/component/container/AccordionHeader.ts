@@ -31,6 +31,15 @@ const HEADER_PADDING_RIGHT: number = 10;
 const HEADER_CELL_SPACING: number = 4;
 
 /**
+ * Compact-mode counterparts of the header's horizontal padding and cell gap,
+ * in pixels. Tighter than the defaults so a compact accordion reads denser
+ * without changing the text or glyph sizes.
+ */
+const COMPACT_PADDING_LEFT:  number = 6;
+const COMPACT_PADDING_RIGHT: number = 6;
+const COMPACT_CELL_SPACING:  number = 2;
+
+/**
  * Construction-time options for {@link AccordionHeader}.
  *
  * @category Components
@@ -42,6 +51,8 @@ export interface AccordionHeaderOptions extends ComponentOptions {
     chevronSide?: "left" | "right";
     /** Optional registry glyph name shown leading the title label. */
     glyph?:       string;
+    /** Whether the header uses compact (tighter) padding. Defaults to `false`. */
+    compact?:     boolean;
 }
 
 /**
@@ -91,9 +102,9 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
 
         // Stretching so each cell fills the header height and centres its own
         // content (the title button and tool buttons centre vertically; the
-        // chevron centres via its own rule).
+        // chevron centres via its own rule). Padding + cell gap are applied by
+        // `setCompact` at the end of construction.
         this.setLayoutManager(new HBox({ spacing: HEADER_CELL_SPACING, stretching: true }));
-        this.setInsets(new Insets(0, HEADER_PADDING_RIGHT, 0, HEADER_PADDING_LEFT));
 
         // Flex weight on the title makes the whole left region clickable while
         // the label stays left (anchor WEST); tools/chevron keep their preferred
@@ -109,6 +120,33 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
         this.placeIndicator();
 
         this.setExpanded(options?.expanded ?? false);
+        this.setCompact(options?.compact ?? false);
+    }
+
+    /**
+     * Toggles compact padding: tighter horizontal insets and a smaller inter-cell
+     * gap so the header reads denser. The header *height* is driven by the
+     * owning [`Accordion`](/api/layout/classes/Accordion); this method only
+     * affects the row's own padding.
+     *
+     * @param value - True for compact padding, false for the defaults.
+     *
+     * @returns This header, for method chaining.
+     */
+    setCompact(value: boolean): this {
+        const left  = value ? COMPACT_PADDING_LEFT  : HEADER_PADDING_LEFT;
+        const right = value ? COMPACT_PADDING_RIGHT : HEADER_PADDING_RIGHT;
+
+        this.setInsets(new Insets(0, right, 0, left));
+        (this.getLayoutManager() as HBox).setComponentSpacing(value ? COMPACT_CELL_SPACING : HEADER_CELL_SPACING);
+
+        // Compact the title button too: its tighter insets lower the header's
+        // content-min height so the compact header height can actually take
+        // effect (otherwise the title's min floors the row taller).
+        this._title?.setCompact(value);
+        this.scheduleLayout();
+
+        return this;
     }
 
     /**

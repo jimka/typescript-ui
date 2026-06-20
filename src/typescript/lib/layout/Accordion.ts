@@ -40,6 +40,13 @@ export type AccordionEvent = "sectiontoggle";
 const ACCORDION_EASING: string = "cubic-bezier(0.4, 0, 0.6, 1)";
 
 /**
+ * Header height in pixels used by {@link Accordion} compact mode. Tighter than
+ * the default 28px so a stack of sections reads denser; applied only when the
+ * consumer has not pinned an explicit header height via `setHeaderHeight`.
+ */
+const COMPACT_HEADER_HEIGHT: number = 22;
+
+/**
  * Callback invoked when a section is opened or closed.
  *
  * @param index - Zero-based index of the toggled section.
@@ -60,6 +67,7 @@ export interface AccordionOptions extends LayoutManagerOptions {
     animationDuration?: number;
     chevronSide?:       "left" | "right";
     toolsVisibility?:   "always" | "hover";
+    compact?:           boolean;
     /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
@@ -107,6 +115,8 @@ class Accordion extends LayoutManager {
     private _openState: boolean[] = [];
     private _singleOpen: boolean = false;
     private _headerHeight: number = 28;
+    private _headerHeightExplicit: boolean = false;
+    private _compact: boolean = false;
     private _animationDuration: number = 200;
     private _chevronSide: "left" | "right" = "right";
     private _tools: Component[] = [];
@@ -148,6 +158,10 @@ class Accordion extends LayoutManager {
 
         if (options.toolsVisibility !== undefined) {
             this.setToolsVisibility(options.toolsVisibility);
+        }
+
+        if (options.compact !== undefined) {
+            this.setCompact(options.compact);
         }
 
         if (options.listeners !== undefined) {
@@ -221,12 +235,58 @@ class Accordion extends LayoutManager {
     }
 
     /**
-     * Sets the height of each section header in pixels.
+     * Sets the height of each section header in pixels. Marks the height as
+     * explicitly set, so {@link setCompact} no longer overrides it with the
+     * compact default.
      *
      * @param height - Height in pixels.
      */
     setHeaderHeight(height: number): this {
         this._headerHeight = height;
+        this._headerHeightExplicit = true;
+
+        return this;
+    }
+
+    /**
+     * Returns the header height actually used for layout: the compact default
+     * when {@link isCompact} is on and no explicit height was set, otherwise the
+     * configured {@link getHeaderHeight}.
+     *
+     * @returns The effective header height in pixels.
+     */
+    private effectiveHeaderHeight(): number {
+        return this._compact && !this._headerHeightExplicit
+            ? COMPACT_HEADER_HEIGHT
+            : this._headerHeight;
+    }
+
+    /**
+     * Returns whether compact (denser) mode is active.
+     *
+     * @returns True if compact mode is on.
+     */
+    isCompact(): boolean {
+        return this._compact;
+    }
+
+    /**
+     * Sets compact (denser) mode: a smaller default header height (unless an
+     * explicit height was set) plus tighter header padding and a smaller
+     * chevron. Applies to existing headers immediately.
+     *
+     * @param value - True to enable compact mode.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setCompact(value: boolean): this {
+        this._compact = value;
+
+        for (const header of this._headers) {
+            header.setCompact(value);
+        }
+
+        this.getContainer()?.scheduleLayout();
 
         return this;
     }
@@ -626,7 +686,7 @@ class Accordion extends LayoutManager {
                 continue;
             }
 
-            totalHeight += this._headerHeight;
+            totalHeight += this.effectiveHeaderHeight();
 
             // openState is populated lazily in doLayout; fall back to the
             // constraint's initiallyOpen flag so getPreferredSize() is correct
@@ -683,7 +743,7 @@ class Accordion extends LayoutManager {
                 continue;
             }
 
-            totalHeight += this._headerHeight;
+            totalHeight += this.effectiveHeaderHeight();
 
             // openState is populated lazily in doLayout; fall back to the
             // constraint's initiallyOpen flag so getMinSize() is correct even
@@ -724,7 +784,7 @@ class Accordion extends LayoutManager {
         const label = constraints?.label ?? component.getId();
         const initiallyOpen = constraints?.initiallyOpen ?? false;
 
-        const header = new AccordionHeader(label, { chevronSide: this._chevronSide, glyph: constraints?.glyph ?? undefined });
+        const header = new AccordionHeader(label, { chevronSide: this._chevronSide, glyph: constraints?.glyph ?? undefined, compact: this._compact });
 
         header.setAnimationTiming(this._animationDuration, ACCORDION_EASING);
 
@@ -882,10 +942,10 @@ class Accordion extends LayoutManager {
             header.setX(insets.getLeft());
             header.setY(y);
             header.setWidth(containerWidth);
-            header.setHeight(this._headerHeight);
+            header.setHeight(this.effectiveHeaderHeight());
             header.doLayout();
 
-            y += this._headerHeight;
+            y += this.effectiveHeaderHeight();
 
             // Open sections take their preferred height, shrunk toward their min
             // by the container-driven ratio so the accordion fits its host.
@@ -957,7 +1017,7 @@ class Accordion extends LayoutManager {
                 continue;
             }
 
-            headerTotal += this._headerHeight;
+            headerTotal += this.effectiveHeaderHeight();
 
             if (!this._openState[i]) {
                 continue;
