@@ -522,11 +522,19 @@ class HBox extends BoxLayout {
      * `minSize.width > 0` guard prevents `LayoutManager._defaultMinSize =
      * {0,0}` from short-circuiting the chain into a 0 width (which would land a
      * layout-managed Table on width 0 even though no preferred size was set).
+     *
+     * The result is floored at the child's own min width: a child placed at
+     * `max(preferred, min)` (see {@link HBox.resolveChildWidth}) must reserve
+     * that same width in the fixed total, or a child reporting `preferred < min`
+     * (a `min ≤ preferred` invariant violation) would be under-reserved and push
+     * the weighted cells out, overflowing the row.
      */
     private preferredChildWidth(size: Size | null, minSize: Size | null): number {
-        return (size ? size.width : undefined)
+        const preferred = (size ? size.width : undefined)
             ?? (minSize && minSize.width > 0 ? minSize.width : undefined)
             ?? this._defaultComponentWidth;
+
+        return minSize ? Math.max(preferred, minSize.width) : preferred;
     }
 
     /**

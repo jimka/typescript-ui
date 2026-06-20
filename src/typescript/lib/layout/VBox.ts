@@ -438,11 +438,19 @@ class VBox extends BoxLayout {
      * `LayoutManager._defaultMinSize = {0,0}` from short-circuiting the chain
      * into a 0 height (which would land a layout-managed Table on a 0 height
      * even though no preferred size was set).
+     *
+     * The result is floored at the child's own min height: a child placed at
+     * `max(preferred, min)` (see {@link VBox.resolveChildHeight}) must reserve
+     * that same height in the fixed total, or a child reporting `preferred < min`
+     * (a `min ≤ preferred` invariant violation) would be under-reserved and push
+     * the weighted cells out, overflowing the column.
      */
     private preferredChildHeight(size: Size | null, minSize: Size | null): number {
-        return (size ? size.height : undefined)
+        const preferred = (size ? size.height : undefined)
             ?? (minSize && minSize.height > 0 ? minSize.height : undefined)
             ?? this._defaultComponentHeight;
+
+        return minSize ? Math.max(preferred, minSize.height) : preferred;
     }
 
     /**
