@@ -568,6 +568,41 @@ class Accordion extends LayoutManager {
     }
 
     /**
+     * Opens every section. In single-open mode only one section may be open at
+     * a time, so this opens the first section (a deterministic choice — the
+     * topmost becomes the visible one) rather than leaving whichever section
+     * `openSection` happened to settle on last.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    expandAll(): this {
+        if (this._singleOpen) {
+            this.openSection(0);
+
+            return this;
+        }
+
+        for (let i = 0; i < this._openState.length; i++) {
+            this.openSection(i);
+        }
+
+        return this;
+    }
+
+    /**
+     * Closes every section.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    collapseAll(): this {
+        for (let i = 0; i < this._openState.length; i++) {
+            this.closeSection(i);
+        }
+
+        return this;
+    }
+
+    /**
      * Returns whether the section at the given index is currently open.
      *
      * @param index - Zero-based section index.

@@ -80,15 +80,11 @@ class AccordionDemoPanel extends Panel {
 
         // --- Wire controls ---
         openAllBtn.on("action", () => {
-            for (let i = 0; i < 4; i++) {
-                this.accordion.getAccordion().openSection(i);
-            }
+            this.accordion.getAccordion().expandAll();
         });
 
         closeAllBtn.on("action", () => {
-            for (let i = 0; i < 4; i++) {
-                this.accordion.getAccordion().closeSection(i);
-            }
+            this.accordion.getAccordion().collapseAll();
         });
 
         this.singleOpenToggle.on("action", () => {
