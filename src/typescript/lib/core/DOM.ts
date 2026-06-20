@@ -302,7 +302,12 @@ function applyPatchTo(element: HTMLElement, patch: ElementPatch): void {
 
     if (patch.addClass) {
         for (const name of patch.addClass) {
-            element.classList.add(name);
+            // Skip empty tokens: `classList.add("")` throws a SyntaxError. A
+            // stray empty class name (e.g. an anonymous class whose
+            // `constructor.name` is "") must not abort the whole patch.
+            if (name) {
+                element.classList.add(name);
+            }
         }
     }
 
