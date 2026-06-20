@@ -76,6 +76,351 @@ export interface OffsetSize {
 }
 
 /**
+ * Opaque, serialisable element reference. A branded `number`, so a raw number
+ * cannot be passed where a handle is expected and the reference forwards across
+ * a worker boundary as plain data. The live `Node` it stands for never escapes
+ * the seam — every sink/source method resolves the handle internally.
+ *
+ * @category Core
+ */
+export type Handle = number & { readonly __handleBrand: unique symbol };
+
+/**
+ * A batch of mutations applied to a single element with one handle resolve.
+ * Every field is plain serialisable data — no live element, no function — so a
+ * worker transport forwards an entire patch as one `postMessage`.
+ *
+ * Application order is fixed: styles first, then class removals before
+ * additions (so a `removeClass` + `addClass` of the same name lands "on"),
+ * attribute removals before sets, then dataset / text / scroll.
+ *
+ * @category Core
+ */
+export interface ElementPatch {
+    /** Inline style writes. `null` removes the property. camelCase or `--custom`. */
+    style?:       Readonly<Record<string, string | null>>;
+    /** Classes to remove (applied before {@link ElementPatch.addClass}). */
+    removeClass?: readonly string[];
+    /** Classes to add. */
+    addClass?:    readonly string[];
+    /** Classes to force on/off. */
+    toggleClass?: Readonly<Record<string, boolean>>;
+    /** Attributes to remove (applied before {@link ElementPatch.setAttr}). */
+    removeAttr?:  readonly string[];
+    /** Attributes to set. */
+    setAttr?:     Readonly<Record<string, string>>;
+    /** `data-*` writes (camelCase keys). */
+    dataset?:     Readonly<Record<string, string>>;
+    /** Text content. */
+    text?:        string;
+    /** Native horizontal scroll offset. */
+    scrollLeft?:  number;
+    /** Native vertical scroll offset. */
+    scrollTop?:   number;
+}
+
+/**
+ * Canonicalising handle registry — the lone holder of live DOM references in
+ * the handle design. Maps a handle to its node (forward) and a node back to its
+ * handle (reverse) so a node is never assigned two handles; that reverse map is
+ * what makes handle equality mirror element equality.
+ *
+ * Two minting modes draw the leak-safety line. {@link HandleRegistry.retain} is
+ * for nodes the framework owns (it created them): a strong forward entry,
+ * released explicitly at the element's dispose site. {@link HandleRegistry.intern}
+ * is for browser-supplied nodes the live DOM already owns: a weak forward entry
+ * (`WeakRef`) plus a finalizer that drops the handle once the node is collected,
+ * so interning can never pin a dead node.
+ *
+ * Module-private: only the production sink and source touch it.
+ */
+class HandleRegistry {
+    private readonly _forward = new Map<Handle, Node | WeakRef<Node>>();
+    private readonly _reverse = new WeakMap<Node, Handle>();
+    private _next = 1;
+
+    /** Drops the forward entry when a weakly-interned node is garbage-collected. */
+    private readonly _finalizer = new FinalizationRegistry<Handle>((handle) => {
+        this._forward.delete(handle);
+    });
+
+    /**
+     * Mints a canonical handle for a node the framework owns (a created,
+     * possibly-detached element). Strongly held so a detached node survives
+     * until it is mounted or explicitly released.
+     *
+     * @param node - The owned node.
+     * @returns Its canonical handle (stable across repeated calls).
+     */
+    retain(node: Node): Handle {
+        const existing = this._reverse.get(node);
+
+        if (existing !== undefined) {
+            return existing;
+        }
+
+        const handle = this._mint(node);
+
+        this._forward.set(handle, node);
+
+        return handle;
+    }
+
+    /**
+     * Mints a canonical handle for a node supplied by the browser (an event
+     * target, a `querySelector` result, the active element). The live DOM owns
+     * it, so the registry holds only a weak reference plus a finalizer — no leak
+     * even if the handle is never released.
+     *
+     * @param node - The browser-supplied node.
+     * @returns Its canonical handle (stable while the node is alive).
+     */
+    intern(node: Node): Handle {
+        const existing = this._reverse.get(node);
+
+        if (existing !== undefined) {
+            return existing;
+        }
+
+        const handle = this._mint(node);
+
+        this._forward.set(handle, new WeakRef(node));
+        this._finalizer.register(node, handle);
+
+        return handle;
+    }
+
+    /**
+     * Resolves a handle to its node. Throws on a released or collected handle —
+     * a use-after-free becomes a loud failure instead of the silent no-op a
+     * stale element pointer would give.
+     *
+     * @param handle - The handle to resolve.
+     * @returns The live node.
+     */
+    resolve(handle: Handle): Node {
+        const entry = this._forward.get(handle);
+
+        if (entry === undefined) {
+            throw new Error(`DOM handle ${handle} is not registered (released or never minted).`);
+        }
+
+        const node = entry instanceof WeakRef ? entry.deref() : entry;
+
+        if (node === undefined) {
+            throw new Error(`DOM handle ${handle} refers to a collected node.`);
+        }
+
+        return node;
+    }
+
+    /**
+     * Releases an owned handle at its element's dispose site. Idempotent. A
+     * missed release on a retained (strong) handle pins a detached element
+     * forever, so the migration must place this at every created-element
+     * teardown.
+     *
+     * @param handle - The handle to release.
+     */
+    release(handle: Handle): void {
+        const entry = this._forward.get(handle);
+
+        if (entry === undefined) {
+            return;
+        }
+
+        const node = entry instanceof WeakRef ? entry.deref() : entry;
+
+        if (node) {
+            this._reverse.delete(node);
+        }
+
+        this._forward.delete(handle);
+    }
+
+    /** Live forward-map size — a test hook that verifies release / GC eviction. */
+    get size(): number {
+        return this._forward.size;
+    }
+
+    private _mint(node: Node): Handle {
+        const handle = this._next as Handle;
+
+        this._next += 1;
+        this._reverse.set(node, handle);
+
+        return handle;
+    }
+}
+
+/** The shared production registry. Rebuilt together with the seams by {@link DOM.reset}. */
+let _registry = new HandleRegistry();
+
+/** Forward-map size of the shared production registry; for tests only. @internal */
+export function _handleRegistrySize(): number {
+    return _registry.size;
+}
+
+/**
+ * The single terminal style write, shared by the inline-style and patch paths.
+ * A hyphenated key is either a custom property (`--foo`) or a standard
+ * kebab-case name (`background-color`); both go through `setProperty` /
+ * `removeProperty`. Only camelCase keys work through the indexed accessor.
+ */
+function writeDeclaration(style: CSSStyleDeclaration, key: string, value: string | null): void {
+    if (key.includes("-")) {
+        if (value === null) {
+            style.removeProperty(key);
+        } else {
+            style.setProperty(key, value);
+        }
+    } else if (value === null) {
+        (style as unknown as Record<string, string>)[key] = "";
+    } else {
+        (style as unknown as Record<string, string>)[key] = value;
+    }
+}
+
+/**
+ * Applies an {@link ElementPatch} to a resolved element — the terminal raw-DOM
+ * write for the batched {@link DOMSink.apply} path. Fixed order: styles, class
+ * removals before additions, attribute removals before sets, then dataset /
+ * text / scroll.
+ */
+function applyPatchTo(element: HTMLElement, patch: ElementPatch): void {
+    if (patch.style) {
+        for (const key of Object.keys(patch.style)) {
+            writeDeclaration(element.style, key, patch.style[key]);
+        }
+    }
+
+    if (patch.removeClass) {
+        for (const name of patch.removeClass) {
+            element.classList.remove(name);
+        }
+    }
+
+    if (patch.addClass) {
+        for (const name of patch.addClass) {
+            element.classList.add(name);
+        }
+    }
+
+    if (patch.toggleClass) {
+        for (const name of Object.keys(patch.toggleClass)) {
+            element.classList.toggle(name, patch.toggleClass[name]);
+        }
+    }
+
+    if (patch.removeAttr) {
+        for (const key of patch.removeAttr) {
+            element.removeAttribute(key);
+        }
+    }
+
+    if (patch.setAttr) {
+        for (const key of Object.keys(patch.setAttr)) {
+            element.setAttribute(key, patch.setAttr[key]);
+        }
+    }
+
+    if (patch.dataset) {
+        for (const key of Object.keys(patch.dataset)) {
+            element.dataset[key] = patch.dataset[key];
+        }
+    }
+
+    if (patch.text !== undefined) {
+        element.textContent = patch.text;
+    }
+
+    if (patch.scrollLeft !== undefined) {
+        element.scrollLeft = patch.scrollLeft;
+    }
+
+    if (patch.scrollTop !== undefined) {
+        element.scrollTop = patch.scrollTop;
+    }
+}
+
+/**
+ * Fluent accumulator over an {@link ElementPatch}. Each method appends to the
+ * pending patch; {@link PatchBuilder.commit} flushes it as one batched write.
+ * The fluent form is sugar for cold call sites — the batched {@link DOMSink.apply}
+ * is the real primitive — and it allocates one builder per edit.
+ *
+ * @category Core
+ */
+export class PatchBuilder {
+    private readonly _patch: {
+        style?:    Record<string, string | null>;
+        addClass?: string[];
+        setAttr?:  Record<string, string>;
+        text?:     string;
+    } = {};
+
+    /**
+     * @param _commit - Flush callback that performs the single handle resolve.
+     */
+    constructor(private readonly _commit: (patch: ElementPatch) => void) {}
+
+    /**
+     * Queues an inline-style write (`null` removes).
+     *
+     * @param key - The CSS property name (camelCase, or `--custom-property`).
+     * @param value - The value to set, or null to remove the property.
+     * @returns This builder.
+     */
+    style(key: string, value: string | null): this {
+        (this._patch.style ??= {})[key] = value;
+
+        return this;
+    }
+
+    /**
+     * Queues a class addition.
+     *
+     * @param name - The class name.
+     * @returns This builder.
+     */
+    addClass(name: string): this {
+        (this._patch.addClass ??= []).push(name);
+
+        return this;
+    }
+
+    /**
+     * Queues an attribute set.
+     *
+     * @param key - The attribute name.
+     * @param value - The attribute value.
+     * @returns This builder.
+     */
+    attr(key: string, value: string): this {
+        (this._patch.setAttr ??= {})[key] = value;
+
+        return this;
+    }
+
+    /**
+     * Queues a text-content write.
+     *
+     * @param value - The text content.
+     * @returns This builder.
+     */
+    text(value: string): this {
+        this._patch.text = value;
+
+        return this;
+    }
+
+    /** Flushes the accumulated patch through one batched write (one resolve). */
+    commit(): void {
+        this._commit(this._patch);
+    }
+}
+
+/**
  * Terminal DOM-write primitive. Every structural mutation and inline-style
  * write in the framework funnels through this seam instead of touching
  * `element.style` / `element.classList` / `appendChild` directly. The
@@ -89,20 +434,38 @@ export interface OffsetSize {
  */
 export interface DOMSink {
     /**
-     * Writes a single inline style property onto an element. The element's
-     * `style` declaration is resolved inside the seam so call sites never touch
-     * `element.style` directly.
+     * Applies a batch of mutations to one element with a single handle resolve.
+     * The hot-path primitive that replaces the ten per-write data setters
+     * (`setStyle`, `addClass`, `removeClass`, `toggleClass`, `setAttribute`,
+     * `removeAttribute`, `setDataset`, `setTextContent`, `setScrollLeft`,
+     * `setScrollTop`): a layout commit (width + height + classes + an attribute)
+     * costs one `Map.get`, not one per write.
      *
-     * @param element - The target element.
-     * @param key - The CSS property name (camelCase, or `--custom-property`).
-     * @param value - The value to set, or null to remove the property.
+     * @param handle - The target element handle.
+     * @param patch - The batch of mutations.
      */
-    setStyle(element: HTMLElement | SVGElement, key: string, value: string | null): void;
+    apply(handle: Handle, patch: ElementPatch): void;
 
     /**
-     * Writes a single style property onto a `CSSStyleRule`'s declaration. The
-     * rule-style counterpart of {@link setStyle} — a `CSSStyleRule` has no
-     * element, so it gets its own method.
+     * Fluent convenience that accumulates a patch and flushes it through a
+     * single {@link apply}. For cold call sites — it allocates one builder per
+     * edit.
+     *
+     * @param handle - The target element handle.
+     * @returns A builder whose `commit()` performs the single resolve.
+     */
+    edit(handle: Handle): PatchBuilder;
+
+    /**
+     * Releases an owned (retained) handle at its element's dispose site.
+     *
+     * @param handle - The handle to release.
+     */
+    release(handle: Handle): void;
+
+    /**
+     * Writes a single style property onto a `CSSStyleRule`'s declaration. A
+     * `CSSStyleRule` has no element, so it gets its own method.
      *
      * @param rule - The target `CSSStyleRule`.
      * @param key - The CSS property name (camelCase, or `--custom-property`).
@@ -131,178 +494,108 @@ export interface DOMSink {
     ensureKeyframes(name: string, body: string): void;
 
     /**
-     * Creates a detached HTML element.
+     * Creates a detached HTML element, retained behind a handle until released.
      *
      * @param tag - The element tag name.
-     * @returns The new element.
+     * @returns The new element's handle.
      */
-    createElement(tag: string): HTMLElement;
+    createElement(tag: string): Handle;
 
     /**
-     * Creates a detached namespaced element (SVG sprite / glyph construction).
+     * Creates a detached namespaced element (SVG sprite / glyph construction),
+     * retained behind a handle until released.
      *
      * @param ns - The element namespace URI.
      * @param tag - The element tag name.
-     * @returns The new element.
+     * @returns The new element's handle.
      */
-    createElementNS(ns: string, tag: string): Element;
+    createElementNS(ns: string, tag: string): Handle;
 
     /**
-     * Appends a child node to a parent.
+     * Appends a child to a parent.
      *
-     * @param parent - The parent node.
-     * @param child - The child node to append.
+     * @param parent - The parent handle.
+     * @param child - The child handle to append.
      */
-    appendChild(parent: Node, child: Node): void;
+    appendChild(parent: Handle, child: Handle): void;
 
     /**
-     * Removes a child node from a parent.
+     * Removes a child from a parent.
      *
-     * @param parent - The parent node.
-     * @param child - The child node to remove.
+     * @param parent - The parent handle.
+     * @param child - The child handle to remove.
      */
-    removeChild(parent: Node, child: Node): void;
+    removeChild(parent: Handle, child: Handle): void;
 
     /**
      * Detaches an element from its parent.
      *
-     * @param element - The element to remove.
+     * @param handle - The element to remove.
      */
-    removeElement(element: Element): void;
-
-    /**
-     * Adds a class to an element.
-     *
-     * @param element - The target element.
-     * @param name - The class name to add.
-     */
-    addClass(element: Element, name: string): void;
-
-    /**
-     * Removes a class from an element.
-     *
-     * @param element - The target element.
-     * @param name - The class name to remove.
-     */
-    removeClass(element: Element, name: string): void;
-
-    /**
-     * Toggles a class on an element.
-     *
-     * @param element - The target element.
-     * @param name - The class name to toggle.
-     * @param on - When provided, forces the class on (`true`) or off (`false`).
-     */
-    toggleClass(element: Element, name: string, on?: boolean): void;
-
-    /**
-     * Sets an attribute on an element.
-     *
-     * @param element - The target element.
-     * @param key - The attribute name.
-     * @param value - The attribute value.
-     */
-    setAttribute(element: Element, key: string, value: string): void;
-
-    /**
-     * Removes an attribute from an element.
-     *
-     * @param element - The target element.
-     * @param key - The attribute name.
-     */
-    removeAttribute(element: Element, key: string): void;
-
-    /**
-     * Sets the text content of a node.
-     *
-     * @param node - The target node.
-     * @param text - The text content.
-     */
-    setTextContent(node: Node, text: string): void;
-
-    /**
-     * Sets an element's native horizontal scroll offset.
-     *
-     * @param element - The target element.
-     * @param value - The desired `scrollLeft` in pixels.
-     *
-     * @remarks One-way: the browser clamps the offset to the scrollable range.
-     * Read the settled value back via {@link DOMSource.getScrollLeft}.
-     */
-    setScrollLeft(element: Element, value: number): void;
-
-    /**
-     * Sets an element's native vertical scroll offset.
-     *
-     * @param element - The target element.
-     * @param value - The desired `scrollTop` in pixels.
-     *
-     * @remarks One-way; see {@link setScrollLeft}.
-     */
-    setScrollTop(element: Element, value: number): void;
+    removeElement(handle: Handle): void;
 
     /**
      * Moves browser focus to an element.
      *
-     * @param element - The element to focus.
+     * @param handle - The element to focus.
      * @param options - Focus options; `preventScroll` suppresses the native
      *   scroll-into-view so a host that owns its own scroll offset is not fought.
      */
-    focus(element: HTMLElement, options?: { preventScroll?: boolean }): void;
+    focus(handle: Handle, options?: { preventScroll?: boolean }): void;
 
     /**
      * Removes browser focus from an element.
      *
-     * @param element - The element to blur.
+     * @param handle - The element to blur.
      */
-    blur(element: HTMLElement): void;
+    blur(handle: Handle): void;
 
     /**
      * Writes the value of a form control.
      *
-     * @param element - The target form control.
+     * @param handle - The target form control.
      * @param value - The value to set.
      */
-    setValue(element: HTMLElement, value: string): void;
+    setValue(handle: Handle, value: string): void;
 
     /**
      * Sets the text-selection range of a form control.
      *
-     * @param element - The target form control.
+     * @param handle - The target form control.
      * @param start - The selection start offset.
      * @param end - The selection end offset.
      */
-    setSelectionRange(element: HTMLElement, start: number, end: number): void;
+    setSelectionRange(handle: Handle, start: number, end: number): void;
 
     /**
      * Registers a native event listener on a target. The framework's
      * {@link Event} class is the component-level routing layer; this seam covers
      * the low-level native hook it (and a few primitives) sits on.
      *
-     * @param target - The event target (element, window, media-query list).
+     * @param target - The event target handle (element, window, media-query list).
      * @param type - The event type.
      * @param handler - The listener.
      * @param options - Optional capture/passive/once options.
      */
-    addListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | AddEventListenerOptions): void;
+    addListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, options?: boolean | AddEventListenerOptions): void;
 
     /**
      * Removes a native event listener previously registered with {@link addListener}.
      *
-     * @param target - The event target.
+     * @param target - The event target handle.
      * @param type - The event type.
      * @param handler - The listener to remove.
      * @param options - Optional capture options matching the registration.
      */
-    removeListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | EventListenerOptions): void;
+    removeListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, options?: boolean | EventListenerOptions): void;
 
     /**
      * Dispatches an event on a target.
      *
-     * @param target - The event target.
+     * @param target - The event target handle.
      * @param event - The event to dispatch.
      */
-    dispatchEvent(target: EventTarget, event: Event): void;
+    dispatchEvent(target: Handle, event: Event): void;
 
     /**
      * Schedules a callback for the next animation frame.
@@ -322,66 +615,58 @@ export interface DOMSink {
     /**
      * Sets an element's `id`.
      *
-     * @param element - The target element.
+     * @param handle - The target element.
      * @param id - The id to set.
      */
-    setId(element: Element, id: string): void;
+    setId(handle: Handle, id: string): void;
 
     /**
      * Inserts a node before a reference child of a parent.
      *
-     * @param parent - The parent node.
+     * @param parent - The parent handle.
      * @param node - The node to insert.
      * @param reference - The child to insert before, or null to append.
      */
-    insertBefore(parent: Node, node: Node, reference: Node | null): void;
+    insertBefore(parent: Handle, node: Handle, reference: Handle | null): void;
 
     /**
-     * Writes a `data-*` attribute via the element's dataset.
+     * Creates an empty document fragment for batched insertion, retained behind
+     * a handle until released.
      *
-     * @param element - The target element.
-     * @param key - The dataset key (camelCase).
-     * @param value - The value to set.
+     * @returns The new fragment's handle.
      */
-    setDataset(element: HTMLElement, key: string, value: string): void;
-
-    /**
-     * Creates an empty document fragment for batched insertion.
-     *
-     * @returns The new fragment.
-     */
-    createDocumentFragment(): DocumentFragment;
+    createDocumentFragment(): Handle;
 
     /**
      * Synthesises a click on an element (file-input open, download anchor).
      *
-     * @param element - The element to click.
+     * @param handle - The element to click.
      */
-    click(element: HTMLElement): void;
+    click(handle: Handle): void;
 
     /**
      * Sets the selected option index of a `<select>`.
      *
-     * @param element - The select element.
+     * @param handle - The select element.
      * @param index - The zero-based option index.
      */
-    setSelectedIndex(element: HTMLSelectElement, index: number): void;
+    setSelectedIndex(handle: Handle, index: number): void;
 
     /**
      * Routes subsequent pointer events for a pointer id to an element.
      *
-     * @param element - The capturing element.
+     * @param handle - The capturing element.
      * @param pointerId - The pointer id to capture.
      */
-    setPointerCapture(element: Element, pointerId: number): void;
+    setPointerCapture(handle: Handle, pointerId: number): void;
 
     /**
      * Releases a pointer capture previously set on an element.
      *
-     * @param element - The element holding the capture.
+     * @param handle - The element holding the capture.
      * @param pointerId - The pointer id to release.
      */
-    releasePointerCapture(element: Element, pointerId: number): void;
+    releasePointerCapture(handle: Handle, pointerId: number): void;
 }
 
 /**
@@ -395,6 +680,17 @@ export interface DOMSink {
  */
 export interface DOMSource {
     /**
+     * Converts a raw browser node arriving at an event boundary into a (weak)
+     * handle. The one place a raw target legitimately enters the seam from
+     * outside — the event system hands it `evnt.target`, and the handle is
+     * interned so no call site downstream holds the raw node.
+     *
+     * @param target - The browser-supplied event target.
+     * @returns Its canonical handle.
+     */
+    intern(target: EventTarget): Handle;
+
+    /**
      * Returns the viewport-space rectangle of a component's root element.
      *
      * @param component - The component to measure.
@@ -406,10 +702,10 @@ export interface DOMSource {
      * Returns the viewport-space rectangle of an arbitrary element. Escape
      * hatch for non-component nodes (anchor elements, ancestor scroll boxes).
      *
-     * @param element - The element to measure.
+     * @param handle - The element to measure.
      * @returns The element's bounding rectangle as plain data.
      */
-    getElementRect(element: Element): Rect;
+    getElementRect(handle: Handle): Rect;
 
     /**
      * Measures the rendered size and baseline of a text string.
@@ -469,58 +765,58 @@ export interface DOMSource {
     /**
      * Reads an element's native horizontal scroll offset (browser-clamped).
      *
-     * @param element - The element to read.
+     * @param handle - The element to read.
      * @returns The current `scrollLeft` in pixels.
      */
-    getScrollLeft(element: Element): number;
+    getScrollLeft(handle: Handle): number;
 
     /**
      * Reads an element's native vertical scroll offset (browser-clamped).
      *
-     * @param element - The element to read.
+     * @param handle - The element to read.
      * @returns The current `scrollTop` in pixels.
      */
-    getScrollTop(element: Element): number;
+    getScrollTop(handle: Handle): number;
 
     /**
      * Reads an element's scroll offsets, scrollable content size, and visible
      * viewport size in one shot.
      *
-     * @param element - The element to measure.
+     * @param handle - The element to measure.
      * @returns The element's {@link ScrollMetrics} as plain data.
      */
-    getScrollMetrics(element: Element): ScrollMetrics;
+    getScrollMetrics(handle: Handle): ScrollMetrics;
 
     /**
      * Reads an element's offset-box top edge and height.
      *
-     * @param element - The element to measure.
+     * @param handle - The element to measure.
      * @returns The element's {@link OffsetSize} as plain data.
      */
-    getOffsetSize(element: Element): OffsetSize;
+    getOffsetSize(handle: Handle): OffsetSize;
 
     /**
      * Whether an element is currently attached to a document.
      *
-     * @param element - The element to test.
+     * @param handle - The element to test.
      * @returns `true` when the element is connected.
      */
-    isConnected(element: Element): boolean;
+    isConnected(handle: Handle): boolean;
 
     /**
      * Reads the value of a form control.
      *
-     * @param element - The form control to read.
+     * @param handle - The form control to read.
      * @returns The control's current value.
      */
-    getValue(element: HTMLElement): string;
+    getValue(handle: Handle): string;
 
     /**
      * Returns the element that currently has focus, or null.
      *
-     * @returns The active element, or null when nothing is focused.
+     * @returns The active element handle, or null when nothing is focused.
      */
-    getActiveElement(): Element | null;
+    getActiveElement(): Handle | null;
 
     /**
      * Evaluates a media query, returning its current match state and a
@@ -535,220 +831,220 @@ export interface DOMSource {
      * Whether an event target is the global `window` (identity check that keeps
      * the raw global out of call sites).
      *
-     * @param target - The target to test.
+     * @param target - The target handle to test, or null.
      * @returns `true` when the target is `window`.
      */
-    isWindow(target: EventTarget | null): boolean;
+    isWindow(target: Handle | null): boolean;
 
     /**
-     * Returns the global `window` as an event target, so window-level listeners
-     * can be registered without a call site naming the raw global.
+     * Returns the global `window` interned to a handle, so window-level
+     * listeners can be registered without a call site naming the raw global.
      *
-     * @returns The `window` event target.
+     * @returns The `window` handle.
      */
-    getWindow(): Window;
+    getWindow(): Handle;
 
     /**
      * Whether a node is the ancestor of (or equal to) another node.
      *
-     * @param ancestor - The candidate ancestor.
-     * @param node - The node to test, or null.
+     * @param ancestor - The candidate ancestor handle.
+     * @param node - The node handle to test, or null.
      * @returns `true` when `ancestor` contains `node`.
      */
-    contains(ancestor: Node, node: Node | null): boolean;
+    contains(ancestor: Handle, node: Handle | null): boolean;
 
     /**
      * Finds the first descendant of `root` matching a selector.
      *
-     * @param root - The subtree root.
+     * @param root - The subtree root handle.
      * @param selector - The CSS selector.
-     * @returns The first match, or null.
+     * @returns The first match handle, or null.
      */
-    querySelector(root: ParentNode, selector: string): Element | null;
+    querySelector(root: Handle, selector: string): Handle | null;
 
     /**
      * Finds all descendants of `root` matching a selector, as a plain array.
      *
-     * @param root - The subtree root.
+     * @param root - The subtree root handle.
      * @param selector - The CSS selector.
-     * @returns The matches (a snapshot array, never a live `NodeList`).
+     * @returns The match handles (a snapshot array, never a live `NodeList`).
      */
-    querySelectorAll(root: ParentNode, selector: string): Element[];
+    querySelectorAll(root: Handle, selector: string): Handle[];
 
     /**
      * Returns an element's parent element, or null.
      *
-     * @param element - The element to read.
-     * @returns The parent element, or null.
+     * @param handle - The element to read.
+     * @returns The parent element handle, or null.
      */
-    getParentElement(element: Element): Element | null;
+    getParentElement(handle: Handle): Handle | null;
 
     /**
      * Returns a node's parent node, or null.
      *
-     * @param node - The node to read.
-     * @returns The parent node, or null.
+     * @param handle - The node to read.
+     * @returns The parent node handle, or null.
      */
-    getParentNode(node: Node): Node | null;
+    getParentNode(handle: Handle): Handle | null;
 
     /**
      * Returns a node's first child, or null.
      *
-     * @param node - The node to read.
-     * @returns The first child, or null.
+     * @param handle - The node to read.
+     * @returns The first child handle, or null.
      */
-    getFirstChild(node: Node): Node | null;
+    getFirstChild(handle: Handle): Handle | null;
 
     /**
      * Returns an element's resolved border widths as computed-style strings
      * (e.g. `"1px"`), one per side.
      *
-     * @param element - The element to measure.
+     * @param handle - The element to measure.
      * @returns The four border-width strings.
      */
-    getBorderWidths(element: Element): { top: string; right: string; bottom: string; left: string };
+    getBorderWidths(handle: Handle): { top: string; right: string; bottom: string; left: string };
 
     /**
      * Returns an element's resolved `overflow` / `overflow-x` / `overflow-y`
      * computed-style strings.
      *
-     * @param element - The element to read.
+     * @param handle - The element to read.
      * @returns The three overflow strings.
      */
-    getComputedOverflow(element: Element): { overflow: string; overflowX: string; overflowY: string };
+    getComputedOverflow(handle: Handle): { overflow: string; overflowX: string; overflowY: string };
 
     /**
      * Reads a single inline style property off an element.
      *
-     * @param element - The element to read.
+     * @param handle - The element to read.
      * @param key - The CSS property name (camelCase, or `--custom-property`).
      * @returns The inline value (empty string when unset).
      */
-    getInlineStyle(element: HTMLElement, key: string): string;
+    getInlineStyle(handle: Handle, key: string): string;
 
     /**
      * Returns the document's root `<html>` element — the mount point for
      * top-layer overlays.
      *
-     * @returns The document element.
+     * @returns The document element handle.
      */
-    getDocumentElement(): HTMLElement;
+    getDocumentElement(): Handle;
 
     /**
      * Returns the document `<body>` element.
      *
-     * @returns The body element.
+     * @returns The body element handle.
      */
-    getBody(): HTMLElement;
+    getBody(): Handle;
 
     /**
      * Returns the document `<head>` element.
      *
-     * @returns The head element.
+     * @returns The head element handle.
      */
-    getHead(): HTMLElement;
+    getHead(): Handle;
 
     /**
      * Looks up an element by its `id`.
      *
      * @param id - The element id (no `#` prefix).
-     * @returns The matching element, or null.
+     * @returns The matching element handle, or null.
      */
-    getElementById(id: string): HTMLElement | null;
+    getElementById(id: string): Handle | null;
 
     /**
      * Reads an element's `id`.
      *
-     * @param element - The element to read.
+     * @param handle - The element to read.
      * @returns The element's id (empty string when unset).
      */
-    getId(element: Element): string;
+    getId(handle: Handle): string;
 
     /**
      * Reads a `data-*` attribute via the element's dataset.
      *
-     * @param element - The element to read.
+     * @param handle - The element to read.
      * @param key - The dataset key (camelCase).
      * @returns The value, or undefined when unset.
      */
-    getDataset(element: HTMLElement, key: string): string | undefined;
+    getDataset(handle: Handle, key: string): string | undefined;
 
     /**
      * Reads an element's tag name (uppercase).
      *
-     * @param element - The element to read.
+     * @param handle - The element to read.
      * @returns The tag name.
      */
-    getTagName(element: Element): string;
+    getTagName(handle: Handle): string;
 
     /**
      * Whether an element has a given attribute.
      *
-     * @param element - The element to test.
+     * @param handle - The element to test.
      * @param key - The attribute name.
      * @returns `true` when the attribute is present.
      */
-    hasAttribute(element: Element, key: string): boolean;
+    hasAttribute(handle: Handle, key: string): boolean;
 
     /**
      * Reads an attribute value.
      *
-     * @param element - The element to read.
+     * @param handle - The element to read.
      * @param key - The attribute name.
      * @returns The value, or null when unset.
      */
-    getAttribute(element: Element, key: string): string | null;
+    getAttribute(handle: Handle, key: string): string | null;
 
     /**
      * Reads a `<select>`'s selected option index.
      *
-     * @param element - The select element.
+     * @param handle - The select element.
      * @returns The zero-based selected index.
      */
-    getSelectedIndex(element: HTMLSelectElement): number;
+    getSelectedIndex(handle: Handle): number;
 
     /**
      * Reads a `data-*` value off a `<select>`'s currently-selected option.
      *
-     * @param element - The select element.
+     * @param handle - The select element.
      * @param key - The dataset key (camelCase).
      * @returns The selected option's dataset value, or undefined.
      */
-    getSelectedOptionDataset(element: HTMLSelectElement, key: string): string | undefined;
+    getSelectedOptionDataset(handle: Handle, key: string): string | undefined;
 
     /**
      * Reads an image's intrinsic pixel size.
      *
-     * @param element - The image element.
+     * @param handle - The image element.
      * @returns The natural `{width, height}` in pixels.
      */
-    getNaturalSize(element: HTMLImageElement): { width: number; height: number };
+    getNaturalSize(handle: Handle): { width: number; height: number };
 
     /**
      * Reads the selected files of a file input.
      *
-     * @param element - The file-input element.
+     * @param handle - The file-input element.
      * @returns The selected `FileList`, or null.
      */
-    getFiles(element: HTMLInputElement): FileList | null;
+    getFiles(handle: Handle): FileList | null;
 
     /**
      * Whether an element currently holds a given pointer capture.
      *
-     * @param element - The element to test.
+     * @param handle - The element to test.
      * @param pointerId - The pointer id.
      * @returns `true` when the element captures the pointer.
      */
-    hasPointerCapture(element: Element, pointerId: number): boolean;
+    hasPointerCapture(handle: Handle, pointerId: number): boolean;
 
     /**
      * Returns the stack of elements at a viewport point (hit-testing).
      *
      * @param x - The viewport x coordinate.
      * @param y - The viewport y coordinate.
-     * @returns The elements at the point, topmost first.
+     * @returns The element handles at the point, topmost first.
      */
-    elementsFromPoint(x: number, y: number): Element[];
+    elementsFromPoint(x: number, y: number): Handle[];
 }
 
 /**
@@ -791,44 +1087,42 @@ function toRect(domRect: DOMRect): Rect {
  * @category Core
  */
 export class ProductionDOMSink implements DOMSink {
-    /** @inheritDoc */
-    setStyle(element: HTMLElement | SVGElement, key: string, value: string | null): void {
-        this.writeDeclaration(element.style, key, value);
+    /**
+     * Applies a batch of mutations to one element with a single handle resolve.
+     * The hot-path primitive — a layout commit (width + height + classes + an
+     * attribute) costs one `Map.get`, not one per write.
+     *
+     * @param handle - The target element handle.
+     * @param patch - The batch of mutations.
+     */
+    apply(handle: Handle, patch: ElementPatch): void {
+        applyPatchTo(_registry.resolve(handle) as HTMLElement, patch);
+    }
+
+    /**
+     * Fluent convenience that accumulates a patch and flushes it through a
+     * single {@link ProductionDOMSink.apply}. For cold call sites — it allocates
+     * one builder per edit.
+     *
+     * @param handle - The target element handle.
+     * @returns A builder whose `commit()` performs the single resolve.
+     */
+    edit(handle: Handle): PatchBuilder {
+        return new PatchBuilder((patch) => this.apply(handle, patch));
+    }
+
+    /**
+     * Releases an owned (retained) handle at its element's dispose site.
+     *
+     * @param handle - The handle to release.
+     */
+    release(handle: Handle): void {
+        _registry.release(handle);
     }
 
     /** @inheritDoc */
     setRuleStyle(rule: CSSStyleRule, key: string, value: string | null): void {
-        this.writeDeclaration(rule.style, key, value);
-    }
-
-    /**
-     * The single terminal style write, shared by {@link setStyle} (inline) and
-     * {@link setRuleStyle} (rule). Custom properties (`--foo`) must go through
-     * `setProperty`/`removeProperty`; the indexed accessor only works for
-     * camelCase keys.
-     *
-     * @param style - The resolved `CSSStyleDeclaration`.
-     * @param key - The CSS property name (camelCase, or `--custom-property`).
-     * @param value - The value to set, or null to remove the property.
-     */
-    private writeDeclaration(style: CSSStyleDeclaration, key: string, value: string | null): void {
-        // A hyphenated key is either a custom property (`--foo`) or a standard
-        // kebab-case name (`background-color`); both must go through
-        // `setProperty`/`removeProperty`. Only camelCase keys (`backgroundColor`)
-        // work through the indexed accessor.
-        if (key.includes("-")) {
-            if (value === null) {
-                style.removeProperty(key);
-            } else {
-                style.setProperty(key, value);
-            }
-        } else {
-            if (value === null) {
-                (style as any)[key] = "";
-            } else {
-                (style as any)[key] = value;
-            }
-        }
+        writeDeclaration(rule.style, key, value);
     }
 
     /** @inheritDoc */
@@ -896,103 +1190,63 @@ export class ProductionDOMSink implements DOMSink {
     }
 
     /** @inheritDoc */
-    createElement(tag: string): HTMLElement {
-        return document.createElement(tag);
+    createElement(tag: string): Handle {
+        return _registry.retain(document.createElement(tag));
     }
 
     /** @inheritDoc */
-    createElementNS(ns: string, tag: string): Element {
-        return document.createElementNS(ns, tag);
+    createElementNS(ns: string, tag: string): Handle {
+        return _registry.retain(document.createElementNS(ns, tag));
     }
 
     /** @inheritDoc */
-    appendChild(parent: Node, child: Node): void {
-        parent.appendChild(child);
+    appendChild(parent: Handle, child: Handle): void {
+        _registry.resolve(parent).appendChild(_registry.resolve(child));
     }
 
     /** @inheritDoc */
-    removeChild(parent: Node, child: Node): void {
-        parent.removeChild(child);
+    removeChild(parent: Handle, child: Handle): void {
+        _registry.resolve(parent).removeChild(_registry.resolve(child));
     }
 
     /** @inheritDoc */
-    removeElement(element: Element): void {
-        element.remove();
+    removeElement(handle: Handle): void {
+        (_registry.resolve(handle) as Element).remove();
     }
 
     /** @inheritDoc */
-    addClass(element: Element, name: string): void {
-        element.classList.add(name);
+    focus(handle: Handle, options?: { preventScroll?: boolean }): void {
+        (_registry.resolve(handle) as HTMLElement).focus(options);
     }
 
     /** @inheritDoc */
-    removeClass(element: Element, name: string): void {
-        element.classList.remove(name);
+    blur(handle: Handle): void {
+        (_registry.resolve(handle) as HTMLElement).blur();
     }
 
     /** @inheritDoc */
-    toggleClass(element: Element, name: string, on?: boolean): void {
-        element.classList.toggle(name, on);
+    setValue(handle: Handle, value: string): void {
+        (_registry.resolve(handle) as HTMLInputElement).value = value;
     }
 
     /** @inheritDoc */
-    setAttribute(element: Element, key: string, value: string): void {
-        element.setAttribute(key, value);
+    setSelectionRange(handle: Handle, start: number, end: number): void {
+        (_registry.resolve(handle) as HTMLInputElement).setSelectionRange(start, end);
     }
 
     /** @inheritDoc */
-    removeAttribute(element: Element, key: string): void {
-        element.removeAttribute(key);
+    addListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, options?: boolean | AddEventListenerOptions): void {
+        _registry.resolve(target).addEventListener(type, handler as EventListener, options);
     }
 
     /** @inheritDoc */
-    setTextContent(node: Node, text: string): void {
-        node.textContent = text;
+    removeListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, options?: boolean | EventListenerOptions): void {
+        _registry.resolve(target).removeEventListener(type, handler as EventListener, options);
     }
 
     /** @inheritDoc */
-    setScrollLeft(element: Element, value: number): void {
-        element.scrollLeft = value;
-    }
-
-    /** @inheritDoc */
-    setScrollTop(element: Element, value: number): void {
-        element.scrollTop = value;
-    }
-
-    /** @inheritDoc */
-    focus(element: HTMLElement, options?: { preventScroll?: boolean }): void {
-        element.focus(options);
-    }
-
-    /** @inheritDoc */
-    blur(element: HTMLElement): void {
-        element.blur();
-    }
-
-    /** @inheritDoc */
-    setValue(element: HTMLElement, value: string): void {
-        (element as HTMLInputElement).value = value;
-    }
-
-    /** @inheritDoc */
-    setSelectionRange(element: HTMLElement, start: number, end: number): void {
-        (element as HTMLInputElement).setSelectionRange(start, end);
-    }
-
-    /** @inheritDoc */
-    addListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | AddEventListenerOptions): void {
-        target.addEventListener(type, handler as EventListener, options);
-    }
-
-    /** @inheritDoc */
-    removeListener<T extends Event = Event>(target: EventTarget, type: string, handler: (event: T) => void, options?: boolean | EventListenerOptions): void {
-        target.removeEventListener(type, handler as EventListener, options);
-    }
-
-    /** @inheritDoc */
-    dispatchEvent(target: EventTarget, event: Event): void {
-        target.dispatchEvent(event);
+    dispatchEvent(target: Handle, event: Event): void {
+        _registry.resolve(target).dispatchEvent(event);
     }
 
     /** @inheritDoc */
@@ -1006,43 +1260,41 @@ export class ProductionDOMSink implements DOMSink {
     }
 
     /** @inheritDoc */
-    setId(element: Element, id: string): void {
-        element.id = id;
+    setId(handle: Handle, id: string): void {
+        (_registry.resolve(handle) as Element).id = id;
     }
 
     /** @inheritDoc */
-    insertBefore(parent: Node, node: Node, reference: Node | null): void {
-        parent.insertBefore(node, reference);
+    insertBefore(parent: Handle, node: Handle, reference: Handle | null): void {
+        _registry.resolve(parent).insertBefore(
+            _registry.resolve(node),
+            reference === null ? null : _registry.resolve(reference)
+        );
     }
 
     /** @inheritDoc */
-    setDataset(element: HTMLElement, key: string, value: string): void {
-        element.dataset[key] = value;
+    createDocumentFragment(): Handle {
+        return _registry.retain(document.createDocumentFragment());
     }
 
     /** @inheritDoc */
-    createDocumentFragment(): DocumentFragment {
-        return document.createDocumentFragment();
+    click(handle: Handle): void {
+        (_registry.resolve(handle) as HTMLElement).click();
     }
 
     /** @inheritDoc */
-    click(element: HTMLElement): void {
-        element.click();
+    setSelectedIndex(handle: Handle, index: number): void {
+        (_registry.resolve(handle) as HTMLSelectElement).selectedIndex = index;
     }
 
     /** @inheritDoc */
-    setSelectedIndex(element: HTMLSelectElement, index: number): void {
-        element.selectedIndex = index;
+    setPointerCapture(handle: Handle, pointerId: number): void {
+        (_registry.resolve(handle) as Element).setPointerCapture(pointerId);
     }
 
     /** @inheritDoc */
-    setPointerCapture(element: Element, pointerId: number): void {
-        element.setPointerCapture(pointerId);
-    }
-
-    /** @inheritDoc */
-    releasePointerCapture(element: Element, pointerId: number): void {
-        element.releasePointerCapture(pointerId);
+    releasePointerCapture(handle: Handle, pointerId: number): void {
+        (_registry.resolve(handle) as Element).releasePointerCapture(pointerId);
     }
 }
 
@@ -1053,14 +1305,27 @@ export class ProductionDOMSink implements DOMSink {
  * @category Core
  */
 export class ProductionDOMSource implements DOMSource {
-    /** @inheritDoc */
-    getViewportRect(component: Component): Rect {
-        return toRect(component.getElement()!.getBoundingClientRect());
+    /**
+     * Converts a raw browser node arriving at an event boundary into a (weak)
+     * handle. The one place a raw target legitimately enters the seam from
+     * outside — the event system hands it `evnt.target`, and the handle is
+     * interned so no call site downstream holds the raw node.
+     *
+     * @param target - The browser-supplied event target.
+     * @returns Its canonical handle.
+     */
+    intern(target: EventTarget): Handle {
+        return _registry.intern(target as Node);
     }
 
     /** @inheritDoc */
-    getElementRect(element: Element): Rect {
-        return toRect(element.getBoundingClientRect());
+    getViewportRect(component: Component): Rect {
+        return toRect((_registry.resolve(component.getElement()!) as HTMLElement).getBoundingClientRect());
+    }
+
+    /** @inheritDoc */
+    getElementRect(handle: Handle): Rect {
+        return toRect((_registry.resolve(handle) as Element).getBoundingClientRect());
     }
 
     /** @inheritDoc */
@@ -1208,17 +1473,19 @@ export class ProductionDOMSource implements DOMSource {
     }
 
     /** @inheritDoc */
-    getScrollLeft(element: Element): number {
-        return element.scrollLeft;
+    getScrollLeft(handle: Handle): number {
+        return (_registry.resolve(handle) as Element).scrollLeft;
     }
 
     /** @inheritDoc */
-    getScrollTop(element: Element): number {
-        return element.scrollTop;
+    getScrollTop(handle: Handle): number {
+        return (_registry.resolve(handle) as Element).scrollTop;
     }
 
     /** @inheritDoc */
-    getScrollMetrics(element: Element): ScrollMetrics {
+    getScrollMetrics(handle: Handle): ScrollMetrics {
+        const element = _registry.resolve(handle) as Element;
+
         return {
             scrollTop:    element.scrollTop,
             scrollLeft:   element.scrollLeft,
@@ -1230,8 +1497,8 @@ export class ProductionDOMSource implements DOMSource {
     }
 
     /** @inheritDoc */
-    getOffsetSize(element: Element): OffsetSize {
-        const el = element as HTMLElement;
+    getOffsetSize(handle: Handle): OffsetSize {
+        const el = _registry.resolve(handle) as HTMLElement;
 
         return {
             offsetTop:    el.offsetTop,
@@ -1240,18 +1507,20 @@ export class ProductionDOMSource implements DOMSource {
     }
 
     /** @inheritDoc */
-    isConnected(element: Element): boolean {
-        return element.isConnected;
+    isConnected(handle: Handle): boolean {
+        return (_registry.resolve(handle) as Element).isConnected;
     }
 
     /** @inheritDoc */
-    getValue(element: HTMLElement): string {
-        return (element as HTMLInputElement).value;
+    getValue(handle: Handle): string {
+        return (_registry.resolve(handle) as HTMLInputElement).value;
     }
 
     /** @inheritDoc */
-    getActiveElement(): Element | null {
-        return document.activeElement;
+    getActiveElement(): Handle | null {
+        const active = document.activeElement;
+
+        return active === null ? null : _registry.intern(active);
     }
 
     /** @inheritDoc */
@@ -1275,48 +1544,56 @@ export class ProductionDOMSource implements DOMSource {
     }
 
     /** @inheritDoc */
-    isWindow(target: EventTarget | null): boolean {
-        return target === window;
+    isWindow(target: Handle | null): boolean {
+        return target !== null && _registry.resolve(target) === (window as unknown as Node);
     }
 
     /** @inheritDoc */
-    getWindow(): Window {
-        return window;
+    getWindow(): Handle {
+        return _registry.intern(window as unknown as Node);
     }
 
     /** @inheritDoc */
-    contains(ancestor: Node, node: Node | null): boolean {
-        return ancestor.contains(node);
+    contains(ancestor: Handle, node: Handle | null): boolean {
+        return _registry.resolve(ancestor).contains(node === null ? null : _registry.resolve(node));
     }
 
     /** @inheritDoc */
-    querySelector(root: ParentNode, selector: string): Element | null {
-        return root.querySelector(selector);
+    querySelector(root: Handle, selector: string): Handle | null {
+        const found = (_registry.resolve(root) as ParentNode).querySelector(selector);
+
+        return found === null ? null : _registry.intern(found);
     }
 
     /** @inheritDoc */
-    querySelectorAll(root: ParentNode, selector: string): Element[] {
-        return Array.from(root.querySelectorAll(selector));
+    querySelectorAll(root: Handle, selector: string): Handle[] {
+        return Array.from((_registry.resolve(root) as ParentNode).querySelectorAll(selector), (node) => _registry.intern(node));
     }
 
     /** @inheritDoc */
-    getParentElement(element: Element): Element | null {
-        return element.parentElement;
+    getParentElement(handle: Handle): Handle | null {
+        const parent = (_registry.resolve(handle) as Element).parentElement;
+
+        return parent === null ? null : _registry.intern(parent);
     }
 
     /** @inheritDoc */
-    getParentNode(node: Node): Node | null {
-        return node.parentNode;
+    getParentNode(handle: Handle): Handle | null {
+        const parent = _registry.resolve(handle).parentNode;
+
+        return parent === null ? null : _registry.intern(parent);
     }
 
     /** @inheritDoc */
-    getFirstChild(node: Node): Node | null {
-        return node.firstChild;
+    getFirstChild(handle: Handle): Handle | null {
+        const child = _registry.resolve(handle).firstChild;
+
+        return child === null ? null : _registry.intern(child);
     }
 
     /** @inheritDoc */
-    getBorderWidths(element: Element): { top: string; right: string; bottom: string; left: string } {
-        const cs = getComputedStyle(element);
+    getBorderWidths(handle: Handle): { top: string; right: string; bottom: string; left: string } {
+        const cs = getComputedStyle(_registry.resolve(handle) as Element);
 
         return {
             top:    cs.borderTopWidth,
@@ -1327,8 +1604,8 @@ export class ProductionDOMSource implements DOMSource {
     }
 
     /** @inheritDoc */
-    getComputedOverflow(element: Element): { overflow: string; overflowX: string; overflowY: string } {
-        const cs = getComputedStyle(element);
+    getComputedOverflow(handle: Handle): { overflow: string; overflowX: string; overflowY: string } {
+        const cs = getComputedStyle(_registry.resolve(handle) as Element);
 
         return {
             overflow:  cs.overflow,
@@ -1338,87 +1615,95 @@ export class ProductionDOMSource implements DOMSource {
     }
 
     /** @inheritDoc */
-    getInlineStyle(element: HTMLElement, key: string): string {
+    getInlineStyle(handle: Handle, key: string): string {
+        const style = (_registry.resolve(handle) as HTMLElement).style;
+
         if (key.includes("-")) {
-            return element.style.getPropertyValue(key);
+            return style.getPropertyValue(key);
         }
 
-        return (element.style as any)[key];
+        return (style as any)[key];
     }
 
     /** @inheritDoc */
-    getDocumentElement(): HTMLElement {
-        return document.documentElement;
+    getDocumentElement(): Handle {
+        return _registry.intern(document.documentElement);
     }
 
     /** @inheritDoc */
-    getBody(): HTMLElement {
-        return document.body;
+    getBody(): Handle {
+        return _registry.intern(document.body);
     }
 
     /** @inheritDoc */
-    getHead(): HTMLElement {
-        return document.head;
+    getHead(): Handle {
+        return _registry.intern(document.head);
     }
 
     /** @inheritDoc */
-    getElementById(id: string): HTMLElement | null {
-        return document.getElementById(id);
+    getElementById(id: string): Handle | null {
+        const found = document.getElementById(id);
+
+        return found === null ? null : _registry.intern(found);
     }
 
     /** @inheritDoc */
-    getId(element: Element): string {
-        return element.id;
+    getId(handle: Handle): string {
+        return (_registry.resolve(handle) as Element).id;
     }
 
     /** @inheritDoc */
-    getDataset(element: HTMLElement, key: string): string | undefined {
-        return element.dataset[key];
+    getDataset(handle: Handle, key: string): string | undefined {
+        return (_registry.resolve(handle) as HTMLElement).dataset[key];
     }
 
     /** @inheritDoc */
-    getTagName(element: Element): string {
-        return element.tagName;
+    getTagName(handle: Handle): string {
+        return (_registry.resolve(handle) as Element).tagName;
     }
 
     /** @inheritDoc */
-    hasAttribute(element: Element, key: string): boolean {
-        return element.hasAttribute(key);
+    hasAttribute(handle: Handle, key: string): boolean {
+        return (_registry.resolve(handle) as Element).hasAttribute(key);
     }
 
     /** @inheritDoc */
-    getAttribute(element: Element, key: string): string | null {
-        return element.getAttribute(key);
+    getAttribute(handle: Handle, key: string): string | null {
+        return (_registry.resolve(handle) as Element).getAttribute(key);
     }
 
     /** @inheritDoc */
-    getSelectedIndex(element: HTMLSelectElement): number {
-        return element.selectedIndex;
+    getSelectedIndex(handle: Handle): number {
+        return (_registry.resolve(handle) as HTMLSelectElement).selectedIndex;
     }
 
     /** @inheritDoc */
-    getSelectedOptionDataset(element: HTMLSelectElement, key: string): string | undefined {
-        return (element[element.selectedIndex] as HTMLElement | undefined)?.dataset[key];
+    getSelectedOptionDataset(handle: Handle, key: string): string | undefined {
+        const select = _registry.resolve(handle) as HTMLSelectElement;
+
+        return (select[select.selectedIndex] as HTMLElement | undefined)?.dataset[key];
     }
 
     /** @inheritDoc */
-    getNaturalSize(element: HTMLImageElement): { width: number; height: number } {
-        return { width: element.naturalWidth, height: element.naturalHeight };
+    getNaturalSize(handle: Handle): { width: number; height: number } {
+        const image = _registry.resolve(handle) as HTMLImageElement;
+
+        return { width: image.naturalWidth, height: image.naturalHeight };
     }
 
     /** @inheritDoc */
-    getFiles(element: HTMLInputElement): FileList | null {
-        return element.files;
+    getFiles(handle: Handle): FileList | null {
+        return (_registry.resolve(handle) as HTMLInputElement).files;
     }
 
     /** @inheritDoc */
-    hasPointerCapture(element: Element, pointerId: number): boolean {
-        return element.hasPointerCapture(pointerId);
+    hasPointerCapture(handle: Handle, pointerId: number): boolean {
+        return (_registry.resolve(handle) as Element).hasPointerCapture(pointerId);
     }
 
     /** @inheritDoc */
-    elementsFromPoint(x: number, y: number): Element[] {
-        return document.elementsFromPoint(x, y);
+    elementsFromPoint(x: number, y: number): Handle[] {
+        return Array.from(document.elementsFromPoint(x, y), (node) => _registry.intern(node));
     }
 }
 
@@ -1469,6 +1754,9 @@ export const DOM: DOMSeams = {
     },
 
     reset(): void {
+        // Rebuild the shared registry alongside the seams so a test never
+        // resolves a handle minted against the previous DOM.
+        _registry  = new HandleRegistry();
         DOM.sink   = new ProductionDOMSink();
         DOM.source = new ProductionDOMSource();
     },

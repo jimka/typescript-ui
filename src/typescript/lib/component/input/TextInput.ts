@@ -3,6 +3,7 @@
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { StyleRule } from "~/core/StyleTarget.js";
@@ -606,47 +607,47 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     }
 
     /**
-     * Returns the DOM element cast to HTMLInputElement & HTMLTextAreaElement.
+     * Returns the DOM element handle.
      *
      * @param createIfMissing - Optional. When true, renders the element if it does not yet exist.
      *
-     * @returns The component's element typed as both HTMLInputElement and HTMLTextAreaElement.
+     * @returns The component's element handle.
      */
-    getElement(createIfMissing: boolean = false) {
-        return super.getElement(createIfMissing) as HTMLInputElement & HTMLTextAreaElement;
+    getElement(createIfMissing: boolean = false): Handle | undefined {
+        return super.getElement(createIfMissing);
     }
 
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
-        const el = (element || this.getElement()!) as HTMLInputElement & HTMLTextAreaElement;
+        const el = element || this.getElement()!;
 
         if (this._options.type !== undefined) {
-            DOM.sink.setAttribute(el, "type", this._options.type);
+            DOM.sink.apply(el, { setAttr: { type: this._options.type } });
         }
 
         if (this._options.name != null) {
-            DOM.sink.setAttribute(el, "name", this._options.name);
+            DOM.sink.apply(el, { setAttr: { name: this._options.name } });
         }
 
         if (this._options.placeholder !== undefined) {
-            DOM.sink.setAttribute(el, "placeholder", this._options.placeholder);
+            DOM.sink.apply(el, { setAttr: { placeholder: this._options.placeholder } });
         }
 
         if (this._options.readOnly) {
-            DOM.sink.setAttribute(el, "readonly", "");
+            DOM.sink.apply(el, { setAttr: { readonly: "" } });
         }
 
         if (this._options.maxLength !== undefined) {
-            DOM.sink.setAttribute(el, "maxlength", String(this._options.maxLength));
+            DOM.sink.apply(el, { setAttr: { maxlength: String(this._options.maxLength) } });
         }
 
         if (this._options.inputMode !== undefined) {
-            DOM.sink.setAttribute(el, "inputmode", this._options.inputMode);
+            DOM.sink.apply(el, { setAttr: { inputmode: this._options.inputMode } });
         }
 
         if (this._options.autoComplete !== undefined) {
-            DOM.sink.setAttribute(el, "autocomplete", this._options.autoComplete);
+            DOM.sink.apply(el, { setAttr: { autocomplete: this._options.autoComplete } });
         }
 
         return this;
@@ -655,10 +656,10 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     /**
      * Renders the input element and sets its initial value.
      *
-     * @returns The created input element cast to HTMLInputElement & HTMLTextAreaElement.
+     * @returns The created input element handle.
      */
-    protected render() {
-        let element = super.render() as HTMLInputElement & HTMLTextAreaElement;
+    protected render(): Handle {
+        let element = super.render();
 
         DOM.sink.setValue(element, this._options.text ?? "");
 

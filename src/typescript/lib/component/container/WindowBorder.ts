@@ -214,7 +214,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
         const element = this.getElement();
         if (element) {
-            DOM.sink.toggleClass(element, SNAP_TARGET_CLASS, value);
+            DOM.sink.apply(element, { toggleClass: { [SNAP_TARGET_CLASS]: value } });
         }
 
         return this;
@@ -232,7 +232,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
         // Suppresses pointer events on document.body (not a Component) for the
         // duration of the drag so the cursor can't snag on other elements.
-        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "none");
+        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "none" } });
     }
 
     /**
@@ -246,7 +246,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
         Event.removeViewportListener(this, 'touchmove', this._fireDragListener);
 
         // Restores pointer events on document.body (not a Component) once the drag ends.
-        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "");
+        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "" } });
 
         // Drop the snap-target highlight (if any) once the drag commits, so a
         // subsequent Ctrl-release on the same hover doesn't leave the strip glowing.
@@ -286,7 +286,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
         }
 
         if (this._snapTarget) {
-            DOM.sink.addClass(element, SNAP_TARGET_CLASS);
+            DOM.sink.apply(element, { addClass: [SNAP_TARGET_CLASS] });
         }
 
         return element;

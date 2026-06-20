@@ -141,7 +141,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
 
         let element = this.getElement();
         if (element) {
-            DOM.sink.toggleClass(element, "selected", value);
+            DOM.sink.apply(element, { toggleClass: { selected: value } });
         }
 
         return this;
@@ -252,7 +252,7 @@ class ToggleButton extends Button<ToggleButtonOptions> {
      */
     render() {
         let element = super.render();
-        DOM.sink.toggleClass(element, "selected", this.isSelected());
+        DOM.sink.apply(element, { toggleClass: { selected: this.isSelected() } });
         return element;
     }
 }

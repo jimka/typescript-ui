@@ -3,6 +3,7 @@
 import { AbstractInput, AbstractInputOptions } from "~/component/input/AbstractInput.js";
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
@@ -188,7 +189,7 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
      * @param selectedIndex - The row to seed as currently selected, or
      *   `-1` for no initial selection.
      */
-    showAt(anchorEl: HTMLElement, items: Array<CustomListItem>, selectedIndex: number): this {
+    showAt(anchorEl: Handle, items: Array<CustomListItem>, selectedIndex: number): this {
         this.pauseLayout();
         this._list.setItemsArray(items);
         this._list.setSelectedIndex(selectedIndex, false);
@@ -371,7 +372,7 @@ class ComboBoxLabel extends Component {
 
         const el = this.getElement();
         if (el) {
-            DOM.sink.setTextContent(el, text);
+            DOM.sink.apply(el, { text });
         }
 
         return this;
@@ -403,9 +404,9 @@ class ComboBoxLabel extends Component {
         return this._lineHeight;
     }
 
-    protected render(): HTMLElement {
+    protected render(): Handle {
         const element = super.render();
-        DOM.sink.setTextContent(element, this._text);
+        DOM.sink.apply(element, { text: this._text });
 
         return element;
     }
@@ -710,7 +711,7 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
             return;
         }
 
-        const surface = this.getElement(true);
+        const surface = this.getElement(true)!;
         const list    = this._dropdown.getList();
 
         // Exclude the ComboBox surface from the manager's outside-click test.

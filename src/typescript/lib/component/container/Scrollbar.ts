@@ -3,6 +3,7 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { callable } from "~/core/Callable.js";
@@ -501,7 +502,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
      *
      * @param element - Optional. The HTMLElement to initialize with.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         this.setTouchAction("none");
@@ -801,7 +802,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
 
         // Suppresses pointer events on document.body (not a Component) for the
         // duration of the drag so the cursor can't snag on other elements.
-        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "none");
+        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "none" } });
     };
 
     /**
@@ -837,7 +838,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
         Event.removeViewportListener(this, "touchcancel", this._onDragEnd);
 
         // Restores pointer events on document.body (not a Component) once the drag ends.
-        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "");
+        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "" } });
     };
 
     /**

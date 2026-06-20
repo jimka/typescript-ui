@@ -62,7 +62,7 @@ class ListItem extends Component<ListItemOptions> {
             this._value = opts.text;
             const element = this.getElement();
             if (element) {
-                DOM.sink.setTextContent(element, opts.text);
+                DOM.sink.apply(element, { text: opts.text });
             }
         }
 
@@ -96,8 +96,7 @@ class ListItem extends Component<ListItemOptions> {
     render() {
         let element = super.render();
 
-        DOM.sink.setDataset(element, "key", this._key);
-        DOM.sink.setTextContent(element, this._value);
+        DOM.sink.apply(element, { dataset: { key: this._key }, text: this._value });
 
         return element;
     }

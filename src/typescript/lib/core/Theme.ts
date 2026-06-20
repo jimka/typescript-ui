@@ -1169,7 +1169,7 @@ function ensureFontLoaded(): void {
     ).join('');
 
     const style = DOM.sink.createElement('style');
-    DOM.sink.setTextContent(style, rules);
+    DOM.sink.apply(style, { text: rules });
     DOM.sink.appendChild(DOM.source.getHead(), style);
 }
 
@@ -1227,13 +1227,21 @@ export class ThemeManager {
         rootStyle.setMany(themeToVars(theme));
         rootStyle.attach(DOM.source.getDocumentElement());
 
-        DOM.sink.setStyle(DOM.source.getDocumentElement(), "colorScheme", theme.colorScheme);
-        DOM.sink.setStyle(DOM.source.getDocumentElement(), "color", theme.text.color);
-        DOM.sink.setStyle(DOM.source.getDocumentElement(), "fontFamily", theme.font.family);
-        DOM.sink.setStyle(DOM.source.getDocumentElement(), "fontSize", theme.font.size ?? '14px');   // mirrors BaseTheme.font.size; font.size is optional
-        DOM.sink.setStyle(DOM.source.getDocumentElement(), "lineHeight", `calc(1em + ${theme.font.linePadding})`);
-        DOM.sink.setStyle(DOM.source.getBody(), "backgroundColor", theme.body.background);
-        DOM.sink.setStyle(DOM.source.getBody(), "color", theme.text.color);
+        DOM.sink.apply(DOM.source.getDocumentElement(), {
+            style: {
+                colorScheme: theme.colorScheme,
+                color: theme.text.color,
+                fontFamily: theme.font.family,
+                fontSize: theme.font.size ?? '14px',   // mirrors BaseTheme.font.size; font.size is optional
+                lineHeight: `calc(1em + ${theme.font.linePadding})`,
+            },
+        });
+        DOM.sink.apply(DOM.source.getBody(), {
+            style: {
+                backgroundColor: theme.body.background,
+                color: theme.text.color,
+            },
+        });
 
         Util.invalidateTextMetricsCache();
 

@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { CollapseButton, CollapseDirection } from "~/component/container/CollapseButton.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -178,7 +179,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
      *
      * @param element - Optional element passed from the framework init chain.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         const el = element || this.getElement();
@@ -490,7 +491,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
         // Suppresses pointer events on document.body (not a Component) for the
         // duration of the drag so the cursor can't snag on other elements.
-        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "none");
+        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "none" } });
     }
 
     /**
@@ -504,7 +505,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
         Event.removeViewportListener(this, 'touchmove', this.onDrag);
 
         // Restores pointer events on document.body (not a Component) once the drag ends.
-        DOM.sink.setStyle(DOM.source.getBody(), "pointerEvents", "");
+        DOM.sink.apply(DOM.source.getBody(), { style: { pointerEvents: "" } });
     }
 
     /**

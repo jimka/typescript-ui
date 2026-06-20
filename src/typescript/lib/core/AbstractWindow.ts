@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { WindowBorder, Direction } from "~/component/container/WindowBorder.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
@@ -586,7 +587,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * time the window finishes scaling in the spinner is already on screen.
      */
     show(): this {
-        const el = this.getElement(true);
+        const el = this.getElement(true)!;
 
         // Join the central layer tree before bringToFront so the manager has
         // a node to re-stamp. A dropdown opened inside the window then
@@ -711,8 +712,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      *
      * @returns The window's element, or null when not yet rendered.
      */
-    getLayerElement(): HTMLElement | null {
-        return this.getElement();
+    getLayerElement(): Handle | null {
+        return this.getElement() ?? null;
     }
 
     /**
@@ -1846,17 +1847,17 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      *
      * @returns The root HTMLElement for this window.
      */
-    render(): HTMLElement {
+    render(): Handle {
         let element = super.render();
 
-        DOM.sink.appendChild(element, this._borderComponents.west.getElement(true));
-        DOM.sink.appendChild(element, this._borderComponents.northwest.getElement(true));
-        DOM.sink.appendChild(element, this._borderComponents.north.getElement(true));
-        DOM.sink.appendChild(element, this._borderComponents.northeast.getElement(true));
-        DOM.sink.appendChild(element, this._borderComponents.east.getElement(true));
-        DOM.sink.appendChild(element, this._borderComponents.southeast.getElement(true));
-        DOM.sink.appendChild(element, this._borderComponents.south.getElement(true));
-        DOM.sink.appendChild(element, this._borderComponents.southwest.getElement(true));
+        DOM.sink.appendChild(element, this._borderComponents.west.getElement(true)!);
+        DOM.sink.appendChild(element, this._borderComponents.northwest.getElement(true)!);
+        DOM.sink.appendChild(element, this._borderComponents.north.getElement(true)!);
+        DOM.sink.appendChild(element, this._borderComponents.northeast.getElement(true)!);
+        DOM.sink.appendChild(element, this._borderComponents.east.getElement(true)!);
+        DOM.sink.appendChild(element, this._borderComponents.southeast.getElement(true)!);
+        DOM.sink.appendChild(element, this._borderComponents.south.getElement(true)!);
+        DOM.sink.appendChild(element, this._borderComponents.southwest.getElement(true)!);
 
         return element;
     }
@@ -2416,7 +2417,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // double-register the viewport listeners. The snap forwarding is only
         // useful when the cursor sits *outside* the 4 px strip.
         const targetEl = target.getElement();
-        if (targetEl && e.target instanceof Node && DOM.source.contains(targetEl, e.target)) {
+        if (targetEl && e.target instanceof Node && DOM.source.contains(targetEl, DOM.source.intern(e.target))) {
             this._snapTargetBorder = null;
             return;
         }

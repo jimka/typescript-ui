@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Animation } from "~/core/Animation.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -355,7 +356,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         this.applyEdgeBorder();
         this.applyRestingGeometry();
 
-        DOM.sink.appendChild(DOM.source.getDocumentElement(), this.getElement(true));
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), this.getElement(true)!);
         this.scheduleLayout();
 
         this.animateIn();
@@ -583,7 +584,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         this._backdrop.setZIndex(zIndex);
         this._backdrop.addClickListener(this._boundBackdropClose);
 
-        const backdropEl = this._backdrop.getElement(true);
+        const backdropEl = this._backdrop.getElement(true)!;
         DOM.sink.appendChild(DOM.source.getDocumentElement(), backdropEl);
 
         Animation.play(backdropEl, {
@@ -688,8 +689,8 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
      *
      * @returns The drawer's element, or null when not yet rendered.
      */
-    getLayerElement(): HTMLElement | null {
-        return this.getElement();
+    getLayerElement(): Handle | null {
+        return this.getElement() ?? null;
     }
 
     /**

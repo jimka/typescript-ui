@@ -232,7 +232,7 @@ class SplitButton extends Button<SplitButtonOptions> {
         this._setChevronOpen(true);
 
         this._menu.toggleFor(
-            this._chevron.getElement(true),
+            this._chevron.getElement(true)!,
             rect.left,
             rect.bottom,
             this._menuItems,

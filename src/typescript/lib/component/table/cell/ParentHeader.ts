@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DefaultCell } from "~/component/table/cell/Default.js";
+import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Tooltip } from "~/core/Tooltip.js";
 import { callable } from "~/core/Callable.js";
@@ -191,7 +192,7 @@ class ParentHeaderCell extends DefaultCell {
      *
      * @param element - Optional element forwarded by the framework init chain.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         const el = element || this.getElement();

@@ -242,7 +242,7 @@ class FieldSet extends Component {
     render() {
         let element = super.render();
 
-        DOM.sink.appendChild(element, this._legend.getElement(true));
+        DOM.sink.appendChild(element, this._legend.getElement(true)!);
 
         return element;
     }

@@ -678,7 +678,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
 
         const triggerEl = trigger.getElement();
 
-        if (triggerEl === null) {
+        if (!triggerEl) {
             return;
         }
 

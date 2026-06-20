@@ -107,7 +107,7 @@ class RailHandle extends Button<RailHandleOptions> {
 
         const element = this.getElement();
         if (element) {
-            DOM.sink.toggleClass(element, "selected", value);
+            DOM.sink.apply(element, { toggleClass: { selected: value } });
         }
 
         return this;
@@ -120,7 +120,7 @@ class RailHandle extends Button<RailHandleOptions> {
      */
     render() {
         const element = super.render();
-        DOM.sink.toggleClass(element, "selected", this.isSelected());
+        DOM.sink.apply(element, { toggleClass: { selected: this.isSelected() } });
 
         return element;
     }

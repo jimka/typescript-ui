@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { ClassicTheme, Component, DarkTheme, ThemeManager } from '@jimka/typescript-ui/core';
+import { ClassicTheme, Component, DarkTheme, DOM, ThemeManager } from '@jimka/typescript-ui/core';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Table } from '@jimka/typescript-ui/component/table';
 /**
@@ -50,7 +50,7 @@ export class Benchmark {
             host.style.height = "400px";
             document.body.appendChild(host);
 
-            host.appendChild(table.getElement(true));
+            DOM.sink.appendChild(DOM.source.intern(host), table.getElement(true)!);
             table.setSize({ width: 600, height: 400 });
 
             const body = table.getBody();
@@ -135,7 +135,7 @@ export class Benchmark {
             host.style.height = "400px";
             document.body.appendChild(host);
 
-            host.appendChild(table.getElement(true));
+            DOM.sink.appendChild(DOM.source.intern(host), table.getElement(true)!);
             table.setSize({ width: 600, height: 400 });
 
             const body = table.getBody();
@@ -205,7 +205,7 @@ export class Benchmark {
             host.style.height = "400px";
             document.body.appendChild(host);
 
-            host.appendChild(table.getElement(true));
+            DOM.sink.appendChild(DOM.source.intern(host), table.getElement(true)!);
 
             const start = performance.now();
             table.setSize({ width: 600, height: 400 });

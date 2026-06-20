@@ -3,6 +3,7 @@
 import { _Body } from "~/component/table/Body.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { DragEventDetail, DragManager } from "~/core/DragManager.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
@@ -444,9 +445,9 @@ class TreeBody extends _Body {
      *
      * @param row - The pool row to inspect.
      *
-     * @returns The toggle's DOM element, or `null`.
+     * @returns The toggle's DOM element handle, or `null`.
      */
-    private getToggleElement(row: Row): HTMLElement | null {
+    private getToggleElement(row: Row): Handle | null {
         const treeCell = row.getTreeCell();
 
         if (!treeCell) {
@@ -461,7 +462,7 @@ class TreeBody extends _Body {
 
         const toggle = renderer.getToggle();
 
-        return toggle ? toggle.getElement() : null;
+        return toggle ? (toggle.getElement() ?? null) : null;
     }
 
     /**
@@ -474,7 +475,7 @@ class TreeBody extends _Body {
      *
      * @returns This body, for method chaining.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         this.ensureEmptyAreaDropTarget();
@@ -758,7 +759,7 @@ class TreeBody extends _Body {
      * @param e - The bubbled click event.
      */
     protected onSubtreeClick(e: MouseEvent): void {
-        const target = e.target as Node | null;
+        const target = e.target === null ? null : DOM.source.intern(e.target);
 
         for (const row of this.getRowPool()) {
             const toggleEl = this.getToggleElement(row);

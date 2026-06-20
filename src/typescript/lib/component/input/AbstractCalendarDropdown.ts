@@ -3,6 +3,7 @@
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
@@ -191,10 +192,10 @@ class PickerNavButton extends Component {
      *
      * @returns The rendered root element.
      */
-    protected render(): HTMLElement {
+    protected render(): Handle {
         const element = super.render();
 
-        DOM.sink.addClass(element, "PickerNavButton");
+        DOM.sink.apply(element, { addClass: ["PickerNavButton"] });
 
         return element;
     }
@@ -229,10 +230,10 @@ class PickerMonthLabel extends Text {
      *
      * @returns The rendered root element.
      */
-    protected render(): HTMLElement {
+    protected render(): Handle {
         const element = super.render();
 
-        DOM.sink.addClass(element, "PickerNavButton");
+        DOM.sink.apply(element, { addClass: ["PickerNavButton"] });
 
         return element;
     }
@@ -356,7 +357,7 @@ class PickerDay extends Text {
         const element = this.getElement();
 
         if (element) {
-            DOM.sink.toggleClass(element, "disabled", disabled);
+            DOM.sink.apply(element, { toggleClass: { disabled: disabled } });
         }
 
         return this;
@@ -378,13 +379,13 @@ class PickerDay extends Text {
      *
      * @returns The rendered root element.
      */
-    protected render(): HTMLElement {
+    protected render(): Handle {
         const element = super.render();
 
-        DOM.sink.addClass(element, "PickerDay");
+        DOM.sink.apply(element, { addClass: ["PickerDay"] });
 
         if (this._disabled) {
-            DOM.sink.addClass(element, "disabled");
+            DOM.sink.apply(element, { addClass: ["disabled"] });
         }
 
         return element;
@@ -625,7 +626,7 @@ abstract class AbstractCalendarDropdown<
      * @param anchorEl - The input the picker anchors to.
      * @param selected - The currently-selected Date, or null.
      */
-    showAt(anchorEl: HTMLElement, selected: Date | null): this {
+    showAt(anchorEl: Handle, selected: Date | null): this {
         this._value = selected ? new Date(selected.getTime()) : null;
 
         const anchor = this._value ?? new Date();

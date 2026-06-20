@@ -3,6 +3,7 @@
 import { AnimatedDropdown, AnimatedDropdownOptions } from "~/core/AnimatedDropdown.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Fit } from "~/layout/Fit.js";
 import { TimeColumns } from "~/component/input/TimeColumns.js";
@@ -98,7 +99,7 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
      * @param anchorEl - The input the picker anchors to.
      * @param selected - The currently-selected time (Date), or null.
      */
-    showAt(anchorEl: HTMLElement, selected: Date | null): this {
+    showAt(anchorEl: Handle, selected: Date | null): this {
         this._timeColumns.setTime(selected);
 
         this.setWidth(this._showSeconds ? PANEL_WIDTH_SECONDS : PANEL_WIDTH);

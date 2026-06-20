@@ -609,8 +609,8 @@ class Split extends LayoutManager {
         for (let idx in this._gutters) {
             let gutter = this._gutters[idx];
 
-            let gutterElement = gutter.getElement();
-            DOM.sink.removeChild(DOM.source.getParentNode(gutterElement) as Node, gutterElement);
+            let gutterElement = gutter.getElement()!;
+            DOM.sink.removeChild(DOM.source.getParentNode(gutterElement)!, gutterElement);
             gutter.destroy();
         }
 
@@ -731,7 +731,7 @@ class Split extends LayoutManager {
             containerSize = { width: w, height: h };
         }
 
-        let element = container.getElement();
+        let element = container.getElement()!;
         // The visible layout is driven by the displayed panes: a non-displayed
         // pane (and its gutter) drops out entirely, neighbours reflowing to fill.
         // `recalculateSizes`/`_sizes` bookkeeping below still spans the full child
@@ -767,7 +767,7 @@ class Split extends LayoutManager {
 
             this._gutters.push(gutter);
 
-            DOM.sink.appendChild(element, gutter.getElement(true));
+            DOM.sink.appendChild(element, gutter.getElement(true)!);
         }
 
         let x = containerInsets.getLeft();

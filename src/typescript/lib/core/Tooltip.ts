@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { DOM } from "~/core/DOM.js";
+import { DOM, type Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Util } from "~/core/Util.js";
 import { Animation } from "~/core/Animation.js";
@@ -64,8 +64,8 @@ export class Tooltip extends Component {
     private static instance: Tooltip | null = null;
     private static showTimer: ReturnType<typeof setTimeout> | null = null;
     private static attachments: Map<string, TooltipAttachment> = new Map();
-    private static elementAttachments: WeakMap<HTMLElement, ElementTooltipAttachment> = new WeakMap();
-    private static activeElement: HTMLElement | null = null;
+    private static elementAttachments: Map<Handle, ElementTooltipAttachment> = new Map();
+    private static activeElement: Handle | null = null;
 
     // Set true while a fade-out is in flight; reset to false when the fade-out
     // completes (so the deferred removeElement fires) or when a fresh `show()`
@@ -193,7 +193,7 @@ export class Tooltip extends Component {
         inst.setX(Math.max(0, clampedX));
         inst.setY(Math.max(0, clampedY));
 
-        const el = inst.getElement(true);
+        const el = inst.getElement(true)!;
 
         inst.scheduleLayout();
 
@@ -359,10 +359,10 @@ export class Tooltip extends Component {
      * last known cursor position so the visible text updates without a
      * re-hover.
      *
-     * @param element - The raw DOM element to attach hover behaviour to.
+     * @param element - The element handle to attach hover behaviour to.
      * @param text - The tooltip text to display.
      */
-    static attachToElement(element: HTMLElement, text: string): void {
+    static attachToElement(element: Handle, text: string): void {
         const previous  = Tooltip.elementAttachments.get(element);
         const wasActive = Tooltip.activeElement === element;
 
@@ -427,15 +427,15 @@ export class Tooltip extends Component {
     }
 
     /**
-     * Removes an `attachToElement` binding installed on a raw HTMLElement.
+     * Removes an `attachToElement` binding installed on an element handle.
      *
      * Detaches the three hover listeners, cancels any pending show timer, and
      * clears the active-element tracker if it pointed at this element.
      * Idempotent — calling on an unattached element is a no-op.
      *
-     * @param element - The raw DOM element whose attachment should be removed.
+     * @param element - The element handle whose attachment should be removed.
      */
-    static detachElement(element: HTMLElement): void {
+    static detachElement(element: Handle): void {
         const att = Tooltip.elementAttachments.get(element);
 
         if (!att) {

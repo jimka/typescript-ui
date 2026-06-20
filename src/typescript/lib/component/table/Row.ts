@@ -188,7 +188,7 @@ class Row extends Component {
      * @remarks New records get a green tint, dirty records an orange tint, and clean records the zebra stripe (odd rows) or no tint (even rows).
      */
     updateVisualState(): void {
-        const el = this.getElement() as HTMLElement;
+        const el = this.getElement();
         if (!el) {
             return;
         }
@@ -198,13 +198,13 @@ class Row extends Component {
         // would persist this into _options and replay it onto the next record bound
         // to this reused row, so write/remove the inline style directly instead.
         if (this._data?.isNew()) {
-            DOM.sink.setStyle(el, 'background-color', 'var(--ts-ui-table-row-new, rgba(70, 200, 70, 0.15))');
+            DOM.sink.apply(el, { style: { 'background-color': 'var(--ts-ui-table-row-new, rgba(70, 200, 70, 0.15))' } });
         } else if (this._data?.isDirty()) {
-            DOM.sink.setStyle(el, 'background-color', 'var(--ts-ui-table-row-dirty, rgba(255, 165, 0, 0.15))');
+            DOM.sink.apply(el, { style: { 'background-color': 'var(--ts-ui-table-row-dirty, rgba(255, 165, 0, 0.15))' } });
         } else if (this._stripe) {
-            DOM.sink.setStyle(el, 'background-color', 'var(--ts-ui-table-row-stripe, rgba(0, 0, 0, 0.035))');
+            DOM.sink.apply(el, { style: { 'background-color': 'var(--ts-ui-table-row-stripe, rgba(0, 0, 0, 0.035))' } });
         } else {
-            DOM.sink.setStyle(el, 'background-color', null);
+            DOM.sink.apply(el, { style: { 'background-color': null } });
         }
     }
 

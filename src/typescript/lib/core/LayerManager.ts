@@ -3,6 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 
 /**
  * How a layer responds to an outside interaction.
@@ -39,7 +40,7 @@ export type LayerDismissMode = "click-outside" | "blur" | "manual" | "modal";
  */
 export interface DismissableLayer {
     /** The layer's root element (already mounted on `documentElement`). */
-    getLayerElement(): HTMLElement | null;
+    getLayerElement(): Handle | null;
 
     /** Dismiss policy consulted by the document-level interaction handlers. */
     getDismissMode(): LayerDismissMode;
@@ -51,7 +52,7 @@ export interface DismissableLayer {
      * Optional anchor element excluded from "outside" tests so the trigger
      * click that opened the layer does not immediately re-close it.
      */
-    getAnchorElement?(): HTMLElement | null;
+    getAnchorElement?(): Handle | null;
 
     /**
      * Optional activation hook. The manager calls it with `true` when this
@@ -275,7 +276,7 @@ export namespace LayerManager {
      * @param node - The DOM node receiving the interaction.
      * @returns True when `node` is inside `layer` or any descendant layer.
      */
-    export function containsAcrossLayers(layer: DismissableLayer, node: Node | null): boolean {
+    export function containsAcrossLayers(layer: DismissableLayer, node: Handle | null): boolean {
         if (!node) {
             return false;
         }
@@ -355,7 +356,7 @@ export namespace LayerManager {
     }
 
     /** True when `node` (or a descendant layer) contains `target`. */
-    function nodeContains(node: LayerNode, target: Node): boolean {
+    function nodeContains(node: LayerNode, target: Handle): boolean {
         const el = node.layer.getLayerElement();
 
         if (el && DOM.source.contains(el, target)) {
@@ -425,7 +426,7 @@ export namespace LayerManager {
      * only `"blur"` layers act on it (a `"click-outside"` layer ignores focus
      * moves).
      */
-    function handleOutside(target: Node | null, focusOnly: boolean): void {
+    function handleOutside(target: Handle | null, focusOnly: boolean): void {
         // Snapshot top-down so requestClose-driven unregisters don't disturb
         // the walk; re-read containment against the live tree each step.
         const snapshot  = _stack.slice().reverse();
@@ -487,7 +488,7 @@ export namespace LayerManager {
 
     /** Document `pointerdown` handler — see {@link handleOutside}. */
     function onPointerDown(e: PointerEvent): void {
-        handleOutside(e.target as Node | null, false);
+        handleOutside(e.target === null ? null : DOM.source.intern(e.target), false);
     }
 
     /**
@@ -503,7 +504,7 @@ export namespace LayerManager {
      * window itself) should dismiss layers.
      */
     function onWindowBlur(e: FocusEvent): void {
-        if (!DOM.source.isWindow(e.target)) {
+        if (!DOM.source.isWindow(e.target === null ? null : DOM.source.intern(e.target))) {
             return;
         }
 
@@ -512,7 +513,7 @@ export namespace LayerManager {
 
     /** Document `focusin` handler — only `"blur"` layers act on it. */
     function onFocusIn(e: FocusEvent): void {
-        handleOutside(e.target as Node | null, true);
+        handleOutside(e.target === null ? null : DOM.source.intern(e.target), true);
     }
 
     /** Document `keydown` handler — Escape asks the topmost non-manual layer to close. */

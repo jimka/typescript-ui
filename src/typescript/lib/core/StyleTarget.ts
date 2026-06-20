@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 
 /**
  * Shared base for a deferred-write style buffer. Either flushes into a
  * [`CSSStyleRule`](https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleRule)
- * (see {@link StyleRule}) or an
- * [`HTMLElement`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement)
+ * (see {@link StyleRule}) or an element behind a {@link Handle}
  * (see {@link InlineStyle}).
  *
  * @remarks Before the target exists, writes accumulate in `dirty`. Once
@@ -16,9 +16,12 @@ import { DOM } from "~/core/DOM.js";
  * used by callers that need to batch their own commits (see Component's
  * `autoCommitStyle` switch).
  *
+ * @typeParam T - The materialised target kind: a `CSSStyleRule` for
+ *   {@link StyleRule}, or a {@link Handle} for {@link InlineStyle}.
+ *
  * @category Core
  */
-abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
+abstract class StyleTarget<T> {
     protected _target: T | null = null;
     protected _dirty:  Record<string, string | null> = {};
 
@@ -75,9 +78,7 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
      */
     flush(): void {
         if (!this._target) return;
-        for (const key of Object.keys(this._dirty)) {
-            this.writeStyle(key, this._dirty[key]);
-        }
+        this.flushDirty(this._dirty);
         this._dirty = {};
     }
 
@@ -90,22 +91,29 @@ abstract class StyleTarget<T extends { style: CSSStyleDeclaration }> {
 
     protected materialize(target: T): void {
         this._target = target;
-        for (const key of Object.keys(this._dirty)) {
-            this.writeStyle(key, this._dirty[key]);
-        }
+        this.flushDirty(this._dirty);
         this._dirty = {};
     }
 
     /**
      * Terminal write for a single property onto the now-attached target. Each
      * subclass resolves its own target kind through the seam — an element via
-     * {@link DOMSink.setStyle}, a rule via {@link DOMSink.setRuleStyle} — so the
+     * {@link DOMSink.apply}, a rule via {@link DOMSink.setRuleStyle} — so the
      * base never touches a `.style` declaration directly.
      *
      * @param key - The CSS property name (camelCase, or `--custom-property`).
      * @param value - The value to set, or null to remove the property.
      */
     protected abstract writeStyle(key: string, value: string | null): void;
+
+    /**
+     * Drains a bag of accumulated writes onto the now-attached target. The
+     * inline-style subclass batches the whole bag into one seam write; the rule
+     * subclass writes each property individually.
+     *
+     * @param dirty - The accumulated property writes to flush.
+     */
+    protected abstract flushDirty(dirty: Record<string, string | null>): void;
 }
 
 /**
@@ -250,6 +258,13 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
         DOM.sink.setRuleStyle(this._target!, key, value);
     }
 
+    /** @inheritDoc */
+    protected flushDirty(dirty: Record<string, string | null>): void {
+        for (const key of Object.keys(dirty)) {
+            DOM.sink.setRuleStyle(this._target!, key, dirty[key]);
+        }
+    }
+
     /**
      * Inserts a `@keyframes` block into the framework's shared `<style id="Base">`
      * stylesheet if no rule with the given name already exists.
@@ -273,17 +288,30 @@ class StyleRule extends StyleTarget<CSSStyleRule> {
  *
  * @category Core
  */
-class InlineStyle extends StyleTarget<HTMLElement> {
+class InlineStyle extends StyleTarget<Handle> {
     /**
-     * Binds this buffer to a live element and flushes any queued writes.
+     * Binds this buffer to a live element handle and flushes any queued writes.
+     *
+     * @param handle - The element handle to attach to.
      */
-    attach(element: HTMLElement): void {
-        this.materialize(element);
+    attach(handle: Handle): void {
+        this.materialize(handle);
     }
 
     /** @inheritDoc */
     protected writeStyle(key: string, value: string | null): void {
-        DOM.sink.setStyle(this._target!, key, value);
+        DOM.sink.apply(this._target!, { style: { [key]: value } });
+    }
+
+    /**
+     * Flushes the whole dirty bag as one batched {@link DOMSink.apply} — the
+     * per-frame layout-commit hot path, where one handle resolve covers every
+     * queued style write.
+     *
+     * @param dirty - The accumulated style writes to flush.
+     */
+    protected flushDirty(dirty: Record<string, string | null>): void {
+        DOM.sink.apply(this._target!, { style: dirty });
     }
 }
 

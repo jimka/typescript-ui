@@ -205,8 +205,8 @@ class ProgressSpinner extends Component {
         this.setBackgroundColor("var(--ts-ui-progress-spinner-backdrop, rgba(255, 255, 255, 0.6))");
         this.setZIndex(9999);
 
-        const targetEl  = target.getElement(true);
-        const spinnerEl = this.getElement(true);
+        const targetEl  = target.getElement(true)!;
+        const spinnerEl = this.getElement(true)!;
 
         DOM.sink.appendChild(targetEl, spinnerEl);
 

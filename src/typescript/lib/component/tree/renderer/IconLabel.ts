@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Text } from "~/component/input/Text.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
@@ -98,7 +99,7 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
             this._currentGlyph = next;
 
             if (el) {
-                DOM.sink.insertBefore(el, this._icon.getElement(true), this._label.getElement());
+                DOM.sink.insertBefore(el, this._icon.getElement(true)!, this._label.getElement() ?? null);
             }
         }
 
@@ -145,7 +146,7 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
      *
      * @param element - Optional element passed by the rendering pipeline; falls back to getElement().
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
         const el = element || this.getElement();
@@ -153,8 +154,8 @@ export class IconLabelTreeNodeRenderer extends TreeNodeRenderer {
             return this;
         }
 
-        DOM.sink.appendChild(el, this._icon.getElement(true));
-        DOM.sink.appendChild(el, this._label.getElement(true));
+        DOM.sink.appendChild(el, this._icon.getElement(true)!);
+        DOM.sink.appendChild(el, this._label.getElement(true)!);
 
         return this;
     }

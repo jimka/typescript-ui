@@ -4,6 +4,7 @@ import { Container, ContainerOptions } from "~/core/Container.js";
 import { Panel } from "~/core/Panel.js";
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { Button } from "~/component/button/Button.js";
@@ -261,7 +262,7 @@ class TabIndicator extends Component {
      *
      * @returns This indicator, for chaining.
      */
-    applyStyle(element: HTMLElement): this {
+    applyStyle(element: Handle): this {
         super.applyStyle(element);
         this.applyBarGeometry();
 
@@ -715,24 +716,24 @@ class TabBar extends Container<TabBarOptions> {
      *
      * @returns This tab strip, for method chaining.
      */
-    protected init(element?: HTMLElement): this {
+    protected init(element?: Handle): this {
         super.init(element);
 
-        const host = element ?? this.getElement(true);
+        const host = element ?? this.getElement(true)!;
 
         // The clip frame (which holds the tab wrappers) and the tool group are
         // raw-appended overlays — positioned manually in `layoutChrome` rather
         // than enrolled in a box. The selection indicator and reorder bar go
         // *inside* the clip frame so they share the wrappers' coordinate space
         // (and clip / scroll with them) rather than the strip's.
-        DOM.sink.appendChild(host, this._tabClip.getElement(true));
-        DOM.sink.appendChild(host, this._toolGroup.getElement(true));
-        DOM.sink.appendChild(host, this._leadGroup.getElement(true));
+        DOM.sink.appendChild(host, this._tabClip.getElement(true)!);
+        DOM.sink.appendChild(host, this._toolGroup.getElement(true)!);
+        DOM.sink.appendChild(host, this._leadGroup.getElement(true)!);
 
-        const clip = this._tabClip.getElement(true);
-        DOM.sink.appendChild(clip, this._indicator.getElement(true));
-        DOM.sink.appendChild(clip, this._dropTint.getElement(true));
-        DOM.sink.appendChild(clip, this._reorderBar.getElement(true));
+        const clip = this._tabClip.getElement(true)!;
+        DOM.sink.appendChild(clip, this._indicator.getElement(true)!);
+        DOM.sink.appendChild(clip, this._dropTint.getElement(true)!);
+        DOM.sink.appendChild(clip, this._reorderBar.getElement(true)!);
 
         Event.addSubtreeListener(this, "keydown", (e: KeyboardEvent) => this.onToolbarKeyDown(e));
 
@@ -1211,29 +1212,31 @@ class TabBar extends Container<TabBarOptions> {
             return false;
         }
 
+        const targetHandle = DOM.source.intern(target);
+
         for (const entry of this._entries) {
             const wrapperEl = entry.wrapper.getElement();
 
-            if (wrapperEl && DOM.source.contains(wrapperEl, target)) {
+            if (wrapperEl && DOM.source.contains(wrapperEl, targetHandle)) {
                 return true;
             }
         }
 
         const toolGroupEl = this._toolGroup.getElement();
 
-        if (toolGroupEl && DOM.source.contains(toolGroupEl, target)) {
+        if (toolGroupEl && DOM.source.contains(toolGroupEl, targetHandle)) {
             return true;
         }
 
         const leadArrowEl = this._scrollLeadButton?.getElement() ?? null;
 
-        if (leadArrowEl && DOM.source.contains(leadArrowEl, target)) {
+        if (leadArrowEl && DOM.source.contains(leadArrowEl, targetHandle)) {
             return true;
         }
 
         const trailArrowEl = this._scrollTrailButton?.getElement() ?? null;
 
-        if (trailArrowEl && DOM.source.contains(trailArrowEl, target)) {
+        if (trailArrowEl && DOM.source.contains(trailArrowEl, targetHandle)) {
             return true;
         }
 
@@ -1505,7 +1508,7 @@ class TabBar extends Container<TabBarOptions> {
             // Overlay it inside the cell rather than enrolling it in the Fit
             // layout (which would stretch it over the whole tab); `layoutChrome`
             // pins it to the right edge.
-            DOM.sink.appendChild(wrapper.getElement(true), closeButton.getElement(true));
+            DOM.sink.appendChild(wrapper.getElement(true)!, closeButton.getElement(true)!);
         }
 
         // Subtree listener so a right-click on the label, the glyph, or the
@@ -2503,9 +2506,9 @@ class TabBar extends Container<TabBarOptions> {
         lead.on("action", this.scrollLeadClicked);
         trail.on("action", this.scrollTrailClicked);
 
-        const element = this.getElement(true);
-        DOM.sink.appendChild(element, lead.getElement(true));
-        DOM.sink.appendChild(element, trail.getElement(true));
+        const element = this.getElement(true)!;
+        DOM.sink.appendChild(element, lead.getElement(true)!);
+        DOM.sink.appendChild(element, trail.getElement(true)!);
 
         this._scrollLeadButton = lead;
         this._scrollTrailButton = trail;
@@ -2905,7 +2908,7 @@ class TabBar extends Container<TabBarOptions> {
 
                 const closeElement = entry.closeButton?.getElement();
 
-                if (closeElement && target instanceof Node && DOM.source.contains(closeElement, target)) {
+                if (closeElement && target instanceof Node && DOM.source.contains(closeElement, DOM.source.intern(target))) {
                     return false;
                 }
 

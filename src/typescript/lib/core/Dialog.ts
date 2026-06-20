@@ -18,6 +18,7 @@ import { xmark } from "~/glyphs/solid/xmark.js";
 import { circle_check } from "~/glyphs/solid/circle_check.js";
 import { circle_info } from "~/glyphs/solid/circle_info.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 
 Glyph.register(xmark, circle_check, circle_info);
 
@@ -460,7 +461,7 @@ class Dialog extends Component implements DismissableLayer {
     private readonly _config          : DialogConfig;
 
     private _resolvePromise  : ((result: DialogResult) => void) | null = null;
-    private _previousFocus   : Element | null = null;
+    private _previousFocus   : Handle | null = null;
     private _boundKeyHandler : (e: KeyboardEvent) => void;
     private _boundResizeHandler: () => void;
 
@@ -637,10 +638,10 @@ class Dialog extends Component implements DismissableLayer {
         this.setZIndex(panelZ);
         this._backdrop.setZIndex(panelZ - 1);
 
-        const backdropEl = this._backdrop.getElement(true);
+        const backdropEl = this._backdrop.getElement(true)!;
         DOM.sink.appendChild(DOM.source.getDocumentElement(), backdropEl);
 
-        const dialogEl = this.getElement(true);
+        const dialogEl = this.getElement(true)!;
         DOM.sink.appendChild(DOM.source.getDocumentElement(), dialogEl);
 
         this.scheduleLayout();
@@ -701,10 +702,10 @@ class Dialog extends Component implements DismissableLayer {
     private focusFirst(): void {
         const el        = this.getElement();
         const focusable = el
-            ? (DOM.source.querySelectorAll(
+            ? DOM.source.querySelectorAll(
                 el,
                 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-            ) as HTMLElement[])
+            )
             : undefined;
 
         if (focusable && focusable.length > 0) {
@@ -717,17 +718,17 @@ class Dialog extends Component implements DismissableLayer {
      *
      * @returns An array of focusable elements in DOM order.
      */
-    private getFocusable(): HTMLElement[] {
+    private getFocusable(): Handle[] {
         const el = this.getElement();
 
         if (!el) {
             return [];
         }
 
-        return (DOM.source.querySelectorAll(
+        return DOM.source.querySelectorAll(
             el,
             'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        ) as HTMLElement[]).filter(el => !DOM.source.hasAttribute(el, 'disabled'));
+        ).filter(el => !DOM.source.hasAttribute(el, 'disabled'));
     }
 
     /**
@@ -792,8 +793,8 @@ class Dialog extends Component implements DismissableLayer {
 
             LayerManager.unregister(this);
 
-            if (this._previousFocus && 'focus' in this._previousFocus) {
-                DOM.sink.focus(this._previousFocus as HTMLElement);
+            if (this._previousFocus !== null) {
+                DOM.sink.focus(this._previousFocus);
             }
 
             if (this._resolvePromise) {
@@ -860,8 +861,8 @@ class Dialog extends Component implements DismissableLayer {
      *
      * @returns The dialog's element, or null when not yet rendered.
      */
-    getLayerElement(): HTMLElement | null {
-        return this.getElement();
+    getLayerElement(): Handle | null {
+        return this.getElement() ?? null;
     }
 
     /**

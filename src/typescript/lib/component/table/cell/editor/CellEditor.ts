@@ -4,6 +4,7 @@ import { Component } from "~/core/Component.js";
 import { Fit } from "~/layout/Fit.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ThemeManager } from "~/core/Theme.js";
+import type { Handle } from "~/core/DOM.js";
 
 /**
  * Abstract base class for cell editors.
@@ -66,10 +67,10 @@ export abstract class CellEditor<T> extends Component {
      * [`LayerManager.containsAcrossLayers`](/api/core/namespaces/LayerManager/functions/containsAcrossLayers)
      * rather than walking a private layer stack themselves.
      *
-     * @param _relatedTarget - The node receiving focus, or null.
+     * @param _relatedTarget - The node handle receiving focus, or null.
      * @returns True to suppress the blur-driven commit/close.
      */
-    retainsFocus(_relatedTarget: Node | null): boolean {
+    retainsFocus(_relatedTarget: Handle | null): boolean {
         return false;
     }
 

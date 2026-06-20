@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 
 /**
  * Construction-time options for {@link SortPriorityBadge}.
@@ -109,12 +110,12 @@ class SortPriorityBadge extends Component<SortPriorityBadgeOptions> {
      * Renders the root span and flushes the cached priority into
      * `textContent` and visibility.
      *
-     * @returns The rendered root element.
+     * @returns The rendered root element handle.
      */
-    protected render(): HTMLElement {
+    protected render(): Handle {
         const element = super.render();
 
-        DOM.sink.setTextContent(element, this._priorityText());
+        DOM.sink.apply(element, { text: this._priorityText() });
 
         return element;
     }
@@ -141,7 +142,7 @@ class SortPriorityBadge extends Component<SortPriorityBadgeOptions> {
 
         const element = this.getElement();
         if (element) {
-            DOM.sink.setTextContent(element, this._priorityText());
+            DOM.sink.apply(element, { text: this._priorityText() });
         }
 
         this.setVisible(this._shouldShow(value));

@@ -15,6 +15,7 @@ import { triangle_exclamation } from "~/glyphs/solid/triangle_exclamation.js";
 import { circle_exclamation } from "~/glyphs/solid/circle_exclamation.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 
 Glyph.register(circle_info, circle_check, triangle_exclamation, circle_exclamation, xmark);
 
@@ -186,7 +187,7 @@ export class Notification extends Component {
 
         Notification.activeNotifications.push(n);
 
-        const el = n.getElement(true);
+        const el = n.getElement(true)!;
 
         n.scheduleLayout();
 
@@ -273,8 +274,8 @@ export class Notification extends Component {
      * @param el - The toast root element (the `Event`-routed listener can't
      *             rely on `e.currentTarget` — that's `window` here).
      */
-    private static acquireHoverHold(e: MouseEvent, el: HTMLElement | undefined): void {
-        if (el && e.relatedTarget instanceof Node && DOM.source.contains(el, e.relatedTarget)) {
+    private static acquireHoverHold(e: MouseEvent, el: Handle | undefined): void {
+        if (el && e.relatedTarget instanceof Node && DOM.source.contains(el, DOM.source.intern(e.relatedTarget))) {
             return;
         }
 
@@ -297,8 +298,8 @@ export class Notification extends Component {
      * @param el - The toast root element (the `Event`-routed listener can't
      *             rely on `e.currentTarget` — that's `window` here).
      */
-    private static releaseHoverHold(e: MouseEvent, el: HTMLElement | undefined): void {
-        if (el && e.relatedTarget instanceof Node && DOM.source.contains(el, e.relatedTarget)) {
+    private static releaseHoverHold(e: MouseEvent, el: Handle | undefined): void {
+        if (el && e.relatedTarget instanceof Node && DOM.source.contains(el, DOM.source.intern(e.relatedTarget))) {
             return;
         }
 

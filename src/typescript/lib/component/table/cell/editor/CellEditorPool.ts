@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Event } from "~/core/Event.js";
+import { DOM } from "~/core/DOM.js";
 import type { Cell } from "~/component/table/cell/Cell.js";
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
 import { StringEditor } from "~/component/table/cell/editor/String.js";
@@ -118,7 +119,7 @@ export class CellEditorPool {
         editor.setCommitRequestHandler(() => this._activeCell?.commitEdit());
 
         Event.addListener(editor, "blur", (e: FocusEvent) => {
-            if (editor.retainsFocus(e.relatedTarget as Node | null)) {
+            if (editor.retainsFocus(e.relatedTarget === null ? null : DOM.source.intern(e.relatedTarget))) {
                 return;
             }
 

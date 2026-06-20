@@ -6,6 +6,7 @@ import { Event } from "~/core/Event.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { clock } from "~/glyphs/solid/clock.js";
 import { TimePickerDropdown } from "~/component/input/TimePickerDropdown.js";
+import type { Handle } from "~/core/DOM.js";
 import { callable } from "~/core/Callable.js";
 
 Glyph.register(clock);
@@ -173,7 +174,7 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
      * @param anchorEl - The element to anchor the panel to.
      * @param value - The current field value (or null when empty).
      */
-    protected showDropdown(dropdown: TimePickerDropdown, anchorEl: HTMLElement, value: Date | null): void {
+    protected showDropdown(dropdown: TimePickerDropdown, anchorEl: Handle, value: Date | null): void {
         dropdown.showAt(anchorEl, value);
     }
 

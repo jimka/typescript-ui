@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 
 /**
  * Tagged union describing how a glyph is rendered.
@@ -54,7 +55,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 export const GLYPH_SYMBOL_ID_PREFIX = "ts-glyph-";
 
 let _spriteMounted: boolean        = false;
-let _spriteElement: SVGSVGElement | null = null;
+let _spriteElement: Handle | null = null;
 
 /**
  * Registers a glyph by name. If the glyph is SVG-mode and the sprite is
@@ -111,15 +112,13 @@ export function ensureGlyphSprite(): void {
         return;
     }
 
-    const sprite = DOM.sink.createElementNS(SVG_NS, "svg") as SVGSVGElement;
-    DOM.sink.setAttribute(sprite, "aria-hidden", "true");
-    DOM.sink.setAttribute(sprite, "focusable", "false");
+    const sprite = DOM.sink.createElementNS(SVG_NS, "svg");
     // `sprite` is a raw off-screen SVG element mounted directly on document.body,
     // not a Component, so the Component style setters don't apply here.
-    DOM.sink.setStyle(sprite, "position", "absolute");
-    DOM.sink.setStyle(sprite, "width", "0");
-    DOM.sink.setStyle(sprite, "height", "0");
-    DOM.sink.setStyle(sprite, "overflow", "hidden");
+    DOM.sink.apply(sprite, {
+        setAttr: { "aria-hidden": "true", focusable: "false" },
+        style: { position: "absolute", width: "0", height: "0", overflow: "hidden" },
+    });
 
     DOM.sink.appendChild(DOM.source.getBody(), sprite);
 
@@ -162,11 +161,10 @@ function _addSymbolToSprite(name: string, def: GlyphDef): void {
     }
 
     const symbol = DOM.sink.createElementNS(SVG_NS, "symbol");
-    DOM.sink.setAttribute(symbol, "id", id);
-    DOM.sink.setAttribute(symbol, "viewBox", def.viewBox);
+    DOM.sink.apply(symbol, { setAttr: { id: id, viewBox: def.viewBox } });
 
     const path = DOM.sink.createElementNS(SVG_NS, "path");
-    DOM.sink.setAttribute(path, "d", def.path);
+    DOM.sink.apply(path, { setAttr: { d: def.path } });
     DOM.sink.appendChild(symbol, path);
 
     DOM.sink.appendChild(_spriteElement, symbol);
@@ -185,6 +183,16 @@ function _removeSymbolFromSprite(name: string): void {
     const id = GLYPH_SYMBOL_ID_PREFIX + name;
     const symbol = DOM.source.querySelector(_spriteElement, `#${CSS.escape(id)}`);
     if (symbol) {
+        // Release the symbol's retained `<path>` child too — releasing only the
+        // symbol would pin the detached path handle in the registry. Queried
+        // before removal so it resolves to its canonical retained handle.
+        const path = DOM.source.querySelector(symbol, "path");
+
         DOM.sink.removeChild(_spriteElement, symbol);
+        DOM.sink.release(symbol);
+
+        if (path) {
+            DOM.sink.release(path);
+        }
     }
 }

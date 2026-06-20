@@ -2,6 +2,7 @@
 
 import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { SmoothScroller, consumeWheel } from "~/core/SmoothScroller.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
@@ -42,8 +43,8 @@ export class VirtualScroller {
 
     private _owner          : Component;
     private _onScroll       : VirtualScrollerOnScroll;
-    private _clipBox        : HTMLElement;
-    private _rowsContainer  : HTMLElement;
+    private _clipBox        : Handle;
+    private _rowsContainer  : Handle;
     private _scrollbarV     : Scrollbar;
     private _scrollbarH     : Scrollbar;
     private _scrollX        : number = 0;
@@ -61,7 +62,7 @@ export class VirtualScroller {
      * @param onScroll - Callback invoked when scroll position changes via
      * user input.
      */
-    constructor(owner: Component, element: HTMLElement, onScroll: VirtualScrollerOnScroll) {
+    constructor(owner: Component, element: Handle, onScroll: VirtualScrollerOnScroll) {
         this._owner    = owner;
         this._onScroll = onScroll;
 
@@ -76,22 +77,12 @@ export class VirtualScroller {
         // the two roles lets the transform shift the rows around inside a
         // stable clip.
         const clipBox = DOM.sink.createElement("div");
-        DOM.sink.setStyle(clipBox, "position", "absolute");
-        DOM.sink.setStyle(clipBox, "top", "0");
-        DOM.sink.setStyle(clipBox, "left", "0");
-        DOM.sink.setStyle(clipBox, "width", "100%");
-        DOM.sink.setStyle(clipBox, "height", "100%");
-        DOM.sink.setStyle(clipBox, "overflow", "hidden");
+        DOM.sink.apply(clipBox, { style: { position: "absolute", top: "0", left: "0", width: "100%", height: "100%", overflow: "hidden" } });
         DOM.sink.appendChild(element, clipBox);
         this._clipBox = clipBox;
 
         const container = DOM.sink.createElement("div");
-        DOM.sink.setStyle(container, "position", "absolute");
-        DOM.sink.setStyle(container, "top", "0");
-        DOM.sink.setStyle(container, "left", "0");
-        DOM.sink.setStyle(container, "width", "100%");
-        DOM.sink.setStyle(container, "transform", "translate3d(0, 0, 0)");
-        DOM.sink.setStyle(container, "willChange", "transform");
+        DOM.sink.apply(container, { style: { position: "absolute", top: "0", left: "0", width: "100%", transform: "translate3d(0, 0, 0)", willChange: "transform" } });
         DOM.sink.appendChild(clipBox, container);
         this._rowsContainer = container;
 
@@ -106,14 +97,14 @@ export class VirtualScroller {
         });
 
         this._scrollbarV = new Scrollbar("vertical");
-        DOM.sink.appendChild(element, this._scrollbarV.getElement(true));
+        DOM.sink.appendChild(element, this._scrollbarV.getElement(true)!);
         this._scrollbarV.on("scroll", (p: number) => {
             this._smooth.reset();
             this.setScrollY(p);
         });
 
         this._scrollbarH = new Scrollbar("horizontal");
-        DOM.sink.appendChild(element, this._scrollbarH.getElement(true));
+        DOM.sink.appendChild(element, this._scrollbarH.getElement(true)!);
         this._scrollbarH.on("scroll", (p: number) => {
             this._smooth.reset();
             this.setScrollX(p);
@@ -135,12 +126,25 @@ export class VirtualScroller {
     }
 
     /**
+     * Returns the two created container handles (clip box and rows container).
+     * The owning component tracks these via `trackHandle` so they are released
+     * with the owner — on its destructor or, for a discarded owner, on GC — and
+     * not left pinned in the registry. The scroller is not a `Component`, so it
+     * cannot track its own handles.
+     *
+     * @returns The scroller's owned element handles.
+     */
+    ownedHandles(): readonly Handle[] {
+        return [this._clipBox, this._rowsContainer];
+    }
+
+    /**
      * Returns the rows-container element. Owners append pool rows here so
      * they participate in the transform-based scroll.
      *
      * @returns The rows-container DOM element.
      */
-    getRowsContainer(): HTMLElement {
+    getRowsContainer(): Handle {
         return this._rowsContainer;
     }
 
@@ -361,8 +365,7 @@ export class VirtualScroller {
         // scrollbar). When neither bar is visible this collapses to the
         // full owner size, matching the previous `width/height: 100%`
         // behaviour.
-        DOM.sink.setStyle(this._clipBox, "width", effW + "px");
-        DOM.sink.setStyle(this._clipBox, "height", effH + "px");
+        DOM.sink.apply(this._clipBox, { style: { width: effW + "px", height: effH + "px" } });
     }
 
     /**
@@ -370,7 +373,7 @@ export class VirtualScroller {
      * transform.
      */
     private updateTransform(): void {
-        DOM.sink.setStyle(this._rowsContainer, "transform", `translate3d(${-this._scrollX}px, ${-this._scrollY}px, 0)`);
+        DOM.sink.apply(this._rowsContainer, { style: { transform: `translate3d(${-this._scrollX}px, ${-this._scrollY}px, 0)` } });
     }
 
     /**

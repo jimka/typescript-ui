@@ -3,6 +3,7 @@
 import { Animation } from "~/core/Animation.js";
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { Handle } from "~/core/DOM.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import {
@@ -469,7 +470,7 @@ class Glyph extends Component<GlyphOptions> {
         const el = this.getElement();
 
         if (el && prev) {
-            DOM.sink.removeClass(el, CLASS_PREFIX + prev);
+            DOM.sink.apply(el, { removeClass: [CLASS_PREFIX + prev] });
         }
 
         if (kind === null) {
@@ -493,7 +494,7 @@ class Glyph extends Component<GlyphOptions> {
 
         if (!Animation.isReducedMotion()) {
             if (el) {
-                DOM.sink.addClass(el, CLASS_PREFIX + kind);
+                DOM.sink.apply(el, { addClass: [CLASS_PREFIX + kind] });
             }
 
             this.setWillChange("transform");
@@ -557,15 +558,15 @@ class Glyph extends Component<GlyphOptions> {
             return;
         }
 
-        const element  = this.getElement(true);
+        const element  = this.getElement(true)!;
         const className = CLASS_PREFIX + kind;
 
         if (Animation.isReducedMotion()) {
-            DOM.sink.removeClass(element, className);
+            DOM.sink.apply(element, { removeClass: [className] });
             this.setWillChange(null);
             this.setElementStyle("animationDuration", null);
         } else {
-            DOM.sink.addClass(element, className);
+            DOM.sink.apply(element, { addClass: [className] });
             this.setWillChange("transform");
 
             if (this._glyphAnimationDuration > 0) {
@@ -632,22 +633,24 @@ class Glyph extends Component<GlyphOptions> {
      *
      * @returns The root element for this Glyph (HTML `<span>` or SVG `<svg>`).
      */
-    protected createRootElement(): HTMLElement {
+    protected createRootElement(): Handle {
         if (this._def.kind === "svg") {
             ensureGlyphSprite();
             ensureGlyphSymbolMounted(this._name);
 
             const svgNs = "http://www.w3.org/2000/svg";
             const svg = DOM.sink.createElementNS(svgNs, "svg");
-            DOM.sink.setAttribute(svg, "fill", "currentColor");
-            DOM.sink.setAttribute(svg, "aria-hidden", "true");
-            DOM.sink.setAttribute(svg, "focusable", "false");
+            DOM.sink.apply(svg, { setAttr: { fill: "currentColor", "aria-hidden": "true", focusable: "false" } });
 
             const use = DOM.sink.createElementNS(svgNs, "use");
-            DOM.sink.setAttribute(use, "href", "#" + GLYPH_SYMBOL_ID_PREFIX + this._name);
+            DOM.sink.apply(use, { setAttr: { href: "#" + GLYPH_SYMBOL_ID_PREFIX + this._name } });
             DOM.sink.appendChild(svg, use);
 
-            return svg as unknown as HTMLElement;
+            // Track the `<use>` child so it is released with the glyph (the root
+            // `svg` is tracked by Component.render). Released on destructor or GC.
+            this.trackHandle(use);
+
+            return svg;
         }
 
         return super.createRootElement();
@@ -664,15 +667,15 @@ class Glyph extends Component<GlyphOptions> {
      *
      * @returns The rendered root element.
      */
-    protected render(): HTMLElement {
+    protected render(): Handle {
         const element = super.render();
 
         if (this._def.kind === "char") {
-            DOM.sink.setTextContent(element, this._def.char);
+            DOM.sink.apply(element, { text: this._def.char });
         }
 
         if (this._glyphAnimation && !Animation.isReducedMotion()) {
-            DOM.sink.addClass(element, CLASS_PREFIX + this._glyphAnimation);
+            DOM.sink.apply(element, { addClass: [CLASS_PREFIX + this._glyphAnimation] });
         }
 
         const preferredSize = this._options.preferredSize;

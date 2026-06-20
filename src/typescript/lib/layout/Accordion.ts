@@ -368,11 +368,11 @@ class Accordion extends LayoutManager {
             const component = components[i];
 
             if (component && container) {
-                DOM.sink.appendChild(container.getElement(), component.getElement());
+                DOM.sink.appendChild(container.getElement()!, component.getElement()!);
             }
 
-            DOM.sink.removeElement(this._headers[i].getElement());
-            DOM.sink.removeElement(this._panelWrappers[i].getElement());
+            DOM.sink.removeElement(this._headers[i].getElement()!);
+            DOM.sink.removeElement(this._panelWrappers[i].getElement()!);
         }
 
         this._headers = [];
@@ -531,11 +531,11 @@ class Accordion extends LayoutManager {
         // below a toggled section so they slide with the headers instead of jumping.
         wrapper.setTransition(this.buildWrapperTransition());
 
-        DOM.sink.appendChild(container.getElement(), header.getElement(true));
-        DOM.sink.appendChild(container.getElement(), wrapper.getElement(true));
+        DOM.sink.appendChild(container.getElement()!, header.getElement(true)!);
+        DOM.sink.appendChild(container.getElement()!, wrapper.getElement(true)!);
 
         // Reparent content element into wrapper so overflow:hidden clips it during animation.
-        DOM.sink.appendChild(wrapper.getElement(), component.getElement());
+        DOM.sink.appendChild(wrapper.getElement()!, component.getElement()!);
 
         this._openState.push(initiallyOpen);
         this._headers.push(header);

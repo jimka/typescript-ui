@@ -12,7 +12,7 @@ import { HBox } from "~/layout/HBox.js";
 import { Text } from "~/component/input/Text.js";
 import { Button } from "~/component/button/Button.js";
 import { callable } from "~/core/Callable.js";
-import { DOM, type Rect } from "~/core/DOM.js";
+import { DOM, type Rect, type Handle } from "~/core/DOM.js";
 
 /** Fallback arrow side length used until the theme token is read. */
 const DEFAULT_ARROW_SIZE_PX: number = 14;
@@ -152,10 +152,10 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
     declare private _titleComponent:    Text | null;
     private _bodyComponent:             Component | null = null;
     private _actionsRow:        Component | null = null;
-    private _anchorElement:     HTMLElement | null = null;
+    private _anchorElement:     Handle | null = null;
     private _arrowComponent:    Component | null = null;
     private _isOpen:            boolean = false;
-    private _scrollAncestors:   HTMLElement[] = [];
+    private _scrollAncestors:   Handle[] = [];
 
     private readonly _onWindowResize:      () => void;
     private readonly _onScroll:            () => void;
@@ -426,7 +426,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * @param el - The anchor element.
      * @returns This popover, for method chaining.
      */
-    private _attachToElement(el: HTMLElement): this {
+    private _attachToElement(el: Handle): this {
         this._anchorElement = el;
 
         return this;
@@ -440,7 +440,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * @returns This popover, for method chaining.
      */
     attachToComponent(c: Component): this {
-        return this._attachToElement(c.getElement(true));
+        return this._attachToElement(c.getElement(true)!);
     }
 
     /**
@@ -463,7 +463,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         LayerManager.register(this);
         this.setZIndex(LayerManager.getZIndex(this));
 
-        const el = this.getElement(true);
+        const el = this.getElement(true)!;
 
         if (!DOM.source.contains(DOM.source.getDocumentElement(), el)) {
             DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
@@ -522,8 +522,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      *
      * @returns The popover's element, or null when not yet rendered.
      */
-    getLayerElement(): HTMLElement | null {
-        return this.getElement();
+    getLayerElement(): Handle | null {
+        return this.getElement() ?? null;
     }
 
     /**
@@ -553,7 +553,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      *
      * @returns The anchor element, or null when none is attached.
      */
-    getAnchorElement(): HTMLElement | null {
+    getAnchorElement(): Handle | null {
         return this._anchorElement;
     }
 
@@ -773,8 +773,8 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
 
         this._arrowComponent = arrow;
 
-        const popoverEl = this.getElement(true);
-        DOM.sink.insertBefore(popoverEl, arrow.getElement(true), DOM.source.getFirstChild(popoverEl));
+        const popoverEl = this.getElement(true)!;
+        DOM.sink.insertBefore(popoverEl, arrow.getElement(true)!, DOM.source.getFirstChild(popoverEl));
     }
 
     /**
@@ -905,9 +905,9 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * @param node - The starting element.
      * @returns The list of scrollable ancestors plus `document.documentElement`.
      */
-    private collectScrollAncestors(node: HTMLElement): HTMLElement[] {
-        const out: HTMLElement[] = [];
-        let cursor: HTMLElement | null = DOM.source.getParentElement(node) as HTMLElement | null;
+    private collectScrollAncestors(node: Handle): Handle[] {
+        const out: Handle[] = [];
+        let cursor: Handle | null = DOM.source.getParentElement(node);
 
         while (cursor && cursor !== DOM.source.getDocumentElement()) {
             const style = DOM.source.getComputedOverflow(cursor);
@@ -917,7 +917,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
                 out.push(cursor);
             }
 
-            cursor = DOM.source.getParentElement(cursor) as HTMLElement | null;
+            cursor = DOM.source.getParentElement(cursor);
         }
 
         out.push(DOM.source.getDocumentElement());

@@ -365,13 +365,13 @@ function commitSession(session: DragSession): void {
     if (typeof (ghost as unknown as { show?: () => void }).show === "function") {
         (ghost as unknown as { show: () => void }).show();
     } else {
-        const el = ghost.getElement(true);
+        const el = ghost.getElement(true)!;
 
         DOM.sink.appendChild(DOM.source.getDocumentElement(), el);
     }
 
     if (session.sourceOptions.cursor) {
-        DOM.sink.setStyle(DOM.source.getBody(), "cursor", session.sourceOptions.cursor);
+        DOM.sink.apply(DOM.source.getBody(), { style: { cursor: session.sourceOptions.cursor } });
     }
 }
 
@@ -624,7 +624,7 @@ function endSession(dropped: boolean, clientX: number, clientY: number): void {
     }
 
     if (session.sourceOptions.cursor) {
-        DOM.sink.setStyle(DOM.source.getBody(), "cursor", session.previousBodyCursor);
+        DOM.sink.apply(DOM.source.getBody(), { style: { cursor: session.previousBodyCursor } });
     }
 
     if (session.committed) {

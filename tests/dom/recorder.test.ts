@@ -18,28 +18,31 @@ describe('RecordingDOMSink', () => {
         const el    = DOM.sink.createElement('div');
         const child = DOM.sink.createElement('span');
 
-        DOM.sink.addClass(el, 'Panel');
-        DOM.sink.setAttribute(el, 'role', 'group');
-        DOM.sink.setStyle(el, 'width', '100px');
+        DOM.sink.apply(el, { addClass: ['Panel'], setAttr: { role: 'group' }, style: { width: '100px' } });
         DOM.sink.appendChild(el, child);
-        DOM.sink.toggleClass(el, 'active', true);
+        DOM.sink.apply(el, { toggleClass: { active: true } });
 
         expect(sink.writes).toEqual([
             { op: 'createElement', args: ['div'] },
             { op: 'createElement', args: ['span'] },
-            { op: 'addClass',      args: ['Panel'] },
-            { op: 'setAttribute',  args: ['role', 'group'] },
-            { op: 'setStyle',      args: ['width', '100px'] },
+            { op: 'apply',         args: [el, { addClass: ['Panel'], setAttr: { role: 'group' }, style: { width: '100px' } }] },
             { op: 'appendChild',   args: [] },
-            { op: 'toggleClass',   args: ['active', true] },
+            { op: 'apply',         args: [el, { toggleClass: { active: true } }] },
         ]);
     });
 
-    it('returns a stub element from createElement without touching a DOM', () => {
+    it('mints a numeric handle from createElement without touching a DOM', () => {
         const sink = new RecordingDOMSink();
-        const el   = sink.createElement('div');
 
-        expect(el.tagName).toBe('DIV');
-        expect(el.isConnected).toBe(false);
+        DOM.install({ sink });
+
+        const el = DOM.sink.createElement('div');
+
+        expect(typeof el).toBe('number');
+
+        // The handle round-trips: an id written through the sink reads back via
+        // the modelled source's stub — but with only a sink installed here, the
+        // recorded op log is the assertion surface.
+        expect(sink.writes).toEqual([{ op: 'createElement', args: ['div'] }]);
     });
 });

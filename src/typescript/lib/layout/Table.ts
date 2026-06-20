@@ -237,9 +237,13 @@ class Table extends LayoutManager {
             // the body.
             const trackW = DOM.source.getScrollBarWidth();
             const cover  = header.getScrollbarCover();
-            DOM.sink.setStyle(cover, "left", (containerSize.width - trackW) + "px");
-            DOM.sink.setStyle(cover, "width", trackW + "px");
-            DOM.sink.setStyle(cover, "height", headerBandHeight + "px");
+            DOM.sink.apply(cover, {
+                style: {
+                    left: (containerSize.width - trackW) + "px",
+                    width: trackW + "px",
+                    height: headerBandHeight + "px",
+                },
+            });
         }
 
         if (container.isFooterVisible() && footer && footer.isDisplayed()) {

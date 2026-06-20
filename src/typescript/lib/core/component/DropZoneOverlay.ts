@@ -151,19 +151,19 @@ class DropZoneOverlay extends Component {
      * @param region - The dock target whose body the overlay should cover.
      */
     attachTo(region: Component): void {
-        const myEl = this.getElement(true);
+        const myEl = this.getElement(true)!;
 
         this.setX(0);
         this.setY(0);
         this.setWidth(region.getWidth());
         this.setHeight(region.getHeight());
 
-        const regionEl = region.getElement(true);
+        const regionEl = region.getElement(true)!;
         if (DOM.source.getParentElement(myEl) !== regionEl) {
             DOM.sink.appendChild(regionEl, myEl);
         }
 
-        const highlightEl = this._highlight.getElement(true);
+        const highlightEl = this._highlight.getElement(true)!;
         if (DOM.source.getParentElement(highlightEl) !== myEl) {
             DOM.sink.appendChild(myEl, highlightEl);
         }

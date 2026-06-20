@@ -73,8 +73,8 @@ class ReorderIndicator extends Component {
      *   the bar is positioned within.
      */
     attachTo(target: Component): void {
-        const targetEl = target.getElement(true);
-        const myEl     = this.getElement(true);
+        const targetEl = target.getElement(true)!;
+        const myEl     = this.getElement(true)!;
 
         this.setX(0);
         this.setWidth(target.getWidth());

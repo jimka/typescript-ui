@@ -97,7 +97,7 @@ class DragGhost extends Component {
      * `DragManager` when a drag commits past the movement threshold.
      */
     show(): void {
-        const el = this.getElement(true);
+        const el = this.getElement(true)!;
 
         this.scheduleLayout();
         DOM.sink.appendChild(DOM.source.getDocumentElement(), el);

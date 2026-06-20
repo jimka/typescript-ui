@@ -379,7 +379,7 @@ class Border extends LayoutManager {
 
         gutter.setVisible(false);
 
-        DOM.sink.appendChild(container.getElement(), gutter.getElement(true)!);
+        DOM.sink.appendChild(container.getElement()!, gutter.getElement(true)!);
 
         this._gutters.set(placement, gutter);
 
