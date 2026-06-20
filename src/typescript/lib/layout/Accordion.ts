@@ -68,6 +68,7 @@ export interface AccordionOptions extends LayoutManagerOptions {
     chevronSide?:       "left" | "right";
     toolsVisibility?:   "always" | "hover";
     compact?:           boolean;
+    chevronGlyph?:      string;
     /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
@@ -119,6 +120,7 @@ class Accordion extends LayoutManager {
     private _compact: boolean = false;
     private _animationDuration: number = 200;
     private _chevronSide: "left" | "right" = "right";
+    private _chevronGlyph: string | null = null;
     private _tools: Component[] = [];
     private _toolsVisibility: "always" | "hover" = "hover";
     private _hoveredHeader: number = -1;
@@ -162,6 +164,10 @@ class Accordion extends LayoutManager {
 
         if (options.compact !== undefined) {
             this.setCompact(options.compact);
+        }
+
+        if (options.chevronGlyph !== undefined) {
+            this.setChevronGlyph(options.chevronGlyph);
         }
 
         if (options.listeners !== undefined) {
@@ -334,6 +340,37 @@ class Accordion extends LayoutManager {
 
         for (const header of this._headers) {
             header.setChevronSide(side);
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the chevron character, or `null` when the default is used.
+     *
+     * @returns The configured chevron character, or `null`.
+     */
+    getChevronGlyph(): string | null {
+        return this._chevronGlyph;
+    }
+
+    /**
+     * Sets the character drawn as each header's expand/collapse chevron, in
+     * place of the default `"▶"`. The character rotates 90° when a section
+     * expands, so a single rotatable glyph covers both states. Applies to
+     * existing headers immediately.
+     *
+     * @param glyph - The chevron character.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setChevronGlyph(glyph: string): this {
+        this._chevronGlyph = glyph;
+
+        for (const header of this._headers) {
+            header.setChevronGlyph(glyph);
         }
 
         this.getContainer()?.scheduleLayout();
@@ -819,7 +856,7 @@ class Accordion extends LayoutManager {
         const label = constraints?.label ?? component.getId();
         const initiallyOpen = constraints?.initiallyOpen ?? false;
 
-        const header = new AccordionHeader(label, { chevronSide: this._chevronSide, glyph: constraints?.glyph ?? undefined, compact: this._compact });
+        const header = new AccordionHeader(label, { chevronSide: this._chevronSide, glyph: constraints?.glyph ?? undefined, compact: this._compact, chevronGlyph: this._chevronGlyph ?? undefined });
 
         header.setAnimationTiming(this._animationDuration, ACCORDION_EASING);
 

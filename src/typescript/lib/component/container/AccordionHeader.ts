@@ -53,6 +53,8 @@ export interface AccordionHeaderOptions extends ComponentOptions {
     glyph?:       string;
     /** Whether the header uses compact (tighter) padding. Defaults to `false`. */
     compact?:     boolean;
+    /** Character drawn as the expand/collapse chevron. Defaults to `"▶"`. */
+    chevronGlyph?: string;
 }
 
 /**
@@ -93,7 +95,7 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
 
         // The chevron, title and tool group are independent child Components in
         // an HBox row — one DOM element per class, no side-loaded overlay.
-        this._indicator = new AccordionIndicator();
+        this._indicator = new AccordionIndicator({ character: options?.chevronGlyph });
         this._title     = new Button(label, { chromeless: true, anchor: AnchorType.WEST, glyph: options?.glyph });
         this._toolGroup = new Component();
 
@@ -227,6 +229,19 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
      */
     getChevronSide(): "left" | "right" {
         return this._chevronSide;
+    }
+
+    /**
+     * Sets the character drawn as the chevron.
+     *
+     * @param glyph - The chevron character.
+     *
+     * @returns This header, for method chaining.
+     */
+    setChevronGlyph(glyph: string): this {
+        this._indicator?.setCharacter(glyph);
+
+        return this;
     }
 
     /**

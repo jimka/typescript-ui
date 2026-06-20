@@ -13,6 +13,8 @@ import { callable } from "~/core/Callable.js";
  */
 export interface AccordionIndicatorOptions extends ComponentOptions {
     expanded?: boolean;
+    /** The character drawn as the chevron. Defaults to {@link DEFAULT_CHEVRON}. */
+    character?: string;
 }
 
 /**
@@ -21,6 +23,14 @@ export interface AccordionIndicatorOptions extends ComponentOptions {
  * stretching HBox, so only the width is fixed here.
  */
 const CHEVRON_CELL_WIDTH: number = 14;
+
+/**
+ * Default chevron character — a right-pointing triangle that the `.expanded`
+ * rule rotates 90° to point down. A single rotating character covers both
+ * states, which is why the chevron is a plain character rather than a registry
+ * glyph.
+ */
+const DEFAULT_CHEVRON: string = "▶";
 
 let _classRule: StyleRule | null = null;
 
@@ -70,6 +80,7 @@ function ensureAccordionIndicatorClassRule(): void {
 class AccordionIndicator extends Component<AccordionIndicatorOptions> {
 
     declare private _expanded: boolean;
+    declare private _character: string;
     private _lineHeight: number | null = null;
 
     /**
@@ -85,6 +96,7 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
         super({ tag: "span", preferredSize: { width: CHEVRON_CELL_WIDTH, height: CHEVRON_CELL_WIDTH }, ...(options ?? {}) });
 
         this._expanded ??= false;
+        this._character ??= DEFAULT_CHEVRON;
 
         const expandedRule = this.createStyleRule(".expanded");
         expandedRule.set("transform", "rotate(90deg)");
@@ -144,6 +156,38 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
             this.setExpanded(opts.expanded);
         }
 
+        if (opts.character !== undefined) {
+            this.setCharacter(opts.character);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the chevron character.
+     *
+     * @returns The current chevron character.
+     */
+    getCharacter(): string {
+        return this._character ?? DEFAULT_CHEVRON;
+    }
+
+    /**
+     * Sets the chevron character, updating the live text when rendered.
+     *
+     * @param character - The character to draw as the chevron.
+     *
+     * @returns This indicator, for method chaining.
+     */
+    setCharacter(character: string): this {
+        this._character = character;
+
+        const element = this.getElement();
+
+        if (element) {
+            DOM.sink.apply(element, { text: character });
+        }
+
         return this;
     }
 
@@ -157,7 +201,7 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
     protected render(): Handle {
         const element = super.render();
 
-        DOM.sink.apply(element, { text: "▶" });
+        DOM.sink.apply(element, { text: this._character ?? DEFAULT_CHEVRON });
 
         if (this._expanded) {
             DOM.sink.apply(element, { addClass: ["expanded"] });
