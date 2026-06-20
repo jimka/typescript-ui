@@ -44,5 +44,16 @@ export default defineConfig({
     emptyOutDir: false,
     sourcemap: true,
     minify: 'oxc',
+    rollupOptions: {
+      output: {
+        // Downstream consumers hit the same `constructor.name` dependency as
+        // the app (CSS classes + layout serialization), so the library bundle
+        // must preserve class identifiers through minification too.
+        minify: {
+          compress: { keepNames: { function: true, class: true } },
+          mangle:   { keepNames: { function: true, class: true } },
+        },
+      },
+    },
   },
 })

@@ -30,6 +30,19 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        // The framework derives every component's CSS class (and layout
+        // serialization keys) from `this.constructor.name`, so the minifier
+        // must not mangle class identifiers — otherwise `constructor.name`
+        // returns a short/empty string and `classList.add("")` throws,
+        // blanking the production page.
+        minify: {
+          compress: { keepNames: { function: true, class: true } },
+          mangle:   { keepNames: { function: true, class: true } },
+        },
+      },
+    },
   },
   server: {
     port: 8015,
