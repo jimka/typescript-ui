@@ -19,11 +19,14 @@ export class AccordionConstraints extends LayoutConstraints {
     /**
      * @param label - Text displayed in the section header.
      * @param initiallyOpen - Whether the section starts expanded. Defaults to false.
+     * @param glyph - Optional registry glyph name shown leading the header
+     *   label. Stored on the inherited `glyph` constraint field.
      */
-    constructor(label: string, initiallyOpen?: boolean) {
+    constructor(label: string, initiallyOpen?: boolean, glyph?: string) {
         super();
 
         this.label = label;
         this.initiallyOpen = initiallyOpen;
+        this.glyph = glyph ?? null;
     }
 }

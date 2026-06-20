@@ -40,6 +40,8 @@ export interface AccordionHeaderOptions extends ComponentOptions {
     expanded?:    boolean;
     /** Which end of the header the chevron sits at. Defaults to `"right"`. */
     chevronSide?: "left" | "right";
+    /** Optional registry glyph name shown leading the title label. */
+    glyph?:       string;
 }
 
 /**
@@ -80,7 +82,7 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
         // The chevron, title and tool group are independent child Components in
         // an HBox row — one DOM element per class, no side-loaded overlay.
         this._indicator = new AccordionIndicator();
-        this._title     = new Button(label, { chromeless: true, anchor: AnchorType.WEST });
+        this._title     = new Button(label, { chromeless: true, anchor: AnchorType.WEST, glyph: options?.glyph });
         this._toolGroup = new Component();
 
         this._toolGroup.setLayoutManager(new HBox({ spacing: HEADER_CELL_SPACING, stretching: true }));

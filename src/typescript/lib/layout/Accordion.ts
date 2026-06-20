@@ -539,7 +539,7 @@ class Accordion extends LayoutManager {
         const label = constraints?.label ?? component.getId();
         const initiallyOpen = constraints?.initiallyOpen ?? false;
 
-        const header = new AccordionHeader(label, { chevronSide: this._chevronSide });
+        const header = new AccordionHeader(label, { chevronSide: this._chevronSide, glyph: constraints?.glyph ?? undefined });
 
         header.setAnimationTiming(this._animationDuration, ACCORDION_EASING);
 

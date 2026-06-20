@@ -7,6 +7,15 @@ import { Checkbox, Text, TextField } from '@jimka/typescript-ui/component/input'
 import { Button } from '@jimka/typescript-ui/component/button';
 import { List } from '@jimka/typescript-ui/component/list';
 import { AccordionPanel } from '@jimka/typescript-ui/component/container';
+import { Glyph } from '@jimka/typescript-ui/component/display';
+import { circle_user } from '@jimka/typescript-ui/glyphs/solid/circle_user';
+import { gear } from '@jimka/typescript-ui/glyphs/solid/gear';
+import { clock_rotate_left } from '@jimka/typescript-ui/glyphs/solid/clock_rotate_left';
+import { circle_info } from '@jimka/typescript-ui/glyphs/solid/circle_info';
+
+// Register the section-header glyphs once at module load so the demo's
+// AccordionPanel can reference them by registry name.
+Glyph.register(circle_user, gear, clock_rotate_left, circle_info);
 
 /**
  * Demonstrates the framework {@link AccordionPanel} (a Panel subclass that
@@ -50,10 +59,10 @@ class AccordionDemoPanel extends Panel {
         // --- AccordionPanel ---
         this.accordion = new AccordionPanel({
             sections: [
-                { label: "Personal Info", component: this.buildInfoSection(),        initiallyOpen: true },
-                { label: "Preferences",   component: this.buildPreferencesSection() },
-                { label: "Recent Items",  component: this.buildListSection()        },
-                { label: "About",         component: this.buildAboutSection()       },
+                { label: "Personal Info", component: this.buildInfoSection(),        initiallyOpen: true, glyph: "circle-user"        },
+                { label: "Preferences",   component: this.buildPreferencesSection(),                       glyph: "gear"               },
+                { label: "Recent Items",  component: this.buildListSection(),                              glyph: "clock-rotate-left"  },
+                { label: "About",         component: this.buildAboutSection(),                             glyph: "circle-info"        },
             ],
             // Re-layout the outer VBox whenever a section toggles so the
             // accordion resizes to match the new total preferred height.

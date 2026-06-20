@@ -18,6 +18,8 @@ export interface AccordionSectionConfig {
     component:      Component;
     /** Whether the section starts expanded. Defaults to `false` if omitted. */
     initiallyOpen?: boolean;
+    /** Optional registry glyph name shown leading the section's header label. */
+    glyph?:         string;
 }
 
 /**
@@ -86,7 +88,7 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
 
         if (options?.sections) {
             for (const section of options.sections) {
-                this.addSection(section.component, section.label, section.initiallyOpen);
+                this.addSection(section.component, section.label, section.initiallyOpen, section.glyph);
             }
         }
 
@@ -101,11 +103,12 @@ class AccordionPanel<TOptions extends AccordionPanelOptions = AccordionPanelOpti
      * @param component - The content shown inside the section.
      * @param label - The section header's label.
      * @param initiallyOpen - Optional. Whether the section starts expanded; defaults to `false`.
+     * @param glyph - Optional. Registry glyph name shown leading the header label.
      *
      * @returns This panel, for method chaining.
      */
-    addSection(component: Component, label: string, initiallyOpen?: boolean): this {
-        const constraints = new AccordionConstraints(label, initiallyOpen);
+    addSection(component: Component, label: string, initiallyOpen?: boolean, glyph?: string): this {
+        const constraints = new AccordionConstraints(label, initiallyOpen, glyph);
 
         this.addComponent(component, constraints);
 
