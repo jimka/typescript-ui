@@ -61,9 +61,11 @@ const THEMED_HEADER_COLOR:  string = "var(--ts-ui-accordion-header-color, inheri
 /**
  * All-around border drawn on the accordion's own container when `themed`, from
  * the `accordion.border` token — boxes the whole stack while the header borders
- * remain single bottom dividers between sections.
+ * remain single bottom dividers between sections. The token carries the full CSS
+ * border shorthand (width, style, colour), so a theme controls all three; the
+ * fallback applies only when the variable is undefined.
  */
-const THEMED_BORDER:        string = "1px solid var(--ts-ui-accordion-border, rgb(214,217,222))";
+const THEMED_BORDER:        string = "var(--ts-ui-accordion-border, 1px solid rgb(214,217,222))";
 
 /**
  * Callback invoked when a section is opened or closed.

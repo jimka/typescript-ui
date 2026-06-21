@@ -507,6 +507,7 @@ export interface Theme {
     };
 
     accordion: {
+        /** Full CSS border shorthand (width style colour) for the container box. */
         border: string;
         header: {
             background: string;

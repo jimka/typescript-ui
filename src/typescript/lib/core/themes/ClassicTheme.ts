@@ -96,7 +96,7 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
         button: { color: 'rgb(100,100,100)' },
     },
     accordion: {
-        border   : 'rgb(190,190,190)',
+        border   : '1px solid rgb(190,190,190)',
         header   : {
             background: 'linear-gradient(rgb(230,230,230),rgb(210,210,210))',
             border    : 'rgb(190,190,190)',

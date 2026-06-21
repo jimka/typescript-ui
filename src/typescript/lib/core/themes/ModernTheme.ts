@@ -96,7 +96,7 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
         button: { color: 'rgb(100,100,100)' },
     },
     accordion: {
-        border   : 'rgb(214, 217, 222)',
+        border   : '1px solid rgb(214, 217, 222)',
         header   : {
             // Flat, gradient-free header matching this theme's buttons.
             background: 'rgb(243, 244, 246)',
