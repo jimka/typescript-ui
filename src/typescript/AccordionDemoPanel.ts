@@ -14,6 +14,7 @@ import { clock_rotate_left } from '@jimka/typescript-ui/glyphs/solid/clock_rotat
 import { circle_info } from '@jimka/typescript-ui/glyphs/solid/circle_info';
 import { pen_to_square } from '@jimka/typescript-ui/glyphs/solid/pen_to_square';
 import { ellipsis_vertical } from '@jimka/typescript-ui/glyphs/solid/ellipsis_vertical';
+import { ToolBar } from '~/component/menubar/ToolBar';
 
 // Register the section-header and tool glyphs once at module load so the demo's
 // AccordionPanel can reference them by registry name.
@@ -37,45 +38,47 @@ class AccordionDemoPanel extends Panel {
         super();
 
         // VBox with stretching so children fill the full container width.
-        this.setLayoutManager(new VBox({ stretching: true }));
-        this.setAutoScroll("auto");
+        this.setLayoutManager(new VBox({
+            stretching: true,
+            spacing: 0
+        }));
+
+        this.setAutoScroll("auto")
+            .setInsets(new Insets(0,0,0,0));
 
         // --- Controls toolbar ---
         // Pin a min height equal to the preferred height so the outer VBox's
         // overflow shrink can't compress this fixed control bar — without it the
         // toolbar collapses when the open accordion overflows the window, sliding
         // the accordion's top upward and breaking vertical alignment.
-        const toolbar = new Component({
-            preferredSize: { width: 0, height: 36 },
-            minSize:       { width: 0, height: 36 },
-        });
-        toolbar.setLayoutManager(new HBox());
+        const toolbar = new ToolBar({ compact: true });
 
-        const openAllBtn = new Button("Open All", { preferredSize: { width: 90, height: 28 } });
+        const openAllBtn = new Button("Open All");
         toolbar.addComponent(openAllBtn);
 
-        const closeAllBtn = new Button("Close All", { preferredSize: { width: 90, height: 28 } });
+        const closeAllBtn = new Button("Close All");
         toolbar.addComponent(closeAllBtn);
 
-        this.singleOpenToggle = new Button("Single-open: OFF", { preferredSize: { width: 160, height: 28 } });
+        this.singleOpenToggle = new Button("Single-open: ON");
         toolbar.addComponent(this.singleOpenToggle);
 
-        this.compactToggle = new Button("Compact: OFF", { preferredSize: { width: 130, height: 28 } });
+        this.compactToggle = new Button("Compact: ON");
         toolbar.addComponent(this.compactToggle);
 
-        this.themedToggle = new Button("Themed: ON", { preferredSize: { width: 120, height: 28 } });
+        this.themedToggle = new Button("Themed: ON");
         toolbar.addComponent(this.themedToggle);
 
-        this.spacingToggle = new Button("Spacing: 0", { preferredSize: { width: 110, height: 28 } });
+        this.spacingToggle = new Button("Spacing: 0");
         toolbar.addComponent(this.spacingToggle);
 
-        this.fillToggle = new Button("Fill: OFF", { preferredSize: { width: 100, height: 28 } });
+        this.fillToggle = new Button("Fill: ON");
         toolbar.addComponent(this.fillToggle);
 
         this.addComponent(toolbar);
 
         // --- AccordionPanel ---
         this.accordion = new AccordionPanel({
+            singleOpen: true,
             sections: [
                 { label: "Personal Info", component: this.buildInfoSection(),        initiallyOpen: true, glyph: "circle-user"        },
                 { label: "Preferences",   component: this.buildPreferencesSection(),                       glyph: "gear",
@@ -87,6 +90,11 @@ class AccordionDemoPanel extends Panel {
             // accordion resizes to match the new total preferred height.
             onSectionToggle: () => { this.doLayout(); },
         });
+
+        this.accordion.getAccordion()
+            .setFill(true)
+            .setCompact(true)
+            .setChevronSide("left");
 
         // Weight 1 so the accordion fills the panel's remaining height below the
         // toolbar — giving fill mode the leftover space it expands an open
