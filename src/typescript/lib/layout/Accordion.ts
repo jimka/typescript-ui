@@ -55,7 +55,7 @@ const COMPACT_HEADER_HEIGHT: number = 22;
  * is needed — the look is driven entirely by the `accordion.header.border` token.
  */
 const THEMED_HEADER_BG:     string = "var(--ts-ui-accordion-header-bg, rgb(243,244,246))";
-const THEMED_HEADER_BORDER: string = "1px solid var(--ts-ui-accordion-header-border, rgb(214,217,222))";
+const THEMED_HEADER_BORDER: string = "var(--ts-ui-accordion-header-border, 1px solid rgb(214,217,222))";
 const THEMED_HEADER_COLOR:  string = "var(--ts-ui-accordion-header-color, inherit)";
 
 /**

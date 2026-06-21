@@ -100,7 +100,7 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
         header   : {
             // Flat, gradient-free header matching this theme's buttons.
             background: 'rgb(243, 244, 246)',
-            border    : 'rgb(214, 217, 222)',
+            border    : '1px solid rgb(214, 217, 222)',
             color     : 'inherit',
         },
         panel    : { border: 'rgb(214, 217, 222)' },

@@ -511,6 +511,7 @@ export interface Theme {
         border: string;
         header: {
             background: string;
+            /** Full CSS border shorthand (width style colour) for the header's bottom divider. */
             border    : string;
             color     : string;
         };
