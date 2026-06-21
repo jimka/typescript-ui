@@ -1,5 +1,38 @@
 # Accordion Extensions — Implementation Plan
 
+> **Implementation divergences (added at completion).** The sections below record
+> the design *as planned*; the shipped code differs in these respects, decided
+> during implementation and review:
+>
+> 1. **No `flat` option.** Border-collapse is folded into the themed look instead
+>    of a separate toggle: a themed header draws a single **bottom** divider
+>    (`--ts-ui-accordion-header-border`), so stacked headers never double their
+>    borders. The `.AccordionHeader-flat-collapsed` class and the `flat`
+>    option/setter were not built.
+> 2. **`themed` defaults to `true`** (the plan said `false`). A bare accordion is
+>    themed out of the box; opt out with `themed: false`.
+> 3. **New `--ts-ui-accordion-border` token** draws an all-around border on the
+>    container when themed. The planned `--ts-ui-accordion-panel-border` is **not**
+>    consumed (the per-wrapper border was dropped for the header bottom-divider +
+>    container-border model); that token is now dead in the theme files.
+> 4. **Header row uses a weight-1 title button**, not `Spacer.flex()`, to push the
+>    tools/chevron to the trailing edge while the label stays left.
+> 5. **Hover reveal is `setDisplayed`-driven**, not a CSS `:hover` class — the
+>    manager toggles the tool group via `mouseover`/`mouseout` subtree listeners
+>    (which also re-parent the single global tool onto the hovered header).
+> 6. **`AccordionPanel` gained no `expandAll`/`collapseAll` forwarders and no
+>    appearance pass-through options.** `AccordionPanelOptions` carries only
+>    `sections`/`singleOpen`/`onSectionToggle`; everything else is reached through
+>    `getAccordion()`.
+> 7. **App-wide `Button` fixes were required** and shipped on this branch: flat
+>    buttons now clear (not merely mask) their resting background-image, shadow,
+>    and border-radius and their hover shadow; chromeful buttons render
+>    flat-colour `--ts-ui-button-bg` tokens (not only gradients). These make the
+>    chromeless title button and the flat header tools render correctly.
+> 8. **`HBox`/`VBox` preferred-size hardening:** `getPreferredSize` now reserves
+>    `max(preferred, min)` per child, so a child whose `minSize` exceeds its
+>    `preferredSize` no longer under-reports the row/column.
+
 ## Overview
 
 This plan extends the `Accordion` layout manager and its supporting components with nine interrelated features. The **central architectural change** (v2, superseding v1) is that the header stops being a `Button` and becomes a plain styled [`Component`](../src/typescript/lib/core/Component.ts) that hosts its own [`HBox`](../src/typescript/lib/layout/HBox.ts) row. The header background and border are painted on the header Component itself (via the previously-dead accordion theme tokens), and the clickable toggle target becomes a `flat`/`chromeless` title `Button` that *sits inside* the header row — with the tools as **siblings** of that button rather than descendants of it.
