@@ -94,9 +94,10 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         button: { color: 'rgb(160,160,160)' },
     },
     accordion: {
+        border   : '1px solid rgb(80,80,80)',
         header   : {
             background: 'linear-gradient(rgb(60,60,60),rgb(45,45,45))',
-            border    : 'rgb(80,80,80)',
+            border    : '1px solid rgb(80,80,80)',
             color     : 'inherit',
         },
         panel    : { border: 'rgb(70,70,70)' },

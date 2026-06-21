@@ -40,6 +40,34 @@ export type AccordionEvent = "sectiontoggle";
 const ACCORDION_EASING: string = "cubic-bezier(0.4, 0, 0.6, 1)";
 
 /**
+ * Header height in pixels used by {@link Accordion} compact mode. Tighter than
+ * the default 28px so a stack of sections reads denser; applied only when the
+ * consumer has not pinned an explicit header height via `setHeaderHeight`.
+ */
+const COMPACT_HEADER_HEIGHT: number = 22;
+
+/**
+ * Themed-mode CSS values for the accordion theme tokens, with fallbacks
+ * mirroring the default light theme. Applied to each header only when `themed`
+ * is on, so an un-themed accordion stays chromeless. The header border is a
+ * single bottom divider (not a four-side box): stacked headers then read as a
+ * flat list whose dividers never double, so no separate `flat`/collapse option
+ * is needed — the look is driven entirely by the `accordion.header.border` token.
+ */
+const THEMED_HEADER_BG:     string = "var(--ts-ui-accordion-header-bg, rgb(243,244,246))";
+const THEMED_HEADER_BORDER: string = "var(--ts-ui-accordion-header-border, 1px solid rgb(214,217,222))";
+const THEMED_HEADER_COLOR:  string = "var(--ts-ui-accordion-header-color, inherit)";
+
+/**
+ * All-around border drawn on the accordion's own container when `themed`, from
+ * the `accordion.border` token — boxes the whole stack while the header borders
+ * remain single bottom dividers between sections. The token carries the full CSS
+ * border shorthand (width, style, colour), so a theme controls all three; the
+ * fallback applies only when the variable is undefined.
+ */
+const THEMED_BORDER:        string = "var(--ts-ui-accordion-border, 1px solid rgb(214,217,222))";
+
+/**
  * Callback invoked when a section is opened or closed.
  *
  * @param index - Zero-based index of the toggled section.
@@ -58,6 +86,13 @@ export interface AccordionOptions extends LayoutManagerOptions {
     singleOpen?:        boolean;
     headerHeight?:      number;
     animationDuration?: number;
+    chevronSide?:       "left" | "right";
+    toolsVisibility?:   "always" | "hover";
+    compact?:           boolean;
+    chevronGlyph?:      string;
+    spacing?:           number;
+    themed?:            boolean;
+    fill?:              boolean;
     /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
@@ -105,7 +140,17 @@ class Accordion extends LayoutManager {
     private _openState: boolean[] = [];
     private _singleOpen: boolean = false;
     private _headerHeight: number = 28;
+    private _headerHeightExplicit: boolean = false;
+    private _compact: boolean = false;
     private _animationDuration: number = 200;
+    private _chevronSide: "left" | "right" = "right";
+    private _chevronGlyph: string | null = null;
+    private _spacing: number = 0;
+    private _themed: boolean = true;
+    private _fill: boolean = false;
+    private _tools: Component[] = [];
+    private _toolsVisibility: "always" | "hover" = "hover";
+    private _hoveredHeader: number = -1;
     private _listeners: ListenerBag<AccordionEvent> = new ListenerBag<AccordionEvent>();
 
     constructor(options?: AccordionOptions) {
@@ -134,6 +179,34 @@ class Accordion extends LayoutManager {
 
         if (options.animationDuration !== undefined) {
             this.setAnimationDuration(options.animationDuration);
+        }
+
+        if (options.chevronSide !== undefined) {
+            this.setChevronSide(options.chevronSide);
+        }
+
+        if (options.toolsVisibility !== undefined) {
+            this.setToolsVisibility(options.toolsVisibility);
+        }
+
+        if (options.compact !== undefined) {
+            this.setCompact(options.compact);
+        }
+
+        if (options.chevronGlyph !== undefined) {
+            this.setChevronGlyph(options.chevronGlyph);
+        }
+
+        if (options.spacing !== undefined) {
+            this.setSpacing(options.spacing);
+        }
+
+        if (options.themed !== undefined) {
+            this.setThemed(options.themed);
+        }
+
+        if (options.fill !== undefined) {
+            this.setFill(options.fill);
         }
 
         if (options.listeners !== undefined) {
@@ -186,7 +259,6 @@ class Accordion extends LayoutManager {
                 this.primeWrapper(i);
                 this._openState[i] = false;
                 this._headers[i].setExpanded(false);
-                this._headers[i].getAria().setExpanded(false);
                 this.emit("sectiontoggle", i, false);
             } else {
                 foundOpen = true;
@@ -208,12 +280,58 @@ class Accordion extends LayoutManager {
     }
 
     /**
-     * Sets the height of each section header in pixels.
+     * Sets the height of each section header in pixels. Marks the height as
+     * explicitly set, so {@link setCompact} no longer overrides it with the
+     * compact default.
      *
      * @param height - Height in pixels.
      */
     setHeaderHeight(height: number): this {
         this._headerHeight = height;
+        this._headerHeightExplicit = true;
+
+        return this;
+    }
+
+    /**
+     * Returns the header height actually used for layout: the compact default
+     * when {@link isCompact} is on and no explicit height was set, otherwise the
+     * configured {@link getHeaderHeight}.
+     *
+     * @returns The effective header height in pixels.
+     */
+    private effectiveHeaderHeight(): number {
+        return this._compact && !this._headerHeightExplicit
+            ? COMPACT_HEADER_HEIGHT
+            : this._headerHeight;
+    }
+
+    /**
+     * Returns whether compact (denser) mode is active.
+     *
+     * @returns True if compact mode is on.
+     */
+    isCompact(): boolean {
+        return this._compact;
+    }
+
+    /**
+     * Sets compact (denser) mode: a smaller default header height (unless an
+     * explicit height was set) plus tighter header padding and a smaller
+     * chevron. Applies to existing headers immediately.
+     *
+     * @param value - True to enable compact mode.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setCompact(value: boolean): this {
+        this._compact = value;
+
+        for (const header of this._headers) {
+            header.setCompact(value);
+        }
+
+        this.getContainer()?.scheduleLayout();
 
         return this;
     }
@@ -239,6 +357,381 @@ class Accordion extends LayoutManager {
     }
 
     /**
+     * Returns which end of each header the chevron sits at.
+     *
+     * @returns `"left"` or `"right"`.
+     */
+    getChevronSide(): "left" | "right" {
+        return this._chevronSide;
+    }
+
+    /**
+     * Sets which end of each header the chevron sits at. The section label
+     * always stays left-aligned; only the chevron moves. Applies to existing
+     * headers immediately and to headers created afterwards.
+     *
+     * @param side - `"left"` or `"right"`.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setChevronSide(side: "left" | "right"): this {
+        this._chevronSide = side;
+
+        for (const header of this._headers) {
+            header.setChevronSide(side);
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the chevron character, or `null` when the default is used.
+     *
+     * @returns The configured chevron character, or `null`.
+     */
+    getChevronGlyph(): string | null {
+        return this._chevronGlyph;
+    }
+
+    /**
+     * Sets the character drawn as each header's expand/collapse chevron, in
+     * place of the default `"▶"`. The character rotates 90° when a section
+     * expands, so a single rotatable glyph covers both states. Applies to
+     * existing headers immediately.
+     *
+     * @param glyph - The chevron character.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setChevronGlyph(glyph: string): this {
+        this._chevronGlyph = glyph;
+
+        for (const header of this._headers) {
+            header.setChevronGlyph(glyph);
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns the vertical gap inserted between sections.
+     *
+     * @returns The inter-section spacing in pixels.
+     */
+    getSpacing(): number {
+        return this._spacing;
+    }
+
+    /**
+     * Sets the vertical gap inserted between sections (never before the first or
+     * after the last). Default `0` keeps the sections contiguous.
+     *
+     * @param spacing - Inter-section gap in pixels.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setSpacing(spacing: number): this {
+        this._spacing = spacing;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns whether fill mode is on.
+     *
+     * @returns True if the bottommost open section absorbs leftover height.
+     */
+    isFill(): boolean {
+        return this._fill;
+    }
+
+    /**
+     * Sets fill mode. When on, the bottommost open section grows to fill the
+     * container's leftover height (IDE/dock-panel style) instead of every open
+     * section sitting at its preferred height — only meaningful when the host
+     * stretches the accordion beyond its preferred height. No effect when the
+     * content already overflows.
+     *
+     * @param value - True to enable fill.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setFill(value: boolean): this {
+        this._fill = value;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns whether themed mode is on.
+     *
+     * @returns True if headers/panels paint the accordion theme tokens.
+     */
+    isThemed(): boolean {
+        return this._themed;
+    }
+
+    /**
+     * Sets themed mode. When on, each header paints the accordion theme tokens
+     * (background, bottom-divider border, text colour) and the container draws
+     * an all-around border; when off, headers stay chromeless and the container
+     * border is cleared. Applies to existing sections immediately.
+     *
+     * @param value - True to paint the accordion theme tokens.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setThemed(value: boolean): this {
+        this._themed = value;
+
+        this.applyContainerTheming();
+
+        for (let i = 0; i < this._headers.length; i++) {
+            this.applySectionTheming(i);
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Applies (or clears) the all-around border on the accordion's container per
+     * the themed state. Idempotent — `setBorder`/`clearBorder` cache, so the
+     * repeated call from `doLayout` is cheap.
+     */
+    private applyContainerTheming(): void {
+        const container = this.getContainer();
+
+        if (!container) {
+            return;
+        }
+
+        if (this._themed) {
+            container.setBorder({ border: THEMED_BORDER });
+        } else {
+            container.clearBorder();
+        }
+    }
+
+    /**
+     * Applies (or clears) the themed background/border/text styling for the
+     * header at `index`. The themed border is a single bottom divider, so
+     * stacked headers read as a flat list whose dividers never double — there is
+     * no separate flat/collapse mode. Idempotent — the underlying setters cache,
+     * so re-applying the same state is cheap.
+     *
+     * @param index - Zero-based section index.
+     */
+    private applySectionTheming(index: number): void {
+        const header = this._headers[index];
+
+        if (!header) {
+            return;
+        }
+
+        if (!this._themed) {
+            header.clearBackground();
+            header.clearForegroundColor();
+            header.clearBorder();
+
+            return;
+        }
+
+        // `background` (not `background-color`) so a gradient token value paints;
+        // the token may also be a flat colour, which the shorthand handles too.
+        header.setBackground(THEMED_HEADER_BG);
+        header.setForegroundColor(THEMED_HEADER_COLOR);
+        // Bottom-only divider — collapses naturally with no per-index logic.
+        header.setBorder({ border: "none", borderBottom: THEMED_HEADER_BORDER });
+    }
+
+    /**
+     * Returns when per-section tools are shown.
+     *
+     * @returns `"always"` or `"hover"`.
+     */
+    getToolsVisibility(): "always" | "hover" {
+        return this._toolsVisibility;
+    }
+
+    /**
+     * Sets when per-section tools are shown. `"hover"` (the default) reveals a
+     * header's tools only while it is hovered; `"always"` keeps them visible.
+     * Global tools (see {@link addTool}) always follow hover regardless of this
+     * setting, since a single global instance can only sit in the hovered header.
+     *
+     * @param mode - `"always"` or `"hover"`.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setToolsVisibility(mode: "always" | "hover"): this {
+        this._toolsVisibility = mode;
+
+        // Re-apply the resting state to every header; a subsequent hover
+        // corrects the currently-hovered one.
+        for (const header of this._headers) {
+            header.setToolsRevealed(mode === "always");
+        }
+
+        return this;
+    }
+
+    /**
+     * Registers a global tool shown on whichever header is currently hovered.
+     * A single `Component` is one DOM node, so a global tool cannot appear on
+     * every header at once — it is re-parented into the hovered header and
+     * therefore follows hover/active visibility. Mirrors `Tab.addTool`.
+     *
+     * @param button - The tool component to register globally.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    addTool(button: Component): this {
+        if (this._tools.includes(button)) {
+            return this;
+        }
+
+        this._tools.push(button);
+
+        // If a header is hovered right now, show the new tool there immediately.
+        if (this._hoveredHeader !== -1) {
+            this._headers[this._hoveredHeader]?.addTool(button);
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Removes a previously-registered global tool.
+     *
+     * @param button - The tool component to remove.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    removeTool(button: Component): this {
+        const index = this._tools.indexOf(button);
+
+        if (index === -1) {
+            return this;
+        }
+
+        this._tools.splice(index, 1);
+
+        if (this._hoveredHeader !== -1) {
+            this._headers[this._hoveredHeader]?.removeTool(button);
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Adds the global tools to the header at `index` and, in hover mode, reveals
+     * its tool group. Called when the pointer enters a header.
+     *
+     * @param index - The header being entered.
+     */
+    private revealHeaderTools(index: number): void {
+        const header = this._headers[index];
+
+        if (!header) {
+            return;
+        }
+
+        for (const tool of this._tools) {
+            header.addTool(tool);
+        }
+
+        if (this._toolsVisibility === "hover") {
+            header.setToolsRevealed(true);
+        }
+    }
+
+    /**
+     * Removes the global tools from the header at `index` and, in hover mode,
+     * hides its tool group again. Called when the pointer leaves a header.
+     *
+     * @param index - The header being left.
+     */
+    private hideHeaderTools(index: number): void {
+        const header = this._headers[index];
+
+        if (!header) {
+            return;
+        }
+
+        for (const tool of this._tools) {
+            header.removeTool(tool);
+        }
+
+        if (this._toolsVisibility === "hover") {
+            header.setToolsRevealed(false);
+        }
+    }
+
+    /**
+     * Handles the pointer entering a header (filtered to genuine enters, not
+     * moves between the header's own descendants): relocates the global tools
+     * onto it and reveals its tools, moving them off the previously hovered
+     * header first.
+     *
+     * @param index - The header receiving the pointer.
+     * @param e - The originating `mouseover` event.
+     */
+    private onHeaderHoverEnter(index: number, e: MouseEvent): void {
+        const element = this._headers[index]?.getElement();
+
+        if (element && e.relatedTarget instanceof Node && DOM.source.contains(element, DOM.source.intern(e.relatedTarget))) {
+            return;
+        }
+
+        if (this._hoveredHeader === index) {
+            return;
+        }
+
+        if (this._hoveredHeader !== -1) {
+            this.hideHeaderTools(this._hoveredHeader);
+        }
+
+        this._hoveredHeader = index;
+        this.revealHeaderTools(index);
+    }
+
+    /**
+     * Handles the pointer leaving a header (filtered to genuine exits): removes
+     * the global tools and hides the tools again.
+     *
+     * @param index - The header losing the pointer.
+     * @param e - The originating `mouseout` event.
+     */
+    private onHeaderHoverLeave(index: number, e: MouseEvent): void {
+        const element = this._headers[index]?.getElement();
+
+        if (element && e.relatedTarget instanceof Node && DOM.source.contains(element, DOM.source.intern(e.relatedTarget))) {
+            return;
+        }
+
+        if (this._hoveredHeader !== index) {
+            return;
+        }
+
+        this.hideHeaderTools(index);
+        this._hoveredHeader = -1;
+    }
+
+    /**
      * Opens the section at the given index.
      *
      * @param index - Zero-based section index.
@@ -254,7 +747,6 @@ class Accordion extends LayoutManager {
                     this.primeWrapper(i);
                     this._openState[i] = false;
                     this._headers[i].setExpanded(false);
-                    this._headers[i].getAria().setExpanded(false);
                     this.emit("sectiontoggle", i, false);
                 }
             }
@@ -263,7 +755,6 @@ class Accordion extends LayoutManager {
         this.primeWrapper(index);
         this._openState[index] = true;
         this._headers[index].setExpanded(true);
-        this._headers[index].getAria().setExpanded(true);
         this.emit("sectiontoggle", index, true);
         this.getContainer()?.scheduleLayout();
 
@@ -283,9 +774,43 @@ class Accordion extends LayoutManager {
         this.primeWrapper(index);
         this._openState[index] = false;
         this._headers[index].setExpanded(false);
-        this._headers[index].getAria().setExpanded(false);
         this.emit("sectiontoggle", index, false);
         this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Opens every section. In single-open mode only one section may be open at
+     * a time, so this opens the first section (a deterministic choice — the
+     * topmost becomes the visible one) rather than leaving whichever section
+     * `openSection` happened to settle on last.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    expandAll(): this {
+        if (this._singleOpen) {
+            this.openSection(0);
+
+            return this;
+        }
+
+        for (let i = 0; i < this._openState.length; i++) {
+            this.openSection(i);
+        }
+
+        return this;
+    }
+
+    /**
+     * Closes every section.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    collapseAll(): this {
+        for (let i = 0; i < this._openState.length; i++) {
+            this.closeSection(i);
+        }
 
         return this;
     }
@@ -401,6 +926,7 @@ class Accordion extends LayoutManager {
         const components = container.getComponents();
         let totalHeight = perimeterSize.top + perimeterSize.bottom;
         let maxWidth = 0;
+        let displayedSoFar = 0;
 
         for (let i = 0; i < components.length; i++) {
             // A non-displayed section contributes neither its header nor its
@@ -409,7 +935,13 @@ class Accordion extends LayoutManager {
                 continue;
             }
 
-            totalHeight += this._headerHeight;
+            // Inter-section gap between displayed sections (see doLayout).
+            if (displayedSoFar > 0) {
+                totalHeight += this._spacing;
+            }
+
+            displayedSoFar += 1;
+            totalHeight += this.effectiveHeaderHeight();
 
             // openState is populated lazily in doLayout; fall back to the
             // constraint's initiallyOpen flag so getPreferredSize() is correct
@@ -458,6 +990,7 @@ class Accordion extends LayoutManager {
         const components = container.getComponents();
         let totalHeight = perimeterSize.top + perimeterSize.bottom;
         let maxWidth = 0;
+        let displayedSoFar = 0;
 
         for (let i = 0; i < components.length; i++) {
             // A non-displayed section contributes neither its header nor its
@@ -466,7 +999,13 @@ class Accordion extends LayoutManager {
                 continue;
             }
 
-            totalHeight += this._headerHeight;
+            // Inter-section gap between displayed sections (see doLayout).
+            if (displayedSoFar > 0) {
+                totalHeight += this._spacing;
+            }
+
+            displayedSoFar += 1;
+            totalHeight += this.effectiveHeaderHeight();
 
             // openState is populated lazily in doLayout; fall back to the
             // constraint's initiallyOpen flag so getMinSize() is correct even
@@ -507,7 +1046,7 @@ class Accordion extends LayoutManager {
         const label = constraints?.label ?? component.getId();
         const initiallyOpen = constraints?.initiallyOpen ?? false;
 
-        const header = new AccordionHeader(label);
+        const header = new AccordionHeader(label, { chevronSide: this._chevronSide, glyph: constraints?.glyph ?? undefined, compact: this._compact, chevronGlyph: this._chevronGlyph ?? undefined });
 
         header.setAnimationTiming(this._animationDuration, ACCORDION_EASING);
 
@@ -517,8 +1056,23 @@ class Accordion extends LayoutManager {
         // as broken motion.
         header.setTransition(this.buildHeaderTransition());
 
+        const title = header.getTitleButton();
+
+        // The title button is the toggle + focus target; its `action` covers the
+        // label/glyph area. A click listener on the header element covers the
+        // chevron (pointer-events:none, so it falls through to the header) and
+        // the padding gaps. Tools carry their own ids, so neither exact-target
+        // listener fires for a tool click — toggling stays structural.
+        title.on("action", () => this.onHeaderClicked(index));
         Event.addListener(header, 'click', () => this.onHeaderClicked(index));
-        Event.addListener(header, 'keydown', (e: KeyboardEvent) => this.onHeaderKeyDown(e, index));
+        Event.addListener(title, 'keydown', (e: KeyboardEvent) => this.onHeaderKeyDown(e, index));
+
+        // Hover drives tool visibility: per-section tools reveal on hover (in
+        // hover mode) and the single global tool set re-parents onto the hovered
+        // header. Subtree listeners catch hover anywhere in the header; the
+        // handlers filter intra-header moves via relatedTarget.
+        Event.addSubtreeListener(header, 'mouseover', (e: MouseEvent) => this.onHeaderHoverEnter(index, e));
+        Event.addSubtreeListener(header, 'mouseout', (e: MouseEvent) => this.onHeaderHoverLeave(index, e));
 
         const wrapper = new Component();
 
@@ -542,11 +1096,21 @@ class Accordion extends LayoutManager {
         this._panelWrappers.push(wrapper);
 
         header.setExpanded(initiallyOpen);
-        header.getAria().setExpanded(initiallyOpen);
-        header.getAria().setControls(wrapper.getId());
+        title.getAria().setControls(wrapper.getId());
 
         wrapper.getAria().setRole('region');
-        wrapper.getAria().setLabelledBy(header.getId());
+        wrapper.getAria().setLabelledBy(title.getId());
+
+        for (const tool of constraints?.tools ?? []) {
+            header.addTool(tool);
+        }
+
+        // In hover mode a header's tools stay hidden until the pointer enters.
+        if (this._toolsVisibility === "hover") {
+            header.setToolsRevealed(false);
+        }
+
+        this.applySectionTheming(index);
     }
 
     /**
@@ -598,6 +1162,10 @@ class Accordion extends LayoutManager {
             this.createSection(components[i], i);
         }
 
+        // Apply the themed container border (idempotent) so it takes effect even
+        // when `themed` defaults on and `setThemed` was never called explicitly.
+        this.applyContainerTheming();
+
         const containerSize = container.getInnerSize();
         const insets = container.getContentInsets();
         let containerWidth = containerSize ? containerSize.width : 0;
@@ -617,7 +1185,14 @@ class Accordion extends LayoutManager {
         // so the accordion fits — see computeShrinkRatio for the full policy.
         const shrinkRatio = this.computeShrinkRatio(components, containerSize);
 
+        // Fill mode: the bottommost open section grows to absorb the container's
+        // leftover height (underflow). It is the counterpart to shrink: when the
+        // content overflows, shrinkRatio > 0 and the leftover is <= 0, so fill
+        // is a no-op and the two policies never both apply.
+        const { fillTarget, fillLeftover } = this.computeFill(components, containerSize, shrinkRatio);
+
         let y = insets.getTop();
+        let displayedSoFar = 0;
 
         for (let i = 0; i < components.length; i++) {
             const component = components[i];
@@ -639,13 +1214,21 @@ class Accordion extends LayoutManager {
             header.setDisplayed(true);
             wrapper.setDisplayed(true);
 
+            // Inter-section gap: before every displayed section except the
+            // first, so the gap never leads or trails the stack.
+            if (displayedSoFar > 0) {
+                y += this._spacing;
+            }
+
+            displayedSoFar += 1;
+
             header.setX(insets.getLeft());
             header.setY(y);
             header.setWidth(containerWidth);
-            header.setHeight(this._headerHeight);
+            header.setHeight(this.effectiveHeaderHeight());
             header.doLayout();
 
-            y += this._headerHeight;
+            y += this.effectiveHeaderHeight();
 
             // Open sections take their preferred height, shrunk toward their min
             // by the container-driven ratio so the accordion fits its host.
@@ -656,9 +1239,12 @@ class Accordion extends LayoutManager {
             // vanishing followed by an empty wrapper sliding shut.
             const preferred = component.getPreferredSize();
             const contentPref = preferred ? preferred.height : 100;
-            const min = component.getMinSize();
-            const contentMin = min ? min.height : 0;
-            const openHeight = contentPref - shrinkRatio * (contentPref - contentMin);
+            let openHeight = this.openContentHeight(component, shrinkRatio);
+
+            // Fill mode: the bottommost open section absorbs the leftover height.
+            if (i === fillTarget) {
+                openHeight += fillLeftover;
+            }
 
             const panelHeight   = isOpen ? openHeight  : 0;
             const contentHeight = isOpen ? openHeight  : contentPref;
@@ -709,6 +1295,7 @@ class Accordion extends LayoutManager {
         let headerTotal = 0;
         let openPreferred = 0;
         let openMin = 0;
+        let displayedSoFar = 0;
 
         for (let i = 0; i < components.length; i++) {
             // A non-displayed section shows neither its header nor its content,
@@ -717,7 +1304,14 @@ class Accordion extends LayoutManager {
                 continue;
             }
 
-            headerTotal += this._headerHeight;
+            // The inter-section gap is fixed (non-shrinkable) budget, like the
+            // headers — count it between displayed sections (see doLayout).
+            if (displayedSoFar > 0) {
+                headerTotal += this._spacing;
+            }
+
+            displayedSoFar += 1;
+            headerTotal += this.effectiveHeaderHeight();
 
             if (!this._openState[i]) {
                 continue;
@@ -744,6 +1338,70 @@ class Accordion extends LayoutManager {
     }
 
     /**
+     * The height an open section's content renders at: its preferred height
+     * shrunk toward its minimum by `shrinkRatio`. Falls back to 100px when the
+     * section reports no preferred height.
+     *
+     * @param component - The section content component.
+     * @param shrinkRatio - The container-driven shrink ratio in `[0, 1]`.
+     * @returns The content height in pixels.
+     */
+    private openContentHeight(component: Component, shrinkRatio: number): number {
+        const preferred = component.getPreferredSize();
+        const contentPref = preferred ? preferred.height : 100;
+        const min = component.getMinSize();
+        const contentMin = min ? min.height : 0;
+
+        return contentPref - shrinkRatio * (contentPref - contentMin);
+    }
+
+    /**
+     * Computes fill placement: the index of the bottommost open displayed
+     * section (the fill target) and the leftover height it should absorb. Only
+     * active when `fill` is on and the content underflows the container; on
+     * overflow the leftover is `<= 0` so fill yields nothing (shrink handles it).
+     *
+     * @param components - The container's child components.
+     * @param containerSize - The container's inner size, or null.
+     * @param shrinkRatio - The shrink ratio applied to open content.
+     * @returns The fill target index (`-1` if none) and the leftover height.
+     */
+    private computeFill(components: Component[], containerSize: Size | null, shrinkRatio: number): { fillTarget: number; fillLeftover: number } {
+        if (!this._fill || !containerSize) {
+            return { fillTarget: -1, fillLeftover: 0 };
+        }
+
+        let used = 0;
+        let displayed = 0;
+        let fillTarget = -1;
+
+        for (let i = 0; i < components.length; i++) {
+            if (!components[i].isDisplayed()) {
+                continue;
+            }
+
+            if (displayed > 0) {
+                used += this._spacing;
+            }
+
+            displayed += 1;
+            used += this.effectiveHeaderHeight();
+
+            if (this._openState[i]) {
+                used += this.openContentHeight(components[i], shrinkRatio);
+                fillTarget = i;
+            }
+        }
+
+        const leftover = containerSize.height - used;
+
+        return {
+            fillTarget,
+            fillLeftover: fillTarget !== -1 && leftover > 0 ? leftover : 0,
+        };
+    }
+
+    /**
      * Handles ArrowDown, ArrowUp, Home, and End to move keyboard focus between headers.
      *
      * @param e - The keyboard event fired on a header.
@@ -767,7 +1425,7 @@ class Accordion extends LayoutManager {
         }
 
         e.preventDefault();
-        this._headers[target].focus();
+        this._headers[target].getTitleButton().focus();
     }
 
     /**
@@ -785,7 +1443,6 @@ class Accordion extends LayoutManager {
                     this.primeWrapper(i);
                     this._openState[i] = false;
                     this._headers[i].setExpanded(false);
-                    this._headers[i].getAria().setExpanded(false);
                     this.emit("sectiontoggle", i, false);
                 }
             }
@@ -796,7 +1453,6 @@ class Accordion extends LayoutManager {
         this.primeWrapper(index);
         this._openState[index] = nowOpen;
         this._headers[index].setExpanded(nowOpen);
-        this._headers[index].getAria().setExpanded(nowOpen);
         this.emit("sectiontoggle", index, nowOpen);
         this.getContainer()?.scheduleLayout();
     }

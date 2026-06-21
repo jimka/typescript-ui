@@ -2,11 +2,22 @@
 
 import { callable, Component, Panel } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
-import { Fit, HBox, VBox } from '@jimka/typescript-ui/layout';
+import { Fit, HBox, VBox, LayoutConstraints } from '@jimka/typescript-ui/layout';
 import { Checkbox, Text, TextField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { List } from '@jimka/typescript-ui/component/list';
 import { AccordionPanel } from '@jimka/typescript-ui/component/container';
+import { Glyph } from '@jimka/typescript-ui/component/display';
+import { circle_user } from '@jimka/typescript-ui/glyphs/solid/circle_user';
+import { gear } from '@jimka/typescript-ui/glyphs/solid/gear';
+import { clock_rotate_left } from '@jimka/typescript-ui/glyphs/solid/clock_rotate_left';
+import { circle_info } from '@jimka/typescript-ui/glyphs/solid/circle_info';
+import { pen_to_square } from '@jimka/typescript-ui/glyphs/solid/pen_to_square';
+import { ellipsis_vertical } from '@jimka/typescript-ui/glyphs/solid/ellipsis_vertical';
+
+// Register the section-header and tool glyphs once at module load so the demo's
+// AccordionPanel can reference them by registry name.
+Glyph.register(circle_user, gear, clock_rotate_left, circle_info, pen_to_square, ellipsis_vertical);
 
 /**
  * Demonstrates the framework {@link AccordionPanel} (a Panel subclass that
@@ -17,6 +28,10 @@ class AccordionDemoPanel extends Panel {
 
     private accordion:        AccordionPanel;
     private singleOpenToggle: Button;
+    private compactToggle:    Button;
+    private themedToggle:     Button;
+    private spacingToggle:    Button;
+    private fillToggle:       Button;
 
     constructor() {
         super();
@@ -45,34 +60,50 @@ class AccordionDemoPanel extends Panel {
         this.singleOpenToggle = new Button("Single-open: OFF", { preferredSize: { width: 160, height: 28 } });
         toolbar.addComponent(this.singleOpenToggle);
 
+        this.compactToggle = new Button("Compact: OFF", { preferredSize: { width: 130, height: 28 } });
+        toolbar.addComponent(this.compactToggle);
+
+        this.themedToggle = new Button("Themed: ON", { preferredSize: { width: 120, height: 28 } });
+        toolbar.addComponent(this.themedToggle);
+
+        this.spacingToggle = new Button("Spacing: 0", { preferredSize: { width: 110, height: 28 } });
+        toolbar.addComponent(this.spacingToggle);
+
+        this.fillToggle = new Button("Fill: OFF", { preferredSize: { width: 100, height: 28 } });
+        toolbar.addComponent(this.fillToggle);
+
         this.addComponent(toolbar);
 
         // --- AccordionPanel ---
         this.accordion = new AccordionPanel({
             sections: [
-                { label: "Personal Info", component: this.buildInfoSection(),        initiallyOpen: true },
-                { label: "Preferences",   component: this.buildPreferencesSection() },
-                { label: "Recent Items",  component: this.buildListSection()        },
-                { label: "About",         component: this.buildAboutSection()       },
+                { label: "Personal Info", component: this.buildInfoSection(),        initiallyOpen: true, glyph: "circle-user"        },
+                { label: "Preferences",   component: this.buildPreferencesSection(),                       glyph: "gear",
+                  tools: [this.makeToolButton("pen-to-square", "Edit preferences")] },
+                { label: "Recent Items",  component: this.buildListSection(),                              glyph: "clock-rotate-left"  },
+                { label: "About",         component: this.buildAboutSection(),                             glyph: "circle-info"        },
             ],
             // Re-layout the outer VBox whenever a section toggles so the
             // accordion resizes to match the new total preferred height.
             onSectionToggle: () => { this.doLayout(); },
         });
 
-        this.addComponent(this.accordion);
+        // Weight 1 so the accordion fills the panel's remaining height below the
+        // toolbar — giving fill mode the leftover space it expands an open
+        // section into (IDE/dock-panel style).
+        const accordionConstraints = new LayoutConstraints();
+
+        accordionConstraints.weight = 1;
+
+        this.addComponent(this.accordion, accordionConstraints);
 
         // --- Wire controls ---
         openAllBtn.on("action", () => {
-            for (let i = 0; i < 4; i++) {
-                this.accordion.getAccordion().openSection(i);
-            }
+            this.accordion.getAccordion().expandAll();
         });
 
         closeAllBtn.on("action", () => {
-            for (let i = 0; i < 4; i++) {
-                this.accordion.getAccordion().closeSection(i);
-            }
+            this.accordion.getAccordion().collapseAll();
         });
 
         this.singleOpenToggle.on("action", () => {
@@ -81,6 +112,61 @@ class AccordionDemoPanel extends Panel {
             this.accordion.getAccordion().setSingleOpen(next);
             this.singleOpenToggle.setText(`Single-open: ${next ? 'ON' : 'OFF'}`);
         });
+
+        this.compactToggle.on("action", () => {
+            const next = !this.accordion.getAccordion().isCompact();
+
+            this.accordion.getAccordion().setCompact(next);
+            this.compactToggle.setText(`Compact: ${next ? 'ON' : 'OFF'}`);
+            this.doLayout();
+        });
+
+        this.themedToggle.on("action", () => {
+            const next = !this.accordion.getAccordion().isThemed();
+
+            this.accordion.getAccordion().setThemed(next);
+            this.themedToggle.setText(`Themed: ${next ? 'ON' : 'OFF'}`);
+            this.doLayout();
+        });
+
+        this.spacingToggle.on("action", () => {
+            const next = this.accordion.getAccordion().getSpacing() === 0 ? 8 : 0;
+
+            this.accordion.getAccordion().setSpacing(next);
+            this.spacingToggle.setText(`Spacing: ${next}`);
+            this.doLayout();
+        });
+
+        this.fillToggle.on("action", () => {
+            const next = !this.accordion.getAccordion().isFill();
+
+            this.accordion.getAccordion().setFill(next);
+            this.fillToggle.setText(`Fill: ${next ? 'ON' : 'OFF'}`);
+            this.doLayout();
+        });
+
+        // A global tool follows the hovered header, appearing alongside that
+        // header's own (per-section) tools.
+        this.accordion.getAccordion().addTool(this.makeToolButton("ellipsis-vertical", "Global menu"));
+    }
+
+    /**
+     * Builds a small flat icon button for use as an accordion header tool. The
+     * action logs so the demo shows that a tool click does not toggle its
+     * section.
+     *
+     * @param glyph - Registry glyph name for the tool icon.
+     * @param label - Identifier logged when the tool is clicked.
+     * @returns The tool button.
+     */
+    private makeToolButton(glyph: string, label: string): Button {
+        // Compact glyph-only buttons so the tool fits inside the (compact or
+        // normal) header height rather than inflating the header row.
+        const button = new Button({ glyph, flat: true, compact: true });
+
+        button.on("action", () => { console.log(`Accordion tool clicked: ${label}`); });
+
+        return button;
     }
 
     /**

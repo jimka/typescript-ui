@@ -566,6 +566,20 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
         super.applyChromeOptions(opts);
 
+        // Chromeful resting background: `super` applied the `--ts-ui-button-bg`
+        // token as a background *image* (for gradient tokens); also apply it as
+        // a background *colour* so a flat-colour token (e.g. the Modern theme)
+        // renders too — whichever channel is valid paints, the other is dropped.
+        // Without the colour channel a flat-colour token was invalid as an image
+        // and the button fell back to the UA `<button>` background. Skipped when
+        // the caller set their own backgroundColor, and when flat (flat is
+        // transparent at rest — see `_applyFlatChrome`).
+        const isFlat = (this._options.flat ?? opts.flat) === true;
+
+        if (!isFlat && opts.backgroundColor === undefined) {
+            this.setBackgroundColor("var(--ts-ui-button-bg, transparent)");
+        }
+
         if (opts.pressedForegroundColor !== undefined) this.setPressedForegroundColor(opts.pressedForegroundColor);
         if (opts.pressedBackgroundColor !== undefined) this.setPressedBackgroundColor(opts.pressedBackgroundColor);
         if (opts.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(opts.pressedBackgroundImage);
@@ -1480,20 +1494,27 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // width of the `--ts-ui-button-flat-{hover,pressed}-border` tokens;
         // widen this in lockstep if those ever exceed 1px.
         this.setBorder("1px solid transparent");
-        this._options.borderRadius    = undefined;
-        this._options.shadow          = undefined;
-        this._options.backgroundImage = undefined;
+
+        // Clear (not just mask) the resting radius, shadow, and background image:
+        // the chromeful `super.applyChromeOptions` already wrote these defaults
+        // (`--ts-ui-border-radius`, `--ts-ui-button-shadow`, `--ts-ui-button-bg`)
+        // into the rules, so nulling only the options would leave them painting
+        // behind a "flat" button — a drop shadow ringing the button and rounded
+        // corners.
+        this.clearBorderRadius();
+        this.clearShadow();
+        this.clearBackgroundImage();
 
         if ((this._options.backgroundColor ?? this._defaultOptions.backgroundColor) === undefined) {
             this._options.backgroundColor = "transparent";
         }
 
-        // Mask the inherited raised pressed/hover defaults so a re-apply that
-        // omits them doesn't leak the raised treatments; the flat values below
-        // overwrite the live rules.
-        this._options.pressedBackgroundImage = undefined;
-        this._options.hoverBackgroundImage   = undefined;
-        this._options.hoverShadow            = undefined;
+        // Clear the inherited raised pressed/hover background images and the
+        // raised hover shadow (written by the chromeful path above) so they
+        // don't paint under the flat hover / pressed colours installed below.
+        this.clearPressedBackgroundImage();
+        this.clearHoverBackgroundImage();
+        this.clearHoverShadow();
 
         // Install the flat hover frame + sunken pressed frame from the tokens.
         this.setHoverBackgroundColor("var(--ts-ui-button-flat-hover-bg, rgba(0, 0, 0, 0.06))");

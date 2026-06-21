@@ -34,7 +34,83 @@ section2.addComponent(Text('Content of section 2'));
 sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 ```
 
-[`AccordionOptions`](/api/layout/interfaces/AccordionOptions) accepts `singleOpen`, `headerHeight`, `animationDuration`, and a `listeners: { sectiontoggle }` bag declaratively. The setters (`setSingleOpen`, `setHeaderHeight`, `setAnimationDuration`) still work for runtime updates; subscribe to toggles via `on("sectiontoggle", fn)`.
+[`AccordionOptions`](/api/layout/interfaces/AccordionOptions) accepts the following declaratively; each has a matching setter for runtime updates:
+
+| Option | Setter / getter | Default | Purpose |
+| --- | --- | --- | --- |
+| `singleOpen` | `setSingleOpen` / `isSingleOpen` | `false` | Only one section open at a time. |
+| `headerHeight` | `setHeaderHeight` / `getHeaderHeight` | `28` | Height of each section header, in pixels. |
+| `animationDuration` | `setAnimationDuration` / `getAnimationDuration` | `200` | Open/close transition duration, in milliseconds. |
+| `themed` | `setThemed` / `isThemed` | `true` | Paint the accordion theme tokens (header background/border/colour + an all-around container border). See [Themed appearance](#themed-appearance). |
+| `spacing` | `setSpacing` / `getSpacing` | `0` | Vertical gap inserted *between* sections (never leading or trailing). |
+| `compact` | `setCompact` / `isCompact` | `false` | Denser headers — a smaller default header height plus tighter padding. See [Compact mode](#compact-mode). |
+| `chevronSide` | `setChevronSide` / `getChevronSide` | `"right"` | Which end of each header the chevron sits at. The label always stays left-aligned. |
+| `chevronGlyph` | `setChevronGlyph` / `getChevronGlyph` | `"▶"` | The character drawn as the chevron (rotates 90° when expanded). |
+| `fill` | `setFill` / `isFill` | `false` | The bottommost open section absorbs the container's leftover height. See [Fill mode](#fill-mode). |
+| `toolsVisibility` | `setToolsVisibility` / `getToolsVisibility` | `"hover"` | When per-section header tools are shown. See [Header tools](#header-tools). |
+| `listeners` | `on("sectiontoggle", fn)` | — | `{ sectiontoggle }` callback bag (see [Toggle callback](#toggle-callback)). |
+
+> **The header is no longer a `Button`.** [`AccordionHeader`](/api/component/container/classes/AccordionHeader) is a styled [`Component`](/api/core/classes/Component) hosting an [`HBox`](/api/layout/classes/HBox) row — an optional leading glyph + a `chromeless` title button (the clickable toggle and focus target), the tool group, and the chevron cell. Because tools are *siblings* of the title button rather than descendants, a tool click is structurally not a header toggle — there is nothing to stop from propagating.
+
+## Themed appearance
+
+With `themed` on (the **default**), each header paints the accordion theme tokens and the container draws an all-around border, so a stack reads as a flat boxed list whose section dividers never double. Turn it off (`themed: false`) for a chromeless accordion that inherits its surroundings.
+
+| CSS custom property | Purpose |
+| --- | --- |
+| `--ts-ui-accordion-header-bg` | Header background. |
+| `--ts-ui-accordion-header-border` | Header bottom divider between sections. |
+| `--ts-ui-accordion-header-color` | Header text colour. |
+| `--ts-ui-accordion-border` | All-around border on the accordion container. |
+| `--ts-ui-accordion-indicator-color` | Chevron colour. |
+
+The header border is a single **bottom** divider rather than a four-side box, so adjacent headers never paint a doubled line — there is no separate "flat"/border-collapse option to set. All values come from the active [`Theme`](/api/core/interfaces/Theme); switching Modern/Classic/Dark retints the accordion in lock-step.
+
+```typescript
+accordion.setThemed(false);   // chromeless
+accordion.setSpacing(8);      // 8px gap between sections
+```
+
+## Compact mode
+
+`compact` makes the headers denser: a smaller default header height (22px vs 28px) plus tighter horizontal padding and inter-cell spacing. The smaller height applies **only when you have not pinned an explicit `headerHeight`** — calling `setHeaderHeight` marks the height as explicit, so compact never silently overrides it.
+
+## Header glyph
+
+A section can show a registry [`Glyph`](/api/component/display/classes/Glyph) leading its title label, via the per-section `glyph` constraint (a registry **name**):
+
+```typescript
+sidebar.addComponent(profile, new AccordionConstraints('Profile', true, 'circle-user'));
+```
+
+This is distinct from `chevronGlyph`: the section **glyph** is a real registry icon leading the title, while **`chevronGlyph`** is a single raw character used for the rotating expand/collapse chevron. The two are different systems — a registry icon would not rotate cleanly, and a raw character is not a registry lookup.
+
+## Header tools
+
+Headers can carry tool buttons (or any [`Component`](/api/core/classes/Component)) in a tool group between the title and the chevron. There are two kinds:
+
+- **Per-section tools** — passed via the `tools` constraint (or `AccordionPanel`'s `addSection`). Each is its own instance, lives permanently in that header, and obeys `toolsVisibility`: `"hover"` (default) reveals them only while the header is hovered; `"always"` keeps them visible.
+- **Global tools** — registered with `addTool(button)` / removed with `removeTool(button)`, mirroring [`Tab.addTool`](/api/layout/classes/Tab#addtool).
+
+```typescript
+accordion.addTool(menuButton);                                   // global
+sidebar.addComponent(prefs, new AccordionConstraints('Preferences', false, 'gear', [editButton])); // per-section
+```
+
+> **Single-instance constraint.** A global tool is a single `Component` — one DOM node — so it **cannot appear in every header at once**. It is re-parented into whichever header is currently hovered, so a global tool *follows the cursor* across headers rather than showing in all of them. If you need a tool present on every header simultaneously, give each section its own per-section instance.
+
+## Fill mode
+
+By default every open section sits at its preferred height. With `fill` on, the **bottommost open section grows to absorb the container's leftover height** (IDE/dock-panel style) — useful when the host stretches the accordion taller than its preferred height (e.g. inside a [`VBox`](/api/layout/classes/VBox) with `stretching`). Fill is the underflow counterpart to the shrink behaviour described under [Sizing](#sizing): when the content already overflows there is no leftover, so fill is a no-op and the two never both apply. When several sections are open, only the bottommost fills; the rest take their preferred height.
+
+## Expand / collapse all
+
+`expandAll()` opens every section; `collapseAll()` closes every section. Both emit `sectiontoggle` as they open/close sections and schedule a single layout pass. `expandAll()` respects single-open mode — under `singleOpen` it opens only the first section rather than leaving the last-opened one visible.
+
+```typescript
+accordion.expandAll();
+accordion.collapseAll();
+```
 
 ## Per-child constraints
 
@@ -42,8 +118,10 @@ sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 
 | Field | Purpose |
 | --- | --- |
-| `label` | Header button text (required). |
+| `label` | Header title text (required). |
 | `initiallyOpen` | When `true`, the section starts expanded. Default: `false`. |
+| `glyph` | Optional registry glyph name shown leading the title label. |
+| `tools` | Optional per-section tool components for this header's tool group. |
 
 ## Toggle callback
 
@@ -84,7 +162,7 @@ For the lifetime of each active toggle the toggling wrapper is pre-promoted to i
 
 When the user has `prefers-reduced-motion: reduce` set, the will-change prime and the container transition are skipped, and every header and wrapper's `transition` is briefly flipped to `"none"` so the layout writes land instantly; the transition strings are restored on the next animation frame so subsequent toggles animate normally once the user clears the preference.
 
-The duration and easing are a layout concern, not a theme concern — encoding them in themes would invite drift between the panel, container, header, and indicator transitions — so they are not part of the [`Theme`](/api/core/classes/Theme) surface. Override the duration on a per-Accordion basis via `animationDuration`.
+The duration and easing are a layout concern, not a theme concern — encoding them in themes would invite drift between the panel, container, header, and indicator transitions — so they are not part of the [`Theme`](/api/core/interfaces/Theme) surface. Override the duration on a per-Accordion basis via `animationDuration`.
 
 ## See also
 
