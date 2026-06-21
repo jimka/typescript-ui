@@ -47,6 +47,25 @@ const ACCORDION_EASING: string = "cubic-bezier(0.4, 0, 0.6, 1)";
 const COMPACT_HEADER_HEIGHT: number = 22;
 
 /**
+ * Themed-mode CSS values for the accordion theme tokens, with fallbacks
+ * mirroring the default light theme. Applied to each header only when `themed`
+ * is on, so an un-themed accordion stays chromeless. The header border is a
+ * single bottom divider (not a four-side box): stacked headers then read as a
+ * flat list whose dividers never double, so no separate `flat`/collapse option
+ * is needed — the look is driven entirely by the `accordion.header.border` token.
+ */
+const THEMED_HEADER_BG:     string = "var(--ts-ui-accordion-header-bg, rgb(243,244,246))";
+const THEMED_HEADER_BORDER: string = "1px solid var(--ts-ui-accordion-header-border, rgb(214,217,222))";
+const THEMED_HEADER_COLOR:  string = "var(--ts-ui-accordion-header-color, inherit)";
+
+/**
+ * All-around border drawn on the accordion's own container when `themed`, from
+ * the `accordion.border` token — boxes the whole stack while the header borders
+ * remain single bottom dividers between sections.
+ */
+const THEMED_BORDER:        string = "1px solid var(--ts-ui-accordion-border, rgb(214,217,222))";
+
+/**
  * Callback invoked when a section is opened or closed.
  *
  * @param index - Zero-based index of the toggled section.
@@ -69,6 +88,8 @@ export interface AccordionOptions extends LayoutManagerOptions {
     toolsVisibility?:   "always" | "hover";
     compact?:           boolean;
     chevronGlyph?:      string;
+    spacing?:           number;
+    themed?:            boolean;
     /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
@@ -121,6 +142,8 @@ class Accordion extends LayoutManager {
     private _animationDuration: number = 200;
     private _chevronSide: "left" | "right" = "right";
     private _chevronGlyph: string | null = null;
+    private _spacing: number = 0;
+    private _themed: boolean = true;
     private _tools: Component[] = [];
     private _toolsVisibility: "always" | "hover" = "hover";
     private _hoveredHeader: number = -1;
@@ -168,6 +191,14 @@ class Accordion extends LayoutManager {
 
         if (options.chevronGlyph !== undefined) {
             this.setChevronGlyph(options.chevronGlyph);
+        }
+
+        if (options.spacing !== undefined) {
+            this.setSpacing(options.spacing);
+        }
+
+        if (options.themed !== undefined) {
+            this.setThemed(options.themed);
         }
 
         if (options.listeners !== undefined) {
@@ -376,6 +407,115 @@ class Accordion extends LayoutManager {
         this.getContainer()?.scheduleLayout();
 
         return this;
+    }
+
+    /**
+     * Returns the vertical gap inserted between sections.
+     *
+     * @returns The inter-section spacing in pixels.
+     */
+    getSpacing(): number {
+        return this._spacing;
+    }
+
+    /**
+     * Sets the vertical gap inserted between sections (never before the first or
+     * after the last). Default `0` keeps the sections contiguous.
+     *
+     * @param spacing - Inter-section gap in pixels.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setSpacing(spacing: number): this {
+        this._spacing = spacing;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns whether themed mode is on.
+     *
+     * @returns True if headers/panels paint the accordion theme tokens.
+     */
+    isThemed(): boolean {
+        return this._themed;
+    }
+
+    /**
+     * Sets themed mode. When on, each header paints the accordion theme tokens
+     * (background, border, text colour) and each panel wrapper paints the panel
+     * border; when off, headers stay chromeless. Applies to existing sections
+     * immediately.
+     *
+     * @param value - True to paint the accordion theme tokens.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setThemed(value: boolean): this {
+        this._themed = value;
+
+        this.applyContainerTheming();
+
+        for (let i = 0; i < this._headers.length; i++) {
+            this.applySectionTheming(i);
+        }
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Applies (or clears) the all-around border on the accordion's container per
+     * the themed state. Idempotent — `setBorder`/`clearBorder` cache, so the
+     * repeated call from `doLayout` is cheap.
+     */
+    private applyContainerTheming(): void {
+        const container = this.getContainer();
+
+        if (!container) {
+            return;
+        }
+
+        if (this._themed) {
+            container.setBorder({ border: THEMED_BORDER });
+        } else {
+            container.clearBorder();
+        }
+    }
+
+    /**
+     * Applies (or clears) the themed background/border/text styling for the
+     * header at `index`. The themed border is a single bottom divider, so
+     * stacked headers read as a flat list whose dividers never double — there is
+     * no separate flat/collapse mode. Idempotent — the underlying setters cache,
+     * so re-applying the same state is cheap.
+     *
+     * @param index - Zero-based section index.
+     */
+    private applySectionTheming(index: number): void {
+        const header = this._headers[index];
+
+        if (!header) {
+            return;
+        }
+
+        if (!this._themed) {
+            header.clearBackground();
+            header.clearForegroundColor();
+            header.clearBorder();
+
+            return;
+        }
+
+        // `background` (not `background-color`) so a gradient token value paints;
+        // the token may also be a flat colour, which the shorthand handles too.
+        header.setBackground(THEMED_HEADER_BG);
+        header.setForegroundColor(THEMED_HEADER_COLOR);
+        // Bottom-only divider — collapses naturally with no per-index logic.
+        header.setBorder({ border: "none", borderBottom: THEMED_HEADER_BORDER });
     }
 
     /**
@@ -750,6 +890,7 @@ class Accordion extends LayoutManager {
         const components = container.getComponents();
         let totalHeight = perimeterSize.top + perimeterSize.bottom;
         let maxWidth = 0;
+        let displayedSoFar = 0;
 
         for (let i = 0; i < components.length; i++) {
             // A non-displayed section contributes neither its header nor its
@@ -758,6 +899,12 @@ class Accordion extends LayoutManager {
                 continue;
             }
 
+            // Inter-section gap between displayed sections (see doLayout).
+            if (displayedSoFar > 0) {
+                totalHeight += this._spacing;
+            }
+
+            displayedSoFar += 1;
             totalHeight += this.effectiveHeaderHeight();
 
             // openState is populated lazily in doLayout; fall back to the
@@ -807,6 +954,7 @@ class Accordion extends LayoutManager {
         const components = container.getComponents();
         let totalHeight = perimeterSize.top + perimeterSize.bottom;
         let maxWidth = 0;
+        let displayedSoFar = 0;
 
         for (let i = 0; i < components.length; i++) {
             // A non-displayed section contributes neither its header nor its
@@ -815,6 +963,12 @@ class Accordion extends LayoutManager {
                 continue;
             }
 
+            // Inter-section gap between displayed sections (see doLayout).
+            if (displayedSoFar > 0) {
+                totalHeight += this._spacing;
+            }
+
+            displayedSoFar += 1;
             totalHeight += this.effectiveHeaderHeight();
 
             // openState is populated lazily in doLayout; fall back to the
@@ -919,6 +1073,8 @@ class Accordion extends LayoutManager {
         if (this._toolsVisibility === "hover") {
             header.setToolsRevealed(false);
         }
+
+        this.applySectionTheming(index);
     }
 
     /**
@@ -970,6 +1126,10 @@ class Accordion extends LayoutManager {
             this.createSection(components[i], i);
         }
 
+        // Apply the themed container border (idempotent) so it takes effect even
+        // when `themed` defaults on and `setThemed` was never called explicitly.
+        this.applyContainerTheming();
+
         const containerSize = container.getInnerSize();
         const insets = container.getContentInsets();
         let containerWidth = containerSize ? containerSize.width : 0;
@@ -990,6 +1150,7 @@ class Accordion extends LayoutManager {
         const shrinkRatio = this.computeShrinkRatio(components, containerSize);
 
         let y = insets.getTop();
+        let displayedSoFar = 0;
 
         for (let i = 0; i < components.length; i++) {
             const component = components[i];
@@ -1010,6 +1171,14 @@ class Accordion extends LayoutManager {
 
             header.setDisplayed(true);
             wrapper.setDisplayed(true);
+
+            // Inter-section gap: before every displayed section except the
+            // first, so the gap never leads or trails the stack.
+            if (displayedSoFar > 0) {
+                y += this._spacing;
+            }
+
+            displayedSoFar += 1;
 
             header.setX(insets.getLeft());
             header.setY(y);
@@ -1081,6 +1250,7 @@ class Accordion extends LayoutManager {
         let headerTotal = 0;
         let openPreferred = 0;
         let openMin = 0;
+        let displayedSoFar = 0;
 
         for (let i = 0; i < components.length; i++) {
             // A non-displayed section shows neither its header nor its content,
@@ -1089,6 +1259,13 @@ class Accordion extends LayoutManager {
                 continue;
             }
 
+            // The inter-section gap is fixed (non-shrinkable) budget, like the
+            // headers — count it between displayed sections (see doLayout).
+            if (displayedSoFar > 0) {
+                headerTotal += this._spacing;
+            }
+
+            displayedSoFar += 1;
             headerTotal += this.effectiveHeaderHeight();
 
             if (!this._openState[i]) {

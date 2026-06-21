@@ -29,6 +29,8 @@ class AccordionDemoPanel extends Panel {
     private accordion:        AccordionPanel;
     private singleOpenToggle: Button;
     private compactToggle:    Button;
+    private themedToggle:     Button;
+    private spacingToggle:    Button;
 
     constructor() {
         super();
@@ -59,6 +61,12 @@ class AccordionDemoPanel extends Panel {
 
         this.compactToggle = new Button("Compact: OFF", { preferredSize: { width: 130, height: 28 } });
         toolbar.addComponent(this.compactToggle);
+
+        this.themedToggle = new Button("Themed: ON", { preferredSize: { width: 120, height: 28 } });
+        toolbar.addComponent(this.themedToggle);
+
+        this.spacingToggle = new Button("Spacing: 0", { preferredSize: { width: 110, height: 28 } });
+        toolbar.addComponent(this.spacingToggle);
 
         this.addComponent(toolbar);
 
@@ -99,6 +107,22 @@ class AccordionDemoPanel extends Panel {
 
             this.accordion.getAccordion().setCompact(next);
             this.compactToggle.setText(`Compact: ${next ? 'ON' : 'OFF'}`);
+            this.doLayout();
+        });
+
+        this.themedToggle.on("action", () => {
+            const next = !this.accordion.getAccordion().isThemed();
+
+            this.accordion.getAccordion().setThemed(next);
+            this.themedToggle.setText(`Themed: ${next ? 'ON' : 'OFF'}`);
+            this.doLayout();
+        });
+
+        this.spacingToggle.on("action", () => {
+            const next = this.accordion.getAccordion().getSpacing() === 0 ? 8 : 0;
+
+            this.accordion.getAccordion().setSpacing(next);
+            this.spacingToggle.setText(`Spacing: ${next}`);
             this.doLayout();
         });
 

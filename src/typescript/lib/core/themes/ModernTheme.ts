@@ -96,12 +96,14 @@ export const ModernTheme: Theme = defineTheme(BaseTheme, {
         button: { color: 'rgb(100,100,100)' },
     },
     accordion: {
+        border   : 'rgb(214, 217, 222)',
         header   : {
-            background: 'linear-gradient(rgb(230,230,230),rgb(210,210,210))',
-            border    : 'rgb(190,190,190)',
+            // Flat, gradient-free header matching this theme's buttons.
+            background: 'rgb(243, 244, 246)',
+            border    : 'rgb(214, 217, 222)',
             color     : 'inherit',
         },
-        panel    : { border: 'rgb(210,210,210)' },
+        panel    : { border: 'rgb(214, 217, 222)' },
         indicator: { color: 'rgb(100,100,100)' },
     },
     tab   : {

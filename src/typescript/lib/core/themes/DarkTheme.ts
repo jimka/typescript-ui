@@ -94,6 +94,7 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         button: { color: 'rgb(160,160,160)' },
     },
     accordion: {
+        border   : 'rgb(80,80,80)',
         header   : {
             background: 'linear-gradient(rgb(60,60,60),rgb(45,45,45))',
             border    : 'rgb(80,80,80)',

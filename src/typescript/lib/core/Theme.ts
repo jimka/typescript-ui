@@ -507,6 +507,7 @@ export interface Theme {
     };
 
     accordion: {
+        border: string;
         header: {
             background: string;
             border    : string;
@@ -944,6 +945,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-collapse-strip-bg'                : theme.collapse.strip.background,
         '--ts-ui-collapse-strip-size'              : theme.collapse.strip.size,
         '--ts-ui-collapse-button-color'            : theme.collapse.button.color,
+        '--ts-ui-accordion-border'                 : theme.accordion.border,
         '--ts-ui-accordion-header-bg'              : theme.accordion.header.background,
         '--ts-ui-accordion-header-border'          : theme.accordion.header.border,
         '--ts-ui-accordion-header-color'           : theme.accordion.header.color,
