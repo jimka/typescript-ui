@@ -9,8 +9,9 @@ import { callable } from "~/core/Callable.js";
 /**
  * Construction-time options for {@link VFlow}.
  *
- * @remarks Inherits every flow field from {@link FlowLayoutOptions}; `VFlow`
- * adds none of its own. `spacing` is the vertical gap between items in a column;
+ * @remarks Inherits every flow field (`spacing`, `lineSpacing`, `uniform`,
+ * `align`, `itemAlign`, `justify`) from {@link FlowLayoutOptions}; `VFlow` adds
+ * none of its own. `spacing` is the vertical gap between items in a column;
  * `lineSpacing` is the horizontal gap between wrapped columns.
  *
  * @category Layouts
@@ -19,12 +20,13 @@ export interface VFlowOptions extends FlowLayoutOptions {}
 
 /**
  * One wrapped column of a {@link VFlow}: its ordered cells (each with its own
- * cell width and the height it was placed at), the column's total content
- * height, the column width (widest cell), and the column's left in the
- * container's coordinate space.
+ * cell width and the height it was placed at; `baseline` is always `null` since
+ * a column exposes no shared text baseline), the column's total content height,
+ * the column width (widest cell), and the column's left in the container's
+ * coordinate space.
  */
 interface VFlowColumn {
-    cells: Array<{ component: Component; width: number; height: number }>;
+    cells: Array<{ component: Component; width: number; height: number; baseline: number | null }>;
     contentHeight: number;
     columnWidth: number;
     x: number;
@@ -43,9 +45,12 @@ interface VFlowColumn {
  * line alignment) with `HFlow` through the {@link FlowLayout} base. Here
  * `spacing` is the vertical gap between items in a column and `lineSpacing` the
  * horizontal gap between columns. The `align` option packs each column's content
- * block at the north edge (`"start"`, the default), centred, or the south edge.
- * A wrapped column exposes no shared text baseline, so the cross axis (width)
- * uses a plain widest-cell measure rather than a baseline roll-up.
+ * block at the north edge (`"start"`, the default), centred, or the south edge;
+ * `justify` instead spreads the column's items across the inner height
+ * (`"between"`/`"around"`), and `itemAlign` positions each item within the
+ * column width. A wrapped column exposes no shared text baseline, so the cross
+ * axis (width) uses a plain widest-cell measure and `itemAlign: "baseline"`
+ * degrades to `"start"`.
  *
  * @category Layouts
  */
@@ -292,7 +297,7 @@ class VFlow extends FlowLayout {
             const placedHeight = (current.cells.length === 0) ? Math.min(cellHeight, innerHeight) : cellHeight;
 
             current.contentHeight += (current.cells.length === 0) ? placedHeight : spacing + placedHeight;
-            current.cells.push({ component: component, width: cellWidth, height: placedHeight });
+            current.cells.push({ component: component, width: cellWidth, height: placedHeight, baseline: null });
             current.columnWidth = Math.max(current.columnWidth, cellWidth);
         }
 
@@ -300,10 +305,13 @@ class VFlow extends FlowLayout {
     }
 
     /**
-     * Phase 2 of {@link VFlow.doLayout}: places each column's content block at
-     * the leading offset the `align` mode dictates, then lays out the cells
-     * top-to-bottom at the recorded sizes. Each child keeps its preferred size
-     * (`FillType.NONE`); its own {@link AnchorType} positions it within its cell.
+     * Phase 2 of {@link VFlow.doLayout}: distributes each column's cells along
+     * the main axis per the `justify` mode (or packs them at the `align` offset
+     * when `justify` is `"start"`), and positions each cell within the column
+     * width per the `itemAlign` mode. The cross axis is width, which has no text
+     * baseline, so `"baseline"` degrades to `"start"`. Each child keeps its
+     * preferred size (`FillType.NONE`); its own {@link AnchorType} positions it
+     * within its cell.
      *
      * @param columns - The columns produced by {@link VFlow.groupIntoColumns}.
      * @param topInset - The container's top content inset (the column's leading edge).
@@ -312,14 +320,36 @@ class VFlow extends FlowLayout {
      */
     private placeColumns(columns: VFlowColumn[], topInset: number, innerHeight: number, spacing: number): void {
         for (const column of columns) {
-            let y = topInset + this.alignLead(column.contentHeight, innerHeight);
+            const { lead, gap } = this.justifyGaps(column.cells.length, this.cellsMainExtent(column), innerHeight, spacing);
+
+            // A justify mode fills the inner extent and owns the residual, so the
+            // align block move only applies when justify === "start".
+            const blockLead = this._justify === "start"
+                ? this.alignLead(column.contentHeight, innerHeight)
+                : 0;
+
+            let y = topInset + blockLead + lead;
 
             for (const cell of column.cells) {
-                this.placeComponent(cell.component, column.x, y, cell.width, cell.height, FillType.NONE);
+                // rowAscent null → "baseline" degrades to "start"; cross axis is width.
+                const x = column.x + this.crossOffset(cell.width, column.columnWidth, null, null, 0);
 
-                y += cell.height + spacing;
+                this.placeComponent(cell.component, x, y, cell.width, cell.height, FillType.NONE);
+
+                y += cell.height + gap;
             }
         }
+    }
+
+    /**
+     * Sums a column's cell heights without the inter-item spacing — the content
+     * main-extent {@link FlowLayout.justifyGaps} distributes the residual around.
+     *
+     * @param column - The column to measure.
+     * @returns The total cell height in pixels.
+     */
+    private cellsMainExtent(column: VFlowColumn): number {
+        return column.cells.reduce((sum, cell) => sum + cell.height, 0);
     }
 }
 
