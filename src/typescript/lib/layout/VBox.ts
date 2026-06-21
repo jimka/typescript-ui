@@ -367,8 +367,9 @@ class VBox extends BoxLayout {
             this.isOverflowingY()
         );
 
-        const x = insets.getLeft();
-        let y = insets.getTop();
+        // Pre-pass: resolve each child's height into an array so the trailing
+        // slack can be measured before placement (mirrors HBox's widths[]).
+        const heights: number[] = [];
 
         for (const component of components) {
             const weight  = this.getLayoutConstraints(component)?.weight ?? 0;
@@ -376,7 +377,34 @@ class VBox extends BoxLayout {
             const minSize = component.getMinSize();
             const maxSize = component.getMaxSize();
 
-            const height = this.resolveChildHeight(size, minSize, maxSize, weight, totalWeight, remainingHeight, shrinkRatio);
+            heights.push(this.resolveChildHeight(size, minSize, maxSize, weight, totalWeight, remainingHeight, shrinkRatio));
+        }
+
+        // Sum the placed main extents to find the trailing slack, then ask the
+        // shared helper how to distribute it. Weight cells already consume all
+        // slack, so justify is a no-op when any are present.
+        let lead = 0;
+        let gap  = 0;
+
+        if (totalWeight === 0) {
+            let contentHeight = spacing * (components.length - 1);
+
+            for (const h of heights) {
+                contentHeight += h;
+            }
+
+            const innerHeight = containerSize.height - (insets.getTop() + insets.getBottom());
+
+            ({ lead, gap } = this.justifyOffsets(contentHeight, innerHeight, components.length));
+        }
+
+        const x = insets.getLeft();
+        let y = insets.getTop() + lead;
+
+        for (let idx = 0; idx < components.length; idx += 1) {
+            const component = components[idx];
+            const size    = component.getPreferredSize();
+            const maxSize = component.getMaxSize();
 
             // Cross-axis (width): give the child the column's available width —
             // the full inner width when stretching or sizeless, otherwise its
@@ -402,10 +430,13 @@ class VBox extends BoxLayout {
                 width = Math.min(width, maxSize.width);
             }
 
-            this.placeComponent(component, x, y, width, height, FillType.BOTH);
+            this.placeComponent(component, x, y, width, heights[idx], FillType.BOTH);
 
-            y += component.getHeight();
-            y += spacing;
+            // Advance by the resolved height, not getHeight(): the gap is
+            // measured against the same extent contentHeight summed, so a
+            // placeComponent clamp must not skew the trailing edge.
+            y += heights[idx];
+            y += spacing + gap;
         }
     }
 
