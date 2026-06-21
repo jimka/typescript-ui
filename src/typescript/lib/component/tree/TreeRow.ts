@@ -196,12 +196,15 @@ class TreeRow extends Component {
         const indent = this._depth * indentPx;
 
         if (this._toggle) {
+            // The caret is a rigid SVG Glyph (min/max pinned to its 16×16
+            // preferredSize), so it cannot fill the taller row — centre it
+            // geometrically instead of relying on line-height (a no-op for SVG).
+            const glyphHeight = this._toggle.getPreferredSize()?.height ?? rowHeight;
             this._toggle.setAutoCommitStyle(false);
             this._toggle.setX(indent);
-            this._toggle.setY(0);
+            this._toggle.setY(Math.max(0, (rowHeight - glyphHeight) / 2));
             this._toggle.setWidth(TOGGLE_WIDTH);
-            this._toggle.setHeight(rowHeight);
-            this._toggle.setLineHeight(rowHeight);
+            this._toggle.setHeight(glyphHeight);
             this._toggle.setAutoCommitStyle(true);
         }
 

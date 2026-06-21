@@ -241,12 +241,15 @@ class TreeCellRenderer<T> extends CellRenderer<T> {
         const indent = this._depth * this._indentPx;
 
         if (this._toggle) {
+            // The caret is a rigid SVG Glyph (min/max pinned to its 16×16
+            // preferredSize), so it cannot fill the taller row — centre it
+            // geometrically instead of relying on line-height (a no-op for SVG).
+            const glyphHeight = this._toggle.getPreferredSize()?.height ?? height;
             this._toggle.setAutoCommitStyle(false);
             this._toggle.setX(indent);
-            this._toggle.setY(0);
+            this._toggle.setY(Math.max(0, (height - glyphHeight) / 2));
             this._toggle.setWidth(TOGGLE_WIDTH);
-            this._toggle.setHeight(height);
-            this._toggle.setLineHeight(height);
+            this._toggle.setHeight(glyphHeight);
             this._toggle.setAutoCommitStyle(true);
         }
 
