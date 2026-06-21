@@ -117,6 +117,13 @@ export class Notification extends Component {
         // Fixed size, fixed position, hidden overflow — full strict containment.
         this.setContain("strict");
 
+        // Live-region semantics so screen readers announce the toast when it is
+        // inserted. Errors and warnings interrupt (`alert`/`assertive`);
+        // informational and success toasts wait their turn (`status`/`polite`).
+        const assertive = type === 'error' || type === 'warning';
+        this.getAria().setRole(assertive ? "alert" : "status");
+        this.getAria().setLive(assertive ? "assertive" : "polite");
+
         const bgVar     = `var(--ts-ui-notification-${type}-bg)`;
         const borderVar = `var(--ts-ui-notification-${type}-border)`;
         const shadowVar = `var(--ts-ui-notification-shadow)`;
@@ -130,6 +137,9 @@ export class Notification extends Component {
         this._badge.setForegroundColor(borderVar);
         this._badge.setPreferredSize(Notification.BADGE_SIZE, Notification.BADGE_SIZE);
         this._badge.setPointerEvents("none");
+        // Decorative severity icon — its meaning is already carried by the
+        // message text, so keep it out of the announced live-region content.
+        this._badge.getAria().setHidden(true);
         this.addComponent(this._badge);
 
         this._messageText = new Text(message);
@@ -150,6 +160,7 @@ export class Notification extends Component {
         this._closeButton.clearPressedShadow();
         this._closeButton.setForegroundColor("var(--ts-ui-text-color, rgb(0, 0, 0))");
         this._closeButton.setPreferredSize(Notification.CLOSE_SIZE, Notification.CLOSE_SIZE);
+        this._closeButton.getAria().setLabel("Dismiss notification");
         this.addComponent(this._closeButton);
 
         Event.addListener(this._closeButton, "click", (e: MouseEvent) => {

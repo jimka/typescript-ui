@@ -35,6 +35,7 @@ export type AriaRole =
     | 'spinbutton'
     | 'progressbar'
     | 'status'
+    | 'alert'
     | 'dialog'
     | 'checkbox'
     | 'radio'
