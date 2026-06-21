@@ -566,6 +566,20 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
         super.applyChromeOptions(opts);
 
+        // Chromeful resting background: `super` applied the `--ts-ui-button-bg`
+        // token as a background *image* (for gradient tokens); also apply it as
+        // a background *colour* so a flat-colour token (e.g. the Modern theme)
+        // renders too — whichever channel is valid paints, the other is dropped.
+        // Without the colour channel a flat-colour token was invalid as an image
+        // and the button fell back to the UA `<button>` background. Skipped when
+        // the caller set their own backgroundColor, and when flat (flat is
+        // transparent at rest — see `_applyFlatChrome`).
+        const isFlat = (this._options.flat ?? opts.flat) === true;
+
+        if (!isFlat && opts.backgroundColor === undefined) {
+            this.setBackgroundColor("var(--ts-ui-button-bg, transparent)");
+        }
+
         if (opts.pressedForegroundColor !== undefined) this.setPressedForegroundColor(opts.pressedForegroundColor);
         if (opts.pressedBackgroundColor !== undefined) this.setPressedBackgroundColor(opts.pressedBackgroundColor);
         if (opts.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(opts.pressedBackgroundImage);
