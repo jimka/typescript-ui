@@ -25,6 +25,8 @@ import type { AutoScrollMode, DrawerEdge } from '@jimka/typescript-ui/core';
 import { Insets, Placement } from '@jimka/typescript-ui/primitive';
 import {
     Absolute,
+    Anchor,
+    AnchorConstraints,
     Border,
     Fit,
     HBox,
@@ -1241,6 +1243,59 @@ class MiscPanel extends Panel {
         autoScrollRow.addComponent(noShadowButton);
 
         leftColumn.addComponent(autoScrollRow);
+
+        // ── Anchor layout demo ──
+        // Resize the window and watch all three children re-anchor on the
+        // resize-driven doLayout, unlike Absolute's static placement.
+        const anchorLabel = new Text("Anchor layout (resize the window):");
+        leftColumn.addComponent(anchorLabel);
+
+        const anchorButton = new Button("Open Anchor demo window");
+        anchorButton.on("action", () => {
+            const win = new Window("Anchor layout");
+            win.setX(260);
+            win.setY(220);
+            win.setWidth(360);
+            win.setHeight(260);
+
+            win.setContentFactory(() => {
+                const anchorPanel: Panel = new Panel({ layoutManager: new Anchor() });
+
+                // Full-width header band pinned to the top, stretched between the
+                // left and right edges at a fixed 40px height.
+                const header = new Component({ backgroundColor: "steelblue" });
+                const headerCons = new AnchorConstraints();
+                headerCons.left = 0;
+                headerCons.right = 0;
+                headerCons.top = 0;
+                headerCons.height = 40;
+                anchorPanel.addComponent(header, headerCons);
+
+                // Centred box: 25% inset from the top-left, sized to half the
+                // container on each axis via percentage values.
+                const centre = new Component({ backgroundColor: "lightgoldenrodyellow" });
+                const centreCons = new AnchorConstraints();
+                centreCons.left = { percent: 25 };
+                centreCons.top = { percent: 25 };
+                centreCons.width = { percent: 50 };
+                centreCons.height = { percent: 50 };
+                anchorPanel.addComponent(centre, centreCons);
+
+                // Button pinned 8px from the bottom-right corner at a fixed size.
+                const pinned = new Button("Pinned");
+                const pinnedCons = new AnchorConstraints();
+                pinnedCons.right = 8;
+                pinnedCons.bottom = 8;
+                pinnedCons.width = 120;
+                pinnedCons.height = 32;
+                anchorPanel.addComponent(pinned, pinnedCons);
+
+                return anchorPanel;
+            });
+
+            win.show();
+        });
+        leftColumn.addComponent(anchorButton);
 
         // ── Popover demo ──
         const popoverLabel = new Text("Popovers (placement and dismiss modes):");
