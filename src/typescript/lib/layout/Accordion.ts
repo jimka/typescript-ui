@@ -479,9 +479,9 @@ class Accordion extends LayoutManager {
 
     /**
      * Sets themed mode. When on, each header paints the accordion theme tokens
-     * (background, border, text colour) and each panel wrapper paints the panel
-     * border; when off, headers stay chromeless. Applies to existing sections
-     * immediately.
+     * (background, bottom-divider border, text colour) and the container draws
+     * an all-around border; when off, headers stay chromeless and the container
+     * border is cleared. Applies to existing sections immediately.
      *
      * @param value - True to paint the accordion theme tokens.
      *

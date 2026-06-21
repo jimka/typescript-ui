@@ -1,8 +1,8 @@
 # AccordionPanel
 
-[`AccordionPanel`](/api/component/container/classes/AccordionPanel) is a [`Panel`](/api/core/classes/Panel) subclass that owns an internal [`Accordion`](/api/layout/classes/Accordion) layout manager. It exposes a section-typed `addSection` surface, so consumers don't have to wire `new Panel({ layoutManager: new Accordion() })` themselves.
+[`AccordionPanel`](/api/component/container/classes/AccordionPanel) is a [`Container`](/api/core/classes/Container) subclass that owns an internal [`Accordion`](/api/layout/classes/Accordion) layout manager. It exposes a section-typed `addSection` surface, so consumers don't have to wire `new Container({ layoutManager: new Accordion() })` themselves.
 
-The bare `new Panel({ layoutManager: new Accordion() })` form still works — `AccordionPanel` is the convenience entry point. Section operations and events are reached through the wrapped manager via [`getAccordion`](/api/component/container/classes/AccordionPanel#getaccordion).
+The bare `new Container({ layoutManager: new Accordion() })` form still works — `AccordionPanel` is the convenience entry point. Section operations and events are reached through the wrapped manager via [`getAccordion`](/api/component/container/classes/AccordionPanel#getaccordion).
 
 ## Usage
 
@@ -89,7 +89,7 @@ new AccordionPanel({
 const manager = acc.getAccordion();
 ```
 
-## When to use `AccordionPanel` vs bare `Panel` + `Accordion`
+## When to use `AccordionPanel` vs bare `Container` + `Accordion`
 
 - Reach for `AccordionPanel` when you want a sectioned panel with the typed `addSection` surface and the standard single-open / toggle-callback wiring.
-- Reach for bare `new Panel({ layoutManager: new Accordion() })` when you need custom [`AccordionConstraints`](/api/layout/classes/AccordionConstraints) per section, or the `Accordion` instance is constructed elsewhere and passed in.
+- Reach for bare `new Container({ layoutManager: new Accordion() })` when you need custom [`AccordionConstraints`](/api/layout/classes/AccordionConstraints) per section, or the `Accordion` instance is constructed elsewhere and passed in.
