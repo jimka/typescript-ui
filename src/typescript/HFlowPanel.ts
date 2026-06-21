@@ -9,7 +9,12 @@ class HFlowPanel extends LayoutTestPanel {
     constructor() {
         super();
 
-        this.setLayoutManager(new HFlow({ uniform: "both" }));
+        // `uniform: "none"` keeps each child at its own (mixed) size so the new
+        // cross-axis and distribution options are visible: `itemAlign: "center"`
+        // vertically centres a short item within a tall row, and
+        // `justify: "between"` spreads each row's items edge-to-edge across the
+        // inner width.
+        this.setLayoutManager(new HFlow({ uniform: "both", itemAlign: "center", justify: "between" }));
 
         const enums = Object.keys(AnchorType).length;
         let n = 0;

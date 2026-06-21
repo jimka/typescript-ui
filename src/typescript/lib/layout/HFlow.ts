@@ -10,7 +10,8 @@ import { callable } from "~/core/Callable.js";
  * Construction-time options for {@link HFlow}.
  *
  * @remarks Inherits every flow field (`spacing`, `lineSpacing`, `uniform`,
- * `align`) from {@link FlowLayoutOptions}; `HFlow` adds none of its own.
+ * `align`, `itemAlign`, `justify`) from {@link FlowLayoutOptions}; `HFlow` adds
+ * none of its own.
  *
  * @category Layouts
  */
@@ -18,12 +19,12 @@ export interface HFlowOptions extends FlowLayoutOptions {}
 
 /**
  * One wrapped row of an {@link HFlow}: its ordered cells (each with the width it
- * was placed at and its own cell height), the row's total content width, the
- * row height (tallest cell), and the row's top in the container's coordinate
- * space.
+ * was placed at, its own cell height, and its baseline for `"baseline"`
+ * item-alignment), the row's total content width, the row height (tallest cell),
+ * and the row's top in the container's coordinate space.
  */
 interface HFlowRow {
-    cells: Array<{ component: Component; width: number; height: number }>;
+    cells: Array<{ component: Component; width: number; height: number; baseline: number | null }>;
     contentWidth: number;
     rowHeight: number;
     y: number;
@@ -42,8 +43,11 @@ interface HFlowRow {
  * items line up into a grid; each item is positioned within its cell by its own
  * {@link AnchorType} constraint (default centre). The `align` option packs each
  * row's content block at the west edge (`"start"`, the default), centred, or the
- * east edge — the scroll extent comes entirely from the children's committed
- * positions read by `reserveContentFrame`.
+ * east edge; `justify` instead spreads the row's items across the inner width
+ * (`"between"`/`"around"`), and `itemAlign` positions each item within the row
+ * height (including `"baseline"`, which aligns text baselines across the row) —
+ * the scroll extent comes entirely from the children's committed positions read
+ * by `reserveContentFrame`.
  *
  * @category Layouts
  */
@@ -298,7 +302,7 @@ class HFlow extends FlowLayout {
             const placedWidth = (current.cells.length === 0) ? Math.min(cellWidth, innerWidth) : cellWidth;
 
             current.contentWidth += (current.cells.length === 0) ? placedWidth : spacing + placedWidth;
-            current.cells.push({ component: component, width: placedWidth, height: cellHeight });
+            current.cells.push({ component: component, width: placedWidth, height: cellHeight, baseline: component.getBaseline() });
             current.rowHeight = Math.max(current.rowHeight, cellHeight);
         }
 
@@ -306,10 +310,11 @@ class HFlow extends FlowLayout {
     }
 
     /**
-     * Phase 2 of {@link HFlow.doLayout}: places each row's content block at the
-     * leading offset the `align` mode dictates, then lays out the cells
-     * left-to-right at the recorded sizes. Each child keeps its preferred size
-     * (`FillType.NONE`); its own {@link AnchorType} positions it within its cell.
+     * Phase 2 of {@link HFlow.doLayout}: distributes each row's cells along the
+     * main axis per the `justify` mode (or packs them at the `align` offset when
+     * `justify` is `"start"`), and positions each cell within the row height per
+     * the `itemAlign` mode. Each child keeps its preferred size (`FillType.NONE`);
+     * its own {@link AnchorType} positions it within its cell.
      *
      * @param rows - The rows produced by {@link HFlow.groupIntoRows}.
      * @param leftInset - The container's left content inset (the row's leading edge).
@@ -318,14 +323,41 @@ class HFlow extends FlowLayout {
      */
     private placeRows(rows: HFlowRow[], leftInset: number, innerWidth: number, spacing: number): void {
         for (const row of rows) {
-            let x = leftInset + this.alignLead(row.contentWidth, innerWidth);
+            // Row text metrics for "baseline" itemAlign (cheap; only used then).
+            const heights   = row.cells.map(cell => cell.height);
+            const baselines = row.cells.map(cell => cell.baseline);
+
+            const { rowAscent, rowDescent } = this.computeRowMetrics(heights, baselines);
+
+            const { lead, gap } = this.justifyGaps(row.cells.length, this.cellsMainExtent(row), innerWidth, spacing);
+
+            // A justify mode fills the inner extent and owns the residual, so the
+            // align block move only applies when justify === "start".
+            const blockLead = this._justify === "start"
+                ? this.alignLead(row.contentWidth, innerWidth)
+                : 0;
+
+            let x = leftInset + blockLead + lead;
 
             for (const cell of row.cells) {
-                this.placeComponent(cell.component, x, row.y, cell.width, cell.height, FillType.NONE);
+                const y = row.y + this.crossOffset(cell.height, row.rowHeight, cell.baseline, rowAscent, rowDescent);
 
-                x += cell.width + spacing;
+                this.placeComponent(cell.component, x, y, cell.width, cell.height, FillType.NONE);
+
+                x += cell.width + gap;
             }
         }
+    }
+
+    /**
+     * Sums a row's cell widths without the inter-item spacing — the content
+     * main-extent {@link FlowLayout.justifyGaps} distributes the residual around.
+     *
+     * @param row - The row to measure.
+     * @returns The total cell width in pixels.
+     */
+    private cellsMainExtent(row: HFlowRow): number {
+        return row.cells.reduce((sum, cell) => sum + cell.width, 0);
     }
 }
 

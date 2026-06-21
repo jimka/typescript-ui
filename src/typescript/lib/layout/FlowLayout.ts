@@ -40,6 +40,47 @@ export type FlowUniformity = "none" | "width" | "height" | "both";
 export type FlowAlign = "start" | "center" | "end";
 
 /**
+ * Cross-axis alignment of an item within its wrapped line's cross extent — the
+ * row height for {@link HFlow}, the column width for {@link VFlow}.
+ *
+ * - `"start"` (the default) — leading cross-edge (HFlow top, VFlow left). This
+ *   is the original placement.
+ * - `"center"` — centred in the line's cross extent.
+ * - `"end"` — trailing cross-edge (HFlow bottom, VFlow right).
+ * - `"baseline"` — {@link HFlow} only: items are aligned on their shared text
+ *   baseline across the row; null-baseline (graphical) items centre in the text
+ *   line. {@link VFlow} has no shared text baseline, so it degrades to
+ *   `"start"`.
+ *
+ * @remarks This positions the *cell* within the line; a child's
+ * {@link AnchorType} still positions the child within its (possibly uniform)
+ * cell — both apply. Flow never resizes cells, so alignment only moves them.
+ *
+ * @category Layouts
+ */
+export type FlowItemAlign = "start" | "center" | "end" | "baseline";
+
+/**
+ * Main-axis distribution of a wrapped line's items across the container's inner
+ * main extent.
+ *
+ * - `"start"` (the default) — items packed with the fixed `spacing`; the
+ *   trailing residual is handled by {@link FlowAlign}.
+ * - `"between"` — first and last items flush to the line's edges, with an equal
+ *   extra gap inserted between the interior items (CSS `space-between`).
+ * - `"around"` — an equal gap surrounds every item, so the end half-gaps are
+ *   half the interior gaps (CSS `space-around`).
+ *
+ * @remarks When `justify` is anything but `"start"` the line is stretched to
+ * fill the inner main extent, so there is no leftover block for `align` to move
+ * and `align` is ignored. A single-item or over-long line degrades to `"start"`
+ * (no negative gaps).
+ *
+ * @category Layouts
+ */
+export type FlowJustify = "start" | "between" | "around";
+
+/**
  * Construction-time options shared by {@link HFlow} and {@link VFlow}.
  *
  * @category Layouts
@@ -49,6 +90,8 @@ export interface FlowLayoutOptions extends LayoutManagerOptions {
     lineSpacing?: number;
     uniform?:     FlowUniformity;
     align?:       FlowAlign;
+    itemAlign?:   FlowItemAlign;
+    justify?:     FlowJustify;
 }
 
 /**
@@ -75,6 +118,8 @@ export abstract class FlowLayout extends LayoutManager {
     protected _lineSpacing: number = 5;
     protected _uniform: FlowUniformity = "none";
     protected _align: FlowAlign = "start";
+    protected _itemAlign: FlowItemAlign = "start";
+    protected _justify: FlowJustify = "start";
 
     /**
      * Constructs the layout manager, applying any supplied options.
@@ -115,6 +160,14 @@ export abstract class FlowLayout extends LayoutManager {
 
         if (options.align !== undefined) {
             this.setAlign(options.align);
+        }
+
+        if (options.itemAlign !== undefined) {
+            this.setItemAlign(options.itemAlign);
+        }
+
+        if (options.justify !== undefined) {
+            this.setJustify(options.justify);
         }
     }
 
@@ -208,6 +261,64 @@ export abstract class FlowLayout extends LayoutManager {
      */
     setAlign(align: FlowAlign): this {
         this._align = align;
+
+        return this;
+    }
+
+    /**
+     * Returns how each item is aligned within its wrapped line's cross extent.
+     *
+     * @returns The current cross-axis item alignment.
+     */
+    getItemAlign(): FlowItemAlign {
+        return this._itemAlign;
+    }
+
+    /**
+     * Sets how each item is aligned within its wrapped line's cross extent — the
+     * row height for {@link HFlow}, the column width for {@link VFlow}.
+     *
+     * @param itemAlign - `"start"` aligns to the leading cross-edge (the
+     *   default), `"center"` centres, `"end"` aligns to the trailing cross-edge,
+     *   `"baseline"` aligns text baselines across an {@link HFlow} row.
+     *   `"baseline"` degrades to `"start"` on {@link VFlow}, which has no shared
+     *   text baseline. See {@link FlowItemAlign}.
+     *
+     * @returns This layout manager, for method chaining.
+     */
+    setItemAlign(itemAlign: FlowItemAlign): this {
+        this._itemAlign = itemAlign;
+
+        return this;
+    }
+
+    /**
+     * Returns how each wrapped line's items are distributed along the main axis.
+     *
+     * @returns The current main-axis distribution.
+     */
+    getJustify(): FlowJustify {
+        return this._justify;
+    }
+
+    /**
+     * Sets how each wrapped line's items are distributed along the main axis by
+     * growing the inter-item gaps.
+     *
+     * @param justify - `"start"` packs items with the fixed `spacing` (the
+     *   default), `"between"` makes the first/last items flush to the edges with
+     *   equal interior gaps, `"around"` puts an equal gap around every item. See
+     *   {@link FlowJustify}.
+     *
+     * @returns This layout manager, for method chaining.
+     *
+     * @remarks When `justify` is `"between"` or `"around"` the line fills the
+     * inner main extent, so it owns the residual and {@link FlowAlign} (the
+     * `align` option) is ignored. A single-item or over-long line degrades to
+     * `"start"`.
+     */
+    setJustify(justify: FlowJustify): this {
+        this._justify = justify;
 
         return this;
     }
@@ -308,5 +419,92 @@ export abstract class FlowLayout extends LayoutManager {
         }
 
         return 0;
+    }
+
+    /**
+     * Computes the leading cross-axis offset that positions a cell within its
+     * line's cross extent per the {@link FlowItemAlign} mode. The caller adds
+     * this to the line's leading cross-edge (the row top for {@link HFlow}, the
+     * column left for {@link VFlow}).
+     *
+     * @param cellExtent - The cell's own cross extent (its height for HFlow, its
+     *   width for VFlow).
+     * @param lineExtent - The line's cross extent (the row height for HFlow, the
+     *   column width for VFlow); always at least `cellExtent`.
+     * @param baseline - The cell's own baseline, or `null` for a graphical cell.
+     *   Only consulted for `"baseline"`.
+     * @param rowAscent - The line's text baseline from `computeRowMetrics`, or
+     *   `null` when no cell reports one (always `null` for VFlow). Only consulted
+     *   for `"baseline"`.
+     * @param rowDescent - The line's text descent from `computeRowMetrics`. Only
+     *   consulted for `"baseline"`.
+     * @returns The leading offset in pixels — `0` for `"start"`, and never
+     *   negative.
+     *
+     * @remarks The `"baseline"` arm mirrors HBox's per-child baseline placement:
+     * a text-bearing cell aligns on `rowAscent - baseline`, a null-baseline cell
+     * centres in the text line, and a baseline-less line (`rowAscent === null`,
+     * the VFlow case) falls back to `"start"`.
+     */
+    protected crossOffset(cellExtent: number, lineExtent: number, baseline: number | null, rowAscent: number | null, rowDescent: number): number {
+        switch (this._itemAlign) {
+            case "center":
+                return Math.max(0, (lineExtent - cellExtent) / 2);
+
+            case "end":
+                return Math.max(0, lineExtent - cellExtent);
+
+            case "baseline":
+                if (rowAscent === null) {
+                    return 0;
+                }
+
+                return baseline !== null
+                    ? rowAscent - baseline
+                    : this.nullChildY(cellExtent, rowAscent, rowDescent);
+
+            case "start":
+            default:
+                return 0;
+        }
+    }
+
+    /**
+     * Computes the per-line main-axis spacing under the active
+     * {@link FlowJustify} mode.
+     *
+     * @param itemCount - The number of cells in the line.
+     * @param contentMain - The sum of the cells' main extents (no spacing).
+     * @param innerMain - The container's inner extent along the main axis.
+     * @param spacing - The fixed inter-item spacing in pixels.
+     * @returns `{ lead, gap }` — `lead` is the offset before the first item and
+     *   `gap` the spacing between successive items.
+     *
+     * @remarks Degrades to the fixed `spacing` (and `lead` `0`) for `"start"`,
+     * single-item lines, and over-long lines, so the gaps are never negative. For
+     * the distribution modes the line fills the inner extent, so the caller must
+     * skip the `align` block move.
+     */
+    protected justifyGaps(itemCount: number, contentMain: number, innerMain: number, spacing: number): { lead: number; gap: number } {
+        // Degrade to fixed spacing: start mode, fewer than two items, or content
+        // already filling (or exceeding) the inner extent — no positive residual
+        // to distribute.
+        const fixedTotal = contentMain + spacing * Math.max(0, itemCount - 1);
+
+        if (this._justify === "start" || itemCount < 2 || fixedTotal >= innerMain) {
+            return { lead: 0, gap: spacing };
+        }
+
+        // The total gap budget to distribute, always positive here.
+        const free = innerMain - contentMain;
+
+        if (this._justify === "between") {
+            return { lead: 0, gap: free / (itemCount - 1) };
+        }
+
+        // "around": one whole gap per item, split as half-gaps at the two ends.
+        const unit = free / itemCount;
+
+        return { lead: unit / 2, gap: unit };
     }
 }

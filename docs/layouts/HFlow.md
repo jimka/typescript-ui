@@ -24,7 +24,7 @@ tags.addComponent(Button('layout'));
 tags.addComponent(Button('flow'));
 ```
 
-The same options ([`HFlowOptions`](/api/layout/interfaces/HFlowOptions)) can be passed to set `spacing`, `lineSpacing`, `uniform`, and `align` declaratively. The `setComponentSpacing` / `setLineSpacing` / `setUniform` / `setAlign` setters work for runtime updates.
+The same options ([`HFlowOptions`](/api/layout/interfaces/HFlowOptions)) can be passed to set `spacing`, `lineSpacing`, `uniform`, `align`, `itemAlign`, and `justify` declaratively. The `setComponentSpacing` / `setLineSpacing` / `setUniform` / `setAlign` / `setItemAlign` / `setJustify` setters work for runtime updates.
 
 ## Wrapping
 
@@ -92,7 +92,52 @@ panel.setLayoutManager(HFlow({ align: "center", spacing: 8, lineSpacing: 8 }));
 +----------------------------+
 ```
 
-Alignment moves each line's content as a single block; it does not redistribute the inter-item `spacing` (there is no justify / space-between mode). It is independent of the per-child [`AnchorType`](/api/layout/enumerations/AnchorType), which positions a child *within its own cell* — both apply.
+Alignment moves each line's content as a single block. To redistribute the inter-item gaps instead, use `justify` (see [Distribution](#distribution)). `align` is independent of the per-child [`AnchorType`](/api/layout/enumerations/AnchorType), which positions a child *within its own cell* — both apply.
+
+## Item alignment
+
+Within a wrapped row the items can differ in height. By default each item sits at the row's top edge (using its own height), so a short item top-aligns against a tall one. The `itemAlign` option ([`FlowItemAlign`](/api/layout/type-aliases/FlowItemAlign)) positions each item within the **row height** (the line's cross extent) instead:
+
+- `"start"` (default) — top of the row.
+- `"center"` — centred in the row height.
+- `"end"` — bottom of the row.
+- `"baseline"` — items are aligned on their shared text baseline across the row; a graphical (null-baseline) item centres in the text line. When no item in the row reports a baseline this falls back to `"start"`.
+
+```typescript
+import { HFlow } from '@jimka/typescript-ui/layout';
+// Mixed-height items centre vertically within each row.
+panel.setLayoutManager(HFlow({ itemAlign: "center", spacing: 8, lineSpacing: 8 }));
+```
+
+```
++----------------------------+
+| [A] [bb] [C] [dd]          |   ← short items centred against the tall ones
++----------------------------+
+```
+
+`itemAlign` positions the *cell* within the row; the per-child [`AnchorType`](/api/layout/enumerations/AnchorType) still positions the *child* within its cell. In a `uniform` height (or `"both"`) mode every cell already equals the row height, so `itemAlign` is a visual no-op there.
+
+## Distribution
+
+Where `align` moves a line's content as one block, the `justify` option ([`FlowJustify`](/api/layout/type-aliases/FlowJustify)) spreads a line's items across the inner width by growing the gaps between them:
+
+- `"start"` (default) — items packed with the fixed `spacing`; the residual is handled by `align`.
+- `"between"` — first and last items flush to the line's edges, with an equal extra gap between the interior items (CSS `space-between`).
+- `"around"` — an equal gap surrounds every item, so the end half-gaps are half the interior gaps (CSS `space-around`).
+
+```typescript
+import { HFlow } from '@jimka/typescript-ui/layout';
+// Spread each row's items edge-to-edge.
+panel.setLayoutManager(HFlow({ justify: "between", spacing: 8, lineSpacing: 8 }));
+```
+
+```
++----------------------------+
+| [A]    [B]    [C]    [D]    |   ← justify: "between" → ends flush, even gaps
++----------------------------+
+```
+
+When `justify` is `"between"` or `"around"` the line fills the inner width, so it **owns the residual** and `align` is ignored. A single-item line or an over-long line (one whose content already exceeds the inner width) degrades to `"start"` spacing, so the gaps are never negative.
 
 ## Scrolling
 
@@ -124,14 +169,18 @@ When the host does not scroll, lines past the inner height are clipped by the ho
 | `setLineSpacing(px)` | Vertical gap between wrapped lines. |
 | `setUniform("none" \| "width" \| "height" \| "both")` | Make cells uniform so wrapped items align into a grid. |
 | `setAlign("start" \| "center" \| "end")` | Pack each line's content at the west edge (default), centred, or the east edge. |
+| `setItemAlign("start" \| "center" \| "end" \| "baseline")` | Position each item within its row height (cross axis); `"baseline"` aligns text baselines across the row. |
+| `setJustify("start" \| "between" \| "around")` | Distribute each row's items across the inner width by growing the gaps; owns the residual over `align`. |
 
 ## Baseline alignment
 
-A multi-line wrapped block exposes no single text baseline, so `HFlow` reports a `null` content baseline: a baseline-aware parent auto-centres or top-aligns the whole `HFlow` container rather than aligning it by an interior baseline. Within a non-uniform line each item sits at its own size; in a `uniform` height (or `"both"`) mode items are positioned within the taller shared cell by their anchor (default centre). For baseline-aligned controls on a single row, use [`HBox`](/layouts/HBox).
+A multi-line wrapped block exposes no single text baseline, so `HFlow` reports a `null` content baseline: a baseline-aware parent auto-centres or top-aligns the whole `HFlow` container rather than aligning it by an interior baseline. Within a non-uniform line each item sits at its own size; in a `uniform` height (or `"both"`) mode items are positioned within the taller shared cell by their anchor (default centre). To align the items of a single wrapped row on their shared text baseline, use `itemAlign: "baseline"` (see [Item alignment](#item-alignment)); for baseline-aligned controls on a single non-wrapping row, use [`HBox`](/layouts/HBox).
 
 ## See also
 
 - [API: HFlow](/api/layout/classes/HFlow)
 - [`FlowUniformity`](/api/layout/type-aliases/FlowUniformity) — the `uniform` option values
+- [`FlowItemAlign`](/api/layout/type-aliases/FlowItemAlign) — the `itemAlign` option values
+- [`FlowJustify`](/api/layout/type-aliases/FlowJustify) — the `justify` option values
 - [`HBox`](/layouts/HBox) — single-row horizontal stack with sizing modes
 - [Layout constraints reference](/layouts/Constraints)

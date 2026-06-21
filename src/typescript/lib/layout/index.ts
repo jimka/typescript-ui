@@ -28,7 +28,7 @@ export type { HBoxOptions } from '~/layout/HBox.js';
 export { VBox } from '~/layout/VBox.js';
 export type { VBoxOptions } from '~/layout/VBox.js';
 export { FlowLayout } from '~/layout/FlowLayout.js';
-export type { FlowLayoutOptions, FlowUniformity, FlowAlign } from '~/layout/FlowLayout.js';
+export type { FlowLayoutOptions, FlowUniformity, FlowAlign, FlowItemAlign, FlowJustify } from '~/layout/FlowLayout.js';
 export { HFlow } from '~/layout/HFlow.js';
 export type { HFlowOptions } from '~/layout/HFlow.js';
 export { VFlow } from '~/layout/VFlow.js';

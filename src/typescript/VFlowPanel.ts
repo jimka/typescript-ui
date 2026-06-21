@@ -9,10 +9,12 @@ class VFlowPanel extends LayoutTestPanel {
     constructor() {
         super();
 
-        // `align: "center"` exercises the new flow line-alignment: each column's
-        // content block is centred along the vertical (main) axis instead of
-        // packing from the north edge.
-        this.setLayoutManager(new VFlow({ uniform: "both", align: "center" }));
+        // `uniform: "none"` keeps each child at its own (mixed) size so the new
+        // cross-axis and distribution options are visible: `itemAlign: "center"`
+        // horizontally centres a narrow item within a wide column, and
+        // `justify: "around"` spaces each column's items with equal gaps (and
+        // half-gaps at the ends) across the inner height.
+        this.setLayoutManager(new VFlow({ uniform: "none", itemAlign: "center", justify: "around" }));
 
         const enums = Object.keys(AnchorType).length;
         let n = 0;
