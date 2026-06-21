@@ -20,7 +20,27 @@ export class LayoutConstraints {
      * ignored by other layout managers.
      */
     glyph?: string | null = null;
+    /**
+     * How the component fills its allocated cell. Beyond the grid-style managers,
+     * [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox)
+     * read the **cross-axis** component as per-child align-self in both
+     * `"preferred"` and `"equal"` mode: `VERTICAL`/`BOTH` stretch a child to the
+     * full row height in an HBox, `HORIZONTAL`/`BOTH` to the full column width in
+     * a VBox. The main-axis component is ignored by the box (it owns main-axis
+     * sequencing). An explicit cross fill overrides the box's global `stretching`.
+     */
     fill?: FillType | null = null;
+    /**
+     * The anchor point used to position the component when it does not fill its
+     * cell. Beyond the grid-style managers,
+     * [`HBox`](/api/layout/classes/HBox) and [`VBox`](/api/layout/classes/VBox)
+     * read the **cross-axis** component as per-child align-self in both
+     * `"preferred"` and `"equal"` mode: `NORTH`/`SOUTH` (and the matching corners)
+     * pin a child to the top/bottom of the row in an HBox; `WEST`/`EAST` pin it to
+     * the left/right of the column in a VBox. `CENTER` and pure main-axis anchors
+     * are inert, leaving each box's default (HBox baseline, VBox WEST origin). An
+     * explicit cross anchor overrides the box's global `stretching` for that child.
+     */
     anchor?: AnchorType | null = null;
     placement?: Placement;
     ignoreParentInsets?: boolean = false;

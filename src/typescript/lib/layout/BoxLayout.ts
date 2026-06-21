@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
+import { FillType } from "~/layout/FillType.js";
+import { AnchorType } from "~/layout/AnchorType.js";
+import { Component } from "~/core/Component.js";
 import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 
 /**
@@ -439,5 +442,94 @@ export abstract class BoxLayout extends LayoutManager {
 
         // "around"
         return { lead: count > 0 ? residual / (2 * count) : 0, gap: count > 0 ? residual / count : 0 };
+    }
+
+    /**
+     * Resolves a child's cross-axis offset and extent within the full cross
+     * band, honouring an explicit per-child cross `fill`/`anchor` (align-self).
+     * A cross-axis `fill` (`VERTICAL`/`BOTH` in an {@link HBox}, `HORIZONTAL`/
+     * `BOTH` in a {@link VBox}) stretches the child to the whole band; a
+     * cross-axis `anchor` edge (NORTH/SOUTH for HBox, WEST/EAST for VBox, plus
+     * the corners carrying that component) pins the child's natural cross extent
+     * to the leading or trailing edge. The main-axis `anchor` component and
+     * `CENTER` are deliberately inert — the box owns main-axis sequencing and
+     * each box's default cross placement (HBox baseline, VBox WEST origin) is
+     * more specific than geometric centring.
+     *
+     * @param component - The child whose constraints supply the cross intent.
+     * @param crossLead - The band's leading edge (`insets.top` for HBox,
+     *   `insets.left` for VBox).
+     * @param crossExtent - The full cross band extent.
+     * @param naturalCross - The child's preferred cross extent, already capped to
+     *   the band and the child's maximum; the anchored child sits at this extent.
+     * @param horizontal - `true` for {@link HBox} (cross axis is vertical),
+     *   `false` for {@link VBox} (cross axis is horizontal).
+     * @returns `{ offset, extent }` when the child sets an explicit cross intent,
+     *   or `null` to signal the caller to keep its default cross placement.
+     */
+    protected crossPlacement(component: Component, crossLead: number, crossExtent: number, naturalCross: number, horizontal: boolean): { offset: number; extent: number } | null {
+        const constraints = this.getLayoutConstraints(component);
+        const fill   = constraints?.fill   ?? null;
+        const anchor = constraints?.anchor ?? null;
+
+        const crossFill = horizontal
+            ? (fill === FillType.VERTICAL || fill === FillType.BOTH)
+            : (fill === FillType.HORIZONTAL || fill === FillType.BOTH);
+
+        if (crossFill) {
+            return { offset: crossLead, extent: crossExtent };
+        }
+
+        const edge = this.crossAnchorEdge(anchor, horizontal);
+
+        if (edge === null) {
+            return null;
+        }
+
+        const extent = Math.min(naturalCross, crossExtent);
+        const offset = edge === "lead"
+            ? crossLead
+            : crossLead + (crossExtent - extent);
+
+        return { offset, extent };
+    }
+
+    /**
+     * Projects a child's `anchor` onto the cross axis as a leading/trailing edge.
+     * CENTER and pure main-axis anchors carry no cross component and return
+     * `null`, leaving the caller on its default cross placement.
+     *
+     * @param anchor - The child's anchor constraint, or `null`.
+     * @param horizontal - `true` for {@link HBox} (cross = vertical: NORTH=lead,
+     *   SOUTH=trail), `false` for {@link VBox} (cross = horizontal: WEST=lead,
+     *   EAST=trail).
+     * @returns `"lead"`/`"trail"` for an anchor with a cross component, else `null`.
+     */
+    private crossAnchorEdge(anchor: AnchorType | null, horizontal: boolean): "lead" | "trail" | null {
+        if (anchor === null) {
+            return null;
+        }
+
+        if (horizontal) {
+            if (anchor === AnchorType.NORTH || anchor === AnchorType.NORTHWEST || anchor === AnchorType.NORTHEAST) {
+                return "lead";
+            }
+
+            if (anchor === AnchorType.SOUTH || anchor === AnchorType.SOUTHWEST || anchor === AnchorType.SOUTHEAST) {
+                return "trail";
+            }
+
+            return null;
+        }
+
+        if (anchor === AnchorType.WEST || anchor === AnchorType.NORTHWEST || anchor === AnchorType.SOUTHWEST) {
+            return "lead";
+        }
+
+        if (anchor === AnchorType.EAST || anchor === AnchorType.NORTHEAST || anchor === AnchorType.SOUTHEAST) {
+            return "trail";
+        }
+
+        return null;
     }
 }

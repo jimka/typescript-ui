@@ -334,12 +334,26 @@ class HBox extends BoxLayout {
 
         const { rowAscent, rowDescent } = this.computeRowMetrics(heights, baselines);
 
+        // Match the equal-stretch band exactly: the stretch branch fills
+        // containerSize.height from insets.top with no bottom-inset subtraction,
+        // so an EAST/fill align-self child reaches the same trailing edge.
+        const crossLead   = insets.getTop();
+        const crossExtent = containerSize.height;
+
         let x = insets.getLeft();
 
         for (let idx = 0; idx < components.length; idx += 1) {
-            const y = this.rowChildY(insets.getTop(), heights[idx], baselines[idx], rowAscent, rowDescent);
+            const component = components[idx];
 
-            this.placeComponent(components[idx], x, y, cellWidth, heights[idx], FillType.BOTH);
+            const cross = this.crossPlacement(component, crossLead, crossExtent, heights[idx], true);
+
+            if (cross) {
+                this.placeComponent(component, x, cross.offset, cellWidth, cross.extent, FillType.BOTH);
+            } else {
+                const y = this.rowChildY(insets.getTop(), heights[idx], baselines[idx], rowAscent, rowDescent);
+
+                this.placeComponent(component, x, y, cellWidth, heights[idx], FillType.BOTH);
+            }
 
             x += cellWidth + spacing;
         }
@@ -481,13 +495,36 @@ class HBox extends BoxLayout {
             ({ lead, gap } = this.justifyOffsets(contentWidth, innerWidth, components.length));
         }
 
+        // Cross band for per-child align-self: the same vertical band the
+        // stretch path fills, trimmed by both insets.
+        const crossLead   = insets.getTop();
+        const crossExtent = containerSize.height - (insets.getTop() + insets.getBottom());
+
         let x = insets.getLeft() + lead;
 
         for (let idx = 0; idx < components.length; idx += 1) {
             const component = components[idx];
-            const y = this.rowChildY(insets.getTop(), heights[idx], baselines[idx], rowAscent, rowDescent);
 
-            this.placeComponent(component, x, y, widths[idx], heights[idx], FillType.BOTH);
+            // Align-self sizes from the child's *preferred* height (capped to the
+            // band + max), independent of the stretch-inflated heights[idx], so an
+            // anchored child shrinks-and-anchors even under global stretching.
+            const pref    = component.getPreferredSize();
+            const maxSize = component.getMaxSize();
+            let naturalCross = pref ? Math.min(pref.height, crossExtent) : crossExtent;
+
+            if (maxSize) {
+                naturalCross = Math.min(naturalCross, maxSize.height);
+            }
+
+            const cross = this.crossPlacement(component, crossLead, crossExtent, naturalCross, true);
+
+            if (cross) {
+                this.placeComponent(component, x, cross.offset, widths[idx], cross.extent, FillType.BOTH);
+            } else {
+                const y = this.rowChildY(insets.getTop(), heights[idx], baselines[idx], rowAscent, rowDescent);
+
+                this.placeComponent(component, x, y, widths[idx], heights[idx], FillType.BOTH);
+            }
 
             // Advance by the resolved width, not getWidth(): the gap is measured
             // against the same extent contentWidth summed, so a placeComponent
