@@ -156,6 +156,7 @@ export default defineConfig({
                 ] },
                 { text: 'Layout managers', collapsed: false, items: [
                     { text: 'Absolute',  link: '/layouts/Absolute' },
+                    { text: 'Anchor',    link: '/layouts/Anchor' },
                     { text: 'Fit',       link: '/layouts/Fit' },
                     { text: 'Border',    link: '/layouts/Border' },
                     { text: 'HBox',      link: '/layouts/HBox' },

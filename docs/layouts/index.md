@@ -7,6 +7,7 @@ A [`LayoutManager`](/api/layout/classes/LayoutManager) is attached to a containe
 | Manager | Description |
 | --- | --- |
 | [`Absolute`](/api/layout/classes/Absolute) | No-op — children are positioned manually |
+| [`Anchor`](/api/layout/classes/Anchor) | Edge-relative & percentage positioning; pins children to edges or stretches between them, reactive to container resize |
 | [`Accordion`](/api/layout/classes/Accordion) | Collapsible vertical sections, one or many open at a time |
 | [`Border`](/api/layout/classes/Border) | Five-region layout: north, south, east, west, center |
 | [`Card`](/api/layout/classes/Card) | Stacked layers — one visible at a time |
