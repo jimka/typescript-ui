@@ -90,6 +90,7 @@ export interface AccordionOptions extends LayoutManagerOptions {
     chevronGlyph?:      string;
     spacing?:           number;
     themed?:            boolean;
+    fill?:              boolean;
     /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
@@ -144,6 +145,7 @@ class Accordion extends LayoutManager {
     private _chevronGlyph: string | null = null;
     private _spacing: number = 0;
     private _themed: boolean = true;
+    private _fill: boolean = false;
     private _tools: Component[] = [];
     private _toolsVisibility: "always" | "hover" = "hover";
     private _hoveredHeader: number = -1;
@@ -199,6 +201,10 @@ class Accordion extends LayoutManager {
 
         if (options.themed !== undefined) {
             this.setThemed(options.themed);
+        }
+
+        if (options.fill !== undefined) {
+            this.setFill(options.fill);
         }
 
         if (options.listeners !== undefined) {
@@ -428,6 +434,34 @@ class Accordion extends LayoutManager {
      */
     setSpacing(spacing: number): this {
         this._spacing = spacing;
+
+        this.getContainer()?.scheduleLayout();
+
+        return this;
+    }
+
+    /**
+     * Returns whether fill mode is on.
+     *
+     * @returns True if the bottommost open section absorbs leftover height.
+     */
+    isFill(): boolean {
+        return this._fill;
+    }
+
+    /**
+     * Sets fill mode. When on, the bottommost open section grows to fill the
+     * container's leftover height (IDE/dock-panel style) instead of every open
+     * section sitting at its preferred height — only meaningful when the host
+     * stretches the accordion beyond its preferred height. No effect when the
+     * content already overflows.
+     *
+     * @param value - True to enable fill.
+     *
+     * @returns This layout manager, for chaining.
+     */
+    setFill(value: boolean): this {
+        this._fill = value;
 
         this.getContainer()?.scheduleLayout();
 
@@ -1149,6 +1183,12 @@ class Accordion extends LayoutManager {
         // so the accordion fits — see computeShrinkRatio for the full policy.
         const shrinkRatio = this.computeShrinkRatio(components, containerSize);
 
+        // Fill mode: the bottommost open section grows to absorb the container's
+        // leftover height (underflow). It is the counterpart to shrink: when the
+        // content overflows, shrinkRatio > 0 and the leftover is <= 0, so fill
+        // is a no-op and the two policies never both apply.
+        const { fillTarget, fillLeftover } = this.computeFill(components, containerSize, shrinkRatio);
+
         let y = insets.getTop();
         let displayedSoFar = 0;
 
@@ -1197,9 +1237,12 @@ class Accordion extends LayoutManager {
             // vanishing followed by an empty wrapper sliding shut.
             const preferred = component.getPreferredSize();
             const contentPref = preferred ? preferred.height : 100;
-            const min = component.getMinSize();
-            const contentMin = min ? min.height : 0;
-            const openHeight = contentPref - shrinkRatio * (contentPref - contentMin);
+            let openHeight = this.openContentHeight(component, shrinkRatio);
+
+            // Fill mode: the bottommost open section absorbs the leftover height.
+            if (i === fillTarget) {
+                openHeight += fillLeftover;
+            }
 
             const panelHeight   = isOpen ? openHeight  : 0;
             const contentHeight = isOpen ? openHeight  : contentPref;
@@ -1290,6 +1333,70 @@ class Accordion extends LayoutManager {
         const shrinkable = totalPreferred - totalMin;
 
         return shrinkable > 0 ? (totalPreferred - budget) / shrinkable : 0;
+    }
+
+    /**
+     * The height an open section's content renders at: its preferred height
+     * shrunk toward its minimum by `shrinkRatio`. Falls back to 100px when the
+     * section reports no preferred height.
+     *
+     * @param component - The section content component.
+     * @param shrinkRatio - The container-driven shrink ratio in `[0, 1]`.
+     * @returns The content height in pixels.
+     */
+    private openContentHeight(component: Component, shrinkRatio: number): number {
+        const preferred = component.getPreferredSize();
+        const contentPref = preferred ? preferred.height : 100;
+        const min = component.getMinSize();
+        const contentMin = min ? min.height : 0;
+
+        return contentPref - shrinkRatio * (contentPref - contentMin);
+    }
+
+    /**
+     * Computes fill placement: the index of the bottommost open displayed
+     * section (the fill target) and the leftover height it should absorb. Only
+     * active when `fill` is on and the content underflows the container; on
+     * overflow the leftover is `<= 0` so fill yields nothing (shrink handles it).
+     *
+     * @param components - The container's child components.
+     * @param containerSize - The container's inner size, or null.
+     * @param shrinkRatio - The shrink ratio applied to open content.
+     * @returns The fill target index (`-1` if none) and the leftover height.
+     */
+    private computeFill(components: Component[], containerSize: Size | null, shrinkRatio: number): { fillTarget: number; fillLeftover: number } {
+        if (!this._fill || !containerSize) {
+            return { fillTarget: -1, fillLeftover: 0 };
+        }
+
+        let used = 0;
+        let displayed = 0;
+        let fillTarget = -1;
+
+        for (let i = 0; i < components.length; i++) {
+            if (!components[i].isDisplayed()) {
+                continue;
+            }
+
+            if (displayed > 0) {
+                used += this._spacing;
+            }
+
+            displayed += 1;
+            used += this.effectiveHeaderHeight();
+
+            if (this._openState[i]) {
+                used += this.openContentHeight(components[i], shrinkRatio);
+                fillTarget = i;
+            }
+        }
+
+        const leftover = containerSize.height - used;
+
+        return {
+            fillTarget,
+            fillLeftover: fillTarget !== -1 && leftover > 0 ? leftover : 0,
+        };
     }
 
     /**

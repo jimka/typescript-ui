@@ -2,7 +2,7 @@
 
 import { callable, Component, Panel } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
-import { Fit, HBox, VBox } from '@jimka/typescript-ui/layout';
+import { Fit, HBox, VBox, LayoutConstraints } from '@jimka/typescript-ui/layout';
 import { Checkbox, Text, TextField } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { List } from '@jimka/typescript-ui/component/list';
@@ -31,6 +31,7 @@ class AccordionDemoPanel extends Panel {
     private compactToggle:    Button;
     private themedToggle:     Button;
     private spacingToggle:    Button;
+    private fillToggle:       Button;
 
     constructor() {
         super();
@@ -68,6 +69,9 @@ class AccordionDemoPanel extends Panel {
         this.spacingToggle = new Button("Spacing: 0", { preferredSize: { width: 110, height: 28 } });
         toolbar.addComponent(this.spacingToggle);
 
+        this.fillToggle = new Button("Fill: OFF", { preferredSize: { width: 100, height: 28 } });
+        toolbar.addComponent(this.fillToggle);
+
         this.addComponent(toolbar);
 
         // --- AccordionPanel ---
@@ -84,7 +88,14 @@ class AccordionDemoPanel extends Panel {
             onSectionToggle: () => { this.doLayout(); },
         });
 
-        this.addComponent(this.accordion);
+        // Weight 1 so the accordion fills the panel's remaining height below the
+        // toolbar — giving fill mode the leftover space it expands an open
+        // section into (IDE/dock-panel style).
+        const accordionConstraints = new LayoutConstraints();
+
+        accordionConstraints.weight = 1;
+
+        this.addComponent(this.accordion, accordionConstraints);
 
         // --- Wire controls ---
         openAllBtn.on("action", () => {
@@ -123,6 +134,14 @@ class AccordionDemoPanel extends Panel {
 
             this.accordion.getAccordion().setSpacing(next);
             this.spacingToggle.setText(`Spacing: ${next}`);
+            this.doLayout();
+        });
+
+        this.fillToggle.on("action", () => {
+            const next = !this.accordion.getAccordion().isFill();
+
+            this.accordion.getAccordion().setFill(next);
+            this.fillToggle.setText(`Fill: ${next ? 'ON' : 'OFF'}`);
             this.doLayout();
         });
 
