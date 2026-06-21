@@ -13,7 +13,7 @@ import { callable } from "~/core/Callable.js";
  */
 export interface AccordionIndicatorOptions extends ComponentOptions {
     expanded?: boolean;
-    /** The character drawn as the chevron. Defaults to {@link DEFAULT_CHEVRON}. */
+    /** The character drawn as the chevron. Defaults to `"▶"` (a right-pointing triangle). */
     character?: string;
 }
 

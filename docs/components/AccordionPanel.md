@@ -18,14 +18,38 @@ const acc = new AccordionPanel({
 });
 ```
 
-`sections` is the construction-time shortcut. Each entry maps to one [`addSection`](/api/component/container/classes/AccordionPanel#addsection) call. The optional `initiallyOpen` flag mirrors the `Accordion` constraint of the same name.
+`sections` is the construction-time shortcut. Each entry maps to one [`addSection`](/api/component/container/classes/AccordionPanel#addsection) call. Each [`AccordionSectionConfig`](/api/component/container/interfaces/AccordionSectionConfig) entry accepts `label`, `component`, the optional `initiallyOpen` flag (mirroring the `Accordion` constraint of the same name), an optional `glyph` (a registry glyph name shown leading the header label), and optional per-section `tools`:
+
+```typescript
+const acc = new AccordionPanel({
+    sections: [
+        { label: 'Profile',     component: profilePanel, initiallyOpen: true, glyph: 'circle-user' },
+        { label: 'Preferences', component: prefsPanel,   glyph: 'gear', tools: [editButton] },
+    ],
+});
+```
 
 ## Adding sections after construction
 
+`addSection` mirrors the section config — the optional 4th/5th arguments are the leading `glyph` name and the per-section `tools`:
+
 ```typescript
 acc.addSection(advancedPanel, "Advanced");
-acc.addSection(dangerZonePanel, "Danger zone", false);
+acc.addSection(dangerZonePanel, "Danger zone", false, "triangle-exclamation", [helpButton]);
 ```
+
+## Appearance, tools, and expand/collapse-all
+
+[`AccordionPanelOptions`](/api/component/container/interfaces/AccordionPanelOptions) carries only `sections`, `singleOpen`, and `onSectionToggle`. Everything else — themed/compact/spacing/chevron/fill appearance, global `addTool`/`removeTool`, and `expandAll`/`collapseAll` — lives on the wrapped manager, reached through [`getAccordion`](/api/component/container/classes/AccordionPanel#getaccordion):
+
+```typescript
+acc.getAccordion().setCompact(true);
+acc.getAccordion().setSpacing(8);
+acc.getAccordion().addTool(menuButton);   // global tool — follows the hovered header
+acc.getAccordion().expandAll();
+```
+
+See [Accordion](/layouts/Accordion) for the full appearance, tools, and glyph documentation.
 
 ## Programmatic open / close
 
