@@ -463,7 +463,25 @@ class HBox extends BoxLayout {
             ? { rowAscent: null, rowDescent: 0 }
             : this.computeRowMetrics(heights, baselines);
 
-        let x = insets.getLeft();
+        // Sum the placed main extents to find the trailing slack, then ask the
+        // shared helper how to distribute it. Weight cells already consume all
+        // slack, so justify is a no-op when any are present.
+        let lead = 0;
+        let gap  = 0;
+
+        if (totalWeight === 0) {
+            let contentWidth = spacing * (components.length - 1);
+
+            for (const w of widths) {
+                contentWidth += w;
+            }
+
+            const innerWidth = containerSize.width - (insets.getLeft() + insets.getRight());
+
+            ({ lead, gap } = this.justifyOffsets(contentWidth, innerWidth, components.length));
+        }
+
+        let x = insets.getLeft() + lead;
 
         for (let idx = 0; idx < components.length; idx += 1) {
             const component = components[idx];
@@ -471,8 +489,11 @@ class HBox extends BoxLayout {
 
             this.placeComponent(component, x, y, widths[idx], heights[idx], FillType.BOTH);
 
-            x += component.getWidth();
-            x += spacing;
+            // Advance by the resolved width, not getWidth(): the gap is measured
+            // against the same extent contentWidth summed, so a placeComponent
+            // clamp must not skew the trailing edge.
+            x += widths[idx];
+            x += spacing + gap;
         }
     }
 

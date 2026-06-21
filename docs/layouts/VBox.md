@@ -31,7 +31,7 @@ form.addComponent(Label('Email', emailField.getId()));
 form.addComponent(emailField);
 ```
 
-[`VBoxOptions`](/api/layout/interfaces/VBoxOptions) accepts `mode`, `spacing`, `stretching`, and `overflowSizing` declaratively. The `setMode` / `setSpacing` / `setStretching` / `setOverflowSizing` setters work for runtime updates.
+[`VBoxOptions`](/api/layout/interfaces/VBoxOptions) accepts `mode`, `spacing`, `stretching`, `overflowSizing`, and `justify` declaratively. The `setMode` / `setSpacing` / `setStretching` / `setOverflowSizing` / `setJustify` setters work for runtime updates.
 
 ## Sizing modes
 
@@ -84,6 +84,29 @@ col.setLayoutManager(VBox({ mode: "equal", overflowSizing: "preferred" }));
 
 This option only applies to `"equal"` mode. In `"preferred"` mode each child already keeps its own preferred height and the host scrolls when their heights sum past the container, so no knob is needed.
 
+## Justify (preferred mode)
+
+In `"preferred"` mode, when the children's combined height is shorter than the inner height and no `weight` cell consumes the slack, that leftover height sits at the bottom by default. `justify` ([`BoxJustify`](/api/layout/type-aliases/BoxJustify)) distributes it instead, mirroring CSS `justify-content`:
+
+- `"start"` (default) — children pack at the top; slack sits below.
+- `"center"` — the child block is centred; equal slack above and below.
+- `"end"` — children pack at the bottom; slack sits above.
+- `"between"` — first child at the top, last at the bottom, slack split evenly into the gaps between them.
+- `"around"` — equal space around every child: a half-unit at each end, a full unit between neighbours.
+
+```typescript
+import { Component } from '@jimka/typescript-ui/core';
+import { VBox } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
+const stack = Component();
+stack.setLayoutManager(VBox({ justify: "center" }));
+
+stack.addComponent(Button('Sign in'));
+stack.addComponent(Button('Register'));
+```
+
+`justify` is silently ignored when a `weight` cell is present (the weight cell already eats the slack) and when the column fills or overflows the inner height (it clamps to `"start"` so the top child is never pushed out of view). It has no effect in `"equal"` mode, where the cells always tile the full height, and it acts only on the vertical (main) axis — positioning a child within its column width stays the domain of `fill` / `anchor` constraints.
+
 ## Per-child constraints
 
 [`LayoutConstraints`](/layouts/Constraints):
@@ -105,6 +128,7 @@ form.addComponent(textField, { fill: FillType.HORIZONTAL });
 | `setSpacing(px)` | Gap between children. |
 | `setStretching(boolean)` | When `true`, all children fill the column's full width. |
 | `setOverflowSizing("preferred" | "min")` | Equal mode: cell height when an overflowing column scrolls — preferred height or min floor. |
+| `setJustify("start" | "center" | "end" | "between" | "around")` | Preferred mode: distribute leftover main-axis height along the column. |
 
 ## See also
 

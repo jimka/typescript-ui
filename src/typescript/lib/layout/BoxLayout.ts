@@ -36,6 +36,29 @@ export type BoxMode = "preferred" | "equal";
 export type BoxOverflowSizing = "preferred" | "min";
 
 /**
+ * How a `"preferred"`-mode {@link HBox}/{@link VBox} distributes the leftover
+ * main-axis space when its children are shorter than the inner main extent and
+ * no `weight` cells consume the slack. Mirrors CSS `justify-content`.
+ *
+ * - `"start"` (the default) — children pack at the leading edge; the slack sits
+ *   at the trailing edge.
+ * - `"center"` — the child block is centred; equal slack on both ends.
+ * - `"end"` — children pack at the trailing edge; the slack sits at the leading
+ *   edge.
+ * - `"between"` — the first child sits at the leading edge, the last at the
+ *   trailing edge, and the slack is split evenly into the gaps between them.
+ * - `"around"` — every child gets equal space around it: a half-unit before the
+ *   first and after the last, a full unit between neighbours.
+ *
+ * Has no effect outside `"preferred"` mode, nor when `weight` cells absorb the
+ * slack, nor when the content fills or overflows the inner extent (the row
+ * clamps to `"start"` so the leading child is never pushed out of view).
+ *
+ * @category Layouts
+ */
+export type BoxJustify = "start" | "center" | "end" | "between" | "around";
+
+/**
  * Construction-time options shared by {@link HBox} and {@link VBox}.
  *
  * @remarks `mode` selects the sizing strategy along the box's main axis.
@@ -53,6 +76,7 @@ export interface BoxLayoutOptions extends LayoutManagerOptions {
     stretching?:      boolean;
     mode?:            BoxMode;
     overflowSizing?:  BoxOverflowSizing;
+    justify?:         BoxJustify;
 }
 
 /**
@@ -74,6 +98,7 @@ export abstract class BoxLayout extends LayoutManager {
     protected _stretching: boolean = false;
     protected _mode: BoxMode = "preferred";
     protected _overflowSizing: BoxOverflowSizing = "preferred";
+    protected _justify: BoxJustify = "start";
 
     constructor(options?: BoxLayoutOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
@@ -114,6 +139,10 @@ export abstract class BoxLayout extends LayoutManager {
 
         if (options.overflowSizing !== undefined) {
             this.setOverflowSizing(options.overflowSizing);
+        }
+
+        if (options.justify !== undefined) {
+            this.setJustify(options.justify);
         }
     }
 
@@ -207,6 +236,30 @@ export abstract class BoxLayout extends LayoutManager {
      */
     setOverflowSizing(overflowSizing: BoxOverflowSizing): this {
         this._overflowSizing = overflowSizing;
+
+        return this;
+    }
+
+    /**
+     * Returns how leftover main-axis space is distributed in `"preferred"` mode.
+     *
+     * @returns The current {@link BoxJustify} mode.
+     */
+    getJustify(): BoxJustify {
+        return this._justify;
+    }
+
+    /**
+     * Sets how leftover main-axis space is distributed in `"preferred"` mode.
+     *
+     * @param justify - `"start"` packs children at the leading edge (the
+     *   default), `"center"`/`"end"` shift the block, and `"between"`/`"around"`
+     *   spread the slack into the inter-child gaps. See {@link BoxJustify}.
+     *
+     * @returns This layout manager, for method chaining.
+     */
+    setJustify(justify: BoxJustify): this {
+        this._justify = justify;
 
         return this;
     }
@@ -346,5 +399,45 @@ export abstract class BoxLayout extends LayoutManager {
         const shrinkable = fixedPreferred - fixedMin;
 
         return { remaining: 0, shrinkRatio: shrinkable > 0 ? Math.min(1, excess / shrinkable) : 1 };
+    }
+
+    /**
+     * Distributes the trailing main-axis slack per {@link BoxJustify}, returning
+     * a leading offset and an extra inter-child gap. The subclass adds `lead` to
+     * the placement cursor's start and `gap` to the inter-child spacing. A row
+     * that fills or overflows the inner extent (`residual === 0`) and the
+     * `"start"` fast path both return `{ lead: 0, gap: 0 }`, leaving placement
+     * byte-identical to the un-justified loop. Generalises
+     * {@link FlowLayout.alignLead}, which only produces a leading offset, by also
+     * spreading slack into the gaps for `"between"`/`"around"`.
+     *
+     * @param contentMain - Summed placed child main-extents plus inter-child
+     *   spacing — the block's total main extent.
+     * @param innerMain - The container's inner extent along the main axis.
+     * @param count - The number of children sharing the axis.
+     * @returns `lead` — pixels added before the first child — and `gap` — pixels
+     *   added to the spacing after each child. Both are non-negative.
+     */
+    protected justifyOffsets(contentMain: number, innerMain: number, count: number): { lead: number; gap: number } {
+        const residual = Math.max(0, innerMain - contentMain);
+
+        if (residual === 0 || this._justify === "start") {
+            return { lead: 0, gap: 0 };
+        }
+
+        if (this._justify === "center") {
+            return { lead: residual / 2, gap: 0 };
+        }
+
+        if (this._justify === "end") {
+            return { lead: residual, gap: 0 };
+        }
+
+        if (this._justify === "between") {
+            return { lead: 0, gap: count > 1 ? residual / (count - 1) : 0 };
+        }
+
+        // "around"
+        return { lead: count > 0 ? residual / (2 * count) : 0, gap: count > 0 ? residual / count : 0 };
     }
 }
