@@ -159,9 +159,17 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      * Constructs a `ToolBar`.
      *
      * @param options - Optional construction-time options.
+     *
+     * @remarks The parameter is typed as the concrete {@link ToolBarOptions}
+     * rather than the class's `TOptions` parameter so that passing an options
+     * literal (e.g. `new ToolBar({ compact: true })`) cannot narrow `TOptions`
+     * to that literal — which would type the instance as `ToolBar<{ compact:
+     * true }>` and fail the weak-type assignability check when it is later used
+     * as a base `Component` (e.g. `container.addComponent(toolbar)`). `TOptions`
+     * stays at its `ToolBarOptions` default.
      */
-    constructor(options?: TOptions) {
-        super(options, _defaultToolBarOptions as Partial<TOptions>);
+    constructor(options?: ToolBarOptions) {
+        super(options as TOptions, _defaultToolBarOptions as Partial<TOptions>);
 
         this.getAria().setRole("toolbar");
         this.getAria().setTabIndex(0);

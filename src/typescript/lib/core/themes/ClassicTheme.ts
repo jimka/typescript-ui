@@ -191,7 +191,7 @@ export const ClassicTheme: Theme = defineTheme(BaseTheme, {
         border    : 'rgb(220, 220, 220)',
     },
     toolBar: {
-        background    : 'transparent',
+        background    : 'rgb(245, 245, 245)',
         border        : 'rgb(220, 220, 220)',
         separatorColor: 'rgb(220, 220, 220)',
     },

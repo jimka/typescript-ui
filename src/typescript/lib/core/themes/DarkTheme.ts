@@ -190,7 +190,7 @@ export const DarkTheme: Theme = defineTheme(BaseTheme, {
         border    : 'rgb(70, 70, 70)',
     },
     toolBar: {
-        background    : 'transparent',
+        background    : 'rgb(45, 45, 45)',
         border        : 'rgb(70, 70, 70)',
         separatorColor: 'rgb(70, 70, 70)',
     },

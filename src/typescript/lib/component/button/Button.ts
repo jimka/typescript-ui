@@ -173,6 +173,16 @@ const BUTTON_COMPACT_INSETS_GLYPH: Insets = new Insets(2, 2, 2, 2);
 const BUTTON_FLAT_GLYPH_INSETS: Insets = new Insets(4, 4, 4, 4);
 
 /**
+ * Resting background the chromeful path installs as a colour (mirroring the
+ * `--ts-ui-button-bg` image `super.applyChromeOptions` paints). Shared between
+ * `applyChromeOptions` and `_applyFlatChrome` so the flat path can recognise
+ * this framework default in `_options.backgroundColor` and tell it apart from a
+ * colour the consumer set — the flat appearance is transparent at rest, so it
+ * must clear the former but preserve the latter.
+ */
+const BUTTON_RESTING_BACKGROUND: string = "var(--ts-ui-button-bg, transparent)";
+
+/**
  * User-overridable visual defaults forwarded to `super` via the options bag.
  * The cascade in `Component`'s constructor dispatches each setter once with
  * the final value, so any field the caller supplied wins. Includes the
@@ -577,7 +587,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         const isFlat = (this._options.flat ?? opts.flat) === true;
 
         if (!isFlat && opts.backgroundColor === undefined) {
-            this.setBackgroundColor("var(--ts-ui-button-bg, transparent)");
+            this.setBackgroundColor(BUTTON_RESTING_BACKGROUND);
         }
 
         if (opts.pressedForegroundColor !== undefined) this.setPressedForegroundColor(opts.pressedForegroundColor);
@@ -1360,6 +1370,15 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     private _restoreChrome(): void {
         const d = this._defaultOptions as ButtonOptions;
 
+        // Re-apply the chromeful resting background `_applyFlatChrome` cleared.
+        // Flat set the sentinel "transparent" only when neither the consumer nor
+        // a subclass default pinned a colour (otherwise that colour was
+        // preserved through flat and needs no restore); swap that sentinel back
+        // for the framework token so the un-flattened button regains its fill.
+        if (d.backgroundColor === undefined && this._options.backgroundColor === "transparent") {
+            this.setBackgroundColor(BUTTON_RESTING_BACKGROUND);
+        }
+
         if (d.border                 !== undefined) this.setBorder(d.border);
         if (d.borderRadius           !== undefined) this.setBorderRadius(d.borderRadius);
         if (d.shadow                 !== undefined) this.setShadow(d.shadow);
@@ -1505,8 +1524,19 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this.clearShadow();
         this.clearBackgroundImage();
 
-        if ((this._options.backgroundColor ?? this._defaultOptions.backgroundColor) === undefined) {
-            this._options.backgroundColor = "transparent";
+        // Drop the resting background *colour* too — flat is transparent at
+        // rest. The chromeful path wrote `BUTTON_RESTING_BACKGROUND` into the
+        // rule via `setBackgroundColor` (see `applyChromeOptions`), which also
+        // stored it in `_options.backgroundColor`. A runtime `setFlat(true)` on
+        // an already-rendered chromeful button therefore sees that token here,
+        // not `undefined`; recognising it lets us override the rule to
+        // transparent while still preserving a genuine consumer-set colour (the
+        // old field-only write left the token painting). `_restoreChrome`
+        // re-applies the token on `setFlat(false)`.
+        const restingBackground = this._options.backgroundColor ?? this._defaultOptions.backgroundColor;
+
+        if (restingBackground === undefined || restingBackground === BUTTON_RESTING_BACKGROUND) {
+            this.setBackgroundColor("transparent");
         }
 
         // Clear the inherited raised pressed/hover background images and the
