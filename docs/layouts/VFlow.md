@@ -26,7 +26,7 @@ tags.addComponent(Button('layout'));
 tags.addComponent(Button('flow'));
 ```
 
-The same options ([`VFlowOptions`](/api/layout/interfaces/VFlowOptions)) can be passed to set `spacing`, `lineSpacing`, `uniform`, and `align` declaratively. The `setComponentSpacing` / `setLineSpacing` / `setUniform` / `setAlign` setters work for runtime updates.
+The same options ([`VFlowOptions`](/api/layout/interfaces/VFlowOptions)) can be passed to set `spacing`, `lineSpacing`, `uniform`, `align`, `itemAlign`, and `justify` declaratively. The `setComponentSpacing` / `setLineSpacing` / `setUniform` / `setAlign` / `setItemAlign` / `setJustify` setters work for runtime updates.
 
 ## Wrapping
 
@@ -80,7 +80,40 @@ import { VFlow } from '@jimka/typescript-ui/layout';
 panel.setLayoutManager(VFlow({ align: "center", spacing: 8, lineSpacing: 8 }));
 ```
 
-Alignment moves each column's content as a single block; it does not redistribute the inter-item `spacing` (there is no justify / space-between mode). It is independent of the per-child [`AnchorType`](/api/layout/enumerations/AnchorType), which positions a child *within its own cell* — both apply.
+Alignment moves each column's content as a single block. To redistribute the inter-item gaps instead, use `justify` (see [Distribution](#distribution)). `align` is independent of the per-child [`AnchorType`](/api/layout/enumerations/AnchorType), which positions a child *within its own cell* — both apply.
+
+## Item alignment
+
+Within a wrapped column the items can differ in width. By default each item sits at the column's left edge (using its own width), so a narrow item left-aligns against a wide one. The `itemAlign` option ([`FlowItemAlign`](/api/layout/type-aliases/FlowItemAlign)) positions each item within the **column width** (the line's cross extent) instead:
+
+- `"start"` (default) — left of the column.
+- `"center"` — centred in the column width.
+- `"end"` — right of the column.
+- `"baseline"` — a column exposes no shared text baseline, so this degrades to `"start"`. (The baseline mode is meaningful only for [`HFlow`](/layouts/HFlow) rows.)
+
+```typescript
+import { VFlow } from '@jimka/typescript-ui/layout';
+// Mixed-width items centre horizontally within each column.
+panel.setLayoutManager(VFlow({ itemAlign: "center", spacing: 8, lineSpacing: 8 }));
+```
+
+`itemAlign` positions the *cell* within the column; the per-child [`AnchorType`](/api/layout/enumerations/AnchorType) still positions the *child* within its cell. In a `uniform` width (or `"both"`) mode every cell already equals the column width, so `itemAlign` is a visual no-op there.
+
+## Distribution
+
+Where `align` moves a column's content as one block, the `justify` option ([`FlowJustify`](/api/layout/type-aliases/FlowJustify)) spreads a column's items across the inner height by growing the gaps between them:
+
+- `"start"` (default) — items packed with the fixed `spacing`; the residual is handled by `align`.
+- `"between"` — first and last items flush to the column's edges, with an equal extra gap between the interior items (CSS `space-between`).
+- `"around"` — an equal gap surrounds every item, so the end half-gaps are half the interior gaps (CSS `space-around`).
+
+```typescript
+import { VFlow } from '@jimka/typescript-ui/layout';
+// Spread each column's items top-to-bottom.
+panel.setLayoutManager(VFlow({ justify: "around", spacing: 8, lineSpacing: 8 }));
+```
+
+When `justify` is `"between"` or `"around"` the column fills the inner height, so it **owns the residual** and `align` is ignored. A single-item column or an over-long column (one whose content already exceeds the inner height) degrades to `"start"` spacing, so the gaps are never negative.
 
 ## Scrolling
 
@@ -112,16 +145,20 @@ When the host does not scroll, columns past the inner width are clipped by the h
 | `setLineSpacing(px)` | Horizontal gap between wrapped columns. |
 | `setUniform("none" \| "width" \| "height" \| "both")` | Make cells uniform so wrapped items align into a grid. |
 | `setAlign("start" \| "center" \| "end")` | Pack each column's content at the north edge (default), centred, or the south edge. |
+| `setItemAlign("start" \| "center" \| "end" \| "baseline")` | Position each item within its column width (cross axis); `"baseline"` degrades to `"start"` (no shared baseline). |
+| `setJustify("start" \| "between" \| "around")` | Distribute each column's items across the inner height by growing the gaps; owns the residual over `align`. |
 
 ## Baseline alignment
 
-A multi-column wrapped block exposes no single text baseline, so `VFlow` reports a `null` content baseline: a baseline-aware parent auto-centres or top-aligns the whole `VFlow` container rather than aligning it by an interior baseline. For baseline-aligned controls on a single row, use [`HBox`](/layouts/HBox).
+A multi-column wrapped block exposes no single text baseline, so `VFlow` reports a `null` content baseline: a baseline-aware parent auto-centres or top-aligns the whole `VFlow` container rather than aligning it by an interior baseline. A column's cross axis is width, which has no text baseline, so `itemAlign: "baseline"` degrades to `"start"`. For baseline-aligned controls on a single row, use [`HBox`](/layouts/HBox).
 
 ## See also
 
 - [API: VFlow](/api/layout/classes/VFlow)
 - [`FlowAlign`](/api/layout/type-aliases/FlowAlign) — the `align` option values
 - [`FlowUniformity`](/api/layout/type-aliases/FlowUniformity) — the `uniform` option values
+- [`FlowItemAlign`](/api/layout/type-aliases/FlowItemAlign) — the `itemAlign` option values
+- [`FlowJustify`](/api/layout/type-aliases/FlowJustify) — the `justify` option values
 - [`HFlow`](/layouts/HFlow) — the horizontal-wrapping counterpart
 - [`VBox`](/layouts/VBox) — single-column vertical stack with sizing modes
 - [Layout constraints reference](/layouts/Constraints)

@@ -17,8 +17,8 @@ A [`LayoutManager`](/api/layout/classes/LayoutManager) is attached to a containe
 | [`Split`](/api/layout/classes/Split) | Two panes with a draggable resize gutter |
 | [`Tab`](/api/layout/classes/Tab) | Tabbed interface with a button toolbar |
 | [`VBox`](/api/layout/classes/VBox) | Vertical stack; `mode: "preferred"` honours per-child heights, `mode: "equal"` divides the column into equal cells |
-| [`HFlow`](/api/layout/classes/HFlow) | Wrapping horizontal stack; packs children left-to-right and wraps to new lines, scrolling vertically on overflow |
-| [`VFlow`](/api/layout/classes/VFlow) | Wrapping vertical stack; packs children top-to-bottom and wraps to new columns, scrolling horizontally on overflow |
+| [`HFlow`](/api/layout/classes/HFlow) | Wrapping horizontal stack; packs children left-to-right and wraps to new lines, scrolling vertically on overflow; supports cross-axis [`itemAlign`](/api/layout/type-aliases/FlowItemAlign) and inter-item [`justify`](/api/layout/type-aliases/FlowJustify) |
+| [`VFlow`](/api/layout/classes/VFlow) | Wrapping vertical stack; packs children top-to-bottom and wraps to new columns, scrolling horizontally on overflow; supports cross-axis [`itemAlign`](/api/layout/type-aliases/FlowItemAlign) and inter-item [`justify`](/api/layout/type-aliases/FlowJustify) |
 
 ## Edge-drop docking
 
