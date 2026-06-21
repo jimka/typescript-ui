@@ -64,7 +64,7 @@ With `themed` on (the **default**), each header paints the accordion theme token
 | `--ts-ui-accordion-border` | All-around border on the accordion container. |
 | `--ts-ui-accordion-indicator-color` | Chevron colour. |
 
-The header border is a single **bottom** divider rather than a four-side box, so adjacent headers never paint a doubled line — there is no separate "flat"/border-collapse option to set. All values come from the active [`Theme`](/api/core/classes/Theme); switching Modern/Classic/Dark retints the accordion in lock-step.
+The header border is a single **bottom** divider rather than a four-side box, so adjacent headers never paint a doubled line — there is no separate "flat"/border-collapse option to set. All values come from the active [`Theme`](/api/core/interfaces/Theme); switching Modern/Classic/Dark retints the accordion in lock-step.
 
 ```typescript
 accordion.setThemed(false);   // chromeless
@@ -105,7 +105,7 @@ By default every open section sits at its preferred height. With `fill` on, the 
 
 ## Expand / collapse all
 
-`expandAll()` opens every section; `collapseAll()` closes every section. Both fire `sectiontoggle` per actual state change and schedule a single layout pass. `expandAll()` respects single-open mode — under `singleOpen` it opens only the first section rather than leaving the last-opened one visible.
+`expandAll()` opens every section; `collapseAll()` closes every section. Both emit `sectiontoggle` as they open/close sections and schedule a single layout pass. `expandAll()` respects single-open mode — under `singleOpen` it opens only the first section rather than leaving the last-opened one visible.
 
 ```typescript
 accordion.expandAll();
@@ -162,7 +162,7 @@ For the lifetime of each active toggle the toggling wrapper is pre-promoted to i
 
 When the user has `prefers-reduced-motion: reduce` set, the will-change prime and the container transition are skipped, and every header and wrapper's `transition` is briefly flipped to `"none"` so the layout writes land instantly; the transition strings are restored on the next animation frame so subsequent toggles animate normally once the user clears the preference.
 
-The duration and easing are a layout concern, not a theme concern — encoding them in themes would invite drift between the panel, container, header, and indicator transitions — so they are not part of the [`Theme`](/api/core/classes/Theme) surface. Override the duration on a per-Accordion basis via `animationDuration`.
+The duration and easing are a layout concern, not a theme concern — encoding them in themes would invite drift between the panel, container, header, and indicator transitions — so they are not part of the [`Theme`](/api/core/interfaces/Theme) surface. Override the duration on a per-Accordion basis via `animationDuration`.
 
 ## See also
 
