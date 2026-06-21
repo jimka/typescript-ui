@@ -61,8 +61,17 @@ class FileDropZone<TOptions extends FileDropZoneOptions = FileDropZoneOptions>
      * Constructs a FileDropZone.
      *
      * @param options - Optional construction-time options.
+     *
+     * @remarks The parameter is typed as the concrete {@link FileDropZoneOptions}
+     * rather than the class's `TOptions` parameter so that passing an options
+     * literal (e.g. `new FileDropZone({ accept: ".png" })`) cannot narrow
+     * `TOptions` to that literal — which would type the instance as
+     * `FileDropZone<{ accept: ".png" }>` and fail the weak-type assignability
+     * check when it is later used as a base `Component` (e.g.
+     * `container.addComponent(zone)`). `TOptions` stays at its
+     * `FileDropZoneOptions` default.
      */
-    constructor(options?: TOptions) {
+    constructor(options?: FileDropZoneOptions) {
         super({ ...(options ?? {}) } as TOptions);
 
         this.setLayoutManager(new VBox());

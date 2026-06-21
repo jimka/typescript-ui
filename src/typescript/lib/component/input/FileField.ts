@@ -233,8 +233,16 @@ class FileField<TOptions extends FileFieldOptions = FileFieldOptions>
      * Constructs a FileField.
      *
      * @param options - Optional construction-time options.
+     *
+     * @remarks The parameter is typed as the concrete {@link FileFieldOptions}
+     * rather than the class's `TOptions` parameter so that passing an options
+     * literal (e.g. `new FileField({ accept: ".png" })`) cannot narrow `TOptions`
+     * to that literal — which would type the instance as `FileField<{ accept:
+     * ".png" }>` and fail the weak-type assignability check when it is later used
+     * as a base `Component` (e.g. `container.addComponent(field)`). `TOptions`
+     * stays at its `FileFieldOptions` default.
      */
-    constructor(options?: TOptions) {
+    constructor(options?: FileFieldOptions) {
         super({ ...(options ?? {}) } as TOptions);
 
         this.setLayoutManager(new HBox());
