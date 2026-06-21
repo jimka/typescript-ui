@@ -13,9 +13,10 @@ import { callable } from "~/core/Callable.js";
  * @remarks `mode` selects the sizing strategy along the horizontal axis.
  * `"preferred"` (the default) honours each child's preferred width and
  * supports `weight` cells. `"equal"` divides the container width equally
- * and ignores `weight`. The `stretching` default depends on `mode`:
- * `false` for `"preferred"`, `true` for `"equal"`. An explicit
- * `stretching` value in the options bag always wins.
+ * and ignores `weight`. `mode` is independent of `stretching` (the cross-axis
+ * fill): `stretching` defaults to `false` in both modes, so `"equal"` divides
+ * the width but leaves children at their preferred height unless
+ * `stretching: true` is passed.
  *
  * @category Layouts
  */

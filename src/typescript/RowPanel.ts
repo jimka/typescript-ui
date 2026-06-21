@@ -8,7 +8,7 @@ class RowPanel extends LayoutTestPanel {
     constructor() {
         super();
 
-        this.setLayoutManager(new VBox({ mode: "equal" }));
+        this.setLayoutManager(new VBox({ mode: "equal", stretching: true }));
     }
 }
 

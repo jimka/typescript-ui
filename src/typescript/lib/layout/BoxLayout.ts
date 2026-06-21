@@ -41,9 +41,10 @@ export type BoxOverflowSizing = "preferred" | "min";
  * @remarks `mode` selects the sizing strategy along the box's main axis.
  * `"preferred"` (the default) honours each child's preferred main-axis extent
  * and supports `weight` cells. `"equal"` divides the container's main axis
- * equally and ignores `weight`. The `stretching` default depends on `mode`:
- * `false` for `"preferred"`, `true` for `"equal"`. An explicit `stretching`
- * value in the options bag always wins.
+ * equally and ignores `weight`. `mode` is independent of `stretching`, which
+ * governs the cross axis: `stretching` defaults to `false` in both modes, so
+ * `"equal"` divides the main axis but leaves children at their preferred
+ * cross-axis extent unless `stretching: true` is passed.
  *
  * @category Layouts
  */
@@ -90,10 +91,11 @@ export abstract class BoxLayout extends LayoutManager {
      *
      * @param options - The options bag carrying the values to apply.
      *
-     * @remarks `mode` is dispatched before `stretching` so the
-     * mode-dependent stretching default (`true` for `"equal"`, `false` for
-     * `"preferred"`) can be resolved when the options bag does not pass
-     * an explicit `stretching` value.
+     * @remarks `mode` and `stretching` are independent axes: `mode` governs the
+     * main-axis sizing strategy, `stretching` governs whether children fill the
+     * cross axis. Neither defaults from the other — `stretching` is `false`
+     * unless the options bag passes it explicitly, in both `"preferred"` and
+     * `"equal"` mode.
      */
     protected applyOptions(options: BoxLayoutOptions): void {
         super.applyOptions(options);
@@ -108,8 +110,6 @@ export abstract class BoxLayout extends LayoutManager {
 
         if (options.stretching !== undefined) {
             this.setStretching(options.stretching);
-        } else if (options.mode === "equal") {
-            this.setStretching(true);
         }
 
         if (options.overflowSizing !== undefined) {

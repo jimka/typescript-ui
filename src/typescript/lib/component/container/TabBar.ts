@@ -560,7 +560,7 @@ class TabBar extends Container<TabBarOptions> {
         // already dispatched by the Container/Component super cascade; the bar-only
         // options are dispatched at the end of this body once the sub-components
         // exist (so a `tools` / `listeners` option has somewhere to land).
-        this.setLayoutManager(new HBox({ mode: "equal", spacing: 0 }));
+        this.setLayoutManager(new HBox({ mode: "equal", spacing: 0, stretching: true }));
         this.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
         this._underBorderFullWidth = ThemeManager.getTheme().tab.underBorderFullWidth;
         this.applyUnderBorder();
@@ -576,7 +576,7 @@ class TabBar extends Container<TabBarOptions> {
         // show through; overflow:hidden clips scrolled tabs (and their close
         // overlays) at the tab-region edge. Hand-positioned in `layoutChrome`, so
         // it is raw-appended (not a strip box child).
-        this._tabClip.setLayoutManager(new HBox({ mode: "equal", spacing: 0 }));
+        this._tabClip.setLayoutManager(new HBox({ mode: "equal", spacing: 0, stretching: true }));
         this._tabClip.setBackgroundColor("transparent");
         this._tabClip.clearInsets();
         this._tabClip.setOverflow("hidden");

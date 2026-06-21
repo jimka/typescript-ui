@@ -13,9 +13,10 @@ import { callable } from "~/core/Callable.js";
  * @remarks `mode` selects the sizing strategy along the vertical axis.
  * `"preferred"` (the default) honours each child's preferred height and
  * supports `weight` cells. `"equal"` divides the container height equally
- * and ignores `weight`. The `stretching` default depends on `mode`:
- * `false` for `"preferred"`, `true` for `"equal"`. An explicit
- * `stretching` value in the options bag always wins.
+ * and ignores `weight`. `mode` is independent of `stretching` (the cross-axis
+ * fill): `stretching` defaults to `false` in both modes, so `"equal"` divides
+ * the height but leaves children at their preferred width unless
+ * `stretching: true` is passed.
  *
  * @category Layouts
  */
@@ -259,8 +260,9 @@ class VBox extends BoxLayout {
 
     /**
      * Places children in equal-height cells stacked top-to-bottom. Every cell
-     * takes the same height (see {@link VBox.computeEqualCellHeight}) and the
-     * full container width.
+     * takes the same height (see {@link VBox.computeEqualCellHeight}); when
+     * stretching, cells fill the container width, otherwise children keep their
+     * preferred width and are left-aligned within the column.
      *
      * @param components - The children to place, in order.
      * @param innerSize - The host's real inner size (pre-inflation), used to
@@ -271,13 +273,27 @@ class VBox extends BoxLayout {
      */
     private layoutEqualMode(components: Component[], innerSize: Size, containerSize: Size, insets: Insets, spacing: number): void {
         const cellHeight = this.computeEqualCellHeight(components, innerSize.height, spacing);
-        const cellWidth  = containerSize.width;
 
         const x = insets.getLeft();
         let y = insets.getTop();
 
+        if (this.isStretching()) {
+            const cellWidth = containerSize.width;
+
+            for (const component of components) {
+                this.placeComponent(component, x, y, cellWidth, cellHeight, FillType.BOTH);
+
+                y += cellHeight + spacing;
+            }
+
+            return;
+        }
+
         for (const component of components) {
-            this.placeComponent(component, x, y, cellWidth, cellHeight, FillType.BOTH);
+            const size  = component.getPreferredSize();
+            const width = size ? size.width : 0;
+
+            this.placeComponent(component, x, y, width, cellHeight, FillType.BOTH);
 
             y += cellHeight + spacing;
         }
