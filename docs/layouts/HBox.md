@@ -23,7 +23,7 @@ toolbar.addComponent(Button('Copy'));
 toolbar.addComponent(Button('Paste'));
 ```
 
-The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `mode`, `spacing`, `stretching`, and `overflowSizing` declaratively. The `setMode` / `setSpacing` / `setStretching` / `setOverflowSizing` setters work for runtime updates.
+The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `mode`, `spacing`, `stretching`, `overflowSizing`, and `justify` declaratively. The `setMode` / `setSpacing` / `setStretching` / `setOverflowSizing` / `setJustify` setters work for runtime updates.
 
 ## Sizing modes
 
@@ -72,6 +72,29 @@ row.setLayoutManager(HBox({ mode: "equal", overflowSizing: "preferred" }));
 
 This option only applies to `"equal"` mode. In `"preferred"` mode each child already keeps its own preferred width and the host scrolls when their widths sum past the container, so no knob is needed.
 
+## Justify (preferred mode)
+
+In `"preferred"` mode, when the children's combined width is shorter than the inner width and no `weight` cell consumes the slack, that leftover width sits at the trailing edge by default. `justify` ([`BoxJustify`](/api/layout/type-aliases/BoxJustify)) distributes it instead, mirroring CSS `justify-content`:
+
+- `"start"` (default) — children pack at the leading (west) edge; slack sits east.
+- `"center"` — the child block is centred; equal slack on both sides.
+- `"end"` — children pack at the trailing (east) edge; slack sits west.
+- `"between"` — first child west, last child east, slack split evenly into the gaps between them.
+- `"around"` — equal space around every child: a half-unit at each end, a full unit between neighbours.
+
+```typescript
+import { Component } from '@jimka/typescript-ui/core';
+import { HBox } from '@jimka/typescript-ui/layout';
+import { Button } from '@jimka/typescript-ui/component/button';
+const bar = Component();
+bar.setLayoutManager(HBox({ justify: "between" }));
+
+bar.addComponent(Button('Back'));
+bar.addComponent(Button('Next'));
+```
+
+`justify` is silently ignored when a `weight` cell is present (the weight cell already eats the slack) and when the row fills or overflows the inner width (it clamps to `"start"` so the leading child is never pushed out of view). It has no effect in `"equal"` mode, where the cells always tile the full width, and it acts only on the horizontal (main) axis — positioning a child within its row height stays the domain of `fill` / `anchor` constraints.
+
 ## Per-child constraints
 
 [`LayoutConstraints`](/layouts/Constraints):
@@ -96,6 +119,7 @@ toolbar.addComponent(button, {
 | `setSpacing(px)` | Gap between children. |
 | `setStretching(boolean)` | When `true`, all children fill the row's full height. |
 | `setOverflowSizing("preferred" | "min")` | Equal mode: cell width when an overflowing row scrolls — preferred width or min floor. |
+| `setJustify("start" | "center" | "end" | "between" | "around")` | Preferred mode: distribute leftover main-axis width along the row. |
 
 ## Baseline alignment
 

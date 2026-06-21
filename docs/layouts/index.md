@@ -13,10 +13,10 @@ A [`LayoutManager`](/api/layout/classes/LayoutManager) is attached to a containe
 | [`Card`](/api/layout/classes/Card) | Stacked layers — one visible at a time |
 | [`Fit`](/api/layout/classes/Fit) | Places one child inside the container — stretch to fill (default) or centre at preferred size via `FillType.NONE` |
 | [`Grid`](/api/layout/classes/Grid) | Two-dimensional grid with weight/fixed/content track sizing, cell spanning, and explicit placement |
-| [`HBox`](/api/layout/classes/HBox) | Horizontal stack; `mode: "preferred"` honours per-child widths, `mode: "equal"` divides the row into equal cells |
+| [`HBox`](/api/layout/classes/HBox) | Horizontal stack; `mode: "preferred"` honours per-child widths, `mode: "equal"` divides the row into equal cells; `justify` distributes leftover width |
 | [`Split`](/api/layout/classes/Split) | Two panes with a draggable resize gutter |
 | [`Tab`](/api/layout/classes/Tab) | Tabbed interface with a button toolbar |
-| [`VBox`](/api/layout/classes/VBox) | Vertical stack; `mode: "preferred"` honours per-child heights, `mode: "equal"` divides the column into equal cells |
+| [`VBox`](/api/layout/classes/VBox) | Vertical stack; `mode: "preferred"` honours per-child heights, `mode: "equal"` divides the column into equal cells; `justify` distributes leftover height |
 | [`HFlow`](/api/layout/classes/HFlow) | Wrapping horizontal stack; packs children left-to-right and wraps to new lines, scrolling vertically on overflow; supports cross-axis [`itemAlign`](/api/layout/type-aliases/FlowItemAlign) and inter-item [`justify`](/api/layout/type-aliases/FlowJustify) |
 | [`VFlow`](/api/layout/classes/VFlow) | Wrapping vertical stack; packs children top-to-bottom and wraps to new columns, scrolling horizontally on overflow; supports cross-axis [`itemAlign`](/api/layout/type-aliases/FlowItemAlign) and inter-item [`justify`](/api/layout/type-aliases/FlowJustify) |
 
