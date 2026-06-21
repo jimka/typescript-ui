@@ -37,16 +37,16 @@ form.addComponent(emailField);
 
 `mode: "preferred"` (default) honours each child's preferred height. Non-weighted children take their preferred sizes; cells carrying a `weight` layout constraint share the remaining height. When the children's preferred heights sum past the container, non-weighted children shrink proportionally toward their min heights.
 
-`mode: "equal"` divides the container's inner height equally among children, clamped to a per-cell floor. `weight` constraints are silently ignored in this mode. The `stretching` default for `"equal"` mode is `true`, matching the historical `Row` behaviour.
+`mode: "equal"` divides the container's inner height equally among children, clamped to a per-cell floor. `weight` constraints are silently ignored in this mode. `mode` and `stretching` are independent: `"equal"` only equalises the vertical (main-axis) heights. Children keep their preferred width and are left-aligned unless you also pass `stretching: true`, which is what makes every cell fill the column's full width.
 
 While the equal share clears the largest child's min height the column fits and each cell takes that equal share. When it does not — the column overflows — the cell floor depends on `overflowSizing` (see below).
 
 ```typescript
 import { VBox } from '@jimka/typescript-ui/layout';
 import { Button } from '@jimka/typescript-ui/component/button';
-// Vertical strip of equally sized buttons.
+// Vertical strip of equally sized, full-width buttons.
 const sidebar = Component();
-sidebar.setLayoutManager(VBox({ mode: "equal", spacing: 4 }));
+sidebar.setLayoutManager(VBox({ mode: "equal", stretching: true, spacing: 4 }));
 
 sidebar.addComponent(Button('Section 1'));
 sidebar.addComponent(Button('Section 2'));

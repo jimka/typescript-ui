@@ -29,7 +29,7 @@ The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be pa
 
 `mode: "preferred"` (default) honours each child's preferred width. Non-weighted children take their preferred sizes; cells carrying a `weight` layout constraint share the remaining width. When the children's preferred widths sum past the container, non-weighted children shrink proportionally toward their min widths.
 
-`mode: "equal"` divides the container's inner width equally among children, clamped to a per-cell floor. `weight` constraints are silently ignored in this mode. The `stretching` default for `"equal"` mode is `true`, matching the historical `Column` behaviour.
+`mode: "equal"` divides the container's inner width equally among children, clamped to a per-cell floor. `weight` constraints are silently ignored in this mode. `mode` and `stretching` are independent: `"equal"` only equalises the horizontal (main-axis) widths. Children keep their preferred height and are baseline-aligned unless you also pass `stretching: true`, which is what makes every cell fill the row's full height.
 
 While the equal share clears the largest child's min width the row fits and each cell takes that equal share. When it does not — the row overflows — the cell floor depends on `overflowSizing` (see below).
 
@@ -110,7 +110,7 @@ Each component reports a baseline via `getBaseline()`:
 
 If no child reports a baseline, `HBox` falls back to the legacy top-aligned layout. Baseline alignment is also skipped when `setStretching(true)` is enabled, since stretching forces every child to fill the row vertically and there is no shared baseline to align.
 
-In `mode: "equal"` baseline alignment kicks in only when `stretching` is `false`; the default `true` stretches every child to the row's full height.
+In `mode: "equal"` baseline alignment kicks in only when `stretching` is `false` (the default); passing `stretching: true` instead stretches every child to the row's full height.
 
 ## See also
 
