@@ -1494,24 +1494,27 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // width of the `--ts-ui-button-flat-{hover,pressed}-border` tokens;
         // widen this in lockstep if those ever exceed 1px.
         this.setBorder("1px solid transparent");
-        this._options.borderRadius    = undefined;
-        this._options.shadow          = undefined;
-        // Clear (not just mask) the resting background image: the chromeful
-        // `super.applyChromeOptions` already wrote the `--ts-ui-button-bg` token
-        // into the rule, so nulling only the option would leave a gradient-theme
-        // token painting behind a "flat" button.
+
+        // Clear (not just mask) the resting radius, shadow, and background image:
+        // the chromeful `super.applyChromeOptions` already wrote these defaults
+        // (`--ts-ui-border-radius`, `--ts-ui-button-shadow`, `--ts-ui-button-bg`)
+        // into the rules, so nulling only the options would leave them painting
+        // behind a "flat" button — a drop shadow ringing the button and rounded
+        // corners.
+        this.clearBorderRadius();
+        this.clearShadow();
         this.clearBackgroundImage();
 
         if ((this._options.backgroundColor ?? this._defaultOptions.backgroundColor) === undefined) {
             this._options.backgroundColor = "transparent";
         }
 
-        // Clear the inherited raised pressed/hover background images (written by
-        // the chromeful path above) so they don't paint under the flat hover /
-        // pressed colours installed below; mask hoverShadow likewise.
+        // Clear the inherited raised pressed/hover background images and the
+        // raised hover shadow (written by the chromeful path above) so they
+        // don't paint under the flat hover / pressed colours installed below.
         this.clearPressedBackgroundImage();
         this.clearHoverBackgroundImage();
-        this._options.hoverShadow            = undefined;
+        this.clearHoverShadow();
 
         // Install the flat hover frame + sunken pressed frame from the tokens.
         this.setHoverBackgroundColor("var(--ts-ui-button-flat-hover-bg, rgba(0, 0, 0, 0.06))");
