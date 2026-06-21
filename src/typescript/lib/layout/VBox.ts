@@ -289,11 +289,23 @@ class VBox extends BoxLayout {
             return;
         }
 
+        // Match the equal-stretch band exactly: the stretch branch fills
+        // containerSize.width from insets.left with no right-inset subtraction,
+        // so an EAST/fill align-self child reaches the same trailing edge.
+        const crossLead   = insets.getLeft();
+        const crossExtent = containerSize.width;
+
         for (const component of components) {
             const size  = component.getPreferredSize();
             const width = size ? size.width : 0;
 
-            this.placeComponent(component, x, y, width, cellHeight, FillType.BOTH);
+            const cross = this.crossPlacement(component, crossLead, crossExtent, width, false);
+
+            if (cross) {
+                this.placeComponent(component, cross.offset, y, cross.extent, cellHeight, FillType.BOTH);
+            } else {
+                this.placeComponent(component, x, y, width, cellHeight, FillType.BOTH);
+            }
 
             y += cellHeight + spacing;
         }
@@ -398,6 +410,12 @@ class VBox extends BoxLayout {
             ({ lead, gap } = this.justifyOffsets(contentHeight, innerHeight, components.length));
         }
 
+        // Cross band for per-child align-self: the horizontal band trimmed by
+        // both insets. The default path keeps reading containerSize.width
+        // (un-trimmed) to stay byte-identical with today's body.
+        const crossLead   = insets.getLeft();
+        const crossExtent = containerSize.width - (insets.getLeft() + insets.getRight());
+
         const x = insets.getLeft();
         let y = insets.getTop() + lead;
 
@@ -418,19 +436,34 @@ class VBox extends BoxLayout {
             // scroll, `containerSize` is already inflated to the content extent
             // upstream, so `min(pref, containerSize)` still yields the full width
             // without a floor here.
-            let width: number;
+            let defaultWidth: number;
 
             if (!size || this.isStretching()) {
-                width = containerSize.width;
+                defaultWidth = containerSize.width;
             } else {
-                width = Math.min(size.width, containerSize.width);
+                defaultWidth = Math.min(size.width, containerSize.width);
             }
 
             if (maxSize) {
-                width = Math.min(width, maxSize.width);
+                defaultWidth = Math.min(defaultWidth, maxSize.width);
             }
 
-            this.placeComponent(component, x, y, width, heights[idx], FillType.BOTH);
+            // Align-self sizes from the child's *preferred* width (capped to the
+            // band + max), independent of global stretching, so an anchored child
+            // shrinks-and-anchors even when the column is stretching.
+            let naturalWidth = size ? Math.min(size.width, crossExtent) : crossExtent;
+
+            if (maxSize) {
+                naturalWidth = Math.min(naturalWidth, maxSize.width);
+            }
+
+            const cross = this.crossPlacement(component, crossLead, crossExtent, naturalWidth, false);
+
+            if (cross) {
+                this.placeComponent(component, cross.offset, y, cross.extent, heights[idx], FillType.BOTH);
+            } else {
+                this.placeComponent(component, x, y, defaultWidth, heights[idx], FillType.BOTH);
+            }
 
             // Advance by the resolved height, not getHeight(): the gap is
             // measured against the same extent contentHeight summed, so a

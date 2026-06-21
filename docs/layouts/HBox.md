@@ -111,6 +111,26 @@ toolbar.addComponent(button, {
 });
 ```
 
+## Per-child cross-axis alignment (align-self)
+
+A single child can override the row's default cross-axis (vertical) placement without touching its siblings, by setting the **cross component** of its `anchor` or `fill` constraint. This works in both `"preferred"` and `"equal"` mode and mirrors CSS `align-self`:
+
+- `anchor: AnchorType.NORTH` (or the `NORTHWEST` / `NORTHEAST` corners) — pin the child to the **top** of the row.
+- `anchor: AnchorType.SOUTH` (or `SOUTHWEST` / `SOUTHEAST`) — pin the child to the **bottom** of the row.
+- `fill: FillType.VERTICAL` (or `FillType.BOTH`) — stretch the child to the **full row height** (align-self: stretch), regardless of the box's row-wide `stretching`.
+
+`AnchorType.CENTER` and the main-axis-only anchors (`WEST` / `EAST`) carry no cross component and are **inert**: the child keeps the row's default placement (baseline alignment — see below). Only a north/south anchor edge or a vertical fill counts as an explicit align-self.
+
+```typescript
+import { FillType, AnchorType } from '@jimka/typescript-ui/layout';
+// One divider fills the row height; the rest stay baseline-aligned.
+row.addComponent(label);                                       // default: baseline
+row.addComponent(badge,   { anchor: AnchorType.NORTH });       // pinned to top
+row.addComponent(divider, { fill:   FillType.VERTICAL });      // full row height
+```
+
+An explicit per-child cross intent overrides the box's global `stretching` for that child only: with `stretching: true`, a child carrying `anchor: AnchorType.SOUTH` shrinks to its preferred height and pins to the bottom while its siblings still fill the row.
+
 ## Common methods
 
 | Method | Purpose |

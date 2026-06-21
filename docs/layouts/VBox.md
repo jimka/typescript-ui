@@ -120,6 +120,26 @@ import { FillType } from '@jimka/typescript-ui/layout';
 form.addComponent(textField, { fill: FillType.HORIZONTAL });
 ```
 
+## Per-child cross-axis alignment (align-self)
+
+A single child can override the column's default cross-axis (horizontal) placement without touching its siblings, by setting the **cross component** of its `anchor` or `fill` constraint. This works in both `"preferred"` and `"equal"` mode and mirrors CSS `align-self`. The column's default cross placement is the **leading (west) edge at the child's preferred width**:
+
+- `anchor: AnchorType.WEST` (or the `NORTHWEST` / `SOUTHWEST` corners) — pin the child to the **left** of the column (this matches the default).
+- `anchor: AnchorType.EAST` (or `NORTHEAST` / `SOUTHEAST`) — pin the child to the **right** of the column.
+- `fill: FillType.HORIZONTAL` (or `FillType.BOTH`) — stretch the child to the **full column width** (align-self: stretch), regardless of the box's column-wide `stretching`.
+
+`AnchorType.CENTER` and the main-axis-only anchors (`NORTH` / `SOUTH`) carry no cross component and are **inert**: the child keeps the column's default WEST-origin placement. Only a west/east anchor edge or a horizontal fill counts as an explicit align-self.
+
+```typescript
+import { FillType, AnchorType } from '@jimka/typescript-ui/layout';
+// One badge pins right, one rule fills the column width; the rest stay west.
+column.addComponent(title);                                      // default: west origin
+column.addComponent(badge, { anchor: AnchorType.EAST });         // pinned to the right
+column.addComponent(rule,  { fill:   FillType.HORIZONTAL });     // full column width
+```
+
+An explicit per-child cross intent overrides the box's global `stretching` for that child only: with `stretching: true`, a child carrying `anchor: AnchorType.EAST` shrinks to its preferred width and pins to the right while its siblings still fill the column.
+
 ## Common methods
 
 | Method | Purpose |
