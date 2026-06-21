@@ -56,7 +56,7 @@ Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOp
 | `show()` | Display the window and bring it to the front. |
 | `setSize(w, h)` / `setPosition(x, y)` | Initial geometry. |
 | `setResizeFps(fps)` | Throttle resize-driven layout (default 30). |
-| `addExitActionListener(fn)` | Called when the user clicks the × button. |
+| `on("close", fn)` | Called when the user clicks the × button. |
 
 The full surface — drag listeners, focus / activation events, viewport-clamping — is in the [API reference](/api/core/classes/Window).
 

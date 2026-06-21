@@ -29,14 +29,14 @@ const _defaultTabCloseButtonOptions: Partial<TabCloseButtonOptions> = {
 };
 
 /**
- * A compact close button displaying the `times` glyph, sized to sit flush inside a tab header.
+ * A compact close button displaying the `xmark` glyph, sized to sit flush inside a tab header.
  *
  * @category Components
  */
 class TabCloseButton extends Button<TabCloseButtonOptions> {
 
     /**
-     * Creates a TabCloseButton seeded with the `times` glyph and sized for use in a tab toolbar.
+     * Creates a TabCloseButton seeded with the `xmark` glyph and sized for use in a tab toolbar.
      */
     constructor(options?: TabCloseButtonOptions) {
         // The seed `glyph` is in the defaults bag — a caller-supplied

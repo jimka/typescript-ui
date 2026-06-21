@@ -31,7 +31,7 @@ form.addComponent(Label('Email', emailField.getId()));
 form.addComponent(emailField);
 ```
 
-[`VBoxOptions`](/api/layout/interfaces/VBoxOptions) accepts `mode`, `spacing`, `stretching`, `overflowSizing`, and `justify` declaratively. The `setMode` / `setSpacing` / `setStretching` / `setOverflowSizing` / `setJustify` setters work for runtime updates.
+[`VBoxOptions`](/api/layout/interfaces/VBoxOptions) accepts `mode`, `spacing`, `stretching`, `overflowSizing`, and `justify` declaratively. The `setMode` / `setComponentSpacing` / `setStretching` / `setOverflowSizing` / `setJustify` setters work for runtime updates.
 
 ## Sizing modes
 
@@ -145,7 +145,7 @@ An explicit per-child cross intent overrides the box's global `stretching` for t
 | Method | Purpose |
 | --- | --- |
 | `setMode("preferred" | "equal")` | Switch the sizing strategy along the vertical axis. |
-| `setSpacing(px)` | Gap between children. |
+| `setComponentSpacing(px)` | Gap between children. |
 | `setStretching(boolean)` | When `true`, all children fill the column's full width. |
 | `setOverflowSizing("preferred" | "min")` | Equal mode: cell height when an overflowing column scrolls — preferred height or min floor. |
 | `setJustify("start" | "center" | "end" | "between" | "around")` | Preferred mode: distribute leftover main-axis height along the column. |

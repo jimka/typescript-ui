@@ -46,7 +46,7 @@ export interface WindowHeaderOptions extends HeaderOptions {
 }
 
 /**
- * A window title bar component with an embedded `times` glyph close button
+ * A window title bar component with an embedded `xmark` glyph close button
  * and an optional title icon shown to the west of the title text.
  *
  * Extends [`Header`](/api/component/display/classes/Header) by anchoring a

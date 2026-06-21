@@ -121,7 +121,7 @@ The pattern: set the role, manage `aria-selected` on items, wire arrow keys via 
 
 ## Live announcements
 
-For dynamic announcements (toasts, status messages), the framework's [`Notification`](/components/Notification) component is the right tool — its container has `role="alert"` semantics so screen readers announce new toasts as they appear.
+For dynamic announcements (toasts, status messages), the framework's [`Notification`](/components/Notification) component renders the visual toast — but note it does **not** currently set an ARIA live role on its container, so screen readers will not automatically announce new toasts. To guarantee announcement, pair it with your own live region (see below).
 
 For your own live regions, set the role:
 

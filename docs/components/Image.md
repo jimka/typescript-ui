@@ -6,8 +6,7 @@
 
 ```typescript
 import { Image } from '@jimka/typescript-ui/component/display';
-const logo = Image();
-logo.setSrc('/assets/logo.png');
+const logo = Image('/assets/logo.png');
 logo.setPreferredSize(120, 40);
 
 panel.addComponent(logo);
@@ -17,15 +16,16 @@ panel.addComponent(logo);
 
 | Method | Purpose |
 | --- | --- |
-| `getSrc()` / `setSrc(url)` | Image URL. |
-| `setAlt(text)` | Accessible alt text. |
+| `setPreferredSize(w, h)` | Pin a display size (inherited from `Component`). |
+| `getPreferredSize()` | Reports the pinned size, or the image's natural dimensions once loaded. |
 
 ## Notes
 
+- The image URL is fixed at construction (`Image(src)`); there is no `setSrc` / `setAlt`. Construct a new `Image` to display a different source.
 - If you don't call `setPreferredSize`, the component reports the image's natural dimensions once loaded. Layout will run again at that point.
 - For a CDN-hosted image, ensure CORS headers permit the request. The framework does not enforce a fetch policy beyond the browser default.
 
 ## See also
 
 - [API: Image](/api/component/display/classes/Image)
-- [`FontAwesomeIcon`](/components/FontAwesomeIcon) — for vector glyphs
+- [`Glyph`](/components/Glyph) — for vector / icon glyphs

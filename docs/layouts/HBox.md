@@ -23,7 +23,7 @@ toolbar.addComponent(Button('Copy'));
 toolbar.addComponent(Button('Paste'));
 ```
 
-The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `mode`, `spacing`, `stretching`, `overflowSizing`, and `justify` declaratively. The `setMode` / `setSpacing` / `setStretching` / `setOverflowSizing` / `setJustify` setters work for runtime updates.
+The same options ([`HBoxOptions`](/api/layout/interfaces/HBoxOptions)) can be passed to set `mode`, `spacing`, `stretching`, `overflowSizing`, and `justify` declaratively. The `setMode` / `setComponentSpacing` / `setStretching` / `setOverflowSizing` / `setJustify` setters work for runtime updates.
 
 ## Sizing modes
 
@@ -136,7 +136,7 @@ An explicit per-child cross intent overrides the box's global `stretching` for t
 | Method | Purpose |
 | --- | --- |
 | `setMode("preferred" | "equal")` | Switch the sizing strategy along the horizontal axis. |
-| `setSpacing(px)` | Gap between children. |
+| `setComponentSpacing(px)` | Gap between children. |
 | `setStretching(boolean)` | When `true`, all children fill the row's full height. |
 | `setOverflowSizing("preferred" | "min")` | Equal mode: cell width when an overflowing row scrolls — preferred width or min floor. |
 | `setJustify("start" | "center" | "end" | "between" | "around")` | Preferred mode: distribute leftover main-axis width along the row. |

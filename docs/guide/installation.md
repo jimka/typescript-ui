@@ -1,6 +1,6 @@
 # Installation
 
-`@jimka/typescript-ui` is published on npm and ships ESM bundles and `.d.ts` declarations. The package has zero runtime npm dependencies; FontAwesome is an optional peer for [FontAwesomeIcon](/api/component/display/classes/FontAwesomeIcon).
+`@jimka/typescript-ui` is published on npm and ships ESM bundles and `.d.ts` declarations. The package has zero runtime npm dependencies.
 
 The public API is exposed only through **subpath exports** — there is no bare `@jimka/typescript-ui` entry. Import each symbol from its group: `core`, `primitive`, `layout`, `data`, `validation`, or `component/<group>` (where `<group>` is `input`, `button`, `display`, `list`, `container`, `menubar`, `table`, or `tree`).
 
@@ -8,12 +8,6 @@ The public API is exposed only through **subpath exports** — there is no bare 
 
 ```bash
 npm install @jimka/typescript-ui
-```
-
-For [FontAwesomeIcon](/api/component/display/classes/FontAwesomeIcon) glyphs, also install:
-
-```bash
-npm install @fortawesome/fontawesome-free
 ```
 
 ## TypeScript configuration

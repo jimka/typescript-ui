@@ -28,18 +28,18 @@ import { Table } from '@jimka/typescript-ui/component/table';
 const app = Component();
 app.setLayoutManager(BorderLayout({ gap: 4 }));
 
-app.addComponent(MenuBar([/* ... */]),       { region: Placement.NORTH  });
-app.addComponent(Header('Status'),           { region: Placement.SOUTH  });
-app.addComponent(sidebar,                         { region: Placement.WEST   });
-app.addComponent(detailPanel,                     { region: Placement.EAST   });
-app.addComponent(Table(store),                { region: Placement.CENTER });
+app.addComponent(MenuBar([/* ... */]),       { placement: Placement.NORTH  });
+app.addComponent(Header('Status'),           { placement: Placement.SOUTH  });
+app.addComponent(sidebar,                         { placement: Placement.WEST   });
+app.addComponent(detailPanel,                     { placement: Placement.EAST   });
+app.addComponent(Table(store),                { placement: Placement.CENTER });
 ```
 
 [`BorderOptions`](/api/layout/interfaces/BorderOptions) accepts `gap` declaratively (the inter-region pixel gap); the `setComponentGap` setter still works for runtime updates.
 
 ## Per-child constraints
 
-The constraint is `{ region: Placement }` — see [`Placement`](/api/primitive/enumerations/Placement). Each region holds at most one child:
+The constraint is `{ placement: Placement }` — see [`Placement`](/api/primitive/enumerations/Placement). Each region holds at most one child:
 
 - `NORTH` / `SOUTH` span full width; height = child's preferred height.
 - `WEST` / `EAST` consume their preferred width; height fills the remaining vertical space (between north and south).

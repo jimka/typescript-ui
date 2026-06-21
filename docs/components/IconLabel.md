@@ -27,7 +27,7 @@ Clicking either the glyph area or the label text focuses the field, because the 
 | `glyph` | `string` | — | Override of the constructor `glyph` argument. |
 | `text`  | `string` | — | Override of the constructor `text` argument. |
 | `forId` | `string` | — | Override of the constructor `forId` argument. |
-| `gap`   | `number` | `0` | Pixels between the glyph and the label. |
+| `gap`   | `number` | `2` | Pixels between the glyph and the label. |
 
 Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields.
 

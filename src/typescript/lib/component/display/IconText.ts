@@ -34,7 +34,7 @@ const _defaultIconTextOptions: Partial<IconTextOptions> = {
 /**
  * A small composite pairing a leading [`Glyph`](/api/component/display/classes/Glyph)
  * with a trailing standalone [`Text`](/api/component/input/classes/Text), laid out
- * horizontally with a configurable gap (default 0).
+ * horizontally with a configurable gap (default 2).
  *
  * For form-control labels that need to be associated with an input element, use
  * [`IconLabel`](/api/component/display/classes/IconLabel) instead — its trailing

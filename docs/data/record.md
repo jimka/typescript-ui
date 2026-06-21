@@ -8,8 +8,8 @@ Stores expose several lookup methods:
 
 ```typescript
 store.getAt(0);                  // by index
-store.find('id', 1);             // by field value
-store.findBy(r => r.get('age') > 20);   // by predicate
+store.find('id', 1);             // first match by field value
+store.findAll('age', 25);        // all matches by field value
 store.getCount();                // total visible records
 ```
 
@@ -39,11 +39,10 @@ record?.commit();                // clears dirty flag
 A record is **dirty** when at least one of its fields has been modified since the last `commit()`. The framework uses this state in two places:
 
 - The [`Table`](/api/component/table/classes/Table) component tints dirty rows differently (token: `table.row.dirty` — see [Theming](/concepts/theming)).
-- A [`Binding`](/api/core/classes/Binding) calls its `onChange` listeners whenever the dirty state changes.
+- A [`Binding`](/api/core/classes/Binding) emits its `"change"` event whenever a bound field value changes.
 
 ```typescript
 record.isDirty();                 // any field dirty?
-record.isFieldDirty('name');      // this specific field?
 record.commit();                  // mark everything clean
 record.reject();                  // revert to clean snapshot
 ```

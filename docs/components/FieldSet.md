@@ -10,7 +10,7 @@ import { VBox } from '@jimka/typescript-ui/layout';
 import { TextField, Label } from '@jimka/typescript-ui/component/input';
 import { FieldSet } from '@jimka/typescript-ui/component/container';
 const profile = FieldSet();
-profile.setLegendText('Profile');
+profile.setTitle('Profile');
 
 const nameField  = TextField();
 const emailField = TextField();
@@ -33,8 +33,8 @@ panel.addComponent(profile);
 
 | Method | Purpose |
 | --- | --- |
-| `setLegendText(text)` | Title text shown in the legend. |
-| `getLegend()` | Returns the underlying `Legend` component for direct manipulation. |
+| `setTitle(text)` | Title text shown in the legend. |
+| `getTitle()` | Returns the current legend title text. |
 
 ## See also
 

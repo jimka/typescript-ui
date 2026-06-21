@@ -27,7 +27,7 @@ Each manager subclasses this to add its own fields:
 - [`AccordionConstraints`](/api/layout/classes/AccordionConstraints) — `label`, `initiallyOpen`
 - [`AnchorConstraints`](/api/layout/classes/AnchorConstraints) — `left`, `right`, `top`, `bottom`, `width`, `height` (pixels or `{ percent }`; see [Anchor](/layouts/Anchor#per-child-constraints))
 - [`GridConstraints`](/api/layout/classes/GridConstraints) — `col`, `row`, `colSpan`, `rowSpan` (see [Grid](/layouts/Grid#cell-spanning-and-explicit-placement)); the grid supplies `defaultFill` / `defaultAnchor` fallbacks behind each child's own `fill` / `anchor` (see [Grid](/layouts/Grid#per-child-fill-and-anchor))
-- The plain `{ region: Placement }` object passed to [`Border`](/layouts/Border)
+- The plain `{ placement: Placement }` object passed to [`Border`](/layouts/Border)
 
 ## FillType
 

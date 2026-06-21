@@ -29,7 +29,7 @@ The layout pass walks the tree top-down. Each child's `setSize` triggers its own
 Constraints are the second argument to `addComponent`. The shape depends on the layout manager:
 
 ```typescript
-panel.addComponent(child, { region: Placement.NORTH });   // Border
+panel.addComponent(child, { placement: Placement.NORTH });   // Border
 panel.addComponent(child, { fill: FillType.HORIZONTAL });  // HBox / VBox
 panel.addComponent(child, new AccordionConstraints('Section 1')); // Accordion
 panel.addComponent(child);                                  // Absolute, Fit, Card, Grid
@@ -39,8 +39,8 @@ panel.addComponent(child);                                  // Absolute, Fit, Ca
 
 ```typescript
 panel.addComponents(
-    { component: header,  constraints: { region: Placement.NORTH } },
-    { component: content, constraints: { region: Placement.CENTER } },
+    { component: header,  constraints: { placement: Placement.NORTH } },
+    { component: content, constraints: { placement: Placement.CENTER } },
     footer  // bare component, no constraints
 );
 ```
@@ -75,7 +75,7 @@ Setters call an internal `scheduleLayout()` instead of `doLayout()` directly. Th
 
 Almost never. The cases:
 
-- After mutating a `LayoutManager`'s configuration (e.g. `hbox.setSpacing(8)`) — usually the manager handles it.
+- After mutating a `LayoutManager`'s configuration (e.g. `hbox.setComponentSpacing(8)`) — usually the manager handles it.
 - After changing a child's preferred size from outside the framework's setter pipeline (e.g. you wrote directly to the DOM and need to resync).
 - Inside `pauseLayout` / `resumeLayout` blocks — `resumeLayout` already triggers a `doLayout`.
 

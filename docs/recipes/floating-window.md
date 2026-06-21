@@ -35,14 +35,14 @@ settingsWin.addComponents(
                 Label('API key:',    keyField.getId()), keyField
             ]
         }),
-        constraints: { region: Placement.CENTER }
+        constraints: { placement: Placement.CENTER }
     },
     {
         component: Component({
             layoutManager: HBox(),
             components: [saveBtn, cancelBtn]
         }),
-        constraints: { region: Placement.SOUTH }
+        constraints: { placement: Placement.SOUTH }
     }
 );
 ```
@@ -61,7 +61,7 @@ Event.addListener(openBtn, 'click', () => {
     settingsWin.show();           // brings to front
 });
 
-settingsWin.addExitActionListener(() => {
+settingsWin.on("close", () => {
     settingsWin.setVisible(false); // hide instead of destroy
 });
 

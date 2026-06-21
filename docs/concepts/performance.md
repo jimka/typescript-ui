@@ -65,7 +65,7 @@ The hint costs GPU memory and is ignored by browsers past a per-page threshold (
 
 ```typescript
 store.sort('value', 'desc');               // worker handles it for >1k rows
-store.filterBy(r => r.get('value') > 500); // worker handles it for >1k rows
+store.filterBy({ type: 'gt', field: 'value', value: 500 }); // worker handles it for >1k rows
 ```
 
 You don't configure anything — the worker is created lazily on first use. Below the threshold the round-trip overhead exceeds the work, so operations run synchronously in-process.
@@ -76,7 +76,7 @@ Custom filter predicates passed to `filterBy` must be **pure functions** with no
 
 ## Disposing Text components
 
-[`Text`](/components/Text) and its subclasses ([`Label`](/components/Label), [`Header`](/components/Header), [`Legend`](/components/Legend)) subscribe to [`ThemeManager.onThemeChange`](/api/core/classes/ThemeManager) on construction so they re-measure on every theme change.
+[`Text`](/components/Text) and its subclasses ([`Label`](/components/Label), [`Legend`](/components/Legend)) subscribe to [`ThemeManager.onThemeChange`](/api/core/classes/ThemeManager) on construction so they re-measure on every theme change.
 
 **Custom components that create `Text` instances dynamically and remove them must call `text.dispose()`** to detach the listener:
 

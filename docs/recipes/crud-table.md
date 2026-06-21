@@ -83,11 +83,11 @@ const root = Component({
                 layoutManager: HBox(),
                 components: [addBtn, exportBtn, syncBtn]
             }),
-            constraints: { region: Placement.NORTH }
+            constraints: { placement: Placement.NORTH }
         },
         {
             component: Table(store),
-            constraints: { region: Placement.CENTER }
+            constraints: { placement: Placement.CENTER }
         }
     ]
 });

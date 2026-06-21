@@ -29,15 +29,15 @@ await store.load();
 ```typescript
 import { Component } from '@jimka/typescript-ui/core';
 import { VBox, HBox } from '@jimka/typescript-ui/layout';
-import { Label, TextField, Checkbox, ComboBox, Option } from '@jimka/typescript-ui/component/input';
+import { Label, TextField, Checkbox, ComboBox } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 const nameField   = TextField();
 const emailField  = TextField();
 const activeCheck = Checkbox();
 const roleCombo   = ComboBox()
-    .addItem(Option('admin', 'Admin'))
-    .addItem(Option('user',  'User'))
-    .addItem(Option('guest', 'Guest'));
+    .addItem({ key: 'admin', label: 'Admin' })
+    .addItem({ key: 'user',  label: 'User'  })
+    .addItem({ key: 'guest', label: 'Guest' });
 
 const form = Component({
     layoutManager: VBox(),

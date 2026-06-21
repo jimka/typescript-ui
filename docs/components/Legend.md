@@ -4,15 +4,11 @@
 
 ## Usage
 
-You usually don't construct a `Legend` directly — `FieldSet` creates and manages one for you. Reach for it via `fieldSet.getLegend()` if you need to customise the title beyond what `setLegendText` exposes.
+You don't construct a `Legend` directly — `FieldSet` creates and manages one internally. Set its text via `fieldSet.setTitle(...)`; the legend is not exposed as a separately addressable component, and its appearance follows the active theme.
 
 ```typescript
 const fieldSet = FieldSet();
-fieldSet.setLegendText('Profile');
-
-const legend = fieldSet.getLegend();
-legend.setForegroundColor('rgb(60, 80, 120)');
-legend.setFontWeight('bold');
+fieldSet.setTitle('Profile');
 ```
 
 ## Common methods

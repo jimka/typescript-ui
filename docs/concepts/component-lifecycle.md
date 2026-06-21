@@ -130,7 +130,7 @@ The framework uses these in built-in components — `Button` adds a label in `in
 
 ## Disposal
 
-[`Text`](/components/Text) (and anything that subclasses it — [`Label`](/components/Label), [`Header`](/components/Header), [`Legend`](/components/Legend)) registers a theme-change listener on construction. **Custom components that create `Text` instances dynamically and remove them must call `text.dispose()`** to detach the listener and avoid memory leaks. The framework does this automatically for built-in components attached and removed through normal `addComponent` / `removeComponent` flows.
+[`Text`](/components/Text) (and anything that subclasses it — [`Label`](/components/Label), [`Legend`](/components/Legend)) registers a theme-change listener on construction. **Custom components that create `Text` instances dynamically and remove them must call `text.dispose()`** to detach the listener and avoid memory leaks. The framework does this automatically for built-in components attached and removed through normal `addComponent` / `removeComponent` flows.
 
 ## See also
 

@@ -49,10 +49,14 @@ Both forms are accepted everywhere a `Model` is expected.
 
 | Type | Notes |
 | --- | --- |
-| `'string'` | Default for text fields |
+| `'string'` | Text value |
 | `'number'` | Numeric value; integer or float |
 | `'boolean'` | True / false |
-| `'date'` | JavaScript `Date` object |
+| `'date'` | JavaScript `Date` object (date only) |
+| `'time'` | Time-of-day value |
+| `'datetime'` | Combined date and time |
+| `'glyph'` | Registry glyph name |
+| `'auto'` | No coercion; stores the raw value (the default) |
 
 The supported set lives in [`FieldType`](/api/data/type-aliases/FieldType).
 
@@ -66,7 +70,6 @@ Each field accepts these options (see [`FieldOptions`](/api/data/interfaces/Fiel
 | `type` | One of the field types above |
 | `defaultValue` | Default for new records |
 | `mapping` | Maps an incoming JSON key to a different field name |
-| `primaryKey` | Marks the field as the record's primary key |
 
 ## Field mapping
 

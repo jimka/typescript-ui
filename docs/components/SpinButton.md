@@ -8,7 +8,7 @@ You usually use this indirectly via `NumberSpinner`. Reach for `SpinButton` dire
 
 ```typescript
 import { SpinButton } from '@jimka/typescript-ui/component/input';
-const upButton = SpinButton('up');
+const upButton = SpinButton('▲');
 upButton.on("tick", () => increment());
 
 panel.addComponent(upButton);
@@ -29,7 +29,7 @@ This produces a quick ramp-up that feels responsive without runaway speed.
 | Method | Purpose |
 | --- | --- |
 | `on("tick", fn)` | Subscribe to repeat ticks (also fires once on initial click). |
-| `removeTickListener(fn)` | Unsubscribe. |
+| `off("tick", fn)` | Unsubscribe. |
 
 ## See also
 

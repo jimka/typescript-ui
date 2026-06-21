@@ -33,7 +33,7 @@ card.setVisibleComponentId(errorPanel.getId());
 
 ## Per-child constraints
 
-None. The active child is selected by ID via `card.setVisibleComponent(id)`.
+None. The active child is selected by ID via `card.setVisibleComponentId(id)`.
 
 ## When to use it
 

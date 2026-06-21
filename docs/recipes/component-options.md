@@ -121,9 +121,9 @@ Per-child layout constraints via the `ConstrainedComponent` shape:
 Panel({
     layoutManager: Border(),
     components: [
-        { component: header,  constraints: { region: 'north'  } },
-        { component: content, constraints: { region: 'center' } },
-        { component: footer,  constraints: { region: 'south'  } }
+        { component: header,  constraints: { placement: 'north'  } },
+        { component: content, constraints: { placement: 'center' } },
+        { component: footer,  constraints: { placement: 'south'  } }
     ]
 });
 ```
@@ -181,7 +181,9 @@ const accordion = Accordion({
     singleOpen       : true,
     headerHeight     : 32,
     animationDuration: 150,
-    onSectionToggle  : (idx, open) => console.log(idx, open),
+    listeners        : {
+        sectiontoggle: (idx, open) => console.log(idx, open),
+    },
 });
 
 panel.setLayoutManager(hbox);

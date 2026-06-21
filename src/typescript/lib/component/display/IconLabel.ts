@@ -35,7 +35,7 @@ const _defaultIconLabelOptions: Partial<IconLabelOptions> = {
 /**
  * A small composite pairing a leading [`Glyph`](/api/component/display/classes/Glyph)
  * with a trailing [`Label`](/api/component/input/classes/Label), laid out
- * horizontally with a configurable gap (default 0).
+ * horizontally with a configurable gap (default 2).
  *
  * Use this when the icon belongs to a form control: the inner element is a
  * real `<label for="…">`, so the browser still focuses the associated input

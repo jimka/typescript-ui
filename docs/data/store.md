@@ -105,7 +105,7 @@ personStore.findByName('Alice');
 store.sort('age', 'asc');
 
 store.filter('age', 25);                  // exact match
-store.filterBy(r => r.get('age') > 20);   // custom predicate
+store.filterBy({ type: 'gt', field: 'age', value: 20 });   // descriptor-based filter
 store.clearFilter();
 ```
 
@@ -187,8 +187,7 @@ The user can resolve the block in two ways:
 | Event | Fired when |
 | --- | --- |
 | `load`              | `load()` resolves |
-| `datachanged`       | Any record is added, removed, or moved (sorted) |
-| `update`            | A record's fields change (commit or rollback) |
+| `datachanged`       | Any record is added, removed, moved (sorted), or has its fields committed / rolled back |
 | `sortchanged`       | The active multi-column sort list changed (replaced or cleared) |
 | `pagechanged`       | Page or page size changes via the pagination API |
 | `pagechangeblocked` | Page navigation was blocked because the store has pending changes |

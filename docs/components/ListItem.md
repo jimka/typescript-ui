@@ -20,8 +20,7 @@ panel.addComponent(list);
 
 | Method | Purpose |
 | --- | --- |
-| `getKey()` / `setKey(key)` | Programmatic key. |
-| `getValue()` / `setValue(value)` | Display text. |
+| `getKey()` | Programmatic key (set once via the constructor). |
 
 ## Notes
 

@@ -46,7 +46,7 @@ Once the dataset crosses the **1,000-row threshold**, [`AbstractStore`](/data/st
 
 ```typescript
 store.sort('value', 'desc');               // worker handles it
-store.filterBy(r => r.get('value') > 500); // worker handles it
+store.filterBy({ type: 'gt', field: 'value', value: 500 }); // worker handles it
 ```
 
 You don't configure anything — the worker is created lazily on first use.

@@ -72,7 +72,7 @@ See [`DialogConfig`](/api/core/interfaces/DialogConfig) for the full option list
 | `title` | (required) | Title-bar text. |
 | `message` | — | Plain-text body (ignored when `contentComponent` is set). |
 | `contentComponent` | — | Custom component for the body. |
-| `buttons` | One `OK` button (with a `check-circle` glyph) | Footer button definitions. |
+| `buttons` | One `OK` button (with a `circle-check` glyph) | Footer button definitions. |
 | `width` / `height` | `480` / auto (clamped to `320 × 160` minimums) | Dialog panel size in pixels. |
 | `closeOnBackdrop` | `false` | Click outside dismisses with result `'close'`. |
 

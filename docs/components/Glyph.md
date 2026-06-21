@@ -25,23 +25,24 @@ panel.addComponent(arrow);
 
 The registry lives in `src/typescript/lib/component/display/Glyphs.ts`. Add a glyph by adding one property to the frozen object — no build-time tooling, no metadata parsing.
 
+The registry starts empty except for four eagerly-registered built-in Unicode-triangle glyphs (prefixed `unicode-` so user-registered `arrow-*` SVG glyphs never collide with them). All other glyphs — including SVG icons like `xmark` and `circle-check` — are registered on demand by the components that use them (or by your own code).
+
 | Name | Kind | Notes |
 | --- | --- | --- |
-| `times` | SVG | Close / dismiss `×` |
-| `arrow-up` | Unicode `▲` | Scrollbar vertical start arrow |
-| `arrow-down` | Unicode `▼` | Expanded tree node / scrollbar vertical end arrow |
-| `arrow-left` | Unicode `◀` | Scrollbar horizontal start arrow |
-| `arrow-right` | Unicode `▶` | Collapsed tree node / scrollbar horizontal end arrow |
+| `unicode-arrow-up` | Unicode `▲` | Scrollbar vertical start arrow |
+| `unicode-arrow-down` | Unicode `▼` | Scrollbar vertical end arrow |
+| `unicode-arrow-left` | Unicode `◀` | Scrollbar horizontal start arrow |
+| `unicode-arrow-right` | Unicode `▶` | Scrollbar horizontal end arrow |
 
 ## Where Glyph is used
 
 The following components consume the registry by name:
 
-- [`WindowHeader`](/api/component/container/classes/WindowHeader) — close button (always `times`), and an optional title-icon slot exposed via `setGlyph(name)` and the `glyph` option.
-- [`Button`](/api/component/button/classes/Button) — optional leading glyph via `setGlyph(name)` or the `glyph` option. Inherited by [`ToggleButton`](/api/component/button/classes/ToggleButton) and pre-seeded with `times` on [`TabCloseButton`](/api/component/button/classes/TabCloseButton).
+- [`WindowHeader`](/api/component/container/classes/WindowHeader) — close button (always `xmark`), and an optional title-icon slot exposed via `setGlyph(name)` and the `glyph` option.
+- [`Button`](/api/component/button/classes/Button) — optional leading glyph via `setGlyph(name)` or the `glyph` option. Inherited by [`ToggleButton`](/api/component/button/classes/ToggleButton) and pre-seeded with `xmark` on [`TabCloseButton`](/api/component/button/classes/TabCloseButton).
 - [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) — optional leading glyph via `setGlyph(name)` or the `glyph` option.
-- [`Tree`](/api/component/tree/classes/Tree) row toggles — `arrow-down` when expanded, `arrow-right` when collapsed. The row never sees the raw character; the registry decides the look.
-- [`Scrollbar`](/api/component/container/classes/Scrollbar) end-cap arrow buttons (opt-in via `arrowsEnabled`) — `arrow-up` / `arrow-down` on vertical bars; `arrow-left` / `arrow-right` on horizontal bars.
+- [`Tree`](/api/component/tree/classes/Tree) row toggles — `caret-down` when expanded, `caret-right` when collapsed. The row never sees the raw character; the registry decides the look.
+- [`Scrollbar`](/api/component/container/classes/Scrollbar) end-cap arrow buttons (opt-in via `arrowsEnabled`) — `unicode-arrow-up` / `unicode-arrow-down` on vertical bars; `unicode-arrow-left` / `unicode-arrow-right` on horizontal bars.
 - [`IconText`](/api/component/display/classes/IconText) / [`IconLabel`](/api/component/display/classes/IconLabel) — small composites pairing a glyph with a [`Text`](/api/component/input/classes/Text) or `<label>`.
 - Table cells via the `glyph` field type — see [`GlyphCell`](/api/component/table/classes/GlyphCell) and [`GlyphRenderer`](/api/component/table/classes/GlyphRenderer).
 
