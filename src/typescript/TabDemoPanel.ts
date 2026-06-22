@@ -2,7 +2,7 @@
 
 import { callable, Component } from '@jimka/typescript-ui/core';
 import { Insets } from '@jimka/typescript-ui/primitive';
-import { Fit, HBox, VBox, DockRegion, TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign } from '@jimka/typescript-ui/layout';
+import { Fit, HBox, VBox, DockRegion, TabWidthMode, TabSide, TabAlign, TabOrientation, AxisPosition } from '@jimka/typescript-ui/layout';
 import { Text, ComboBox, NumberSpinner } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { TabPanel } from '@jimka/typescript-ui/component/container';
@@ -90,7 +90,7 @@ class TabDemoPanel extends Component {
         // visible in `fill`/`equal`/`fixed` modes, not `content`. `start`/`end`
         // are flow-relative (left/right on a horizontal strip, top/bottom on a
         // rotated west/east strip).
-        const alignTextModes: TabTextAlign[] = ["start", "center", "end"];
+        const alignTextModes: AxisPosition[] = ["start", "center", "end"];
         const alignTextCombo = new ComboBox({ items: alignTextModes, selectedIndex: 1 });
 
         const scrollBtn = new Button("Toggle Scroll");

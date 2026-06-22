@@ -3,6 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
+import type { AxisPosition, AxisSpread } from "~/layout/AxisAlign.js";
 import { Component } from "~/core/Component.js";
 import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 
@@ -43,6 +44,15 @@ export type BoxOverflowSizing = "preferred" | "min";
  * main-axis space when its children are shorter than the inner main extent and
  * no `weight` cells consume the slack. Mirrors CSS `justify-content`.
  *
+ * A single line makes exactly one main-axis slack decision, so the two shared
+ * axis concepts fuse into this one field: the {@link AxisPosition} half
+ * (`"start"`/`"center"`/`"end"`) positions the whole child block as a unit,
+ * while the {@link AxisSpread} half (`"between"`/`"around"`) spreads the slack
+ * into the inter-child gaps. `justifyOffsets` reflects the split — position
+ * values yield a leading offset (`lead`, `gap: 0`) and spread values yield an
+ * inter-child `gap`. `"start"` is the shared identity of both halves, so the
+ * union collapses to these five distinct values.
+ *
  * - `"start"` (the default) — children pack at the leading edge; the slack sits
  *   at the trailing edge.
  * - `"center"` — the child block is centred; equal slack on both ends.
@@ -59,7 +69,7 @@ export type BoxOverflowSizing = "preferred" | "min";
  *
  * @category Layouts
  */
-export type BoxJustify = "start" | "center" | "end" | "between" | "around";
+export type BoxJustify = AxisPosition | AxisSpread;
 
 /**
  * Construction-time options shared by {@link HBox} and {@link VBox}.

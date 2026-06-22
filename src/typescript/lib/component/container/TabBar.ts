@@ -28,7 +28,8 @@ import { angle_down } from "~/glyphs/solid/angle_down.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { DragManager, DragEventDetail, DragData, TabDragData } from "~/core/DragManager.js";
 import { callable } from "~/core/Callable.js";
-import type { TabWidthMode, TabSide, TabAlign, TabOrientation, TabTextAlign } from "~/layout/Tab.js";
+import type { TabWidthMode, TabSide, TabAlign, TabOrientation } from "~/layout/Tab.js";
+import type { AxisPosition } from "~/layout/AxisAlign.js";
 
 // Register the overflow scroll-arrow glyphs so the arrows render regardless of
 // which glyphs the consumer has imported (mirrors TabCloseButton's xmark seed).
@@ -166,7 +167,7 @@ export interface TabBarOptions extends ContainerOptions {
     reorderable?: boolean;
 
     /** Tab-label justification (strip-wide); defaults to `"center"`. */
-    textAlign?: TabTextAlign;
+    textAlign?: AxisPosition;
 }
 
 /**
@@ -487,7 +488,7 @@ class TabBar extends Container<TabBarOptions> {
     private _orientation: TabOrientation = "horizontal";
     private _scrollable: boolean = false;
     private _compact: boolean = false;
-    private _textAlign: TabTextAlign = "center";
+    private _textAlign: AxisPosition = "center";
 
     // Shared rebuild-mode context menu reused across right-clicks, mirroring
     // Table's column-header menu. Rebuild-mode menus only attach to the DOM
@@ -990,11 +991,11 @@ class TabBar extends Container<TabBarOptions> {
      * Sets the strip-wide tab-label justification and re-lays out. Caches the
      * value only; the layout pass re-applies the `text-align` to every tab button.
      *
-     * @param align - The [`TabTextAlign`](/api/layout/type-aliases/TabTextAlign) to apply.
+     * @param align - The [`AxisPosition`](/api/layout/type-aliases/AxisPosition) to apply.
      *
      * @returns This tab strip, for method chaining.
      */
-    setTextAlign(align: TabTextAlign): this {
+    setTextAlign(align: AxisPosition): this {
         this._textAlign = align;
 
         this.scheduleLayout();
@@ -1005,9 +1006,9 @@ class TabBar extends Container<TabBarOptions> {
     /**
      * Returns the current tab-label justification.
      *
-     * @returns The active [`TabTextAlign`](/api/layout/type-aliases/TabTextAlign).
+     * @returns The active [`AxisPosition`](/api/layout/type-aliases/AxisPosition).
      */
-    getTextAlign(): TabTextAlign {
+    getTextAlign(): AxisPosition {
         return this._textAlign;
     }
 
