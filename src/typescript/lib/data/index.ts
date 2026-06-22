@@ -6,6 +6,7 @@ export type { FieldOptions, FieldConfig, FieldType } from '~/data/Field.js';
 export { Model } from '~/data/Model.js';
 export type { ModelOptions } from '~/data/Model.js';
 export { ModelRecord } from '~/data/ModelRecord.js';
+export type { FieldChange } from '~/data/ModelRecord.js';
 export { AbstractStore } from '~/data/AbstractStore.js';
 export type { AbstractStoreOptions, StoreEvent, StoreListener, SortDescriptor } from '~/data/AbstractStore.js';
 export { Store } from '~/data/Store.js';

@@ -1,6 +1,23 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AbstractModel } from '~/data/AbstractModel.js';
+import { Field } from '~/data/Field.js';
+import { applyRule } from '~/validation/Validator.js';
+
+// Monotonic per-session id source for client-side row keys; never leaves the client,
+// so a plain counter suffices (no UUID / collision concern across sessions).
+let nextInternalId = 1;
+
+/**
+ * A single field's before / after values, as returned by
+ * {@link ModelRecord.getChanges} and {@link ModelRecord.getModified}.
+ *
+ * @category Data
+ */
+export interface FieldChange {
+    old: any;
+    new: any;
+}
 
 /**
  * A single data record managed by a store.
@@ -30,6 +47,7 @@ export class ModelRecord {
     private _original: Record<string, any>;
     private _dirty: boolean = false;
     private _isNew: boolean = false;
+    private _internalId: number;
 
     /**
      * Constructs a ModelRecord with the given model schema and initial data.
@@ -41,6 +59,7 @@ export class ModelRecord {
         this._model = model;
         this._data = { ...data };
         this._original = { ...data };
+        this._internalId = nextInternalId++;
     }
 
     /**
@@ -61,11 +80,14 @@ export class ModelRecord {
      * @param value - The new value to assign to the field.
      */
     set(field: string, value: any): this {
-        if (ModelRecord.isEqual(this._data[field], value)) {
+        const modelField = this._model.getField(field);
+        const converted = modelField ? modelField.convertValue(value, this._data) : value;
+
+        if (ModelRecord.isEqual(this._data[field], converted)) {
             return this;
         }
 
-        this._data[field] = value;
+        this._data[field] = converted;
         this._dirty = this._isNew || Object.keys(this._original)
                                           .some(k => !ModelRecord.isEqual(this._data[k], this._original[k]));
 
@@ -159,5 +181,167 @@ export class ModelRecord {
      */
     getModel(): AbstractModel {
         return this._model;
+    }
+
+    /**
+     * Returns the stable client-side id assigned at construction.
+     *
+     * @remarks
+     * Unlike `getId()` (the primary-key value, which is `undefined` until the server
+     * replies), this id exists immediately and is unique within the session, so UI can
+     * use it as a key for unsynced rows. It is never serialised and never sent to the server.
+     *
+     * @returns The monotonic per-session internal id.
+     */
+    getInternalId(): number {
+        return this._internalId;
+    }
+
+    /**
+     * Returns the fields whose current value differs from the last committed baseline.
+     *
+     * @remarks
+     * Comparison uses the same shallow equality as dirty tracking, so object / array
+     * field values still compare by reference.
+     *
+     * @returns A map of changed field name to its `{ old, new }` values; empty when clean.
+     */
+    getChanges(): Record<string, FieldChange> {
+        const changes: Record<string, FieldChange> = {};
+
+        for (const key of Object.keys(this._data)) {
+            if (!ModelRecord.isEqual(this._data[key], this._original[key])) {
+                changes[key] = { old: this._original[key], new: this._data[key] };
+            }
+        }
+
+        return changes;
+    }
+
+    /**
+     * Returns the modified fields as a `{ old, new }` map.
+     *
+     * @remarks
+     * Alias of {@link ModelRecord.getChanges}; both names are provided for caller intent.
+     *
+     * @returns A map of modified field name to its `{ old, new }` values; empty when clean.
+     */
+    getModified(): Record<string, FieldChange> {
+        return this.getChanges();
+    }
+
+    /**
+     * Returns a copy of this record carrying a fresh internal id, marked new and dirty.
+     *
+     * @remarks
+     * A clone is a distinct row, so it receives its own `internalId` and is flagged as a
+     * new, dirty insert. The data is shallow-copied (object / array field values are shared
+     * with the source, matching the shallow contract elsewhere in this class).
+     *
+     * @returns A new {@link ModelRecord} for the same model with copied field data.
+     */
+    clone(): ModelRecord {
+        const copy = new ModelRecord(this._model, { ...this._data });
+
+        copy.markAsNew();
+        copy._dirty = true;
+
+        return copy;
+    }
+
+    /**
+     * Returns true when every field passes its implicit type check and explicit validators.
+     *
+     * @returns True when no field reports an error, false otherwise.
+     */
+    isValid(): boolean {
+        return Object.keys(this.getErrors()).length === 0;
+    }
+
+    /**
+     * Returns the first failing message for each currently-invalid field.
+     *
+     * @returns A map of field name to its first error message; empty when the record is valid.
+     */
+    getErrors(): Record<string, string> {
+        const errors: Record<string, string> = {};
+
+        for (const field of this._model.getFields()) {
+            const message = this.validateField(field.getName());
+
+            if (message) {
+                errors[field.getName()] = message;
+            }
+        }
+
+        return errors;
+    }
+
+    /**
+     * Validates a single field, returning its first failing message.
+     *
+     * @remarks
+     * An implicit type check runs first: a non-null value on a typed (non-`auto`/`glyph`)
+     * field that fails coercion reports a type error before the explicit `validators` run.
+     *
+     * @param name - The logical name of the field to validate.
+     *
+     * @returns The first error message, or `''` when the field is valid or is not a model field.
+     */
+    validateField(name: string): string {
+        const field = this._model.getField(name);
+
+        if (!field) {
+            return '';
+        }
+
+        const value = this._data[name];
+        const typeError = this.checkType(field, value);
+
+        if (typeError) {
+            return typeError;
+        }
+
+        for (const rule of field.getValidators()) {
+            const result = applyRule(rule, value);
+
+            if (!result.valid) {
+                return result.message;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Runs the implicit, conversion-derived type check for a field value.
+     *
+     * @remarks
+     * Skips `auto` / `glyph` fields (no type to enforce) and `null` / `undefined` values
+     * (absence is governed by a `required` rule, not the type check). For every other typed
+     * field, a stored value that re-coerces to `undefined` (a `number` holding `NaN`, a date
+     * holding an Invalid Date) is reported as a type error.
+     *
+     * @param field - The field whose declared type is enforced.
+     * @param value - The current stored value for that field.
+     *
+     * @returns The type-error message, or `''` when the value satisfies the field's type.
+     */
+    private checkType(field: Field, value: any): string {
+        const type = field.getType();
+
+        if (type === 'auto' || type === 'glyph' || value === null || value === undefined) {
+            return '';
+        }
+
+        const coerced = field.convertValue(value);
+        const failed = coerced === undefined
+            || (typeof coerced === 'number' && isNaN(coerced));
+
+        if (failed) {
+            return `Value is not a valid ${type}.`;
+        }
+
+        return '';
     }
 }
