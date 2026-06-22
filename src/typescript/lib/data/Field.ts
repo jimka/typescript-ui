@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import type { ValidationRule } from '~/validation/ValidationRule.js';
+
 /**
  * Built-in field types supported by {@link Model} and {@link AbstractModel}.
  *
@@ -20,6 +22,10 @@ export interface FieldOptions {
     mapping?: string;
     description?: string;
     order?: number;
+    /** Custom raw-to-typed coercion; wins over the built-in `type` conversion. */
+    convert?: (raw: any, sourceRecord?: Record<string, any>) => any;
+    /** Field-level validation rules, evaluated by {@link ModelRecord} (pull-based). */
+    validators?: ValidationRule[];
 }
 
 /**
@@ -41,6 +47,8 @@ export class Field {
     private _mapping: string;
     private _description: string | undefined;
     private _order: number | undefined;
+    private _convert: ((raw: any, sourceRecord?: Record<string, any>) => any) | undefined;
+    private _validators: ValidationRule[];
 
     /**
      * Constructs a Field from a FieldOptions object.
@@ -54,6 +62,8 @@ export class Field {
         this._mapping = options.mapping ?? options.name;
         this._description = options.description;
         this._order = options.order;
+        this._convert = options.convert;
+        this._validators = options.validators ?? [];
     }
 
     /**
@@ -108,5 +118,112 @@ export class Field {
      */
     getOrder(): number {
         return this._order ?? -1;
+    }
+
+    /**
+     * Coerces a raw value to this field's type, or runs the custom `convert` hook.
+     *
+     * @remarks
+     * A configured `convert` callback wins over the built-in type conversion. Otherwise
+     * `null`/`undefined` short-circuit to themselves (an absent value never becomes `NaN`,
+     * `"null"`, or an Invalid Date), and any other value is routed through the type switch.
+     *
+     * @param raw - The raw value to coerce.
+     * @param sourceRecord - Optional. The full mapped source object, so a custom `convert`
+     *   can derive this field from sibling raw values.
+     *
+     * @returns The coerced value typed according to this field's `type`.
+     */
+    convertValue(raw: any, sourceRecord?: Record<string, any>): any {
+        if (this._convert) {
+            return this._convert(raw, sourceRecord);
+        }
+
+        if (raw === null || raw === undefined) {
+            return raw;
+        }
+
+        return this.convertByType(raw);
+    }
+
+    /**
+     * Coerces a non-null raw value according to this field's built-in `type`.
+     *
+     * @param raw - The raw value to coerce; guaranteed non-null by the caller.
+     *
+     * @returns The coerced value, or undefined when the value cannot be coerced to the type.
+     */
+    private convertByType(raw: any): any {
+        switch (this._type) {
+            case 'number': {
+                if (raw === '') {
+                    return undefined;
+                }
+
+                const num = Number(raw);
+
+                return num;
+            }
+
+            case 'boolean': {
+                return this.convertBoolean(raw);
+            }
+
+            case 'date':
+            case 'datetime':
+            case 'time': {
+                if (raw instanceof Date) {
+                    return raw;
+                }
+
+                const date = new Date(raw);
+
+                return isNaN(date.getTime()) ? undefined : date;
+            }
+
+            case 'string': {
+                return String(raw);
+            }
+
+            default: {
+                return raw;
+            }
+        }
+    }
+
+    /**
+     * Coerces a non-null raw value to a boolean, honouring the common truthy / falsy
+     * string and numeric spellings before falling back to `Boolean(raw)`.
+     *
+     * @param raw - The raw value to coerce; guaranteed non-null by the caller.
+     *
+     * @returns The coerced boolean value.
+     */
+    private convertBoolean(raw: any): boolean {
+        const truthy = [true, 1, 'true', '1', 'yes'];
+        const falsy = [false, 0, 'false', '0', 'no', ''];
+
+        if (truthy.includes(raw)) {
+            return true;
+        }
+
+        if (falsy.includes(raw)) {
+            return false;
+        }
+
+        return Boolean(raw);
+    }
+
+    /**
+     * Returns the configured validation rules, or an empty array.
+     *
+     * @remarks
+     * Evaluated by [`ModelRecord`](/api/data/classes/ModelRecord) on demand; see its
+     * pull-based `isValid` / `getErrors` / `validateField` API.
+     *
+     * @returns The field's validation rules; empty when none were configured.
+     */
+    getValidators(): ValidationRule[] {
+        return this._validators;
     }
 }

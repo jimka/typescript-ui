@@ -125,8 +125,9 @@ export abstract class AbstractModel {
 
         for (const field of this._resolvedFields!) {
             const raw = source[field.getMapping()];
+            const value = raw !== undefined ? raw : field.getDefaultValue();
 
-            mapped[field.getName()] = raw !== undefined ? raw : field.getDefaultValue();
+            mapped[field.getName()] = field.convertValue(value, source);
         }
 
         return new ModelRecord(this, mapped);
