@@ -101,7 +101,7 @@ The tab strip can sit on any edge of the content area via
 `"south"`, `"west"`, or `"east"` ([`TabSide`](/api/layout/type-aliases/TabSide)).
 Within the strip, [`setAlign`](/api/layout/classes/Tab#setalign) hugs the
 tab-button group to the strip's leading (`"start"`, default) or trailing
-(`"end"`) edge ([`TabAlign`](/api/layout/type-aliases/TabAlign)); alignment is a
+(`"end"`) edge ([`AxisEnd`](/api/primitive/type-aliases/AxisEnd)); alignment is a
 no-op in `"fill"` width mode, where the tabs already span the strip.
 
 On the vertical sides (`"west"` / `"east"`),
@@ -123,7 +123,7 @@ layout.setAlign("end");
 
 [`setTextAlign`](/api/layout/classes/Tab#settextalign) sets the strip-wide
 justification of every tab button's label
-([`AxisPosition`](/api/layout/type-aliases/AxisPosition) — `"start"`,
+([`AxisPosition`](/api/primitive/type-aliases/AxisPosition) — `"start"`,
 `"center"` (default), or `"end"`). The values are flow-relative — `"start"` /
 `"end"` are the left / right edges on a horizontal strip and the top / bottom
 edges on a rotated west/east strip — matching the `"start"` / `"end"` of

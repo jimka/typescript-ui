@@ -73,7 +73,7 @@ Because a uniform cell is larger than the item it holds, each item is positioned
 
 ## Line alignment
 
-By default each wrapped line packs from the west edge, so the residual space when a line wraps is left empty on the east. The `align` option ([`AxisPosition`](/api/layout/type-aliases/AxisPosition)) packs each line's content block along the horizontal (main) axis instead:
+By default each wrapped line packs from the west edge, so the residual space when a line wraps is left empty on the east. The `align` option ([`AxisPosition`](/api/primitive/type-aliases/AxisPosition)) packs each line's content block along the horizontal (main) axis instead:
 
 - `"start"` (default) — content at the west edge; residual on the east (today's behaviour).
 - `"center"` — the residual is split, centring each line's content.
@@ -119,7 +119,7 @@ panel.setLayoutManager(HFlow({ itemAlign: "center", spacing: 8, lineSpacing: 8 }
 
 ## Distribution
 
-Where `align` moves a line's content as one block, the `justify` option ([`AxisSpread`](/api/layout/type-aliases/AxisSpread)) spreads a line's items across the inner width by growing the gaps between them:
+Where `align` moves a line's content as one block, the `justify` option ([`AxisSpread`](/api/primitive/type-aliases/AxisSpread)) spreads a line's items across the inner width by growing the gaps between them:
 
 - `"start"` (default) — items packed with the fixed `spacing`; the residual is handled by `align`.
 - `"between"` — first and last items flush to the line's edges, with an equal extra gap between the interior items (CSS `space-between`).
@@ -181,6 +181,6 @@ A multi-line wrapped block exposes no single text baseline, so `HFlow` reports a
 - [API: HFlow](/api/layout/classes/HFlow)
 - [`FlowUniformity`](/api/layout/type-aliases/FlowUniformity) — the `uniform` option values
 - [`FlowItemAlign`](/api/layout/type-aliases/FlowItemAlign) — the `itemAlign` option values
-- [`AxisSpread`](/api/layout/type-aliases/AxisSpread) — the `justify` option values
+- [`AxisSpread`](/api/primitive/type-aliases/AxisSpread) — the `justify` option values
 - [`HBox`](/layouts/HBox) — single-row horizontal stack with sizing modes
 - [Layout constraints reference](/layouts/Constraints)

@@ -17,8 +17,8 @@ A [`LayoutManager`](/api/layout/classes/LayoutManager) is attached to a containe
 | [`Split`](/api/layout/classes/Split) | Two panes with a draggable resize gutter |
 | [`Tab`](/api/layout/classes/Tab) | Tabbed interface with a button toolbar |
 | [`VBox`](/api/layout/classes/VBox) | Vertical stack; `mode: "preferred"` honours per-child heights, `mode: "equal"` divides the column into equal cells; `justify` distributes leftover height; a per-child cross-axis `anchor`/`fill` acts as align-self |
-| [`HFlow`](/api/layout/classes/HFlow) | Wrapping horizontal stack; packs children left-to-right and wraps to new lines, scrolling vertically on overflow; supports cross-axis [`itemAlign`](/api/layout/type-aliases/FlowItemAlign) and inter-item [`justify`](/api/layout/type-aliases/AxisSpread) |
-| [`VFlow`](/api/layout/classes/VFlow) | Wrapping vertical stack; packs children top-to-bottom and wraps to new columns, scrolling horizontally on overflow; supports cross-axis [`itemAlign`](/api/layout/type-aliases/FlowItemAlign) and inter-item [`justify`](/api/layout/type-aliases/AxisSpread) |
+| [`HFlow`](/api/layout/classes/HFlow) | Wrapping horizontal stack; packs children left-to-right and wraps to new lines, scrolling vertically on overflow; supports cross-axis [`itemAlign`](/api/layout/type-aliases/FlowItemAlign) and inter-item [`justify`](/api/primitive/type-aliases/AxisSpread) |
+| [`VFlow`](/api/layout/classes/VFlow) | Wrapping vertical stack; packs children top-to-bottom and wraps to new columns, scrolling horizontally on overflow; supports cross-axis [`itemAlign`](/api/layout/type-aliases/FlowItemAlign) and inter-item [`justify`](/api/primitive/type-aliases/AxisSpread) |
 
 ## Edge-drop docking
 
@@ -73,4 +73,4 @@ There is no automatic re-layout on size changes. If you change a child's preferr
 - [Sizing](/concepts/sizing) — preferred / min / max / fixed size semantics.
 - [`LayoutConstraints`](/api/layout/classes/LayoutConstraints) — the constraint base class.
 - [`AnchorType`](/api/layout/enumerations/AnchorType), [`FillType`](/api/layout/enumerations/FillType), [`Placement`](/api/primitive/enumerations/Placement) — constraint enums.
-- [`AxisPosition`](/api/layout/type-aliases/AxisPosition), [`AxisSpread`](/api/layout/type-aliases/AxisSpread) — the shared axis position/spread vocabulary that `BoxJustify` and the flow/tab `align`/`justify`/`textAlign` fields draw from.
+- [`AxisPosition`](/api/primitive/type-aliases/AxisPosition), [`AxisSpread`](/api/primitive/type-aliases/AxisSpread) — the shared axis position/spread vocabulary that `BoxJustify` and the flow/tab `align`/`justify`/`textAlign` fields draw from.
