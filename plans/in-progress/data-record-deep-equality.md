@@ -7,7 +7,7 @@ touches-shared: [src/typescript/lib/data/ModelRecord.ts]
 
 ## Overview
 
-`ModelRecord` decides whether a write changed anything by comparing the new value to the stored one through the static helper [`ModelRecord.isEqual`](../src/typescript/lib/data/ModelRecord.ts#L75). Today that helper special-cases `Date` (by `getTime()`) and otherwise falls back to `===` ([`ModelRecord.ts:75-81`](../src/typescript/lib/data/ModelRecord.ts#L75)). Reference equality is correct for primitives but wrong for objects and arrays: assigning a structurally-identical *new* array or object always reports a difference, so [`set()`](../src/typescript/lib/data/ModelRecord.ts#L63) flags the record dirty for a no-op write. That false positive pollutes [`isDirty()`](../src/typescript/lib/data/ModelRecord.ts#L97), would pollute `hasPendingChanges()`/`sync()` at the store layer, and — once the dependency plan lands — would surface phantom entries in `getChanges()`/`getModified()`.
+`ModelRecord` decides whether a write changed anything by comparing the new value to the stored one through the static helper [`ModelRecord.isEqual`](../../src/typescript/lib/data/ModelRecord.ts#L97). Today that helper special-cases `Date` (by `getTime()`) and otherwise falls back to `===` ([`ModelRecord.ts:97-103`](../../src/typescript/lib/data/ModelRecord.ts#L97)). Reference equality is correct for primitives but wrong for objects and arrays: assigning a structurally-identical *new* array or object always reports a difference, so [`set()`](../../src/typescript/lib/data/ModelRecord.ts#L82) flags the record dirty for a no-op write. That false positive pollutes [`isDirty()`](../../src/typescript/lib/data/ModelRecord.ts#L119), would pollute `hasPendingChanges()`/`sync()` at the store layer, and — now that the dependency plan has landed — surfaces phantom entries in `getChanges()`/`getModified()` ([`ModelRecord.ts:209-219`](../../src/typescript/lib/data/ModelRecord.ts#L209)).
 
 This plan replaces the equality semantics with **deep structural equality** for plain objects and arrays, while keeping reference equality for class instances. It is a single-file, internal change to [`ModelRecord.ts`](../src/typescript/lib/data/ModelRecord.ts) plus its unit tests — no new exports, no public-surface change (unless the per-field hook option below is adopted; see Architecture Decisions).
 
@@ -41,7 +41,7 @@ Plain-object/array model values are JSON-shaped and acyclic in practice (they co
 
 ### TRADEOFF — deep equality runs on every `set()`; recommendation: always-deep, no per-field flag
 
-`isEqual` is called once per `set()` for the written field (the no-op guard) and once per existing field in the dirty-recompute loop ([`ModelRecord.ts:69-70`](../src/typescript/lib/data/ModelRecord.ts#L69)), plus once per field in `getChanges()` from the dependency plan. So a single `set()` already does O(fields) comparisons; making each comparison deep adds O(size-of-value) on top. For a field holding a large nested object, a single write now walks that structure.
+`isEqual` is called once per `set()` for the written field (the no-op guard) and once per existing field in the dirty-recompute loop ([`ModelRecord.ts:91-92`](../../src/typescript/lib/data/ModelRecord.ts#L91)), plus once per field in `getChanges()` from the dependency plan. So a single `set()` already does O(fields) comparisons; making each comparison deep adds O(size-of-value) on top. For a field holding a large nested object, a single write now walks that structure.
 
 Three options were weighed:
 
@@ -55,8 +55,8 @@ Three options were weighed:
 
 This plan keeps `isEqual` a **static, field-agnostic** helper (`private static isEqual(a, b): boolean`). Should option (b) be adopted in a future plan, `isEqual` would need a `field?: Field` parameter (or move to an instance method) so it can consult `field.getEquals?.()`, and **every call site** would have to thread the field through:
 
-- the no-op guard in `set()` ([`ModelRecord.ts:64`](../src/typescript/lib/data/ModelRecord.ts#L64)) — already has `field` in scope (it is the `field` param / the looked-up `Field` from the dependency plan's conversion);
-- the dirty-recompute loop ([`ModelRecord.ts:69-70`](../src/typescript/lib/data/ModelRecord.ts#L69)) — iterates `Object.keys(this._original)`, so each key would need `this._model.getField(k)`;
+- the no-op guard in `set()` ([`ModelRecord.ts:86`](../../src/typescript/lib/data/ModelRecord.ts#L86)) — already has `field` in scope (it is the `field` param / the looked-up `Field` from the dependency plan's conversion);
+- the dirty-recompute loop ([`ModelRecord.ts:91-92`](../../src/typescript/lib/data/ModelRecord.ts#L91)) — iterates `Object.keys(this._original)`, so each key would need `this._model.getField(k)`;
 - `getChanges()` from the dependency plan — iterates fields and would pass each `Field`.
 
 Recording this keeps the static signature an *intentional* choice, not an accident, and makes the future hook a localised change.
@@ -148,7 +148,7 @@ private static isEqualAtDepth(a: any, b: any, depth: number): boolean {
 
 ## Ordered Implementation Steps
 
-1. **`data/ModelRecord.ts`** — add the `MAX_EQUALITY_DEPTH` module const with its rationale comment. Replace the body of `isEqual` (currently [`ModelRecord.ts:75-81`](../src/typescript/lib/data/ModelRecord.ts#L75)) to delegate to a new private `isEqualAtDepth`, and add the private statics `isEqualAtDepth`, `arraysEqual`, `plainObjectsEqual`, `isPlainObject`, each with a one-line description comment. Leave the two existing call sites (`set` no-op guard, dirty-recompute loop) **unchanged** — they keep calling `ModelRecord.isEqual`. → verify: `npx tsc --noEmit` clean.
+1. **`data/ModelRecord.ts`** — add the `MAX_EQUALITY_DEPTH` module const with its rationale comment. Replace the body of `isEqual` (currently [`ModelRecord.ts:97-103`](../../src/typescript/lib/data/ModelRecord.ts#L97)) to delegate to a new private `isEqualAtDepth`, and add the private statics `isEqualAtDepth`, `arraysEqual`, `plainObjectsEqual`, `isPlainObject`, each with a one-line description comment. Leave the existing call sites (`set` no-op guard, dirty-recompute loop, and `getChanges()`) **unchanged** — they keep calling `ModelRecord.isEqual`; refresh the now-stale "shallow equality … compare by reference" remark in the `getChanges()` JSDoc. → verify: `npx tsc --noEmit` clean.
 2. **Confirm no call-site drift** — `grep -n 'isEqual' src/typescript/lib/data/ModelRecord.ts` should show exactly the entry definition, `isEqualAtDepth`, the two existing call sites, and the recursive calls; no other file references it (it is `private static`). → verify: `grep -rn 'isEqual' src/typescript/lib/data/` returns matches only in `ModelRecord.ts`.
 3. **Tests** — extend `tests/unit/data/ModelRecord.test.ts` with deep-equality cases (below). → verify: `npm test` green.
 4. **Docs** — none required (internal change). Justified in Documentation Impact. → verify: n/a.
@@ -202,7 +202,7 @@ The behavioural change is consumer-visible in *effect* (records no longer false-
 
 ## Critical Files
 
-- [`src/typescript/lib/data/ModelRecord.ts`](../src/typescript/lib/data/ModelRecord.ts) — `isEqual` (the helper to rewrite), `set` no-op guard ([L64](../src/typescript/lib/data/ModelRecord.ts#L64)), dirty-recompute loop ([L69-70](../src/typescript/lib/data/ModelRecord.ts#L69)).
+- [`src/typescript/lib/data/ModelRecord.ts`](../../src/typescript/lib/data/ModelRecord.ts) — `isEqual` (the helper to rewrite), `set` no-op guard ([L86](../../src/typescript/lib/data/ModelRecord.ts#L86)), dirty-recompute loop ([L91-92](../../src/typescript/lib/data/ModelRecord.ts#L91)), `getChanges()` call site ([L209-219](../../src/typescript/lib/data/ModelRecord.ts#L209)).
 - [`plans/data-field-types-and-validation.md`](./data-field-types-and-validation.md) — the dependency; defines the post-conversion shape of `set` and the `getChanges()` consumer this plan must stay compatible with.
 - [`tests/unit/data/ModelRecord.test.ts`](../tests/unit/data/ModelRecord.test.ts) — test conventions to mirror.
 - [`src/typescript/lib/data/Field.ts`](../src/typescript/lib/data/Field.ts) — only relevant if option (b)'s `equals?` hook is ever adopted; not touched by this plan.
