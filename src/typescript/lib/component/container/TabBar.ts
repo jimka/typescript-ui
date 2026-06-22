@@ -28,8 +28,8 @@ import { angle_down } from "~/glyphs/solid/angle_down.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { DragManager, DragEventDetail, DragData, TabDragData } from "~/core/DragManager.js";
 import { callable } from "~/core/Callable.js";
-import type { TabWidthMode, TabSide, TabAlign, TabOrientation } from "~/layout/Tab.js";
-import type { AxisPosition } from "~/layout/AxisAlign.js";
+import type { TabWidthMode, TabSide, TabOrientation } from "~/layout/Tab.js";
+import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
 
 // Register the overflow scroll-arrow glyphs so the arrows render regardless of
 // which glyphs the consumer has imported (mirrors TabCloseButton's xmark seed).
@@ -145,7 +145,7 @@ export interface TabBarOptions extends ContainerOptions {
     side?: TabSide;
 
     /** Main-axis alignment of the tab-button group; defaults to `"start"`. */
-    align?: TabAlign;
+    align?: AxisEnd;
 
     /** Text orientation on the vertical sides; defaults to `"horizontal"`. */
     orientation?: TabOrientation;
@@ -484,7 +484,7 @@ class TabBar extends Container<TabBarOptions> {
     private _indicator: TabIndicator = new TabIndicator();
 
     private _side: TabSide = "north";
-    private _align: TabAlign = "start";
+    private _align: AxisEnd = "start";
     private _orientation: TabOrientation = "horizontal";
     private _scrollable: boolean = false;
     private _compact: boolean = false;
@@ -940,11 +940,11 @@ class TabBar extends Container<TabBarOptions> {
      * Sets the main-axis alignment of the tab-button group within the strip and
      * re-lays out.
      *
-     * @param align - The [`TabAlign`](/api/layout/type-aliases/TabAlign) to apply.
+     * @param align - The [`AxisEnd`](/api/primitive/type-aliases/AxisEnd) to apply.
      *
      * @returns This tab strip, for method chaining.
      */
-    setAlign(align: TabAlign): this {
+    setAlign(align: AxisEnd): this {
         this._align = align;
 
         this.scheduleLayout();
@@ -955,9 +955,9 @@ class TabBar extends Container<TabBarOptions> {
     /**
      * Returns the current tab-button-group alignment.
      *
-     * @returns The active [`TabAlign`](/api/layout/type-aliases/TabAlign).
+     * @returns The active [`AxisEnd`](/api/primitive/type-aliases/AxisEnd).
      */
-    getAlign(): TabAlign {
+    getAlign(): AxisEnd {
         return this._align;
     }
 
@@ -991,7 +991,7 @@ class TabBar extends Container<TabBarOptions> {
      * Sets the strip-wide tab-label justification and re-lays out. Caches the
      * value only; the layout pass re-applies the `text-align` to every tab button.
      *
-     * @param align - The [`AxisPosition`](/api/layout/type-aliases/AxisPosition) to apply.
+     * @param align - The [`AxisPosition`](/api/primitive/type-aliases/AxisPosition) to apply.
      *
      * @returns This tab strip, for method chaining.
      */
@@ -1006,7 +1006,7 @@ class TabBar extends Container<TabBarOptions> {
     /**
      * Returns the current tab-label justification.
      *
-     * @returns The active [`AxisPosition`](/api/layout/type-aliases/AxisPosition).
+     * @returns The active [`AxisPosition`](/api/primitive/type-aliases/AxisPosition).
      */
     getTextAlign(): AxisPosition {
         return this._textAlign;

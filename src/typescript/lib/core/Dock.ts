@@ -14,6 +14,7 @@ import { DragManager, DragEventDetail, tabDragRegistry } from "~/core/DragManage
 import { DropZoneOverlay } from "~/core/component/DropZoneOverlay.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import type { AxisOrientation } from "~/primitive/Axis.js";
 
 /**
  * Declarative description of one dockable content panel.
@@ -47,7 +48,7 @@ export interface DockPanelSpec {
  */
 export type DockLayoutSpec =
     | DockPanelSpec
-    | { split: "horizontal" | "vertical"; children: DockLayoutSpec[] }
+    | { split: AxisOrientation; children: DockLayoutSpec[] }
     | { tabs: DockPanelSpec[] };
 
 /**
@@ -369,7 +370,7 @@ class Dock extends Container<DockOptions> {
      */
     private compileLayout(spec: DockLayoutSpec): Component {
         if ("split" in spec) {
-            const region = new Container({ layoutManager: new Split({ direction: spec.split }) });
+            const region = new Container({ layoutManager: new Split({ orientation: spec.split }) });
 
             for (const child of spec.children) {
                 region.addComponent(this.compileRegion(child));

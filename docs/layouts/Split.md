@@ -1,6 +1,6 @@
 # Split
 
-[`Split`](/api/layout/classes/Split) divides the container into two or more resizable panels separated by draggable [`SplitGutter`](/api/component/container/classes/SplitGutter) elements. Direction can be `'horizontal'` (panels side by side) or `'vertical'` (panels stacked).
+[`Split`](/api/layout/classes/Split) divides the container into two or more resizable panels separated by draggable [`SplitGutter`](/api/component/container/classes/SplitGutter) elements. Orientation can be `'horizontal'` (panels side by side) or `'vertical'` (panels stacked).
 
 ```
 +--------+║+----------------+
@@ -19,13 +19,13 @@ import { Split } from '@jimka/typescript-ui/layout';
 import { Table } from '@jimka/typescript-ui/component/table';
 import { Tree } from '@jimka/typescript-ui/component/tree';
 const workspace = Component();
-workspace.setLayoutManager(Split({ direction: 'horizontal' }));
+workspace.setLayoutManager(Split({ orientation: 'horizontal' }));
 
 workspace.addComponent(treeView);   // left
 workspace.addComponent(detailTable); // right
 ```
 
-[`SplitOptions`](/api/layout/interfaces/SplitOptions) accepts `direction` declaratively, typed as the [`SplitDirection`](/api/layout/type-aliases/SplitDirection) union (`'horizontal' | 'vertical'`); the `setDirection` setter still works for runtime updates.
+[`SplitOptions`](/api/layout/interfaces/SplitOptions) accepts `orientation` declaratively, typed as the [`AxisOrientation`](/api/primitive/type-aliases/AxisOrientation) union (`'horizontal' | 'vertical'`); the `setOrientation` setter still works for runtime updates.
 
 ## Three+ panes
 
@@ -62,7 +62,7 @@ using the gutter on its **leading** side — which is how the otherwise-gutterle
 **last pane** becomes collapsible:
 
 ```typescript
-const split = Split({ direction: 'horizontal', collapsedPanes: [0] });
+const split = Split({ orientation: 'horizontal', collapsedPanes: [0] });
 
 split.addComponent(sidebar);                                   // collapses west (default)
 split.addComponent(content);
@@ -86,7 +86,7 @@ strip fill and chevron colour are themed via the `collapse` tokens — see
 
 | Method | Purpose |
 | --- | --- |
-| `setDirection(value)` | `'horizontal'` (default) or `'vertical'`. |
+| `setOrientation(value)` | `'horizontal'` (default) or `'vertical'`. |
 | `setPaneSize(pane, px)` | Seed or override a pane's stored main-axis size in pixels. |
 | `getPaneSize(pane)` | Read a pane's stored main-axis size, or `undefined` when unset. |
 | `setPaneCollapsed(index, value)` | Collapse or restore the pane at `index`. |

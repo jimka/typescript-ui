@@ -9,6 +9,7 @@ import { Size } from "~/primitive/Size.js";
 import { COLLAPSE_STRIP_SIZE, runCollapse, CollapseParticipant } from "~/layout/CollapseSupport.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import type { AxisOrientation } from "~/primitive/Axis.js";
 
 // Pixel thickness of a single draggable gutter. The main-axis sizing math
 // subtracts the gutters' combined footprint before dividing space among
@@ -17,20 +18,12 @@ import { DOM } from "~/core/DOM.js";
 const GUTTER_SIZE = 4;
 
 /**
- * The orientation of a {@link Split}: `'horizontal'` lays panels side by side,
- * `'vertical'` stacks them.
- *
- * @category Layouts
- */
-export type SplitDirection = "horizontal" | "vertical";
-
-/**
  * Construction-time options for {@link Split}.
  *
  * @category Layouts
  */
 export interface SplitOptions extends LayoutManagerOptions {
-    direction?: SplitDirection;
+    orientation?: AxisOrientation;
     /** Indices of panes to start collapsed (applied on first layout). */
     collapsedPanes?: number[];
 }
@@ -38,13 +31,13 @@ export interface SplitOptions extends LayoutManagerOptions {
 /**
  * A layout manager that splits the container into two or more resizable panels
  * separated by draggable gutter elements.
- * The split direction can be `'horizontal'` (panels side by side) or `'vertical'` (panels stacked).
+ * The split orientation can be `'horizontal'` (panels side by side) or `'vertical'` (panels stacked).
  *
  * @category Layouts
  */
 class Split extends LayoutManager {
 
-    private _direction: SplitDirection = "horizontal";
+    private _orientation: AxisOrientation = "horizontal";
     private _sizes: Map<Component, number> = new Map<Component, number>();
     private _gutters: Array<SplitGutter> = [];
 
@@ -86,7 +79,7 @@ class Split extends LayoutManager {
     }
 
     /**
-     * Applies a {@link SplitOptions} bag, dispatching the split direction
+     * Applies a {@link SplitOptions} bag, dispatching the split orientation
      * after the inherited LayoutManager defaults.
      *
      * @param options - The options bag carrying the values to apply.
@@ -94,8 +87,8 @@ class Split extends LayoutManager {
     protected applyOptions(options: SplitOptions): void {
         super.applyOptions(options);
 
-        if (options.direction !== undefined) {
-            this.setDirection(options.direction);
+        if (options.orientation !== undefined) {
+            this.setOrientation(options.orientation);
         }
 
         if (options.collapsedPanes !== undefined) {
@@ -146,7 +139,7 @@ class Split extends LayoutManager {
     private paneDirection(pane: Component): CollapseDirection {
         const constraints = this.getLayoutConstraints(pane);
 
-        return constraints?.collapseDirection ?? (this._direction === "horizontal" ? "west" : "north");
+        return constraints?.collapseDirection ?? (this._orientation === "horizontal" ? "west" : "north");
     }
 
     /**
@@ -254,21 +247,21 @@ class Split extends LayoutManager {
     }
 
     /**
-     * Returns the split direction.
+     * Returns the split orientation.
      *
      * @returns `'horizontal'` or `'vertical'`.
      */
-    getDirection(): SplitDirection {
-        return this._direction;
+    getOrientation(): AxisOrientation {
+        return this._orientation;
     }
 
     /**
-     * Sets the split direction.
+     * Sets the split orientation.
      *
-     * @param direction - `'horizontal'` for side-by-side panels, `'vertical'` for stacked panels.
+     * @param orientation - `'horizontal'` for side-by-side panels, `'vertical'` for stacked panels.
      */
-    setDirection(direction: SplitDirection) : this {
-        this._direction = direction;
+    setOrientation(orientation: AxisOrientation) : this {
+        this._orientation = orientation;
 
         return this;
     }
@@ -409,7 +402,7 @@ class Split extends LayoutManager {
 
         const components = container.getLaidOutComponents();
         const perimiter  = container.getPerimiterSize();
-        const horizontal = this._direction === "horizontal";
+        const horizontal = this._orientation === "horizontal";
 
         let main  = 0;
         let cross = 0;
@@ -470,7 +463,7 @@ class Split extends LayoutManager {
         // no rescale; otherwise use 1 and let `recalculateSizes` scale the
         // ratio-invariant sizes up on the first connected layout.
         const innerSize = container.getInnerSize();
-        const main      = innerSize ? (this._direction === "horizontal" ? innerSize.width : innerSize.height) : 0;
+        const main      = innerSize ? (this._orientation === "horizontal" ? innerSize.width : innerSize.height) : 0;
         const available = Math.max(0, main - this.gutterTotal(count));
         const base      = available > 0 ? available : 1;
 
@@ -534,7 +527,7 @@ class Split extends LayoutManager {
 
         this._dragOriginPointer = position;
 
-        if (this._direction === "horizontal") {
+        if (this._orientation === "horizontal") {
             this._dragOriginLhsSize = lhs.getWidth();
             this._dragOriginRhsSize = rhs.getWidth();
         } else {
@@ -565,7 +558,7 @@ class Split extends LayoutManager {
         let lhs = container.getLaidOutComponents()[gutterIdx];
         let rhs = container.getLaidOutComponents()[gutterIdx + 1];
 
-        const horizontal = this._direction === "horizontal";
+        const horizontal = this._orientation === "horizontal";
         const total      = this._dragOriginLhsSize + this._dragOriginRhsSize;
 
         const lhsMin = lhs.getMinSize();
@@ -674,7 +667,7 @@ class Split extends LayoutManager {
                     } else {
                         const min = component.getMinSize();
                         if (min) {
-                            splitTotal += this._direction === "horizontal" ? min.width : min.height;
+                            splitTotal += this._orientation === "horizontal" ? min.width : min.height;
                         }
                     }
                 }
@@ -686,11 +679,11 @@ class Split extends LayoutManager {
 
             const min = component.getMinSize();
             if (min) {
-                crossMax = Math.max(crossMax, this._direction === "horizontal" ? min.height : min.width);
+                crossMax = Math.max(crossMax, this._orientation === "horizontal" ? min.height : min.width);
             }
         }
 
-        return this._direction === "horizontal"
+        return this._orientation === "horizontal"
             ? { width: splitTotal, height: crossMax }
             : { width: crossMax,   height: splitTotal };
     }
@@ -716,7 +709,7 @@ class Split extends LayoutManager {
         // The un-inflated inner main extent the displayed panes share — captured
         // before the overflow inflation below so `computeMainAxisSizes` fills the
         // true viewport (matching the pre-displayed Σ-stored basis).
-        const innerMain = this._direction === "horizontal" ? containerSize.width : containerSize.height;
+        const innerMain = this._orientation === "horizontal" ? containerSize.width : containerSize.height;
 
         // Universal scroll: see HBox.doLayout for the rationale. When the
         // host has marked the corresponding axis as overflowing, grow the
@@ -746,7 +739,7 @@ class Split extends LayoutManager {
             // Transparent divider track (like Border): only the chevron grip
             // shows in the expanded state; the gutter paints itself only once
             // collapsed into its button-styled strip.
-            let gutter = new SplitGutter(this._direction, { expandedBackground: "transparent" });
+            let gutter = new SplitGutter(this._orientation, { expandedBackground: "transparent" });
             let gutterIndex = i;
 
             gutter.on("dragstart", function (position: number) {
@@ -776,7 +769,7 @@ class Split extends LayoutManager {
         this.recalculateSizes();
         this.applyPendingCollapsed(components);
 
-        const horizontal = this._direction === "horizontal";
+        const horizontal = this._orientation === "horizontal";
         const crossSize  = horizontal ? containerSize.height : containerSize.width;
         const mainSizes  = this.computeMainAxisSizes(components, innerMain);
 
@@ -1075,7 +1068,7 @@ class Split extends LayoutManager {
         // `doLayout` places panes from `getContentInsets` and advances by this
         // same gutter total, so a pane sum of `available` lands flush with the
         // inner edge — no `gutterCount × GUTTER_SIZE` overflow.
-        let main = this._direction === "horizontal" ? containerSize.width : containerSize.height;
+        let main = this._orientation === "horizontal" ? containerSize.width : containerSize.height;
         let available = Math.max(0, main - this.gutterTotal(components.length));
 
         // Rescale the frozen pane sizes to the new extent so they keep filling

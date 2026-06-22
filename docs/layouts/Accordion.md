@@ -44,7 +44,7 @@ sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 | `themed` | `setThemed` / `isThemed` | `true` | Paint the accordion theme tokens (header background/border/colour + an all-around container border). See [Themed appearance](#themed-appearance). |
 | `spacing` | `setSpacing` / `getSpacing` | `0` | Vertical gap inserted *between* sections (never leading or trailing). |
 | `compact` | `setCompact` / `isCompact` | `false` | Denser headers — a smaller default header height plus tighter padding. See [Compact mode](#compact-mode). |
-| `chevronSide` | `setChevronSide` / `getChevronSide` | `"right"` | Which end of each header the chevron sits at. The label always stays left-aligned. |
+| `chevronSide` | `setChevronSide` / `getChevronSide` | `"end"` | Which end of each header the chevron sits at. The label always stays left-aligned. |
 | `chevronGlyph` | `setChevronGlyph` / `getChevronGlyph` | `"▶"` | The character drawn as the chevron (rotates 90° when expanded). |
 | `fillHeight` | `setFillHeight` / `isFillHeight` | `false` | The bottommost open section absorbs the container's leftover height. See [Fill mode](#fill-mode). |
 | `toolsVisibility` | `setToolsVisibility` / `getToolsVisibility` | `"hover"` | When per-section header tools are shown. See [Header tools](#header-tools). |

@@ -68,7 +68,7 @@ Because a uniform cell is larger than the item it holds, each item is positioned
 
 ## Column alignment
 
-By default each wrapped column packs from the north edge, so the residual space when a column wraps is left empty at the bottom. The `align` option ([`AxisPosition`](/api/layout/type-aliases/AxisPosition)) packs each column's content block along the vertical (main) axis instead:
+By default each wrapped column packs from the north edge, so the residual space when a column wraps is left empty at the bottom. The `align` option ([`AxisPosition`](/api/primitive/type-aliases/AxisPosition)) packs each column's content block along the vertical (main) axis instead:
 
 - `"start"` (default) — content at the north edge; residual at the south.
 - `"center"` — the residual is split, centring each column's content.
@@ -101,7 +101,7 @@ panel.setLayoutManager(VFlow({ itemAlign: "center", spacing: 8, lineSpacing: 8 }
 
 ## Distribution
 
-Where `align` moves a column's content as one block, the `justify` option ([`AxisSpread`](/api/layout/type-aliases/AxisSpread)) spreads a column's items across the inner height by growing the gaps between them:
+Where `align` moves a column's content as one block, the `justify` option ([`AxisSpread`](/api/primitive/type-aliases/AxisSpread)) spreads a column's items across the inner height by growing the gaps between them:
 
 - `"start"` (default) — items packed with the fixed `spacing`; the residual is handled by `align`.
 - `"between"` — first and last items flush to the column's edges, with an equal extra gap between the interior items (CSS `space-between`).
@@ -155,10 +155,10 @@ A multi-column wrapped block exposes no single text baseline, so `VFlow` reports
 ## See also
 
 - [API: VFlow](/api/layout/classes/VFlow)
-- [`AxisPosition`](/api/layout/type-aliases/AxisPosition) — the `align` option values
+- [`AxisPosition`](/api/primitive/type-aliases/AxisPosition) — the `align` option values
 - [`FlowUniformity`](/api/layout/type-aliases/FlowUniformity) — the `uniform` option values
 - [`FlowItemAlign`](/api/layout/type-aliases/FlowItemAlign) — the `itemAlign` option values
-- [`AxisSpread`](/api/layout/type-aliases/AxisSpread) — the `justify` option values
+- [`AxisSpread`](/api/primitive/type-aliases/AxisSpread) — the `justify` option values
 - [`HFlow`](/layouts/HFlow) — the horizontal-wrapping counterpart
 - [`VBox`](/layouts/VBox) — single-column vertical stack with sizing modes
 - [Layout constraints reference](/layouts/Constraints)

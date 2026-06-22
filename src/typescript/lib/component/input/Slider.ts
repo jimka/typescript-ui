@@ -5,6 +5,7 @@ import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { callable } from "~/core/Callable.js";
+import type { AxisOrientation } from "~/primitive/Axis.js";
 
 /**
  * Construction-time options for {@link Slider}.
@@ -17,7 +18,7 @@ export interface SliderOptions extends AbstractInputOptions {
     max?:         number;
     step?:        number;
     largeStep?:   number;
-    orientation?: "horizontal" | "vertical";
+    orientation?: AxisOrientation;
     showTicks?:   boolean;
 
     /** @deprecated use {@link SliderOptions.min} */
@@ -358,7 +359,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
      *
      * @returns `"horizontal"` or `"vertical"`.
      */
-    getOrientation(): "horizontal" | "vertical" {
+    getOrientation(): AxisOrientation {
         return this._options.orientation ?? "horizontal";
     }
 
@@ -370,7 +371,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
      *
      * @returns This component, for method chaining.
      */
-    setOrientation(orientation: "horizontal" | "vertical"): this {
+    setOrientation(orientation: AxisOrientation): this {
         this._options.orientation = orientation;
         this.applyOrientation(orientation);
         this.applyValue(this.getValue());
@@ -689,7 +690,7 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
      * Reflects the orientation in ARIA, swaps the preferred size between
      * landscape and portrait, and forces a layout.
      */
-    private applyOrientation(orientation: "horizontal" | "vertical"): void {
+    private applyOrientation(orientation: AxisOrientation): void {
         this.getAria().setOrientation(orientation);
 
         if (orientation === "horizontal") {

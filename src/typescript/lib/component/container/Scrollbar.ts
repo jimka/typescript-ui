@@ -7,6 +7,7 @@ import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { callable } from "~/core/Callable.js";
+import type { AxisOrientation } from "~/primitive/Axis.js";
 
 /**
  * String-literal union of the events emitted by {@link Scrollbar}.
@@ -48,14 +49,6 @@ const ARROW_REPEAT_FLOOR_MS   = 40;
 // a derived fraction of viewport so the step size stays predictable as content
 // grows. Owners can override via `setArrowStep(px)`.
 const DEFAULT_ARROW_STEP_PX = 40;
-
-/**
- * Scrollbar orientation. `"vertical"` lays the track along the Y axis (default);
- * `"horizontal"` lays it along the X axis.
- *
- * @category Components
- */
-export type ScrollbarOrientation = "vertical" | "horizontal";
 
 /**
  * Callback type fired by {@link Scrollbar} when the user drags the thumb or
@@ -328,7 +321,7 @@ class ScrollArrowButton extends Component {
  */
 class Scrollbar extends Component<ScrollbarOptions> {
 
-    private _orientation     : ScrollbarOrientation     = "vertical";
+    private _orientation     : AxisOrientation     = "vertical";
     private _thumb           : Component;
     private _viewportSize    : number                   = 0;
     private _contentSize     : number                   = 0;
@@ -357,7 +350,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
      *   forwarded to `super` so the standard cascade applies; the
      *   arrow-specific fields are read here ahead of any DOM construction.
      */
-    constructor(orientation: ScrollbarOrientation = "vertical", options?: ScrollbarOptions) {
+    constructor(orientation: AxisOrientation = "vertical", options?: ScrollbarOptions) {
         super(options);
 
         this._orientation = orientation;
@@ -629,7 +622,7 @@ class Scrollbar extends Component<ScrollbarOptions> {
      *
      * @returns `"vertical"` or `"horizontal"`.
      */
-    getOrientation(): ScrollbarOrientation {
+    getOrientation(): AxisOrientation {
         return this._orientation;
     }
 

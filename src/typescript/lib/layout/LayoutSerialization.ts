@@ -6,6 +6,7 @@ import { AbstractWindow } from "~/core/AbstractWindow.js";
 import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import type { AxisOrientation } from "~/primitive/Axis.js";
 
 /**
  * Captures and restores the **arrangement** of the recognised container
@@ -62,19 +63,19 @@ export interface PanelNode {
 }
 
 /**
- * A {@link Split} container: direction plus per-pane ratios and collapsed flags.
+ * A {@link Split} container: orientation plus per-pane ratios and collapsed flags.
  *
  * @category Layouts
  */
 export interface SplitNode {
-    kind:      "split";
-    direction: "horizontal" | "vertical";
+    kind:        "split";
+    orientation: AxisOrientation;
     /** Child arrangement nodes, in pane order. */
-    children:  LayoutNode[];
+    children:    LayoutNode[];
     /** One ratio per child, in the same order; sums to ~1.0. */
-    ratios:    number[];
+    ratios:      number[];
     /** One collapsed flag per child, in the same order. */
-    collapsed: boolean[];
+    collapsed:   boolean[];
 }
 
 /**
@@ -192,7 +193,7 @@ function nodeFor(component: Component): LayoutNode {
 
         return {
             kind:      "split",
-            direction: manager.getDirection() === "vertical" ? "vertical" : "horizontal",
+            orientation: manager.getOrientation() === "vertical" ? "vertical" : "horizontal",
             children,
             ratios:    manager.getPaneRatios(),
             collapsed: children.map((_, index) => manager.isPaneCollapsed(index)),
@@ -427,7 +428,7 @@ function materializeNode(node: LayoutNode, parked: Map<string, Component>, facto
  */
 function populateContainer(container: Component, node: SplitNode | TabNode, parked: Map<string, Component>, factory: LayoutFactory): void {
     if (node.kind === "split") {
-        const split = new Split({ direction: node.direction });
+        const split = new Split({ orientation: node.orientation });
         container.setLayoutManager(split);
 
         const placed: { ratio: number; collapsed: boolean }[] = [];

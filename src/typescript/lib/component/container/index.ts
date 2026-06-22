@@ -11,7 +11,7 @@ export type { MenuItemConfig, MenuConfig, MenuItemCSSVarPrefix, MenuItemOptions 
 export { MenuSeparator } from '~/component/container/MenuSeparator.js';
 export type { MenuSeparatorOptions } from '~/component/container/MenuSeparator.js';
 export { Scrollbar } from '~/component/container/Scrollbar.js';
-export type { ScrollbarListener, ScrollbarOrientation, ScrollbarOptions, ScrollbarEvent } from '~/component/container/Scrollbar.js';
+export type { ScrollbarListener, ScrollbarOptions, ScrollbarEvent } from '~/component/container/Scrollbar.js';
 export { StatusBar, STATUS_BAR_HEIGHT } from '~/component/container/StatusBar.js';
 export type { StatusBarOptions } from '~/component/container/StatusBar.js';
 export { VirtualScroller } from '~/component/container/VirtualScroller.js';

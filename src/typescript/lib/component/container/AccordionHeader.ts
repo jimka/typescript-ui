@@ -8,6 +8,7 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { AnchorType } from "~/layout/AnchorType.js";
 import { Insets } from "~/primitive/Insets.js";
 import { callable } from "~/core/Callable.js";
+import type { AxisEnd } from "~/primitive/Axis.js";
 
 /**
  * Left padding of the header row, in pixels. Reproduces the 8px gap the former
@@ -47,8 +48,8 @@ const COMPACT_CELL_SPACING:  number = 2;
 export interface AccordionHeaderOptions extends ComponentOptions {
     /** Initial expanded state of the chevron indicator. */
     expanded?:    boolean;
-    /** Which end of the header the chevron sits at. Defaults to `"right"`. */
-    chevronSide?: "left" | "right";
+    /** Which end of the header the chevron sits at. Defaults to `"end"`. */
+    chevronSide?: AxisEnd;
     /** Optional registry glyph name shown leading the title label. */
     glyph?:       string;
     /** Whether the header uses compact (tighter) padding. Defaults to `false`. */
@@ -64,12 +65,12 @@ export interface AccordionHeaderOptions extends ComponentOptions {
  * The header is a plain styled {@link Component} that lays its children out with
  * an {@link HBox} row, left-to-right:
  *
- * 1. the {@link AccordionIndicator} chevron — **only** when `chevronSide` is `"left"`;
+ * 1. the {@link AccordionIndicator} chevron — **only** when `chevronSide` is `"start"`;
  * 2. a `chromeless` title {@link Button} (the section label, the clickable toggle
  *    target and the focusable element), given a flex `weight` so it spans the
  *    whole clickable region while its label stays left-anchored;
  * 3. the tool group container (an `HBox` row of per-section / re-parented tools);
- * 4. the chevron — **only** when `chevronSide` is `"right"` (the default), so the
+ * 4. the chevron — **only** when `chevronSide` is `"end"` (the default), so the
  *    chevron sits outermost and tools sit inboard of it.
  *
  * Because the tools are *siblings* of the title button rather than descendants,
@@ -84,7 +85,7 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
     declare private _title:     Button;
     declare private _toolGroup: Component;
     private _tools: Component[] = [];
-    private _chevronSide: "left" | "right" = "right";
+    private _chevronSide: AxisEnd = "end";
 
     /**
      * @param label - Text displayed in the header's title button.
@@ -118,7 +119,7 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
         this.addComponent(this._title, titleConstraints);
         this.addComponent(this._toolGroup);
 
-        this._chevronSide = options?.chevronSide ?? "right";
+        this._chevronSide = options?.chevronSide ?? "end";
         this.placeIndicator();
 
         this.setExpanded(options?.expanded ?? false);
@@ -152,8 +153,8 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
     }
 
     /**
-     * Inserts the chevron cell at the head (when `chevronSide` is `"left"`) or
-     * the tail (when `"right"`) of the HBox row, removing it from its current
+     * Inserts the chevron cell at the head (when `chevronSide` is `"start"`) or
+     * the tail (when `"end"`) of the HBox row, removing it from its current
      * slot first so repeated calls re-position rather than duplicate.
      */
     private placeIndicator(): void {
@@ -161,7 +162,7 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
             this.removeComponent(this._indicator);
         }
 
-        if (this._chevronSide === "left") {
+        if (this._chevronSide === "start") {
             this.insertComponent(this._indicator, 0);
         } else {
             this.addComponent(this._indicator);
@@ -206,11 +207,11 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
     /**
      * Moves the chevron to the given end of the header and re-runs layout.
      *
-     * @param side - `"left"` or `"right"`.
+     * @param side - `"start"` or `"end"`.
      *
      * @returns This header, for method chaining.
      */
-    setChevronSide(side: "left" | "right"): this {
+    setChevronSide(side: AxisEnd): this {
         if (this._chevronSide === side) {
             return this;
         }
@@ -225,9 +226,9 @@ class AccordionHeader extends Component<AccordionHeaderOptions> {
     /**
      * Returns which end the chevron currently sits at.
      *
-     * @returns `"left"` or `"right"`.
+     * @returns `"start"` or `"end"`.
      */
-    getChevronSide(): "left" | "right" {
+    getChevronSide(): AxisEnd {
         return this._chevronSide;
     }
 

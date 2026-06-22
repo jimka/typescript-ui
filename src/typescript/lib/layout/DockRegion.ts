@@ -347,7 +347,7 @@ export class DockRegion {
         // stack already occupies that boundary slot inside the region.
         const regionLm = this._region.getLayoutManager();
 
-        if (regionLm instanceof Split && String(regionLm.getDirection()) === axis) {
+        if (regionLm instanceof Split && String(regionLm.getOrientation()) === axis) {
             if (stack.getParentComponent() !== this._region) {
                 return false;
             }
@@ -371,7 +371,7 @@ export class DockRegion {
 
         const containerLm = container.getLayoutManager();
 
-        if (!(containerLm instanceof Split && String(containerLm.getDirection()) === axis)) {
+        if (!(containerLm instanceof Split && String(containerLm.getOrientation()) === axis)) {
             return false;
         }
 
@@ -421,7 +421,7 @@ export class DockRegion {
         // The region is itself a same-axis Split → extend it directly.
         const lm = this._region.getLayoutManager();
 
-        if (lm instanceof Split && String(lm.getDirection()) === axis) {
+        if (lm instanceof Split && String(lm.getOrientation()) === axis) {
             this._region.moveComponent(stack, leading ? 0 : this._region.getComponents().length);
 
             return;
@@ -444,7 +444,7 @@ export class DockRegion {
 
         // Container is already a same-axis Split → insert the stack adjacent to
         // the unit, keeping same-axis drops flat instead of nesting.
-        if (containerLm instanceof Split && String(containerLm.getDirection()) === axis) {
+        if (containerLm instanceof Split && String(containerLm.getOrientation()) === axis) {
             container.moveComponent(stack, leading ? unitIndex : unitIndex + 1);
 
             return;
@@ -452,7 +452,7 @@ export class DockRegion {
 
         // Otherwise wrap the unit in a fresh same-axis Split (a perpendicular
         // drop therefore nests by one level, as intended).
-        const split = new Container({ layoutManager: new Split({ direction: axis }) });
+        const split = new Container({ layoutManager: new Split({ orientation: axis }) });
 
         container.moveComponent(split, unitIndex);
 
