@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import type { Edge } from "~/primitive/Edge.js";
 import { Position } from "~/primitive/Position.js";
 import { callable } from "~/core/Callable.js";
 import { LayerManager } from "~/core/LayerManager.js";
@@ -12,7 +13,7 @@ import { DOM } from "~/core/DOM.js";
  *
  * @category Layouts
  */
-export type DropZone = "top" | "bottom" | "left" | "right" | "center";
+export type DropZone = Edge | "center";
 
 /**
  * Fraction of a region's main/cross extent that counts as an edge band — a

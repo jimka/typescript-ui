@@ -6,6 +6,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Glyph } from "~/component/display/Glyph.js";
+import type { HorizontalSide } from "~/primitive/Edge.js";
 import { callable } from "~/core/Callable.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
 
@@ -95,7 +96,7 @@ export interface ScrollbarOptions extends ComponentOptions {
  * Direction for a `ScrollArrowButton`. `"up"` / `"down"` go on the ends
  * of a vertical scrollbar; `"left"` / `"right"` on a horizontal one.
  */
-type ArrowDirection = "up" | "down" | "left" | "right";
+type ArrowDirection = HorizontalSide | "up" | "down";
 
 /**
  * A press-and-hold arrow button rendered at one end of a {@link Scrollbar}'s
