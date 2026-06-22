@@ -14,7 +14,8 @@ export type AxisOrientation = "horizontal" | "vertical";
 
 /**
  * Positions a content block along an axis — the "align" concept. Shared by the
- * single-line box layouts, the wrapping flow layouts, and the {@link Tab} strip.
+ * single-line box layouts, the wrapping flow layouts, and the
+ * [`Tab`](/api/layout/classes/Tab) strip.
  *
  * - `"start"` — the block hugs the leading edge; the slack sits at the trailing
  *   edge. This is the do-nothing identity.
@@ -24,7 +25,7 @@ export type AxisOrientation = "horizontal" | "vertical";
  *
  * @remarks `"start"` is the shared identity value with {@link AxisSpread}, so the
  * union `AxisPosition | AxisSpread` collapses to the five-value
- * {@link BoxJustify} set.
+ * [`BoxJustify`](/api/layout/type-aliases/BoxJustify) set.
  *
  * @category Util
  */
@@ -33,8 +34,8 @@ export type AxisPosition = "start" | "center" | "end";
 /**
  * One of the two ends of an axis — an {@link AxisPosition} that isn't the
  * centre. Names the leading or trailing edge along the axis, used where a single
- * element snaps to one end (the {@link Tab} strip's alignment, a tool bar's
- * overflow trigger, an accordion header's chevron).
+ * element snaps to one end (the [`Tab`](/api/layout/classes/Tab) strip's
+ * alignment, a tool bar's overflow trigger, an accordion header's chevron).
  *
  * - `"start"` — the leading edge.
  * - `"end"` — the trailing edge.
@@ -57,7 +58,7 @@ export type AxisEnd = Exclude<AxisPosition, "center">;
  *
  * @remarks `"start"` is the shared identity value with {@link AxisPosition}, so
  * the union `AxisPosition | AxisSpread` collapses to the five-value
- * {@link BoxJustify} set.
+ * [`BoxJustify`](/api/layout/type-aliases/BoxJustify) set.
  *
  * @category Util
  */
