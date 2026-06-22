@@ -15,6 +15,9 @@ export { MemoryStore } from '~/data/MemoryStore.js';
 export type { MemoryStoreOptions } from '~/data/MemoryStore.js';
 export { AjaxStore } from '~/data/AjaxStore.js';
 export type { AjaxStoreOptions } from '~/data/AjaxStore.js';
+export { TreeStore } from '~/data/TreeStore.js';
+export type { TreeStoreOptions, TreeStoreEvent, TreeExpandEvent, TreeCollapseEvent, TreeAppendEvent, TreeRemoveEvent } from '~/data/TreeStore.js';
+export { TreeNode } from '~/data/TreeNode.js';
 export type { FilterDescriptor } from '~/data/FilterDescriptor.js';
 
 export { Proxy } from '~/data/proxy/Proxy.js';
