@@ -141,7 +141,7 @@ export class DockRegion {
     }
 
     /**
-     * The {@link AbstractWindow} this region lives in, or `null` when the region
+     * The [`AbstractWindow`](/api/overlay/classes/AbstractWindow) this region lives in, or `null` when the region
      * sits directly in the document. Walks the region's ancestor chain.
      *
      * @returns The owning window, or `null`.

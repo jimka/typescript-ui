@@ -707,7 +707,7 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Flags this strip to close its host {@link AbstractWindow} once it empties
+     * Flags this strip to close its host [`AbstractWindow`](/api/overlay/classes/AbstractWindow) once it empties
      * (its last tab is dragged out or closed). Set by a host window that builds a
      * `Tab` as its own layout manager — the same flag the auto-created tear-off
      * strip carries — so `hostWindow`/`closeHostWindowIfEmpty` resolve and
@@ -789,7 +789,7 @@ class Tab extends LayoutManager {
      * forwarding to {@link TabBar.installMoveTrigger}. A press on the bar's blank
      * area (not on a tab, a tool, or a scroll arrow) invokes `onEmptyPress`; an
      * optional `onEmptyDoubleClick` fires on a double-click of the same area. A
-     * host {@link AbstractWindow} uses these to move and maximize from the bar.
+     * host [`AbstractWindow`](/api/overlay/classes/AbstractWindow) uses these to move and maximize from the bar.
      * Mirrors the {@link Tab.addTool} forwarding idiom.
      *
      * @param onEmptyPress - Callback invoked with the originating `mousedown`
@@ -1593,7 +1593,7 @@ class Tab extends LayoutManager {
     /**
      * Returns the display label of the currently active tab, or `null` when the
      * strip is empty. A read-only accessor over the bar's active cell, used by a
-     * host {@link AbstractWindow} to derive its title from the active tab.
+     * host [`AbstractWindow`](/api/overlay/classes/AbstractWindow) to derive its title from the active tab.
      *
      * @returns The active tab's label, or `null` when there is no active tab.
      */
@@ -1697,7 +1697,7 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Tears a tab off the strip into a floating {@link Window} hosting its live
+     * Tears a tab off the strip into a floating [`Window`](/api/overlay/classes/Window) hosting its live
      * content, opened at the release point. The content is re-parented with
      * [`moveComponent`](/api/core/classes/Component#movecomponent) — not closed —
      * so its state survives, and the now-empty strip cell is removed without
@@ -1758,7 +1758,7 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * Populates a headerless {@link TabWindow} with `content` as its single tab
+     * Populates a headerless [`TabWindow`](/api/overlay/classes/TabWindow) with `content` as its single tab
      * and shows it — the `"strip"` tear-off mode. The `TabWindow` *is* the strip
      * (its interior is a {@link Tab}), so there is no inner nesting; it also owns
      * the close-when-empty wiring, so the float disappears once its tab leaves.
@@ -1772,7 +1772,7 @@ class Tab extends LayoutManager {
     }
 
     /**
-     * The {@link Window} this strip lives in, but only for the auto-created
+     * The [`Window`](/api/overlay/classes/Window) this strip lives in, but only for the auto-created
      * one-tab strip a `"strip"`-mode tear-off builds (which sets
      * `_closeHostWindowWhenEmpty`). A general strip that merely sits inside a
      * window returns `null`, so the host-window helpers are cheap no-ops for it.
