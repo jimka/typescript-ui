@@ -462,8 +462,17 @@ class MiscPanel extends Panel {
                 let specTable = new Table(specStore, spec);
                 specTable.setExportMenuEnabled(true);
 
+                // Demo the store's aggregation + grouping API: average/max over
+                // the numeric Score column, plus per-group counts bucketed by the
+                // Active flag. getGroups() keys are the String() of each value.
+                specStore.setGroupField('Active');
+
+                const groupCounts = [...specStore.getGroups()]
+                    .map(([key, records]) => `${key === 'true' ? 'active' : 'inactive'} ${records.length}`)
+                    .join(', ');
+
                 const statusBar = new StatusBar({
-                    defaultMessage: `${specStore.getCount()} rows`,
+                    defaultMessage: `${specStore.getCount()} rows · avg Score ${specStore.average('Score').toFixed(1)} · max ${specStore.max('Score')} · ${groupCounts}`,
                 });
 
                 const wrapper = Panel({

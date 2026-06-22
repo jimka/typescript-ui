@@ -5,6 +5,7 @@ import { ModelRecord } from '~/data/ModelRecord.js';
 import { Proxy, ReadParams } from '~/data/proxy/Proxy.js';
 import { FilterDescriptor, matchesFilter } from '~/data/FilterDescriptor.js';
 import { StoreWorkerClient } from '~/data/StoreWorkerClient.js';
+import { compareValues } from '~/data/compareValues.js';
 import { ListenerBag } from '~/core/ListenerBag.js';
 
 /**
@@ -26,7 +27,7 @@ export type StoreListener<T = any> = (payload: T) => void;
  *
  * @category Data
  */
-export type StoreEvent = 'load' | 'beforeload' | 'datachanged' | 'add' | 'remove' | 'clear' | 'beforesync' | 'sync' | 'exception' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked' | 'sortchanged' | 'filterchange' | 'update';
+export type StoreEvent = 'load' | 'beforeload' | 'datachanged' | 'add' | 'remove' | 'clear' | 'beforesync' | 'sync' | 'exception' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked' | 'sortchanged' | 'filterchange' | 'update' | 'groupchange';
 
 /**
  * The proxy operation that failed in a {@link StoreExceptionEvent}.
@@ -91,6 +92,16 @@ export interface StoreSyncEvent {
 }
 
 /**
+ * Payload for the `'groupchange'` event fired when {@link AbstractStore.setGroupField}
+ * changes the active group field.
+ *
+ * @category Data
+ */
+export interface StoreGroupChangeEvent {
+    groupField: string | null;
+}
+
+/**
  * Describes one column's contribution to a multi-column sort.
  *
  * @category Data
@@ -98,6 +109,13 @@ export interface StoreSyncEvent {
 export interface SortDescriptor {
     field: string;
     dir  : 'asc' | 'desc';
+    /**
+     * Optional custom comparator returning the ascending-sense ordering of two
+     * records. Main-thread only: a function cannot cross the structured-clone
+     * boundary, so a sorter carrying a `sorterFn` forces {@link AbstractStore}'s
+     * in-process sort path even for datasets above the worker threshold.
+     */
+    sorterFn?: (a: ModelRecord, b: ModelRecord) => number;
 }
 
 /**
@@ -118,6 +136,7 @@ export interface AbstractStoreOptions {
     remoteFilter?: boolean;
     autoLoad?:    boolean;
     syncErrorPolicy?: 'stop' | 'continue';
+    groupField?:  string;
     listeners?:   Partial<Record<StoreEvent, StoreListener>>;
 }
 
@@ -145,6 +164,15 @@ export abstract class AbstractStore {
     private _activeFilters: FilterDescriptor[] = [];
     private _activeSorters: SortDescriptor[] = [];
     private _listeners: ListenerBag<StoreEvent> = new ListenerBag<StoreEvent>();
+
+    // id → record index over `_allRecords`, rebuilt by `rebuildIdIndex()` on
+    // every `applyView()` so `getById()` is O(1). Stays empty (so getById returns
+    // undefined) when the model has no primary key.
+    private _idIndex: Map<any, ModelRecord> = new Map();
+
+    // Active single-level group field, or null when grouping is off. Read by
+    // `getGroupString()` / `getGroups()`; set via `setGroupField()`.
+    private _groupField: string | null = null;
 
     // Worker-offload state. Each store gets a unique id so the shared worker can
     // keep snapshots from different stores apart. `snapshotDirty` flags whether
@@ -228,6 +256,10 @@ export abstract class AbstractStore {
 
         if (options.syncErrorPolicy !== undefined) {
             this._syncErrorPolicy = options.syncErrorPolicy;
+        }
+
+        if (options.groupField !== undefined) {
+            this.setGroupField(options.groupField);
         }
 
         if (options.autoLoad === true) {
@@ -552,6 +584,11 @@ export abstract class AbstractStore {
      * Returns the number of records in the current filtered view.
      *
      * @returns The count of visible records after filters are applied.
+     *
+     * @remarks This is the store's **count aggregate** — the number of rows the
+     * view exposes after filtering. There is no separate `count()` method;
+     * `getCount()` fills that role, consistent with {@link sum} / {@link average}
+     * / {@link min} / {@link max} operating over the same filtered view.
      */
     getCount(): number {
         return this._records.length;
@@ -574,13 +611,84 @@ export abstract class AbstractStore {
      * @param id - The primary key value to search for.
      *
      * @returns The matching ModelRecord, or undefined if not found or no primary key is defined.
+     *
+     * @remarks O(1): backed by an internal id→record index that is refreshed on
+     * every `applyView()`, so it tracks every mutation of the master list.
+     * Returns undefined when the model defines no primary key (the index stays
+     * empty).
      */
     getById(id: any): ModelRecord | undefined {
-        if (!this.model.getPrimaryKeyField()) {
-            return undefined;
+        return this._idIndex.get(id);
+    }
+
+    /**
+     * Returns the position of a record within the filtered view.
+     *
+     * @param record - The record to locate.
+     *
+     * @returns The zero-based index in the view, or -1 when the record is not
+     *   in the current view (filtered out or absent).
+     */
+    indexOf(record: ModelRecord): number {
+        return this._records.indexOf(record);
+    }
+
+    /**
+     * Returns an inclusive slice of the filtered view between two indices.
+     *
+     * @param start - The first index to include; clamped up to 0.
+     * @param end - The last index to include; clamped down to the final index.
+     *
+     * @returns A shallow-copy array of the records in `[start, end]`; empty when
+     *   the clamped range is empty.
+     */
+    getRange(start: number, end: number): ModelRecord[] {
+        const lo = Math.max(0, start);
+        const hi = Math.min(end, this._records.length - 1);
+
+        if (hi < lo) {
+            return [];
         }
 
-        return this._allRecords.find(r => r.getId() === id);
+        return this._records.slice(lo, hi + 1);
+    }
+
+    /**
+     * Returns the first record in the filtered view.
+     *
+     * @returns The record at view index 0, or undefined when the view is empty.
+     */
+    first(): ModelRecord | undefined {
+        return this._records[0];
+    }
+
+    /**
+     * Returns the last record in the filtered view.
+     *
+     * @returns The record at the final view index, or undefined when the view is empty.
+     */
+    last(): ModelRecord | undefined {
+        return this._records[this._records.length - 1];
+    }
+
+    /**
+     * Invokes a callback for each record in the filtered view, in view order.
+     *
+     * @param fn - The callback applied to each record and its view index.
+     */
+    each(fn: (record: ModelRecord, index: number) => void): void {
+        this._records.forEach((record, index) => fn(record, index));
+    }
+
+    /**
+     * Returns whether a record is present in the filtered view.
+     *
+     * @param record - The record to test for membership.
+     *
+     * @returns True when the record is in the current view.
+     */
+    contains(record: ModelRecord): boolean {
+        return this._records.includes(record);
     }
 
     /**
@@ -627,6 +735,43 @@ export abstract class AbstractStore {
         });
 
         this._allRecords.push(...added);
+        this._snapshotDirty = true;
+        this.applyView();
+
+        this.emit('add', { records: added });
+        this.emit('datachanged', {});
+
+        return added;
+    }
+
+    /**
+     * Inserts one or more records (marked as new) into the master list at a
+     * clamped position, rebuilds the view, and fires 'add'/'datachanged'.
+     *
+     * @param index - The target position in the master list; clamped to
+     *   `[0, allRecords.length]`.
+     * @param data - A single plain object or an array of plain objects to insert.
+     *
+     * @returns An array of the newly created ModelRecord instances.
+     *
+     * @remarks
+     * Mirrors {@link add} but splices at `index` instead of appending. The
+     * insertion position is into the master list; the visible position in the
+     * view still depends on any active sort and filter.
+     */
+    insert(index: number, data: any | any[]): ModelRecord[] {
+        const items = Array.isArray(data) ? data : [data];
+        const added = items.map(item => {
+            const record = this.model.createRecord(item);
+
+            record.markAsNew();
+
+            return record;
+        });
+
+        const at = Math.max(0, Math.min(index, this._allRecords.length));
+
+        this._allRecords.splice(at, 0, ...added);
         this._snapshotDirty = true;
         this.applyView();
 
@@ -1180,6 +1325,212 @@ export abstract class AbstractStore {
         return this.applyFilterChange();
     }
 
+    // ── Aggregation ────────────────────────────────────────────────────────────
+
+    /**
+     * Collects the numeric, non-null values of a field across the filtered view.
+     *
+     * @param field - The field to read from each visible record.
+     *
+     * @returns The coerced numbers, skipping null/undefined and any value that
+     *   does not coerce to a finite number.
+     *
+     * @remarks Shared by {@link sum} / {@link average} / {@link min} / {@link max};
+     * `null`/`undefined` are skipped (never coerced to `0`) so an absent value
+     * never distorts the result.
+     */
+    private numericValues(field: string): number[] {
+        const values: number[] = [];
+
+        for (const record of this._records) {
+            const raw = record.get(field);
+
+            if (raw == null) {
+                continue;
+            }
+
+            const value = Number(raw);
+
+            if (!Number.isNaN(value)) {
+                values.push(value);
+            }
+        }
+
+        return values;
+    }
+
+    /**
+     * Sums a numeric field across the filtered view.
+     *
+     * @param field - The field to total.
+     *
+     * @returns The sum of the field's numeric values; `0` over an empty or
+     *   all-null view.
+     */
+    sum(field: string): number {
+        return this.numericValues(field).reduce((total, value) => total + value, 0);
+    }
+
+    /**
+     * Averages a numeric field across the filtered view.
+     *
+     * @param field - The field to average.
+     *
+     * @returns The mean of the field's numeric values; `0` over an empty or
+     *   all-null view.
+     */
+    average(field: string): number {
+        const values = this.numericValues(field);
+
+        if (values.length === 0) {
+            return 0;
+        }
+
+        return values.reduce((total, value) => total + value, 0) / values.length;
+    }
+
+    /**
+     * Returns the smallest value of a numeric field across the filtered view.
+     *
+     * @param field - The field to minimise.
+     *
+     * @returns The minimum numeric value, or undefined over an empty or
+     *   all-null view.
+     */
+    min(field: string): number | undefined {
+        const values = this.numericValues(field);
+
+        if (values.length === 0) {
+            return undefined;
+        }
+
+        return values.reduce((lowest, value) => value < lowest ? value : lowest);
+    }
+
+    /**
+     * Returns the largest value of a numeric field across the filtered view.
+     *
+     * @param field - The field to maximise.
+     *
+     * @returns The maximum numeric value, or undefined over an empty or
+     *   all-null view.
+     */
+    max(field: string): number | undefined {
+        const values = this.numericValues(field);
+
+        if (values.length === 0) {
+            return undefined;
+        }
+
+        return values.reduce((highest, value) => value > highest ? value : highest);
+    }
+
+    /**
+     * Collects the distinct values of a field across the filtered view, in
+     * first-encounter (view) order.
+     *
+     * @param field - The field to collect distinct values from.
+     *
+     * @returns An array of unique values (by strict `===` identity), preserving
+     *   the order in which they first appear in the view.
+     *
+     * @remarks The type-agnostic companion to the numeric aggregates: useful for
+     * building a distinct-value filter list. Values are de-duplicated by strict
+     * equality, so distinct object references are treated as distinct values.
+     */
+    collect(field: string): any[] {
+        const seen = new Set<any>();
+        const result: any[] = [];
+
+        for (const record of this._records) {
+            const value = record.get(field);
+
+            if (!seen.has(value)) {
+                seen.add(value);
+                result.push(value);
+            }
+        }
+
+        return result;
+    }
+
+    // ── Grouping ───────────────────────────────────────────────────────────────
+
+    /**
+     * Sets the single-level group field, firing 'groupchange' only on a real change.
+     *
+     * @param field - The field to group by, or null to disable grouping.
+     *
+     * @returns This store, for method chaining.
+     *
+     * @remarks
+     * Grouping is a pure read over the existing view ({@link getGroups}), so
+     * changing the group field does **not** rebuild the view or fire
+     * `'datachanged'`; it fires only `'groupchange'` ({@link StoreGroupChangeEvent}).
+     */
+    setGroupField(field: string | null): this {
+        if (this._groupField === field) {
+            return this;
+        }
+
+        this._groupField = field;
+        this.emit('groupchange', { groupField: field });
+
+        return this;
+    }
+
+    /**
+     * Returns the active group field, or null when grouping is disabled.
+     *
+     * @returns The field set via {@link setGroupField}, or null.
+     */
+    getGroupField(): string | null {
+        return this._groupField;
+    }
+
+    /**
+     * Returns the group-bucket key for a record under the active group field.
+     *
+     * @param record - The record to derive a group key for.
+     *
+     * @returns `String(record.get(groupField))`, or `''` when no group field is
+     *   set or the record's value is null/undefined.
+     */
+    getGroupString(record: ModelRecord): string {
+        if (this._groupField == null) {
+            return '';
+        }
+
+        const value = record.get(this._groupField);
+
+        return value == null ? '' : String(value);
+    }
+
+    /**
+     * Buckets the filtered view by the active group field.
+     *
+     * @returns A `Map` from group key ({@link getGroupString}) to the records in
+     *   that group. Groups appear in first-encounter order, and records within a
+     *   group keep view order. When no group field is set, every record falls
+     *   under the single `''` key.
+     */
+    getGroups(): Map<string, ModelRecord[]> {
+        const groups = new Map<string, ModelRecord[]>();
+
+        for (const record of this._records) {
+            const key = this.getGroupString(record);
+            const bucket = groups.get(key);
+
+            if (bucket) {
+                bucket.push(record);
+            } else {
+                groups.set(key, [record]);
+            }
+        }
+
+        return groups;
+    }
+
     // ── Events ───────────────────────────────────────────────────────────────
 
     /**
@@ -1237,7 +1588,9 @@ export abstract class AbstractStore {
      * the current implementation runs synchronously and resolves immediately.
      */
     protected applyView(): Promise<void> {
-        if (this._allRecords.length >= WORKER_THRESHOLD && StoreWorkerClient.isAvailable()) {
+        this.rebuildIdIndex();
+
+        if (this._allRecords.length >= WORKER_THRESHOLD && StoreWorkerClient.isAvailable() && !this.hasCustomSorter()) {
             return this.applyViewOnWorker();
         }
 
@@ -1249,26 +1602,11 @@ export abstract class AbstractStore {
 
         if (this._activeSorters.length > 0) {
             view.sort((a, b) => {
-                for (const { field, dir } of this._activeSorters) {
-                    const av = a.get(field);
-                    const bv = b.get(field);
-
-                    if (av == null && bv == null) {
-                        continue;
-                    }
-
-                    if (av == null) {
-                        return 1;
-                    }
-
-                    if (bv == null) {
-                        return -1;
-                    }
-
-                    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+                for (const sorter of this._activeSorters) {
+                    const cmp = this.compareBySorter(a, b, sorter);
 
                     if (cmp !== 0) {
-                        return dir === 'asc' ? cmp : -cmp;
+                        return cmp;
                     }
                 }
 
@@ -1279,6 +1617,68 @@ export abstract class AbstractStore {
         this._records = view;
 
         return Promise.resolve();
+    }
+
+    /**
+     * Compares two records under one sorter, applying its direction. A sorter
+     * with a `sorterFn` delegates to it; otherwise the shared, type-aware
+     * {@link compareValues} runs against the field values.
+     *
+     * @param a - The left record.
+     * @param b - The right record.
+     * @param sorter - The sorter whose `field`/`dir`/`sorterFn` drive the compare.
+     *
+     * @returns The final ordering: negative if `a` precedes `b`, positive if it
+     *   follows, `0` if equal under this sorter.
+     *
+     * @remarks
+     * Nulls sort last regardless of direction — when either field value is
+     * null/undefined, the (un-negated) {@link compareValues} result is returned
+     * so direction applies only to a non-null comparison, matching the worker's
+     * `sortIndices`.
+     */
+    private compareBySorter(a: ModelRecord, b: ModelRecord, sorter: SortDescriptor): number {
+        if (sorter.sorterFn) {
+            const cmp = sorter.sorterFn(a, b);
+
+            return sorter.dir === 'asc' ? cmp : -cmp;
+        }
+
+        const av  = a.get(sorter.field);
+        const bv  = b.get(sorter.field);
+        const cmp = compareValues(av, bv, this.model.getField(sorter.field)?.getType());
+
+        if (av == null || bv == null) {
+            return cmp;
+        }
+
+        return sorter.dir === 'asc' ? cmp : -cmp;
+    }
+
+    /**
+     * Reports whether any active sorter carries a custom `sorterFn`.
+     *
+     * @returns True when at least one sorter has a `sorterFn`, which forces the
+     *   in-process sort path (a function cannot cross the worker boundary).
+     */
+    private hasCustomSorter(): boolean {
+        return this._activeSorters.some(sorter => sorter.sorterFn !== undefined);
+    }
+
+    /**
+     * Rebuilds the id→record index from the master list so {@link getById} is
+     * O(1). The index stays empty when the model defines no primary key.
+     */
+    private rebuildIdIndex(): void {
+        this._idIndex.clear();
+
+        if (!this.model.getPrimaryKeyField()) {
+            return;
+        }
+
+        for (const record of this._allRecords) {
+            this._idIndex.set(record.getId(), record);
+        }
     }
 
     /**
@@ -1310,7 +1710,7 @@ export abstract class AbstractStore {
             .then(() => StoreWorkerClient.sortFilter(
                 this._storeId,
                 primary
-                    ? { field: primary.field, direction: primary.dir }
+                    ? { field: primary.field, direction: primary.dir, fieldType: this.model.getField(primary.field)?.getType() }
                     : undefined,
                 this._activeFilters.length > 0
                     ? (this._activeFilters.length === 1

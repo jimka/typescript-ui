@@ -8,6 +8,8 @@
 // them back to ModelRecord instances itself.
 
 import { FilterDescriptor, matchesFilter } from "~/data/FilterDescriptor.js";
+import { compareValues } from "~/data/compareValues.js";
+import type { FieldType } from "~/data/Field.js";
 
 type Direction = "asc" | "desc";
 
@@ -15,25 +17,28 @@ type StoreSnapshot = Array<Record<string, any>>;
 
 type Request =
     | { type: "snapshot";   storeId: string; records: StoreSnapshot;            requestId: number }
-    | { type: "sort";       storeId: string; field: string; direction: Direction; requestId: number }
+    | { type: "sort";       storeId: string; field: string; direction: Direction; fieldType?: FieldType; requestId: number }
     | { type: "filter";     storeId: string; descriptor: FilterDescriptor;       requestId: number }
-    | { type: "sortFilter"; storeId: string; sort?: { field: string; direction: Direction };
+    | { type: "sortFilter"; storeId: string; sort?: { field: string; direction: Direction; fieldType?: FieldType };
                             filter?: FilterDescriptor;                           requestId: number };
 
 type Response = { requestId: number; indices?: number[]; error?: string };
 
 const snapshots: Map<string, StoreSnapshot> = new Map();
 
-function sortIndices(records: StoreSnapshot, indices: number[], field: string, direction: Direction): void {
+function sortIndices(records: StoreSnapshot, indices: number[], field: string, direction: Direction, fieldType?: FieldType): void {
     indices.sort((ai, bi) => {
         const av = records[ai] ? records[ai][field] : undefined;
         const bv = records[bi] ? records[bi][field] : undefined;
 
-        if (av == null && bv == null) return 0;
-        if (av == null) return 1;
-        if (bv == null) return -1;
+        const cmp = compareValues(av, bv, fieldType);
 
-        const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+        // Nulls sort last regardless of direction: leave a null-involving result
+        // un-negated, applying direction only to a non-null comparison. This
+        // mirrors the main-thread comparator in AbstractStore.applyView().
+        if (av == null || bv == null) {
+            return cmp;
+        }
 
         return direction === "asc" ? cmp : -cmp;
     });
@@ -67,9 +72,9 @@ self.onmessage = (e: MessageEvent<Request>) => {
 
         if (msg.type === "sort" || (msg.type === "sortFilter" && msg.sort)) {
             const sortSpec = msg.type === "sort"
-                ? { field: msg.field, direction: msg.direction }
+                ? { field: msg.field, direction: msg.direction, fieldType: msg.fieldType }
                 : msg.sort!;
-            sortIndices(records, indices, sortSpec.field, sortSpec.direction);
+            sortIndices(records, indices, sortSpec.field, sortSpec.direction, sortSpec.fieldType);
         }
 
         (self as any).postMessage({ requestId: msg.requestId, indices } as Response);

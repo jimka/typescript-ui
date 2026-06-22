@@ -130,6 +130,31 @@ store.sort([]);             // clear all sorters (also: store.clearSort())
 
 The legacy `getActiveSorter()` accessor still works (returns the primary sorter mapped to `{ property, direction }`) but is **deprecated** in favour of `getActiveSorters()`.
 
+### Locale-aware ordering and custom comparators
+
+Sorting is type-aware. String fields compare with `localeCompare`, so accented
+letters fall in their expected place (`'Ä'` sorts between `'a'` and `'Z'`, not
+after `'Z'` by code point); `date` / `time` / `datetime` fields compare by
+timestamp. `null` / `undefined` always sort **last**, regardless of direction.
+The same comparator runs whether the sort executes in-process or on the
+[`StoreWorker`](/api/data/classes/Store), so a column's order is identical above
+and below the worker threshold.
+
+For ordering the built-in comparator can't express, give a [`SortDescriptor`](/api/data/interfaces/SortDescriptor)
+a `sorterFn`:
+
+```typescript
+store.sort([
+    { field: 'priority', dir: 'asc', sorterFn: (a, b) =>
+        RANK[a.get('priority')] - RANK[b.get('priority')] },
+]);
+```
+
+A `sorterFn` is a function, which cannot cross the worker's structured-clone
+boundary, so any active custom sorter forces the in-process sort path even for
+large datasets — correctness over offload. Keep `sorterFn` for the cases the
+type-aware default genuinely can't cover.
+
 ## Add and remove records
 
 ```typescript
@@ -141,6 +166,76 @@ store.remove(newPerson);
 ```
 
 `store.add` returns the array of newly-created records (so it works with bulk inserts too).
+
+## Collection API
+
+Beyond `getAt` / `getCount` / `find`, the store exposes a thin collection
+surface over the **filtered view** (what `getRecords()` returns), plus an O(1)
+primary-key lookup:
+
+```typescript
+store.getById(42);          // O(1) lookup by primary key (undefined if absent / no key)
+store.indexOf(record);      // position in the view, or -1
+store.getRange(0, 9);       // inclusive slice [0, 9], clamped to the view
+store.first();              // first view record, or undefined
+store.last();               // last view record, or undefined
+store.contains(record);     // membership in the view
+store.each((r, i) => …);    // iterate the view in order
+
+store.insert(0, { id: 3, name: 'Carol' });   // like add(), but splice at an index
+```
+
+`getById` is backed by an id→record index that the store rebuilds on every view
+recompute, so it stays correct after `load` / `add` / `insert` / `remove` without
+a linear scan. It returns `undefined` when the model defines no primary key.
+
+## Aggregation
+
+`sum` / `average` / `min` / `max` / `collect` reduce over the **filtered view**,
+so they always agree with the rows on screen — apply a filter and the totals
+follow:
+
+```typescript
+store.sum('amount');        // total of the numeric field
+store.average('amount');    // mean (0 over an empty / all-null view)
+store.min('amount');        // smallest value, or undefined when none
+store.max('amount');        // largest value, or undefined when none
+store.collect('category');  // distinct values, in first-encounter (view) order
+```
+
+The numeric aggregates coerce each value with `Number(...)` and **skip**
+`null` / `undefined` and anything that isn't a finite number, so an absent cell
+never distorts a sum or average. `collect` is the type-agnostic companion —
+handy for building a distinct-value filter list. There is no separate `count()`
+method: `getCount()` already returns the view's row count, which is the count
+aggregate.
+
+For an **unfiltered** total, reduce `getAll()` yourself; the aggregates above
+intentionally track the view.
+
+## Grouping
+
+Set a single group field to bucket the view by a column's value:
+
+```typescript
+store.setGroupField('department');   // fires 'groupchange'
+store.getGroupField();               // 'department'
+
+const groups = store.getGroups();    // Map<string, ModelRecord[]>
+for (const [key, records] of groups) {
+    console.log(key, records.length);
+}
+
+store.getGroupString(record);        // the bucket key for one record
+```
+
+`getGroups()` buckets the filtered view into a `Map`, preserving order: groups
+appear in first-encounter order and records keep their view order within each
+group. Keys are the `String()` form of the group value, with `''` standing in
+for a null / unset value. Grouping is a pure read over the existing view, so
+`setGroupField` fires only `'groupchange'` (once, on an actual change) and does
+**not** rebuild the view or fire `'datachanged'`. Grouping is intentionally one
+level deep.
 
 ## Server-side pagination
 
@@ -241,6 +336,7 @@ with all of its records carried on the `'exception'` event.
 | `update`            | `notifyRecordChanged(record)` reported an external edit |
 | `sortchanged`       | The active multi-column sort list changed (replaced or cleared) |
 | `filterchange`      | The active filter list changed (added or cleared) |
+| `groupchange`       | The active group field changed via `setGroupField` |
 | `beforesync` / `sync` | `sync()` starts / settles (the `'sync'` payload lists any failures) |
 | `pagechanged`       | Page or page size changes via the pagination API |
 | `pagechangeblocked` | Page navigation was blocked because the store has pending changes |
