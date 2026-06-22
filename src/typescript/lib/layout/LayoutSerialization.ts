@@ -68,14 +68,14 @@ export interface PanelNode {
  * @category Layouts
  */
 export interface SplitNode {
-    kind:      "split";
+    kind:        "split";
     orientation: AxisOrientation;
     /** Child arrangement nodes, in pane order. */
-    children:  LayoutNode[];
+    children:    LayoutNode[];
     /** One ratio per child, in the same order; sums to ~1.0. */
-    ratios:    number[];
+    ratios:      number[];
     /** One collapsed flag per child, in the same order. */
-    collapsed: boolean[];
+    collapsed:   boolean[];
 }
 
 /**

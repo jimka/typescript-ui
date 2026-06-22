@@ -16,11 +16,11 @@ const PANEL_IDS = ["alpha", "beta", "gamma"] as const;
 const SPLIT_LAYOUT: LayoutState = {
     version: 1,
     root:    {
-        kind:      "split",
-        direction: "horizontal",
-        children:  PANEL_IDS.map(id => ({ kind: "panel", panelId: id })),
-        ratios:    [0.25, 0.5, 0.25],
-        collapsed: [false, false, false],
+        kind:        "split",
+        orientation: "horizontal",
+        children:    PANEL_IDS.map(id => ({ kind: "panel", panelId: id })),
+        ratios:      [0.25, 0.5, 0.25],
+        collapsed:   [false, false, false],
     },
     windows: [],
 };
@@ -42,11 +42,11 @@ const TAB_LAYOUT: LayoutState = {
 const WINDOW_LAYOUT: LayoutState = {
     version: 1,
     root:    {
-        kind:      "split",
-        direction: "horizontal",
-        children:  [{ kind: "panel", panelId: "alpha" }, { kind: "panel", panelId: "beta" }],
-        ratios:    [0.5, 0.5],
-        collapsed: [false, false],
+        kind:        "split",
+        orientation: "horizontal",
+        children:    [{ kind: "panel", panelId: "alpha" }, { kind: "panel", panelId: "beta" }],
+        ratios:      [0.5, 0.5],
+        collapsed:   [false, false],
     },
     windows: [
         {
