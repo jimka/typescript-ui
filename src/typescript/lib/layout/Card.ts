@@ -24,7 +24,7 @@ export interface CardOptions extends LayoutManagerOptions {
  */
 class Card extends LayoutManager {
 
-    private _visibleComponentId: String | null = null;
+    private _visibleComponentId: string | null = null;
     private _currentVisible: Component | null = null;
 
     constructor(options?: CardOptions) {
@@ -56,7 +56,7 @@ class Card extends LayoutManager {
      *
      * @returns The visible component ID, or `null`.
      */
-    getVisibleComponentId(): String | null {
+    getVisibleComponentId(): string | null {
         return this._visibleComponentId;
     }
 
@@ -173,7 +173,7 @@ class Card extends LayoutManager {
      *
      * @param id - The ID of the child component to make visible.
      */
-    setVisibleComponentId(id: String): this {
+    setVisibleComponentId(id: string): this {
         if (this._visibleComponentId === id) {
             return this;
         }
