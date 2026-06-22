@@ -36,7 +36,7 @@ const COLLAPSE_CHEVRON: Record<string, CollapseDirection> = {
  * @category Layouts
  */
 export interface BorderOptions extends LayoutManagerOptions {
-    gap?: number;
+    spacing?: number;
 }
 
 /**
@@ -57,7 +57,7 @@ class Border extends LayoutManager {
     private _westComponent: Component | null = null;
     private _eastComponent: Component | null = null;
     private _centerComponent: Component | null = null;
-    private _gap: number = 5;
+    private _spacing: number = 5;
 
     // Per-region collapse state, keyed by placement. `_collapsed` and
     // `_collapsible` both default to false: collapsing is opt-in per region
@@ -98,7 +98,7 @@ class Border extends LayoutManager {
     }
 
     /**
-     * Applies a {@link BorderOptions} bag, dispatching the inter-region gap
+     * Applies a {@link BorderOptions} bag, dispatching the inter-region spacing
      * after the inherited LayoutManager defaults.
      *
      * @param options - The options bag carrying the values to apply.
@@ -106,8 +106,8 @@ class Border extends LayoutManager {
     protected applyOptions(options: BorderOptions): void {
         super.applyOptions(options);
 
-        if (options.gap !== undefined) {
-            this.setComponentGap(options.gap);
+        if (options.spacing !== undefined) {
+            this.setComponentSpacing(options.spacing);
         }
     }
 
@@ -189,21 +189,21 @@ class Border extends LayoutManager {
     }
 
     /**
-     * Returns the pixel gap between adjacent border regions.
+     * Returns the pixel spacing between adjacent border regions.
      *
-     * @returns The current gap in pixels.
+     * @returns The current spacing in pixels.
      */
-    getComponentGap() {
-        return this._gap;
+    getComponentSpacing() {
+        return this._spacing;
     }
 
     /**
-     * Sets the pixel gap between adjacent border regions.
+     * Sets the pixel spacing between adjacent border regions.
      *
-     * @param gap - Gap size in pixels.
+     * @param spacing - Spacing size in pixels.
      */
-    setComponentGap(gap: number) : this {
-        this._gap = gap;
+    setComponentSpacing(spacing: number) : this {
+        this._spacing = spacing;
 
         return this;
     }
@@ -786,7 +786,7 @@ class Border extends LayoutManager {
         for (const w of hContribs) {
             width += w;
         }
-        width += Math.max(0, hContribs.length - 1) * this._gap;
+        width += Math.max(0, hContribs.length - 1) * this._spacing;
 
         // For width we also need to ensure the height-region's own width is
         // honoured: the center column may need at least the wider of
@@ -801,7 +801,7 @@ class Border extends LayoutManager {
         for (const h of vContribs) {
             height += h;
         }
-        height += Math.max(0, vContribs.length - 1) * this._gap;
+        height += Math.max(0, vContribs.length - 1) * this._spacing;
 
         return { width, height };
     }
@@ -938,7 +938,7 @@ class Border extends LayoutManager {
             this.updateRegionGutter(Placement.NORTH, northX, northY, northWidth, middleY);
 
             if (west || center || east || south) {
-                middleY += this._gap;
+                middleY += this._spacing;
             }
         } else {
             middleY = 0;
@@ -955,7 +955,7 @@ class Border extends LayoutManager {
             let southX = containerInsets.getLeft();
             let southY = containerInsets.getTop() + height - southHeight;
 
-            middleHeight -= this._gap;
+            middleHeight -= this._spacing;
             middleHeight -= southHeight;
 
             // Full-size and bottom-anchored, clipped toward the bottom while
@@ -1040,7 +1040,7 @@ class Border extends LayoutManager {
             this.updateRegionGutter(Placement.WEST, westX, westY, westWidth, middleHeight);
 
             if (center) {
-                centerX += this._gap;
+                centerX += this._spacing;
             }
         } else {
             centerX = 0;
@@ -1049,7 +1049,7 @@ class Border extends LayoutManager {
         centerWidth = width - centerX;
 
         if (east) {
-            centerWidth -= this._gap;
+            centerWidth -= this._spacing;
             centerWidth -= eastPreferredWidth;
 
             let eastX = containerInsets.getLeft() + width - eastPreferredWidth;

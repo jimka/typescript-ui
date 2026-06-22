@@ -497,7 +497,7 @@ class Dialog extends Component implements DismissableLayer {
         this.setContain("strict");
 
         const layout = new BorderLayout();
-        layout.setComponentGap(0);
+        layout.setComponentSpacing(0);
         this.setLayoutManager(layout);
 
         this._titleBar = new DialogTitleBar(config.title, () => this.hide('close'));
