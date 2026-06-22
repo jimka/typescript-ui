@@ -324,6 +324,83 @@ boundary coarser: a batch either commits every record from its server response
 (positionally, in input order) or, on failure, leaves the **whole** batch pending
 with all of its records carried on the `'exception'` event.
 
+## TreeStore
+
+A [`TreeStore`](/api/data/classes/TreeStore) manages records arranged in a
+parent/child hierarchy. Each record names its parent's id through a configured
+`parentField`; roots carry `null` (an unresolved parent id is treated as a root
+too). The store keeps the inherited flat record set as the source of truth and
+layers a node index, a synthetic root, and a flattened "visible nodes" view on
+top — so it stays a drop-in for anything that consumes a plain `Store`, while
+also exposing structure to virtualized renderers.
+
+```typescript
+import { TreeStore } from '@jimka/typescript-ui/data';
+
+const store = new TreeStore({
+    model:       FileModel,
+    parentField: 'parentId',   // idField defaults to the model primary key
+});
+
+store.loadData([
+    { id: 1, parentId: null, name: 'src' },
+    { id: 2, parentId: 1,    name: 'data' },
+    { id: 3, parentId: null, name: 'docs' },
+]);
+
+store.getRootNode().getChildren();        // nodes for id 1 and 3 (depth 0)
+store.getNodeById(1)?.getChildren();      // node for id 2 (depth 1)
+```
+
+### Visible nodes and expansion
+
+[`getVisibleNodes`](/api/data/classes/TreeStore#getvisiblenodes) returns the
+depth-ordered, expansion-respecting list a virtual list renders. Expansion is
+keyed by record id, so a `load()` that re-creates the same ids preserves which
+nodes are open.
+
+```typescript
+await store.expand(store.getNodeById(1)!);    // fires 'expand'; node 2 now visible
+store.getVisibleNodes();                       // [1, 2, 3]
+store.collapse(store.getNodeById(1)!);         // fires 'collapse'; node 2 hidden again
+```
+
+[`toggle`](/api/data/classes/TreeStore#toggle),
+[`expandToDepth`](/api/data/classes/TreeStore#expandtodepth), and
+[`collapseAll`](/api/data/classes/TreeStore#collapseall) drive expansion in
+bulk; [`eachNode`](/api/data/classes/TreeStore#eachnode) walks the whole tree
+depth-first (the inherited `each` still iterates the flat record view).
+
+### Eager and lazy loading
+
+An **eager** tree hydrates the whole hierarchy from one payload — flat records
+as above, or nested `children` arrays when a `childrenKey` is configured (each
+embedded child's `parentField` is stamped from its enclosing node's id during
+ingest).
+
+A **lazy** tree loads a node's children on its first `expand()` through the
+proxy. The store issues one `read` whose `ReadParams.filters` carries an `eq`
+filter on `parentField === node.id` (the [remote-filter](/data/proxy) mechanism),
+appends the returned records, and marks the node loaded — concurrent expands of
+the same node are de-duplicated. Declare a lazy branch with a `hasChildrenField`
+so it renders a caret before its children exist:
+
+```typescript
+const store = new TreeStore({
+    model:            FileModel,
+    parentField:      'parentId',
+    hasChildrenField: 'hasKids',   // boolean: server-side children expected
+    proxy:            fileProxy,
+});
+```
+
+Leaf-ness resolves in priority order: an explicit `leafField`, then
+`hasChildrenField`, then the default "has no child records in the current set".
+
+> Server-side pagination is unsupported on a tree — the inherited pagination
+> methods operate on the flat set and would break the hierarchy. Trees load
+> eagerly or lazily-per-node instead.
+
 ## Events
 
 | Event | Fired when |
@@ -340,8 +417,13 @@ with all of its records carried on the `'exception'` event.
 | `beforesync` / `sync` | `sync()` starts / settles (the `'sync'` payload lists any failures) |
 | `pagechanged`       | Page or page size changes via the pagination API |
 | `pagechangeblocked` | Page navigation was blocked because the store has pending changes |
+| `expand` / `collapse` | A `TreeStore` node was expanded / collapsed |
+| `append`            | A `TreeStore` node's children were appended (lazy load or nested ingest) |
+| `removenode`        | A `TreeStore` subtree was removed |
 
-The full event surface is typed as [`StoreEvent`](/api/data/type-aliases/StoreEvent).
+The full event surface is typed as [`StoreEvent`](/api/data/type-aliases/StoreEvent);
+`TreeStore` adds the tree-specific names as [`TreeStoreEvent`](/api/data/type-aliases/TreeStoreEvent),
+subscribed via its typed [`onTree`](/api/data/classes/TreeStore#ontree).
 
 ## See also
 

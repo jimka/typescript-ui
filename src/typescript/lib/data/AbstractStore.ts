@@ -27,7 +27,7 @@ export type StoreListener<T = any> = (payload: T) => void;
  *
  * @category Data
  */
-export type StoreEvent = 'load' | 'beforeload' | 'datachanged' | 'add' | 'remove' | 'clear' | 'beforesync' | 'sync' | 'exception' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked' | 'sortchanged' | 'filterchange' | 'update' | 'groupchange';
+export type StoreEvent = 'load' | 'beforeload' | 'datachanged' | 'add' | 'remove' | 'clear' | 'beforesync' | 'sync' | 'exception' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked' | 'sortchanged' | 'filterchange' | 'update' | 'groupchange' | 'expand' | 'collapse' | 'append' | 'removenode';
 
 /**
  * The proxy operation that failed in a {@link StoreExceptionEvent}.
@@ -832,6 +832,24 @@ export abstract class AbstractStore {
         this.emit('datachanged', {});
 
         return this;
+    }
+
+    /**
+     * Appends already-committed records to the master list and rebuilds the
+     * view, without marking them new or firing `'add'`.
+     *
+     * @param records - The records to append; they keep their committed state.
+     *
+     * @remarks
+     * The lazy-load seam for {@link TreeStore}: children fetched on a node
+     * expand are server-backed (not pending inserts), so they bypass the
+     * new-record path of {@link add}. This is the only sanctioned way for a
+     * subclass to grow the master list with committed records.
+     */
+    protected appendRecords(records: ModelRecord[]): void {
+        this._allRecords.push(...records);
+        this._snapshotDirty = true;
+        this.applyView();
     }
 
     /**
