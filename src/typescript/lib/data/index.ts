@@ -7,6 +7,8 @@ export { Model } from '~/data/Model.js';
 export type { ModelOptions } from '~/data/Model.js';
 export { ModelRecord } from '~/data/ModelRecord.js';
 export type { FieldChange } from '~/data/ModelRecord.js';
+export { Association, HasManyAssociation, BelongsToAssociation } from '~/data/Association.js';
+export type { AssociationOptions, AssociationPersist } from '~/data/Association.js';
 export { AbstractStore } from '~/data/AbstractStore.js';
 export type { AbstractStoreOptions, StoreEvent, StoreListener, SortDescriptor, StoreOperation, StoreExceptionEvent, StoreClearEvent, StoreFilterChangeEvent, StoreUpdateEvent, StoreSyncEvent, StoreGroupChangeEvent } from '~/data/AbstractStore.js';
 export { Store } from '~/data/Store.js';
