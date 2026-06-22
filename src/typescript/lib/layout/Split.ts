@@ -17,12 +17,20 @@ import { DOM } from "~/core/DOM.js";
 const GUTTER_SIZE = 4;
 
 /**
+ * The orientation of a {@link Split}: `'horizontal'` lays panels side by side,
+ * `'vertical'` stacks them.
+ *
+ * @category Layouts
+ */
+export type SplitDirection = "horizontal" | "vertical";
+
+/**
  * Construction-time options for {@link Split}.
  *
  * @category Layouts
  */
 export interface SplitOptions extends LayoutManagerOptions {
-    direction?: string;
+    direction?: SplitDirection;
     /** Indices of panes to start collapsed (applied on first layout). */
     collapsedPanes?: number[];
 }
@@ -36,7 +44,7 @@ export interface SplitOptions extends LayoutManagerOptions {
  */
 class Split extends LayoutManager {
 
-    private _direction: String = "horizontal";
+    private _direction: SplitDirection = "horizontal";
     private _sizes: Map<Component, number> = new Map<Component, number>();
     private _gutters: Array<SplitGutter> = [];
 
@@ -67,21 +75,13 @@ class Split extends LayoutManager {
     // re-snapshot the current geometry and retarget without two loops fighting.
     private _collapseAnimation: (() => void) | null = null;
 
-    constructor(direction?: String | SplitOptions, options?: SplitOptions) {
+    constructor(options?: SplitOptions) {
         // LayoutManager's constructor takes no options; applied via applyOptions below.
         // eslint-disable-next-line local/forward-super-options
         super();
 
-        if (direction === undefined || typeof direction === 'string' || direction instanceof String) {
-            if (direction) {
-                this._direction = direction;
-            }
-
-            if (options) {
-                this.applyOptions(options);
-            }
-        } else {
-            this.applyOptions(direction);
+        if (options) {
+            this.applyOptions(options);
         }
     }
 
@@ -258,7 +258,7 @@ class Split extends LayoutManager {
      *
      * @returns `'horizontal'` or `'vertical'`.
      */
-    getDirection() {
+    getDirection(): SplitDirection {
         return this._direction;
     }
 
@@ -267,7 +267,7 @@ class Split extends LayoutManager {
      *
      * @param direction - `'horizontal'` for side-by-side panels, `'vertical'` for stacked panels.
      */
-    setDirection(direction: String) : this {
+    setDirection(direction: SplitDirection) : this {
         this._direction = direction;
 
         return this;
