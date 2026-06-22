@@ -78,6 +78,106 @@ describe('ModelRecord', () => {
         });
     });
 
+    describe('deep value equality for dirty-tracking', () => {
+        it('stays clean when an equal-but-new array is set', () => {
+            const r = makeRecord({ tags: ['a', 'b'] });
+            r.set('tags', ['a', 'b']);
+            expect(r.isDirty()).toBe(false);
+        });
+        it('stays clean when an equal-but-new plain object is set', () => {
+            const r = makeRecord({ meta: { x: 1, y: { z: 2 } } });
+            r.set('meta', { x: 1, y: { z: 2 } });
+            expect(r.isDirty()).toBe(false);
+        });
+        it('becomes dirty when a structurally-different array is set', () => {
+            const r = makeRecord({ tags: ['a', 'b'] });
+            r.set('tags', ['a', 'c']);
+            expect(r.isDirty()).toBe(true);
+        });
+        it('becomes dirty when a structurally-different object is set', () => {
+            const r = makeRecord({ meta: { x: 1 } });
+            r.set('meta', { x: 2 });
+            expect(r.isDirty()).toBe(true);
+        });
+        it('treats arrays of different length as unequal', () => {
+            const r = makeRecord({ tags: ['a', 'b'] });
+            r.set('tags', ['a', 'b', 'c']);
+            expect(r.isDirty()).toBe(true);
+        });
+        it('recurses into nested arrays', () => {
+            const r = makeRecord({ grid: [[1, 2], [3, 4]] });
+            r.set('grid', [[1, 2], [3, 4]]);
+            expect(r.isDirty()).toBe(false);
+            r.set('grid', [[1, 2], [3, 5]]);
+            expect(r.isDirty()).toBe(true);
+        });
+        it('treats objects with a missing or extra key as unequal', () => {
+            const missing = makeRecord({ meta: { x: 1, y: 2 } });
+            missing.set('meta', { x: 1 });
+            expect(missing.isDirty()).toBe(true);
+
+            const extra = makeRecord({ meta: { x: 1 } });
+            extra.set('meta', { x: 1, y: 2 });
+            expect(extra.isDirty()).toBe(true);
+        });
+        it('compares Date field values by time', () => {
+            const r = makeRecord({ when: new Date('2020-01-01') });
+            r.set('when', new Date('2020-01-01'));
+            expect(r.isDirty()).toBe(false);
+            r.set('when', new Date('2021-06-15'));
+            expect(r.isDirty()).toBe(true);
+        });
+        it('treats NaN as equal to NaN (no-op set does not dirty)', () => {
+            const r = makeRecord({ n: NaN });
+            r.set('n', NaN);
+            expect(r.isDirty()).toBe(false);
+        });
+        it('treats null and undefined as unequal, and null vs object as unequal', () => {
+            const fromNull = makeRecord({ v: null });
+            fromNull.set('v', undefined);
+            expect(fromNull.isDirty()).toBe(true);
+
+            const objToNull = makeRecord({ v: {} });
+            objToNull.set('v', null);
+            expect(objToNull.isDirty()).toBe(true);
+        });
+        it('compares class instances by reference, not structure', () => {
+            class Point {
+                constructor(public x: number) {}
+            }
+            const original = new Point(1);
+
+            // A distinct instance with identical fields is dirty (reference semantics).
+            const distinct = makeRecord({ p: original });
+            distinct.set('p', new Point(1));
+            expect(distinct.isDirty()).toBe(true);
+
+            // The same instance is equal via the identity fast path.
+            const same = makeRecord({ p: original });
+            same.set('p', original);
+            expect(same.isDirty()).toBe(false);
+        });
+        it('does not throw on a structure deeper than the equality cap', () => {
+            const deep = (): Record<string, any> => {
+                let node: Record<string, any> = { leaf: 1 };
+
+                for (let i = 0; i < 200; i++) {
+                    node = { child: node };
+                }
+
+                return node;
+            };
+            const r = makeRecord({ tree: deep() });
+
+            expect(() => r.set('tree', deep())).not.toThrow();
+        });
+        it('omits an equal-but-new array from getChanges', () => {
+            const r = makeRecord({ tags: ['a', 'b'] });
+            r.set('tags', ['a', 'b']);
+            expect(r.getChanges()).toEqual({});
+        });
+    });
+
     describe('getInternalId', () => {
         it('assigns a unique, monotonic id per record', () => {
             const a = makeRecord();

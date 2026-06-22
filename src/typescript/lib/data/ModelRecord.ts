@@ -8,6 +8,12 @@ import { applyRule } from '~/validation/Validator.js';
 // so a plain counter suffices (no UUID / collision concern across sessions).
 let nextInternalId = 1;
 
+// Recursion cap for deep value equality. Model field values are JSON-shaped and
+// acyclic in practice; this bound stops a pathologically deep or accidentally
+// cyclic structure from overflowing the stack. Beyond it we fall back to `===`
+// for that sub-comparison rather than tracking a visited-set on every set().
+const MAX_EQUALITY_DEPTH = 100;
+
 /**
  * A single field's before / after values, as returned by
  * {@link ModelRecord.getChanges} and {@link ModelRecord.getModified}.
@@ -94,12 +100,128 @@ export class ModelRecord {
         return this;
     }
 
+    /**
+     * Structural value equality used for dirty-tracking: primitives by SameValueZero,
+     * `Date` by time, arrays and plain objects deep, class instances by reference.
+     *
+     * @param a - The first value to compare.
+     * @param b - The second value to compare.
+     *
+     * @returns True when the two values are structurally equal for dirty-tracking purposes.
+     */
     private static isEqual(a: any, b: any): boolean {
+        return ModelRecord.isEqualAtDepth(a, b, 0);
+    }
+
+    /**
+     * Recursive core of {@link ModelRecord.isEqual}, carrying the depth budget.
+     *
+     * @param a - The first value to compare.
+     * @param b - The second value to compare.
+     * @param depth - The current recursion depth, capped by `MAX_EQUALITY_DEPTH`.
+     *
+     * @returns True when the two values are structurally equal at this depth.
+     */
+    private static isEqualAtDepth(a: any, b: any, depth: number): boolean {
+        if (a === b) {
+            return true;
+        }
+
+        if (a !== a && b !== b) {
+            return true;
+        }
+
+        if (a === null || a === undefined || b === null || b === undefined) {
+            return false;
+        }
+
         if (a instanceof Date && b instanceof Date) {
             return a.getTime() === b.getTime();
         }
 
-        return a === b;
+        if (depth >= MAX_EQUALITY_DEPTH) {
+            return a === b;
+        }
+
+        if (Array.isArray(a) || Array.isArray(b)) {
+            return Array.isArray(a) && Array.isArray(b) && ModelRecord.arraysEqual(a, b, depth);
+        }
+
+        if (ModelRecord.isPlainObject(a) && ModelRecord.isPlainObject(b)) {
+            return ModelRecord.plainObjectsEqual(a, b, depth);
+        }
+
+        return false;
+    }
+
+    /**
+     * Compares two arrays element-wise, recursing one level deeper per element.
+     *
+     * @param a - The first array.
+     * @param b - The second array.
+     * @param depth - The current recursion depth.
+     *
+     * @returns True when both arrays have equal length and structurally-equal elements.
+     */
+    private static arraysEqual(a: any[], b: any[], depth: number): boolean {
+        if (a.length !== b.length) {
+            return false;
+        }
+
+        for (let i = 0; i < a.length; i++) {
+            if (!ModelRecord.isEqualAtDepth(a[i], b[i], depth + 1)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Compares two plain objects by own-enumerable keys, recursing one level deeper per key.
+     *
+     * @param a - The first plain object.
+     * @param b - The second plain object.
+     * @param depth - The current recursion depth.
+     *
+     * @returns True when both objects share the same key set and structurally-equal values.
+     */
+    private static plainObjectsEqual(a: Record<string, any>, b: Record<string, any>, depth: number): boolean {
+        const aKeys = Object.keys(a);
+        const bKeys = Object.keys(b);
+
+        if (aKeys.length !== bKeys.length) {
+            return false;
+        }
+
+        for (const key of aKeys) {
+            if (!Object.prototype.hasOwnProperty.call(b, key)) {
+                return false;
+            }
+
+            if (!ModelRecord.isEqualAtDepth(a[key], b[key], depth + 1)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Reports whether a value is a plain object (prototype is `Object.prototype` or `null`).
+     *
+     * @param value - The value to test.
+     *
+     * @returns True for plain data objects; false for class instances, arrays, and primitives.
+     */
+    private static isPlainObject(value: any): boolean {
+        if (typeof value !== 'object' || value === null) {
+            return false;
+        }
+
+        const proto = Object.getPrototypeOf(value);
+
+        return proto === Object.prototype || proto === null;
     }
 
     /**
@@ -201,8 +323,8 @@ export class ModelRecord {
      * Returns the fields whose current value differs from the last committed baseline.
      *
      * @remarks
-     * Comparison uses the same shallow equality as dirty tracking, so object / array
-     * field values still compare by reference.
+     * Comparison uses the same structural equality as dirty tracking, so plain object /
+     * array field values compare deeply; class instances still compare by reference.
      *
      * @returns A map of changed field name to its `{ old, new }` values; empty when clean.
      */
