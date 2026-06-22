@@ -3,7 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { Size } from "~/primitive/Size.js";
 import { Component } from "~/core/Component.js";
-import type { AxisPosition, AxisSpread } from "~/layout/AxisAlign.js";
+import type { AxisPosition, AxisSpread } from "~/primitive/Axis.js";
 
 /**
  * Which axes of a {@link FlowLayout}'s cells are made uniform so wrapped items

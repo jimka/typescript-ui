@@ -3,7 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
-import type { AxisPosition, AxisSpread } from "~/layout/AxisAlign.js";
+import type { AxisPosition, AxisSpread } from "~/primitive/Axis.js";
 import { Component } from "~/core/Component.js";
 import { Size, UNBOUNDED, isUnbounded } from "~/primitive/Size.js";
 
