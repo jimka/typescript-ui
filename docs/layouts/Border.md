@@ -26,7 +26,7 @@ import { Header } from '@jimka/typescript-ui/component/display';
 import { MenuBar } from '@jimka/typescript-ui/component/menubar';
 import { Table } from '@jimka/typescript-ui/component/table';
 const app = Component();
-app.setLayoutManager(BorderLayout({ gap: 4 }));
+app.setLayoutManager(BorderLayout({ spacing: 4 }));
 
 app.addComponent(MenuBar([/* ... */]),       { placement: Placement.NORTH  });
 app.addComponent(Header('Status'),           { placement: Placement.SOUTH  });
@@ -35,7 +35,7 @@ app.addComponent(detailPanel,                     { placement: Placement.EAST   
 app.addComponent(Table(store),                { placement: Placement.CENTER });
 ```
 
-[`BorderOptions`](/api/layout/interfaces/BorderOptions) accepts `gap` declaratively (the inter-region pixel gap); the `setComponentGap` setter still works for runtime updates.
+[`BorderOptions`](/api/layout/interfaces/BorderOptions) accepts `spacing` declaratively (the inter-region pixel spacing); the `setComponentSpacing` setter still works for runtime updates.
 
 ## Per-child constraints
 

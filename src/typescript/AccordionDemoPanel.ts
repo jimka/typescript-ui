@@ -92,7 +92,7 @@ class AccordionDemoPanel extends Panel {
         });
 
         this.accordion.getAccordion()
-            .setFill(true)
+            .setFillHeight(true)
             .setCompact(true)
             .setChevronSide("left");
 
@@ -146,9 +146,9 @@ class AccordionDemoPanel extends Panel {
         });
 
         this.fillToggle.on("action", () => {
-            const next = !this.accordion.getAccordion().isFill();
+            const next = !this.accordion.getAccordion().isFillHeight();
 
-            this.accordion.getAccordion().setFill(next);
+            this.accordion.getAccordion().setFillHeight(next);
             this.fillToggle.setText(`Fill: ${next ? 'ON' : 'OFF'}`);
             this.doLayout();
         });

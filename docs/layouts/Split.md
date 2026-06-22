@@ -25,7 +25,7 @@ workspace.addComponent(treeView);   // left
 workspace.addComponent(detailTable); // right
 ```
 
-[`SplitOptions`](/api/layout/interfaces/SplitOptions) accepts `direction` declaratively. The legacy positional `Split('horizontal')` form and the `setDirection` setter still work.
+[`SplitOptions`](/api/layout/interfaces/SplitOptions) accepts `direction` declaratively, typed as the [`SplitDirection`](/api/layout/type-aliases/SplitDirection) union (`'horizontal' | 'vertical'`); the `setDirection` setter still works for runtime updates.
 
 ## Three+ panes
 

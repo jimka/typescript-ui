@@ -427,7 +427,7 @@ function materializeNode(node: LayoutNode, parked: Map<string, Component>, facto
  */
 function populateContainer(container: Component, node: SplitNode | TabNode, parked: Map<string, Component>, factory: LayoutFactory): void {
     if (node.kind === "split") {
-        const split = new Split(node.direction);
+        const split = new Split({ direction: node.direction });
         container.setLayoutManager(split);
 
         const placed: { ratio: number; collapsed: boolean }[] = [];
