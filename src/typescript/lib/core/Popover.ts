@@ -5,6 +5,7 @@ import { Event } from "~/core/Event.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
 import { fadeShow, fadeHideAndDetach } from "~/core/AnimatedDropdown.js";
 import { Container, ContainerOptions } from "~/core/Container.js";
+import type { Edge } from "~/primitive/Edge.js";
 import { Position } from "~/primitive/Position.js";
 import { Insets } from "~/primitive/Insets.js";
 import { VBox } from "~/layout/VBox.js";
@@ -49,7 +50,7 @@ const POPOVER_FADE_DURATION_MS: number = 120;
  *
  * @category Core
  */
-export type PopoverPlacement = "top" | "bottom" | "left" | "right" | "auto";
+export type PopoverPlacement = Edge | "auto";
 
 /**
  * Strategy used to dismiss a {@link Popover}:
