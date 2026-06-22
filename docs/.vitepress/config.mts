@@ -183,6 +183,7 @@ export default defineConfig({
                     { text: 'Store',    link: '/data/store' },
                     { text: 'Proxy',    link: '/data/proxy' },
                     { text: 'Record',   link: '/data/record' },
+                    { text: 'Associations', link: '/data/associations' },
                     { text: 'Binding',  link: '/data/binding' },
                 ] },
             ],
