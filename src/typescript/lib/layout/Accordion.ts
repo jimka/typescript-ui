@@ -92,7 +92,7 @@ export interface AccordionOptions extends LayoutManagerOptions {
     chevronGlyph?:      string;
     spacing?:           number;
     themed?:            boolean;
-    fill?:              boolean;
+    fillHeight?:        boolean;
     /**
      * Multi-event listener bag dispatched to {@link Accordion.on} at
      * construction time.
@@ -147,7 +147,7 @@ class Accordion extends LayoutManager {
     private _chevronGlyph: string | null = null;
     private _spacing: number = 0;
     private _themed: boolean = true;
-    private _fill: boolean = false;
+    private _fillHeight: boolean = false;
     private _tools: Component[] = [];
     private _toolsVisibility: "always" | "hover" = "hover";
     private _hoveredHeader: number = -1;
@@ -205,8 +205,8 @@ class Accordion extends LayoutManager {
             this.setThemed(options.themed);
         }
 
-        if (options.fill !== undefined) {
-            this.setFill(options.fill);
+        if (options.fillHeight !== undefined) {
+            this.setFillHeight(options.fillHeight);
         }
 
         if (options.listeners !== undefined) {
@@ -447,8 +447,8 @@ class Accordion extends LayoutManager {
      *
      * @returns True if the bottommost open section absorbs leftover height.
      */
-    isFill(): boolean {
-        return this._fill;
+    isFillHeight(): boolean {
+        return this._fillHeight;
     }
 
     /**
@@ -462,8 +462,8 @@ class Accordion extends LayoutManager {
      *
      * @returns This layout manager, for chaining.
      */
-    setFill(value: boolean): this {
-        this._fill = value;
+    setFillHeight(value: boolean): this {
+        this._fillHeight = value;
 
         this.getContainer()?.scheduleLayout();
 
@@ -1367,7 +1367,7 @@ class Accordion extends LayoutManager {
      * @returns The fill target index (`-1` if none) and the leftover height.
      */
     private computeFill(components: Component[], containerSize: Size | null, shrinkRatio: number): { fillTarget: number; fillLeftover: number } {
-        if (!this._fill || !containerSize) {
+        if (!this._fillHeight || !containerSize) {
             return { fillTarget: -1, fillLeftover: 0 };
         }
 
