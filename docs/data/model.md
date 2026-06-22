@@ -64,7 +64,7 @@ The supported set lives in [`FieldType`](/api/data/type-aliases/FieldType).
 
 A field's `type` is not just metadata — raw values are coerced to it the moment they enter a record, both when a store loads data (`createRecord`) and when you call `record.set(name, value)`. A JSON `"10"` becomes the number `10`, a date string becomes a `Date`, and `"true"` becomes `true`. Because the stored value is already correctly typed, sort and filter compare it directly: numbers compare numerically, dates as `Date` objects.
 
-`null` and `undefined` always pass through unchanged, and an empty / unparseable value for a typed field is stored as `undefined` rather than `NaN` or an Invalid Date. `'auto'` and `'glyph'` fields are never coerced.
+`null` and `undefined` always pass through unchanged. An empty number value (`''`) and an unparseable date are stored as `undefined` rather than `NaN` or an Invalid Date; an unparseable non-empty `number` value is stored as `NaN`, which the [record's](/data/record#validation) implicit type check flags as invalid. `'auto'` and `'glyph'` fields are never coerced.
 
 Provide a `convert` hook to override the built-in coercion for one field — it wins over the `type` switch and receives the full source record, so it can derive a field from sibling values:
 
