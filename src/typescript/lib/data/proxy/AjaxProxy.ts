@@ -2,6 +2,8 @@
 
 import { ModelRecord } from '~/data/ModelRecord.js';
 import { Proxy, ReadParams } from '~/data/proxy/Proxy.js';
+import { Reader, JsonReader } from '~/data/proxy/Reader.js';
+import { Writer, JsonWriter } from '~/data/proxy/Writer.js';
 
 /**
  * Construction-time options for {@link AjaxProxy}.
@@ -15,6 +17,8 @@ export interface AjaxProxyOptions {
     createMethod?: 'POST' | 'PUT';
     updateMethod?: 'PUT' | 'PATCH';
     headers?: Record<string, string>;
+    reader?: Reader;
+    writer?: Writer;
 }
 
 /**
@@ -41,6 +45,8 @@ export class AjaxProxy extends Proxy {
     private _createMethod: 'POST' | 'PUT';
     private _updateMethod: 'PUT' | 'PATCH';
     private _headers: Record<string, string>;
+    private _reader: Reader;
+    private _writer: Writer;
     private _lastTotalCount: number | undefined = undefined;
 
     /**
@@ -58,6 +64,8 @@ export class AjaxProxy extends Proxy {
         this._createMethod = options.createMethod ?? 'POST';
         this._updateMethod = options.updateMethod ?? 'PUT';
         this._headers = options.headers ?? {};
+        this._reader = options.reader ?? new JsonReader({ root: options.root });
+        this._writer = options.writer ?? new JsonWriter();
     }
 
     /**
@@ -75,33 +83,23 @@ export class AjaxProxy extends Proxy {
      * for non-OK responses or unexpected response shapes.
      *
      * Paginated mode: when `params` carries `page` or `pageSize`, the request URL is
-     * extended with `?page=N&pageSize=M`. The response is expected to be `{ data: T[],
-     * total: number }`. If `root` is configured, the envelope is read from `json[root]`
-     * first. The reported `total` is stored and exposed via {@link getLastTotalCount}.
+     * extended with `?page=N&pageSize=M`. The response is parsed by the configured
+     * {@link Reader} as a `{ data, total }` envelope and the reported `total` is
+     * stored and exposed via {@link getLastTotalCount}.
+     *
+     * When `params` carries `sorters`/`filters` (the store's `remoteSort`/`remoteFilter`
+     * opt-in), they are appended as `sort=<json>` / `filter=<json>` query parameters.
+     * A `signal` is threaded into `fetch` so a superseded read can be aborted.
      */
     async read(params?: ReadParams): Promise<any[]> {
         const paginated = params != null && (params.page != null || params.pageSize != null);
 
-        let url = this._url;
-
-        if (paginated) {
-            const search = new URLSearchParams();
-
-            if (params!.page != null) {
-                search.set('page', String(params!.page));
-            }
-
-            if (params!.pageSize != null) {
-                search.set('pageSize', String(params!.pageSize));
-            }
-
-            const sep = this._url.includes('?') ? '&' : '?';
-            url = this._url + sep + search.toString();
-        }
+        const url = this.buildReadUrl(params);
 
         const response = await fetch(url, {
             method: this._method,
-            headers: this._headers
+            headers: this._headers,
+            signal: params?.signal
         });
 
         if (!response.ok) {
@@ -110,38 +108,54 @@ export class AjaxProxy extends Proxy {
 
         const json = await response.json();
 
-        if (paginated) {
-            const envelope = this._root ? json[this._root] : json;
+        const result = this._reader.read(json, paginated);
 
-            if (envelope == null || typeof envelope !== 'object') {
-                throw new Error(`AjaxProxy: paginated response is not an envelope object`);
-            }
+        this._lastTotalCount = result.total;
 
-            const data  = envelope.data;
-            const total = envelope.total;
+        return result.records;
+    }
 
-            if (!Array.isArray(data)) {
-                throw new Error(`AjaxProxy: paginated response 'data' is not an array`);
-            }
-
-            this._lastTotalCount = typeof total === 'number' ? total : undefined;
-
-            return data;
+    /**
+     * Builds the request URL, appending `page`/`pageSize`/`sort`/`filter` query
+     * parameters from the given read params when present.
+     *
+     * @param params - Optional. The read parameters carrying pagination and
+     *   remote sort/filter descriptors.
+     *
+     * @returns The fully-qualified request URL.
+     */
+    private buildReadUrl(params?: ReadParams): string {
+        if (params == null) {
+            return this._url;
         }
 
-        if (this._root) {
-            const extracted = json[this._root];
-            if (!Array.isArray(extracted)) {
-                throw new Error(`AjaxProxy: root '${this._root}' did not resolve to an array`);
-            }
-            return extracted;
+        const search = new URLSearchParams();
+
+        if (params.page != null) {
+            search.set('page', String(params.page));
         }
 
-        if (!Array.isArray(json)) {
-            throw new Error(`AjaxProxy: response is not an array and no root was specified`);
+        if (params.pageSize != null) {
+            search.set('pageSize', String(params.pageSize));
         }
 
-        return json;
+        if (params.sorters != null && params.sorters.length > 0) {
+            search.set('sort', JSON.stringify(params.sorters));
+        }
+
+        if (params.filters != null && params.filters.length > 0) {
+            search.set('filter', JSON.stringify(params.filters));
+        }
+
+        const query = search.toString();
+
+        if (query === '') {
+            return this._url;
+        }
+
+        const sep = this._url.includes('?') ? '&' : '?';
+
+        return this._url + sep + query;
     }
 
     /**
@@ -166,7 +180,7 @@ export class AjaxProxy extends Proxy {
         const response = await fetch(this._url, {
             method: this._createMethod,
             headers: { 'Content-Type': 'application/json', ...this._headers },
-            body: JSON.stringify(record.getData())
+            body: this._writer.writeRecord(record)
         });
 
         if (!response.ok) {
@@ -190,7 +204,7 @@ export class AjaxProxy extends Proxy {
         const response = await fetch(`${this._url}/${record.getId()}`, {
             method: this._updateMethod,
             headers: { 'Content-Type': 'application/json', ...this._headers },
-            body: JSON.stringify(record.getData())
+            body: this._writer.writeRecord(record)
         });
 
         if (!response.ok) {

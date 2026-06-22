@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { ModelRecord } from '~/data/ModelRecord.js';
+// Type-only imports: erased at compile time, so they introduce no runtime
+// dependency edge back to AbstractStore/FilterDescriptor and cannot form a cycle.
+import type { SortDescriptor } from '~/data/AbstractStore.js';
+import type { FilterDescriptor } from '~/data/FilterDescriptor.js';
 
 /**
  * Optional parameters passed to {@link Proxy.read} when the store opts in to
- * server-side pagination.
+ * server-side pagination or remote sort/filter.
  *
  * @remarks
  * When `AbstractStore.setPageSize(n)` has been called, `AbstractStore.load()`
@@ -12,11 +16,18 @@ import { ModelRecord } from '~/data/ModelRecord.js';
  * the proxy. Proxies that do not understand pagination (e.g. {@link MemoryProxy})
  * are free to ignore the argument.
  *
+ * When the store sets `remoteSort`/`remoteFilter`, the active `sorters`/`filters`
+ * descriptors ride along here so the proxy can encode them for its transport.
+ * `signal` lets the store abort a superseded HTTP read.
+ *
  * @category Data
  */
 export interface ReadParams {
     page?    : number;
     pageSize?: number;
+    sorters? : SortDescriptor[];
+    filters? : FilterDescriptor[];
+    signal?  : AbortSignal;
 }
 
 /**

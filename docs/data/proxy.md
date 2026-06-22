@@ -2,10 +2,11 @@
 
 A [`Proxy`](/api/data/classes/Proxy) is the transport layer of the data stack. Stores ask the proxy to fetch records; the proxy returns raw data which the store turns into [records](/data/record).
 
-Two proxies ship with the package:
+Three proxies ship with the package:
 
 - [`MemoryProxy`](/api/data/classes/MemoryProxy) — serves an in-memory array.
 - [`AjaxProxy`](/api/data/classes/AjaxProxy) — fetches JSON from an HTTP endpoint.
+- [`WebStorageProxy`](/api/data/classes/WebStorageProxy) — persists an array to `localStorage` / `sessionStorage`.
 
 ## MemoryProxy
 
@@ -77,6 +78,85 @@ If `root` is configured, the envelope is read from `json[root]` first, then
 `.data` and `.total` are extracted. The total count is exposed on the store
 via `getTotalCount()` and `getTotalPages()`, and on the proxy itself via
 [`getLastTotalCount()`](/api/data/classes/Proxy#getlasttotalcount).
+
+### Remote sort & filter
+
+By default a store sorts and filters its records client-side. Set
+`remoteSort: true` and/or `remoteFilter: true` on the store to instead send the
+active sorters/filters to the proxy and reload. `AjaxProxy` serializes them as
+`sort=<json>` / `filter=<json>` query parameters.
+
+```typescript
+const store = new Store({
+    model: PersonModel,
+    proxy: new AjaxProxy({ url: '/api/people' }),
+    remoteSort:   true,
+    remoteFilter: true,
+});
+store.setPageSize(25);
+await store.load();
+
+await store.sort('name', 'asc');
+// → GET /api/people?page=1&pageSize=25&sort=[{"field":"name","dir":"asc"}]
+```
+
+With the flags off, a paginated store still reloads on sort/filter (the legacy
+behaviour) but sends only `{page, pageSize}`; turning the flags on is what
+actually conveys the order/filter to the server.
+
+### Overlapping loads
+
+Each `load()` claims a monotonic sequence id and aborts the previous in-flight
+read. A response whose load has been superseded is discarded — so a slow earlier
+fetch can never overwrite a newer result — and the aborted HTTP request is
+cancelled rather than merely ignored.
+
+## WebStorageProxy
+
+Persists its record array to the browser's `localStorage` (default) or
+`sessionStorage` under a single JSON-encoded key. CRUD is keyed by primary key,
+mirroring [`MemoryProxy`](/api/data/classes/MemoryProxy) but surviving page
+reloads.
+
+```typescript
+import { WebStorageProxy, Store } from '@jimka/typescript-ui/data';
+const proxy = new WebStorageProxy({
+    key:     'people',     // storage key holding the array
+    storage: 'local',      // 'local' (default) or 'session'
+    data:    [{ id: 1, name: 'Alice' }],  // seed written only if the key is absent
+});
+
+const store = new Store({ model: PersonModel, proxy });
+await store.load();
+```
+
+New records with no primary-key value are assigned a generated numeric id (one
+past the largest existing numeric key). A `QuotaExceededError` from a full store
+propagates as a rejected promise rather than being swallowed. See
+[`WebStorageProxyOptions`](/api/data/interfaces/WebStorageProxyOptions); the
+legacy alias `WebStorageProxyConfig` remains as a deprecated type re-export.
+
+## Reader & Writer
+
+`AjaxProxy` delegates response parsing to a [`Reader`](/api/data/interfaces/Reader)
+and request serialization to a [`Writer`](/api/data/interfaces/Writer). The
+defaults — [`JsonReader`](/api/data/classes/JsonReader) and
+[`JsonWriter`](/api/data/classes/JsonWriter) — reproduce the standard
+`{ data, total }` / top-level-array parsing and `JSON.stringify(record.getData())`
+body. Pass your own to adapt a different envelope or wire format without
+subclassing the proxy.
+
+```typescript
+const proxy = new AjaxProxy({
+    url:    '/api/people',
+    reader: new JsonReader({ rootProperty: 'items', totalProperty: 'count' }),
+});
+```
+
+A custom reader returns a normalized
+[`ReadResult`](/api/data/interfaces/ReadResult) (`{ records, total?, success?,
+message? }`); a custom writer returns the request-body string for a record or
+batch.
 
 ## Custom proxies
 
