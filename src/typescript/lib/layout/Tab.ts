@@ -18,6 +18,7 @@ import { tabDragRegistry } from "~/core/DragManager.js";
 import { TabBar } from "~/component/container/TabBar.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
+import type { AxisPosition } from "~/layout/AxisAlign.js";
 
 /**
  * String-literal union of the events emitted by {@link Tab}.
@@ -91,9 +92,12 @@ export type TabSide = "north" | "south" | "west" | "east";
  * Alignment is a no-op in `"fill"` width mode (and in `"equal"` once it
  * collapses to fill), where the tabs span the whole strip.
  *
+ * @remarks The no-centre subset of {@link AxisPosition} — the strip positions
+ * the button group at one edge or the other, never centred.
+ *
  * @category Layouts
  */
-export type TabAlign = "start" | "end";
+export type TabAlign = Exclude<AxisPosition, "center">;
 
 /**
  * Text orientation for tab buttons on the vertical sides (west/east). Ignored
@@ -110,19 +114,6 @@ export type TabAlign = "start" | "end";
  * @category Layouts
  */
 export type TabOrientation = "horizontal" | "vertical-cw" | "vertical-ccw";
-
-/**
- * Justification of the tab-button label along its reading direction. `"start"`
- * and `"end"` are flow-relative (the left/right edges on a horizontal strip,
- * the top/bottom edges on a rotated west/east strip), matching the `"start"` /
- * `"end"` vocabulary of {@link TabAlign}. Only visible when a tab cell is wider
- * than its content (the `"fill"`, `"equal"`, and `"fixed"` width modes pad cells
- * out; `"content"` mode hugs the text, so justification has no visible effect
- * there).
- *
- * @category Layouts
- */
-export type TabTextAlign = "start" | "center" | "end";
 
 /**
  * Duration (ms) of the cross-tab content fade-in. Matches `AnimatedDropdown`'s
@@ -204,7 +195,7 @@ export interface TabOptions extends LayoutManagerOptions {
     detachWindowMode?: TabDetachWindowMode;
 
     /** Tab-label justification (strip-wide); defaults to `"center"`. */
-    textAlign?: TabTextAlign;
+    textAlign?: AxisPosition;
 }
 
 /**
@@ -589,11 +580,11 @@ class Tab extends LayoutManager {
     /**
      * Sets the strip-wide tab-label justification and re-lays out.
      *
-     * @param align - The {@link TabTextAlign} to apply.
+     * @param align - The {@link AxisPosition} to apply.
      *
      * @returns This layout manager, for chaining.
      */
-    setTextAlign(align: TabTextAlign): this {
+    setTextAlign(align: AxisPosition): this {
         this._bar.setTextAlign(align);
 
         this.getContainer()?.scheduleLayout();
@@ -604,9 +595,9 @@ class Tab extends LayoutManager {
     /**
      * Returns the current tab-label justification.
      *
-     * @returns The active {@link TabTextAlign}.
+     * @returns The active {@link AxisPosition}.
      */
-    getTextAlign(): TabTextAlign {
+    getTextAlign(): AxisPosition {
         return this._bar.getTextAlign();
     }
 

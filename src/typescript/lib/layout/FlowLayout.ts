@@ -3,6 +3,7 @@
 import { LayoutManager, LayoutManagerOptions } from "~/layout/LayoutManager.js";
 import { Size } from "~/primitive/Size.js";
 import { Component } from "~/core/Component.js";
+import type { AxisPosition, AxisSpread } from "~/layout/AxisAlign.js";
 
 /**
  * Which axes of a {@link FlowLayout}'s cells are made uniform so wrapped items
@@ -19,25 +20,6 @@ import { Component } from "~/core/Component.js";
  * @category Layouts
  */
 export type FlowUniformity = "none" | "width" | "height" | "both";
-
-/**
- * How a {@link FlowLayout} packs each wrapped line's content block along the
- * line's main axis within the container's inner main extent.
- *
- * - `"start"` (the default) — the content packs at the leading edge, leaving the
- *   trailing residual empty. For {@link HFlow} this is the west edge; for
- *   {@link VFlow} the north edge.
- * - `"center"` — the residual is split, centring the content block.
- * - `"end"` — the content packs at the trailing edge (HFlow east, VFlow south).
- *
- * @remarks This positions each line's content as a single block; it does not
- * redistribute inter-item spacing (no justify/space-between). It is also
- * distinct from a child's {@link AnchorType}, which positions a child within its
- * own (possibly uniform) cell — both still apply.
- *
- * @category Layouts
- */
-export type FlowAlign = "start" | "center" | "end";
 
 /**
  * Cross-axis alignment of an item within its wrapped line's cross extent — the
@@ -61,26 +43,6 @@ export type FlowAlign = "start" | "center" | "end";
 export type FlowItemAlign = "start" | "center" | "end" | "baseline";
 
 /**
- * Main-axis distribution of a wrapped line's items across the container's inner
- * main extent.
- *
- * - `"start"` (the default) — items packed with the fixed `spacing`; the
- *   trailing residual is handled by {@link FlowAlign}.
- * - `"between"` — first and last items flush to the line's edges, with an equal
- *   extra gap inserted between the interior items (CSS `space-between`).
- * - `"around"` — an equal gap surrounds every item, so the end half-gaps are
- *   half the interior gaps (CSS `space-around`).
- *
- * @remarks When `justify` is anything but `"start"` the line is stretched to
- * fill the inner main extent, so there is no leftover block for `align` to move
- * and `align` is ignored. A single-item or over-long line degrades to `"start"`
- * (no negative gaps).
- *
- * @category Layouts
- */
-export type FlowJustify = "start" | "between" | "around";
-
-/**
  * Construction-time options shared by {@link HFlow} and {@link VFlow}.
  *
  * @category Layouts
@@ -89,9 +51,9 @@ export interface FlowLayoutOptions extends LayoutManagerOptions {
     spacing?:     number;
     lineSpacing?: number;
     uniform?:     FlowUniformity;
-    align?:       FlowAlign;
+    align?:       AxisPosition;
     itemAlign?:   FlowItemAlign;
-    justify?:     FlowJustify;
+    justify?:     AxisSpread;
 }
 
 /**
@@ -117,9 +79,9 @@ export abstract class FlowLayout extends LayoutManager {
     protected _spacing: number = 5;
     protected _lineSpacing: number = 5;
     protected _uniform: FlowUniformity = "none";
-    protected _align: FlowAlign = "start";
+    protected _align: AxisPosition = "start";
     protected _itemAlign: FlowItemAlign = "start";
-    protected _justify: FlowJustify = "start";
+    protected _justify: AxisSpread = "start";
 
     /**
      * Constructs the layout manager, applying any supplied options.
@@ -245,7 +207,7 @@ export abstract class FlowLayout extends LayoutManager {
      *
      * @returns The current line alignment.
      */
-    getAlign(): FlowAlign {
+    getAlign(): AxisPosition {
         return this._align;
     }
 
@@ -255,11 +217,11 @@ export abstract class FlowLayout extends LayoutManager {
      * @param align - `"start"` packs at the leading edge (the default),
      *   `"center"` centres the block, `"end"` packs at the trailing edge. The
      *   leading/trailing edges are west/east for {@link HFlow} and north/south
-     *   for {@link VFlow}. See {@link FlowAlign}.
+     *   for {@link VFlow}. See {@link AxisPosition}.
      *
      * @returns This layout manager, for method chaining.
      */
-    setAlign(align: FlowAlign): this {
+    setAlign(align: AxisPosition): this {
         this._align = align;
 
         return this;
@@ -297,7 +259,7 @@ export abstract class FlowLayout extends LayoutManager {
      *
      * @returns The current main-axis distribution.
      */
-    getJustify(): FlowJustify {
+    getJustify(): AxisSpread {
         return this._justify;
     }
 
@@ -308,16 +270,16 @@ export abstract class FlowLayout extends LayoutManager {
      * @param justify - `"start"` packs items with the fixed `spacing` (the
      *   default), `"between"` makes the first/last items flush to the edges with
      *   equal interior gaps, `"around"` puts an equal gap around every item. See
-     *   {@link FlowJustify}.
+     *   {@link AxisSpread}.
      *
      * @returns This layout manager, for method chaining.
      *
      * @remarks When `justify` is `"between"` or `"around"` the line fills the
-     * inner main extent, so it owns the residual and {@link FlowAlign} (the
+     * inner main extent, so it owns the residual and {@link AxisPosition} (the
      * `align` option) is ignored. A single-item or over-long line degrades to
      * `"start"`.
      */
-    setJustify(justify: FlowJustify): this {
+    setJustify(justify: AxisSpread): this {
         this._justify = justify;
 
         return this;
@@ -471,7 +433,7 @@ export abstract class FlowLayout extends LayoutManager {
 
     /**
      * Computes the per-line main-axis spacing under the active
-     * {@link FlowJustify} mode.
+     * {@link AxisSpread} mode.
      *
      * @param itemCount - The number of cells in the line.
      * @param contentMain - The sum of the cells' main extents (no spacing).
