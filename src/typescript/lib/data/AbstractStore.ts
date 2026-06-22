@@ -873,7 +873,10 @@ export abstract class AbstractStore {
      * @returns True when the run should stop early.
      */
     private async syncDeletes(proxy: Proxy, failures: StoreExceptionEvent[]): Promise<boolean> {
-        const removed = this._pendingRemoved;
+        // Snapshot the queue so a failure's 'exception' payload holds an immutable
+        // copy (matching the create/update phases, whose filter() returns a fresh
+        // array) rather than aliasing the live _pendingRemoved array.
+        const removed = this._pendingRemoved.slice();
 
         if (removed.length === 0) {
             return false;
