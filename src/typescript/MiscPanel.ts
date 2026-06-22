@@ -159,6 +159,37 @@ class PaginatingDemoProxy extends Proxy {
     }
 }
 
+/**
+ * Demo-only proxy whose `create()` rejects for any record named "Bad", so the
+ * sync-error-handling demo can show one op failing while its siblings commit.
+ *
+ * @remarks
+ * `read()` returns nothing — the demo seeds records via `add()` and only
+ * exercises `sync()`. Updates/deletes succeed trivially.
+ */
+class FlakyDemoProxy extends Proxy {
+
+    read(): Promise<any[]> {
+        return Promise.resolve([]);
+    }
+
+    create(record: ModelRecord): Promise<Record<string, any>> {
+        if (record.get("name") === "Bad") {
+            return Promise.reject(new Error("server rejected record 'Bad'"));
+        }
+
+        return Promise.resolve(record.getData());
+    }
+
+    update(record: ModelRecord): Promise<Record<string, any>> {
+        return Promise.resolve(record.getData());
+    }
+
+    destroy(_record: ModelRecord): Promise<void> {
+        return Promise.resolve();
+    }
+}
+
 class MiscPanel extends Panel {
 
     constructor() {
@@ -293,6 +324,42 @@ class MiscPanel extends Panel {
             win2.show();
         });
         leftColumn.addComponent(buttonWindowTable);
+
+        // Demonstrates the store's sync-error surface: with syncErrorPolicy
+        // 'continue', a failing create emits 'exception' and the run proceeds, so
+        // the sibling record still commits. The terminal 'sync' event reports the
+        // failure count once.
+        let buttonSyncErrors = new Button("Sync with a failing record (exception event)!");
+        buttonSyncErrors.on("action", function () {
+            const syncModel = new Model([
+                { name: "id"  , type: "number" },
+                { name: "name", type: "string" },
+            ], "id");
+
+            const syncStore = new Store({
+                model: syncModel,
+                proxy: new FlakyDemoProxy(),
+                syncErrorPolicy: "continue",
+            });
+
+            syncStore.add([{ name: "Good" }, { name: "Bad" }]);
+
+            syncStore.on("exception", function (payload: { operation: string }) {
+                Notification.show(`sync ${payload.operation} failed`, "error");
+            });
+
+            syncStore.on("sync", function (payload: { failures: unknown[] }) {
+                const ok = payload.failures.length === 0;
+
+                Notification.show(
+                    ok ? "Sync completed with no failures" : `Sync settled with ${payload.failures.length} failure(s)`,
+                    ok ? "success" : "info",
+                );
+            });
+
+            void syncStore.sync();
+        });
+        leftColumn.addComponent(buttonSyncErrors);
 
         let buttonPaginatedTable = new Button("Show window with paginated table!")
             .on("action", function () {

@@ -233,4 +233,85 @@ export class AjaxProxy extends Proxy {
             throw new Error(`AjaxProxy: destroy failed with status ${response.status}`);
         }
     }
+
+    /**
+     * Batch-creates records by POSTing the serialized batch to the collection URL.
+     *
+     * @param records - The new ModelRecords to create, in order.
+     *
+     * @returns A promise resolving to the per-record server objects in input
+     *   order, unwrapped from `root` if configured.
+     *
+     * @remarks
+     * The store commits each record positionally against the returned array, so
+     * the server must echo back one object per input record in the same order.
+     */
+    async createBatch(records: ModelRecord[]): Promise<Record<string, any>[]> {
+        const response = await fetch(this._url, {
+            method: this._createMethod,
+            headers: { 'Content-Type': 'application/json', ...this._headers },
+            body: this._writer.writeRecords(records)
+        });
+
+        if (!response.ok) {
+            throw new Error(`AjaxProxy: createBatch failed with status ${response.status}`);
+        }
+
+        return this.readBatchResponse(response);
+    }
+
+    /**
+     * Batch-updates records by PUTting the serialized batch to the collection URL.
+     *
+     * @param records - The dirty ModelRecords to update, in order.
+     *
+     * @returns A promise resolving to the per-record server objects in input
+     *   order, unwrapped from `root` if configured.
+     */
+    async updateBatch(records: ModelRecord[]): Promise<Record<string, any>[]> {
+        const response = await fetch(this._url, {
+            method: this._updateMethod,
+            headers: { 'Content-Type': 'application/json', ...this._headers },
+            body: this._writer.writeRecords(records)
+        });
+
+        if (!response.ok) {
+            throw new Error(`AjaxProxy: updateBatch failed with status ${response.status}`);
+        }
+
+        return this.readBatchResponse(response);
+    }
+
+    /**
+     * Batch-destroys records by DELETEing the serialized batch from the collection URL.
+     *
+     * @param records - The ModelRecords to delete, in order.
+     *
+     * @returns A promise that resolves when the server confirms the deletion.
+     */
+    async destroyBatch(records: ModelRecord[]): Promise<void> {
+        const response = await fetch(this._url, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', ...this._headers },
+            body: this._writer.writeRecords(records)
+        });
+
+        if (!response.ok) {
+            throw new Error(`AjaxProxy: destroyBatch failed with status ${response.status}`);
+        }
+    }
+
+    /**
+     * Parses a batch response into an array of per-record server objects, in
+     * input order, unwrapping the `root` envelope when configured.
+     *
+     * @param response - The non-rejected fetch response from a batch op.
+     *
+     * @returns The per-record server objects.
+     */
+    private async readBatchResponse(response: Response): Promise<Record<string, any>[]> {
+        const json = await response.json();
+
+        return this._root ? json[this._root] : json;
+    }
 }

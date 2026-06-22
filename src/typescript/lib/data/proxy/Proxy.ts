@@ -82,6 +82,47 @@ export abstract class Proxy {
     abstract destroy(record: ModelRecord): Promise<void>;
 
     /**
+     * Batch-creates records in a single request, when the transport supports it.
+     *
+     * @param records - The new ModelRecords to create, in order.
+     *
+     * @returns A promise resolving to the per-record server data in the same
+     *   order as `records`, so the store can commit each positionally.
+     *
+     * @remarks
+     * Optional. When absent, {@link AbstractStore.sync} falls back to issuing one
+     * {@link create} per record.
+     */
+    createBatch?(records: ModelRecord[]): Promise<Record<string, any>[]>;
+
+    /**
+     * Batch-updates records in a single request, when the transport supports it.
+     *
+     * @param records - The dirty ModelRecords to update, in order.
+     *
+     * @returns A promise resolving to the per-record server data in the same
+     *   order as `records`, so the store can commit each positionally.
+     *
+     * @remarks
+     * Optional. When absent, {@link AbstractStore.sync} falls back to issuing one
+     * {@link update} per record.
+     */
+    updateBatch?(records: ModelRecord[]): Promise<Record<string, any>[]>;
+
+    /**
+     * Batch-destroys records in a single request, when the transport supports it.
+     *
+     * @param records - The ModelRecords to delete, in order.
+     *
+     * @returns A promise that resolves when the batch deletion is complete.
+     *
+     * @remarks
+     * Optional. When absent, {@link AbstractStore.sync} falls back to issuing one
+     * {@link destroy} per record.
+     */
+    destroyBatch?(records: ModelRecord[]): Promise<void>;
+
+    /**
      * Returns the total record count reported by the most recent paginated read.
      *
      * @returns The total count from the last paginated response, or undefined if
