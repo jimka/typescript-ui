@@ -8,7 +8,7 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import { Tooltip } from "~/core/Tooltip.js";
+import { Tooltip } from "~/overlay/Tooltip.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { Insets } from "~/primitive/Insets.js";

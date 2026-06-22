@@ -1,27 +1,30 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import {
-    ButtonGroup,
     callable,
     ClassicTheme,
     Component,
     Container,
     DarkTheme,
+    Event,
+    ModernTheme,
+    Panel,
+    ThemeManager
+} from '@jimka/typescript-ui/core';
+import {
+    ButtonGroup,
     Dialog,
     Dock,
     Drawer,
-    Event,
     Menu,
-    ModernTheme,
     Notification,
-    Panel,
     Popover,
     Rail,
-    ThemeManager,
     Tooltip,
     Window
-} from '@jimka/typescript-ui/core';
-import type { AutoScrollMode, DrawerEdge } from '@jimka/typescript-ui/core';
+} from '@jimka/typescript-ui/overlay';
+import type { AutoScrollMode } from '@jimka/typescript-ui/core';
+import type { DrawerEdge } from '@jimka/typescript-ui/overlay';
 import { Insets, Placement } from '@jimka/typescript-ui/primitive';
 import {
     Absolute,

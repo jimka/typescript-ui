@@ -5,7 +5,8 @@
 ## Usage
 
 ```typescript
-import { ButtonGroup } from '@jimka/typescript-ui/core';
+import { ButtonGroup } from '@jimka/typescript-ui/overlay';
+
 import { RadioButton } from '@jimka/typescript-ui/component/input';
 const small  = RadioButton('Small');
 const medium = RadioButton('Medium');
@@ -43,7 +44,7 @@ panel.addComponent(large);
 
 ## Group navigation
 
-Now that radios are no longer native `<input type="radio">`, the browser does not handle arrow-key navigation for free. Wire a container on the group with [`ButtonGroup.setContainer`](/api/core/classes/ButtonGroup#setcontainer) to enable Arrow / Home / End traversal via [`RovingTabIndex`](/api/core/classes/RovingTabIndex):
+Now that radios are no longer native `<input type="radio">`, the browser does not handle arrow-key navigation for free. Wire a container on the group with [`ButtonGroup.setContainer`](/api/overlay/classes/ButtonGroup#setcontainer) to enable Arrow / Home / End traversal via [`RovingTabIndex`](/api/core/classes/RovingTabIndex):
 
 ```typescript
 const groupRow = Component();

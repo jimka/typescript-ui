@@ -1,6 +1,6 @@
 # TabWindow
 
-[`TabWindow`](/api/core/classes/TabWindow) is a floating, draggable, resizable window whose interior **is** a [`Tab`](/api/layout/classes/Tab) layout — there is no separate title-bar header. The tab bar does double duty as the window chrome: the active tab's label is the window title, the blank area of the bar is the move handle (double-click it to maximize or restore), and minimize / maximize / close are trailing controls in the bar rather than buttons on a header.
+[`TabWindow`](/api/overlay/classes/TabWindow) is a floating, draggable, resizable window whose interior **is** a [`Tab`](/api/layout/classes/Tab) layout — there is no separate title-bar header. The tab bar does double duty as the window chrome: the active tab's label is the window title, the blank area of the bar is the move handle (double-click it to maximize or restore), and minimize / maximize / close are trailing controls in the bar rather than buttons on a header.
 
 It is the window a strip-mode tab **tear-off** produces (see [`Tab` › Tear-off & re-dock](/layouts/Tab#tear-off-re-dock)). Tearing a tab out of a reorderable strip opens a `TabWindow` hosting the tab's live content, so the float shows a single bar — the tab plus its controls — instead of a window header stacked above an inner strip.
 
@@ -9,7 +9,9 @@ It is the window a strip-mode tab **tear-off** produces (see [`Tab` › Tear-off
 ## Usage
 
 ```typescript
-import { Body, TabWindow } from '@jimka/typescript-ui/core';
+import { Body } from '@jimka/typescript-ui/core';
+import { TabWindow } from '@jimka/typescript-ui/overlay';
+
 import { Panel } from '@jimka/typescript-ui/core';
 
 const win = TabWindow({ x: 240, y: 120, width: 360, height: 240 });
@@ -22,7 +24,7 @@ Most code does not construct a `TabWindow` directly — it is produced automatic
 
 ## Construction
 
-`TabWindow(options?)` — there is **no** title positional argument (unlike [`Window`](/components/Window)); the title is derived from the active tab, not set. `options` is a [`WindowOptions`](/api/core/interfaces/WindowOptions) bag and accepts the same geometry / state / snap-resize fields as `Window` (minus the header-only `headerText`, which has no slot on a headerless window).
+`TabWindow(options?)` — there is **no** title positional argument (unlike [`Window`](/components/Window)); the title is derived from the active tab, not set. `options` is a [`WindowOptions`](/api/overlay/interfaces/WindowOptions) bag and accepts the same geometry / state / snap-resize fields as `Window` (minus the header-only `headerText`, which has no slot on a headerless window).
 
 | Option | Type | Purpose |
 | --- | --- | --- |
@@ -82,7 +84,7 @@ A non-closeable tab keeps its contract in window form. The strip pushes the ever
 
 ## See also
 
-- [API: TabWindow](/api/core/classes/TabWindow)
+- [API: TabWindow](/api/overlay/classes/TabWindow)
 - [`AbstractWindow`](/components/AbstractWindow) — the shared window base class
 - [`Window`](/components/Window) — the header window sibling
 - [`Tab` › Tear-off & re-dock](/layouts/Tab#tear-off-re-dock) — what produces a `TabWindow`

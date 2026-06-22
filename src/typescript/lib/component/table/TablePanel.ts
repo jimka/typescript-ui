@@ -11,7 +11,7 @@ import { PaginationBar } from "~/component/display/PaginationBar.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { Table } from "~/component/table/Table.js";
 import { ExportOptions } from "~/component/table/TableExporter.js";
-import { Tooltip } from "~/core/Tooltip.js";
+import { Tooltip } from "~/overlay/Tooltip.js";
 import { callable } from "~/core/Callable.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { plus }          from "~/glyphs/solid/plus.js";

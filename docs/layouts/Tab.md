@@ -47,7 +47,7 @@ tabbed.addComponent(advancedPanel,  { name: 'Advanced' });
 | `empty` | none | The strip loses its **last** tab by any path — close, [tear-off, or re-dock](#tear-off-re-dock). |
 | `detached` | the torn-off [`Window`](/components/Window) | A tab is **torn off** into a new floating window — fires for *every* tear-off, even one that leaves siblings behind. |
 
-`empty` is a passive announcement: the `Tab` fires it but does nothing itself, so a strip you place deliberately stays on screen when emptied. A dock layer can subscribe to it to clean up — [`DockRegion`](/layouts/DockRegion) listens on the stacks it creates to remove an emptied stack and collapse a leftover single-pane [`Split`](/layouts/Split). It is orthogonal to `tabclose`: a close-button close fires `tabclose` (with the content) and then, if that was the last tab, `empty` (with none); a tear-off fires `detached` (with the new window) and, only when it drained the strip, `empty` too. `detached` is what lets a dock fold *every* tear-off into its model — [`Dock`](/api/core/classes/Dock) schedules an adoption sweep on it — since `empty` alone misses a tear-off that keeps siblings.
+`empty` is a passive announcement: the `Tab` fires it but does nothing itself, so a strip you place deliberately stays on screen when emptied. A dock layer can subscribe to it to clean up — [`DockRegion`](/layouts/DockRegion) listens on the stacks it creates to remove an emptied stack and collapse a leftover single-pane [`Split`](/layouts/Split). It is orthogonal to `tabclose`: a close-button close fires `tabclose` (with the content) and then, if that was the last tab, `empty` (with none); a tear-off fires `detached` (with the new window) and, only when it drained the strip, `empty` too. `detached` is what lets a dock fold *every* tear-off into its model — [`Dock`](/api/overlay/classes/Dock) schedules an adoption sweep on it — since `empty` alone misses a tear-off that keeps siblings.
 
 ## Per-child constraints
 
@@ -216,7 +216,7 @@ turning a strip reorderable enables reorder, tear-off, and re-dock together:
   the tab detaches into a floating window opened at the cursor, hosting the tab's
   **live** content. In the default `"strip"` mode this is a headerless
   [`TabWindow`](/components/TabWindow) whose tab bar doubles as its title bar; in
-  `"bare"` mode it is an ordinary [`Window`](/api/core/classes/Window). Either way
+  `"bare"` mode it is an ordinary [`Window`](/api/overlay/classes/Window). Either way
   the window title is the tab label (see [Re-docking a floating window](#re-docking-a-floating-window)).
 - **Cross-strip dock** — release a header drag over another reorderable strip and
   the live content docks there as a new tab at the insertion slot. Same-strip
@@ -261,7 +261,7 @@ On [`TabPanel`](/api/component/container/classes/TabPanel) the option is
 `tabOptions: { detachWindowMode }` or `setTabDetachWindowMode(mode)`.
 
 The drag is carried by the
-[`TabDragData`](/api/core/interfaces/TabDragData) payload — the cross-container
+[`TabDragData`](/api/overlay/interfaces/TabDragData) payload — the cross-container
 contract `{ tabDrag, sourceTabId, componentId, label }`. `sourceTabId`
 distinguishes a within-strip reorder from a dock from elsewhere; `componentId`
 resolves the live content. Downstream docking consumers read this same contract.
@@ -277,7 +277,7 @@ reuses the `drag.reorderIndicator.color` token.
 - [API: Tab](/api/layout/classes/Tab)
 - [`TabBar`](/components/TabBar) — the standalone strip chrome `Tab` composes
 - [`TabWindow`](/components/TabWindow) — the headerless window a `"strip"` tear-off produces
-- [`TabDragData`](/api/core/interfaces/TabDragData) — the tear-off / re-dock drag contract
+- [`TabDragData`](/api/overlay/interfaces/TabDragData) — the tear-off / re-dock drag contract
 - [`Card`](/layouts/Card) — same one-at-a-time semantics, no toolbar
 - [`TabCloseButton`](/components/TabCloseButton)
 - [Layout serialization](/layouts/LayoutSerialization) — capture and restore tab order and active index

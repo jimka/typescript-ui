@@ -1,6 +1,6 @@
 # Rail
 
-[`Rail`](/api/core/classes/Rail) is a persistent, edge-anchored launcher strip. It floats along one viewport edge holding a column (WEST/EAST) or row (NORTH/SOUTH) of handle buttons. It is the persistent counterpart to the [`Drawer`](/components/Drawer): unlike a drawer it never slides off-screen and is never auto-dismissed — it is always present.
+[`Rail`](/api/overlay/classes/Rail) is a persistent, edge-anchored launcher strip. It floats along one viewport edge holding a column (WEST/EAST) or row (NORTH/SOUTH) of handle buttons. It is the persistent counterpart to the [`Drawer`](/components/Drawer): unlike a drawer it never slides off-screen and is never auto-dismissed — it is always present.
 
 A rail mounts on `document.documentElement` as a `Position.FIXED` overlay and carries a fixed z-index just below the window band, so windows, popovers, and dialogs still stack above it. It is deliberately **not** a [`DismissableLayer`](/api/core/interfaces/DismissableLayer) — there is no outside-click or Escape dismissal to wire.
 
@@ -9,7 +9,8 @@ A rail mounts on `document.documentElement` as a `Position.FIXED` overlay and ca
 A rail does not display until `mount()`; `unmount()` detaches it again. Registered drawers and windows survive an unmount, so a later `mount()` restores a working strip.
 
 ```typescript
-import { Rail, Drawer } from '@jimka/typescript-ui/core';
+import { Rail, Drawer } from '@jimka/typescript-ui/overlay';
+
 import { Placement } from '@jimka/typescript-ui/primitive';
 import { VBox } from '@jimka/typescript-ui/layout';
 
@@ -22,7 +23,7 @@ rail.registerDrawer(filters, { glyph: 'filter', text: 'Filters' });
 
 ## Edges and thickness
 
-The `edge` option reuses the compass primitive [`Placement`](/api/primitive/enumerations/Placement) (minus `CENTER`), exposed as [`RailEdge`](/api/core/type-aliases/RailEdge). WEST/EAST rails lay their handles out vertically (a column); NORTH/SOUTH rails lay them out horizontally (a row). The main axis always spans the full viewport.
+The `edge` option reuses the compass primitive [`Placement`](/api/primitive/enumerations/Placement) (minus `CENTER`), exposed as [`RailEdge`](/api/overlay/type-aliases/RailEdge). WEST/EAST rails lay their handles out vertically (a column); NORTH/SOUTH rails lay them out horizontally (a row). The main axis always spans the full viewport.
 
 | `edge` | Anchors against | Handle axis |
 | --- | --- | --- |
@@ -51,7 +52,7 @@ const rail = Rail({ edge: Placement.WEST, orientation: 'vertical-cw' }).mount();
 
 ## Hosting drawers
 
-`registerDrawer(drawer, options?)` adds a [`RailHandle`](/api/core/classes/RailHandle) for the drawer and wires it both ways:
+`registerDrawer(drawer, options?)` adds a [`RailHandle`](/api/overlay/classes/RailHandle) for the drawer and wires it both ways:
 
 - Clicking the handle calls `drawer.toggle()`.
 - The handle's selected wash mirrors the drawer's open/closed state — subscribed through the drawer's public `on("open"|"close")`, so the handle stays correct even when the drawer is toggled from elsewhere.
@@ -83,7 +84,7 @@ Passing `null` to `setRail` detaches the rail and falls back to the built-in str
 | `register` | A drawer or window is added to the rail | `(target) => void` |
 | `unregister` | A drawer or window is removed | `(target) => void` |
 
-Listeners can also be supplied at construction via the `listeners` option bag. The matching window-side events (`minimize` / `restore` / `close`, see [`WindowEvent`](/api/core/type-aliases/WindowEvent)) are what the rail subscribes to internally.
+Listeners can also be supplied at construction via the `listeners` option bag. The matching window-side events (`minimize` / `restore` / `close`, see [`WindowEvent`](/api/overlay/type-aliases/WindowEvent)) are what the rail subscribes to internally.
 
 ## Theming
 
@@ -99,8 +100,8 @@ The strip and its handles read these tokens (see [theming](/concepts/theming)):
 
 ## See also
 
-- [API: Rail](/api/core/classes/Rail)
-- [API: RailOptions](/api/core/interfaces/RailOptions), [RailEdge](/api/core/type-aliases/RailEdge), [RailOrientation](/api/core/type-aliases/RailOrientation), [RailEvent](/api/core/type-aliases/RailEvent), [RailDrawerRegistration](/api/core/interfaces/RailDrawerRegistration)
-- [API: RailHandle](/api/core/classes/RailHandle), [RailHandleOptions](/api/core/interfaces/RailHandleOptions)
+- [API: Rail](/api/overlay/classes/Rail)
+- [API: RailOptions](/api/overlay/interfaces/RailOptions), [RailEdge](/api/overlay/type-aliases/RailEdge), [RailOrientation](/api/overlay/type-aliases/RailOrientation), [RailEvent](/api/overlay/type-aliases/RailEvent), [RailDrawerRegistration](/api/overlay/interfaces/RailDrawerRegistration)
+- [API: RailHandle](/api/overlay/classes/RailHandle), [RailHandleOptions](/api/overlay/interfaces/RailHandleOptions)
 - [Drawer](/components/Drawer) — the overlay panel a rail toggles
 - [Window](/components/Window) — minimizes into a rail via `setRail`

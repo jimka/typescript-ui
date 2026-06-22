@@ -6,7 +6,7 @@ import type { Handle } from "~/core/DOM.js";
 import { CollapseButton, CollapseDirection } from "~/component/container/CollapseButton.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
-import { Tooltip } from "~/core/Tooltip.js";
+import { Tooltip } from "~/overlay/Tooltip.js";
 import { callable } from "~/core/Callable.js";
 
 /**

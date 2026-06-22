@@ -11,6 +11,7 @@
         "removeComments": true,
         "paths": {
             "@jimka/typescript-ui/core":                ["./src/typescript/lib/core/index.ts"],
+            "@jimka/typescript-ui/overlay":             ["./src/typescript/lib/overlay/index.ts"],
             "@jimka/typescript-ui/primitive":           ["./src/typescript/lib/primitive/index.ts"],
             "@jimka/typescript-ui/layout":              ["./src/typescript/lib/layout/index.ts"],
             "@jimka/typescript-ui/data":                ["./src/typescript/lib/data/index.ts"],

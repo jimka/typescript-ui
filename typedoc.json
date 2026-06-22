@@ -2,6 +2,7 @@
     "$schema": "https://typedoc.org/schema.json",
     "entryPoints": [
         "src/typescript/lib/core/index.ts",
+        "src/typescript/lib/overlay/index.ts",
         "src/typescript/lib/primitive/index.ts",
         "src/typescript/lib/layout/index.ts",
         "src/typescript/lib/data/index.ts",

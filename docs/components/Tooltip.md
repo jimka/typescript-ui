@@ -1,11 +1,12 @@
 # Tooltip
 
-[`Tooltip`](/api/core/classes/Tooltip) is a singleton hover hint. Use `Tooltip.attach(component, text)` to wire a 500 ms delay tooltip onto any component, or `Tooltip.show` / `Tooltip.hide` for manual control.
+[`Tooltip`](/api/overlay/classes/Tooltip) is a singleton hover hint. Use `Tooltip.attach(component, text)` to wire a 500 ms delay tooltip onto any component, or `Tooltip.show` / `Tooltip.hide` for manual control.
 
 ## Attach to a component
 
 ```typescript
-import { Tooltip } from '@jimka/typescript-ui/core';
+import { Tooltip } from '@jimka/typescript-ui/overlay';
+
 import { Button } from '@jimka/typescript-ui/component/button';
 const saveButton = Button('Save');
 Tooltip.attach(saveButton, 'Save the document (Ctrl+S)');
@@ -25,7 +26,7 @@ Tooltip.hide();
 
 ## Custom colors
 
-Pass [`TooltipColors`](/api/core/interfaces/TooltipColors) to override theme defaults for a single attachment:
+Pass [`TooltipColors`](/api/overlay/interfaces/TooltipColors) to override theme defaults for a single attachment:
 
 ```typescript
 Tooltip.attach(myButton, 'Danger zone', {
@@ -37,13 +38,13 @@ Tooltip.attach(myButton, 'Danger zone', {
 
 ## Attach to a raw element
 
-Use [`Tooltip.attachToElement`](/api/core/classes/Tooltip#attachToElement) when the target is a raw `HTMLElement` whose child nodes would otherwise capture the hover event — the component-keyed `Tooltip.attach` only matches its host's own element id.
+Use [`Tooltip.attachToElement`](/api/overlay/classes/Tooltip#attachToElement) when the target is a raw `HTMLElement` whose child nodes would otherwise capture the hover event — the component-keyed `Tooltip.attach` only matches its host's own element id.
 
 ```typescript
 Tooltip.attachToElement(myHeaderCell.getElement()!, 'Field description');
 ```
 
-Calling `attachToElement` against an element that already has a binding replaces it: the previous listeners are removed and a fresh set is installed with the new text. When the swap lands on the currently hovered element the visible tooltip repaints immediately at the last known cursor position. Call [`Tooltip.detachElement`](/api/core/classes/Tooltip#detachElement) to remove the binding explicitly.
+Calling `attachToElement` against an element that already has a binding replaces it: the previous listeners are removed and a fresh set is installed with the new text. When the swap lands on the currently hovered element the visible tooltip repaints immediately at the last known cursor position. Call [`Tooltip.detachElement`](/api/overlay/classes/Tooltip#detachElement) to remove the binding explicitly.
 
 ## Notes
 
@@ -54,5 +55,5 @@ Calling `attachToElement` against an element that already has a binding replaces
 
 ## See also
 
-- [API: Tooltip](/api/core/classes/Tooltip)
-- [API: TooltipColors](/api/core/interfaces/TooltipColors)
+- [API: Tooltip](/api/overlay/classes/Tooltip)
+- [API: TooltipColors](/api/overlay/interfaces/TooltipColors)

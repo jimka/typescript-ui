@@ -1,6 +1,6 @@
 # Menu
 
-[`Menu`](/api/core/classes/Menu) is the framework's floating menu panel. It operates in one of two modes determined by the constructor:
+[`Menu`](/api/overlay/classes/Menu) is the framework's floating menu panel. It operates in one of two modes determined by the constructor:
 
 - **Rebuild mode** — `Menu()` — a right-click context menu. Items are passed per `show(x, y, items)` call and rebuilt on each invocation. Best for menus whose contents depend on what the user clicked.
 - **Persistent mode** — `Menu(items, onClose)` — a [`MenuBar`](/components/MenuBar) dropdown. Items are built once in the constructor and reused across `open()` / `close()` cycles. Used internally by `MenuBar`.
@@ -10,7 +10,9 @@ The two API surfaces are disjoint. `show()` / `hide()` / `setMenuWidth()` are va
 ## Rebuild mode (right-click context menu)
 
 ```typescript
-import { Menu, Event } from '@jimka/typescript-ui/core';
+import { Event } from '@jimka/typescript-ui/core';
+import { Menu } from '@jimka/typescript-ui/overlay';
+
 const menu = Menu();
 
 Event.addListener(myComponent, 'contextmenu', (e: MouseEvent) => {
@@ -35,7 +37,8 @@ trigger.on('click', () => menu.toggleFor(trigger.getElement(true), x, y, items))
 ## Persistent mode (MenuBar dropdown)
 
 ```typescript
-import { Menu } from '@jimka/typescript-ui/core';
+import { Menu } from '@jimka/typescript-ui/overlay';
+
 const panel = Menu(
     [
         { text: 'Save',     shortcut: 'Ctrl+S', action: () => save()   },
@@ -76,7 +79,7 @@ Each entry follows [`MenuItemConfig`](/api/component/container/interfaces/MenuIt
 
 ## See also
 
-- [API: Menu](/api/core/classes/Menu)
+- [API: Menu](/api/overlay/classes/Menu)
 - [API: MenuItemConfig](/api/component/container/interfaces/MenuItemConfig), [MenuConfig](/api/component/container/interfaces/MenuConfig)
 - [`MenuItem`](/components/MenuItem) and [`MenuSeparator`](/components/MenuSeparator) — the row components used internally.
 - [`MenuBar`](/components/MenuBar) — the primary persistent-mode consumer.

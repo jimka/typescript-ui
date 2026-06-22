@@ -9,7 +9,7 @@
        ↑ active cell (indicator)
 ```
 
-`TabBar` owns one DOM element (the strip toolbar) and renders the cells you register through `createBarEntry`. It interprets each DOM gesture (click, drag, drop, right-click, arrow key) into a window-agnostic [event](#events) the owner reacts to. The bar never touches content, a [`Window`](/api/core/classes/Window), or a [`Tab`](/api/layout/classes/Tab), so it is a pure dependency sink — that is what lets [`Tab`](/api/layout/classes/Tab) compose it without re-introducing a `Window` ↔ `Tab` cycle.
+`TabBar` owns one DOM element (the strip toolbar) and renders the cells you register through `createBarEntry`. It interprets each DOM gesture (click, drag, drop, right-click, arrow key) into a window-agnostic [event](#events) the owner reacts to. The bar never touches content, a [`Window`](/api/overlay/classes/Window), or a [`Tab`](/api/layout/classes/Tab), so it is a pure dependency sink — that is what lets [`Tab`](/api/layout/classes/Tab) compose it without re-introducing a `Window` ↔ `Tab` cycle.
 
 It extends [`Panel`](/api/core/classes/Panel) (not a bare `Component`) so the strip fills its allocated edge rather than shrinking to the tab buttons' content width.
 
@@ -85,4 +85,4 @@ The bar carries the same strip knobs as the [`Tab`](/layouts/Tab) layout, each w
 - [API: TabBar](/api/component/container/classes/TabBar)
 - [`Tab`](/layouts/Tab) — the content manager that composes a `TabBar`
 - [`TabPanel`](/components/TabPanel) — the `Panel` wrapper most consumers use
-- [`TabDragData`](/api/core/interfaces/TabDragData) — the tear-off / re-dock drag contract
+- [`TabDragData`](/api/overlay/interfaces/TabDragData) — the tear-off / re-dock drag contract

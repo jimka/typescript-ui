@@ -7,12 +7,12 @@ import { WindowHeader } from "~/component/container/WindowHeader.js";
 import { Event } from "~/core/Event.js";
 import { Placement } from "~/primitive/Placement.js";
 import { callable } from "~/core/Callable.js";
-import { DragManager, DragData, DragEventDetail, TabDragData, tabDragRegistry } from "~/core/DragManager.js";
+import { DragManager, DragData, DragEventDetail, TabDragData, tabDragRegistry } from "~/overlay/DragManager.js";
 import {
     AbstractWindow,
     WindowOptions,
     WindowState,
-} from "~/core/AbstractWindow.js";
+} from "~/overlay/AbstractWindow.js";
 
 export type {
     WindowOptions,
@@ -20,7 +20,7 @@ export type {
     WindowMaximizeBounds,
     WindowSnapModifier,
     WindowRect,
-} from "~/core/AbstractWindow.js";
+} from "~/overlay/AbstractWindow.js";
 
 /**
  * A floating, resizable, and draggable window component.

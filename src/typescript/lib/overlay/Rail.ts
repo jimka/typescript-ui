@@ -11,16 +11,16 @@ import { Placement } from "~/primitive/Placement.js";
 import { isUnbounded } from "~/primitive/Size.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
-import { RailHandle } from "~/core/RailHandle.js";
+import { RailHandle } from "~/overlay/RailHandle.js";
 import { CollapseButton, CollapseDirection } from "~/component/container/CollapseButton.js";
 import { callable } from "~/core/Callable.js";
-import type { Drawer, DrawerEdge } from "~/core/Drawer.js";
-import type { AbstractWindow } from "~/core/AbstractWindow.js";
+import type { Drawer, DrawerEdge } from "~/overlay/Drawer.js";
+import type { AbstractWindow } from "~/overlay/AbstractWindow.js";
 import type { ClickListener } from "~/component/button/Button.js";
 
 /**
  * Viewport edge a {@link Rail} anchors to. Structurally identical to
- * [`DrawerEdge`](/api/core/type-aliases/DrawerEdge) — the framework's compass
+ * [`DrawerEdge`](/api/overlay/type-aliases/DrawerEdge) — the framework's compass
  * primitive [`Placement`](/api/primitive/enumerations/Placement) minus `CENTER`,
  * which is meaningless for an edge-anchored strip.
  *
@@ -231,7 +231,7 @@ interface WindowRegistration {
 /**
  * An edge-anchored launcher strip that floats over the app content along one
  * viewport edge, holding a column (WEST/EAST) or row (NORTH/SOUTH) of handle
- * buttons. Unlike a [`Drawer`](/api/core/classes/Drawer) it never slides
+ * buttons. Unlike a [`Drawer`](/api/overlay/classes/Drawer) it never slides
  * off-screen and is never auto-dismissed — it is the persistent counterpart to
  * the drawer.
  *
@@ -247,7 +247,7 @@ interface WindowRegistration {
  *
  * @example
  * ```typescript
- * import { Rail, Drawer } from '@jimka/typescript-ui/core';
+ * import { Rail, Drawer } from '@jimka/typescript-ui/overlay';
  * import { Placement } from '@jimka/typescript-ui/primitive';
  *
  * const rail = Rail({ edge: Placement.WEST }).mount();

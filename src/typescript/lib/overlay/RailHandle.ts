@@ -20,7 +20,7 @@ export interface RailHandleOptions extends ButtonOptions {
 }
 
 /**
- * A single launcher button on a [`Rail`](/api/core/classes/Rail). A chromeless
+ * A single launcher button on a [`Rail`](/api/overlay/classes/Rail). A chromeless
  * [`Button`](/api/component/button/classes/Button) subclass that carries a
  * `selected` state — driven by the rail to mirror whether the handle's drawer
  * is open or its window is restored — rendered as a hover wash

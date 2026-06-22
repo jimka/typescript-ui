@@ -303,7 +303,7 @@ export interface Theme {
         minDockWidth: string;
         /**
          * Window control buttons (minimize / maximize / close), shared by a
-         * {@link TabWindow}'s tab bar and an ordinary `Window`'s `WindowHeader`
+         * `TabWindow`'s tab bar and an ordinary `Window`'s `WindowHeader`
          * (both build them from the same `windowControls` factory). Flat themes
          * blend them into the surface; the classic theme renders them as standard
          * raised buttons.
@@ -318,7 +318,7 @@ export interface Theme {
         /**
          * Focused fill of an ordinary `Window`'s `WindowHeader`. Independently
          * themeable from the tab strip, but valued equal to `tab.toolbar.background`
-         * so a header `Window` and a headerless {@link TabWindow} share one
+         * so a header `Window` and a headerless `TabWindow` share one
          * window-chrome colour. The blurred fill is the shared `gutter.background`.
          */
         header: {
@@ -620,9 +620,9 @@ export interface Theme {
     /**
      * Tokens consumed by the drag-and-drop overlays — the ghost that
      * follows the cursor, the per-target validity tint applied by
-     * [`DragFeedback`](/api/core/classes/DragFeedback), and the
+     * [`DragFeedback`](/api/overlay/classes/DragFeedback), and the
      * insertion-line bar drawn by
-     * [`ReorderIndicator`](/api/core/classes/ReorderIndicator).
+     * [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator).
      */
     drag: {
         ghost: {
@@ -1217,7 +1217,7 @@ export class ThemeManager {
      * @remarks Sets `document.documentElement.style.colorScheme`, `color`, `fontFamily`,
      * `fontSize`, and `document.body.style.backgroundColor` / `color` in addition to the CSS
      * custom properties, so both CSS-variable consumers and direct inline-style consumers
-     * are updated. `<html>` is targeted (in addition to `<body>`) because [`Window`](/api/core/classes/Window) components
+     * are updated. `<html>` is targeted (in addition to `<body>`) because [`Window`](/api/overlay/classes/Window) components
      * are appended to `document.documentElement`, so text in floating windows must inherit
      * from `<html>`.
      */

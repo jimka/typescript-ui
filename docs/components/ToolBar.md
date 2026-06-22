@@ -70,7 +70,7 @@ for (const label of ['New', 'Open', 'Save', 'Print', 'Undo', 'Redo']) {
 }
 ```
 
-On every layout pass the bar re-measures its children against its inner width. Buttons that no longer fit are switched to `display: none` and a chevron button — a flat, glyph-only trigger — appears at the trailing edge. Clicking it opens a [`Menu`](/api/core/classes/Menu) with one row per overflowed button, labelled from the button's text and glyph; selecting a row re-fires that button's `action`, and pressing the chevron again while the menu is open closes it. Widening the bar reveals the buttons again and hides the chevron once everything fits.
+On every layout pass the bar re-measures its children against its inner width. Buttons that no longer fit are switched to `display: none` and a chevron button — a flat, glyph-only trigger — appears at the trailing edge. Clicking it opens a [`Menu`](/api/overlay/classes/Menu) with one row per overflowed button, labelled from the button's text and glyph; selecting a row re-fires that button's `action`, and pressing the chevron again while the menu is open closes it. Widening the bar reveals the buttons again and hides the chevron once everything fits.
 
 Two limitations are deliberate:
 

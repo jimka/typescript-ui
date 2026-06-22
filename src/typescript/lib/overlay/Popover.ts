@@ -104,8 +104,8 @@ const _defaultPopoverOptions: Partial<PopoverOptions> = {
  * An anchored, non-modal floating bubble with a directional arrow tail. Use
  * `Popover` for click-triggered, interactive content (title, body, action
  * buttons, or any arbitrary subtree) — for ephemeral hover hints reach for
- * [`Tooltip`](/api/core/classes/Tooltip), and for modal containment reach
- * for [`Dialog`](/api/core/classes/Dialog).
+ * [`Tooltip`](/api/overlay/classes/Tooltip), and for modal containment reach
+ * for [`Dialog`](/api/overlay/classes/Dialog).
  *
  * `Popover` extends {@link Container} so authors can compose freely via
  * `addComponent`; the `setTitle` / `setBody` / `addAction` conveniences are

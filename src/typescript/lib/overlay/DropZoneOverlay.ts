@@ -93,8 +93,8 @@ class DropZoneHighlight extends Component {
 }
 
 /**
- * Z-order shared with [`DragFeedback`](/api/core/classes/DragFeedback) and
- * [`ReorderIndicator`](/api/core/classes/ReorderIndicator): just **below** the
+ * Z-order shared with [`DragFeedback`](/api/overlay/classes/DragFeedback) and
+ * [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator): just **below** the
  * lowest {@link LayerManager} band (the {@link Window} band) so this drop-zone
  * affordance — drawn over app content that establishes no isolating stacking
  * context — never paints over a floating window, while still sitting above the
@@ -111,7 +111,7 @@ const Z_INDEX = LayerManager.Band.Window - 1;
  *
  * Owned by [`DockRegion`](/api/layout/classes/DockRegion) — application code
  * does not instantiate this directly. It composes with the manager's own
- * [`DragFeedback`](/api/core/classes/DragFeedback): the tint reports drop
+ * [`DragFeedback`](/api/overlay/classes/DragFeedback): the tint reports drop
  * *validity*, this overlay reports drop *position*.
  *
  * @category Core

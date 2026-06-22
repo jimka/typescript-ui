@@ -59,7 +59,9 @@ That's it for the full CRUD path. Let's break down what happens:
 If you need different buttons (e.g. an Export action), drop the `TablePanel` and lay it out yourself:
 
 ```typescript
-import { Component, Event, Notification } from '@jimka/typescript-ui/core';
+import { Component, Event } from '@jimka/typescript-ui/core';
+import { Notification } from '@jimka/typescript-ui/overlay';
+
 import { Placement } from '@jimka/typescript-ui/primitive';
 import { Border as BorderLayout, HBox } from '@jimka/typescript-ui/layout';
 import { Button } from '@jimka/typescript-ui/component/button';

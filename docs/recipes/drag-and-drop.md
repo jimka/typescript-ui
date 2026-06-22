@@ -1,6 +1,6 @@
 # Drag-and-drop with `DragManager`
 
-[`DragManager`](/api/core/variables/DragManager) is a process-wide coordinator that turns any [`Component`](/api/core/classes/Component) into a drag source, a drop target, or both. It owns the global session, draws the three overlay components ([`DragGhost`](/api/core/classes/DragGhost), [`DragFeedback`](/api/core/classes/DragFeedback), [`ReorderIndicator`](/api/core/classes/ReorderIndicator)) above the page, and routes every callback through the option bag you pass to the factory.
+[`DragManager`](/api/overlay/variables/DragManager) is a process-wide coordinator that turns any [`Component`](/api/core/classes/Component) into a drag source, a drop target, or both. It owns the global session, draws the three overlay components ([`DragGhost`](/api/overlay/classes/DragGhost), [`DragFeedback`](/api/overlay/classes/DragFeedback), [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator)) above the page, and routes every callback through the option bag you pass to the factory.
 
 The framework already wires this up for [`TreeTable`](/components/TreeTable) rows — see [Drag-and-drop reparenting](/components/TreeTable#drag-and-drop-reparenting) on that page. This recipe covers the lower-level API for custom drag sources and drop targets.
 
@@ -8,15 +8,17 @@ The framework already wires this up for [`TreeTable`](/components/TreeTable) row
 
 | Concept | Owner | Lifecycle |
 |---|---|---|
-| Drag source | The component the user mouses down on | Register with [`makeDragSource`](/api/core/variables/DragManager#makedragsource); teardown via the returned closure. |
-| Drop target | The component a drag may land on | Register with [`makeDropTarget`](/api/core/variables/DragManager#makedroptarget); teardown via the returned closure. |
+| Drag source | The component the user mouses down on | Register with [`makeDragSource`](/api/overlay/variables/DragManager#makedragsource); teardown via the returned closure. |
+| Drop target | The component a drag may land on | Register with [`makeDropTarget`](/api/overlay/variables/DragManager#makedroptarget); teardown via the returned closure. |
 | Drag data | An opaque `Record<string, unknown>` carrying the source's payload | Resolved once per session — pass a literal, or pass a factory if the payload changes per drag. |
 | Drag session | The in-flight drag | Single-instance: the mouse is one pointer. Commits past a 4 px movement threshold so plain clicks never fire a drag. |
 
 ## Minimal example
 
 ```typescript
-import { Component, DragManager } from '@jimka/typescript-ui/core';
+import { Component } from '@jimka/typescript-ui/core';
+import { DragManager } from '@jimka/typescript-ui/overlay';
+
 
 const source = new Component();
 const target = new Component();
@@ -39,21 +41,21 @@ tearDownTarget();
 
 ## Option bags
 
-`makeDragSource` accepts a [`DragSourceOptions`](/api/core/interfaces/DragSourceOptions) bag:
+`makeDragSource` accepts a [`DragSourceOptions`](/api/overlay/interfaces/DragSourceOptions) bag:
 
 | Field | Purpose |
 |---|---|
 | `dragData` | Static payload, or a `() => DragData` factory if it changes per drag. |
 | `onDragStart?` | Veto callback. Return `false` the moment the threshold is crossed to abort. |
-| `ghostFactory?` | Build a custom drag preview. Returns any `Component`; falls back to the default [`DragGhost`](/api/core/classes/DragGhost) when omitted. |
+| `ghostFactory?` | Build a custom drag preview. Returns any `Component`; falls back to the default [`DragGhost`](/api/overlay/classes/DragGhost) when omitted. |
 | `cursor?` | CSS cursor applied to `<body>` while the drag is active. |
 
-`makeDropTarget` accepts a [`DropTargetOptions`](/api/core/interfaces/DropTargetOptions) bag:
+`makeDropTarget` accepts a [`DropTargetOptions`](/api/overlay/interfaces/DropTargetOptions) bag:
 
 | Field | Purpose |
 |---|---|
 | `accepts` | Validity predicate. Drives the green / red feedback tint on every move; `onDrop` only fires when the final value is `true`. |
-| `onDragOver?` | Optional hover callback. Return a number to position a [`ReorderIndicator`](/api/core/classes/ReorderIndicator) at the given y inside the target. |
+| `onDragOver?` | Optional hover callback. Return a number to position a [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator) at the given y inside the target. |
 | `onDragLeave?` | Fired when the cursor exits the target box. |
 | `onDrop?` | Fired on `mouseup` over an accepting target. Return `false` to suppress the `drop` event. |
 | `feedbackHost?` | Non-scrolling layer to host the validity tint, sized to the target's box within it. Pass it for a target that scrolls its own content so the tint overlays the viewport. |
@@ -63,8 +65,8 @@ tearDownTarget();
 
 Drag feedback speaks in two colour channels, and they mean different things. Keep them distinct:
 
-- **Green / red wash** over the *whole target* = **validity**. The [`DragFeedback`](/api/core/classes/DragFeedback) tint, driven by `accepts`: green when the target accepts the drop, red when it refuses. Use it when the target has a single outcome and no sub-region to point at — e.g. a [`TreeTable`](/components/TreeTable) directory row ("the dragged record reparents here").
-- **Blue** = **position**, in two tiers. A *faint* full-target wash is the "you can drop a tab here" affordance (a [`DockRegion`](/layouts/DockRegion) tints its whole body; a [`TabBar`](/components/TabBar) tints its whole strip); a *brighter* mark on a zone or slot then shows exactly *where* the drop lands — a [`ReorderIndicator`](/api/core/classes/ReorderIndicator) insertion line, a `DockRegion` edge/centre zone, or the strip's insertion bar. The **red** variant of the bright mark flags a specific spot that is *illegal* (a no-op or a self-drop), as opposed to the whole target being invalid.
+- **Green / red wash** over the *whole target* = **validity**. The [`DragFeedback`](/api/overlay/classes/DragFeedback) tint, driven by `accepts`: green when the target accepts the drop, red when it refuses. Use it when the target has a single outcome and no sub-region to point at — e.g. a [`TreeTable`](/components/TreeTable) directory row ("the dragged record reparents here").
+- **Blue** = **position**, in two tiers. A *faint* full-target wash is the "you can drop a tab here" affordance (a [`DockRegion`](/layouts/DockRegion) tints its whole body; a [`TabBar`](/components/TabBar) tints its whole strip); a *brighter* mark on a zone or slot then shows exactly *where* the drop lands — a [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator) insertion line, a `DockRegion` edge/centre zone, or the strip's insertion bar. The **red** variant of the bright mark flags a specific spot that is *illegal* (a no-op or a self-drop), as opposed to the whole target being invalid.
 
 The rule of thumb:
 
@@ -88,7 +90,7 @@ For tree-like data where you also need to forbid drops onto descendants, walk th
 
 ## Programmatic cancel
 
-[`DragManager.cancel`](/api/core/variables/DragManager#cancel) tears down the active session without firing `drop`. Wire it to your application's Escape key handler if the user expects Esc to abort an in-flight drag.
+[`DragManager.cancel`](/api/overlay/variables/DragManager#cancel) tears down the active session without firing `drop`. Wire it to your application's Escape key handler if the user expects Esc to abort an in-flight drag.
 
 ```typescript
 if (DragManager.isDragging()) {
@@ -99,12 +101,12 @@ if (DragManager.isDragging()) {
 ## Architectural notes
 
 - The manager hooks `mousedown` on each source through [`Component.addMouseDownListener`](/api/core/classes/Component#addmousedownlistener), so the framework's "components own their event surface" rule is preserved.
-- `mousemove` / `mouseup` are registered through [`Event.addViewportListener`](/api/core/variables/Event#addviewportlistener) (not raw `document` listeners) so the manager interoperates with other viewport-level listeners — e.g. [`Window.onMouseDown`](/api/core/classes/Window#onmousedown), which already pre-empts `mouseup` at window capture.
+- `mousemove` / `mouseup` are registered through [`Event.addViewportListener`](/api/core/variables/Event#addviewportlistener) (not raw `document` listeners) so the manager interoperates with other viewport-level listeners — e.g. [`Window.onMouseDown`](/api/overlay/classes/Window#onmousedown), which already pre-empts `mouseup` at window capture.
 - Overlays are appended directly to `<html>` and sit on `position: fixed` — one of the two documented overlay carve-outs in `ARCHITECTURE.md` §Positioning.
 - The hit-test uses `document.elementsFromPoint`; overlays carry `pointer-events: none` so the row underneath always wins.
 
 ## See also
 
 - [`TreeTable` drag-and-drop reparenting](/components/TreeTable#drag-and-drop-reparenting) — the highest-level integration shipped with the framework.
-- [`DragManager` API](/api/core/variables/DragManager).
-- [`DragGhost`](/api/core/classes/DragGhost) / [`DragFeedback`](/api/core/classes/DragFeedback) / [`ReorderIndicator`](/api/core/classes/ReorderIndicator) — the three overlay primitives.
+- [`DragManager` API](/api/overlay/variables/DragManager).
+- [`DragGhost`](/api/overlay/classes/DragGhost) / [`DragFeedback`](/api/overlay/classes/DragFeedback) / [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator) — the three overlay primitives.

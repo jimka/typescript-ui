@@ -4,7 +4,7 @@ import { _Body } from "~/component/table/Body.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import { DragEventDetail, DragManager } from "~/core/DragManager.js";
+import { DragEventDetail, DragManager } from "~/overlay/DragManager.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
 import { TreeCellRenderer } from "~/component/table/cell/renderer/TreeCell.js";
@@ -468,7 +468,7 @@ class TreeBody extends _Body {
     /**
      * Initialises the tree body, then registers the empty-area drop
      * target so a row released over the body's whitespace reparents to
-     * root. The element must exist before {@link DragManager.makeDropTarget}
+     * root. The element must exist before [`DragManager.makeDropTarget`](/api/overlay/variables/DragManager#makedroptarget)
      * can resolve its id — defer past the base class `init`.
      *
      * @param element - Optional element to initialise with.
@@ -595,8 +595,8 @@ class TreeBody extends _Body {
     }
 
     /**
-     * Installs the manager-side {@link DragManager.makeDragSource} +
-     * {@link DragManager.makeDropTarget} pair for a pool row, replacing
+     * Installs the manager-side [`DragManager.makeDragSource`](/api/overlay/variables/DragManager#makedragsource) +
+     * [`DragManager.makeDropTarget`](/api/overlay/variables/DragManager#makedroptarget) pair for a pool row, replacing
      * any previously installed pair.
      */
     private installRowDnD(row: Row, record: ModelRecord): void {

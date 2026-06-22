@@ -17,7 +17,7 @@ import { callable } from "~/core/Callable.js";
 import {
     createWindowControlButton,
     setWindowControlsActive,
-} from "~/core/windowControls.js";
+} from "~/overlay/windowControls.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
 import { window_maximize } from "~/glyphs/solid/window_maximize.js";
 import { window_minimize } from "~/glyphs/solid/window_minimize.js";
@@ -382,7 +382,7 @@ class WindowHeader extends Header {
 
     /**
      * Swaps the maximize button's glyph between the "maximize" and "restore"
-     * icons. Called by the owning [`Window`](/api/core/classes/Window) when
+     * icons. Called by the owning [`Window`](/api/overlay/classes/Window) when
      * transitioning between the `"normal"` and `"maximized"` states.
      *
      * @param name - Either `"window-maximize"` or `"window-restore"`.
@@ -430,7 +430,7 @@ class WindowHeader extends Header {
 
     /**
      * Registers a `dblclick` listener on the header bar itself, used by the
-     * owning [`Window`](/api/core/classes/Window) to toggle the maximize state
+     * owning [`Window`](/api/overlay/classes/Window) to toggle the maximize state
      * when the user double-clicks the title (but not the trailing buttons).
      *
      * @param listener - The callback to invoke on `dblclick`.
@@ -449,7 +449,7 @@ class WindowHeader extends Header {
      * Computes the natural required width of the header: title glyph width
      * (or 0 when no glyph is set) plus the supplied text budget plus the
      * three trailing buttons' row width. Used by the owning
-     * [`Window`](/api/core/classes/Window) to derive a minSize that keeps
+     * [`Window`](/api/overlay/classes/Window) to derive a minSize that keeps
      * the title icon, some text space, and the trailing buttons all visible
      * when the window is shrunk.
      *
@@ -470,7 +470,7 @@ class WindowHeader extends Header {
      * @returns The minimize button's HTMLElement, or undefined when the header
      *          has not yet been rendered.
      *
-     * @remarks Used by the owning [`Window`](/api/core/classes/Window) to
+     * @remarks Used by the owning [`Window`](/api/overlay/classes/Window) to
      * short-circuit `dblclick`-on-header maximize toggling when the click
      * target sits inside one of the trailing buttons.
      */

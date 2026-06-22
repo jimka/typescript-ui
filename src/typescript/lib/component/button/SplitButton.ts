@@ -4,7 +4,7 @@ import { Event } from "~/core/Event.js";
 import { Button, ButtonOptions } from "~/component/button/Button.js";
 import { DOM } from "~/core/DOM.js";
 import { Glyph } from "~/component/display/Glyph.js";
-import { Menu } from "~/core/Menu.js";
+import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { callable } from "~/core/Callable.js";
 import { caret_down } from "~/glyphs/solid/caret_down.js";
@@ -46,7 +46,7 @@ export interface SplitButtonOptions extends ButtonOptions {
  * A push button with a trailing dropdown chevron. The main button face fires
  * the primary `"action"` event exactly like [`Button`](/api/component/button/classes/Button);
  * clicking the chevron zone instead opens a rebuild-mode
- * [`Menu`](/api/core/classes/Menu) of [`MenuItemConfig`](/api/component/container/interfaces/MenuItemConfig)
+ * [`Menu`](/api/overlay/classes/Menu) of [`MenuItemConfig`](/api/component/container/interfaces/MenuItemConfig)
  * rows anchored under the button.
  *
  * The chevron is a child [`Glyph`](/api/component/display/classes/Glyph) inside

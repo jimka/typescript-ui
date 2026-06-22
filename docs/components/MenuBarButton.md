@@ -7,7 +7,8 @@ Extends [`Button`](/components/Button) with `chromeless: true` so the menubar's 
 ## Usage
 
 ```typescript
-import { Menu } from '@jimka/typescript-ui/core';
+import { Menu } from '@jimka/typescript-ui/overlay';
+
 import { MenuBarButton } from '@jimka/typescript-ui/component/menubar';
 const filePanel = Menu(
     [{ text: 'Save', shortcut: 'Ctrl+S', action: () => save() }],

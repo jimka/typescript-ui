@@ -134,7 +134,7 @@ const TITLE_GLYPH_TEXT_GAP: number = 8;
  * close button on the right.
  *
  * @remarks
- * Reach this instance via [`Dialog.getTitleBar()`](/api/core/classes/Dialog#gettitlebar) — there is no public
+ * Reach this instance via [`Dialog.getTitleBar()`](/api/overlay/classes/Dialog#gettitlebar) — there is no public
  * constructor. The supported surface is `getTitleText()` (for tinting the
  * title text colour), `setGlyph()` / `getGlyph()` (for the optional leading
  * icon), and any inherited [`Component`](/api/core/classes/Component) setter
@@ -321,7 +321,7 @@ class DialogButtonRow extends Component {
 
     /**
      * @param configs - Button definitions to render.
-     * @param onButton - Called with the resolved [`DialogResult`](/api/core/type-aliases/DialogResult) when any button is clicked.
+     * @param onButton - Called with the resolved [`DialogResult`](/api/overlay/type-aliases/DialogResult) when any button is clicked.
      */
     constructor(configs: DialogButtonConfig[], onButton: (result: DialogResult) => void) {
         super();
@@ -610,7 +610,7 @@ class Dialog extends Component implements DismissableLayer {
      * Displays the dialog, attaches event listeners, and returns a promise that
      * resolves when the dialog is dismissed.
      *
-     * @returns A promise resolving to the [`DialogResult`](/api/core/type-aliases/DialogResult) of the closing action.
+     * @returns A promise resolving to the [`DialogResult`](/api/overlay/type-aliases/DialogResult) of the closing action.
      */
     show(): Promise<DialogResult> {
         return new Promise((resolve) => {
@@ -899,7 +899,7 @@ class Dialog extends Component implements DismissableLayer {
      * Displays a modal dialog and returns a promise that resolves on dismissal.
      *
      * @param config - Dialog configuration.
-     * @returns A promise resolving to the [`DialogResult`](/api/core/type-aliases/DialogResult) of the closing action.
+     * @returns A promise resolving to the [`DialogResult`](/api/overlay/type-aliases/DialogResult) of the closing action.
      *
      * @example
      * ```typescript

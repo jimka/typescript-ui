@@ -19,7 +19,7 @@ Three built-in themes ship with the package: `ModernTheme` — a flat, gradient-
 
 1. **Writes each token as a CSS custom property on `:root`** (e.g. `--ts-ui-body-bg`). Because CSS variables cascade, any component that references a variable in its style rule updates automatically — no re-render needed.
 2. **Sets `color-scheme` on `:root`** so the browser renders native form elements (checkboxes, scrollbars, `<select>`) in the matching light or dark style.
-3. **Sets `color` and `background-color` on both `<html>` and `<body>`.** The `<html>` target is necessary because [`Window`](/api/core/classes/Window) components are appended to `document.documentElement` rather than `document.body`, so text inside floating windows must inherit from `<html>`.
+3. **Sets `color` and `background-color` on both `<html>` and `<body>`.** The `<html>` target is necessary because [`Window`](/api/overlay/classes/Window) components are appended to `document.documentElement` rather than `document.body`, so text inside floating windows must inherit from `<html>`.
 4. **Injects the bundled Manrope `@font-face` on first call.** The library self-hosts the Manrope variable font (Latin + Latin-Ext subsets, weight axis 200–800) and injects its `@font-face` rules into `<head>` the first time `setTheme` runs. So merely rendering a framework theme pulls in the font — no Google Fonts `<link>`, no external request, no extra setup. Because [`Body`](/api/core/classes/Body) calls `setTheme` on construction, any app that mounts the framework gets Manrope automatically. The font registers as `'Manrope Variable'`; text outside the Latin/Latin-Ext ranges falls back to `sans-serif`.
 
 ## Theme keys
@@ -34,8 +34,8 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `scale.base` | `--ts-ui-base-size` | Framework scale root in px — the global size knob the `scale.*` ratio tokens multiply. Resolved sizes are read in JS via [`ThemeManager.getResolvedScale()`](/api/core/classes/ThemeManager#getresolvedscale). See [Base size & scaling](#base-size-scaling) |
 | `font.linePadding` | `--ts-ui-line-padding` | Vertical leading (e.g. `"2px"`) added to a control's own font size to form its line box: the rendered line height is `calc(1em + var(--ts-ui-line-padding))`, so the leading scales per font size (12px and 14px text get proportionate line boxes from one token). Every text control renders **and** measures against this same arithmetic, so inputs, labels, and `Text` share one baseline. Drives the row-height of `Text`/tables and the baseline alignment math in `HBox`/`Column`/`Grid`. Override per control with `Text.setLineHeight(px)` for a fixed line-height |
 | `text.color` | `--ts-ui-text-color` | Default text color for all components |
-| `body.background` | `--ts-ui-body-bg` | Page background; also the background of [`Window`](/api/core/classes/Window) |
-| `border.color` | `--ts-ui-border-color` | Default border color for [`Window`](/api/core/classes/Window) and other bordered components |
+| `body.background` | `--ts-ui-body-bg` | Page background; also the background of [`Window`](/api/overlay/classes/Window) |
+| `border.color` | `--ts-ui-border-color` | Default border color for [`Window`](/api/overlay/classes/Window) and other bordered components |
 | `border.radius` | `--ts-ui-border-radius` | Corner radius applied to [`Button`](/api/component/button/classes/Button) and text-input components |
 | `button.background` | `--ts-ui-button-bg` | Background of [`Button`](/api/component/button/classes/Button), window title bars, and table headers |
 | `button.border` | `--ts-ui-button-border` | Outline of [`Button`](/api/component/button/classes/Button) and [`ToggleButton`](/api/component/button/classes/ToggleButton) |
@@ -71,7 +71,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `tab.button.background` | `--ts-ui-tab-button-bg` | Background of inactive tab buttons |
 | `tab.indicator.color` | `--ts-ui-tab-indicator-color` | Fill of the sliding active-tab selection bar |
 | `tab.indicator.thickness` | `--ts-ui-tab-indicator-thickness` | Thickness of the active-tab selection bar |
-| `window.shadow` | `--ts-ui-window-shadow` | Drop shadow on floating [`Window`](/api/core/classes/Window) components |
+| `window.shadow` | `--ts-ui-window-shadow` | Drop shadow on floating [`Window`](/api/overlay/classes/Window) components |
 | `window.control.background` | `--ts-ui-window-control-bg` | Resting fill of a [`TabWindow`](/components/TabWindow)'s or [`Window`](/components/Window) header's min/max/close controls; flat themes use the content surface, Classic a raised gradient |
 | `window.control.border` | `--ts-ui-window-control-border` | Border of the window controls (`1px solid transparent` when blended; a visible border in Classic) |
 | `window.control.shadow` | `--ts-ui-window-control-shadow` | Drop shadow of the window controls (`none` when blended; a raised shadow in Classic) |
@@ -86,17 +86,17 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `table.row.selected` | `--ts-ui-table-row-selected` | Background tint of the currently selected table row |
 | `table.row.new` | `--ts-ui-table-row-new` | Background tint of unsaved new records |
 | `table.row.dirty` | `--ts-ui-table-row-dirty` | Background tint of locally modified records |
-| `contextMenu.background` | `--ts-ui-context-menu-bg` | Background of the [`Menu`](/api/core/classes/Menu) panel in rebuild mode (right-click) |
+| `contextMenu.background` | `--ts-ui-context-menu-bg` | Background of the [`Menu`](/api/overlay/classes/Menu) panel in rebuild mode (right-click) |
 | `contextMenu.border` | `--ts-ui-context-menu-border` | Border color of the rebuild-mode `Menu` panel |
 | `contextMenu.shadow` | `--ts-ui-context-menu-shadow` | Drop shadow of the rebuild-mode `Menu` panel |
 | `contextMenu.item.hoverBackground` | `--ts-ui-context-menu-item-hover-bg` | Background of a rebuild-mode [`MenuItem`](/api/component/container/classes/MenuItem) on hover |
 | `contextMenu.item.disabledColor` | `--ts-ui-context-menu-item-disabled-color` | Text color of a disabled rebuild-mode `MenuItem` |
 | `contextMenu.separatorColor` | `--ts-ui-context-menu-separator-color` | Color of the rebuild-mode [`MenuSeparator`](/api/component/container/classes/MenuSeparator) line |
-| `tooltip.background` | `--ts-ui-tooltip-bg` | Background of the [`Tooltip`](/api/core/classes/Tooltip) panel |
+| `tooltip.background` | `--ts-ui-tooltip-bg` | Background of the [`Tooltip`](/api/overlay/classes/Tooltip) panel |
 | `tooltip.color` | `--ts-ui-tooltip-color` | Text color inside the `Tooltip` |
 | `tooltip.border` | `--ts-ui-tooltip-border` | Border color of the `Tooltip` panel |
 | `tooltip.shadow` | `--ts-ui-tooltip-shadow` | Drop shadow of the `Tooltip` panel |
-| `notification.shadow` | `--ts-ui-notification-shadow` | Drop shadow applied to all [`Notification`](/api/core/classes/Notification) toasts |
+| `notification.shadow` | `--ts-ui-notification-shadow` | Drop shadow applied to all [`Notification`](/api/overlay/classes/Notification) toasts |
 | `notification.info.background` | `--ts-ui-notification-info-bg` | Background of `'info'` notifications |
 | `notification.info.border` | `--ts-ui-notification-info-border` | Border color of `'info'` notifications |
 | `notification.success.background` | `--ts-ui-notification-success-bg` | Background of `'success'` notifications |
@@ -112,7 +112,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 :::
 
 ::: info Blue is the single accent colour
-One accent blue runs across selection (`table.row.selected`, list/row `selectedBackground`), the keyboard `indicator.focus` ring, and drag-and-drop *position* feedback (the [`ReorderIndicator`](/api/core/classes/ReorderIndicator) bar plus the dock / tab-strip drop-zone wash). The overlap is deliberate — blue means "what you're acting on, or where the action goes." Drag feedback stays distinct from selection by **modality** (it shows only during an active drag, on overlays above the page) and **treatment** (a faint area wash plus a thin moving bar, versus a selection's solid filled state), and the drop-zone wash uses a lighter blue than the accent fill. Don't introduce a second accent hue for drag — rely on treatment and modality. See [Drag-and-drop feedback colours](/recipes/drag-and-drop#drop-feedback-colours).
+One accent blue runs across selection (`table.row.selected`, list/row `selectedBackground`), the keyboard `indicator.focus` ring, and drag-and-drop *position* feedback (the [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator) bar plus the dock / tab-strip drop-zone wash). The overlap is deliberate — blue means "what you're acting on, or where the action goes." Drag feedback stays distinct from selection by **modality** (it shows only during an active drag, on overlays above the page) and **treatment** (a faint area wash plus a thin moving bar, versus a selection's solid filled state), and the drop-zone wash uses a lighter blue than the accent fill. Don't introduce a second accent hue for drag — rely on treatment and modality. See [Drag-and-drop feedback colours](/recipes/drag-and-drop#drop-feedback-colours).
 :::
 
 ## Base size & scaling

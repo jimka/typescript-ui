@@ -24,7 +24,7 @@ const Z_INDEX = LayerManager.Band.Window - 1;
  * `invalid` theme tokens via {@link setValid}; the geometry is mirrored
  * onto a drop target via {@link attachTo}.
  *
- * Owned by [`DragManager`](/api/core/variables/DragManager) — application
+ * Owned by [`DragManager`](/api/overlay/variables/DragManager) — application
  * code does not instantiate this directly.
  *
  * @category Core

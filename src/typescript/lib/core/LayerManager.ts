@@ -25,9 +25,9 @@ export type LayerDismissMode = "click-outside" | "blur" | "manual" | "modal";
 /**
  * A portaled overlay surface that participates in the runtime layer tree.
  * Implemented by [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown),
- * [`Popover`](/api/core/classes/Popover),
- * [`Dialog`](/api/core/classes/Dialog), and
- * [`Window`](/api/core/classes/Window).
+ * [`Popover`](/api/overlay/classes/Popover),
+ * [`Dialog`](/api/overlay/classes/Dialog), and
+ * [`Window`](/api/overlay/classes/Window).
  *
  * A surface registers itself with {@link LayerManager.register} from its
  * show path and unregisters with {@link LayerManager.unregister} from its

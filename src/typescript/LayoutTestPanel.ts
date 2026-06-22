@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from '@jimka/typescript-ui/core';
-import { ButtonGroup, callable, Panel } from '@jimka/typescript-ui/core';
+import { callable, Panel } from '@jimka/typescript-ui/core';
+import { ButtonGroup } from '@jimka/typescript-ui/overlay';
 import { HBox } from '@jimka/typescript-ui/layout';
 import { Checkbox, ComboBox, PasswordField, RadioButton, Slider, Text, TextArea, TextField, Toggle } from '@jimka/typescript-ui/component/input';
 import { Button, ToggleButton } from '@jimka/typescript-ui/component/button';

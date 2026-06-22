@@ -13,7 +13,7 @@ import { ModelRecord } from "~/data/ModelRecord.js";
 import { TreeTable } from "~/component/table/TreeTable.js";
 import { TreeTableSpec } from "~/component/table/TreeTableSpec.js";
 import { ExportOptions } from "~/component/table/TableExporter.js";
-import { Tooltip } from "~/core/Tooltip.js";
+import { Tooltip } from "~/overlay/Tooltip.js";
 import { callable } from "~/core/Callable.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { plus }          from "~/glyphs/solid/plus.js";

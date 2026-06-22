@@ -12,13 +12,13 @@ import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { Event } from "~/core/Event.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
-import { ButtonGroup } from "~/core/ButtonGroup.js";
+import { ButtonGroup } from "~/overlay/ButtonGroup.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
 import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { BoxLayout } from "~/layout/BoxLayout.js";
-import { Menu } from "~/core/Menu.js";
+import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { angle_left } from "~/glyphs/solid/angle_left.js";
@@ -26,7 +26,7 @@ import { angle_right } from "~/glyphs/solid/angle_right.js";
 import { angle_up } from "~/glyphs/solid/angle_up.js";
 import { angle_down } from "~/glyphs/solid/angle_down.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
-import { DragManager, DragEventDetail, DragData, TabDragData } from "~/core/DragManager.js";
+import { DragManager, DragEventDetail, DragData, TabDragData } from "~/overlay/DragManager.js";
 import { callable } from "~/core/Callable.js";
 import type { TabWidthMode, TabSide, TabOrientation } from "~/layout/Tab.js";
 import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
@@ -386,7 +386,7 @@ class TabReorderBar extends Component {
 /**
  * The faint full-strip wash shown while a tab-header drag hovers the strip — the
  * "you can drop a tab here" affordance, the strip's counterpart to the
- * [`DropZoneOverlay`](/api/core/classes/DropZoneOverlay) root tint a
+ * [`DropZoneOverlay`](/api/overlay/classes/DropZoneOverlay) root tint a
  * [`DockRegion`](/api/layout/classes/DockRegion) paints over a region. It shares
  * the dock's drop-zone token so the whole-target droppable cue reads the same
  * blue everywhere; the precise insertion position is the brighter

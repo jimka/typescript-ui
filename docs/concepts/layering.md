@@ -2,8 +2,8 @@
 
 Four portaled-overlay surfaces — [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown)
 (and every picker / ComboBox dropdown that extends it),
-[`Popover`](/api/core/classes/Popover), [`Window`](/api/core/classes/Window),
-and [`Dialog`](/api/core/classes/Dialog) — all render outside their logical
+[`Popover`](/api/overlay/classes/Popover), [`Window`](/api/overlay/classes/Window),
+and [`Dialog`](/api/overlay/classes/Dialog) — all render outside their logical
 parent, mounted directly on `document.documentElement`. Each one has to answer
 the same three questions:
 
@@ -115,6 +115,6 @@ class MyOverlay extends Component implements DismissableLayer {
 }
 ```
 
-[`Menu`](/api/core/classes/Menu), [`Tooltip`](/api/core/classes/Tooltip), and
+[`Menu`](/api/overlay/classes/Menu), [`Tooltip`](/api/overlay/classes/Tooltip), and
 `Notification` also portal but are not yet on the manager; they keep their own
 listeners and can fold in later.

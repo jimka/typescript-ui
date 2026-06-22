@@ -31,8 +31,8 @@ const BAR_HALF = 1;
  * Reserved for future sibling-reorder work — drop-on-directory does not
  * use this overlay. The class ships now so the public API surface and
  * theme tokens stabilise alongside
- * [`DragGhost`](/api/core/classes/DragGhost) and
- * [`DragFeedback`](/api/core/classes/DragFeedback); the row-DnD wiring
+ * [`DragGhost`](/api/overlay/classes/DragGhost) and
+ * [`DragFeedback`](/api/overlay/classes/DragFeedback); the row-DnD wiring
  * in [`TreeTable`](/api/component/table/classes/TreeTable) only attaches
  * the feedback tint.
  *

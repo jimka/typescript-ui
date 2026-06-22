@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { DragFeedback } from "~/core/component/DragFeedback.js";
-import { DragGhost } from "~/core/component/DragGhost.js";
+import { DragFeedback } from "~/overlay/DragFeedback.js";
+import { DragGhost } from "~/overlay/DragGhost.js";
 import { Event } from "~/core/Event.js";
-import { ReorderIndicator } from "~/core/component/ReorderIndicator.js";
+import { ReorderIndicator } from "~/overlay/ReorderIndicator.js";
 import { DOM } from "~/core/DOM.js";
 
 /**
@@ -110,7 +110,7 @@ export interface DropTargetOptions {
     accepts      : (detail: DragEventDetail) => boolean;
     /**
      * Optional hover callback. Return a number to position the
-     * [`ReorderIndicator`](/api/core/classes/ReorderIndicator) at the
+     * [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator) at the
      * given y inside the target; return `null` / `undefined` for no
      * reorder line.
      */
@@ -121,7 +121,7 @@ export interface DropTargetOptions {
     onDrop?      : (detail: DragEventDetail) => boolean | void;
     /**
      * Suppresses the whole-target validity tint
-     * ([`DragFeedback`](/api/core/classes/DragFeedback)) for this target. Pass it
+     * ([`DragFeedback`](/api/overlay/classes/DragFeedback)) for this target. Pass it
      * when the target paints its own positional validity feedback (e.g. a
      * [`DockRegion`](/api/layout/classes/DockRegion) colours the drop *zone*
      * blue/red in `onDragOver`) so the two don't stack into a tinted frame *and*
@@ -184,9 +184,9 @@ let activeSession: DragSession | null = null;
  * Process-wide drag-and-drop coordinator. Maintains the global source /
  * target registry, owns the single active drag session, and
  * positions the three overlay components
- * ([`DragGhost`](/api/core/classes/DragGhost),
- * [`DragFeedback`](/api/core/classes/DragFeedback),
- * [`ReorderIndicator`](/api/core/classes/ReorderIndicator)) above the
+ * ([`DragGhost`](/api/overlay/classes/DragGhost),
+ * [`DragFeedback`](/api/overlay/classes/DragFeedback),
+ * [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator)) above the
  * page during a drag.
  *
  * Consumers register through the two factory functions and receive a
