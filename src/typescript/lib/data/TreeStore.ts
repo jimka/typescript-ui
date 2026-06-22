@@ -207,13 +207,23 @@ export class TreeStore extends AbstractStore {
 
     /**
      * Recursively flattens a nested payload into a flat array, stamping each
-     * embedded child's `parentField` from its enclosing node's id.
+     * embedded child's parent-id raw key from its enclosing node's id.
      *
      * @param data - The (possibly nested) raw payload.
      *
-     * @returns A flat array of raw records with `parentField` populated.
+     * @returns A flat array of raw records with the parent-id key populated.
+     *
+     * @remarks
+     * Operates on the *raw* payload before `createRecord`, so it reads and
+     * writes the fields' raw mapping keys ({@link Field.getMapping}), not their
+     * model names — keeping nested loads correct when a model maps an id/parent
+     * field to a different raw key. Falls back to the configured field name when
+     * the model declares no such field.
      */
     private flattenNested(data: any[]): any[] {
+        const idKey     = this.model.getField(this._idField)?.getMapping() ?? this._idField;
+        const parentKey = this.model.getField(this._parentField)?.getMapping() ?? this._parentField;
+
         const flat: any[] = [];
 
         const walk = (nodes: any[], parentId: any): void => {
@@ -223,14 +233,14 @@ export class TreeStore extends AbstractStore {
 
                 delete rest[this._childrenKey!];
 
-                if (parentId != null && rest[this._parentField] == null) {
-                    rest[this._parentField] = parentId;
+                if (parentId != null && rest[parentKey] == null) {
+                    rest[parentKey] = parentId;
                 }
 
                 flat.push(rest);
 
                 if (Array.isArray(children) && children.length > 0) {
-                    walk(children, rest[this._idField]);
+                    walk(children, rest[idKey]);
                 }
             }
         };

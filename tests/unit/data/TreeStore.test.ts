@@ -175,4 +175,17 @@ describe('TreeStore nested eager flatten', () => {
         expect(store.getAll().map((r: ModelRecord) => r.get('id')).sort()).toEqual([1, 2]);
         expect(store.getNodeById(2)!.getParent()!.getId()).toBe(1);
     });
+
+    it('reads and stamps the raw mapping keys when id/parent fields are mapped', () => {
+        const MAPPED = new Model([
+            { name: 'id',       mapping: 'pk' },
+            { name: 'parentId', mapping: 'pid' },
+            { name: 'name' },
+        ], 'id');
+        const store = new TreeStore({ model: MAPPED, parentField: 'parentId', childrenKey: 'children' });
+        store.loadData([{ pk: 1, pid: null, name: 'Root', children: [{ pk: 2, name: 'Nested' }] }]);
+
+        expect(store.getRootNode().getChildren().map(n => n.getId())).toEqual([1]);
+        expect(store.getNodeById(2)!.getParent()!.getId()).toBe(1);
+    });
 });
