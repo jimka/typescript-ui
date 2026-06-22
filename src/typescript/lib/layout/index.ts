@@ -38,7 +38,7 @@ export type { GridOptions } from '~/layout/Grid.js';
 export { GridConstraints } from '~/layout/GridConstraints.js';
 export type { GridTrack, GridTrackMode } from '~/layout/GridTrack.js';
 export { Split } from '~/layout/Split.js';
-export type { SplitOptions } from '~/layout/Split.js';
+export type { SplitOptions, SplitDirection } from '~/layout/Split.js';
 export { DockRegion } from '~/layout/DockRegion.js';
 export type { DropZone } from '~/core/component/DropZoneOverlay.js';
 export { Card } from '~/layout/Card.js';
