@@ -123,7 +123,7 @@ layout.setAlign("end");
 
 [`setTextAlign`](/api/layout/classes/Tab#settextalign) sets the strip-wide
 justification of every tab button's label
-([`TabTextAlign`](/api/layout/type-aliases/TabTextAlign) — `"start"`,
+([`AxisPosition`](/api/layout/type-aliases/AxisPosition) — `"start"`,
 `"center"` (default), or `"end"`). The values are flow-relative — `"start"` /
 `"end"` are the left / right edges on a horizontal strip and the top / bottom
 edges on a rotated west/east strip — matching the `"start"` / `"end"` of
