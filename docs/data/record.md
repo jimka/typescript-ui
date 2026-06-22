@@ -96,7 +96,22 @@ newRecord.commit();
 console.log(newRecord.isNew());  // false
 ```
 
+## Associations
+
+When the record's [model declares associations](/data/model#associations), `getAssociated(accessor)` returns the cached, parent-scoped child [`Store`](/data/store):
+
+```typescript
+const employees = department.getAssociated('employees');   // a Store
+employees.add({ name: 'Ada' });
+
+// belongsTo: read the raw foreign key without loading the owner
+employee.getForeignKeyValue('department');                 // 42
+```
+
+Repeated calls for the same accessor return the same store instance. See [Associations](/data/associations) for eager vs lazy loading, cascade sync, and `belongsTo`.
+
 ## See also
 
 - [Store](/data/store) — find / iterate / mutate records.
+- [Associations](/data/associations) — `getAssociated` and the parent-scoped child store.
 - [Binding](/data/binding) — wire a record to form fields with two-way sync.

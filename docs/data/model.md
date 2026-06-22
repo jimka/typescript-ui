@@ -115,8 +115,25 @@ Use `mapping` when the incoming JSON key differs from the field name:
 
 This lets a UI use `camelCase` field names while the API uses `snake_case`.
 
+## Associations
+
+A model can declare that its records own records of another model via an `associations` array, mirroring `fields`:
+
+```typescript
+const DepartmentModel = new Model({
+    fields: [{ name: 'id', type: 'number' }, { name: 'name', type: 'string' }],
+    primaryKey: 'id',
+    associations: [
+        { accessor: 'employees', foreignKey: 'deptId', target: () => EmployeeModel },
+    ],
+});
+```
+
+`record.getAssociated('employees')` then returns a parent-scoped child [`Store`](/data/store). See [Associations](/data/associations) for hasMany / belongsTo, eager vs lazy loading, and cascade sync.
+
 ## See also
 
 - [Store](/data/store) — pass your model to a store.
 - [Record](/data/record) — read and mutate field values via `get` / `set`.
+- [Associations](/data/associations) — declaring `hasMany` / `belongsTo` relationships.
 - [`Field`](/api/data/classes/Field) — the per-field runtime representation.

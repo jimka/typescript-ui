@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Field, FieldOptions } from '~/data/Field.js';
+import type { Association, AssociationOptions } from '~/data/Association.js';
 import { AbstractModel } from '~/data/AbstractModel.js';
 
 /**
@@ -9,8 +10,9 @@ import { AbstractModel } from '~/data/AbstractModel.js';
  * @category Data
  */
 export interface ModelOptions {
-    fields:      Array<Field | FieldOptions>;
-    primaryKey?: string;
+    fields:        Array<Field | FieldOptions>;
+    primaryKey?:   string;
+    associations?: Array<Association | AssociationOptions>;
 }
 
 /**
@@ -38,6 +40,7 @@ export class Model extends AbstractModel {
         } else {
             this.fields = fields.fields;
             this._primaryKey = fields.primaryKey;
+            this.associations = fields.associations;
         }
     }
 }

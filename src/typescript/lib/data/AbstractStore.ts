@@ -137,6 +137,7 @@ export interface AbstractStoreOptions {
     autoLoad?:    boolean;
     syncErrorPolicy?: 'stop' | 'continue';
     groupField?:  string;
+    cascadeSync?: boolean;
     listeners?:   Partial<Record<StoreEvent, StoreListener>>;
 }
 
@@ -201,6 +202,12 @@ export abstract class AbstractStore {
     // remain pending), 'continue' records the failure and proceeds.
     private _syncErrorPolicy: 'stop' | 'continue' = 'stop';
 
+    // When true (default), sync() walks each parent record's materialised hasMany
+    // child stores after the parent creates/updates resolve, stamping the parent
+    // foreign key and cascading the child store's own sync(). Set false to opt a
+    // store out of the cascade.
+    private _cascadeSync: boolean = true;
+
     // `_loadSeq` is bumped on every load() so a stale in-flight response (whose
     // captured seq no longer matches) is ignored. `_loadAbort` cancels the
     // previous HTTP read when a newer load starts.
@@ -256,6 +263,10 @@ export abstract class AbstractStore {
 
         if (options.syncErrorPolicy !== undefined) {
             this._syncErrorPolicy = options.syncErrorPolicy;
+        }
+
+        if (options.cascadeSync !== undefined) {
+            this._cascadeSync = options.cascadeSync;
         }
 
         if (options.groupField !== undefined) {
@@ -969,13 +980,83 @@ export abstract class AbstractStore {
 
         // Each phase returns true when the run should stop early ('stop' policy
         // after a failure); the || chain then short-circuits the later phases.
-        // Under 'continue' every phase returns false and all three run.
-        await this.syncCreates(proxy, failures)
-            || await this.syncUpdates(proxy, failures)
-            || await this.syncDeletes(proxy, failures);
+        // Under 'continue' every phase returns false and all phases run. The
+        // hasMany cascade runs after creates/updates resolve (so parents carry
+        // their server ids) and before deletes (children sync before the parent
+        // is removed); a stopped run skips it like any later phase.
+        const stopped = await this.syncCreates(proxy, failures)
+            || await this.syncUpdates(proxy, failures);
+
+        if (!stopped) {
+            await this.syncCascade();
+
+            await this.syncDeletes(proxy, failures);
+        }
 
         this.emit('sync', { failures });
         this.emit('datachanged', {});
+    }
+
+    /**
+     * Cascades persistence into each parent record's materialised hasMany child
+     * stores: stamps the parent foreign key onto every child, then runs the
+     * child store's own `sync()`.
+     *
+     * @returns A promise that resolves when every cascaded child sync has settled.
+     *
+     * @remarks
+     * No-op when `cascadeSync` is disabled. Only associations whose child store
+     * was actually built (via {@link ModelRecord.getAssociated}) are walked, so a
+     * loaded-but-untouched parent costs nothing. Reusing the child store's own
+     * `sync()` means child `'exception'` events, `syncErrorPolicy`, and batch
+     * behaviour all apply to the cascade unchanged; failures surface on the child
+     * store's own event surface, not the parent's `'sync'` payload.
+     */
+    private async syncCascade(): Promise<void> {
+        if (!this._cascadeSync) {
+            return;
+        }
+
+        for (const parent of this._allRecords) {
+            for (const association of parent.getModel().getAssociations()) {
+                if (association.kind !== 'hasMany' || !parent.hasChildStore(association.getAccessor())) {
+                    continue;
+                }
+
+                const child = parent.getAssociated(association.getAccessor());
+
+                this.stampForeignKeys(child, association.getForeignKey(), parent);
+
+                await child.sync();
+            }
+        }
+    }
+
+    /**
+     * Stamps the parent's id onto the foreign-key field of every record in a
+     * hasMany child store, so a child created against a brand-new parent picks up
+     * the real server id before it is itself persisted.
+     *
+     * @param child - The parent-scoped child store.
+     * @param foreignKey - The child field that holds the owner's id.
+     * @param parent - The owning record, whose `getId()` supplies the FK value.
+     *
+     * @remarks
+     * `set()` is a no-op when the value already matches, so a child added to an
+     * already-persisted parent (already carrying the correct FK) is untouched.
+     * When the parent still has no id (its create failed or was skipped), the
+     * stamp writes `undefined` and the child is not falsely re-keyed.
+     */
+    private stampForeignKeys(child: AbstractStore, foreignKey: string, parent: ModelRecord): void {
+        const parentId = parent.getId();
+
+        if (parentId === undefined) {
+            return;
+        }
+
+        for (const record of child.getAll()) {
+            record.set(foreignKey, parentId);
+        }
     }
 
     /**
