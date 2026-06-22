@@ -1,10 +1,10 @@
 # Modal dialog with async result
 
-Use [`Dialog.show()`](/api/core/classes/Dialog) for one-shot prompts. The static method returns a `Promise<DialogResult>` that resolves to `'confirm'`, `'cancel'`, or `'close'`.
+Use [`Dialog.show()`](/api/overlay/classes/Dialog) for one-shot prompts. The static method returns a `Promise<DialogResult>` that resolves to `'confirm'`, `'cancel'`, or `'close'`.
 
 ## Standard button presets
 
-When the buttons are the universal Ok / Confirm / Cancel / Close affordances, reach for [`DialogButtons`](/api/core/variables/DialogButtons) instead of respelling the `{text, result, glyph, tint}` quad at the call site. The presets bind the glyph (`circle-check` for the affirmative pair, `xmark` for the negative pair) and the matching tint to the button's identity so they cannot drift, and the dialog header is auto-tinted based on which presets you supply: a single confirm-result button gets a blue informational header with a leading info glyph, a confirm + cancel pair gets a green affirmative-action header.
+When the buttons are the universal Ok / Confirm / Cancel / Close affordances, reach for [`DialogButtons`](/api/overlay/variables/DialogButtons) instead of respelling the `{text, result, glyph, tint}` quad at the call site. The presets bind the glyph (`circle-check` for the affirmative pair, `xmark` for the negative pair) and the matching tint to the button's identity so they cannot drift, and the dialog header is auto-tinted based on which presets you supply: a single confirm-result button gets a blue informational header with a leading info glyph, a confirm + cancel pair gets a green affirmative-action header.
 
 `Ok` and `Confirm` both emit `result: 'confirm'` — they share the glyph and tint and differ only in label. Pick `Ok` for informational acknowledgement (paired with nothing) and `Confirm` for affirmative action (paired with `Cancel`). `Close` and `Cancel` both carry the red `xmark`; the result value (`'close'` vs `'cancel'`) is what disambiguates them at the call site.
 
@@ -31,7 +31,7 @@ await Dialog.show({
 
 The `primary` flag stays at the call site because which button is default-focused is contextual (Cancel is primary when paired with Confirm so Enter doesn't fire a destructive action; Confirm / Ok is primary when it stands alone).
 
-If you build a custom button outside the preset set and want a tinted glyph, the [`tint`](/api/core/interfaces/DialogButtonConfig#tint) field on [`DialogButtonConfig`](/api/core/interfaces/DialogButtonConfig) accepts any CSS colour string — typically a theme variable reference like `'var(--ts-ui-dialog-confirm-color)'`.
+If you build a custom button outside the preset set and want a tinted glyph, the [`tint`](/api/overlay/interfaces/DialogButtonConfig#tint) field on [`DialogButtonConfig`](/api/overlay/interfaces/DialogButtonConfig) accepts any CSS colour string — typically a theme variable reference like `'var(--ts-ui-dialog-confirm-color)'`.
 
 ## Confirm a destructive action
 
@@ -124,5 +124,5 @@ switch (result) {
 ## See also
 
 - [Dialog](/components/Dialog) — full surface
-- [API: DialogConfig](/api/core/interfaces/DialogConfig), [DialogButtonConfig](/api/core/interfaces/DialogButtonConfig), [DialogResult](/api/core/type-aliases/DialogResult)
+- [API: DialogConfig](/api/overlay/interfaces/DialogConfig), [DialogButtonConfig](/api/overlay/interfaces/DialogButtonConfig), [DialogResult](/api/overlay/type-aliases/DialogResult)
 - [Floating window](/recipes/floating-window) — for non-modal panels

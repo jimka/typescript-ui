@@ -66,13 +66,13 @@ The inverse of a drop is handled too. `DockRegion` listens to the [`empty`](/lay
 
 ## The overlay
 
-While the cursor is over the region, a [`DropZoneOverlay`](/api/core/classes/DropZoneOverlay) tints the region and highlights the band the drop would occupy. It **composes with**, rather than replaces, the drag manager's validity tint ([`DragFeedback`](/api/core/classes/DragFeedback)): the tint reports whether the drop is *valid*, the overlay reports *where* it will land. Self-drops are rejected: dropping a panel onto the edge of the region it is already the sole content of (it would split a region against itself), and — since an edge drop can wrap the region in a tab stack, making the region itself draggable by its own tab — docking the region, or any container that holds it, back onto its own overlay (it would re-parent a node beneath its own subtree and detach it).
+While the cursor is over the region, a [`DropZoneOverlay`](/api/overlay/classes/DropZoneOverlay) tints the region and highlights the band the drop would occupy. It **composes with**, rather than replaces, the drag manager's validity tint ([`DragFeedback`](/api/overlay/classes/DragFeedback)): the tint reports whether the drop is *valid*, the overlay reports *where* it will land. Self-drops are rejected: dropping a panel onto the edge of the region it is already the sole content of (it would split a region against itself), and — since an edge drop can wrap the region in a tab stack, making the region itself draggable by its own tab — docking the region, or any container that holds it, back onto its own overlay (it would re-parent a node beneath its own subtree and detach it).
 
 The hovered-band colours are themed via the `drag.dropzone` tokens — see [Theming](/concepts/theming#theme-keys).
 
 ## See also
 
 - [API: DockRegion](/api/layout/classes/DockRegion)
-- [`DropZoneOverlay`](/api/core/classes/DropZoneOverlay) — the five-zone overlay
+- [`DropZoneOverlay`](/api/overlay/classes/DropZoneOverlay) — the five-zone overlay
 - [`Split`](/layouts/Split) — the manager an edge drop creates or extends
 - [`Tab`](/layouts/Tab) — the manager a centre drop adds to

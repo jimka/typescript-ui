@@ -116,7 +116,7 @@ layout.addLazyTab(() => new HeavyPanel(), 'Heavy');
 
 Subsequent activations reuse the cached instance, so scroll position and form state are preserved. See [Tab » Lazy panel construction](/layouts/Tab#lazy-panel-construction) for details.
 
-The same yield-and-fade lifecycle is available for floating windows whose content is expensive to build via [`Window.setContentFactory`](/api/core/classes/Window): the window opens immediately with a spinner in its content area, the factory runs after a two-rAF yield, and the built tree fades in over the spinner.
+The same yield-and-fade lifecycle is available for floating windows whose content is expensive to build via [`Window.setContentFactory`](/api/overlay/classes/Window): the window opens immediately with a spinner in its content area, the factory runs after a two-rAF yield, and the built tree fades in over the spinner.
 
 ```typescript
 const win = Window('Heavy');

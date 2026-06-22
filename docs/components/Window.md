@@ -1,6 +1,6 @@
 # Window
 
-[`Window`](/api/core/classes/Window) is a floating, draggable, resizable panel with a title bar and a close button. Multiple windows stack with auto-managed `z-index`, and clicks outside the active window deactivate it.
+[`Window`](/api/overlay/classes/Window) is a floating, draggable, resizable panel with a title bar and a close button. Multiple windows stack with auto-managed `z-index`, and clicks outside the active window deactivate it.
 
 `Window` extends [`AbstractWindow`](/components/AbstractWindow), the abstract base that holds the header-agnostic window machinery (resize borders, move, window-state lifecycle, z-order, show/hide). `Window` is the concrete subclass that adds a [`WindowHeader`](/api/component/container/classes/WindowHeader) title bar; its headerless sibling is [`TabWindow`](/components/TabWindow). `getHeader()` still returns the `WindowHeader` exactly as before.
 
@@ -26,7 +26,7 @@ win.show();
 
 ## Construction
 
-`Window(headerText, options?)` — the title text is the first positional argument; `options` is a [`WindowOptions`](/api/core/interfaces/WindowOptions) bag.
+`Window(headerText, options?)` — the title text is the first positional argument; `options` is a [`WindowOptions`](/api/overlay/interfaces/WindowOptions) bag.
 
 | Option | Type | Purpose |
 | --- | --- | --- |
@@ -58,7 +58,7 @@ Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOp
 | `setResizeFps(fps)` | Throttle resize-driven layout (default 30). |
 | `on("close", fn)` | Called when the user clicks the × button. |
 
-The full surface — drag listeners, focus / activation events, viewport-clamping — is in the [API reference](/api/core/classes/Window).
+The full surface — drag listeners, focus / activation events, viewport-clamping — is in the [API reference](/api/overlay/classes/Window).
 
 ## DOM placement
 
@@ -105,7 +105,7 @@ win.setSnapResizeEnabled(false); // opt out
 
 ## See also
 
-- [API: Window](/api/core/classes/Window)
+- [API: Window](/api/overlay/classes/Window)
 - [`AbstractWindow`](/components/AbstractWindow) — the shared window base class
 - [`TabWindow`](/components/TabWindow) — the headerless tab-bar window sibling
 - [Rail](/components/Rail) — minimize a window into an edge launcher strip via `setRail`

@@ -1,6 +1,6 @@
 # ButtonGroup
 
-[`ButtonGroup`](/api/core/classes/ButtonGroup) enforces single-selection across a set of [`RadioButton`](/components/RadioButton) or [`ToggleButton`](/components/ToggleButton) instances.
+[`ButtonGroup`](/api/overlay/classes/ButtonGroup) enforces single-selection across a set of [`RadioButton`](/components/RadioButton) or [`ToggleButton`](/components/ToggleButton) instances.
 
 When any button in the group becomes selected, the others are automatically deselected. For radio groups, a shared `name` attribute is applied so the browser handles keyboard navigation natively. For toggle groups, call `setContainer` to enable roving-tabindex keyboard nav.
 
@@ -60,7 +60,7 @@ group.on("selection", button => {
 
 ## See also
 
-- [API: ButtonGroup](/api/core/classes/ButtonGroup)
+- [API: ButtonGroup](/api/overlay/classes/ButtonGroup)
 - [`RadioButton`](/components/RadioButton)
 - [`ToggleButton`](/components/ToggleButton)
 - [`RovingTabIndex`](/api/core/classes/RovingTabIndex) — the keyboard-nav primitive used internally.

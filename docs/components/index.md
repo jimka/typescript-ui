@@ -15,13 +15,13 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`AbstractWindow`](/components/AbstractWindow) | Abstract base for `Window` and `TabWindow` — header-agnostic window machinery |
 | [`Window`](/components/Window) | Floating, draggable, resizable window with a title-bar header |
 | [`TabWindow`](/components/TabWindow) | Headerless floating window whose tab bar is its title bar (strip tear-off) |
-| [`Dialog`](/api/core/classes/Dialog) | Modal dialog with async result |
+| [`Dialog`](/api/overlay/classes/Dialog) | Modal dialog with async result |
 | [`Drawer`](/components/Drawer) | Edge-anchored panel that slides in from a viewport edge; modal or non-modal |
 | [`Rail`](/components/Rail) | Persistent edge launcher strip of handles that toggle drawers and host minimized windows |
 | [`Dock`](/components/Dock) | Rearrangeable panel layout — reorder, tear-off, edge-split, and save/restore |
-| [`Tooltip`](/api/core/classes/Tooltip) | Singleton hover hint, attach via `Tooltip.attach(component, text)` |
+| [`Tooltip`](/api/overlay/classes/Tooltip) | Singleton hover hint, attach via `Tooltip.attach(component, text)` |
 | [`Popover`](/components/Popover) | Anchored, non-modal floating bubble with arrow tail and dismiss modes |
-| [`Notification`](/api/core/classes/Notification) | Static toast — `Notification.show(message, type, duration?)` |
+| [`Notification`](/api/overlay/classes/Notification) | Static toast — `Notification.show(message, type, duration?)` |
 | [`AnimatedDropdown`](/api/core/classes/AnimatedDropdown) | Floating-panel base with shared fade lifecycle |
 
 ## Buttons
@@ -32,7 +32,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`ToggleButton`](/api/component/button/classes/ToggleButton) | Two-state press button |
 | [`SplitButton`](/api/component/button/classes/SplitButton) | Click button with a trailing dropdown-menu chevron |
 | [`RadioButton`](/api/component/input/classes/RadioButton) | Single-selection radio (use with `ButtonGroup`) |
-| [`ButtonGroup`](/api/core/classes/ButtonGroup) | Enforces single selection across radio / toggle buttons |
+| [`ButtonGroup`](/api/overlay/classes/ButtonGroup) | Enforces single selection across radio / toggle buttons |
 | [`SpinButton`](/api/component/input/classes/SpinButton) | Up / down arrow paired with a numeric field |
 | [`TabCloseButton`](/api/component/button/classes/TabCloseButton) | Small `×` button for closeable tabs |
 
@@ -102,7 +102,7 @@ Every value-bearing control below extends [`AbstractInput<T>`](/api/component/in
 | --- | --- |
 | [`MenuBar`](/api/component/menubar/classes/MenuBar) | Top-of-window menu bar |
 | [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) | A button that opens a menu panel |
-| [`Menu`](/api/core/classes/Menu) | Floating menu — right-click context menu (`Menu()`) or `MenuBar` dropdown (`Menu(items, onClose)`) |
+| [`Menu`](/api/overlay/classes/Menu) | Floating menu — right-click context menu (`Menu()`) or `MenuBar` dropdown (`Menu(items, onClose)`) |
 | [`MenuItem`](/api/component/container/classes/MenuItem) | Item inside a menu |
 | [`MenuSeparator`](/api/component/container/classes/MenuSeparator) | Divider line in a menu |
 

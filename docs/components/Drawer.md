@@ -1,6 +1,6 @@
 # Drawer
 
-[`Drawer`](/api/core/classes/Drawer) is an edge-anchored panel that rests off-screen against a viewport edge and slides into view when opened, overlaying the rest of the UI. Unlike [`Dialog`](/components/Dialog) (centred, promise-driven, always modal) it is a bare content host driven by a public `open()` / `close()` / `toggle()` API, and it can be modal *or* non-modal.
+[`Drawer`](/api/overlay/classes/Drawer) is an edge-anchored panel that rests off-screen against a viewport edge and slides into view when opened, overlaying the rest of the UI. Unlike [`Dialog`](/components/Dialog) (centred, promise-driven, always modal) it is a bare content host driven by a public `open()` / `close()` / `toggle()` API, and it can be modal *or* non-modal.
 
 It reuses the framework's floating-layer infrastructure wholesale: it mounts on `document.documentElement` and registers with [`LayerManager`](/api/core/classes/LayerManager) as a [`DismissableLayer`](/api/core/interfaces/DismissableLayer), so Escape, outside-click capture, and z-stacking behave like every other portaled surface.
 
@@ -72,7 +72,7 @@ Listeners can also be supplied at construction via the `listeners` option bag.
 
 ## See also
 
-- [API: Drawer](/api/core/classes/Drawer)
-- [API: DrawerOptions](/api/core/interfaces/DrawerOptions), [DrawerEdge](/api/core/type-aliases/DrawerEdge), [DrawerEvent](/api/core/type-aliases/DrawerEvent), [DrawerCloseController](/api/core/interfaces/DrawerCloseController)
+- [API: Drawer](/api/overlay/classes/Drawer)
+- [API: DrawerOptions](/api/overlay/interfaces/DrawerOptions), [DrawerEdge](/api/overlay/type-aliases/DrawerEdge), [DrawerEvent](/api/overlay/type-aliases/DrawerEvent), [DrawerCloseController](/api/overlay/interfaces/DrawerCloseController)
 - [Dialog](/components/Dialog) — centred, promise-driven modal
 - [Rail](/components/Rail) — persistent edge strip whose handles toggle drawers

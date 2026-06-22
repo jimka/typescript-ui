@@ -1,6 +1,6 @@
 # Notification
 
-[`Notification`](/api/core/classes/Notification) shows a toast in the bottom-right corner of the viewport that auto-dismisses after a configurable duration. Multiple toasts stack upward; each has a manual × dismiss button.
+[`Notification`](/api/overlay/classes/Notification) shows a toast in the bottom-right corner of the viewport that auto-dismisses after a configurable duration. Multiple toasts stack upward; each has a manual × dismiss button.
 
 ## Usage
 
@@ -31,7 +31,7 @@ Notification.show(
 - **Entrance + exit animation** — toasts slide in from the right and fade in over 200ms when they appear, and slide back out + fade over 200ms when dismissed.
 - **Manual dismiss** — every toast renders a × button (labelled "Dismiss notification" for assistive tech). The stack collapses upward once the exit transition completes. Both entrance and exit honour `prefers-reduced-motion: reduce`.
 - **Screen-reader announcement** — each toast is a live region so assistive tech announces it on appearance. `error` and `warning` toasts use `role="alert"` / `aria-live="assertive"` (interrupting); `info` and `success` use `role="status"` / `aria-live="polite"`. The decorative severity badge is `aria-hidden`, so only the message text is announced.
-- **Pause-on-modal** — opening the detail dialog calls [`Notification.pauseAll()`](/api/core/classes/Notification#pauseall) on the way in and [`Notification.resumeAll()`](/api/core/classes/Notification#resumeall) on the way out. The pair is refcounted, so it composes with the hover-pause refcount and with nested consumer-driven pause/resume calls. Resumed timers are clamped to a minimum of 8 seconds whenever the *last* release was a modal one, so the user has time to read the remaining toasts.
+- **Pause-on-modal** — opening the detail dialog calls [`Notification.pauseAll()`](/api/overlay/classes/Notification#pauseall) on the way in and [`Notification.resumeAll()`](/api/overlay/classes/Notification#resumeall) on the way out. The pair is refcounted, so it composes with the hover-pause refcount and with nested consumer-driven pause/resume calls. Resumed timers are clamped to a minimum of 8 seconds whenever the *last* release was a modal one, so the user has time to read the remaining toasts.
 
 ## Pausing toasts during your own modal flow
 
@@ -53,5 +53,5 @@ Each severity has its own background and border tokens — see the `notification
 
 ## See also
 
-- [API: Notification](/api/core/classes/Notification)
-- [API: NotificationType](/api/core/type-aliases/NotificationType)
+- [API: Notification](/api/overlay/classes/Notification)
+- [API: NotificationType](/api/overlay/type-aliases/NotificationType)

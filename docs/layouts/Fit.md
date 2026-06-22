@@ -25,7 +25,7 @@ wrapper.setLayoutManager(Fit());
 wrapper.addComponent(table);
 ```
 
-Centred at preferred size — useful for floating a single status icon or spinner inside otherwise empty bounds (this is how [`Tab.addLazyTab`](/layouts/Tab#lazy-panel-construction) and [`Window.setContentFactory`](/api/core/classes/Window#setcontentfactory) wire their loading spinner):
+Centred at preferred size — useful for floating a single status icon or spinner inside otherwise empty bounds (this is how [`Tab.addLazyTab`](/layouts/Tab#lazy-panel-construction) and [`Window.setContentFactory`](/api/overlay/classes/Window#setcontentfactory) wire their loading spinner):
 
 ```typescript
 import { Fit, FillType } from '@jimka/typescript-ui/layout';

@@ -1,6 +1,6 @@
 # Layout serialization
 
-[`serializeLayout`](/api/layout/functions/serializeLayout) and [`restoreLayout`](/api/layout/functions/restoreLayout) capture and restore the **arrangement** of the container managers that own topology — [`Split`](/layouts/Split) pane ratios, [`Tab`](/layouts/Tab) order and active index, and floating [`Window`](/api/core/classes/Window) rects, state, and internal split/tab arrangement — as a plain, serializable [`LayoutState`](/api/layout/interfaces/LayoutState) object.
+[`serializeLayout`](/api/layout/functions/serializeLayout) and [`restoreLayout`](/api/layout/functions/restoreLayout) capture and restore the **arrangement** of the container managers that own topology — [`Split`](/layouts/Split) pane ratios, [`Tab`](/layouts/Tab) order and active index, and floating [`Window`](/api/overlay/classes/Window) rects, state, and internal split/tab arrangement — as a plain, serializable [`LayoutState`](/api/layout/interfaces/LayoutState) object.
 
 They do **not** serialize the component tree. A leaf panel is an arbitrary [`Component`](/api/core/classes/Component) subclass built imperatively with constructor arguments and post-construction wiring the framework cannot reconstruct from data. So the captured form is **topology + geometry only** — each leaf is recorded as a bare `{ kind: "panel", panelId }` reference, and on restore a caller-supplied [`LayoutFactory`](/api/layout/type-aliases/LayoutFactory) maps each `panelId` back to its content component. The library rebuilds the *containers*; the caller owns the *content*.
 
@@ -29,7 +29,7 @@ const state = serializeLayout(workspace);
 localStorage.setItem('workspace', JSON.stringify(state));
 ```
 
-`Split` sizes are captured as **ratios** (summing to ~1.0), not pixels, so a layout saved on one screen restores at the same proportions on a differently-sized one. `Window` rects stay absolute pixels and are clamped back into the viewport on restore. Open windows are gathered from [`Window.getOpenWindows()`](/api/core/classes/Window) into a `windows` array on the state, orthogonal to the in-root tree (windows mount on the document, not inside `root`).
+`Split` sizes are captured as **ratios** (summing to ~1.0), not pixels, so a layout saved on one screen restores at the same proportions on a differently-sized one. `Window` rects stay absolute pixels and are clamped back into the viewport on restore. Open windows are gathered from [`Window.getOpenWindows()`](/api/overlay/classes/Window) into a `windows` array on the state, orthogonal to the in-root tree (windows mount on the document, not inside `root`).
 
 ## Restoring — runtime layout switching
 

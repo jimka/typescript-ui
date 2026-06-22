@@ -1,6 +1,6 @@
 # Popover
 
-[`Popover`](/api/core/classes/Popover) is an anchored, non-modal floating bubble with a directional arrow tail, optional title and body, and optional action buttons. Use it for click-triggered, interactive content — for ephemeral hover hints reach for [`Tooltip`](/components/Tooltip), and for modal containment reach for [`Dialog`](/components/Dialog).
+[`Popover`](/api/overlay/classes/Popover) is an anchored, non-modal floating bubble with a directional arrow tail, optional title and body, and optional action buttons. Use it for click-triggered, interactive content — for ephemeral hover hints reach for [`Tooltip`](/components/Tooltip), and for modal containment reach for [`Dialog`](/components/Dialog).
 
 `Popover` extends [`Panel`](/api/core/classes/Panel) so authors can compose freely via `addComponent`; the `setTitle` / `setBody` / `addAction` conveniences are sugar over the same container surface.
 
@@ -79,7 +79,7 @@ Power users who need a complex composition skip the conveniences and call `addCo
 
 ## See also
 
-- [API: Popover](/api/core/classes/Popover)
+- [API: Popover](/api/overlay/classes/Popover)
 - [`Tooltip`](/components/Tooltip) — ephemeral, hover-triggered, no interactive content
 - [`Dialog`](/components/Dialog) — modal with focus trap and backdrop
 - [`AnimatedDropdown`](/components/AnimatedDropdown) — shared fade lifecycle

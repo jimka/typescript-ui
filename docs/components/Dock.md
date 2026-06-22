@@ -1,6 +1,6 @@
 # Dock
 
-[`Dock`](/api/core/classes/Dock) is a user-configurable, rearrangeable panel layout — the VS Code / GoldenLayout style dock. It hosts a tree of [`Split`](/api/layout/classes/Split) and [`Tab`](/api/layout/classes/Tab) regions whose panels the user can reorder, tear off into floating [`Window`](/components/Window)s, drop on a region edge to split, and save / restore.
+[`Dock`](/api/overlay/classes/Dock) is a user-configurable, rearrangeable panel layout — the VS Code / GoldenLayout style dock. It hosts a tree of [`Split`](/api/layout/classes/Split) and [`Tab`](/api/layout/classes/Tab) regions whose panels the user can reorder, tear off into floating [`Window`](/components/Window)s, drop on a region edge to split, and save / restore.
 
 `Dock` is **glue, not new drag mechanics**. Tab reorder and tear-off come from [`Tab`](/api/layout/classes/Tab)'s reorderable wiring, edge-split-on-drop from [`DockRegion`](/api/layout/classes/DockRegion), every re-parent from [`Component.moveComponent`](/api/core/classes/Component#movecomponent), and persistence from [`serializeLayout`](/api/layout/functions/serializeLayout) / [`restoreLayout`](/api/layout/functions/restoreLayout). What `Dock` adds is the panel registry, a declarative initial-layout compiler, and a re-wire sweep that keeps **every** region dockable — including the regions a drop creates mid-gesture.
 

@@ -112,7 +112,7 @@ registration order. The same shape applies to
 [`SpinButton`](/api/component/input/classes/SpinButton),
 [`SplitGutter`](/api/component/container/classes/SplitGutter),
 [`WindowBorder`](/api/component/container/classes/WindowBorder),
-[`ButtonGroup`](/api/core/classes/ButtonGroup),
+[`ButtonGroup`](/api/overlay/classes/ButtonGroup),
 [`ResizeHandle`](/api/component/table/classes/ResizeHandle),
 [`Cell`](/api/component/table/classes/Cell),
 [`HeaderCell`](/api/component/table/classes/HeaderCell), the table

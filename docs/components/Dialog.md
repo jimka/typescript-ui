@@ -1,6 +1,6 @@
 # Dialog
 
-[`Dialog`](/api/core/classes/Dialog) is a modal panel with a title bar, scrollable content area, and a button row. The static `Dialog.show(config)` returns a `Promise<DialogResult>` resolving to `'confirm'`, `'cancel'`, or `'close'`.
+[`Dialog`](/api/overlay/classes/Dialog) is a modal panel with a title bar, scrollable content area, and a button row. The static `Dialog.show(config)` returns a `Promise<DialogResult>` resolving to `'confirm'`, `'cancel'`, or `'close'`.
 
 ## One-shot prompt
 
@@ -61,11 +61,11 @@ titleBar.getTitleText().setForegroundColor('var(--ts-ui-notification-info-border
 titleBar.setGlyph('info-circle');
 ```
 
-See [`DialogTitleBar`](/api/core/classes/DialogTitleBar) for the supported surface.
+See [`DialogTitleBar`](/api/overlay/classes/DialogTitleBar) for the supported surface.
 
 ## DialogConfig
 
-See [`DialogConfig`](/api/core/interfaces/DialogConfig) for the full option list. Highlights:
+See [`DialogConfig`](/api/overlay/interfaces/DialogConfig) for the full option list. Highlights:
 
 | Option | Default | Purpose |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ See [`DialogConfig`](/api/core/interfaces/DialogConfig) for the full option list
 
 ### Per-button glyph
 
-Each [`DialogButtonConfig`](/api/core/interfaces/DialogButtonConfig) carries an optional `glyph` field — a registry [`Glyph`](/components/Glyph) name rendered to the left of the button label. The bundled defaults pair `check-circle` with `OK` / `Confirm` and `times` with `Cancel`:
+Each [`DialogButtonConfig`](/api/overlay/interfaces/DialogButtonConfig) carries an optional `glyph` field — a registry [`Glyph`](/components/Glyph) name rendered to the left of the button label. The bundled defaults pair `check-circle` with `OK` / `Confirm` and `times` with `Cancel`:
 
 ```typescript
 await Dialog.show({
@@ -93,6 +93,6 @@ await Dialog.show({
 
 ## See also
 
-- [API: Dialog](/api/core/classes/Dialog)
-- [API: DialogTitleBar](/api/core/classes/DialogTitleBar)
-- [API: DialogConfig](/api/core/interfaces/DialogConfig), [DialogButtonConfig](/api/core/interfaces/DialogButtonConfig), [DialogResult](/api/core/type-aliases/DialogResult)
+- [API: Dialog](/api/overlay/classes/Dialog)
+- [API: DialogTitleBar](/api/overlay/classes/DialogTitleBar)
+- [API: DialogConfig](/api/overlay/interfaces/DialogConfig), [DialogButtonConfig](/api/overlay/interfaces/DialogButtonConfig), [DialogResult](/api/overlay/type-aliases/DialogResult)
