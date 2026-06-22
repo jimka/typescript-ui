@@ -140,6 +140,60 @@ describe('AjaxProxy', () => {
         expect(fetchMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ signal: controller.signal }));
     });
 
+    it('createBatch() POSTs the serialized batch and returns per-record data in order', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(okResponse([{ id: 1 }, { id: 2 }]));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const proxy   = new AjaxProxy({ url: '/api/users' });
+        const records = [new ModelRecord(MODEL, { name: 'A' }), new ModelRecord(MODEL, { name: 'B' })];
+        const result  = await proxy.createBatch(records);
+
+        expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+        expect(fetchMock).toHaveBeenCalledWith('/api/users', expect.objectContaining({
+            method: 'POST',
+            body  : JSON.stringify(records.map(r => r.getData())),
+        }));
+    });
+
+    it('updateBatch() PUTs the serialized batch to the collection URL', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(okResponse([{ id: 3 }]));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const proxy   = new AjaxProxy({ url: '/api/users' });
+        const records = [new ModelRecord(MODEL, { id: 3, name: 'Ann' })];
+        await proxy.updateBatch(records);
+
+        expect(fetchMock).toHaveBeenCalledWith('/api/users', expect.objectContaining({ method: 'PUT' }));
+    });
+
+    it('destroyBatch() DELETEs the serialized batch from the collection URL', async () => {
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const proxy   = new AjaxProxy({ url: '/api/users' });
+        const records = [new ModelRecord(MODEL, { id: 9, name: 'Kai' })];
+        await proxy.destroyBatch(records);
+
+        expect(fetchMock).toHaveBeenCalledWith('/api/users', expect.objectContaining({
+            method: 'DELETE',
+            body  : JSON.stringify(records.map(r => r.getData())),
+        }));
+    });
+
+    it('createBatch() unwraps the configured root key', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse({ rows: [{ id: 1 }] })));
+
+        const proxy = new AjaxProxy({ url: '/api/users', root: 'rows' });
+        expect(await proxy.createBatch([new ModelRecord(MODEL, { name: 'A' })])).toEqual([{ id: 1 }]);
+    });
+
+    it('createBatch() throws on a non-OK response', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => [] }));
+
+        const proxy = new AjaxProxy({ url: '/api/users' });
+        await expect(proxy.createBatch([new ModelRecord(MODEL, { name: 'A' })])).rejects.toThrow('status 500');
+    });
+
     it('create() routes the body through a custom writer', async () => {
         const fetchMock = vi.fn().mockResolvedValue(okResponse({ id: 1 }));
         vi.stubGlobal('fetch', fetchMock);

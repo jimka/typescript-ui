@@ -26,7 +26,69 @@ export type StoreListener<T = any> = (payload: T) => void;
  *
  * @category Data
  */
-export type StoreEvent = 'load' | 'datachanged' | 'add' | 'remove' | 'beforesync' | 'sync' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked' | 'sortchanged';
+export type StoreEvent = 'load' | 'beforeload' | 'datachanged' | 'add' | 'remove' | 'clear' | 'beforesync' | 'sync' | 'exception' | 'loadingchanged' | 'pagechanged' | 'pagechangeblocked' | 'sortchanged' | 'filterchange' | 'update';
+
+/**
+ * The proxy operation that failed in a {@link StoreExceptionEvent}.
+ *
+ * @category Data
+ */
+export type StoreOperation = 'read' | 'create' | 'update' | 'destroy';
+
+/**
+ * Payload for the `'exception'` event, fired when a `load()` read or a `sync()`
+ * create/update/destroy fails.
+ *
+ * @remarks
+ * `operation` disambiguates which proxy op failed; `records` carries the
+ * offending record(s) — the batch or single record whose op failed — and is
+ * empty for a `read` failure. `error` is the raw thrown value.
+ *
+ * @category Data
+ */
+export interface StoreExceptionEvent {
+    operation: StoreOperation;
+    records  : ModelRecord[];
+    error    : unknown;
+}
+
+/**
+ * Payload for the `'clear'` event fired by {@link AbstractStore.removeAll}.
+ *
+ * @category Data
+ */
+export interface StoreClearEvent {
+    removed: ModelRecord[];
+}
+
+/**
+ * Payload for the `'filterchange'` event fired when the active filter list is
+ * replaced or cleared.
+ *
+ * @category Data
+ */
+export interface StoreFilterChangeEvent {
+    filters: FilterDescriptor[];
+}
+
+/**
+ * Payload for the `'update'` event fired by {@link AbstractStore.notifyRecordChanged}.
+ *
+ * @category Data
+ */
+export interface StoreUpdateEvent {
+    record: ModelRecord;
+}
+
+/**
+ * Summary payload for the `'sync'` event: the per-op failures recorded during
+ * the just-finished `sync()`, empty when every operation succeeded.
+ *
+ * @category Data
+ */
+export interface StoreSyncEvent {
+    failures: StoreExceptionEvent[];
+}
 
 /**
  * Describes one column's contribution to a multi-column sort.
@@ -55,6 +117,7 @@ export interface AbstractStoreOptions {
     remoteSort?:  boolean;
     remoteFilter?: boolean;
     autoLoad?:    boolean;
+    syncErrorPolicy?: 'stop' | 'continue';
     listeners?:   Partial<Record<StoreEvent, StoreListener>>;
 }
 
@@ -104,6 +167,11 @@ export abstract class AbstractStore {
     // mutation triggers a reload, instead of being applied locally by applyView.
     private _remoteSort: boolean = false;
     private _remoteFilter: boolean = false;
+
+    // Controls what sync() does after an op fails: 'stop' aborts the remaining
+    // sync (already-committed records stay committed; failed/untouched records
+    // remain pending), 'continue' records the failure and proceeds.
+    private _syncErrorPolicy: 'stop' | 'continue' = 'stop';
 
     // `_loadSeq` is bumped on every load() so a stale in-flight response (whose
     // captured seq no longer matches) is ignored. `_loadAbort` cancels the
@@ -158,6 +226,10 @@ export abstract class AbstractStore {
             this._remoteFilter = options.remoteFilter;
         }
 
+        if (options.syncErrorPolicy !== undefined) {
+            this._syncErrorPolicy = options.syncErrorPolicy;
+        }
+
         if (options.autoLoad === true) {
             void this.load();
         }
@@ -173,11 +245,19 @@ export abstract class AbstractStore {
      * @remarks
      * Throws an `Error` if no proxy is configured. Any existing records (including pending
      * removals) are discarded when new data is ingested.
+     *
+     * Fires `'beforeload'` before the proxy read. A read failure emits an
+     * `'exception'` event ({@link StoreExceptionEvent} with `operation: 'read'`
+     * and empty `records`) and then re-throws so existing `await store.load()`
+     * call sites still observe the rejection. An aborted or superseded load is a
+     * silent no-op and emits neither `'exception'` nor `'load'`.
      */
     async load(): Promise<void> {
         if (!this.proxy) {
             throw new Error('Store.load() called but no proxy is configured');
         }
+
+        this.emit('beforeload', {});
 
         const seq = ++this._loadSeq;
 
@@ -203,10 +283,13 @@ export abstract class AbstractStore {
             this.emit('load', { records: this._records });
         } catch (err) {
             // An aborted fetch or a superseded load is a silent no-op; only a
-            // genuine failure from the current load propagates.
+            // genuine failure from the current load emits 'exception' and
+            // propagates to the awaiter.
             if ((err as Error).name === 'AbortError' || seq !== this._loadSeq) {
                 return;
             }
+
+            this.emit('exception', { operation: 'read', records: [], error: err });
 
             throw err;
         } finally {
@@ -592,12 +675,15 @@ export abstract class AbstractStore {
      * as new are simply discarded.
      */
     removeAll(): this {
+        const removed = this._allRecords.slice();
+
         this._pendingRemoved.push(...this._allRecords.filter(r => !r.isNew()));
 
         this._allRecords = [];
         this._records = [];
         this._snapshotDirty = true;
 
+        this.emit('clear', { removed });
         this.emit('datachanged', {});
 
         return this;
@@ -607,15 +693,17 @@ export abstract class AbstractStore {
      * Signals that a record's fields were mutated outside the store's own
      * mutation methods (e.g. an in-cell edit in a Table).
      *
-     * @param _record - The record that was edited. Forwarded by callers so
-     *   future listeners can identify it; currently unused by the store itself.
+     * @param record - The record that was edited; carried on the `'update'`
+     *   event so listeners can identify it.
      *
      * @remarks
-     * Fires `'datachanged'` so listeners (toolbars, pagination bars, etc.)
-     * re-evaluate state such as {@link hasPendingChanges}. The record's dirty
-     * flag is already set by `record.set()`; this method just notifies.
+     * Fires `'update'` ({@link StoreUpdateEvent}) followed by `'datachanged'` so
+     * listeners (toolbars, pagination bars, etc.) re-evaluate state such as
+     * {@link hasPendingChanges}. The record's dirty flag is already set by
+     * `record.set()`; this method just notifies.
      */
-    notifyRecordChanged(_record: ModelRecord): void {
+    notifyRecordChanged(record: ModelRecord): void {
+        this.emit('update', { record });
         this.emit('datachanged', {});
     }
 
@@ -684,48 +772,234 @@ export abstract class AbstractStore {
     /**
      * Persists new, dirty, and removed records via the proxy, then fires 'sync'/'datachanged'.
      *
-     * @returns A promise that resolves when all pending operations have completed.
+     * @returns A promise that resolves when the sync run has settled.
      *
      * @remarks
-     * Sync is a no-op when no proxy is configured. Operations are performed in order:
-     * creates first, then updates, then deletes. Each record is committed after its
-     * operation succeeds so it no longer appears in subsequent sync cycles.
+     * Sync is a no-op when no proxy is configured. Operations run in order:
+     * creates first, then updates, then deletes — and use the proxy's optional
+     * batch hooks ({@link Proxy.createBatch}/{@link Proxy.updateBatch}/{@link Proxy.destroyBatch})
+     * when present, falling back to one request per record otherwise. Each record
+     * is committed only after its own op succeeds, so a record never appears
+     * committed unless the server accepted it.
+     *
+     * **Contract change:** `sync()` no longer rejects on a transport failure. A
+     * failed op emits an `'exception'` event ({@link StoreExceptionEvent}) and is
+     * recorded; `sync()` always resolves and fires `'sync'` with a
+     * {@link StoreSyncEvent} listing the failures. The `syncErrorPolicy` option
+     * controls what happens after the first failure: `'stop'` (default) aborts
+     * the remaining sync (already-committed records stay committed; failed and
+     * untouched records remain pending for the next `sync()`), `'continue'`
+     * proceeds through every record/batch. Callers that previously relied on a
+     * rejected promise should switch to the `'exception'` event or the `'sync'`
+     * payload's `failures`.
      */
     async sync(): Promise<void> {
-        if (!this.proxy) {
+        const proxy = this.proxy;
+
+        if (!proxy) {
             return;
         }
 
         this.emit('beforesync', {});
 
-        for (const record of this._allRecords.filter(r => r.isNew())) {
-            const serverData = await this.proxy.create(record);
+        const failures: StoreExceptionEvent[] = [];
 
-            for (const [k, v] of Object.entries(serverData)) {
-                record.set(k, v);
-            }
+        // Each phase returns true when the run should stop early ('stop' policy
+        // after a failure); the || chain then short-circuits the later phases.
+        // Under 'continue' every phase returns false and all three run.
+        await this.syncCreates(proxy, failures)
+            || await this.syncUpdates(proxy, failures)
+            || await this.syncDeletes(proxy, failures);
 
-            record.commit();
-        }
-
-        for (const record of this._allRecords.filter(r => r.isDirty() && !r.isNew())) {
-            const serverData = await this.proxy.update(record);
-
-            for (const [k, v] of Object.entries(serverData)) {
-                record.set(k, v);
-            }
-
-            record.commit();
-        }
-
-        for (const record of this._pendingRemoved) {
-            await this.proxy.destroy(record);
-        }
-
-        this._pendingRemoved = [];
-
-        this.emit('sync', {});
+        this.emit('sync', { failures });
         this.emit('datachanged', {});
+    }
+
+    /**
+     * Persists the new records, by batch when the proxy advertises
+     * {@link Proxy.createBatch}, else one {@link Proxy.create} per record.
+     *
+     * @param proxy - The configured proxy.
+     * @param failures - The accumulator that collects this run's op failures.
+     *
+     * @returns True when the run should stop early (policy `'stop'` and this
+     *   phase recorded a failure).
+     */
+    private async syncCreates(proxy: Proxy, failures: StoreExceptionEvent[]): Promise<boolean> {
+        const created = this._allRecords.filter(r => r.isNew());
+
+        if (created.length === 0) {
+            return false;
+        }
+
+        if (proxy.createBatch) {
+            return this.runBatch('create', created, failures, records => proxy.createBatch!(records));
+        }
+
+        return this.runPerRecord('create', created, failures, record => proxy.create(record));
+    }
+
+    /**
+     * Persists the dirty (non-new) records, by batch when the proxy advertises
+     * {@link Proxy.updateBatch}, else one {@link Proxy.update} per record.
+     *
+     * @param proxy - The configured proxy.
+     * @param failures - The accumulator that collects this run's op failures.
+     *
+     * @returns True when the run should stop early.
+     */
+    private async syncUpdates(proxy: Proxy, failures: StoreExceptionEvent[]): Promise<boolean> {
+        const dirty = this._allRecords.filter(r => r.isDirty() && !r.isNew());
+
+        if (dirty.length === 0) {
+            return false;
+        }
+
+        if (proxy.updateBatch) {
+            return this.runBatch('update', dirty, failures, records => proxy.updateBatch!(records));
+        }
+
+        return this.runPerRecord('update', dirty, failures, record => proxy.update(record));
+    }
+
+    /**
+     * Destroys the pending-removed records, by batch when the proxy advertises
+     * {@link Proxy.destroyBatch}, else one {@link Proxy.destroy} per record.
+     * Only successfully-destroyed records are cleared from the pending queue.
+     *
+     * @param proxy - The configured proxy.
+     * @param failures - The accumulator that collects this run's op failures.
+     *
+     * @returns True when the run should stop early.
+     */
+    private async syncDeletes(proxy: Proxy, failures: StoreExceptionEvent[]): Promise<boolean> {
+        // Snapshot the queue so a failure's 'exception' payload holds an immutable
+        // copy (matching the create/update phases, whose filter() returns a fresh
+        // array) rather than aliasing the live _pendingRemoved array.
+        const removed = this._pendingRemoved.slice();
+
+        if (removed.length === 0) {
+            return false;
+        }
+
+        if (proxy.destroyBatch) {
+            try {
+                await proxy.destroyBatch(removed);
+                this._pendingRemoved = [];
+
+                return false;
+            } catch (err) {
+                return this.recordFailure('destroy', removed, err, failures);
+            }
+        }
+
+        const survivors: ModelRecord[] = [];
+        let stopped = false;
+
+        for (const record of removed) {
+            if (stopped) {
+                survivors.push(record);
+                continue;
+            }
+
+            try {
+                await proxy.destroy(record);
+            } catch (err) {
+                survivors.push(record);
+                stopped = this.recordFailure('destroy', [record], err, failures);
+            }
+        }
+
+        this._pendingRemoved = survivors;
+
+        return stopped;
+    }
+
+    /**
+     * Runs a create/update batch op, committing every record positionally from
+     * the server response, or recording one failure for the whole batch.
+     *
+     * @param operation - The op kind, for the failure payload.
+     * @param records - The batch's records, in request order.
+     * @param failures - The accumulator that collects this run's op failures.
+     * @param call - Issues the batch request and resolves to per-record server data in input order.
+     *
+     * @returns True when the run should stop early.
+     */
+    private async runBatch(operation: 'create' | 'update', records: ModelRecord[], failures: StoreExceptionEvent[], call: (records: ModelRecord[]) => Promise<Record<string, any>[]>): Promise<boolean> {
+        try {
+            const serverData = await call(records);
+
+            records.forEach((record, i) => {
+                this.commitFromServerData(record, serverData[i] ?? {});
+            });
+
+            return false;
+        } catch (err) {
+            return this.recordFailure(operation, records, err, failures);
+        }
+    }
+
+    /**
+     * Runs a create/update op one record at a time, committing each on success
+     * and recording a per-record failure otherwise.
+     *
+     * @param operation - The op kind, for the failure payload.
+     * @param records - The records to persist, in order.
+     * @param failures - The accumulator that collects this run's op failures.
+     * @param call - Issues a single-record request and resolves to that record's server data.
+     *
+     * @returns True when the run should stop early.
+     */
+    private async runPerRecord(operation: 'create' | 'update', records: ModelRecord[], failures: StoreExceptionEvent[], call: (record: ModelRecord) => Promise<Record<string, any>>): Promise<boolean> {
+        for (const record of records) {
+            try {
+                const serverData = await call(record);
+
+                this.commitFromServerData(record, serverData);
+            } catch (err) {
+                if (this.recordFailure(operation, [record], err, failures)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Applies a server response onto a record and commits it, so the record
+     * drops out of subsequent sync cycles.
+     *
+     * @param record - The record that was persisted.
+     * @param serverData - The server's representation of the record.
+     */
+    private commitFromServerData(record: ModelRecord, serverData: Record<string, any>): void {
+        for (const [k, v] of Object.entries(serverData)) {
+            record.set(k, v);
+        }
+
+        record.commit();
+    }
+
+    /**
+     * Records an op failure: pushes a {@link StoreExceptionEvent} onto the run's
+     * accumulator, emits `'exception'`, and reports whether the run should stop.
+     *
+     * @param operation - The op kind that failed.
+     * @param records - The offending record(s).
+     * @param error - The raw thrown value.
+     * @param failures - The accumulator that collects this run's op failures.
+     *
+     * @returns True when `syncErrorPolicy` is `'stop'` (so the caller halts).
+     */
+    private recordFailure(operation: StoreOperation, records: ModelRecord[], error: unknown, failures: StoreExceptionEvent[]): boolean {
+        const failure: StoreExceptionEvent = { operation, records, error };
+
+        failures.push(failure);
+        this.emit('exception', failure);
+
+        return this._syncErrorPolicy === 'stop';
     }
 
     // ── Sort ─────────────────────────────────────────────────────────────────
@@ -867,7 +1141,8 @@ export abstract class AbstractStore {
     }
 
     /**
-     * Rebuilds the view after a filter mutation and, when `remoteFilter` or
+     * Rebuilds the view after a filter mutation, fires `'filterchange'` (with the
+     * active filters) plus `'datachanged'`, and, when `remoteFilter` or
      * pagination is enabled, resets to page 1 and triggers a reload.
      *
      * @returns A promise that resolves once the local view has been rebuilt.
@@ -881,6 +1156,7 @@ export abstract class AbstractStore {
         }
 
         return this.applyView().then(() => {
+            this.emit('filterchange', { filters: this.getActiveFilters() });
             this.emit('datachanged', {});
 
             if (reload) {

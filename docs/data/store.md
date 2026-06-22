@@ -182,13 +182,66 @@ The user can resolve the block in two ways:
 
 `TablePanel`'s built-in toolbar exposes both as buttons.
 
+## Sync error handling
+
+`sync()` persists new, dirty, and removed records in three phases — creates,
+then updates, then deletes — and **always resolves**: a transport failure no
+longer rejects the promise. Instead each failed operation emits an
+[`'exception'`](/api/data/interfaces/StoreExceptionEvent) event carrying the
+operation kind, the offending record(s), and the raw error, and the terminal
+`'sync'` event reports the full list of failures so a listener can react once
+at the end.
+
+```typescript
+store.on('exception', e => console.warn(`${e.operation} failed`, e.records, e.error));
+store.on('sync', e => {
+    if (e.failures.length > 0) { showRetryBanner(e.failures); }
+});
+
+await store.sync();   // settles even when an op failed
+```
+
+A record is committed only after **its own** operation succeeds, so a failure
+never leaves a record looking persisted when it isn't. The `syncErrorPolicy`
+option chooses what happens after the first failure:
+
+- `'stop'` (default) — abort the rest of the run. Already-committed records stay
+  committed; the failed record and every untouched record remain pending for the
+  next `sync()`.
+- `'continue'` — record the failure and proceed, so an independent sibling record
+  still commits. Expect one `'exception'` per failed op; use the `'sync'`
+  payload's `failures` to react to them collectively.
+
+```typescript
+const store = new Store({ model: PersonModel, proxy, syncErrorPolicy: 'continue' });
+```
+
+::: warning Contract change
+`sync()` previously rejected on a transport failure. It now resolves in every
+case; existing `try { await store.sync() } catch { … }` sites must switch to the
+`'exception'` event or the `'sync'` payload's `failures`.
+:::
+
+When the proxy advertises batch hooks (`createBatch` / `updateBatch` /
+`destroyBatch`, as `AjaxProxy` does), each phase issues a single request for the
+whole group instead of one per record. Batching makes the commit/rollback
+boundary coarser: a batch either commits every record from its server response
+(positionally, in input order) or, on failure, leaves the **whole** batch pending
+with all of its records carried on the `'exception'` event.
+
 ## Events
 
 | Event | Fired when |
 | --- | --- |
+| `beforeload`        | `load()` is about to read through the proxy |
 | `load`              | `load()` resolves |
+| `exception`         | A `load()` read or a `sync()` create/update/destroy failed |
 | `datachanged`       | Any record is added, removed, moved (sorted), or has its fields committed / rolled back |
+| `clear`             | `removeAll()` cleared the store (carries the removed records) |
+| `update`            | `notifyRecordChanged(record)` reported an external edit |
 | `sortchanged`       | The active multi-column sort list changed (replaced or cleared) |
+| `filterchange`      | The active filter list changed (added or cleared) |
+| `beforesync` / `sync` | `sync()` starts / settles (the `'sync'` payload lists any failures) |
 | `pagechanged`       | Page or page size changes via the pagination API |
 | `pagechangeblocked` | Page navigation was blocked because the store has pending changes |
 
