@@ -52,6 +52,8 @@ export interface AbstractStoreOptions {
     page?:        number;
     sorters?:     SortDescriptor[];
     filters?:     FilterDescriptor[];
+    remoteSort?:  boolean;
+    remoteFilter?:boolean;
     autoLoad?:    boolean;
     listeners?:   Partial<Record<StoreEvent, StoreListener>>;
 }
@@ -97,6 +99,18 @@ export abstract class AbstractStore {
     private _pageSize: number | undefined = undefined;
     private _totalCount: number | undefined = undefined;
 
+    // ── Remote sort/filter + load concurrency state ──────────────────────────
+    // When set, active sorters/filters are serialized into ReadParams and a
+    // mutation triggers a reload, instead of being applied locally by applyView.
+    private _remoteSort: boolean = false;
+    private _remoteFilter: boolean = false;
+
+    // `_loadSeq` is bumped on every load() so a stale in-flight response (whose
+    // captured seq no longer matches) is ignored. `_loadAbort` cancels the
+    // previous HTTP read when a newer load starts.
+    private _loadSeq: number = 0;
+    private _loadAbort: AbortController | undefined = undefined;
+
     /**
      * Applies an {@link AbstractStoreOptions} bag to this store. Subclasses
      * should call this from their constructor (after `model` and `proxy` are
@@ -136,6 +150,14 @@ export abstract class AbstractStore {
             this._activeFilters = options.filters.slice();
         }
 
+        if (options.remoteSort !== undefined) {
+            this._remoteSort = options.remoteSort;
+        }
+
+        if (options.remoteFilter !== undefined) {
+            this._remoteFilter = options.remoteFilter;
+        }
+
         if (options.autoLoad === true) {
             void this.load();
         }
@@ -157,22 +179,77 @@ export abstract class AbstractStore {
             throw new Error('Store.load() called but no proxy is configured');
         }
 
+        const seq = ++this._loadSeq;
+
+        this._loadAbort?.abort();
+
+        const controller = new AbortController();
+        this._loadAbort = controller;
+
         this.setLoading(true);
 
         try {
-            const params: ReadParams | undefined = this._pageSize != null
-                ? { page: this._page, pageSize: this._pageSize }
-                : undefined;
+            const params = this.buildReadParams(controller.signal);
+            const raw    = await this.proxy.read(params);
 
-            const raw = await this.proxy.read(params);
+            if (seq !== this._loadSeq) {
+                return;
+            }
+
             this.ingestRaw(raw);
 
             this._totalCount = this.proxy.getLastTotalCount();
 
             this.emit('load', { records: this._records });
+        } catch (err) {
+            // An aborted fetch or a superseded load is a silent no-op; only a
+            // genuine failure from the current load propagates.
+            if ((err as Error).name === 'AbortError' || seq !== this._loadSeq) {
+                return;
+            }
+
+            throw err;
         } finally {
-            this.setLoading(false);
+            if (seq === this._loadSeq) {
+                this.setLoading(false);
+            }
         }
+    }
+
+    /**
+     * Builds the {@link ReadParams} for a load: pagination when enabled, plus
+     * active sorters/filters when `remoteSort`/`remoteFilter` are on, plus the
+     * abort signal.
+     *
+     * @param signal - The abort signal for the in-flight HTTP read.
+     *
+     * @returns A ReadParams object, or undefined when nothing applies — so an
+     *   unpaginated client-side store still calls `read()` with no arguments and
+     *   pagination-unaware proxies keep ignoring it.
+     */
+    private buildReadParams(signal: AbortSignal): ReadParams | undefined {
+        const params: ReadParams = {};
+
+        if (this._pageSize != null) {
+            params.page     = this._page;
+            params.pageSize = this._pageSize;
+        }
+
+        if (this._remoteSort && this._activeSorters.length > 0) {
+            params.sorters = this.getActiveSorters();
+        }
+
+        if (this._remoteFilter && this._activeFilters.length > 0) {
+            params.filters = this.getActiveFilters();
+        }
+
+        if (params.page == null && params.sorters == null && params.filters == null) {
+            return undefined;
+        }
+
+        params.signal = signal;
+
+        return params;
     }
 
     /**
@@ -662,9 +739,12 @@ export abstract class AbstractStore {
      * @returns A promise that resolves once the local view has been rebuilt.
      *
      * @remarks
-     * When server-side pagination is enabled, this method also resets the
-     * current page to 1 and triggers a fire-and-forget reload so the proxy
-     * receives the new ordering. Fires `'sortchanged'` and `'datachanged'`.
+     * When `remoteSort` is enabled, or when server-side pagination is enabled
+     * (the legacy trigger), this method also resets the current page to 1 and
+     * triggers a fire-and-forget reload. With `remoteSort` on, the active
+     * sorters are serialized into [`ReadParams`](/api/data/interfaces/ReadParams) so the proxy receives the new
+     * ordering; without it, a paginated reload still fires but sends only
+     * `{page, pageSize}`. Fires `'sortchanged'` and `'datachanged'`.
      */
     sort(field: string, dir?: 'asc' | 'desc'): Promise<void>;
     /**
@@ -687,7 +767,9 @@ export abstract class AbstractStore {
             this._activeSorters = fieldOrDescriptors.slice();
         }
 
-        if (this._pageSize != null) {
+        const reload = this._remoteSort || this._pageSize != null;
+
+        if (reload) {
             this._page = 1;
             this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
         }
@@ -696,7 +778,7 @@ export abstract class AbstractStore {
             this.emit('sortchanged', { sorters: this.getActiveSorters() });
             this.emit('datachanged', {});
 
-            if (this._pageSize != null) {
+            if (reload) {
                 void this.load();
             }
         });
@@ -709,6 +791,15 @@ export abstract class AbstractStore {
      */
     getActiveSorters(): SortDescriptor[] {
         return this._activeSorters.map(s => ({ ...s }));
+    }
+
+    /**
+     * Returns a copy of all active filter descriptors.
+     *
+     * @returns A shallow-copy array of the active filter descriptors; empty when no filter is active.
+     */
+    getActiveFilters(): FilterDescriptor[] {
+        return this._activeFilters.map(f => ({ ...f }));
     }
 
     /**
@@ -745,13 +836,17 @@ export abstract class AbstractStore {
      *
      * @param property - The field name to filter on.
      * @param value - The value a record's field must equal to pass the filter.
+     *
+     * @remarks
+     * When `remoteFilter` is enabled, or when server-side pagination is enabled
+     * (the legacy trigger), this also resets to page 1 and reloads. With
+     * `remoteFilter` on, the active filters are serialized into [`ReadParams`](/api/data/interfaces/ReadParams) so
+     * the proxy filters the result set.
      */
     filter(property: string, value: any): Promise<void> {
         this._activeFilters.push({ type: 'eq', field: property, value: value });
 
-        return this.applyView().then(() => {
-            this.emit('datachanged', {});
-        });
+        return this.applyFilterChange();
     }
 
     /**
@@ -760,27 +855,27 @@ export abstract class AbstractStore {
      * the same call works for in-process and worker-offloaded evaluation.
      *
      * @param descriptor - The filter descriptor to apply.
+     *
+     * @remarks
+     * Mirrors {@link filter}'s reload side effects when `remoteFilter` or
+     * server-side pagination is enabled.
      */
     filterBy(descriptor: FilterDescriptor): Promise<void> {
         this._activeFilters.push(descriptor);
 
-        return this.applyView().then(() => {
-            this.emit('datachanged', {});
-        });
+        return this.applyFilterChange();
     }
 
     /**
-     * Removes all active filters and fires 'datachanged'.
+     * Rebuilds the view after a filter mutation and, when `remoteFilter` or
+     * pagination is enabled, resets to page 1 and triggers a reload.
      *
-     * @remarks
-     * When server-side pagination is enabled, this method also resets the current
-     * page to 1 and triggers a fire-and-forget reload so the proxy is queried
-     * without filter context.
+     * @returns A promise that resolves once the local view has been rebuilt.
      */
-    clearFilter(): Promise<void> {
-        this._activeFilters = [];
+    private applyFilterChange(): Promise<void> {
+        const reload = this._remoteFilter || this._pageSize != null;
 
-        if (this._pageSize != null) {
+        if (reload) {
             this._page = 1;
             this.emit('pagechanged', { page: this._page, pageSize: this._pageSize });
         }
@@ -788,10 +883,25 @@ export abstract class AbstractStore {
         return this.applyView().then(() => {
             this.emit('datachanged', {});
 
-            if (this._pageSize != null) {
+            if (reload) {
                 void this.load();
             }
         });
+    }
+
+    /**
+     * Removes all active filters and fires 'datachanged'.
+     *
+     * @remarks
+     * When `remoteFilter` is enabled, or when server-side pagination is enabled
+     * (the legacy trigger), this method also resets the current page to 1 and
+     * triggers a fire-and-forget reload so the proxy is queried without filter
+     * context.
+     */
+    clearFilter(): Promise<void> {
+        this._activeFilters = [];
+
+        return this.applyFilterChange();
     }
 
     // ── Events ───────────────────────────────────────────────────────────────
