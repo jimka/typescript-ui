@@ -121,23 +121,23 @@ export class TreeStore extends AbstractStore {
      * config (id/parent fields, synthetic root) is assigned before
      * `applyOptions` runs so an `autoLoad: true` rebuild sees it in place.
      *
-     * @param options - The model, optional proxy, and tree-field configuration.
+     * @param treeOptions - The model, optional proxy, and tree-field configuration.
      */
-    constructor(options: TreeStoreOptions) {
+    constructor(treeOptions: TreeStoreOptions) {
         super();
 
-        this.model = options.model;
-        this.proxy = options.proxy;
+        this.model = treeOptions.model;
+        this.proxy = treeOptions.proxy;
 
-        this._parentField      = options.parentField;
-        this._idField          = options.idField ?? this.model.getPrimaryKeyField()?.getName() ?? 'id';
-        this._leafField        = options.leafField;
-        this._hasChildrenField = options.hasChildrenField;
-        this._childrenKey      = options.childrenKey;
+        this._parentField      = treeOptions.parentField;
+        this._idField          = treeOptions.idField ?? this.model.getPrimaryKeyField()?.getName() ?? 'id';
+        this._leafField        = treeOptions.leafField;
+        this._hasChildrenField = treeOptions.hasChildrenField;
+        this._childrenKey      = treeOptions.childrenKey;
 
         this._root = new TreeNode(this, null, null, -1);
 
-        this.applyOptions(options);
+        this.applyOptions(treeOptions);
     }
 
     /**
