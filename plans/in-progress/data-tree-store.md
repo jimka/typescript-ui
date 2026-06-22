@@ -75,7 +75,7 @@ A Tree UI component (`component/tree/Tree`) and a `TreeTable`/`TreeBody` already
 
 ### Surgical edit to `AbstractStore` only where unavoidable
 
-The only `AbstractStore.ts` change is widening the `StoreEvent` union with four literals. `applyView()` is `protected` and is **overridden** in `TreeStore` (no base edit). The base's private `_allRecords` is not directly reachable from the subclass, so `TreeStore` reads the flat set through the public `getRecords()`/`getAll()` — the same surface `TreeBody.rebuildIndex()` uses ([`TreeBody.ts:910`](../src/typescript/lib/component/table/TreeBody.ts#L910)) — keeping the subclass off the base's privates entirely. `frontmatter` therefore lists `index.ts` as the touched shared file; `AbstractStore.ts` is touched only for the union literal, noted in Files table.
+The `AbstractStore.ts` changes are: (1) widening the `StoreEvent` union with four literals, and (2) adding one minimal `protected appendRecords(records: ModelRecord[])` hook for the lazy path (pre-authorized in *Potential Challenges*). `applyView()` is `protected` and is **overridden** in `TreeStore` (no base edit). `TreeStore` reads the flat set through the public `getRecords()`/`getAll()` — the same surface `TreeBody.rebuildIndex()` uses ([`TreeBody.ts:910`](../src/typescript/lib/component/table/TreeBody.ts#L910)). **Drift note (2026-06-22):** the original plan assumed the lazy path could "push to the master set" through the public surface alone, but `_allRecords` is fully private with no append seam, and re-ingesting via `loadData(getData())` is lossy when a field's `mapping` differs from its `name` (and would drop dirty/new state). So `appendRecords` is added as the surgical second base edit (additive `protected` method, touches no existing base code), committed atomically with the union widening in the shared-file commit. Both base edits are additive and conflict-free with sibling plans.
 
 ---
 
@@ -140,7 +140,7 @@ export class TreeStore extends AbstractStore {
     getChildren(node: TreeNode): TreeNode[];
     getParent(node: TreeNode): TreeNode | null;
     getDepth(node: TreeNode): number;
-    each(fn: (node: TreeNode) => void): void;             // depth-first over the whole tree
+    eachNode(fn: (node: TreeNode) => void): void;         // depth-first over the whole tree (renamed from `each` — see drift note)
 
     // ── Visible (flattened) view ──
     getVisibleNodes(): TreeNode[];                        // depth-ordered, expansion-respecting
@@ -238,7 +238,7 @@ async expand(node: TreeNode): Promise<void> {
 
 2. **`AbstractStore.ts`** — widen the `StoreEvent` union ([`AbstractStore.ts:29`](../src/typescript/lib/data/AbstractStore.ts#L29)) with `'expand' | 'collapse' | 'append' | 'removenode'`. Append-only; composes with the sibling plans' union edits. → verify: typecheck; `grep -n "'expand'" src/typescript/lib/data/AbstractStore.ts`.
 
-3. **`data/TreeStore.ts`** — new file: `TreeStoreEvent`, the four payload interfaces, `TreeStoreOptions`, and the `TreeStore` class. Implement constructor (model/proxy + tree config + synthetic root, then `applyOptions`), `applyView()` override, `rebuildNodeIndex`, `flatten`, traversal (`getRootNode`/`getNodeById`/`getChildren`/`getParent`/`getDepth`/`each`), visible view (`getVisibleNodes`/`getVisibleCount`), expansion (`expand`/`collapse`/`toggle`/`isExpanded`/`expandToDepth`/`collapseAll`), lazy `loadChildren`/`appendRecords` with the `_loadingIds` guard, and `onTree`. Each method `@category Data` + typed return. Decompose `expand` and `rebuildNodeIndex` per the long-function rule. → verify: typecheck.
+3. **`data/TreeStore.ts`** — new file: `TreeStoreEvent`, the four payload interfaces, `TreeStoreOptions`, and the `TreeStore` class. Implement constructor (model/proxy + tree config + synthetic root, then `applyOptions`), `applyView()` override, `rebuildNodeIndex`, `flatten`, traversal (`getRootNode`/`getNodeById`/`getChildren`/`getParent`/`getDepth`/`eachNode` — renamed from `each` to avoid clashing with the inherited record-iterating `AbstractStore.each`), visible view (`getVisibleNodes`/`getVisibleCount`), expansion (`expand`/`collapse`/`toggle`/`isExpanded`/`expandToDepth`/`collapseAll`), lazy `loadChildren`/`appendRecords` with the `_loadingIds` guard, and `onTree`. Each method `@category Data` + typed return. Decompose `expand` and `rebuildNodeIndex` per the long-function rule. → verify: typecheck.
 
 4. **`data/TreeStore.ts` — leaf determination** — implement the 3-mode resolver (`leafField` → `hasChildrenField` → child-count default) used by `rebuildNodeIndex` when stamping each node's `leaf`. → verify: a record with children is a branch; a `leafField:true` record is a leaf even with zero loaded children.
 
