@@ -18,7 +18,7 @@ import { tabDragRegistry } from "~/core/DragManager.js";
 import { TabBar } from "~/component/container/TabBar.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
-import type { AxisPosition } from "~/layout/AxisAlign.js";
+import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
 
 /**
  * String-literal union of the events emitted by {@link Tab}.
@@ -82,24 +82,6 @@ export type TabWidthMode = "fill" | "content" | "equal" | "fixed";
 export type TabSide = "north" | "south" | "west" | "east";
 
 /**
- * Main-axis alignment of the tab-button group within the {@link Tab} strip.
- *
- * - `"start"` — tabs hug the strip's leading edge (left for north/south, top
- *   for west/east); the tool group, if any, sits at the trailing edge.
- * - `"end"` — tabs hug the trailing edge; the tool group sits at the leading
- *   edge.
- *
- * Alignment is a no-op in `"fill"` width mode (and in `"equal"` once it
- * collapses to fill), where the tabs span the whole strip.
- *
- * @remarks The no-centre subset of {@link AxisPosition} — the strip positions
- * the button group at one edge or the other, never centred.
- *
- * @category Layouts
- */
-export type TabAlign = Exclude<AxisPosition, "center">;
-
-/**
  * Text orientation for tab buttons on the vertical sides (west/east). Ignored
  * for north/south, where tab text is always horizontal.
  *
@@ -158,7 +140,7 @@ export interface TabOptions extends LayoutManagerOptions {
     side?: TabSide;
 
     /** Main-axis alignment of the tab-button group; defaults to `"start"`. */
-    align?: TabAlign;
+    align?: AxisEnd;
 
     /** Text orientation on the vertical sides; defaults to `"horizontal"`. */
     orientation?: TabOrientation;
@@ -531,11 +513,11 @@ class Tab extends LayoutManager {
      * Sets the main-axis alignment of the tab-button group within the strip and
      * re-lays out.
      *
-     * @param align - The {@link TabAlign} to apply.
+     * @param align - The {@link AxisEnd} to apply.
      *
      * @returns This layout manager, for chaining.
      */
-    setAlign(align: TabAlign): this {
+    setAlign(align: AxisEnd): this {
         this._bar.setAlign(align);
 
         this.getContainer()?.scheduleLayout();
@@ -546,9 +528,9 @@ class Tab extends LayoutManager {
     /**
      * Returns the current tab-button-group alignment.
      *
-     * @returns The active {@link TabAlign}.
+     * @returns The active {@link AxisEnd}.
      */
-    getAlign(): TabAlign {
+    getAlign(): AxisEnd {
         return this._bar.getAlign();
     }
 

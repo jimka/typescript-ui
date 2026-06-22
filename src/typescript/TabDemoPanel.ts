@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { callable, Component } from '@jimka/typescript-ui/core';
-import { Insets } from '@jimka/typescript-ui/primitive';
-import { Fit, HBox, VBox, DockRegion, TabWidthMode, TabSide, TabAlign, TabOrientation, AxisPosition } from '@jimka/typescript-ui/layout';
+import { Insets, AxisEnd, AxisPosition } from '@jimka/typescript-ui/primitive';
+import { Fit, HBox, VBox, DockRegion, TabWidthMode, TabSide, TabOrientation } from '@jimka/typescript-ui/layout';
 import { Text, ComboBox, NumberSpinner } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { TabPanel } from '@jimka/typescript-ui/component/container';
@@ -80,7 +80,7 @@ class TabDemoPanel extends Component {
         const sideModes: TabSide[] = ["north", "south", "west", "east"];
         const sideCombo = new ComboBox({ items: sideModes, selectedIndex: 0 });
 
-        const alignModes: TabAlign[] = ["start", "end"];
+        const alignModes: AxisEnd[] = ["start", "end"];
         const alignCombo = new ComboBox({ items: alignModes, selectedIndex: 0 });
 
         const orientationModes: TabOrientation[] = ["horizontal", "vertical-cw", "vertical-ccw"];
