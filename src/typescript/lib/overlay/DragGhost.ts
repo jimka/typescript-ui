@@ -10,8 +10,8 @@ import { DOM } from "~/core/DOM.js";
  * Z-order ceiling for the drag ghost. The follow-the-cursor preview rides above
  * everything during a drag — appended at the document root, above the
  * LayerManager bands — so it is never occluded by a floating window or by the
- * per-target highlights ([`DragFeedback`](/api/core/classes/DragFeedback) /
- * [`ReorderIndicator`](/api/core/classes/ReorderIndicator)), which deliberately
+ * per-target highlights ([`DragFeedback`](/api/overlay/classes/DragFeedback) /
+ * [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator)), which deliberately
  * sit *below* the window band instead.
  */
 const Z_INDEX = 10200;
@@ -34,7 +34,7 @@ const LABEL_INSET = 6;
 /**
  * A floating drag preview that follows the pointer during an active drag
  * session, drawn above every other overlay. Created and owned by
- * [`DragManager`](/api/core/variables/DragManager); application code does
+ * [`DragManager`](/api/overlay/variables/DragManager); application code does
  * not instantiate this directly.
  *
  * The ghost is `Position.FIXED` (one of the documented overlay carve-outs

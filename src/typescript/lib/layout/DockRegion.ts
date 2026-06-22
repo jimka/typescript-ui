@@ -3,11 +3,11 @@
 import { Component } from "~/core/Component.js";
 import { Container } from "~/core/Container.js";
 import { DOM } from "~/core/DOM.js";
-import { AbstractWindow } from "~/core/AbstractWindow.js";
+import { AbstractWindow } from "~/overlay/AbstractWindow.js";
 import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
-import { DragManager, DragEventDetail, tabDragRegistry } from "~/core/DragManager.js";
-import { DropZone, DropZoneOverlay, EDGE_BAND_FRACTION } from "~/core/component/DropZoneOverlay.js";
+import { DragManager, DragEventDetail, tabDragRegistry } from "~/overlay/DragManager.js";
+import { DropZone, DropZoneOverlay, EDGE_BAND_FRACTION } from "~/overlay/DropZoneOverlay.js";
 
 /**
  * Dwell, in milliseconds, before a tab held over a region raises that region's
@@ -24,8 +24,8 @@ const SPRING_RAISE_DELAY_MS = 1000;
  * re-split (edge) or a tab add (center). One instance per dockable region.
  *
  * While a tab is dragged over the region (a source carrying plan #2's
- * [`TabDragData`](/api/core/interfaces/TabDragData)), a
- * [`DropZoneOverlay`](/api/core/classes/DropZoneOverlay) marks the five drop
+ * [`TabDragData`](/api/overlay/interfaces/TabDragData)), a
+ * [`DropZoneOverlay`](/api/overlay/classes/DropZoneOverlay) marks the five drop
  * zones and highlights the one under the cursor. Dropping on an **edge** splits
  * the region — wrapping it in a fresh [`Split`](/api/layout/classes/Split) (or
  * extending an existing same-axis `Split`) and re-homing the dragged panel into
@@ -38,7 +38,7 @@ const SPRING_RAISE_DELAY_MS = 1000;
  * `DockRegion` is a plain coordinator, not a `Component`: it owns no element,
  * only a drop-target registration (torn down by {@link destroy}) and the
  * overlay it drives. It composes with the manager's own
- * [`DragFeedback`](/api/core/classes/DragFeedback) tint — the tint reports drop
+ * [`DragFeedback`](/api/overlay/classes/DragFeedback) tint — the tint reports drop
  * validity, this overlay reports drop position — by returning `null` from
  * `onDragOver`, which suppresses the manager's reorder line.
  *
@@ -60,7 +60,7 @@ export class DockRegion {
      * @param region - The container whose edges/center accept a docked tab.
      * @param onStructureChanged - Optional callback invoked after a drop mutates
      *   the tree (an edge split or a centre dock), letting a tree owner such as
-     *   [`Dock`](/api/core/classes/Dock) re-wire the regions a drop just created.
+     *   [`Dock`](/api/overlay/classes/Dock) re-wire the regions a drop just created.
      */
     constructor(region: Component, onStructureChanged?: () => void) {
         this._region = region;

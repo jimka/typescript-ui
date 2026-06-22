@@ -17,8 +17,8 @@ export type { AccordionOptions, AccordionEvent, SectionToggleCallback } from '~/
 export { AccordionConstraints } from '~/layout/AccordionConstraints.js';
 export { Tab } from '~/layout/Tab.js';
 export type { TabOptions, TabEvent, TabWidthMode, TabSide, TabOrientation, TabDetachWindowMode } from '~/layout/Tab.js';
-// `TabDragData` now lives in core/DragManager (shared with Window); re-exported here for back-compat.
-export type { TabDragData } from '~/core/DragManager.js';
+// `TabDragData` now lives in overlay/DragManager (shared with Window); re-exported here for back-compat.
+export type { TabDragData } from '~/overlay/DragManager.js';
 export { Border } from '~/layout/Border.js';
 export type { BorderOptions } from '~/layout/Border.js';
 export type { AxisPosition, AxisSpread } from '~/primitive/Axis.js';
@@ -41,7 +41,7 @@ export type { GridTrack, GridTrackMode } from '~/layout/GridTrack.js';
 export { Split } from '~/layout/Split.js';
 export type { SplitOptions } from '~/layout/Split.js';
 export { DockRegion } from '~/layout/DockRegion.js';
-export type { DropZone } from '~/core/component/DropZoneOverlay.js';
+export type { DropZone } from '~/overlay/DropZoneOverlay.js';
 export { Card } from '~/layout/Card.js';
 export type { CardOptions } from '~/layout/Card.js';
 export { serializeLayout, restoreLayout } from '~/layout/LayoutSerialization.js';

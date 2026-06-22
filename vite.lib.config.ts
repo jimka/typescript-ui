@@ -23,6 +23,7 @@ export default defineConfig({
     lib: {
       entry: {
         'core':                r('core/index.ts'),
+        'overlay':             r('overlay/index.ts'),
         'primitive':           r('primitive/index.ts'),
         'layout':              r('layout/index.ts'),
         'data':                r('data/index.ts'),

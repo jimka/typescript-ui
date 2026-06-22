@@ -41,7 +41,7 @@ export interface RadioButtonOptions extends AbstractInputOptions {
  * A custom-drawn radio button rendered as a focusable `<div>` with
  * `role="radio"`. The ring + dot is drawn with framework primitives; the
  * native `<input type="radio">` is intentionally not used. Group selection
- * is coordinated by [`ButtonGroup`](/api/core/classes/ButtonGroup); keyboard
+ * is coordinated by [`ButtonGroup`](/api/overlay/classes/ButtonGroup); keyboard
  * navigation within a group is provided by
  * [`RovingTabIndex`](/api/core/classes/RovingTabIndex).
  *
@@ -310,7 +310,7 @@ class RadioButton<TOptions extends RadioButtonOptions = RadioButtonOptions>
      * Registers a listener for one of this radio button's events.
      * `"action"` is a typed semantic shorthand over {@link Event.addListener}
      * for the DOM change event — fired on user-driven selection and used by
-     * [`ButtonGroup`](/api/core/classes/ButtonGroup) to enforce mutual
+     * [`ButtonGroup`](/api/overlay/classes/ButtonGroup) to enforce mutual
      * exclusivity. `"change"` and `"binding"` are the inherited
      * {@link AbstractInput} listener-bag events.
      *

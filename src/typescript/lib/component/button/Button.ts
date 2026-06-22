@@ -6,7 +6,7 @@ import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { Text } from "~/component/input/Text.js";
-import { Tooltip } from "~/core/Tooltip.js";
+import { Tooltip } from "~/overlay/Tooltip.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { FillType } from "~/layout/FillType.js";
 import { AnchorType } from "~/layout/AnchorType.js";
@@ -841,7 +841,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * (re)attaches it. The tooltip body is `{title}\n\n{description}` when a
      * description exists, the title alone when it doesn't, and the description
      * alone when there is no title. Detaches entirely when both are empty.
-     * Routed through [`Tooltip`](/api/core/classes/Tooltip), which renders the
+     * Routed through [`Tooltip`](/api/overlay/classes/Tooltip), which renders the
      * `\n` breaks across multiple lines.
      */
     private _rebuildTooltip(): void {

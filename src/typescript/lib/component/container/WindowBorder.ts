@@ -48,7 +48,7 @@ export interface WindowBorderOptions extends ComponentOptions {
 
 /**
  * CSS class added to the DOM element of the currently snap-targeted strip.
- * Kept package-private (`@internal`) — the owning [`Window`](/api/core/classes/Window)
+ * Kept package-private (`@internal`) — the owning [`Window`](/api/overlay/classes/Window)
  * toggles it through {@link WindowBorder.setSnapTarget}.
  *
  * @internal
@@ -198,7 +198,7 @@ class WindowBorder extends Component<WindowBorderOptions> {
 
     /**
      * Toggles the snap-target CSS class on this strip's DOM element. Called by
-     * the owning [`Window`](/api/core/classes/Window) while the snap modifier
+     * the owning [`Window`](/api/overlay/classes/Window) while the snap modifier
      * is held and the cursor is within the configured threshold.
      *
      * @param value - True to highlight this strip as the snap target.

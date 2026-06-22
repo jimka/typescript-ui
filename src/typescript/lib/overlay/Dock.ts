@@ -2,16 +2,16 @@
 
 import { Container, ContainerOptions } from "~/core/Container.js";
 import { Component } from "~/core/Component.js";
-import { AbstractWindow } from "~/core/AbstractWindow.js";
-import { TabWindow } from "~/core/TabWindow.js";
+import { AbstractWindow } from "~/overlay/AbstractWindow.js";
+import { TabWindow } from "~/overlay/TabWindow.js";
 import { Fit } from "~/layout/Fit.js";
 import { Tab } from "~/layout/Tab.js";
 import { Split } from "~/layout/Split.js";
 import { DockRegion } from "~/layout/DockRegion.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { serializeLayout, restoreLayout, LayoutState } from "~/layout/LayoutSerialization.js";
-import { DragManager, DragEventDetail, tabDragRegistry } from "~/core/DragManager.js";
-import { DropZoneOverlay } from "~/core/component/DropZoneOverlay.js";
+import { DragManager, DragEventDetail, tabDragRegistry } from "~/overlay/DragManager.js";
+import { DropZoneOverlay } from "~/overlay/DropZoneOverlay.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
@@ -75,7 +75,7 @@ interface RegionWiring {
  * A user-configurable, rearrangeable panel layout — the VS Code / GoldenLayout
  * style dock. It hosts a tree of [`Split`](/api/layout/classes/Split) /
  * [`Tab`](/api/layout/classes/Tab) regions whose panels the user can reorder,
- * tear off into floating [`Window`](/api/core/classes/Window)s, drop on region
+ * tear off into floating [`Window`](/api/overlay/classes/Window)s, drop on region
  * edges to split, and save/restore.
  *
  * `Dock` is **glue**, not new drag mechanics: tab reorder + tear-off come from

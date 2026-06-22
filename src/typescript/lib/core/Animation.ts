@@ -12,8 +12,8 @@ import { InlineStyle } from "~/core/StyleTarget.js";
  * The framework's animation surface today is intentionally narrow: a single
  * `play(element, config)` function that drives an entrance OR exit transition
  * on one element, plus an `isReducedMotion()` predicate the call sites use
- * to short-circuit. Both [`Notification`](/api/core/classes/Notification) and
- * [`Dialog`](/api/core/classes/Dialog) build their entrance/dismiss flows
+ * to short-circuit. Both [`Notification`](/api/overlay/classes/Notification) and
+ * [`Dialog`](/api/overlay/classes/Dialog) build their entrance/dismiss flows
  * on top of this utility so the two-RAF flush, transition wiring, and
  * `transitionend`-with-fallback bookkeeping live in one place.
  *

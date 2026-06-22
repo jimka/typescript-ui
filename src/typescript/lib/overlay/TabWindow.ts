@@ -8,12 +8,12 @@ import {
     createWindowControlButton,
     createWindowLeadGlyphButton,
     setWindowControlsActive,
-} from "~/core/windowControls.js";
+} from "~/overlay/windowControls.js";
 import {
     AbstractWindow,
     WindowOptions,
     WindowState,
-} from "~/core/AbstractWindow.js";
+} from "~/overlay/AbstractWindow.js";
 
 // Height (px) of the window's tab-bar chrome, seeded into the generic
 // viewport-clamp / dock-rect / minimized-stack geometry via `chromeHeight()`.

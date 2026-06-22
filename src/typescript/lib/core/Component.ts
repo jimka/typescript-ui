@@ -3073,8 +3073,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Subclasses MAY call this with [`Position.FIXED`](/api/primitive/enums/Position#FIXED)
      * when they are floating overlays anchored to the viewport
      * ([`AnimatedDropdown`](/api/core/classes/AnimatedDropdown),
-     * [`Popover`](/api/core/classes/Popover), [`Notification`](/api/core/classes/Notification),
-     * [`Dialog`](/api/core/classes/Dialog), [`DialogBackdrop`](/api/core/classes/DialogBackdrop))
+     * [`Popover`](/api/overlay/classes/Popover), [`Notification`](/api/overlay/classes/Notification),
+     * [`Dialog`](/api/overlay/classes/Dialog), [`DialogBackdrop`](/api/core/classes/DialogBackdrop))
      * or with [`Position.STATIC`](/api/primitive/enums/Position#STATIC) when
      * the element's HTML semantics require in-flow rendering
      * ([`Legend`](/api/component/container/classes/Legend) needs the notch in
@@ -4486,7 +4486,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Registers a `mousedown` event listener on this component. Named
      * accessor that lets cross-bucket consumers (e.g.
-     * [`DragManager`](/api/core/variables/DragManager)) route through the
+     * [`DragManager`](/api/overlay/variables/DragManager)) route through the
      * component instead of reaching for
      * `Event.addListener(component, "mousedown", ...)` directly — the
      * framework's "components own their event surface" rule
@@ -4519,7 +4519,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * Registers a subtree `mousedown` listener — the handler fires
      * whenever a mousedown lands on this component **or any of its
      * descendants**. Used by
-     * [`DragManager`](/api/core/variables/DragManager) so a press
+     * [`DragManager`](/api/overlay/variables/DragManager) so a press
      * anywhere on a complex source (e.g. a `Row` whose cells receive
      * the actual mousedown) starts the drag.
      *

@@ -133,8 +133,8 @@ class ButtonGroup {
     }
 
     /**
-     * Returns the group's buttons as a {@link Component} array, suitable for passing
-     * directly to {@link Component.addComponents}.
+     * Returns the group's buttons as a [`Component`](/api/core/classes/Component) array, suitable for passing
+     * directly to [`Component.addComponents`](/api/core/classes/Component#addcomponents).
      *
      * @returns A new array of the buttons, widened to [`Component`](/api/core/classes/Component).
      */

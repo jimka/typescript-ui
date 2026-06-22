@@ -9,6 +9,10 @@
       "import": "./dist/lib/core.es.js",
       "types": "./dist/lib/types/core/index.d.ts"
     },
+    "./overlay": {
+      "import": "./dist/lib/overlay.es.js",
+      "types": "./dist/lib/types/overlay/index.d.ts"
+    },
     "./primitive": {
       "import": "./dist/lib/primitive.es.js",
       "types": "./dist/lib/types/primitive/index.d.ts"

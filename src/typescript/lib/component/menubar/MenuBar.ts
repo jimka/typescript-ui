@@ -4,7 +4,7 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { HBox } from "~/layout/HBox.js";
 import { MenuBarButton, MENU_BAR_BUTTON_HEIGHT } from "~/component/menubar/MenuBarButton.js";
-import { Menu } from "~/core/Menu.js";
+import { Menu } from "~/overlay/Menu.js";
 import { MenuConfig } from "~/component/container/MenuItem.js";
 import { callable } from "~/core/Callable.js";
 
@@ -12,7 +12,7 @@ import { callable } from "~/core/Callable.js";
  * A persistent horizontal menu bar that hosts top-level dropdown menus.
  *
  * `setMenus()` populates the bar with [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) children. Clicking a button
- * opens the corresponding [`Menu`](/api/core/classes/Menu) dropdown. While any dropdown is open,
+ * opens the corresponding [`Menu`](/api/overlay/classes/Menu) dropdown. While any dropdown is open,
  * hovering another button switches menus immediately (quick-switch mode), and
  * keyboard navigation (Arrow keys, Enter, Escape) is handled via a viewport-level
  * keydown listener.
@@ -117,7 +117,7 @@ class MenuBar extends Component {
     /**
      * Replaces the current set of top-level menus.
      *
-     * Disposes all existing [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) and [`Menu`](/api/core/classes/Menu) instances, then rebuilds
+     * Disposes all existing [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) and [`Menu`](/api/overlay/classes/Menu) instances, then rebuilds
      * them from the given descriptors.
      *
      * @param menus - Ordered list of top-level menu descriptors.

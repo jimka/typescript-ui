@@ -2,7 +2,7 @@
 
 import { Component } from '~/core/Component.js';
 import { Fit } from '~/layout/Fit.js';
-import { Tooltip } from '~/core/Tooltip.js';
+import { Tooltip } from '~/overlay/Tooltip.js';
 import { callable } from "~/core/Callable.js";
 
 /**

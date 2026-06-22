@@ -5,16 +5,16 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { Size } from "~/primitive/Size.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Component } from "~/core/Component.js";
-import { Window } from "~/core/Window.js";
-import { TabWindow } from "~/core/TabWindow.js";
-import { AbstractWindow } from "~/core/AbstractWindow.js";
+import { Window } from "~/overlay/Window.js";
+import { TabWindow } from "~/overlay/TabWindow.js";
+import { AbstractWindow } from "~/overlay/AbstractWindow.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Animation } from "~/core/Animation.js";
 import { FillType } from "~/layout/FillType.js";
 import { Fit } from "~/layout/Fit.js";
 import { ProgressSpinner } from "~/component/display/ProgressSpinner.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
-import { tabDragRegistry } from "~/core/DragManager.js";
+import { tabDragRegistry } from "~/overlay/DragManager.js";
 import { TabBar } from "~/component/container/TabBar.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
@@ -230,7 +230,7 @@ interface ContentEntry {
  *
  * `Tab` is the **content** manager: it owns the selected panel, lazy-load /
  * materialization, content swapping, tab tear-off into a floating
- * [`Window`](/api/core/classes/Window), and inter-strip docking. The **bar** —
+ * [`Window`](/api/overlay/classes/Window), and inter-strip docking. The **bar** —
  * the toolbar strip, the tab buttons, the selection indicator, the reorder bar,
  * the tool group, overflow scrolling, and tab drag-and-drop — is a composable
  * [`TabBar`](/api/component/container/classes/TabBar) it owns and reacts to: the
@@ -1880,7 +1880,7 @@ class Tab extends LayoutManager {
      * Registers a listener for the `"detached"` event, which fires after a tab is
      * torn off into a new floating window, carrying that window. Unlike `"empty"`,
      * it fires whether or not the tear-off left the source strip empty — so a
-     * tree owner such as [`Dock`](/api/core/classes/Dock) can react to *every*
+     * tree owner such as [`Dock`](/api/overlay/classes/Dock) can react to *every*
      * tear-off, not just the ones that drain the strip.
      *
      * @param event - The `"detached"` event.

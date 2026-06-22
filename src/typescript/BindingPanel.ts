@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Binding, callable, Component, Notification, Panel } from '@jimka/typescript-ui/core';
+import { Binding, callable, Component, Panel } from '@jimka/typescript-ui/core';
+import { Notification } from '@jimka/typescript-ui/overlay';
 import { HBox, VBox } from '@jimka/typescript-ui/layout';
 import { MemoryStore, Model } from '@jimka/typescript-ui/data';
 import { Checkbox, ComboBox, DateField, FileDropZone, FileField, Text, TextField, TimeField } from '@jimka/typescript-ui/component/input';

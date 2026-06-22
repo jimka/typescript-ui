@@ -10,7 +10,7 @@ import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { VBox } from "~/layout/VBox.js";
 import { Insets } from "~/primitive/Insets.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
-import { Menu } from "~/core/Menu.js";
+import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { Spacer } from "~/component/container/Spacer.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -102,12 +102,12 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
  * Children can be any [`Component`](/api/core/classes/Component) — typically
  * [`Button`](/api/component/button/classes/Button),
  * [`ToggleButton`](/api/component/button/classes/ToggleButton),
- * [`ButtonGroup`](/api/core/classes/ButtonGroup) members,
+ * [`ButtonGroup`](/api/overlay/classes/ButtonGroup) members,
  * [`ComboBox`](/api/component/input/classes/ComboBox), or {@link ToolBarSeparator}.
  * Focusable children (`tabindex >= 0`) are auto-registered with an internal
  * [`RovingTabIndex`](/api/core/classes/RovingTabIndex) so Arrow keys cycle
  * focus between them, matching the
- * [`ButtonGroup`](/api/core/classes/ButtonGroup) keyboard-nav pattern.
+ * [`ButtonGroup`](/api/overlay/classes/ButtonGroup) keyboard-nav pattern.
  *
  * @example
  * ```typescript
@@ -300,7 +300,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      * clipping region. `"menu"` hides the `Button` / `ToggleButton` children
      * that don't fit and surfaces them in a dropdown opened by a trailing
      * chevron affordance; the trigger and its rebuild-mode
-     * [`Menu`](/api/core/classes/Menu) are created lazily on first entry to
+     * [`Menu`](/api/overlay/classes/Menu) are created lazily on first entry to
      * `"menu"` mode. Menu overflow applies to horizontal bars only — a vertical
      * bar always clips.
      *

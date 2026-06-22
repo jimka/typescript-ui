@@ -188,7 +188,7 @@ class ProgressSpinner extends Component {
      * Mounts this ProgressSpinner as an absolute overlay covering the given component.
      *
      * The spinner element is appended directly to the target's DOM element (bypassing
-     * the target's layout manager, mirroring how [`Window`](/api/core/classes/Window)
+     * the target's layout manager, mirroring how [`Window`](/api/overlay/classes/Window)
      * mounts itself onto `document.documentElement`). Sized to the target's full bounds with a
      * semi-transparent backdrop and the spinning arc centred inside it. No-op if
      * already shown as an overlay.

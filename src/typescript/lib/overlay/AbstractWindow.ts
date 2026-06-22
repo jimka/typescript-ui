@@ -15,7 +15,7 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Size } from "~/primitive/Size.js";
 import { Placement } from "~/primitive/Placement.js";
-import type { Rail } from "~/core/Rail.js";
+import type { Rail } from "~/overlay/Rail.js";
 
 // Window body inset in pixels, set explicitly now that the base is Container
 // (zero default insets) rather than Panel (which supplied this 4px implicitly).
@@ -58,7 +58,7 @@ export type WindowState = "normal" | "minimized" | "maximized";
 /**
  * Typed events an {@link AbstractWindow} emits. `"minimize"` fires when the
  * window enters `"minimized"`, `"restore"` when it leaves it, and `"close"`
- * when the window is closed. A [`Rail`](/api/core/classes/Rail) subscribes to
+ * when the window is closed. A [`Rail`](/api/overlay/classes/Rail) subscribes to
  * these to mirror a window minimized into it as a launcher handle.
  *
  * @category Core

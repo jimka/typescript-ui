@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
-import { Window } from "~/core/Window.js";
-import { AbstractWindow } from "~/core/AbstractWindow.js";
+import { Window } from "~/overlay/Window.js";
+import { AbstractWindow } from "~/overlay/AbstractWindow.js";
 import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
@@ -11,7 +11,7 @@ import type { AxisOrientation } from "~/primitive/Axis.js";
 /**
  * Captures and restores the **arrangement** of the recognised container
  * managers — {@link Split} pane ratios, {@link Tab} order + active index, and
- * floating [`Window`](/api/core/classes/Window) rects + state — keyed by stable
+ * floating [`Window`](/api/overlay/classes/Window) rects + state — keyed by stable
  * panel IDs. It does **not** serialize the component tree: leaf content is an
  * arbitrary {@link Component} subclass the framework cannot reconstruct from
  * data, so each leaf is recorded as a bare reference and supplied on restore by
@@ -92,7 +92,7 @@ export interface TabNode {
 }
 
 /**
- * A floating [`Window`](/api/core/classes/Window) and the arrangement it hosts.
+ * A floating [`Window`](/api/overlay/classes/Window) and the arrangement it hosts.
  * A dockable float carries a full region {@link content} tree (splits, tab
  * order, active tab); a legacy single-panel float carried only {@link panelId}.
  *

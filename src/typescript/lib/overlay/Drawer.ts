@@ -141,7 +141,7 @@ const _defaultDrawerOptions: Partial<DrawerOptions> = {
  *
  * @example
  * ```typescript
- * import { Drawer } from '@jimka/typescript-ui/core';
+ * import { Drawer } from '@jimka/typescript-ui/overlay';
  * import { Placement } from '@jimka/typescript-ui/primitive';
  * import { VBox } from '@jimka/typescript-ui/layout';
  *

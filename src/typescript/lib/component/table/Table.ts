@@ -8,7 +8,7 @@ import { FooterRow } from "~/component/table/Footer.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Insets } from "~/primitive/Insets.js";
-import { Menu } from "~/core/Menu.js";
+import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { Column } from "~/component/table/Column.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";

@@ -364,7 +364,7 @@ class TreeTable extends Table {
      * Registers a listener fired after every successful
      * {@link reparentRow} call. Use to react to drag-and-drop row
      * moves originating from
-     * [`DragManager`](/api/core/variables/DragManager).
+     * [`DragManager`](/api/overlay/variables/DragManager).
      *
      * @param listener - Receives the {@link RowReparentDetail} payload.
      *

@@ -23,16 +23,16 @@ export interface MenuItemOptions extends ComponentOptions {
  * Selects which CSS-variable family a `MenuItem` reads its colours from.
  *
  * `'menu-bar'` resolves to `--ts-ui-menu-bar-item-*` tokens; `'context-menu'`
- * resolves to `--ts-ui-context-menu-item-*` tokens. The [`Menu`](/api/core/classes/Menu) class chooses
+ * resolves to `--ts-ui-context-menu-item-*` tokens. The [`Menu`](/api/overlay/classes/Menu) class chooses
  * the prefix based on its mode.
  */
 export type MenuItemCSSVarPrefix = "menu-bar" | "context-menu";
 
 /**
- * Describes a leaf action item, submenu trigger, or separator row inside a [`Menu`](/api/core/classes/Menu).
+ * Describes a leaf action item, submenu trigger, or separator row inside a [`Menu`](/api/overlay/classes/Menu).
  *
  * @remarks When `separator` is true all other fields are ignored; the item renders as
- * a thin horizontal rule. When `submenu` is set the item opens a child [`Menu`](/api/core/classes/Menu)
+ * a thin horizontal rule. When `submenu` is set the item opens a child [`Menu`](/api/overlay/classes/Menu)
  * instead of calling `action`.
  *
  * @category Components
@@ -84,7 +84,7 @@ export interface MenuConfig {
 }
 
 /**
- * A single row inside a [`Menu`](/api/core/classes/Menu) panel.
+ * A single row inside a [`Menu`](/api/overlay/classes/Menu) panel.
  *
  * Renders a four-zone layout: icon | text | shortcut | chevron. When
  * `config.separator` is true the item renders instead as a thin horizontal

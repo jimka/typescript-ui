@@ -4,7 +4,7 @@ import { _Body } from "~/component/table/Body.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
-import { DragEventDetail, DragManager } from "~/core/DragManager.js";
+import { DragEventDetail, DragManager } from "~/overlay/DragManager.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
 import { TreeCellRenderer } from "~/component/table/cell/renderer/TreeCell.js";

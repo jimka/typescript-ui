@@ -24,7 +24,7 @@ const _defaultDialogBackdropOptions: Partial<DialogBackdropOptions> = {};
  * A full-viewport fixed overlay that visually blocks content behind a modal dialog.
  *
  * Appended to `document.documentElement` as a sibling of the dialog panel at a lower
- * z-index, mirroring the pattern used by [`Notification`](/api/core/classes/Notification) and [`Menu`](/api/core/classes/Menu).
+ * z-index, mirroring the pattern used by [`Notification`](/api/overlay/classes/Notification) and [`Menu`](/api/overlay/classes/Menu).
  */
 class DialogBackdrop extends Component<DialogBackdropOptions> {
 
