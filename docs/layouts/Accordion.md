@@ -46,7 +46,7 @@ sidebar.addComponent(section2, new AccordionConstraints('Section 2'));
 | `compact` | `setCompact` / `isCompact` | `false` | Denser headers — a smaller default header height plus tighter padding. See [Compact mode](#compact-mode). |
 | `chevronSide` | `setChevronSide` / `getChevronSide` | `"right"` | Which end of each header the chevron sits at. The label always stays left-aligned. |
 | `chevronGlyph` | `setChevronGlyph` / `getChevronGlyph` | `"▶"` | The character drawn as the chevron (rotates 90° when expanded). |
-| `fill` | `setFill` / `isFill` | `false` | The bottommost open section absorbs the container's leftover height. See [Fill mode](#fill-mode). |
+| `fillHeight` | `setFillHeight` / `isFillHeight` | `false` | The bottommost open section absorbs the container's leftover height. See [Fill mode](#fill-mode). |
 | `toolsVisibility` | `setToolsVisibility` / `getToolsVisibility` | `"hover"` | When per-section header tools are shown. See [Header tools](#header-tools). |
 | `listeners` | `on("sectiontoggle", fn)` | — | `{ sectiontoggle }` callback bag (see [Toggle callback](#toggle-callback)). |
 
@@ -101,7 +101,7 @@ sidebar.addComponent(prefs, new AccordionConstraints('Preferences', false, 'gear
 
 ## Fill mode
 
-By default every open section sits at its preferred height. With `fill` on, the **bottommost open section grows to absorb the container's leftover height** (IDE/dock-panel style) — useful when the host stretches the accordion taller than its preferred height (e.g. inside a [`VBox`](/api/layout/classes/VBox) with `stretching`). Fill is the underflow counterpart to the shrink behaviour described under [Sizing](#sizing): when the content already overflows there is no leftover, so fill is a no-op and the two never both apply. When several sections are open, only the bottommost fills; the rest take their preferred height.
+By default every open section sits at its preferred height. With `fillHeight` on, the **bottommost open section grows to absorb the container's leftover height** (IDE/dock-panel style) — useful when the host stretches the accordion taller than its preferred height (e.g. inside a [`VBox`](/api/layout/classes/VBox) with `stretching`). Fill is the underflow counterpart to the shrink behaviour described under [Sizing](#sizing): when the content already overflows there is no leftover, so fill is a no-op and the two never both apply. When several sections are open, only the bottommost fills; the rest take their preferred height.
 
 ## Expand / collapse all
 

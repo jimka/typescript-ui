@@ -189,7 +189,7 @@ const accordion = Accordion({
 panel.setLayoutManager(hbox);
 ```
 
-The previous positional `VBox(spacing)` and `Split(direction)` signatures still compile, and `new` works alongside the callable form for every concrete manager.
+The previous positional `VBox(spacing)` signature still compiles, and `new` works alongside the callable form for every concrete manager.
 
 ## Data layer
 
