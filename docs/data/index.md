@@ -20,7 +20,7 @@ The framework's data package gives you a model-store-proxy stack for record-orie
 ## Pages
 
 - [Model](/data/model) — defining schemas, field mapping.
-- [Store](/data/store) — loading, sorting, filtering, events, mutations.
+- [Store](/data/store) — loading, sorting, filtering, events, mutations, and the hierarchical `TreeStore`.
 - [Proxy](/data/proxy) — `MemoryProxy`, `AjaxProxy`, `WebStorageProxy`, custom `Reader`/`Writer`, remote sort/filter.
 - [Record](/data/record) — getting / setting fields, dirty state, commit / reject.
 - [Binding](/data/binding) — two-way binding to form components.
