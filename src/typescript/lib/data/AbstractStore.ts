@@ -53,7 +53,7 @@ export interface AbstractStoreOptions {
     sorters?:     SortDescriptor[];
     filters?:     FilterDescriptor[];
     remoteSort?:  boolean;
-    remoteFilter?:boolean;
+    remoteFilter?: boolean;
     autoLoad?:    boolean;
     listeners?:   Partial<Record<StoreEvent, StoreListener>>;
 }
@@ -756,8 +756,8 @@ export abstract class AbstractStore {
      * @returns A promise that resolves once the local view has been rebuilt.
      *
      * @remarks
-     * Mirrors the single-column overload's pagination side effects when
-     * server-side pagination is enabled.
+     * Mirrors the single-column overload's reload side effects when `remoteSort`
+     * or server-side pagination is enabled.
      */
     sort(descriptors: SortDescriptor[]): Promise<void>;
     sort(fieldOrDescriptors: string | SortDescriptor[], dir: 'asc' | 'desc' = 'asc'): Promise<void> {
