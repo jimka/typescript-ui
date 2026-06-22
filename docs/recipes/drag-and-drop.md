@@ -16,7 +16,9 @@ The framework already wires this up for [`TreeTable`](/components/TreeTable) row
 ## Minimal example
 
 ```typescript
-import { Component, DragManager } from '@jimka/typescript-ui/core';
+import { Component } from '@jimka/typescript-ui/core';
+import { DragManager } from '@jimka/typescript-ui/overlay';
+
 
 const source = new Component();
 const target = new Component();

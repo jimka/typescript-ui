@@ -5,7 +5,8 @@
 ## One-shot prompt
 
 ```typescript
-import { Dialog } from '@jimka/typescript-ui/core';
+import { Dialog } from '@jimka/typescript-ui/overlay';
+
 const result = await Dialog.show({
     title:   'Confirm deletion',
     message: 'Are you sure you want to delete this record?',
@@ -25,7 +26,9 @@ if (result === 'confirm') {
 Replace `message` with `contentComponent` to render any component as the dialog body:
 
 ```typescript
-import { Component, Dialog } from '@jimka/typescript-ui/core';
+import { Component } from '@jimka/typescript-ui/core';
+import { Dialog } from '@jimka/typescript-ui/overlay';
+
 import { VBox } from '@jimka/typescript-ui/layout';
 import { TextField } from '@jimka/typescript-ui/component/input';
 const nameField = TextField();

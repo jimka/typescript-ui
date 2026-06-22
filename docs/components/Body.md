@@ -7,7 +7,9 @@ You don't usually instantiate components directly into `Body`; instead you attac
 ## Usage
 
 ```typescript
-import { Body, Window, ThemeManager, ClassicTheme } from '@jimka/typescript-ui/core';
+import { Body, ThemeManager, ClassicTheme } from '@jimka/typescript-ui/core';
+import { Window } from '@jimka/typescript-ui/overlay';
+
 ThemeManager.setTheme(ClassicTheme);
 
 const body = Body.getInstance();

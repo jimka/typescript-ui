@@ -9,7 +9,8 @@ When the buttons are the universal Ok / Confirm / Cancel / Close affordances, re
 `Ok` and `Confirm` both emit `result: 'confirm'` — they share the glyph and tint and differ only in label. Pick `Ok` for informational acknowledgement (paired with nothing) and `Confirm` for affirmative action (paired with `Cancel`). `Close` and `Cancel` both carry the red `xmark`; the result value (`'close'` vs `'cancel'`) is what disambiguates them at the call site.
 
 ```typescript
-import { Dialog, DialogButtons } from '@jimka/typescript-ui/core';
+import { Dialog, DialogButtons } from '@jimka/typescript-ui/overlay';
+
 // Single Ok (blue/info header, leading circle-info glyph) — the default
 // when DialogConfig.buttons is omitted
 await Dialog.show({
@@ -36,7 +37,8 @@ If you build a custom button outside the preset set and want a tinted glyph, the
 ## Confirm a destructive action
 
 ```typescript
-import { Dialog } from '@jimka/typescript-ui/core';
+import { Dialog } from '@jimka/typescript-ui/overlay';
+
 async function deleteRecord(record: ModelRecord) {
     const result = await Dialog.show({
         title:   'Delete record?',
@@ -60,7 +62,8 @@ async function deleteRecord(record: ModelRecord) {
 Replace `message` with `contentComponent` to embed a form or any other component:
 
 ```typescript
-import { Dialog } from '@jimka/typescript-ui/core';
+import { Dialog } from '@jimka/typescript-ui/overlay';
+
 import { VBox } from '@jimka/typescript-ui/layout';
 import { Label, TextField } from '@jimka/typescript-ui/component/input';
 async function renameFile(currentName: string): Promise<string | null> {

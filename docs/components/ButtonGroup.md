@@ -7,7 +7,8 @@ When any button in the group becomes selected, the others are automatically dese
 ## Usage — radio group
 
 ```typescript
-import { ButtonGroup } from '@jimka/typescript-ui/core';
+import { ButtonGroup } from '@jimka/typescript-ui/overlay';
+
 import { RadioButton } from '@jimka/typescript-ui/component/input';
 const small  = RadioButton('Small');
 const medium = RadioButton('Medium');
@@ -22,7 +23,9 @@ group.addButton(large);
 ## Usage — toggle group with keyboard nav
 
 ```typescript
-import { ButtonGroup, Component } from '@jimka/typescript-ui/core';
+import { Component } from '@jimka/typescript-ui/core';
+import { ButtonGroup } from '@jimka/typescript-ui/overlay';
+
 import { HBox } from '@jimka/typescript-ui/layout';
 import { ToggleButton } from '@jimka/typescript-ui/component/button';
 const left   = ToggleButton('Left');

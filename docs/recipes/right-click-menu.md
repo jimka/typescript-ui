@@ -9,7 +9,9 @@ Right-clicking a list item opens a menu with Cut / Copy / Paste / Delete. The me
 ## Create a single menu instance
 
 ```typescript
-import { Menu, Event } from '@jimka/typescript-ui/core';
+import { Event } from '@jimka/typescript-ui/core';
+import { Menu } from '@jimka/typescript-ui/overlay';
+
 const menu = Menu();
 ```
 

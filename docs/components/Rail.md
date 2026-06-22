@@ -9,7 +9,8 @@ A rail mounts on `document.documentElement` as a `Position.FIXED` overlay and ca
 A rail does not display until `mount()`; `unmount()` detaches it again. Registered drawers and windows survive an unmount, so a later `mount()` restores a working strip.
 
 ```typescript
-import { Rail, Drawer } from '@jimka/typescript-ui/core';
+import { Rail, Drawer } from '@jimka/typescript-ui/overlay';
+
 import { Placement } from '@jimka/typescript-ui/primitive';
 import { VBox } from '@jimka/typescript-ui/layout';
 

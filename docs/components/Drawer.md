@@ -9,7 +9,8 @@ It reuses the framework's floating-layer infrastructure wholesale: it mounts on 
 A drawer is a content host — add your own children and supply any header / dismiss chrome yourself:
 
 ```typescript
-import { Drawer } from '@jimka/typescript-ui/core';
+import { Drawer } from '@jimka/typescript-ui/overlay';
+
 import { Placement } from '@jimka/typescript-ui/primitive';
 import { VBox } from '@jimka/typescript-ui/layout';
 

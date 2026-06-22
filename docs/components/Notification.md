@@ -5,7 +5,8 @@
 ## Usage
 
 ```typescript
-import { Notification } from '@jimka/typescript-ui/core';
+import { Notification } from '@jimka/typescript-ui/overlay';
+
 Notification.show('Record saved.', 'success');
 Notification.show('Connection lost.', 'error', 0);   // 0 = persistent
 Notification.show('Heads up.',      'warning', 6000); // 6 seconds
@@ -38,7 +39,8 @@ Notification.show(
 `Notification.pauseAll()` and `Notification.resumeAll()` are public, so consumer code can pause the entire notification stack while a custom modal is open:
 
 ```typescript
-import { Notification, Dialog } from '@jimka/typescript-ui/core';
+import { Notification, Dialog } from '@jimka/typescript-ui/overlay';
+
 
 Notification.pauseAll();
 await Dialog.show({ title: 'Review changes', message: '…' });

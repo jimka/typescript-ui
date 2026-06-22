@@ -5,7 +5,8 @@ Use [`Notification`](/components/Notification) for transient feedback that doesn
 ## Severity ladder
 
 ```typescript
-import { Notification } from '@jimka/typescript-ui/core';
+import { Notification } from '@jimka/typescript-ui/overlay';
+
 Notification.show('Saved.',                'success');             // 3 s default
 Notification.show('Cache rebuilt.',        'info');                // 3 s
 Notification.show('Disk almost full.',     'warning', 6000);       // 6 s
@@ -58,7 +59,8 @@ menu.show(x, y, [
 `Notification.pauseAll()` and `Notification.resumeAll()` pause every active toast timer. Use them when you open a custom modal that should also hold the notification stack in place — the framework only wires this in automatically for the built-in double-click detail dialog.
 
 ```typescript
-import { Notification, Dialog } from '@jimka/typescript-ui/core';
+import { Notification, Dialog } from '@jimka/typescript-ui/overlay';
+
 
 Notification.pauseAll();
 await Dialog.show({ title: 'Confirm', message: 'Discard the in-progress draft?' });

@@ -11,7 +11,8 @@
 `DockOptions.layout` is a small declarative spec — a leaf panel, a `split` of regions, or a `tabs` group. Each leaf carries a stable `id`, a `title`, optional `glyph`, and its `content` (a live component or a lazy factory):
 
 ```typescript
-import { Dock } from '@jimka/typescript-ui/core';
+import { Dock } from '@jimka/typescript-ui/overlay';
+
 
 const dock = Dock({
     layout: {

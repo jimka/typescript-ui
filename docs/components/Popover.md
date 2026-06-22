@@ -9,7 +9,9 @@ Positioning is anchor-relative. While the popover is open, `window` `resize` and
 ## Usage
 
 ```typescript
-import { Event, Popover } from '@jimka/typescript-ui/core';
+import { Event } from '@jimka/typescript-ui/core';
+import { Popover } from '@jimka/typescript-ui/overlay';
+
 import { Button } from '@jimka/typescript-ui/component/button';
 
 const popover = new Popover({

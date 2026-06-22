@@ -5,7 +5,8 @@
 ## Usage
 
 ```typescript
-import { ButtonGroup } from '@jimka/typescript-ui/core';
+import { ButtonGroup } from '@jimka/typescript-ui/overlay';
+
 import { RadioButton } from '@jimka/typescript-ui/component/input';
 const small  = RadioButton('Small');
 const medium = RadioButton('Medium');

@@ -5,7 +5,8 @@
 ## Attach to a component
 
 ```typescript
-import { Tooltip } from '@jimka/typescript-ui/core';
+import { Tooltip } from '@jimka/typescript-ui/overlay';
+
 import { Button } from '@jimka/typescript-ui/component/button';
 const saveButton = Button('Save');
 Tooltip.attach(saveButton, 'Save the document (Ctrl+S)');

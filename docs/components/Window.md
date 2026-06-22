@@ -7,7 +7,9 @@
 ## Usage
 
 ```typescript
-import { Body, Window } from '@jimka/typescript-ui/core';
+import { Body } from '@jimka/typescript-ui/core';
+import { Window } from '@jimka/typescript-ui/overlay';
+
 import { TablePanel } from '@jimka/typescript-ui/component/table';
 
 // Constructor + options bag: title text, geometry, optional title-icon
