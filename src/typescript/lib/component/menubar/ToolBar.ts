@@ -16,20 +16,12 @@ import { Spacer } from "~/component/container/Spacer.js";
 import { Glyph } from "~/component/display/Glyph.js";
 import { ellipsis_v } from "~/glyphs/solid/ellipsis_v.js";
 import { callable } from "~/core/Callable.js";
+import type { AxisOrientation, AxisEnd } from "~/primitive/Axis.js";
 
 // Register the overflow trigger's chevron eagerly at module load — same pattern
 // as SplitButton registering its caret_down — so the lazily-created "more"
 // affordance always resolves its glyph without the consumer pre-registering it.
 Glyph.register(ellipsis_v);
-
-/**
- * Layout direction of a {@link ToolBar}. `"horizontal"` packs children
- * left-to-right via [`HBox`](/api/layout/classes/HBox); `"vertical"` packs
- * them top-to-bottom via [`VBox`](/api/layout/classes/VBox).
- *
- * @category Components
- */
-export type ToolBarOrientation = "horizontal" | "vertical";
 
 /**
  * Overflow behaviour for a {@link ToolBar} whose children exceed its measured
@@ -43,30 +35,20 @@ export type ToolBarOrientation = "horizontal" | "vertical";
 export type ToolBarOverflow = "clip" | "menu";
 
 /**
- * Which edge of a {@link ToolBar} the `"menu"` overflow trigger sits on.
- * `"right"` (the default) places the chevron at the trailing edge, after the
- * visible buttons; `"left"` places it at the leading edge. The overflowing
- * buttons are the trailing run either way — only the trigger's position moves.
- *
- * @category Components
- */
-export type ToolBarOverflowSide = "left" | "right";
-
-/**
  * Construction-time options for {@link ToolBar}.
  *
  * @category Components
  */
 export interface ToolBarOptions extends ContainerOptions {
-    orientation?: ToolBarOrientation;
+    orientation?: AxisOrientation;
     compact?:     boolean;
     overflow?:    ToolBarOverflow;
     /**
-     * Edge the `"menu"` overflow trigger sits on — `"right"` (default) or
-     * `"left"`. No visible effect unless `overflow` is `"menu"`. Runtime
+     * Edge the `"menu"` overflow trigger sits on — `"end"` (default) or
+     * `"start"`. No visible effect unless `overflow` is `"menu"`. Runtime
      * counterpart `setOverflowSide`.
      */
-    overflowSide?: ToolBarOverflowSide;
+    overflowSide?: AxisEnd;
     /**
      * When `true` (the default), `Button` / `ToggleButton` children added to the
      * bar are switched to flat appearance for the classical toolbar look — no
@@ -100,7 +82,7 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
     orientation:     "horizontal",
     compact:         true,
     overflow:        "clip",
-    overflowSide:    "right",
+    overflowSide:    "end",
     flat:            true,
     backgroundColor: "var(--ts-ui-toolbar-bg, rgb(245, 245, 245))",
 };
@@ -144,10 +126,10 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
  */
 class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Container<TOptions> {
 
-    declare private _orientation:  ToolBarOrientation;
+    declare private _orientation:  AxisOrientation;
     declare private _compact:      boolean;
     declare private _overflowMode: ToolBarOverflow;
-    declare private _overflowSide: ToolBarOverflowSide;
+    declare private _overflowSide: AxisEnd;
     declare private _flat:         boolean;
     declare private _rovingTabIndex: RovingTabIndex;
     declare private _onKeyDown:    (e: KeyboardEvent) => void;
@@ -228,7 +210,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      *
      * @returns This component, for method chaining.
      */
-    setOrientation(value: ToolBarOrientation): this {
+    setOrientation(value: AxisOrientation): this {
         if (value === this._orientation) {
             return this;
         }
@@ -266,7 +248,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      *
      * @returns `"horizontal"` or `"vertical"`.
      */
-    getOrientation(): ToolBarOrientation {
+    getOrientation(): AxisOrientation {
         return this._orientation;
     }
 
@@ -367,11 +349,11 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     }
 
     /**
-     * Pins the overflow trigger to the configured edge. For `"right"` a flex
+     * Pins the overflow trigger to the configured edge. For `"end"` a flex
      * {@link Spacer} is parented just before the trigger so the chevron is
-     * driven to the bar's far-right edge (rather than sitting flush against the
+     * driven to the bar's trailing edge (rather than sitting flush against the
      * last visible button); the final child order is `[content…, spacer, trigger]`.
-     * For `"left"` the spacer is detached and the trigger leads as the first
+     * For `"start"` the spacer is detached and the trigger leads as the first
      * child. A no-op when no trigger exists yet. Re-run whenever content is added
      * (the trigger must stay at the edge) or the side changes; the trailing run
      * of buttons still overflows regardless of the trigger's side.
@@ -383,7 +365,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
             return;
         }
 
-        if (this._overflowSide === "right") {
+        if (this._overflowSide === "end") {
             if (spacer.getParentComponent() !== this) {
                 super.addComponent(spacer);
             }
@@ -413,16 +395,16 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     }
 
     /**
-     * Sets which edge the `"menu"` overflow trigger sits on. `"right"` (the
-     * default) trails the visible buttons; `"left"` leads them. Only the
+     * Sets which edge the `"menu"` overflow trigger sits on. `"end"` (the
+     * default) trails the visible buttons; `"start"` leads them. Only the
      * trigger's position changes — the overflowing buttons are the trailing run
      * either way. No visible effect until `overflow` is `"menu"`.
      *
-     * @param value - `"left"` or `"right"`.
+     * @param value - `"start"` or `"end"`.
      *
      * @returns This component, for method chaining.
      */
-    setOverflowSide(value: ToolBarOverflowSide): this {
+    setOverflowSide(value: AxisEnd): this {
         if (value === this._overflowSide) {
             return this;
         }
@@ -438,9 +420,9 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     /**
      * Returns the edge the overflow trigger sits on.
      *
-     * @returns `"left"` or `"right"`.
+     * @returns `"start"` or `"end"`.
      */
-    getOverflowSide(): ToolBarOverflowSide {
+    getOverflowSide(): AxisEnd {
         return this._overflowSide;
     }
 
