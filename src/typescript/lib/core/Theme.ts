@@ -1223,6 +1223,7 @@ export class ThemeManager {
      */
     static setTheme(theme: Theme): void {
         ensureFontLoaded();
+        ThemeManager.scheduleFontReflow();
 
         ThemeManager.current = theme;
         ThemeManager.resolvedScale = resolveScale(theme);
@@ -1247,6 +1248,35 @@ export class ThemeManager {
             },
         });
 
+        ThemeManager.reflowText();
+    }
+
+    // Guards the one-time `onFontsReady` subscription across repeated setTheme
+    // calls (the font swap happens once, not per theme).
+    private static fontReflowScheduled = false;
+
+    /**
+     * Registers a one-time re-measure to run once the bundled web font finishes
+     * loading. Text measured against the fallback font before a
+     * `font-display: swap` swap-in caches a stale preferred size; refreshing the
+     * metrics and re-flowing every subscribed Text corrects boxes that would
+     * otherwise clip the wider real glyphs (e.g. content-sized tab labels).
+     */
+    private static scheduleFontReflow(): void {
+        if (ThemeManager.fontReflowScheduled) {
+            return;
+        }
+
+        ThemeManager.fontReflowScheduled = true;
+        DOM.source.onFontsReady(() => ThemeManager.reflowText());
+    }
+
+    /**
+     * Invalidates the cached text-measurement metrics and notifies every
+     * subscribed listener so each Text re-measures against the current font and
+     * scale. Shared by {@link setTheme} and the font-load reflow.
+     */
+    private static reflowText(): void {
         Util.invalidateTextMetricsCache();
 
         ThemeManager.themeListeners.forEach(l => l());
