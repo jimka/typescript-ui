@@ -7,6 +7,7 @@
 // `isAvailable()` before dispatching.
 
 import { FilterDescriptor } from "~/data/FilterDescriptor.js";
+import type { FieldType } from "~/data/Field.js";
 
 // Vite-specific worker import. The `?worker` suffix tells Vite to bundle the
 // module as a Web Worker entry. The default export is the Worker constructor.
@@ -102,10 +103,13 @@ export const StoreWorkerClient = {
 
     /**
      * Combined filter + sort in a single round-trip. Either spec may be omitted.
+     * The sort spec carries the field's `fieldType` so the worker's comparator
+     * stays in parity with the main thread's (locale-aware strings, timestamp
+     * dates).
      */
     sortFilter(
         storeId: string,
-        sort?: { field: string; direction: Direction },
+        sort?: { field: string; direction: Direction; fieldType?: FieldType },
         filter?: FilterDescriptor,
     ): Promise<number[]> {
         return send({ type: "sortFilter", storeId, sort, filter }).then(idx => idx ?? []);

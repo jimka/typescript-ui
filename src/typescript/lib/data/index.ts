@@ -8,7 +8,7 @@ export type { ModelOptions } from '~/data/Model.js';
 export { ModelRecord } from '~/data/ModelRecord.js';
 export type { FieldChange } from '~/data/ModelRecord.js';
 export { AbstractStore } from '~/data/AbstractStore.js';
-export type { AbstractStoreOptions, StoreEvent, StoreListener, SortDescriptor, StoreOperation, StoreExceptionEvent, StoreClearEvent, StoreFilterChangeEvent, StoreUpdateEvent, StoreSyncEvent } from '~/data/AbstractStore.js';
+export type { AbstractStoreOptions, StoreEvent, StoreListener, SortDescriptor, StoreOperation, StoreExceptionEvent, StoreClearEvent, StoreFilterChangeEvent, StoreUpdateEvent, StoreSyncEvent, StoreGroupChangeEvent } from '~/data/AbstractStore.js';
 export { Store } from '~/data/Store.js';
 export type { StoreOptions } from '~/data/Store.js';
 export { MemoryStore } from '~/data/MemoryStore.js';
