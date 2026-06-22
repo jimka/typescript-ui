@@ -94,7 +94,7 @@ class AccordionDemoPanel extends Panel {
         this.accordion.getAccordion()
             .setFillHeight(true)
             .setCompact(true)
-            .setChevronSide("left");
+            .setChevronSide("start");
 
         // Weight 1 so the accordion fills the panel's remaining height below the
         // toolbar — giving fill mode the leftover space it expands an open

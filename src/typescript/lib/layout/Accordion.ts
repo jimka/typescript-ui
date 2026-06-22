@@ -8,6 +8,7 @@ import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Size } from "~/primitive/Size.js";
+import type { AxisEnd } from "~/primitive/Axis.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 
@@ -86,7 +87,7 @@ export interface AccordionOptions extends LayoutManagerOptions {
     singleOpen?:        boolean;
     headerHeight?:      number;
     animationDuration?: number;
-    chevronSide?:       "left" | "right";
+    chevronSide?:       AxisEnd;
     toolsVisibility?:   "always" | "hover";
     compact?:           boolean;
     chevronGlyph?:      string;
@@ -143,7 +144,7 @@ class Accordion extends LayoutManager {
     private _headerHeightExplicit: boolean = false;
     private _compact: boolean = false;
     private _animationDuration: number = 200;
-    private _chevronSide: "left" | "right" = "right";
+    private _chevronSide: AxisEnd = "end";
     private _chevronGlyph: string | null = null;
     private _spacing: number = 0;
     private _themed: boolean = true;
@@ -359,9 +360,9 @@ class Accordion extends LayoutManager {
     /**
      * Returns which end of each header the chevron sits at.
      *
-     * @returns `"left"` or `"right"`.
+     * @returns `"start"` or `"end"`.
      */
-    getChevronSide(): "left" | "right" {
+    getChevronSide(): AxisEnd {
         return this._chevronSide;
     }
 
@@ -370,11 +371,11 @@ class Accordion extends LayoutManager {
      * always stays left-aligned; only the chevron moves. Applies to existing
      * headers immediately and to headers created afterwards.
      *
-     * @param side - `"left"` or `"right"`.
+     * @param side - `"start"` or `"end"`.
      *
      * @returns This layout manager, for chaining.
      */
-    setChevronSide(side: "left" | "right"): this {
+    setChevronSide(side: AxisEnd): this {
         this._chevronSide = side;
 
         for (const header of this._headers) {
