@@ -2,15 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { callable } from "~/core/Callable.js";
-
-/**
- * Orientation of a {@link ToolBarSeparator}. `"vertical"` (the default) draws a
- * thin vertical rule suitable for a horizontal toolbar; `"horizontal"` draws a
- * thin horizontal rule suitable for a vertical toolbar.
- *
- * @category Components
- */
-export type ToolBarSeparatorOrientation = "vertical" | "horizontal";
+import type { AxisOrientation } from "~/primitive/Axis.js";
 
 /**
  * Construction-time options for {@link ToolBarSeparator}.
@@ -18,7 +10,7 @@ export type ToolBarSeparatorOrientation = "vertical" | "horizontal";
  * @category Components
  */
 export interface ToolBarSeparatorOptions extends ComponentOptions {
-    orientation?: ToolBarSeparatorOrientation;
+    orientation?: AxisOrientation;
 }
 
 /**
@@ -56,7 +48,7 @@ class ToolBarSeparator extends Component<ToolBarSeparatorOptions> {
      */
     static readonly THICKNESS: number = 1;
 
-    private readonly _orientation: ToolBarSeparatorOrientation;
+    private readonly _orientation: AxisOrientation;
 
     /**
      * Constructs a `ToolBarSeparator`.
@@ -95,7 +87,7 @@ class ToolBarSeparator extends Component<ToolBarSeparatorOptions> {
      *
      * @returns The `ToolBarSeparator` orientation — `"vertical"` or `"horizontal"`.
      */
-    getOrientation(): ToolBarSeparatorOrientation {
+    getOrientation(): AxisOrientation {
         return this._orientation;
     }
 }
