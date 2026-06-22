@@ -4,7 +4,6 @@ import { Model } from '~/data/Model';
 import { ModelRecord } from '~/data/ModelRecord';
 import { Proxy, ReadParams } from '~/data/proxy/Proxy';
 import { HasManyAssociation, BelongsToAssociation } from '~/data/Association';
-import type { FilterDescriptor } from '~/data/FilterDescriptor';
 
 const EMPLOYEE = new Model({
     fields: [{ name: 'id' }, { name: 'name' }, { name: 'deptId', type: 'number' }],
@@ -125,27 +124,43 @@ class RecordingProxy extends Proxy {
 }
 
 describe('lazy load', () => {
-    it('configures a remoteFilter on the parent foreign key when no embedded array exists', async () => {
+    it('loads the hasMany child store through the association proxy with the parent-FK filter', async () => {
         const proxy = new RecordingProxy();
         const EMP = new Model({ fields: [{ name: 'id' }, { name: 'deptId', type: 'number' }], primaryKey: 'id' });
+        const dept = new Model({
+            fields: [{ name: 'id' }],
+            primaryKey: 'id',
+            associations: [{ accessor: 'emps', foreignKey: 'deptId', target: () => EMP, proxy }],
+        }).createRecord({ id: 7 });
 
-        // The child store has no proxy by default, so we wire a recording one by
-        // building the store directly from the same filter the association sets.
+        const child = dept.getAssociated('emps');
+        expect(child.getActiveFilters()).toEqual([{ type: 'eq', field: 'deptId', value: 7 }]);
+
+        await child.load();
+        expect(proxy.lastParams?.filters).toEqual([{ type: 'eq', field: 'deptId', value: 7 }]);
+    });
+
+    it('loads the belongsTo owner store through the association proxy filtered on the target primary key', async () => {
+        const proxy = new RecordingProxy();
+        const emp = new Model({
+            fields: [{ name: 'id' }, { name: 'deptId', type: 'number' }],
+            primaryKey: 'id',
+            associations: [{ accessor: 'department', foreignKey: 'deptId', kind: 'belongsTo', target: () => DEPARTMENT, proxy }],
+        }).createRecord({ id: 5, deptId: 42 });
+
+        await emp.getAssociated('department').load();
+        expect(proxy.lastParams?.filters).toEqual([{ type: 'eq', field: 'id', value: 42 }]);
+    });
+
+    it('rejects load() when the association carries no proxy', async () => {
+        const EMP = new Model({ fields: [{ name: 'id' }, { name: 'deptId', type: 'number' }], primaryKey: 'id' });
         const dept = new Model({
             fields: [{ name: 'id' }],
             primaryKey: 'id',
             associations: [{ accessor: 'emps', foreignKey: 'deptId', target: () => EMP }],
         }).createRecord({ id: 7 });
 
-        const child = dept.getAssociated('emps');
-        expect(child.getActiveFilters()).toEqual([{ type: 'eq', field: 'deptId', value: 7 }]);
-
-        // Re-issue the same filter against a proxy-backed store to confirm a
-        // remoteFilter store serialises the parent-FK filter into ReadParams.
-        const filters: FilterDescriptor[] = [{ type: 'eq', field: 'deptId', value: 7 }];
-        const probe = new Store({ model: EMP, proxy, remoteFilter: true, filters });
-        await probe.load();
-        expect(proxy.lastParams?.filters).toEqual(filters);
+        await expect(dept.getAssociated('emps').load()).rejects.toThrow(/no proxy is configured/);
     });
 });
 
