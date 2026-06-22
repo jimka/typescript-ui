@@ -108,7 +108,7 @@ employees.add({ name: 'Ada' });
 employee.getForeignKeyValue('department');                 // 42
 ```
 
-Repeated calls for the same accessor return the same store instance. See [Associations](/data/associations) for eager vs lazy loading, cascade sync, and `belongsTo`.
+Repeated calls for the same accessor return the same store instance. `getAssociated` never auto-loads; to fetch children lazily, the association must carry a `proxy` and the parent must already have an id, then call `getAssociated(accessor).load()`. See [Associations](/data/associations) for eager vs lazy loading, cascade sync, and `belongsTo`.
 
 ## See also
 
