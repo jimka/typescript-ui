@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AbstractModel } from '~/data/AbstractModel.js';
+import { AbstractStore } from '~/data/AbstractStore.js';
+import { Association } from '~/data/Association.js';
 import { Field } from '~/data/Field.js';
+import { Store } from '~/data/Store.js';
+import { Model } from '~/data/Model.js';
 import { applyRule } from '~/validation/Validator.js';
 
 // Monotonic per-session id source for client-side row keys; never leaves the client,
@@ -55,17 +59,31 @@ export class ModelRecord {
     private _isNew: boolean = false;
     private _internalId: number;
 
+    // Embedded child rows captured from the parent payload at createRecord time,
+    // keyed by association accessor. Kept out of `_data` so getData() / the proxy
+    // writers never see them; consumed once when the child store is first built.
+    private _associatedSeed: Record<string, any[]>;
+
+    // Lazily-built per-accessor child stores, so repeated getAssociated() calls
+    // return the same instance (stable identity for listeners and the collection
+    // id-index). Allocated on first access.
+    private _childStores: Map<string, AbstractStore> | undefined;
+
     /**
      * Constructs a ModelRecord with the given model schema and initial data.
      *
      * @param model - The AbstractModel that describes this record's field schema.
      * @param data - The initial field values keyed by field name.
+     * @param associatedSeed - Optional. Embedded child rows from the parent
+     *   payload, keyed by association accessor, used to seed child stores on
+     *   first access. Never enters `_data` and is never serialised.
      */
-    constructor(model: AbstractModel, data: Record<string, any>) {
+    constructor(model: AbstractModel, data: Record<string, any>, associatedSeed: Record<string, any[]> = {}) {
         this._model = model;
         this._data = { ...data };
         this._original = { ...data };
         this._internalId = nextInternalId++;
+        this._associatedSeed = associatedSeed;
     }
 
     /**
@@ -317,6 +335,156 @@ export class ModelRecord {
      */
     getInternalId(): number {
         return this._internalId;
+    }
+
+    /**
+     * Returns the cached, parent-scoped child {@link AbstractStore} for an
+     * association accessor, building it on first access.
+     *
+     * @remarks
+     * Repeated calls for the same accessor return the **same** store instance, so
+     * listeners and the collection id-index stay stable. For a hasMany association
+     * the store is seeded from an embedded child array when the parent payload
+     * carried one (eager), otherwise it is configured to load through the target
+     * model's proxy filtered on the parent's foreign key (lazy). For a belongsTo
+     * association the store is filtered to the single owner record.
+     *
+     * @param accessor - The association accessor declared on this record's model.
+     *
+     * @returns The cached child store for that association.
+     *
+     * @throws Error when no association with that accessor exists (programmer error).
+     */
+    getAssociated(accessor: string): AbstractStore {
+        const cached = this._childStores?.get(accessor);
+
+        if (cached) {
+            return cached;
+        }
+
+        const association = this._model.getAssociation(accessor);
+
+        if (!association) {
+            throw new Error(`ModelRecord.getAssociated: no association '${accessor}'`);
+        }
+
+        const store = this.buildChildStore(association);
+
+        (this._childStores ??= new Map()).set(accessor, store);
+
+        return store;
+    }
+
+    /**
+     * Builds the parent-scoped child store for an association.
+     *
+     * @remarks
+     * The target model is resolved through the association's memoised thunk. A
+     * hasMany association with an embedded seed loads those rows directly (each
+     * committed, not new); otherwise it carries a `remoteFilter` on the parent
+     * foreign key for the lazy load path. A belongsTo association filters the
+     * target store to the owner via the foreign-key value.
+     *
+     * @param association - The association whose child store is built.
+     *
+     * @returns A freshly-constructed {@link Store} for the target model.
+     */
+    private buildChildStore(association: Association): AbstractStore {
+        const targetModel = association.resolveTarget() as Model;
+
+        if (association.kind === 'belongsTo') {
+            const pkName = targetModel.getPrimaryKeyField()?.getName() ?? association.getForeignKey();
+
+            return new Store({
+                model: targetModel,
+                remoteFilter: true,
+                filters: [{ type: 'eq', field: pkName, value: this.get(association.getForeignKey()) }],
+            });
+        }
+
+        const seed = this._associatedSeed[association.getAccessor()];
+
+        if (seed) {
+            const store = new Store({ model: targetModel });
+
+            store.loadData(seed);
+
+            return store;
+        }
+
+        return new Store({
+            model: targetModel,
+            remoteFilter: true,
+            filters: [{ type: 'eq', field: association.getForeignKey(), value: this.getId() }],
+        });
+    }
+
+    /**
+     * Reports whether a child store for an association has already been built.
+     *
+     * @remarks
+     * Used by the parent store's cascade sync to skip associations whose child
+     * store was never materialised — a loaded-but-untouched parent then costs
+     * nothing.
+     *
+     * @param accessor - The association accessor to test.
+     *
+     * @returns True when {@link getAssociated} has already built that store.
+     */
+    hasChildStore(accessor: string): boolean {
+        return this._childStores?.has(accessor) ?? false;
+    }
+
+    /**
+     * Returns the raw foreign-key value for a belongsTo accessor, without loading.
+     *
+     * @param accessor - The belongsTo association accessor.
+     *
+     * @returns The foreign-key field value held on this record.
+     *
+     * @throws Error when no association with that accessor exists (programmer error).
+     */
+    getForeignKeyValue(accessor: string): any {
+        const association = this._model.getAssociation(accessor);
+
+        if (!association) {
+            throw new Error(`ModelRecord.getForeignKeyValue: no association '${accessor}'`);
+        }
+
+        return this.get(association.getForeignKey());
+    }
+
+    /**
+     * Returns this record's data augmented with embedded children for every
+     * `'nested'`-persist association whose child store was materialised.
+     *
+     * @remarks
+     * Unlike {@link getData}, which never carries children, this is the hook a
+     * nested-aware writer reads to serialise children inside the parent's write
+     * body. Each materialised `'nested'` association contributes
+     * `{ [nestedKey]: childRecordsData }`; `'proxy'`-persist associations and
+     * unbuilt stores are omitted (they persist through their own proxy).
+     *
+     * @returns A plain object: the field data plus nested child-record arrays.
+     */
+    getDataWithNested(): Record<string, any> {
+        const data = this.getData();
+
+        for (const association of this._model.getAssociations()) {
+            if (association.kind !== 'hasMany' || association.getPersist() !== 'nested') {
+                continue;
+            }
+
+            if (!this.hasChildStore(association.getAccessor())) {
+                continue;
+            }
+
+            const child = this.getAssociated(association.getAccessor());
+
+            data[association.getNestedKey()] = child.getAll().map(r => r.getData());
+        }
+
+        return data;
     }
 
     /**
