@@ -504,6 +504,14 @@ export class ModelledDOMSource implements DOMSource {
         return _table.mint('head');
     }
 
+    /**
+     * Offline measurement uses baked fonts with no async swap, so there is no
+     * stale fallback to refresh — the callback never fires.
+     */
+    onFontsReady(_callback: () => void): void {
+        // Intentionally inert offline.
+    }
+
     getInlineStyle(_handle: Handle, _key: string): string {
         return '';
     }

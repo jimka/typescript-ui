@@ -950,6 +950,18 @@ export interface DOMSource {
     getHead(): Handle;
 
     /**
+     * Registers a callback fired once the document's web fonts have finished
+     * loading (i.e. `document.fonts.ready` resolves). Text whose preferred size
+     * was measured against a fallback font before a `font-display: swap` web
+     * font swapped in must re-measure once the real font is available, or its
+     * stale (fallback-derived) size clips the now-wider glyphs. Offline sources
+     * measure against baked fonts with no async swap, so they never invoke it.
+     *
+     * @param callback - Invoked once when font loading settles.
+     */
+    onFontsReady(callback: () => void): void;
+
+    /**
      * Looks up an element by its `id`.
      *
      * @param id - The element id (no `#` prefix).
@@ -1643,6 +1655,22 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     getHead(): Handle {
         return _registry.intern(document.head);
+    }
+
+    /** @inheritDoc */
+    onFontsReady(callback: () => void): void {
+        const fonts = document.fonts;
+
+        // Older engines without the CSS Font Loading API: the fallback
+        // measurement is the only one we get, so leave it standing.
+        if (!fonts) {
+            return;
+        }
+
+        // Resolves after every used `@font-face` settles (loaded or errored).
+        // If the font is already loaded the promise resolves on the next
+        // microtask — the re-measure it triggers is idempotent.
+        fonts.ready.then(() => callback());
     }
 
     /** @inheritDoc */
