@@ -2,10 +2,10 @@
 
 import { AbstractModel } from '~/data/AbstractModel.js';
 import { AbstractStore } from '~/data/AbstractStore.js';
-import { Association } from '~/data/Association.js';
+import type { Association } from '~/data/Association.js';
 import { Field } from '~/data/Field.js';
 import { Store } from '~/data/Store.js';
-import { Model } from '~/data/Model.js';
+import type { Model } from '~/data/Model.js';
 import { applyRule } from '~/validation/Validator.js';
 
 // Monotonic per-session id source for client-side row keys; never leaves the client,

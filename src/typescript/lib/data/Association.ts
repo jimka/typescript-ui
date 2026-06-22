@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { AbstractModel } from '~/data/AbstractModel.js';
+import type { AbstractModel } from '~/data/AbstractModel.js';
 
 /**
  * Per-association persistence strategy applied during cascade sync.

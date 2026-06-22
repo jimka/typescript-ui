@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Model } from '~/data/Model.js';
+import type { Model } from '~/data/Model.js';
+import { AbstractModel } from '~/data/AbstractModel.js';
 import { Proxy } from '~/data/proxy/Proxy.js';
 import { AbstractStore, AbstractStoreOptions } from '~/data/AbstractStore.js';
 
@@ -36,7 +37,7 @@ export class Store extends AbstractStore {
     constructor(modelOrOptions: Model | StoreOptions, proxy?: Proxy) {
         super();
 
-        if (modelOrOptions instanceof Model) {
+        if (modelOrOptions instanceof AbstractModel) {
             this.model = modelOrOptions;
             this.proxy = proxy;
         } else {
