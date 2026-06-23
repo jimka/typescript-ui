@@ -74,6 +74,11 @@ describe('Glyph svg-mode defaults', () => {
 });
 
 describe('Glyph register / unregister round-trip', () => {
+    // Safety net: if an assertion throws between register and the body's
+    // unregister, this keeps `xmark` from leaking into the global registry and
+    // polluting later tests. unregister is a no-op when already removed.
+    afterEach(() => Glyph.unregister('xmark'));
+
     it('finds a glyph after register and drops it after unregister', () => {
         Glyph.register(xmark);
         expect(lookupGlyph('xmark')).toBeDefined();
