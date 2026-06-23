@@ -54,15 +54,10 @@ describe('DateTimeField parseRaw', () => {
         expect(parse('total garbage')).toBe(null);
     });
 
-    // CONTRACT DIVERGENCE (pinned): DateTimeField.parseRaw is a bare
-    // `new Date(raw)` (DateTimeField.ts:150-153), so it accepts a date with no
-    // time portion — `new Date("2025-06-15")` is a valid Date — whereas a
-    // date-TIME field should reject input lacking a time (TimeField.parseRaw
-    // strictly requires minutes; DateField appends T00:00:00 to force ISO
-    // shape). The intended contract: reject a time-less string → null. Today it
-    // returns a valid (midnight) Date. Flip this `it.fails` back to `it` once
-    // parseRaw rejects input with no time.
-    it.fails('rejects a date with no time portion', () => {
+    // Resolved divergence: parseRaw now requires both a date and a time portion
+    // (ISO-anchored), so a time-less string is rejected — the strict inverse of
+    // formatValue, consistent with the DateField/TimeField siblings.
+    it('rejects a date with no time portion', () => {
         expect(parse('2025-06-15')).toBe(null);
     });
 });
