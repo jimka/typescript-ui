@@ -93,13 +93,13 @@ describe('Type.requireNonNull', () => {
         expect(() => Type.requireNonNull(null as unknown as object, 'boom')).toThrow('boom');
     });
 
-    // DISCREPANCY: JSDoc says "Throws if obj is null or undefined", but the
-    // runtime guard is `if (obj) return` — so it ALSO throws on falsy 0, '',
-    // and false. Asserting the documented contract (no throw on 0) fails
-    // against the code. Pinned with it.fails so the divergence is visible
-    // without masking it. Bug candidate: either the doc or the guard is wrong.
-    it.fails('does NOT throw on falsy-but-non-null values (0) per its JSDoc', () => {
+    // Resolved discrepancy: the guard is now `obj !== null && obj !== undefined`
+    // (was `if (obj)`), so it matches the name and JSDoc — only null/undefined
+    // throw, while falsy-but-non-null values like 0, '', and false pass.
+    it('does NOT throw on falsy-but-non-null values (0) per its JSDoc', () => {
         expect(() => Type.requireNonNull(0 as unknown as object, '')).not.toThrow();
+        expect(() => Type.requireNonNull('' as unknown as object, '')).not.toThrow();
+        expect(() => Type.requireNonNull(false as unknown as object, '')).not.toThrow();
     });
 });
 
