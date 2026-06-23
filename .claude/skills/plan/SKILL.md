@@ -85,8 +85,11 @@ Numbered steps. Each names the file and what to do. Include cheap regression che
 ### `## Files to Create / Modify / Delete` (required)
 Table: `Action | File`.
 
+### `## Expected Behaviour` (when adding or changing logic)
+Enumerate the behaviours the change must exhibit — the key cases, edge cases, and empty/error inputs — concretely enough that the implementer can write tests from them *before* writing the code (the `implement` skill works test-first). Derive each from the contract (intended semantics, signatures, caller usage), **not** from any current output. Mark which behaviours are unit-testable offline versus which need manual verification (DOM events, drag, focus, geometry, visual output the offline harness can't exercise), so the implementer knows where an automated red-green cycle applies and where a documented manual-verify step substitutes. Skip only for changes with no new logic to pin (pure renames, doc-only edits).
+
 ### `## Verification` (when behaviour is testable)
-Concrete checks: typecheck, grep invariants, manual smoke tests, theme-toggle, `npm run docs:build` (0 errors and 0 link warnings — typedoc's "unsupported TypeScript version" notice is the lone acceptable warning). Name the demo screen.
+Concrete checks: typecheck, grep invariants, the unit tests covering `## Expected Behaviour`, manual smoke tests for anything offline-untestable, theme-toggle, `npm run docs:build` (0 errors and 0 link warnings — typedoc's "unsupported TypeScript version" notice is the lone acceptable warning). Name the demo screen.
 
 ### `## Documentation Impact` (when public API changes)
 - Which per-subpath barrel exports the symbol (`src/typescript/lib/<group>/index.ts` — there is no root barrel).
