@@ -20,17 +20,13 @@ beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
 
 describe('Image min-size fallback (pre-load)', () => {
-    // DIVERGENCE (code defect): the JSDoc on Image.getMinSize promises a 20x20
-    // pre-load fallback before the image decodes, gated by an *explicit*
-    // caller-supplied minSize. But Component.applyOptions dispatches the default
-    // `minSize: {0,0}` from `_defaultOptions` into `_options.minSize`
-    // (Component.ts:377, applyOptions Component.ts:442), so EVERY Image has a
-    // truthy `_options.minSize` of {0,0}. The guard `if (this._options.minSize)`
-    // (Image.ts:89) is thus always satisfied and short-circuits to
-    // `super.getMinSize()` = {0,0}, so the documented 20x20 fallback and the
-    // natural-dimension auto-min path (Image.ts:93-102) are unreachable.
-    // Contract-correct expectation kept; marked it.fails to pin the bug.
-    it.fails('returns the 20x20 fallback when natural size is 0x0', () => {
+    // Resolved divergence: Component.applyOptions now only dispatches a
+    // caller-supplied minSize (Component.ts:442 reads `options.minSize`, not the
+    // `_defaultOptions`-merged `opts.minSize`), so a default Image no longer has
+    // a truthy `_options.minSize`. The guard `if (this._options.minSize)`
+    // (Image.ts:89) is now false absent an explicit setMinSize, reaching the
+    // documented 20x20 pre-load fallback and the natural-dimension auto-min path.
+    it('returns the 20x20 fallback when natural size is 0x0', () => {
         const img = new Image('/x.png');
 
         img.getElement(true);
