@@ -2,7 +2,6 @@
 
 export type { BorderOptions } from '~/primitive/Border.js';
 export { borderToStyle, borderSideWidth } from '~/primitive/Border.js';
-export { BorderStyle } from '~/primitive/BorderStyle.js';
 export type { Edge, HorizontalSide, VerticalSide } from '~/primitive/Edge.js';
 export { Insets } from '~/primitive/Insets.js';
 export { Point } from '~/primitive/Point.js';
