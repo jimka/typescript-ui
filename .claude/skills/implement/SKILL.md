@@ -78,6 +78,15 @@ Implementation-specific handling of the returned report:
 - BLOCKING empty → proceed to _Pre-termination checklist_.
 - BLOCKING non-empty → fix each issue in a follow-up commit (separate from the original three-commit structure), then re-run the audit. Hard cap: 3 audit cycles. If still not converging, stop and surface the remaining findings to the user.
 
+## Test-first
+
+Implement each functionality **test-first**: write the test that pins its *expected* behaviour before the code exists, watch it fail, then implement until it passes. Take the expected behaviour from the plan's `## Expected Behaviour` / acceptance criteria and the contract (JSDoc, signatures, how callers use it) — **never** from whatever the code currently emits. Writing the test first makes that discipline automatic: with no implementation yet, there is no current output to anchor the assertion to.
+
+- One functionality at a time: red (a failing test derived from the contract) → green (the minimal code that satisfies it) → next.
+- If a contract-derived test fails in a way you didn't predict, stop and decide whether the bug is in the expectation or the surrounding code, and surface it — don't rewrite the assertion to match the code.
+
+**Escape hatch — behaviour the offline harness can't exercise.** Large parts of this framework are not unit-testable offline: the recording DOM sink doesn't deliver events to listeners, `elementsFromPoint` returns empty, geometry is not measured. For action-on-click, drag, focus, window resize, and visual output, an automated red-green cycle is impossible. There, still **describe the expected behaviour first** (in the plan or a test comment), implement, then verify with a documented manual step via the [`verify`](../verify/SKILL.md) or [`run`](../run/SKILL.md) skill — and say so explicitly. The principle is *describe expected behaviour first, then implement, then verify*: an honest manual-verify step is the substitute when an automated test isn't possible, never a silent skip.
+
 ## Post-edit verification
 
 Before treating any step as done, walk these in order:
@@ -91,6 +100,7 @@ Before treating any step as done, walk these in order:
 Walk this list before yielding control. Any unchecked item means you are not done:
 
 - [ ] Plan file is at `plans/implemented/<slug>.md`
+- [ ] Each new unit-testable behaviour is covered by a test written before its implementation and now passing; offline-untestable behaviour has a documented manual-verify step (never silently skipped)
 - [ ] `npx tsc --noEmit` reports 0 errors
 - [ ] `npm run docs:build` reports 0 errors and 0 link warnings (typedoc's "unsupported TypeScript version" notice is acceptable)
 - [ ] Audit returned no BLOCKING issues on the most recent cycle
@@ -110,9 +120,9 @@ If any item is unchecked, resume at the appropriate step. Do not stop just becau
    4. If incompatibilities were found, stop and ask the user to review.
    5. **(fresh only)** Work in a worktree under `.worktrees/` per [`_shared/worktree.md`](../_shared/worktree.md) — never edit source in the main tree. If a parent dispatch already placed you in `.worktrees/<slug>` with `feature/<slug>` checked out, stay there. Otherwise create it: `git worktree add .worktrees/<slug> -b feature/<slug>`, then `cd .worktrees/<slug>`. Reuse an existing `.worktrees/<slug>` rather than duplicating it.
    6. **(fresh only)** Bring the plan into the worktree per _In-progress lifecycle_: copy the untracked main-tree plan to the worktree's `plans/in-progress/<slug>.md`, delete the main-tree copy, and commit the move as bookkeeping.
-   7. Implement. On resume, pick up at the step identified by _Resume detection_.
+   7. Implement **test-first** (see _Test-first_): for each functionality, write the failing behavioural test before the code, then implement to green. On resume, pick up at the step identified by _Resume detection_.
 
-      **Definition of done for this step:** every file in the plan's "Files to Create/Modify/Delete" table has been written, every entry in "Ordered Implementation Steps" is addressed, and `npx tsc --noEmit` is clean. Do not advance to step 8 until this clears. Running `git status` / `ls` and seeing reasonable output is not the same as verifying this list.
+      **Definition of done for this step:** every file in the plan's "Files to Create/Modify/Delete" table has been written; each functionality's expected behaviour was pinned by a test written before its implementation and now passes (or, where the offline harness can't exercise it, a documented manual-verify step substitutes); every entry in "Ordered Implementation Steps" is addressed; and `npx tsc --noEmit` is clean. Do not advance to step 8 until this clears. Running `git status` / `ls` and seeing reasonable output is not the same as verifying this list.
    8. Add a demo of the new feature to one of the demo panels, if applicable.
    9. Edit any `touches-shared` files last, one commit per file (_Shared-file etiquette_).
    10. Move plan from `plans/in-progress/` to `plans/implemented/`. Commit as bookkeeping.
