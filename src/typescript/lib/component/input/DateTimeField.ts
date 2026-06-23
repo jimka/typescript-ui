@@ -148,7 +148,15 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
      * @returns The parsed Date, or null.
      */
     protected parseRaw(raw: string): Date | null {
-        const d = new Date(raw);
+        // Require both a date and a time portion, ISO-anchored, so parsing is
+        // the strict inverse of formatValue and not the locale-dependent,
+        // time-optional `new Date(raw)`. Mirrors DateField/TimeField strictness.
+        const [datePart, timePart] = raw.trim().split(/\s+/);
+        if (!datePart || !timePart) {
+            return null;
+        }
+
+        const d = new Date(`${datePart}T${timePart}`);
 
         return isNaN(d.getTime()) ? null : d;
     }
