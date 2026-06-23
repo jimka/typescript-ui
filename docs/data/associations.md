@@ -45,6 +45,7 @@ const DepartmentModel = new Model({
 | `nestedKey` | Raw-payload key carrying an embedded child array; defaults to `accessor` |
 | `kind` | `'hasMany'` (default) or `'belongsTo'` |
 | `persist` | Cascade strategy: `'proxy'` (default) or `'nested'` |
+| `proxy` | Proxy for the target model's child store; required for the [lazy fetch](#eager-vs-lazy-loading) path |
 
 ### Why `target` is a thunk
 
@@ -82,7 +83,19 @@ A hasMany child store is loaded in one of two ways, chosen automatically:
   // dept.getAssociated('employees') → Store with two committed records
   ```
 
-- **Lazy** — when no array was embedded, the child store carries a `remoteFilter` on the parent foreign key, so its first `load()` serialises `{ type: 'eq', field: foreignKey, value: parentId }` into the read request and fetches only this parent's children. A brand-new, unsynced parent has no id to fetch on, so its child store starts empty and is not auto-loaded; children are added in memory and stamped during cascade sync.
+- **Lazy** — when no array was embedded, the child store carries a `remoteFilter` on the parent foreign key, so its first `load()` serialises `{ type: 'eq', field: foreignKey, value: parentId }` into the read request and fetches only this parent's children:
+
+  ```typescript
+  associations: [
+      { accessor: 'employees', foreignKey: 'deptId', target: () => EmployeeModel, proxy: employeeProxy },
+  ];
+  // ...later, once the parent has been synced and has an id:
+  await dept.getAssociated('employees').load();   // reads filtered to deptId === dept.getId()
+  ```
+
+  The lazy path needs a `proxy` on the association: the parent-scoped child store is built from the target model alone, which carries no transport, so the association supplies one for the child store to load and persist through. Unlike `target` this is a **direct** [`Proxy`](/api/data/classes/Proxy) reference, not a thunk — a proxy holds no back-reference to the model and so creates no declaration cycle. Without it, `getAssociated(accessor).load()` rejects with *"no proxy is configured."*
+
+  Loading stays caller-triggered — `getAssociated` never auto-loads. Call `load()` only once the parent has an id: a brand-new, unsynced parent has no id to fetch on, so its child store starts empty until cascade sync stamps the foreign key onto in-memory children.
 
 ## belongsTo
 
@@ -95,6 +108,8 @@ emp.getAssociated('department');        // owner-scoped Store filtered to id 42
 ```
 
 Setting a child's foreign key does **not** auto-insert it into the owner's hasMany store — the two stores are independent.
+
+Like hasMany, the owner-scoped store loads lazily through the association's `proxy`: declare one on the `belongsTo` association and call `emp.getAssociated('department').load()` to fetch the owner, filtered to its primary key. Without a `proxy`, `load()` rejects as above.
 
 ## Persistence: cascade sync
 

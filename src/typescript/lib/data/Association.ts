@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import type { AbstractModel } from '~/data/AbstractModel.js';
+import type { Proxy } from '~/data/proxy/Proxy.js';
 
 /**
  * Per-association persistence strategy applied during cascade sync.
@@ -41,6 +42,21 @@ export interface AssociationOptions {
      * {@link Association} instance is supplied directly.
      */
     kind?: 'hasMany' | 'belongsTo';
+    /**
+     * Proxy used to load (and persist) the target model's records for this
+     * association's parent-scoped child {@link Store}. Required for the lazy
+     * fetch path: without it, the lazily-built child store has no transport and
+     * `load()` throws.
+     *
+     * @remarks
+     * A direct {@link Proxy} reference, not a thunk like `target`. The `target`
+     * thunk exists only to break the module-initialisation cycle between two
+     * mutually-referential models; a proxy is a plain runtime object holding no
+     * back-reference to the association or the owning model, so referencing it
+     * directly creates no cycle. Do not "fix" this into a thunk by analogy with
+     * `target`.
+     */
+    proxy?: Proxy;
 }
 
 /**
@@ -63,6 +79,7 @@ export abstract class Association {
     private _foreignKey: string;
     private _nestedKey: string | undefined;
     private _persist: AssociationPersist;
+    private _proxy: Proxy | undefined;
     private _resolvedTarget: AbstractModel | undefined;
 
     /** The concrete kind of this association. */
@@ -79,6 +96,7 @@ export abstract class Association {
         this._foreignKey = options.foreignKey;
         this._nestedKey = options.nestedKey;
         this._persist = options.persist ?? 'proxy';
+        this._proxy = options.proxy;
     }
 
     /**
@@ -130,6 +148,21 @@ export abstract class Association {
         }
 
         return this._resolvedTarget;
+    }
+
+    /**
+     * Returns the proxy for this association's parent-scoped child store.
+     *
+     * @remarks
+     * Mirrors {@link resolveTarget} so both child-store kinds read the target's
+     * transport identically. Unlike `target` there is no thunk to invoke and no
+     * memoisation: the stored {@link Proxy} reference is returned verbatim.
+     *
+     * @returns The configured target-model proxy, or undefined when none was set
+     *   (the lazy fetch path then has no transport and `load()` will throw).
+     */
+    resolveProxy(): Proxy | undefined {
+        return this._proxy;
     }
 }
 

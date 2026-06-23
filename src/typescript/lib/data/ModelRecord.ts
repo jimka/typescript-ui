@@ -383,7 +383,9 @@ export class ModelRecord {
      * hasMany association with an embedded seed loads those rows directly (each
      * committed, not new); otherwise it carries a `remoteFilter` on the parent
      * foreign key for the lazy load path. A belongsTo association filters the
-     * target store to the owner via the foreign-key value.
+     * target store to the owner via the foreign-key value. The association's
+     * {@link Association.resolveProxy} feeds the child store's transport, so the
+     * lazy/owner load reaches a real proxy.
      *
      * @param association - The association whose child store is built.
      *
@@ -391,12 +393,14 @@ export class ModelRecord {
      */
     private buildChildStore(association: Association): AbstractStore {
         const targetModel = association.resolveTarget() as Model;
+        const proxy = association.resolveProxy();
 
         if (association.kind === 'belongsTo') {
             const pkName = targetModel.getPrimaryKeyField()?.getName() ?? association.getForeignKey();
 
             return new Store({
                 model: targetModel,
+                proxy,
                 remoteFilter: true,
                 filters: [{ type: 'eq', field: pkName, value: this.get(association.getForeignKey()) }],
             });
@@ -405,7 +409,9 @@ export class ModelRecord {
         const seed = this._associatedSeed[association.getAccessor()];
 
         if (seed) {
-            const store = new Store({ model: targetModel });
+            // The seed branch calls loadData() and never load(); the proxy is
+            // inert here unless a consumer later load()s or sync()s this store.
+            const store = new Store({ model: targetModel, proxy });
 
             store.loadData(seed);
 
@@ -414,6 +420,7 @@ export class ModelRecord {
 
         return new Store({
             model: targetModel,
+            proxy,
             remoteFilter: true,
             filters: [{ type: 'eq', field: association.getForeignKey(), value: this.getId() }],
         });
