@@ -131,7 +131,9 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
         }
 
         if (this._options.value !== undefined) {
-            this.applyValue(this._options.value);
+            const snapped = this.snap(this._options.value);
+            this._options.value = snapped;
+            this.applyValue(snapped);
         } else {
             this.applyValue(this.getMin());
         }

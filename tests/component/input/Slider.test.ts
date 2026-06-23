@@ -114,14 +114,10 @@ describe('Slider getters and deprecated aliases', () => {
 });
 
 describe('Slider initial value contract', () => {
-    // CONTRACT DIVERGENCE (pinned): the Slider constructor calls applyValue()
-    // directly (Slider.ts:134), bypassing snap(), so the initial `value` option
-    // is NOT step-snapped — unlike setValue() and unlike NumberSpinner, which
-    // normalises its initial value. The intended contract is that the initial
-    // value snaps to the step grid (→ 20). Today getValue() returns 23. Flip
-    // this `it.fails` back to `it` once the constructor routes the initial value
-    // through snap().
-    it.fails('snaps the initial value option to the step grid', () => {
+    // Resolved divergence: the constructor now routes the initial `value` option
+    // through snap() (clamp + step-snap) before storing it, matching setValue()
+    // and NumberSpinner. An initial value of 23 with step 10 snaps to 20.
+    it('snaps the initial value option to the step grid', () => {
         expect(new Slider({ min: 0, max: 100, step: 10, value: 23 }).getValue()).toBe(20);
     });
 });
