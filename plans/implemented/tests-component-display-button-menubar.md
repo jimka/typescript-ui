@@ -481,6 +481,7 @@ the harness speculatively.
 | Create | `tests/component/menubar/MenuBarButton.test.ts` |
 | Create | `tests/component/menubar/ToolBar.test.ts` |
 | Create | `tests/component/menubar/ToolBarSeparator.test.ts` |
+| Modify | `tests/setup/jsdom-setup.ts` (add a `CSS.escape` polyfill the Glyphs sprite needs offline) |
 
 (Authors may consolidate the IconText/IconLabel pair into one file if it reads
 cleaner; the table lists them split for one-component-per-file symmetry with the
