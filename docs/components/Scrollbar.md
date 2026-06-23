@@ -65,10 +65,11 @@ The track-width constant (12 px) is shared across orientations and exposed via `
 
 ## Arrow buttons
 
-Optional classic OS-style arrow buttons at each end of the track. Disabled by default to preserve the minimalist look; opt in via the new [`ScrollbarOptions`](/api/component/container/interfaces/ScrollbarOptions) bag passed as the constructor's second argument:
+Classic OS-style arrow buttons at each end of the track. Enabled by default; pass `arrowsEnabled: false` in the [`ScrollbarOptions`](/api/component/container/interfaces/ScrollbarOptions) bag (the constructor's second argument) for a minimalist look. The same bag tunes the step:
 
 ```typescript
-const bar = Scrollbar('vertical', { arrowsEnabled: true, arrowStep: 60 });
+const bar   = Scrollbar('vertical', { arrowStep: 60 });        // arrows on by default
+const plain = Scrollbar('vertical', { arrowsEnabled: false }); // opt out
 ```
 
 - **Step** — each click scrolls by `arrowStep` pixels (default `40`, roughly two rows at default font size).
