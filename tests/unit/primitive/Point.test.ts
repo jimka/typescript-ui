@@ -15,12 +15,10 @@ describe('Point', () => {
         expect(p.getX()).toBe(0);
         expect(p.getY()).toBe(0);
     });
-    // DIVERGENCE (surface-it): the field uses `x || 0`, not `x ?? 0`, so a NaN
-    // coordinate silently coalesces to 0. A "two-dimensional point" arguably
-    // should preserve NaN (or reject it) rather than masquerade it as the
-    // origin. Pinned here as a deliberate failure for the user to adjudicate:
-    // contract reading says NaN should not become 0; current code makes it 0.
-    it.fails('preserves a NaN coordinate rather than coalescing it to 0', () => {
+    // Resolved divergence: the field now uses `x ?? 0` (not `x || 0`), so the
+    // "default to 0" guard fires only for null/undefined and a genuine NaN
+    // coordinate is preserved rather than masquerading as the origin.
+    it('preserves a NaN coordinate rather than coalescing it to 0', () => {
         const p = new Point(NaN, 5);
         expect(Number.isNaN(p.getX())).toBe(true);
     });

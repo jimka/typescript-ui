@@ -18,8 +18,8 @@ export class Point extends BaseObject {
     constructor(x: number, y: number) {
         super();
 
-        this._x = x || 0;
-        this._y = y || 0;
+        this._x = x ?? 0;
+        this._y = y ?? 0;
 
     }
 
@@ -29,7 +29,7 @@ export class Point extends BaseObject {
      * @returns The x coordinate value, defaulting to `0` if unset.
      */
     getX() {
-        return this._x || 0;
+        return this._x ?? 0;
     }
 
     /**
@@ -38,7 +38,7 @@ export class Point extends BaseObject {
      * @returns The y coordinate value, defaulting to `0` if unset.
      */
     getY() {
-        return this._y || 0;
+        return this._y ?? 0;
     }
 
     /**
