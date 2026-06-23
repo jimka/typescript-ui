@@ -42,17 +42,14 @@ describe('Scrollbar construction defaults', () => {
         expect(new Scrollbar('horizontal').getOrientation()).toBe('horizontal');
     });
 
-    // CONTRACT DIVERGENCE: ScrollbarOptions.arrowsEnabled is documented to
-    // "Default to `false` — the current minimalist look is preserved unless an
-    // owner opts in" (Scrollbar.ts ScrollbarOptions JSDoc). But the backing
-    // field `_arrowsEnabled` is initialised to `true` (Scrollbar.ts L341), and
-    // the constructor only overrides it when the option is explicitly passed.
-    // So a default-constructed Scrollbar reports arrows ENABLED, contradicting
-    // the documented default. Pinned as it.fails until the code or doc is fixed.
-    it.fails('defaults arrowsEnabled to false per the documented contract', () => {
+    // Arrows are enabled by default. The backing field `_arrowsEnabled`
+    // initialises to `true` (Scrollbar.ts L341) and the docs now state default
+    // `true`; a caller sets `arrowsEnabled: false` to opt out for a minimalist
+    // look.
+    it('defaults arrowsEnabled to true', () => {
         installTestDOM(CONFIG);
 
-        expect(new Scrollbar('vertical').isArrowsEnabled()).toBe(false);
+        expect(new Scrollbar('vertical').isArrowsEnabled()).toBe(true);
     });
 
     it('round-trips an explicit arrowsEnabled option', () => {

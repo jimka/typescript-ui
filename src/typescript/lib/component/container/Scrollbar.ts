@@ -72,8 +72,8 @@ export interface ScrollbarOptions extends ComponentOptions {
      * The buttons step the scroll position by {@link ScrollbarOptions.arrowStep}
      * pixels per click and accelerate while held. The matching arrow shows a
      * dimmed disabled-state colour when scroll is already at that edge.
-     * Defaults to `false` — the current minimalist look is preserved unless
-     * an owner opts in.
+     * Defaults to `true`; set `false` to suppress the arrows for a minimalist
+     * look.
      */
     arrowsEnabled?: boolean;
 
@@ -310,9 +310,9 @@ class ScrollArrowButton extends Component {
  *
  * The thumb is dragged with the mouse; clicking the track above/beside the
  * thumb pages by one viewport. The scrollbar hides itself when content fits in
- * the viewport. Optional classic OS-style arrow buttons at each end of the
- * track are available via {@link ScrollbarOptions.arrowsEnabled} — disabled by
- * default to preserve the minimalist look.
+ * the viewport. Classic OS-style arrow buttons at each end of the track are
+ * controlled by {@link ScrollbarOptions.arrowsEnabled} — enabled by default;
+ * set it `false` for a minimalist look.
  *
  * Available in vertical (default) and horizontal orientations; the owner is
  * responsible for sizing the primary axis (height for vertical, width for
