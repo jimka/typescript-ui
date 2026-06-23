@@ -1,0 +1,128 @@
+// @vitest-environment jsdom
+import { describe, it, expect, afterEach } from 'vitest';
+import { DOM } from '~/core/DOM';
+import { _BulletedList } from '~/component/list/BulletedList';
+import { _NumberedList } from '~/component/list/NumberedList';
+import { _ListItem } from '~/component/list/ListItem';
+import { BulletedListItemStyle } from '~/component/list/BulletedListItemStyle';
+import { NumberedListItemStyle } from '~/component/list/NumberedListItemStyle';
+import { installTestDOM } from '../../dom/TestDOM';
+import fontMetrics from '../../dom/font-metrics.test-font.json';
+
+const CONFIG = {
+    rootMountOffset: { x: 0, y: 0 },
+    viewport:        { width: 1280, height: 800 },
+    scrollBarWidth:  15,
+    fontMetrics,
+    themeVars:       {},
+};
+
+// AbstractListComponent delegates selection to the native <select> seam, which
+// the offline modelled source stubs to -1 — so selection getters are not
+// meaningfully testable offline. This suite is scoped to the style/marker
+// contract and the ListItem key/value contract instead (see plan Non-Goals).
+
+describe('BulletedList — defaults and style', () => {
+    it('defaults to the DISC bullet style', () => {
+        const list = new _BulletedList();
+
+        expect(list.getStyle()).toBe(BulletedListItemStyle.DISC);
+    });
+
+    it('setStyle updates getStyle() to the new enum value', () => {
+        const list = new _BulletedList();
+
+        list.setStyle(BulletedListItemStyle.SQUARE);
+        expect(list.getStyle()).toBe(BulletedListItemStyle.SQUARE);
+    });
+
+    it('the itemStyle option dispatches through applyOptions', () => {
+        const list = new _BulletedList({ itemStyle: BulletedListItemStyle.CIRCLE });
+
+        expect(list.getStyle()).toBe(BulletedListItemStyle.CIRCLE);
+    });
+});
+
+describe('NumberedList — defaults and style', () => {
+    it('defaults to the DECIMAL numbering style', () => {
+        const list = new _NumberedList();
+
+        expect(list.getStyle()).toBe(NumberedListItemStyle.DECIMAL);
+    });
+
+    it('setStyle updates getStyle() to the new enum value', () => {
+        const list = new _NumberedList();
+
+        list.setStyle(NumberedListItemStyle.LOWER_ROMAN);
+        expect(list.getStyle()).toBe(NumberedListItemStyle.LOWER_ROMAN);
+    });
+
+    it('the itemStyle option dispatches through applyOptions', () => {
+        const list = new _NumberedList({ itemStyle: NumberedListItemStyle.DECIMAL_LEADING_ZERO });
+
+        expect(list.getStyle()).toBe(NumberedListItemStyle.DECIMAL_LEADING_ZERO);
+    });
+});
+
+describe('List-style enums map to their exact CSS list-style-type tokens', () => {
+    // The style value getStyle() returns IS the CSS list-style-type token passed
+    // to setElementCSSRule — assert each enum member equals its documented
+    // CSS keyword so a rename can't silently drift the rendered marker.
+    it('BulletedListItemStyle members equal their CSS keywords', () => {
+        expect(BulletedListItemStyle.NONE).toBe('none');
+        expect(BulletedListItemStyle.DISC).toBe('disc');
+        expect(BulletedListItemStyle.CIRCLE).toBe('circle');
+        expect(BulletedListItemStyle.SQUARE).toBe('square');
+    });
+
+    it('NumberedListItemStyle members equal their CSS keywords', () => {
+        expect(NumberedListItemStyle.NONE).toBe('none');
+        expect(NumberedListItemStyle.DECIMAL).toBe('decimal');
+        expect(NumberedListItemStyle.DECIMAL_LEADING_ZERO).toBe('decimal-leading-zero');
+        expect(NumberedListItemStyle.LOWER_ALPHA).toBe('lower-alpha');
+        expect(NumberedListItemStyle.LOWER_GREEK).toBe('lower-greek');
+        expect(NumberedListItemStyle.LOWER_LATIN).toBe('lower-latin');
+        expect(NumberedListItemStyle.LOWER_ROMAN).toBe('lower-roman');
+        expect(NumberedListItemStyle.UPPER_ALPHA).toBe('upper-alpha');
+        expect(NumberedListItemStyle.UPPER_GREEK).toBe('upper-greek');
+        expect(NumberedListItemStyle.UPPER_LATIN).toBe('upper-latin');
+        expect(NumberedListItemStyle.UPPER_ROMAN).toBe('upper-roman');
+    });
+});
+
+describe('ListItem — key / value contract', () => {
+    afterEach(() => {
+        DOM.reset();
+    });
+
+    it('getKey returns the constructor key', () => {
+        const item = new _ListItem('k1', 'Label One');
+
+        expect(item.getKey()).toBe('k1');
+    });
+
+    it('applyStyle is a no-op returning this', () => {
+        const item = new _ListItem('k', 'v');
+
+        expect(item.applyStyle()).toBe(item);
+    });
+
+    it('the text option overrides the positional value', () => {
+        // The positional value seeds the defaults bag's `text`; an explicit
+        // `text` option wins the options-over-defaults merge (ListItem.ts:44).
+        // render() writes `text: this._value` through the sink — assert the
+        // recorded text write carries the override, not the positional.
+        const sink = installTestDOM(CONFIG);
+        const item = new _ListItem('k', 'positional', { text: 'override' });
+
+        item.getElement(true);
+
+        const textWrites = sink.writes
+            .filter(w => w.op === 'apply')
+            .map(w => (w.args[1] as { text?: string }).text)
+            .filter((t): t is string => t !== undefined);
+
+        expect(textWrites).toContain('override');
+        expect(textWrites).not.toContain('positional');
+    });
+});
