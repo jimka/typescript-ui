@@ -74,6 +74,27 @@ This format is new. The repo's existing history mixes title-only messages with c
 4. After each commit, run `git status` to confirm only the intended files were committed.
 5. Do **not** push, merge, or rebase onto a base branch — leave that for the user.
 
+## Integrating branches — only when the user explicitly asks
+
+The default is step 5: leave merging to the user. But when the user *does* ask you
+to integrate a batch of `feature/*` branches into a base branch (e.g. `master`),
+do it as **rebase, then `--no-ff` merge** — keep the merge commit, but rebase
+first so the bubbles stack cleanly:
+
+- For each branch, one at a time: `git switch feature/<x> && git rebase <base>`,
+  then `git switch <base> && git merge --no-ff feature/<x>`. Rebase the next
+  branch onto the now-advanced base and repeat.
+- **Keep the merge commit** (`--no-ff`, matching the repo's `Merge branch
+  'feature/...'` history) so each feature stays a visible bubble. Do **not**
+  fast-forward (`--ff-only`) and do **not** flatten the merges away with a plain
+  rebase — flattening hides the branch points, the opposite of what's wanted.
+- A shared-file conflict that two branches both introduce (e.g. a test-setup
+  polyfill both add) reappears during the rebase — resolve it to the final
+  harmonized version.
+- Before declaring done, verify the integrated tree matches the pre-integration
+  state (`git diff` of a backup ref against the result should be empty), then
+  re-run typecheck + tests. Still do not push.
+
 ## Common pitfalls
 
 - **Splitting one functionality into many code commits.** A new component plus its theme tokens plus the barrel export plus the typed-API fix it needed is *one* feature, hence *one* code commit.
