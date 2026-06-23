@@ -42,7 +42,7 @@ The following components consume the registry by name:
 - [`Button`](/api/component/button/classes/Button) — optional leading glyph via `setGlyph(name)` or the `glyph` option. Inherited by [`ToggleButton`](/api/component/button/classes/ToggleButton) and pre-seeded with `xmark` on [`TabCloseButton`](/api/component/button/classes/TabCloseButton).
 - [`MenuBarButton`](/api/component/menubar/classes/MenuBarButton) — optional leading glyph via `setGlyph(name)` or the `glyph` option.
 - [`Tree`](/api/component/tree/classes/Tree) row toggles — `caret-down` when expanded, `caret-right` when collapsed. The row never sees the raw character; the registry decides the look.
-- [`Scrollbar`](/api/component/container/classes/Scrollbar) end-cap arrow buttons (opt-in via `arrowsEnabled`) — `unicode-arrow-up` / `unicode-arrow-down` on vertical bars; `unicode-arrow-left` / `unicode-arrow-right` on horizontal bars.
+- [`Scrollbar`](/api/component/container/classes/Scrollbar) end-cap arrow buttons (on by default; suppress via `arrowsEnabled: false`) — `unicode-arrow-up` / `unicode-arrow-down` on vertical bars; `unicode-arrow-left` / `unicode-arrow-right` on horizontal bars.
 - [`IconText`](/api/component/display/classes/IconText) / [`IconLabel`](/api/component/display/classes/IconLabel) — small composites pairing a glyph with a [`Text`](/api/component/input/classes/Text) or `<label>`.
 - Table cells via the `glyph` field type — see [`GlyphCell`](/api/component/table/classes/GlyphCell) and [`GlyphRenderer`](/api/component/table/classes/GlyphRenderer).
 
