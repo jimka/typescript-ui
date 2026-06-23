@@ -439,7 +439,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.outline         !== undefined) this.setOutline(opts.outline);
         if (opts.cursor          !== undefined) this.setCursor(opts.cursor);
         if (opts.preferredSize   !== undefined) this.setPreferredSize(opts.preferredSize.width, opts.preferredSize.height);
-        if (opts.minSize         !== undefined) this.setMinSize(opts.minSize.width, opts.minSize.height);
+        if (options.minSize      !== undefined) this.setMinSize(options.minSize.width, options.minSize.height);
         if (opts.maxSize         !== undefined) this.setMaxSize(opts.maxSize.width, opts.maxSize.height);
         if (opts.transform       !== undefined) this.setTransform(opts.transform);
         if (opts.transition      !== undefined) this.setTransition(opts.transition);
