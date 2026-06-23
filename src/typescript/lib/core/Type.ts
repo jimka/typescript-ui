@@ -12,7 +12,7 @@ export namespace Type {
      * @param msg - The error message to use if the check fails. Defaults to "Argument cannot be null."
      */
     export function requireNonNull(obj: object, msg: string) {
-        if (obj) {
+        if (obj !== null && obj !== undefined) {
             return;
         }
 
