@@ -694,7 +694,7 @@ class Accordion extends LayoutManager {
     private onHeaderHoverEnter(index: number, e: MouseEvent): void {
         const element = this._headers[index]?.getElement();
 
-        if (element && e.relatedTarget instanceof Node && DOM.source.contains(element, DOM.source.intern(e.relatedTarget))) {
+        if (element && DOM.source.isNode(e.relatedTarget) && DOM.source.contains(element, DOM.source.intern(e.relatedTarget))) {
             return;
         }
 
@@ -720,7 +720,7 @@ class Accordion extends LayoutManager {
     private onHeaderHoverLeave(index: number, e: MouseEvent): void {
         const element = this._headers[index]?.getElement();
 
-        if (element && e.relatedTarget instanceof Node && DOM.source.contains(element, DOM.source.intern(e.relatedTarget))) {
+        if (element && DOM.source.isNode(e.relatedTarget) && DOM.source.contains(element, DOM.source.intern(e.relatedTarget))) {
             return;
         }
 

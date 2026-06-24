@@ -29,12 +29,11 @@ class NumberEditor extends CellEditor<Number | null> {
             Event.fireEvent(this, "blur", evnt);
         });
         Event.addListener(this._textField, "keydown", (evnt: KeyboardEvent) => {
-            Event.fireEvent(this, new KeyboardEvent('keydown', {
-                key     : evnt.key     , code      : evnt.code   , keyCode: evnt.keyCode,
-                shiftKey: evnt.shiftKey, ctrlKey   : evnt.ctrlKey,
-                altKey  : evnt.altKey  , metaKey   : evnt.metaKey,
-                bubbles : true         , cancelable: true
-            }));
+            Event.fireEvent(this, "keydown", { detail: {
+                key     : evnt.key     , code   : evnt.code   , keyCode: evnt.keyCode,
+                shiftKey: evnt.shiftKey, ctrlKey: evnt.ctrlKey,
+                altKey  : evnt.altKey  , metaKey: evnt.metaKey
+            } });
         });
         Event.addListener(this._textField, "input", () => this.onInput());
 

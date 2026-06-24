@@ -8,6 +8,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { Card } from "~/layout/Card.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
+import type { ForwardedKeyDetail } from "~/component/table/cell/editor/CellEditor.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -77,7 +78,7 @@ export class Cell<T> extends Component {
 
                 this.commitEdit();
             });
-            Event.addListener(editor, 'keydown', (e: KeyboardEvent) => this.onKeyDown(e));
+            Event.addListener(editor, 'keydown', (e: CustomEvent<ForwardedKeyDetail>) => this.onKeyDown(e));
         }
 
         Event.addListener(renderer, 'dblclick', () => this.startEdit());
@@ -232,13 +233,18 @@ export class Cell<T> extends Component {
     /**
      * Commits on Enter and cancels on Escape while editing, then fires `_onEditEnd` to return focus to the container.
      *
-     * @param evnt - The keyboard event to handle.
+     * @param evnt - The forwarded keydown event. The editor re-fires its inner
+     *   field's keydown as a custom event whose `detail` carries `keyCode` and
+     *   the modifier flags, so this reads `detail` rather than the native
+     *   top-level properties.
      */
-    onKeyDown(evnt: KeyboardEvent): void {
-        if (evnt.keyCode == 13) { // Enter
+    onKeyDown(evnt: CustomEvent<ForwardedKeyDetail>): void {
+        const keyCode = evnt.detail?.keyCode;
+
+        if (keyCode == 13) { // Enter
             this.commitEdit();
             this.emit("editend");
-        } else if (evnt.keyCode == 27) { // Escape
+        } else if (keyCode == 27) { // Escape
             this.cancelEdit();
             this.emit("editend");
         }

@@ -612,7 +612,7 @@ abstract class AbstractCalendarDropdown<
      * @param e - The pointerdown event.
      */
     private onPointerDown(e: PointerEvent): void {
-        if (e.target instanceof HTMLInputElement) {
+        if (DOM.source.isNode(e.target) && DOM.source.getTagName(DOM.source.intern(e.target)) === "INPUT") {
             return;
         }
 

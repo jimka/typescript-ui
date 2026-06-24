@@ -4,6 +4,7 @@ import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import type { Cell } from "~/component/table/cell/Cell.js";
 import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
+import type { ForwardedKeyDetail } from "~/component/table/cell/editor/CellEditor.js";
 import { StringEditor } from "~/component/table/cell/editor/String.js";
 import { NumberEditor } from "~/component/table/cell/editor/Number.js";
 import { DateEditor } from "~/component/table/cell/editor/Date.js";
@@ -125,7 +126,7 @@ export class CellEditorPool {
 
             this._activeCell?.commitEdit();
         });
-        Event.addListener(editor, "keydown", (e: KeyboardEvent) => {
+        Event.addListener(editor, "keydown", (e: CustomEvent<ForwardedKeyDetail>) => {
             this._activeCell?.onKeyDown(e);
         });
     }

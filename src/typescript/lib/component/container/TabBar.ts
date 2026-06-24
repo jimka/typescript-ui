@@ -1209,7 +1209,7 @@ class TabBar extends Container<TabBarOptions> {
      * @returns `true` when the target is interactive bar chrome.
      */
     private isBarChromeTarget(target: EventTarget | null): boolean {
-        if (!(target instanceof Node)) {
+        if (!DOM.source.isNode(target)) {
             return false;
         }
 
@@ -2909,7 +2909,7 @@ class TabBar extends Container<TabBarOptions> {
 
                 const closeElement = entry.closeButton?.getElement();
 
-                if (closeElement && target instanceof Node && DOM.source.contains(closeElement, DOM.source.intern(target))) {
+                if (closeElement && DOM.source.isNode(target) && DOM.source.contains(closeElement, DOM.source.intern(target))) {
                     return false;
                 }
 

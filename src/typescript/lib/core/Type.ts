@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
+import { DOM } from "~/core/DOM.js";
+
 /**
  * Runtime type-checking and assertion utilities.
  * Each type provides `is*`, `if*`, and `require*` variants.
@@ -31,7 +33,7 @@ export namespace Type {
      * @returns `true` if `value` is an instance of `Element`, `false` otherwise.
      */
     export function isElement(value: object) {
-        return value instanceof Element;
+        return DOM.source.isElement(value);
     }
 
     /**

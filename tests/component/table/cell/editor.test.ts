@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // Parse/commit and tri-state coverage for the String / Number / Boolean cell
 // editors. They wrap real input components built through DOM.sink, so the
@@ -12,11 +11,14 @@
 // white-box dependency on the private name, exercising the real parse contract.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../../dom/TestDOM';
+import { Event } from '~/core/Event';
+import { Container } from '~/core/Container';
+import { installTestDOM, makeEvent } from '../../../dom/TestDOM';
 import fontMetrics from '../../../dom/font-metrics.test-font.json';
 import { StringEditor } from '~/component/table/cell/editor/String';
 import { NumberEditor } from '~/component/table/cell/editor/Number';
 import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
+import type { ForwardedKeyDetail } from '~/component/table/cell/editor/CellEditor';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -34,6 +36,40 @@ function typeInto(editor: unknown, text: string): void {
     (editor as any)._textField.setText(text);
     (editor as any).onInput();
 }
+
+describe('Editor keydown forward to the parent cell', () => {
+    // The editor re-fires its inner field's keydown as a CustomEvent carrying the
+    // key fields in `detail` (replacing the old `new KeyboardEvent` re-wrap), and
+    // the parent cell's keydown listener reads `detail.keyCode`. This drives the
+    // full path: a modelled keydown on the inner field -> the editor's forward
+    // -> the modelled window base listener -> a cell-style listener on the editor.
+    it('forwards a keydown as a custom event whose detail carries the key fields', () => {
+        const host   = new Container({});
+        const editor = new StringEditor();
+
+        host.addComponent(editor);
+        host.getElement(true);
+        editor.getElement(true);
+
+        const field = (editor as any)._textField;
+        field.getElement(true);
+
+        let seen: ForwardedKeyDetail | undefined;
+
+        // Mirror CellEditorPool/Cell: listen for the forwarded "keydown" on the editor.
+        Event.addListener(editor, 'keydown', (e: CustomEvent<ForwardedKeyDetail>) => {
+            seen = e.detail;
+        });
+
+        // Drive the inner field's keydown through the modelled base listener; the
+        // sentinel event carries `key`, which the forward copies into detail.
+        DOM.sink.dispatchEvent(field.getElement()!, makeEvent(field.getElement()!, 'keydown', { key: 'Enter' }));
+
+        expect(seen).toBeDefined();
+        expect(seen).toHaveProperty('key', 'Enter');
+        expect(seen).toHaveProperty('keyCode');
+    });
+});
 
 describe('StringEditor', () => {
     it('a fresh editor caches null', () => {
