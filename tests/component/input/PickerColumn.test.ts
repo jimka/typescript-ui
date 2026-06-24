@@ -5,7 +5,8 @@
 // runs no event loop). No TestDOM: selection state is read back without a
 // layout pass.
 import { describe, it, expect } from 'vitest';
-import { PickerCell, PickerColumn } from '~/component/input/PickerColumn';
+import { PickerCell, PickerCellList, PickerColumn } from '~/component/input/PickerColumn';
+import { Component } from '~/core/Component';
 
 describe('PickerCell selected state', () => {
     it('round-trips setSelected/isSelected', () => {
@@ -95,5 +96,33 @@ describe('PickerColumn setSelectedValue', () => {
         column.setSelectedValue('99');
 
         expect(cells.some(c => c.isSelected())).toBe(false);
+    });
+});
+
+describe('PickerCellList getMinSize (scroll surface)', () => {
+    it('drops the vertical content minimum but keeps the horizontal one', () => {
+        const list = new PickerCellList();
+
+        // Two stacked children with a real content minimum — the runtime
+        // situation the text cells create (each cell floors at its one-line
+        // height, so the inherited VBox min sums to the full content height).
+        // Plain Components carry the explicit minimum without triggering text
+        // measurement, so no TestDOM is needed.
+        const a = new Component();
+        const b = new Component();
+        a.setMinSize(40, 22);
+        b.setMinSize(40, 22);
+        list.addComponent(a);
+        list.addComponent(b);
+
+        const min = list.getMinSize();
+
+        expect(min).not.toBeNull();
+        // Vertical content min is dropped so the parent column can shrink the
+        // list below its content and the `autoScroll: "y"` surface scrolls
+        // instead of inflating the fixed-height picker panel past the viewport.
+        expect(min!.height).toBe(0);
+        // Horizontal min is preserved so the column still reserves label width.
+        expect(min!.width).toBe(40);
     });
 });

@@ -8,6 +8,7 @@ import { StyleRule } from "~/core/StyleTarget.js";
 import { Event } from "~/core/Event.js";
 import { Text } from "~/component/input/Text.js";
 import { Insets } from "~/primitive/Insets.js";
+import { Size } from "~/primitive/Size.js";
 import { VBox } from "~/layout/VBox.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 
@@ -94,6 +95,34 @@ class PickerCellList extends Panel {
             autoScroll:    "y",
             insets:        new Insets(0, 0, 0, 0),
         });
+    }
+
+    /**
+     * Reports **no vertical content minimum**: this list is an `autoScroll: "y"`
+     * surface, so it may be allocated less height than its stacked cells need and
+     * scroll the overflow rather than demand its full content height.
+     *
+     * Without this override the inherited {@link Component.getMinSize} sums the
+     * cells' minimums — and each {@link PickerCell} (a {@link Text}) reports a
+     * one-line height floor — so the list's min height equals its entire content
+     * height. The parent {@link PickerColumn}'s `VBox` then floors the weighted
+     * list at that min, pinning it to its content size: the list never overflows,
+     * the inner scroll never engages, and the fixed-height
+     * {@link TimePickerDropdown} panel is inflated past the viewport. The
+     * horizontal minimum is left untouched so the column still reserves room for
+     * the widest label.
+     *
+     * @returns The inherited minimum with its height floored to `0`, or `null`
+     *   when there is no inherited minimum.
+     */
+    getMinSize(): Size | null {
+        const base = super.getMinSize();
+
+        if (!base) {
+            return base;
+        }
+
+        return { width: base.width, height: 0 };
     }
 }
 
