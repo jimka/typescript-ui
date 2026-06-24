@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Container } from '~/core/Container';
 import { Scrollbar } from '~/component/container/Scrollbar';

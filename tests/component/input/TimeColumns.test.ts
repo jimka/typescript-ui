@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // TimeColumns value-math coverage. TimeColumns is internal — not barrel-exported
 // — so it is imported by module path. Its public contract is the onChange tuple

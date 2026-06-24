@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Image } from '~/component/display/Image';
 import { DOM } from '~/core/DOM';

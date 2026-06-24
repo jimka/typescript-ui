@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // SCOPE: only the DOM-free surface of DragManager is exercised here. The
 // move / drop / drag-start choreography is UNTESTABLE on the offline harness —

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 // The handle-keyed geometry oracle derives every rect from the inline-style
 // writes the component committed THROUGH THE SINK (left/top/width/height/
 // transform), composed through the sink-recorded modelled tree — never from the

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Menu } from '~/overlay/Menu';
 import { MenuItemConfig } from '~/component/container/MenuItem';

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // Cached-value seam coverage for the six cell renderers. Each renderer builds a
 // Text (or Glyph) child in its constructor that mints a DOM.sink element, so

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ToolBar } from '~/component/menubar/ToolBar';
 import { ToolBarSeparator } from '~/component/menubar/ToolBarSeparator';

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ProgressSpinner } from '~/component/display/ProgressSpinner';
 import { DOM } from '~/core/DOM';

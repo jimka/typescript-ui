@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { _List } from '~/component/list/List';
 import { MemoryStore } from '~/data/MemoryStore';

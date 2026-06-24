@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // DateTimeField format/parse coverage. parseRaw is the protected unit under
 // test; cast to reach it. The parser is a bare `new Date(raw)`, which is far

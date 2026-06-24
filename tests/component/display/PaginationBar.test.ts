@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { PaginationBar } from '~/component/display/PaginationBar';
 import { Store } from '~/data/Store';

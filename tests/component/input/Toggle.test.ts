@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // Toggle on/off coverage. All cases run on a bare (unmounted) toggle: setValue
 // flips through the framework ListenerBag (no DOM event loop), label is a pure

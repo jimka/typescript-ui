@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // AutoCompleteField match-mode coverage. The core unit is the private
 // `matches(candidate, query)` predicate across all four match modes; it is

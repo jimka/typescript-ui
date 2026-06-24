@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { IconText } from '~/component/display/IconText';
 import { HBox } from '~/layout/HBox';

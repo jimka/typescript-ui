@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
 import { Tooltip } from '~/overlay/Tooltip';
 import { Util } from '~/core/Util';

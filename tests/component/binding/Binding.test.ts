@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { Binding } from '~/core/Binding';
 import { Model } from '~/data/Model';

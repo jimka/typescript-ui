@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // Checkbox checked-state coverage. Most cases run on a bare (unmounted)
 // checkbox: setSelected guards its synthetic `click` behind `if
@@ -139,13 +138,6 @@ describe('Checkbox action fan-out (mounted)', () => {
         // "a mounted setSelected synthesizes the click" — is the recorded
         // dispatchEvent("click") write that the action path rides on.
         const sink = installTestDOM(CONFIG);
-        // This jsdom build omits the global `CSS` object; the checkbox's check
-        // Glyph reaches `CSS.escape` while building its SVG sprite on render.
-        // Provide the WHATWG-spec escape so the element can be realised. Confined
-        // to this mounted case — the unmounted cases never render the glyph.
-        if (typeof (globalThis as any).CSS === 'undefined') {
-            (globalThis as any).CSS = { escape: (s: string): string => s.replace(/[^a-zA-Z0-9_-]/g, ch => '\\' + ch) };
-        }
 
         const host = new Container({});
         const cb   = new Checkbox();

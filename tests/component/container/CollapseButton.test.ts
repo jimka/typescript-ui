@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
 import { CollapseButton } from '~/component/container/CollapseButton';
 import { DOM } from '~/core/DOM';

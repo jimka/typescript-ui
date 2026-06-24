@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 // serializeLayout -> plain object; restoreLayout -> rebuild from one. The
 // round-trip is the headline contract. Window-plane serialization is DOM-heavy
 // and out of scope (a Non-Goal); these tests cover the in-root Split/Tab/panel

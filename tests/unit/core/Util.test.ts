@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 // Util mixes pure string/UUID helpers with DOM-backed text measurement. The
 // pure helpers need no harness; the measurement helpers delegate to DOM.source
 // and become deterministic under installTestDOM with a baked font table.

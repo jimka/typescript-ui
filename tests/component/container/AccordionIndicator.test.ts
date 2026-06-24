@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
 import { AccordionIndicator } from '~/component/container/AccordionIndicator';
 import { DOM } from '~/core/DOM';

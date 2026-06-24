@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 // Tab is ~1900 LOC and heavily DOM-coupled; this file scopes to the active-index
 // + tab-registration STATE surface that LayoutSerialization.populateContainer
 // relies on. Strip geometry is a Non-Goal here.
