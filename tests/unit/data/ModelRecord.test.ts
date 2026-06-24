@@ -1,10 +1,29 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Model } from '~/data/Model';
 import { ModelRecord } from '~/data/ModelRecord';
+import { MemoryStore } from '~/data/MemoryStore';
 
 function makeRecord(data: Record<string, any> = {}): ModelRecord {
     const model = new Model([{ name: 'name' }, { name: 'age' }]);
     return new ModelRecord(model, data);
+}
+
+/**
+ * Builds a store-owned record (the only state in which auto-notify fires) plus
+ * an `'update'` spy, mirroring how a bound view observes record mutations.
+ */
+function makeOwnedRecord(): { record: ModelRecord; updateSpy: ReturnType<typeof vi.fn> } {
+    const model  = new Model([{ name: 'id' }, { name: 'name' }, { name: 'score' }], 'id');
+    const store  = new MemoryStore(model);
+
+    store.loadData([{ id: 1, name: 'Alice', score: 80 }]);
+
+    const record    = store.getAt(0)!;
+    const updateSpy = vi.fn();
+
+    store.on('update', updateSpy);
+
+    return { record, updateSpy };
 }
 
 describe('ModelRecord', () => {
@@ -245,6 +264,83 @@ describe('ModelRecord', () => {
         });
         it('returns empty for an unknown field', () => {
             expect(makeRecord({ name: 'Alice' }).validateField('nope')).toBe('');
+        });
+    });
+
+    describe('auto-notify edit batches', () => {
+        it('fires once with the batched changes on beginEdit/commitEdit', () => {
+            const { record, updateSpy } = makeOwnedRecord();
+
+            record.beginEdit();
+            record.set('name', 'Bob');
+            record.set('score', 99);
+            record.commitEdit();
+
+            expect(updateSpy).toHaveBeenCalledOnce();
+            expect(updateSpy.mock.calls[0][0].changes).toEqual({
+                name:  { old: 'Alice', new: 'Bob' },
+                score: { old: 80,      new: 99 },
+            });
+        });
+
+        it('cancelEdit reverts the batch and fires nothing', () => {
+            const { record, updateSpy } = makeOwnedRecord();
+
+            record.beginEdit();
+            record.set('name', 'X');
+            record.cancelEdit();
+
+            expect(record.get('name')).toBe('Alice');
+            expect(record.isDirty()).toBe(false);
+            expect(updateSpy).not.toHaveBeenCalled();
+        });
+
+        it('setMany fires once carrying every field', () => {
+            const { record, updateSpy } = makeOwnedRecord();
+
+            record.setMany({ name: 'A', score: 1 });
+
+            expect(updateSpy).toHaveBeenCalledOnce();
+            expect(updateSpy.mock.calls[0][0].changes).toEqual({
+                name:  { old: 'Alice', new: 'A' },
+                score: { old: 80,      new: 1 },
+            });
+        });
+
+        it('collapses a nested batch to one fire against the outermost baseline', () => {
+            const { record, updateSpy } = makeOwnedRecord();
+
+            record.beginEdit();
+            record.set('name', 'A');
+            record.setMany({ score: 1 });   // implicit inner batch — must not fire or re-snapshot
+            record.commitEdit();
+
+            expect(updateSpy).toHaveBeenCalledOnce();
+            expect(updateSpy.mock.calls[0][0].changes).toEqual({
+                name:  { old: 'Alice', new: 'A' },
+                score: { old: 80,      new: 1 },
+            });
+        });
+
+        it('cancelEdit from inside a nested batch discards the whole stack', () => {
+            const { record, updateSpy } = makeOwnedRecord();
+
+            record.beginEdit();
+            record.set('name', 'A');
+            record.beginEdit();
+            record.set('score', 1);
+            record.cancelEdit();
+
+            expect(record.get('name')).toBe('Alice');
+            expect(record.get('score')).toBe(80);
+            expect(updateSpy).not.toHaveBeenCalled();
+        });
+
+        it('never throws when set() is called on an un-adopted record', () => {
+            const record = makeRecord({ name: 'Alice' });
+
+            expect(() => record.set('name', 'x')).not.toThrow();
+            expect(record.isDirty()).toBe(true);
         });
     });
 });

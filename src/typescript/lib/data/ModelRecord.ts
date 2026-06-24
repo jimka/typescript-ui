@@ -69,6 +69,19 @@ export class ModelRecord {
     // id-index). Allocated on first access.
     private _childStores: Map<string, AbstractStore> | undefined;
 
+    // Back-ref to the owning store, stamped by adoptedBy() when the record enters
+    // a store's record set and cleared by released() when it leaves. Null for an
+    // un-adopted record (mid-construction, a freestanding new ModelRecord, a
+    // clone), which is what keeps set() silent until the store takes ownership.
+    private _store: AbstractStore | null = null;
+
+    // Record-level edit-batch state, depth-counted so nested batches (e.g.
+    // setMany inside a consumer's beginEdit) collapse to a single snapshot and a
+    // single notify: the snapshot is taken at the 0->1 transition and the diff +
+    // notify happen at the 1->0 transition.
+    private _editDepth: number = 0;
+    private _editSnapshot: Record<string, any> | null = null;
+
     /**
      * Constructs a ModelRecord with the given model schema and initial data.
      *
@@ -87,6 +100,30 @@ export class ModelRecord {
     }
 
     /**
+     * Records the store that now owns this record, so a subsequent `set()` can
+     * notify it.
+     *
+     * @param store - The store taking ownership of this record.
+     *
+     * @internal Framework wiring; called by AbstractStore when it adopts this
+     *   record into its record set. Not part of the consumer API.
+     */
+    adoptedBy(store: AbstractStore): void {
+        this._store = store;
+    }
+
+    /**
+     * Clears the owning-store back-ref, so a `set()` on the now-detached record
+     * notifies nobody.
+     *
+     * @internal Framework wiring; called by AbstractStore when this record leaves
+     *   its record set. Not part of the consumer API.
+     */
+    released(): void {
+        this._store = null;
+    }
+
+    /**
      * Returns the value of a field by name.
      *
      * @param field - The logical name of the field to retrieve.
@@ -98,24 +135,211 @@ export class ModelRecord {
     }
 
     /**
-     * Sets a field value and marks the record as dirty.
+     * Sets a field value, marks the record dirty, and—when the record is
+     * store-owned—notifies that store so bound views refresh.
+     *
+     * @remarks
+     * A no-op assignment (the converted value already equals the current one) is
+     * short-circuited and notifies nobody. The notify is suppressed while an edit
+     * batch is open (see {@link beginEdit}) or while the owning store is batching,
+     * and is absent entirely for an un-adopted record. Use {@link setSilent} to
+     * mutate without ever notifying.
      *
      * @param field - The logical name of the field to update.
      * @param value - The new value to assign to the field.
+     *
+     * @returns This record, for method chaining.
      */
     set(field: string, value: any): this {
+        const old = this._data[field];
+
+        if (this.applySet(field, value)) {
+            this.notifyStore({ [field]: { old, new: this._data[field] } });
+        }
+
+        return this;
+    }
+
+    /**
+     * Sets a field value and marks the record dirty without ever notifying the
+     * owning store.
+     *
+     * @remarks
+     * The silent counterpart to {@link set}, for framework-internal writes whose
+     * surrounding operation emits its own events (so a per-field notify would be
+     * redundant). Conversion, the no-op short-circuit, and dirty tracking are
+     * identical to {@link set}.
+     *
+     * @param field - The logical name of the field to update.
+     * @param value - The new value to assign to the field.
+     *
+     * @returns This record, for method chaining.
+     */
+    setSilent(field: string, value: any): this {
+        this.applySet(field, value);
+
+        return this;
+    }
+
+    /**
+     * Sets several fields, then notifies the owning store once for the whole
+     * group.
+     *
+     * @remarks
+     * Implemented over the record edit batch: it opens a batch, assigns each
+     * field (so no intermediate notify fires), then commits for a single
+     * coalesced notify carrying every change. Because the batch is depth-counted,
+     * calling `setMany` inside a consumer's own {@link beginEdit} nests safely.
+     *
+     * @param values - A map of field name to new value.
+     *
+     * @returns This record, for method chaining.
+     */
+    setMany(values: Record<string, any>): this {
+        this.beginEdit();
+
+        for (const [field, value] of Object.entries(values)) {
+            this.set(field, value);
+        }
+
+        this.commitEdit();
+
+        return this;
+    }
+
+    /**
+     * Opens a record-level edit batch, suppressing per-`set()` notifications
+     * until the matching {@link commitEdit}.
+     *
+     * @remarks
+     * Batches are depth-counted: the pre-edit snapshot is captured only on the
+     * outermost `beginEdit`, so a nested batch (including the implicit one inside
+     * {@link setMany}) collapses into the outer one rather than re-snapshotting.
+     *
+     * @returns This record, for method chaining.
+     */
+    beginEdit(): this {
+        if (this._editDepth === 0) {
+            this._editSnapshot = { ...this._data };
+        }
+
+        this._editDepth++;
+
+        return this;
+    }
+
+    /**
+     * Closes a record-level edit batch; on the outermost close, fires one notify
+     * carrying every field changed since {@link beginEdit}.
+     *
+     * @remarks
+     * A no-op when no batch is open. While nesting remains, the close is deferred
+     * to the outermost {@link commitEdit}. The notify is skipped when the batch
+     * produced no net change.
+     *
+     * @returns This record, for method chaining.
+     */
+    commitEdit(): this {
+        if (this._editDepth === 0) {
+            return this;
+        }
+
+        this._editDepth--;
+
+        if (this._editDepth > 0) {
+            return this;
+        }
+
+        const snapshot = this._editSnapshot ?? {};
+        const changes: Record<string, FieldChange> = {};
+
+        for (const key of Object.keys(this._data)) {
+            if (!ModelRecord.isEqual(this._data[key], snapshot[key])) {
+                changes[key] = { old: snapshot[key], new: this._data[key] };
+            }
+        }
+
+        this._editSnapshot = null;
+
+        if (Object.keys(changes).length > 0) {
+            this.notifyStore(changes);
+        }
+
+        return this;
+    }
+
+    /**
+     * Discards an open edit batch: reverts the fields to the pre-edit snapshot
+     * and fires nothing.
+     *
+     * @remarks
+     * A no-op when no batch is open. A cancel from anywhere inside a nested batch
+     * collapses the whole stack and reverts to the outermost snapshot, since the
+     * batch shares a single baseline.
+     *
+     * @returns This record, for method chaining.
+     */
+    cancelEdit(): this {
+        if (this._editDepth === 0) {
+            return this;
+        }
+
+        this._editDepth = 0;
+
+        if (this._editSnapshot !== null) {
+            this._data = { ...this._editSnapshot };
+            this._editSnapshot = null;
+            this._dirty = this._isNew || Object.keys(this._original)
+                                              .some(k => !ModelRecord.isEqual(this._data[k], this._original[k]));
+        }
+
+        return this;
+    }
+
+    /**
+     * Converts, equality-gates, and applies a field write, updating dirty state.
+     *
+     * @remarks
+     * The shared body of {@link set} and {@link setSilent}; the two differ only in
+     * whether they notify afterward. Returns whether the write was a real change
+     * so the caller knows whether a notify is warranted.
+     *
+     * @param field - The logical name of the field to update.
+     * @param value - The new value to assign to the field.
+     *
+     * @returns True when the value actually changed; false for a no-op write.
+     */
+    private applySet(field: string, value: any): boolean {
         const modelField = this._model.getField(field);
         const converted = modelField ? modelField.convertValue(value, this._data) : value;
 
         if (ModelRecord.isEqual(this._data[field], converted)) {
-            return this;
+            return false;
         }
 
         this._data[field] = converted;
         this._dirty = this._isNew || Object.keys(this._original)
                                           .some(k => !ModelRecord.isEqual(this._data[k], this._original[k]));
 
-        return this;
+        return true;
+    }
+
+    /**
+     * Notifies the owning store of a change, unless suppressed.
+     *
+     * @remarks
+     * Fires only when the record is store-owned, no record edit batch is open,
+     * and the owning store is not itself batching — the three layers that
+     * coalesce or silence auto-notify.
+     *
+     * @param changes - The field-level diff to carry on the `'update'` event.
+     */
+    private notifyStore(changes: Record<string, FieldChange>): void {
+        if (this._store === null || this._editDepth > 0 || this._store.isBatching()) {
+            return;
+        }
+
+        this._store.notifyRecordChanged(this, changes);
     }
 
     /**

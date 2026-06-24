@@ -111,3 +111,129 @@ describe('MemoryStore', () => {
         expect(destroySpy).toHaveBeenCalledOnce();
     });
 });
+
+describe('MemoryStore auto-notify', () => {
+    it('fires update + datachanged when an owned record field is set', () => {
+        const store          = makeStore(SAMPLE);
+        const record         = store.getAt(0)!;
+        const updateSpy      = vi.fn();
+        const datachangedSpy = vi.fn();
+
+        store.on('update', updateSpy);
+        store.on('datachanged', datachangedSpy);
+        record.set('name', 'Zed');
+
+        expect(updateSpy).toHaveBeenCalledOnce();
+        expect(datachangedSpy).toHaveBeenCalledOnce();
+        expect(updateSpy.mock.calls[0][0]).toEqual({
+            record,
+            changes: { name: { old: 'Alice', new: 'Zed' } },
+        });
+    });
+
+    it('stays silent during a bulk load', () => {
+        const store          = new MemoryStore(MODEL);
+        const updateSpy      = vi.fn();
+        const datachangedSpy = vi.fn();
+        const loadSpy        = vi.fn();
+
+        store.on('update', updateSpy);
+        store.on('datachanged', datachangedSpy);
+        store.on('load', loadSpy);
+        store.loadData(SAMPLE);
+
+        expect(updateSpy).not.toHaveBeenCalled();
+        expect(datachangedSpy).not.toHaveBeenCalled();
+        expect(loadSpy).toHaveBeenCalledOnce();
+    });
+
+    it('stays silent on a no-op set of an owned record', () => {
+        const store     = makeStore(SAMPLE);
+        const updateSpy = vi.fn();
+
+        store.on('update', updateSpy);
+        store.getAt(0)!.set('name', 'Alice');   // unchanged value
+
+        expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it('coalesces a store-level batch into one datachanged with no update', () => {
+        const store          = makeStore(SAMPLE);
+        const updateSpy      = vi.fn();
+        const datachangedSpy = vi.fn();
+
+        store.on('update', updateSpy);
+        store.on('datachanged', datachangedSpy);
+
+        store.beginEdit();
+        store.getAt(0)!.set('name', 'X');
+        store.getAt(0)!.set('score', 1);
+        store.getAt(1)!.set('name', 'Y');
+        store.commitEdit();
+
+        expect(updateSpy).not.toHaveBeenCalled();
+        expect(datachangedSpy).toHaveBeenCalledOnce();
+    });
+
+    it('setSilent mutates without firing any event', () => {
+        const store          = makeStore(SAMPLE);
+        const record         = store.getAt(0)!;
+        const updateSpy      = vi.fn();
+        const datachangedSpy = vi.fn();
+
+        store.on('update', updateSpy);
+        store.on('datachanged', datachangedSpy);
+        record.setSilent('name', 'Q');
+
+        expect(updateSpy).not.toHaveBeenCalled();
+        expect(datachangedSpy).not.toHaveBeenCalled();
+        expect(record.get('name')).toBe('Q');
+        expect(record.isDirty()).toBe(true);
+    });
+
+    it('clears the back-ref on remove so a detached record stays silent', () => {
+        const store  = makeStore(SAMPLE);
+        const record = store.getAt(0)!;
+
+        store.remove(record);
+
+        const updateSpy = vi.fn();
+        store.on('update', updateSpy);
+        record.set('name', 'Gone');
+
+        expect(updateSpy).not.toHaveBeenCalled();
+        expect(record.get('name')).toBe('Gone');
+    });
+
+    it('clears every back-ref on removeAll', () => {
+        const store  = makeStore(SAMPLE);
+        const record = store.getAt(0)!;
+
+        store.removeAll();
+
+        const updateSpy = vi.fn();
+        store.on('update', updateSpy);
+        record.set('name', 'Gone');
+
+        expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it('re-adopts a restored record and releases a dropped new record on reject', () => {
+        const store     = makeStore(SAMPLE);
+        const persisted = store.getById(1)!;
+
+        store.remove(persisted);                                  // released, queued for removal
+        const created = store.add({ id: 99, name: 'New', score: 0 })[0];   // adopted, new
+        store.reject();                                           // restores persisted, drops created
+
+        const updateSpy = vi.fn();
+        store.on('update', updateSpy);
+
+        persisted.set('name', 'Re');                              // restored -> owned -> notifies
+        expect(updateSpy).toHaveBeenCalledOnce();
+
+        updateSpy.mockClear();
+        created.set('name', 'Dropped');                           // dropped -> released -> silent
+        expect(updateSpy).not.toHaveBeenCalled();
+    });
+});
