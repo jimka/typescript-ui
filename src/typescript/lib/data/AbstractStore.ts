@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { AbstractModel } from '~/data/AbstractModel.js';
-import { ModelRecord } from '~/data/ModelRecord.js';
+import { ModelRecord, type FieldChange } from '~/data/ModelRecord.js';
 import { Proxy, ReadParams } from '~/data/proxy/Proxy.js';
 import { FilterDescriptor, matchesFilter } from '~/data/FilterDescriptor.js';
 import { StoreWorkerClient } from '~/data/StoreWorkerClient.js';
@@ -79,6 +79,12 @@ export interface StoreFilterChangeEvent {
  */
 export interface StoreUpdateEvent {
     record: ModelRecord;
+    /**
+     * Field-level diff of the change, keyed by field name. Carried by both the
+     * single-`set()` auto-notify and a record edit-batch commit; absent only when
+     * a caller invokes {@link AbstractStore.notifyRecordChanged} with no diff.
+     */
+    changes?: Record<string, FieldChange>;
 }
 
 /**
@@ -182,6 +188,11 @@ export abstract class AbstractStore {
     private _storeId: string = 'store-' + (nextStoreId++);
     private _snapshotDirty: boolean = true;
     private _loading: boolean = false;
+
+    // Store-level edit-batch flag. While set, owned records suppress their own
+    // auto-notify (consulted through their back-ref by ModelRecord.set()); the
+    // matching commitEdit() fires a single coalesced 'datachanged'.
+    private _batching: boolean = false;
 
     // ── Server-side pagination state ─────────────────────────────────────────
     // `_pageSize` is undefined until `setPageSize(n)` is called; while undefined,
@@ -566,7 +577,9 @@ export abstract class AbstractStore {
      * @param data - An array of plain objects to convert via the model's `createRecord`.
      */
     private ingestRaw(data: any[]): void {
+        this.setOwnership(this._allRecords, false);
         this._allRecords = data.map(item => this.model.createRecord(item));
+        this.setOwnership(this._allRecords, true);
         this._snapshotDirty = true;
         this.applyView();
     }
@@ -746,6 +759,7 @@ export abstract class AbstractStore {
         });
 
         this._allRecords.push(...added);
+        this.setOwnership(added, true);
         this._snapshotDirty = true;
         this.applyView();
 
@@ -783,6 +797,7 @@ export abstract class AbstractStore {
         const at = Math.max(0, Math.min(index, this._allRecords.length));
 
         this._allRecords.splice(at, 0, ...added);
+        this.setOwnership(added, true);
         this._snapshotDirty = true;
         this.applyView();
 
@@ -809,6 +824,7 @@ export abstract class AbstractStore {
         }
 
         this._allRecords.splice(allIdx, 1);
+        this.setOwnership([record], false);
         this._snapshotDirty = true;
 
         if (!record.isNew()) {
@@ -835,6 +851,7 @@ export abstract class AbstractStore {
 
         this._pendingRemoved.push(...this._allRecords.filter(r => !r.isNew()));
 
+        this.setOwnership(removed, false);
         this._allRecords = [];
         this._records = [];
         this._snapshotDirty = true;
@@ -859,6 +876,7 @@ export abstract class AbstractStore {
      */
     protected appendRecords(records: ModelRecord[]): void {
         this._allRecords.push(...records);
+        this.setOwnership(records, true);
         this._snapshotDirty = true;
         this.applyView();
     }
@@ -869,16 +887,91 @@ export abstract class AbstractStore {
      *
      * @param record - The record that was edited; carried on the `'update'`
      *   event so listeners can identify it.
+     * @param changes - Optional. The field-level diff of the change, carried on
+     *   the `'update'` event for listeners that want per-field granularity.
      *
      * @remarks
      * Fires `'update'` ({@link StoreUpdateEvent}) followed by `'datachanged'` so
      * listeners (toolbars, pagination bars, etc.) re-evaluate state such as
-     * {@link hasPendingChanges}. The record's dirty flag is already set by
-     * `record.set()`; this method just notifies.
+     * {@link hasPendingChanges}. A store-owned record calls this automatically
+     * from `set()`; it remains public for the standalone/manual case (an unowned
+     * record, or forcing a refresh).
      */
-    notifyRecordChanged(record: ModelRecord): void {
-        this.emit('update', { record });
+    notifyRecordChanged(record: ModelRecord, changes?: Record<string, FieldChange>): void {
+        this.emit('update', { record, changes });
         this.emit('datachanged', {});
+    }
+
+    /**
+     * Opens a store-level edit batch: owned records suppress their own
+     * auto-notify until the matching {@link commitEdit}.
+     *
+     * @returns This store, for method chaining.
+     *
+     * @remarks
+     * The coarse counterpart to a record edit batch — use it to mutate many
+     * records and refresh bound views once. Records reach this flag through their
+     * back-ref. Not nested by any framework caller, so the flag is a plain
+     * boolean rather than a depth counter.
+     */
+    beginEdit(): this {
+        this._batching = true;
+
+        return this;
+    }
+
+    /**
+     * Closes a store-level edit batch and fires a single `'datachanged'` so bound
+     * views refresh once for the whole batch.
+     *
+     * @returns This store, for method chaining.
+     *
+     * @remarks
+     * Deliberately emits only `'datachanged'`, not per-record `'update'`s:
+     * replaying every record's update would defeat the coalescing the batch
+     * exists to provide. Use a record edit batch when per-record granularity is
+     * needed.
+     */
+    commitEdit(): this {
+        this._batching = false;
+
+        this.emit('datachanged', {});
+
+        return this;
+    }
+
+    /**
+     * Reports whether a store-level edit batch is currently open.
+     *
+     * @returns True while a {@link beginEdit} batch is open.
+     *
+     * @internal Framework wiring; consulted by an owned record's `set()` through
+     *   its back-ref to decide whether to suppress its auto-notify.
+     */
+    isBatching(): boolean {
+        return this._batching;
+    }
+
+    /**
+     * Stamps or clears the owning-store back-ref on a set of records as they
+     * enter or leave this store's master list.
+     *
+     * @param records - The records joining or leaving the master list.
+     * @param owned - True to adopt the records into this store, false to release.
+     *
+     * @remarks
+     * The single seam that keeps {@link ModelRecord}'s auto-notify back-ref in
+     * step with `_allRecords` membership. Called at every site that grows or
+     * shrinks the master list.
+     */
+    private setOwnership(records: ModelRecord[], owned: boolean): void {
+        for (const record of records) {
+            if (owned) {
+                record.adoptedBy(this);
+            } else {
+                record.released();
+            }
+        }
     }
 
     /**
@@ -917,6 +1010,7 @@ export abstract class AbstractStore {
      * persisted.
      */
     reject(): void {
+        const previouslyOwned = this._allRecords;
         const survivors: ModelRecord[] = [];
 
         for (const record of this._allRecords) {
@@ -937,6 +1031,13 @@ export abstract class AbstractStore {
         }
 
         this._allRecords = survivors;
+
+        // Release everyone who was owned (survivors + dropped new records), then
+        // re-adopt the final set: dropped new records stay released, restored
+        // pending-removals (released by remove()) are re-adopted.
+        this.setOwnership(previouslyOwned, false);
+        this.setOwnership(survivors, true);
+
         this._snapshotDirty = true;
         this.applyView();
 
@@ -1055,7 +1156,7 @@ export abstract class AbstractStore {
         }
 
         for (const record of child.getAll()) {
-            record.set(foreignKey, parentId);
+            record.setSilent(foreignKey, parentId);
         }
     }
 
@@ -1220,7 +1321,7 @@ export abstract class AbstractStore {
      */
     private commitFromServerData(record: ModelRecord, serverData: Record<string, any>): void {
         for (const [k, v] of Object.entries(serverData)) {
-            record.set(k, v);
+            record.setSilent(k, v);
         }
 
         record.commit();

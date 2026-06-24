@@ -408,9 +408,9 @@ Leaf-ness resolves in priority order: an explicit `leafField`, then
 | `beforeload`        | `load()` is about to read through the proxy |
 | `load`              | `load()` resolves |
 | `exception`         | A `load()` read or a `sync()` create/update/destroy failed |
-| `datachanged`       | Any record is added, removed, moved (sorted), or has its fields committed / rolled back |
+| `datachanged`       | Any record is added, removed, moved (sorted), has its fields committed / rolled back, or a store-owned record's field is set |
 | `clear`             | `removeAll()` cleared the store (carries the removed records) |
-| `update`            | `notifyRecordChanged(record)` reported an external edit |
+| `update`            | A field was set on a store-owned record (auto-notify), or `notifyRecordChanged(record)` was called manually; the payload carries the changed record and an optional field-level `changes` diff |
 | `sortchanged`       | The active multi-column sort list changed (replaced or cleared) |
 | `filterchange`      | The active filter list changed (added or cleared) |
 | `groupchange`       | The active group field changed via `setGroupField` |
@@ -424,6 +424,20 @@ Leaf-ness resolves in priority order: an explicit `leafField`, then
 The full event surface is typed as [`StoreEvent`](/api/data/type-aliases/StoreEvent);
 `TreeStore` adds the tree-specific names as [`TreeStoreEvent`](/api/data/type-aliases/TreeStoreEvent),
 subscribed via its typed [`onTree`](/api/data/classes/TreeStore#ontree).
+
+### Auto-notify and batching
+
+Setting a field on a record the store owns auto-fires `'update'` + `'datachanged'`, so any view bound to the store refreshes — `notifyRecordChanged(record)` is the manual fallback for an unowned record or to force a refresh. Two escape hatches keep this from storming the event surface. To coalesce many record edits into a single `'datachanged'`, bracket them in a store batch:
+
+```typescript
+store.beginEdit();
+for (const record of store.getRecords()) {
+    record.set('selected', false);
+}
+store.commitEdit();              // one 'datachanged' for the whole batch
+```
+
+For a single record's multiple fields, prefer the [record-level batch](/data/record#batch-edits-and-silent-writes) (`record.beginEdit()` / `commitEdit()` / `setMany`), which fires one `'update'` carrying every change. `record.setSilent(field, value)` mutates without firing anything.
 
 ## See also
 

@@ -65,9 +65,9 @@ export interface ColumnConfig {
      * Memoise inside the predicate if your computation is non-trivial;
      * the table does not cache results.
      *
-     * To update a cell's read-only state after mutating the underlying
-     * record, call `store.notifyRecordChanged(record)` — the table
-     * re-renders and the predicate fires again on the next paint.
+     * Mutating a store-owned record auto-refreshes the table; call
+     * `store.notifyRecordChanged(record)` only for an unowned record or
+     * to force a refresh — the predicate fires again on the next paint.
      */
     cellReadOnly ?: (record: ModelRecord) => boolean;
     /**
@@ -143,9 +143,9 @@ export interface ColumnSpec {
      * Memoise inside your predicate if the computation is non-trivial;
      * the framework does not cache results.
      *
-     * To update a row's read-only state after mutating the underlying
-     * record, call `store.notifyRecordChanged(record)` — the table
-     * re-renders and the predicate fires again on the next paint.
+     * Mutating a store-owned record auto-refreshes the table; call
+     * `store.notifyRecordChanged(record)` only for an unowned record or
+     * to force a refresh — the predicate fires again on the next paint.
      */
     rowReadOnly    ?: (record: ModelRecord) => boolean;
 }
