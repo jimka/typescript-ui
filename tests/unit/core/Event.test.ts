@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 // The Event namespace routes DOM listeners through the sink/source. We assert
 // the BOOKKEEPING contract (base-listener install/uninstall accounting, no-op
 // guards, the passive-conflict throw, fireEvent's element requirement) — NOT

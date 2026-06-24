@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 // Split is heavily DOM-coupled; this file scopes to the ratio / collapse STATE
 // surface that LayoutSerialization depends on (orientation, pane ratios with
 // normalisation, per-pane collapse). Deeper gutter geometry is a Non-Goal here.

@@ -156,7 +156,7 @@ function _addSymbolToSprite(name: string, def: GlyphDef): void {
     }
 
     const id = GLYPH_SYMBOL_ID_PREFIX + name;
-    if (DOM.source.querySelector(_spriteElement, `#${CSS.escape(id)}`)) {
+    if (DOM.source.querySelector(_spriteElement, `#${DOM.source.escapeSelector(id)}`)) {
         return;
     }
 
@@ -181,7 +181,7 @@ function _removeSymbolFromSprite(name: string): void {
     }
 
     const id = GLYPH_SYMBOL_ID_PREFIX + name;
-    const symbol = DOM.source.querySelector(_spriteElement, `#${CSS.escape(id)}`);
+    const symbol = DOM.source.querySelector(_spriteElement, `#${DOM.source.escapeSelector(id)}`);
     if (symbol) {
         // Release the symbol's retained `<path>` child too — releasing only the
         // symbol would pin the detached path handle in the registry. Queried

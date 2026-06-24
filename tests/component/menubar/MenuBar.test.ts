@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MenuBar } from '~/component/menubar/MenuBar';
 import { Component } from '~/core/Component';

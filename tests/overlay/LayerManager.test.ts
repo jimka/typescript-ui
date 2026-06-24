@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi, type Mock } from 'vitest';
 import { LayerManager, DismissableLayer, LayerDismissMode } from '~/core/LayerManager';
 import { DOM, type Handle } from '~/core/DOM';

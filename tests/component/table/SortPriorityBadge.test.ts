@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // SortPriorityBadge visibility-predicate coverage. The badge mints a child
 // element through DOM.sink at construction, so the offline DOM harness is

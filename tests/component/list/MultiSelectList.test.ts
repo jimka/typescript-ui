@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { _MultiSelectList } from '~/component/list/MultiSelectList';
 import { MemoryStore } from '~/data/MemoryStore';

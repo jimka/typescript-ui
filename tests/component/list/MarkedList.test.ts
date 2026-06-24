@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { _BulletedList } from '~/component/list/BulletedList';

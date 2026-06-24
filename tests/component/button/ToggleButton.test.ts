@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ToggleButton } from '~/component/button/ToggleButton';
 import { DOM } from '~/core/DOM';

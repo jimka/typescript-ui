@@ -418,6 +418,15 @@ export class RecordingDOMSink implements DOMSink {
         }
     }
 
+    /**
+     * Builds a plain sentinel event (via {@link makeEvent}) carrying `init.detail`
+     * and routes it through the modelled {@link dispatchEvent}, so the framework's
+     * `Event.fireEvent` reaches listeners offline with no native `CustomEvent`.
+     */
+    dispatchCustomEvent(target: Handle, type: string, init?: CustomEventInit): void {
+        this.dispatchEvent(target, makeEvent(target, type, { detail: init?.detail }));
+    }
+
     requestAnimationFrame(_callback: FrameRequestCallback): number {
         this.record('requestAnimationFrame');
 
@@ -527,6 +536,31 @@ export class ModelledDOMSource implements DOMSource {
         }
 
         return _table.mint('');
+    }
+
+    /**
+     * A modelled node is a {@link makeEvent} sentinel target — the offline stand-in
+     * for the raw `e.relatedTarget` / `e.target` a guard narrows before `intern`.
+     * A plain value (null, string, bare object, number) is not a node.
+     */
+    isNode(value: unknown): value is EventTarget {
+        return isSentinelTarget(value);
+    }
+
+    /**
+     * Offline, every sentinel target stands for an element handle, so `isElement`
+     * matches {@link isNode} — there is no non-element node in the model.
+     */
+    isElement(value: unknown): value is EventTarget {
+        return isSentinelTarget(value);
+    }
+
+    /**
+     * Mirrors the deleted jsdom-setup `CSS.escape` shim: backslash-quotes any
+     * char outside `[a-zA-Z0-9_-]`, leaving framework glyph ids untouched.
+     */
+    escapeSelector(value: string): string {
+        return value.replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`);
     }
 
     /** Runs the geometry oracle: walks `getParentComponent()` to the root. */
@@ -978,13 +1012,13 @@ export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
  *
  * @param target - The element handle the event targets.
  * @param type - The event type (e.g. `"click"`).
- * @param init - Optional `clientX`/`clientY`/`key`/`button`/`detail` fields.
+ * @param init - Optional `clientX`/`clientY`/`key`/`keyCode`/`button`/`detail` fields.
  * @returns The synthetic event.
  */
 export function makeEvent(
     target: Handle,
     type: string,
-    init?: { clientX?: number; clientY?: number; key?: string; button?: number; detail?: unknown }
+    init?: { clientX?: number; clientY?: number; key?: string; keyCode?: number; button?: number; detail?: unknown }
 ): Event {
     const sentinel: SentinelTarget = { [SENTINEL_TARGET]: target };
 
@@ -994,6 +1028,7 @@ export function makeEvent(
         clientX:         init?.clientX,
         clientY:         init?.clientY,
         key:             init?.key,
+        keyCode:         init?.keyCode,
         button:          init?.button,
         detail:          init?.detail,
         stopPropagation: function (): void {},

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // PickerColumn / PickerCell value-math coverage. Both are imported by module
 // path (PickerColumn is not barrel-exported). PickerCell.handleClick is private

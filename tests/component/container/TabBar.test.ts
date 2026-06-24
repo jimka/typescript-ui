@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
 import { TabBar } from '~/component/container/TabBar';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { ButtonGroup } from '~/overlay/ButtonGroup';
 import { ToggleButton } from '~/component/button/ToggleButton';

@@ -62,6 +62,18 @@ const HOLD_TYPE_NAMES = new Set(
     )
 );
 
+// DOM constructor names a seam-external `x instanceof <Ctor>` may not reference.
+// Broader than DOM_TYPE_NAMES because the leaks guarded against concrete element
+// constructors (HTMLInputElement / HTMLSelectElement) too; the seam predicates
+// DOM.source.isNode / isElement / getTagName replace every one. Gated on a
+// lib-symbol confirmation so a user-defined class named `Element` is not flagged.
+const INSTANCEOF_TYPE_NAMES = new Set([
+    ...DOM_TYPE_NAMES,
+    "HTMLInputElement", "HTMLSelectElement", "HTMLTextAreaElement",
+    "HTMLButtonElement", "HTMLAnchorElement", "HTMLImageElement",
+    "EventTarget",
+]);
+
 // Receiver-less DOM globals flagged by identifier (with a lib-symbol confirmation).
 const GLOBAL_IDENTIFIERS = new Set(["document", "window"]);
 const GLOBAL_CALLS = new Set([
@@ -156,6 +168,7 @@ export default {
             style:        "Raw element.style access — route style writes through DOM.sink.setStyle / setRuleStyle.",
             dom:          "Raw DOM interaction — route through DOM.sink / DOM.source. Only core/DOM.ts may touch the DOM directly.",
             hold:         "Holding a raw DOM element type — store an opaque Handle (DOM.source returns / interns handles) instead of an Element / Node. Only core/DOM.ts may name a DOM element type.",
+            instanceofDom: "Raw `instanceof <DOM-type>` — route through DOM.source.isNode / isElement / getTagName. Only core/DOM.ts may name a DOM constructor.",
         },
     },
     create(context) {
@@ -314,6 +327,27 @@ export default {
 
                 if (typeIsDom(type, new Set())) {
                     report(node, "global");
+                }
+            },
+
+            // `x instanceof Element` / `instanceof Node` / `instanceof HTMLInputElement`:
+            // the RHS is a *value* reference to a DOM constructor, so the receiver
+            // and holding clauses miss it. Flag when the RHS identifier resolves to
+            // a flagged DOM-lib constructor; the lib-symbol confirmation keeps a
+            // user-defined class named `Element` from tripping it.
+            BinaryExpression(node) {
+                if (node.operator !== "instanceof" || node.right.type !== "Identifier") {
+                    return;
+                }
+
+                if (!INSTANCEOF_TYPE_NAMES.has(node.right.name)) {
+                    return;
+                }
+
+                const symbol = checker.getSymbolAtLocation(services.esTreeNodeToTSNodeMap.get(node.right));
+
+                if (symbol && isFromDomLib(symbol)) {
+                    report(node, "instanceofDom");
                 }
             },
         };

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ProgressBar } from '~/component/display/ProgressBar';
 import { Component } from '~/core/Component';

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
 import { Spacer } from '~/component/container/Spacer';
 import { DOM } from '~/core/DOM';

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // Parse/commit and tri-state coverage for the String / Number / Boolean cell
 // editors. They wrap real input components built through DOM.sink, so the
@@ -12,11 +11,15 @@
 // white-box dependency on the private name, exercising the real parse contract.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../../dom/TestDOM';
+import { Event } from '~/core/Event';
+import { Container } from '~/core/Container';
+import { installTestDOM, makeEvent } from '../../../dom/TestDOM';
 import fontMetrics from '../../../dom/font-metrics.test-font.json';
 import { StringEditor } from '~/component/table/cell/editor/String';
 import { NumberEditor } from '~/component/table/cell/editor/Number';
 import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
+import { DefaultCell } from '~/component/table/cell/Default';
+import type { ForwardedKeyDetail } from '~/component/table/cell/editor/CellEditor';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -34,6 +37,85 @@ function typeInto(editor: unknown, text: string): void {
     (editor as any)._textField.setText(text);
     (editor as any).onInput();
 }
+
+describe('Editor keydown forward to the parent cell', () => {
+    // The editor re-fires its inner field's keydown as a CustomEvent carrying the
+    // key fields in `detail` (replacing the old `new KeyboardEvent` re-wrap), and
+    // the parent cell's keydown listener reads `detail.keyCode`. This drives the
+    // full path: a modelled keydown on the inner field -> the editor's forward
+    // -> the modelled window base listener -> a cell-style listener on the editor.
+    it('forwards a keydown as a custom event whose detail carries key and keyCode', () => {
+        const host   = new Container({});
+        const editor = new StringEditor();
+
+        host.addComponent(editor);
+        host.getElement(true);
+        editor.getElement(true);
+
+        const field = (editor as any)._textField;
+        field.getElement(true);
+
+        let seen: ForwardedKeyDetail | undefined;
+
+        // Mirror CellEditorPool/Cell: listen for the forwarded "keydown" on the editor.
+        Event.addListener(editor, 'keydown', (e: CustomEvent<ForwardedKeyDetail>) => {
+            seen = e.detail;
+        });
+
+        // Drive the inner field's keydown through the modelled base listener; the
+        // sentinel event carries `key`/`keyCode`, which the forward copies into detail.
+        DOM.sink.dispatchEvent(field.getElement()!, makeEvent(field.getElement()!, 'keydown', { key: 'Enter', keyCode: 13 }));
+
+        expect(seen).toBeDefined();
+        expect(seen!.key).toBe('Enter');
+        expect(seen!.keyCode).toBe(13);
+    });
+});
+
+describe('Cell.onKeyDown commit / cancel contract', () => {
+    // The reshaped forward delivers the key fields in `detail`, so Cell.onKeyDown
+    // reads detail.keyCode: Enter (13) commits and emits editend, Escape (27)
+    // cancels and emits editend, any other key is a no-op. These are the
+    // behaviours the editor forward exists to drive.
+    function keyEvent(keyCode: number): CustomEvent<ForwardedKeyDetail> {
+        return { detail: { keyCode } } as CustomEvent<ForwardedKeyDetail>;
+    }
+
+    it('commits and emits editend on Enter (keyCode 13)', () => {
+        const cell = new DefaultCell();
+        const commit = vi.spyOn(cell, 'commitEdit').mockReturnValue(cell);
+        const emit   = vi.spyOn(cell as any, 'emit').mockImplementation(() => {});
+
+        cell.onKeyDown(keyEvent(13));
+
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(emit).toHaveBeenCalledWith('editend');
+    });
+
+    it('cancels and emits editend on Escape (keyCode 27)', () => {
+        const cell = new DefaultCell();
+        const cancel = vi.spyOn(cell as any, 'cancelEdit').mockImplementation(() => {});
+        const emit   = vi.spyOn(cell as any, 'emit').mockImplementation(() => {});
+
+        cell.onKeyDown(keyEvent(27));
+
+        expect(cancel).toHaveBeenCalledTimes(1);
+        expect(emit).toHaveBeenCalledWith('editend');
+    });
+
+    it('is a no-op for any other key', () => {
+        const cell = new DefaultCell();
+        const commit = vi.spyOn(cell, 'commitEdit').mockReturnValue(cell);
+        const cancel = vi.spyOn(cell as any, 'cancelEdit').mockImplementation(() => {});
+        const emit   = vi.spyOn(cell as any, 'emit').mockImplementation(() => {});
+
+        cell.onKeyDown(keyEvent(65)); // 'A'
+
+        expect(commit).not.toHaveBeenCalled();
+        expect(cancel).not.toHaveBeenCalled();
+        expect(emit).not.toHaveBeenCalled();
+    });
+});
 
 describe('StringEditor', () => {
     it('a fresh editor caches null', () => {

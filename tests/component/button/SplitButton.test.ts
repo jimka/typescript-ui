@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SplitButton } from '~/component/button/SplitButton';
 import { DOM } from '~/core/DOM';

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // Factory-key mapping coverage for CellEditorPool. `acquire` lazily constructs
 // editors (which build input components through DOM.sink) and wires blur/keydown

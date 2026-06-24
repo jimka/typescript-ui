@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
 import { Component } from '~/core/Component';
 import { TabPanel } from '~/component/container/TabPanel';

@@ -7,6 +7,24 @@ import { ThemeManager } from "~/core/Theme.js";
 import type { Handle } from "~/core/DOM.js";
 
 /**
+ * The `detail` payload an editor forwards on its re-fired `"keydown"` custom
+ * event. The editor wraps its inner field's native keydown so the parent cell's
+ * commit/cancel logic can read `keyCode` (and the modifier flags) without the
+ * editor naming the global `KeyboardEvent` constructor.
+ *
+ * @category Components
+ */
+export interface ForwardedKeyDetail {
+    key:      string;
+    code:     string;
+    keyCode:  number;
+    shiftKey: boolean;
+    ctrlKey:  boolean;
+    altKey:   boolean;
+    metaKey:  boolean;
+}
+
+/**
  * Abstract base class for cell editors.
  *
  * Subclasses allow in-place editing of a typed value inside a table cell using a

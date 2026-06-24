@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TabCloseButton } from '~/component/button/TabCloseButton';
 import { DOM } from '~/core/DOM';

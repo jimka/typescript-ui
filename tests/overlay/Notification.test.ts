@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // SCOPE: Notification is almost entirely DOM- / timer- / animation-driven. Its
 // only entry point, `Notification.show`, builds Glyph/Button children, appends

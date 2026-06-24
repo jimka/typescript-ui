@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // SpinButton tick-listener + cancelRepeat coverage. emit is protected and the
 // non-DOM `tick` event routes through the framework ListenerBag (no event

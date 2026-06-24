@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // DateField format/parse coverage. parseRaw is the protected unit under test;
 // cast to reach it. setValue uses optional chaining on the inner input, so a

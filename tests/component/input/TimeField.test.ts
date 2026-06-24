@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // TimeField format/parse coverage. parseRaw is the protected unit under test;
 // cast to reach it. The strict validator rejects missing minutes and

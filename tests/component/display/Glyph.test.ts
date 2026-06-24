@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Glyph } from '~/component/display/Glyph';
 import { lookupGlyph } from '~/component/display/Glyphs';

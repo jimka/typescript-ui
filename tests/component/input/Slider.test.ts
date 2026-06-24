@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // Slider value coverage. Two seams:
 //

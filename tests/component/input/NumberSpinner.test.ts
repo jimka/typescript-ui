@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // Pure value-math coverage for NumberSpinner: clamp / snap / precision and the
 // min/max/step bound defaults. NumberSpinner constructs cleanly under bare

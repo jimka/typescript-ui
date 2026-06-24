@@ -199,7 +199,7 @@ export namespace Event {
         }
 
         if (typeof typeOrEvent === 'string') {
-            DOM.sink.dispatchEvent(element, new CustomEvent(typeOrEvent, payload));
+            DOM.sink.dispatchCustomEvent(element, typeOrEvent, payload);
         } else {
             DOM.sink.dispatchEvent(element, typeOrEvent);
         }

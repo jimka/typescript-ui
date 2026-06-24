@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // TreeCellRenderer arithmetic + delegation coverage. The renderer wraps a real
 // delegate renderer and (for branches) builds a caret Glyph through DOM.sink, so

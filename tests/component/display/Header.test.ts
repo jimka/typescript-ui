@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Header } from '~/component/display/Header';
 import { Insets } from '~/primitive/Insets';

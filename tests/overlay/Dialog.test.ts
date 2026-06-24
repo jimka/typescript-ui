@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
 import { Dialog } from '~/overlay/Dialog';
 import { LayerManager } from '~/core/LayerManager';

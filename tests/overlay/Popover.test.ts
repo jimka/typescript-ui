@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Popover, PopoverPlacement } from '~/overlay/Popover';
 import { LayerManager } from '~/core/LayerManager';

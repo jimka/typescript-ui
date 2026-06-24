@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // TreeBody flatten-relation coverage (tier 3). TreeBody subclasses the heavy
 // Body, but its public constructor is harness-constructible: it takes a store +

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
 import { FieldSet } from '~/component/container/FieldSet';
 import { DOM } from '~/core/DOM';

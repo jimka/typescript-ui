@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { StatusBar } from '~/component/container/StatusBar';
 import { DOM } from '~/core/DOM';

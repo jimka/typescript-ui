@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // Contract-derived coverage for TableExporter. The private statics
 // `escapeCSVField` and `formatValue` are reached via `(TableExporter as any)`

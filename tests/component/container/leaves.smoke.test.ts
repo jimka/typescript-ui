@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // Tier 3 — honestly scoped-out leaves. These components are presentational
 // chrome or pure drag/menu/baseline-measurement machinery whose behaviour only

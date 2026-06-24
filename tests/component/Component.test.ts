@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { Component } from '~/core/Component';
 import { Insets } from '~/primitive/Insets';

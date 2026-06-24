@@ -2417,7 +2417,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // double-register the viewport listeners. The snap forwarding is only
         // useful when the cursor sits *outside* the 4 px strip.
         const targetEl = target.getElement();
-        if (targetEl && e.target instanceof Node && DOM.source.contains(targetEl, DOM.source.intern(e.target))) {
+        if (targetEl && DOM.source.isNode(e.target) && DOM.source.contains(targetEl, DOM.source.intern(e.target))) {
             this._snapTargetBorder = null;
             return;
         }

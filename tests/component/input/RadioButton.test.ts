@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 //
 // RadioButton checked-state + label + group-name coverage. All cases run on a
 // bare (unmounted) radio button: setSelected updates state through the
