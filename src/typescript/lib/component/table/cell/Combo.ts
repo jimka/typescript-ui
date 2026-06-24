@@ -25,11 +25,11 @@ class ComboCell extends Cell<String | null> {
     /**
      * @param field - The model field name this column presents; used to
      *   namespace the pooled editor key.
-     * @param options - The column's option set, forwarded to the renderer
+     * @param optionList - The column's option set, forwarded to the renderer
      *   so it can map stored values to display labels.
      */
-    constructor(field: string, options: Array<ComboOption | string>) {
-        super("td", new ComboRenderer(options));
+    constructor(field: string, optionList: Array<ComboOption | string>) {
+        super("td", new ComboRenderer(optionList));
 
         this._field = field;
     }

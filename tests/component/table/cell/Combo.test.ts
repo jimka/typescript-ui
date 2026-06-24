@@ -19,6 +19,8 @@ import { ComboRenderer } from '~/component/table/cell/renderer/Combo';
 import { ComboEditor } from '~/component/table/cell/editor/Combo';
 import { ComboCell } from '~/component/table/cell/Combo';
 import { Body } from '~/component/table/Body';
+import { Row } from '~/component/table/Row';
+import { StringCell } from '~/component/table/cell/String';
 import { MemoryStore } from '~/data/MemoryStore';
 import { Model } from '~/data/Model';
 import type { ColumnConfig } from '~/component/table/ColumnConfig';
@@ -195,5 +197,52 @@ describe('Body registers per-column ComboEditor factories', () => {
         body.setColumnConfigs(new Map([['role', { field: 'role' }]]));
 
         expect(body.getEditorPool().acquire('combo:role', CELL)).toBe(null);
+    });
+});
+
+describe('Row cell routing: a `values` config selects a ComboCell', () => {
+    // Both columns are STRING fields; only `role` declares `values`. The combo
+    // routing must override the field-type switch for `role` and fall through
+    // to the type-driven cell for `note`. Row builds one cell per field in its
+    // constructor via the private `createCellForField`, so constructing a Row
+    // exercises the routing end-to-end.
+    const MODEL = new Model([
+        { name: 'role', type: 'string', order: 0 },
+        { name: 'note', type: 'string', order: 1 },
+    ]);
+
+    /** Maps the row's cells to their backing field name via layout constraints. */
+    function cellsByField(row: Row): Map<string, Cell<any>> {
+        const map = new Map<string, Cell<any>>();
+
+        for (const cell of row.getComponents() as Cell<any>[]) {
+            const field = (row as any).getLayoutConstraints(cell)?.data;
+
+            map.set(field.getName(), cell);
+        }
+
+        return map;
+    }
+
+    it('routes a string column with `values` to a ComboCell, leaving a plain string column a StringCell', () => {
+        const configs = new Map<string, ColumnConfig>([
+            ['role', { field: 'role', values: ['dev', 'qa'] }],
+        ]);
+
+        const cells = cellsByField(new Row(MODEL, undefined, new Set(), configs));
+
+        expect(cells.get('role')).toBeInstanceOf(ComboCell);
+        expect(cells.get('note')).toBeInstanceOf(StringCell);
+        expect((cells.get('role') as ComboCell).getEditorKey()).toBe('combo:role');
+    });
+
+    it('routes a string column to a StringCell when its `values` array is empty', () => {
+        const configs = new Map<string, ColumnConfig>([
+            ['role', { field: 'role', values: [] }],
+        ]);
+
+        const cells = cellsByField(new Row(MODEL, undefined, new Set(), configs));
+
+        expect(cells.get('role')).toBeInstanceOf(StringCell);
     });
 });

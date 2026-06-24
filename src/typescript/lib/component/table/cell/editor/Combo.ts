@@ -31,15 +31,15 @@ class ComboEditor extends CellEditor<String | null> {
     private _value: String | null = null;
 
     /**
-     * @param options - The column's option set; each entry is a plain
+     * @param optionList - The column's option set; each entry is a plain
      *   string (value === label) or a `{ value, label }` pair. Built into
      *   explicit `{ key, label }` dropdown items so the combo box's value
      *   is the option value, not its array index.
      */
-    constructor(options: Array<ComboOption | string>) {
+    constructor(optionList: Array<ComboOption | string>) {
         super("div");
 
-        const items: Array<CustomListItem> = normalizeComboOptions(options).map(
+        const items: Array<CustomListItem> = normalizeComboOptions(optionList).map(
             option => ({ key: option.value, label: option.label }),
         );
 

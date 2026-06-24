@@ -26,14 +26,14 @@ class ComboRenderer extends CellRenderer<String | null> {
     private _value: String | null       = null;
 
     /**
-     * @param options - The column's option set; each entry is a plain
+     * @param optionList - The column's option set; each entry is a plain
      *   string (value === label) or a `{ value, label }` pair. Used to
      *   build the value-to-label lookup the renderer displays.
      */
-    constructor(options: Array<ComboOption | string>) {
+    constructor(optionList: Array<ComboOption | string>) {
         super();
 
-        for (const option of normalizeComboOptions(options)) {
+        for (const option of normalizeComboOptions(optionList)) {
             this._map.set(option.value, option.label);
         }
 
