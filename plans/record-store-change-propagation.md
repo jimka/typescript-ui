@@ -6,7 +6,7 @@ Make a `ModelRecord.set()` on a **store-owned** record automatically notify its 
 
 The change is confined to the data layer: [`ModelRecord.ts`](../src/typescript/lib/data/ModelRecord.ts) gains an optional back-ref to its owning store, a record-level edit batch (`beginEdit`/`commitEdit`), a silent write (`setSilent`), and `setMany`; [`AbstractStore.ts`](../src/typescript/lib/data/AbstractStore.ts) gains an `@internal` adopt/release pair stamped at the `_allRecords` mutation choke points, a store-level batch (`beginEdit`/`commitEdit`), and an extended `'update'` payload. [`TreeStore.ts`](../src/typescript/lib/data/TreeStore.ts) needs **no** new mutation sites — it grows `_allRecords` only through the inherited `add`/`insert`/`remove`/`removeAll`/`loadData`/`appendRecords`, all of which become adoption choke points in the base.
 
-The ownership-as-gate design makes load-time population silent for free: [`AbstractModel.createRecord`](../src/typescript/lib/data/AbstractModel.ts#L192) populates every field via `set()` (through `convertValue` then field assignment) **before** the store adopts the record, so the back-ref is still unset and `set()` cannot notify. No load-path flag is needed.
+The ownership-as-gate design makes load-time population silent for free: [`AbstractModel.createRecord`](../src/typescript/lib/data/AbstractModel.ts#L192) builds a fully-populated `mapped` object (direct assignment + `field.convertValue`) and hands it to the `ModelRecord` **constructor** ([ModelRecord.ts:81](../src/typescript/lib/data/ModelRecord.ts#L81)) — it never calls `record.set()`. The record is fully constructed and only **then** adopted by `ingestRaw`, so during population the back-ref is still unset and no `set()` (auto-notifying or otherwise) runs against an owned record. No load-path flag is needed.
 
 ---
 
@@ -14,11 +14,11 @@ The ownership-as-gate design makes load-time population silent for free: [`Abstr
 
 ### Ownership back-ref is the primary suppression gate
 
-`ModelRecord` carries `private _store: AbstractStore | null = null`, unset at construction. The store stamps it **only** when a record enters `_allRecords` and clears it when the record leaves. `set()` notifies through this ref; an un-adopted record (mid-`createRecord`, a freestanding `new ModelRecord(...)`, a `clone()`) has `_store === null` and stays silent. This is what makes bulk load silent without a load flag — `createRecord` runs every `set()` before adoption.
+`ModelRecord` carries `private _store: AbstractStore | null = null`, unset at construction. The store stamps it **only** when a record enters `_allRecords` and clears it when the record leaves. `set()` notifies through this ref; an un-adopted record (mid-`createRecord`, a freestanding `new ModelRecord(...)`, a `clone()`) has `_store === null` and stays silent. This is what makes bulk load silent without a load flag — `createRecord` builds the record's fields in the constructor and the record is adopted only afterward, so no owned-record `set()` ever runs during population.
 
 ### Adoption is an `@internal` method pair on `ModelRecord`, called only by `AbstractStore`
 
-The store must write a private field on the record without leaking it onto the public API. The codebase's convention for framework-only surface is a JSDoc `@internal` tag on a real public method (see `Component.getAriaElement` at [Component.ts:3524](../src/typescript/lib/core/Component.ts#L3524) and `TreeBody`'s reparent wiring). TypeScript has no package-private modifier, so follow that convention:
+The store must write a private field on the record without leaking it onto the public API. The codebase's convention for framework-only surface is a JSDoc `@internal` tag on a real public method (see `Component.applyAriaAttribute` at [Component.ts:3526](../src/typescript/lib/core/Component.ts#L3526), whose tag reads `@internal Consumers should use {@link getAria}…`). TypeScript has no package-private modifier, so follow that convention:
 
 ```typescript
 /** @internal Framework wiring; set by AbstractStore when it adopts the record. */
@@ -35,9 +35,9 @@ Both are excluded from the typedoc API surface by the `@internal` tag (the proje
 
 ### Record-level batch extends the `'update'` payload with `changes`
 
-`StoreUpdateEvent` ([AbstractStore.ts:80](../src/typescript/lib/data/AbstractStore.ts#L80)) gains an optional `changes?: Record<string, FieldChange>`. `beginEdit()` sets a record flag and snapshots `{ ...this._data }`; while the flag is set, `set()` updates `_data` + dirty but does **not** notify. `commitEdit()` clears the flag, diffs current `_data` against the snapshot into a `Record<string, FieldChange>` (reusing the same `isEqual` comparison `getChanges` uses), and fires **one** `notifyStore(changes)` — but only when the diff is non-empty (an all-no-op batch stays silent). Extending the existing event rather than adding a new one keeps every current `'update'` listener working: `changes` is optional and the single-`set()` path also populates it, so listeners that want field-level granularity get it uniformly.
+`StoreUpdateEvent` ([AbstractStore.ts:80](../src/typescript/lib/data/AbstractStore.ts#L80)) gains an optional `changes?: Record<string, FieldChange>`. The record batch is **depth-counted**, not a boolean — `private _editDepth: number` — so nested batches collapse to one snapshot + one notify (see *Record batches are nestable* below). `beginEdit()` snapshots `{ ...this._data }` **only on the outermost entry** (`_editDepth` 0 → 1) and increments the depth; while `_editDepth > 0`, `set()` updates `_data` + dirty but does **not** notify. `commitEdit()` decrements the depth and, **only on the outermost exit** (`_editDepth` 1 → 0), diffs current `_data` against the snapshot into a `Record<string, FieldChange>` (reusing the same `isEqual` comparison `getChanges` uses) and fires **one** `notifyStore(changes)` — but only when the diff is non-empty (an all-no-op batch stays silent). Extending the existing event rather than adding a new one keeps every current `'update'` listener working: `changes` is optional and the single-`set()` path also populates it, so listeners that want field-level granularity get it uniformly.
 
-`cancelEdit()` (discard the batch, revert `_data` to the snapshot) is **in scope** — it is the natural complement to `beginEdit`, mirrors the existing `reject()` semantics at batch granularity, and is cheap given the snapshot already exists. It clears the flag, restores `_data` from the snapshot, recomputes the dirty flag, and fires nothing.
+`cancelEdit()` (discard the batch, revert `_data` to the snapshot) is **in scope** — it is the natural complement to `beginEdit`, mirrors the existing `reject()` semantics at batch granularity, and is cheap given the snapshot already exists. It resets `_editDepth` to 0 (collapsing any nesting), restores `_data` from the outermost snapshot, recomputes the dirty flag, and fires nothing.
 
 ### Store-level batch is a flag on `AbstractStore`, coalescing to one `'datachanged'`
 
@@ -52,7 +52,7 @@ A dedicated method, not a boolean option on `set()`. `setSilent` performs the id
 Audited the data-layer internal `set()` sites against the new auto-notify:
 
 - **`AbstractStore.stampForeignKeys`** ([AbstractStore.ts:1058](../src/typescript/lib/data/AbstractStore.ts#L1058)) — `record.set(fk, parentId)` on live, store-owned child records mid-cascade-sync. Sync already emits its own `'sync'`/`'datachanged'`; an auto-notify here would double-fire per child. **Must use `setSilent`.**
-- **`AbstractStore.commitFromServerData`** ([AbstractStore.ts:1222](../src/typescript/lib/data/AbstractStore.ts#L1222)) — writes each server field onto an owned record, then `record.commit()`. This runs inside `sync()`, which fires its own `'sync'`/`'datachanged'` at the end. Auto-notify here would fire one `'update'` per server field per record. **Must use `setSilent`.**
+- **`AbstractStore.commitFromServerData`** ([AbstractStore.ts:1223](../src/typescript/lib/data/AbstractStore.ts#L1223)) — loops `record.set(k, v)` over every server field of an owned record, then `record.commit()`. It is invoked per record from the `runBatch` ([AbstractStore.ts:1177](../src/typescript/lib/data/AbstractStore.ts#L1177)) and `runPerRecord` ([AbstractStore.ts:1203](../src/typescript/lib/data/AbstractStore.ts#L1203)) sync loops, so auto-notify here would fire **N records × M server fields** `'update'`/`'datachanged'` pairs inside a single `sync()` (which fires its own `'sync'`/`'datachanged'` at the end). **Must use `setSilent`.**
 - `TreeStore` — no direct `record.set()` calls; its mutations route through inherited base methods. No change needed.
 
 `ModelRecord.clone()` ([ModelRecord.ts:533](../src/typescript/lib/data/ModelRecord.ts#L533)) constructs a fresh, un-adopted record and writes `_dirty` directly (not via `set`), so it is already silent and the clone's `_store` is `null` — correct, a clone belongs to no store until added.
@@ -73,9 +73,15 @@ Every site that mutates `_allRecords` must stamp or clear the ref. Enumerated:
 
 `reject` is the subtle one: it rebuilds `_allRecords` from survivors + restored pending-removals and drops new records. Released-then-restored pending records were already released by `remove`, so they must be re-adopted on restore; the dropped new records (filtered out) must be released so a held reference stops notifying. The cleanest implementation is a single private `setOwnership(records, owned)` helper plus a "release the leaving set, adopt the staying set" discipline applied at each site.
 
-### Re-entrancy is unchanged
+### Record batches are nestable (depth-counted)
 
-The store-batch and record-batch flags are plain booleans flipped around synchronous regions; no `set()` inside `commitEdit` re-enters a batch. The existing table re-entrancy guard (Cell `setReadOnly` → `notifyRecordChanged` → `applyReadOnlyState`, [Cell.ts:202](../src/typescript/lib/component/table/cell/Cell.ts#L202)) is unaffected because that path calls `notifyRecordChanged` directly, not `set()`.
+`beginEdit`/`commitEdit` must compose, because `setMany` is implemented as `beginEdit` → loop `set` → `commitEdit` and a consumer may call `setMany` (or a manual `beginEdit`) **while already inside** an open batch. A boolean `_editing` flag would corrupt this: the inner `beginEdit` would overwrite `_editSnapshot` (losing the outer baseline) and the inner `commitEdit` would clear the flag mid-outer-batch, so the outer batch's remaining `set()`s would each notify individually. The fix is a depth counter `_editDepth`: the snapshot is taken only at the 0 → 1 transition and the diff + notify happen only at the 1 → 0 transition, so any nesting collapses to a single coalesced notify against the **outermost** baseline. `cancelEdit` collapses the whole stack (`_editDepth = 0`) and reverts to that outermost snapshot — a cancel anywhere in a nested region discards the entire batch, which is the only coherent semantics for a single shared snapshot.
+
+The store-level batch stays a plain boolean (`_batching`) — it is not nested by any internal caller, and the store batch unconditionally wins over the record state in the notify gate (`isBatching()` suppresses even outside a record batch). Neither counter is touched across an `await`; both are flipped around synchronous regions only.
+
+### Existing table re-entrancy guard is unaffected
+
+The existing table re-entrancy guard (Cell `setReadOnly` → `notifyRecordChanged` → `applyReadOnlyState`, [Cell.ts:196](../src/typescript/lib/component/table/cell/Cell.ts#L196)) is unaffected because that path calls `notifyRecordChanged` directly, not `set()`, so auto-notify adds no new re-entry edge.
 
 ---
 
@@ -85,10 +91,10 @@ The store-batch and record-batch flags are plain booleans flipped around synchro
 
 ```typescript
 class ModelRecord {
-    // Back-ref to the owning store; unset until adopted. private, declare-safe (never set in a super() cascade).
+    // Back-ref to the owning store; unset until adopted. Plain `= null` initializer (ModelRecord has no super()-cascade setter path).
     private _store: AbstractStore | null;
-    // Record-level edit-batch state.
-    private _editing: boolean;
+    // Record-level edit-batch state. Depth-counted so nested batches (e.g. setMany inside beginEdit) collapse to one snapshot + one notify.
+    private _editDepth: number;            // 0 = not batching; snapshot at 0→1, diff+notify at 1→0
     private _editSnapshot: Record<string, any> | null;
 
     /** @internal Framework wiring; set by AbstractStore when it adopts this record into _allRecords. */
@@ -100,16 +106,16 @@ class ModelRecord {
     setSilent(field: string, value: any): this;      // never notifies
     setMany(values: Record<string, any>): this;      // sets all, notifies once
 
-    beginEdit(): this;                               // start a record-level batch (suppresses notify)
-    commitEdit(): this;                              // end batch, fire one notify carrying the batched changes
-    cancelEdit(): this;                              // end batch, revert _data to the snapshot, fire nothing
+    beginEdit(): this;                               // enter a record-level batch (depth++; snapshot on 0→1); suppresses notify
+    commitEdit(): this;                              // exit batch (depth--); on 1→0 fire one notify carrying the batched changes
+    cancelEdit(): this;                              // collapse the batch (depth→0), revert _data to the outermost snapshot, fire nothing
 
     private applySet(field: string, value: any): boolean;  // shared convert+gate+store; returns "changed"
     private notifyStore(changes: Record<string, FieldChange>): void;  // fires iff owned and not suppressed
 }
 ```
 
-`setMany` opens an implicit record batch: it `beginEdit()`s, loops `set()` (so each write accumulates into the snapshot diff without firing), then `commitEdit()`s for the single coalesced notify — reusing the batch machinery rather than duplicating the diff logic.
+`setMany` opens an implicit record batch: it `beginEdit()`s, loops `set()` (so each write accumulates into the snapshot diff without firing), then `commitEdit()`s for the single coalesced notify — reusing the batch machinery rather than duplicating the diff logic. Because the batch is depth-counted, calling `setMany` inside a consumer's own `beginEdit`/`commitEdit` nests safely: the implicit inner batch increments to depth 2 and back to 1, taking no snapshot and firing nothing, leaving the outer batch's single coalesced notify intact.
 
 ### `AbstractStore` ([AbstractStore.ts](../src/typescript/lib/data/AbstractStore.ts))
 
@@ -175,7 +181,7 @@ set(field: string, value: any): this {
 }
 
 private notifyStore(changes: Record<string, FieldChange>): void {
-    if (this._store === null || this._editing || this._store.isBatching()) {
+    if (this._store === null || this._editDepth > 0 || this._store.isBatching()) {
         return;
     }
 
@@ -192,15 +198,29 @@ notifyRecordChanged(record: ModelRecord, changes?: Record<string, FieldChange>):
 }
 ```
 
-`commitEdit` diffs the snapshot:
+`beginEdit` snapshots only on the outermost entry; `commitEdit` diffs and fires only on the outermost exit:
 
 ```typescript
+beginEdit(): this {
+    if (this._editDepth === 0) {
+        this._editSnapshot = { ...this._data };
+    }
+
+    this._editDepth++;
+
+    return this;
+}
+
 commitEdit(): this {
-    if (!this._editing) {
+    if (this._editDepth === 0) {        // unbalanced commit — no-op
         return this;
     }
 
-    this._editing = false;
+    this._editDepth--;
+
+    if (this._editDepth > 0) {          // inner commit of a nested batch — defer
+        return this;
+    }
 
     const snapshot = this._editSnapshot ?? {};
     const changes: Record<string, FieldChange> = {};
@@ -219,6 +239,23 @@ commitEdit(): this {
 
     return this;
 }
+
+cancelEdit(): this {
+    if (this._editDepth === 0) {        // nothing open — no-op
+        return this;
+    }
+
+    this._editDepth = 0;                // collapse any nesting
+
+    if (this._editSnapshot !== null) {
+        this._data = { ...this._editSnapshot };
+        this._editSnapshot = null;
+        this._dirty = this._isNew || Object.keys(this._original)
+                                          .some(k => !ModelRecord.isEqual(this._data[k], this._original[k]));
+    }
+
+    return this;
+}
 ```
 
 (`old` capture in `set` reads the pre-mutation value before `applySet` overwrites `_data[field]`; the snippet above shows the ordering — capture `old`, then `applySet`, then build the change map from `old`/new.)
@@ -231,7 +268,7 @@ commitEdit(): this {
 
 2. **`ModelRecord.ts` — refactor `set` onto `applySet`.** Extract the convert/equality/`_data`/dirty body into `private applySet(field, value): boolean`; have `set` capture `old`, call `applySet`, and call `notifyStore` on a real change. Add `setSilent` calling only `applySet`. → verify: existing `ModelRecord.test.ts` still green (dirty-tracking and conversion unchanged).
 
-3. **`ModelRecord.ts` — record batch + setMany + cancelEdit.** Add `_editing`/`_editSnapshot`, `beginEdit`/`commitEdit`/`cancelEdit`, and `setMany` (begin → loop `set` → commit). Add `private notifyStore(changes)` enforcing the owned-and-not-suppressed rule. → verify: typecheck.
+3. **`ModelRecord.ts` — record batch + setMany + cancelEdit.** Add the depth-counted `_editDepth: number = 0` + `_editSnapshot`, `beginEdit` (snapshot on 0→1, depth++), `commitEdit` (depth--, diff+notify on 1→0), `cancelEdit` (depth→0, revert to snapshot), and `setMany` (begin → loop `set` → commit — nests safely via the counter). Add `private notifyStore(changes)` enforcing the owned-and-not-suppressed rule (`_store !== null && _editDepth === 0 && !isBatching()`). → verify: typecheck.
 
 4. **`AbstractStore.ts` — payload + notify signature.** Extend `StoreUpdateEvent` with `changes?`. Add the optional `changes` param to `notifyRecordChanged` and forward it into the `'update'` emit. → verify: typecheck; existing sync test's `'update'` observers unaffected.
 
@@ -267,7 +304,7 @@ The store test harness registers `vi.fn()` spies via `store.on(event, spy)` (see
 **Store-bound tests** (`MemoryStore.test.ts`, owned records via `loadData`/`add`):
 
 1. **Auto-notify on owned `set()`** — `loadData(SAMPLE)`, register `update` + `datachanged` spies, `store.getAt(0)!.set('name', 'Zed')`; expect both fired once and the `'update'` payload's `changes` to equal `{ name: { old: 'Alice', new: 'Zed' } }`.
-2. **Silence during bulk load** — register `update`/`datachanged` spies **before** `loadData(SAMPLE)`; expect `update` never fired and `datachanged` fired exactly once (the `'load'`-path `emit('load')`/`'datachanged'` of `loadData`, *not* per-field). Confirms `createRecord`'s pre-adoption `set()`s are silent.
+2. **Silence during bulk load** — register `update`/`datachanged`/`load` spies **before** `loadData(SAMPLE)`; expect `update` fired **zero** times and `datachanged` fired **zero** times — `loadData` ([AbstractStore.ts:410](../src/typescript/lib/data/AbstractStore.ts#L410)) emits only `'load'` (assert `load` fired once), and the `ingestRaw`→`applyView` path it calls emits no `'datachanged'`. Confirms field population during `createRecord`/construction never reaches an owned-record notify.
 3. **No-op `set()` stays silent** — owned record `set('name', <same value>)`; expect zero `update`.
 4. **Store-level batch coalesces** — `store.beginEdit()`, `set` two fields on two records, `store.commitEdit()`; expect zero `update` and exactly one `datachanged` (from `commitEdit`).
 5. **`setSilent` fires nothing** — owned record `setSilent('name', 'Q')`; expect zero `update`/`datachanged` and `record.get('name') === 'Q'`, `record.isDirty() === true`.
@@ -279,7 +316,8 @@ The store test harness registers `vi.fn()` spies via `store.on(event, spy)` (see
 8. **`beginEdit`/`commitEdit` single fire with batched changes** — owned record, `beginEdit()`, `set` two fields, `commitEdit()`; expect one `update` whose `changes` carries both fields' `{ old, new }`.
 9. **`cancelEdit` reverts and fires nothing** — `beginEdit()`, `set('name','X')`, `cancelEdit()`; expect value reverted to the snapshot, zero `update`, `isDirty()` recomputed (false if it was clean before the batch).
 10. **`setMany` single fire** — owned record `setMany({ name: 'A', score: 1 })`; expect exactly one `update` carrying both fields in `changes`.
-11. **Un-adopted record never throws** — bare `new ModelRecord(...)` (no store), `set('name','x')`; expect no throw and dirty-tracking unchanged (guards the `_store === null` branch).
+11. **Nested record batch collapses to one fire** — owned record, `beginEdit()`, `set('name','A')`, **`setMany({ score: 1 })`** (or a second `beginEdit`/`set`/`commitEdit`) *inside* the open batch, then the outer `commitEdit()`; expect exactly **one** `update` whose `changes` carries `name` **and** `score` diffed against the **outermost** baseline (proves the inner implicit batch took no snapshot and fired nothing). Add a paired case: `beginEdit` → `set` → nested `beginEdit` → `set` → `cancelEdit` collapses the whole stack and reverts both writes, firing nothing.
+12. **Un-adopted record never throws** — bare `new ModelRecord(...)` (no store), `set('name','x')`; expect no throw and dirty-tracking unchanged (guards the `_store === null` branch).
 
 **Invariants / build:**
 
@@ -294,7 +332,8 @@ The store test harness registers `vi.fn()` spies via `store.on(event, spy)` (see
 The new consumer-facing surface is `ModelRecord.beginEdit`/`commitEdit`/`cancelEdit`/`setSilent`/`setMany` and `AbstractStore.beginEdit`/`commitEdit`, plus the auto-notify behaviour change and the `StoreUpdateEvent.changes` field. `adoptedBy`/`released`/`isBatching` are `@internal` and stay out of docs.
 
 - The data barrel ([data/index.ts](../src/typescript/lib/data/index.ts)) already exports `ModelRecord`, `AbstractStore`, `FieldChange`, and `StoreUpdateEvent`; no new exports needed — the new members ride the existing class/interface exports.
-- Update [`docs/data/store.md`](../docs/data/store.md): document that mutating an owned record's field now auto-refreshes bound views, the batch escape hatches, and `setSilent`. It currently instructs consumers to call `notifyRecordChanged` manually — reframe that as the standalone/manual fallback now that auto-notify is the default.
+- Update [`docs/data/record.md`](../docs/data/record.md) — the primary curated page for `ModelRecord` mutation. Its "Mutate a record" section ([record.md:26-37](../docs/data/record.md)) documents `set`/`commit`/`getChanges`; add the new `beginEdit`/`commitEdit`/`cancelEdit`/`setSilent`/`setMany` surface and note that mutating a **store-owned** record now auto-notifies its store (bound views refresh) — distinct from proxy persistence, so the existing line 35 ("does **not** propagate to the proxy automatically — you must call `commit()`") stays accurate and should not be conflated with the new in-memory auto-notify.
+- Update [`docs/data/store.md`](../docs/data/store.md): document that mutating an owned record's field now auto-refreshes bound views, the batch escape hatches (`AbstractStore.beginEdit`/`commitEdit`), `setSilent`, and the new `StoreUpdateEvent.changes` field on the `'update'` event ([store.md:413](../docs/data/store.md)). It currently instructs consumers to call `notifyRecordChanged` manually — reframe that as the standalone/manual fallback now that auto-notify is the default.
 - Update [`docs/components/Table.md`](../docs/components/Table.md) and [`ColumnConfig.ts`](../src/typescript/lib/component/table/ColumnConfig.ts) JSDoc (lines 61/69/139/147) where they instruct "call `store.notifyRecordChanged(record)`" after an off-band edit — soften to "auto-notified when the record is store-owned; call `notifyRecordChanged` only for an unowned record or to force a refresh."
 - Check the docs catalog `index.md` under `docs/data/` and the sidebar in `docs/.vitepress/config.mts` — no new pages, so likely no sidebar change; verify the store page still resolves.
 
@@ -302,7 +341,12 @@ The new consumer-facing surface is `ModelRecord.beginEdit`/`commitEdit`/`cancelE
 
 ## Potential Challenges
 
-- **Table edit path double-fire (out of data-layer scope).** `Row` ([Row.ts:74](../src/typescript/lib/component/table/Row.ts#L74), [Row.ts:319](../src/typescript/lib/component/table/Row.ts#L319)) does `record.set(field, value)` then fires `onCommit` → `Body`'s `notifyRecordChanged` ([Body.ts:196](../src/typescript/lib/component/table/Body.ts#L196)). Once `set()` auto-notifies an owned record, this becomes **two** `'update'`/`'datachanged'` pairs per cell commit. This is a component-layer concern outside the surgical data-layer change; flag it for a **follow-up** (drop the explicit `notifyRecordChanged` from `Body.createRow`/`Row`'s commit, since the record is store-owned and now self-notifies). Mitigation for this plan: do not touch `Row`/`Body`; document the redundancy in the step-9 sweep and the Non-Goals so `/implement` doesn't silently "fix" it and break the re-entrancy guard. The double-fire is benign (idempotent refresh), just wasteful.
+- **Component-layer `set()`→`notifyRecordChanged` double-fire (out of data-layer scope).** Three component-layer `notifyRecordChanged` call sites already follow a `record.set(...)` on a store-owned record. Once `set()` auto-notifies, each becomes **two** `'update'`/`'datachanged'` pairs:
+  - `Row` ([Row.ts:74](../src/typescript/lib/component/table/Row.ts#L74), [Row.ts:319](../src/typescript/lib/component/table/Row.ts#L319)) → `onCommit` → `Body.notifyRecordChanged` ([Body.ts:196](../src/typescript/lib/component/table/Body.ts#L196)) — the cell-commit path.
+  - `TreeBody.createRow` ([TreeBody.ts:520](../src/typescript/lib/component/table/TreeBody.ts#L520)) — the tree analogue of the `Body.ts:196` `onCommit` callback.
+  - `TreeTable.reparent` ([TreeTable.ts:314-315](../src/typescript/lib/component/table/TreeTable.ts#L314)) — `record.set(parentField, …)` then `getStore().notifyRecordChanged(record)`. **Sharper than the others:** the auto-notify now fires `'datachanged'` *synchronously inside* `set()` at line 314 — before the explicit notify, and before the `RowReparentDetail` / `"rowreparent"` event is assembled and fired ([TreeTable.ts:317-323](../src/typescript/lib/component/table/TreeTable.ts#L317)) — so a `TreeBody` refresh runs mid-reparent. The store state is already consistent at that point (the parent field is set), so the early refresh renders the new tree then re-renders on the second notify; benign but worth the implementer's eyes.
+
+  All three are component-layer concerns outside this surgical data-layer change. Mitigation for this plan: **do not touch** `Row`/`Body`/`TreeBody`/`TreeTable`; the step-9 `grep '\.set('` sweep is scoped to `src/typescript/lib/data/` so it won't surface these, but they are enumerated here and in Non-Goals so the **follow-up** (drop the now-redundant explicit `notifyRecordChanged` at all three sites, since the record self-notifies) is well-scoped and `/implement` doesn't silently "fix" them and risk the Cell `setReadOnly` re-entrancy guard. The double-fires are benign (idempotent refresh), just wasteful.
 - **`reject` re-adoption correctness.** Records that were `remove()`d (released) then restored by `reject()` must be re-adopted, while dropped new records must be released. Mitigation: the explicit ownership table above + the back-ref-clear test (#6/#7) extended with a reject case.
 - **`AbstractStore` import cycle.** `ModelRecord.ts` already imports `AbstractStore` ([ModelRecord.ts:4](../src/typescript/lib/data/ModelRecord.ts#L4)) and `AbstractStore.ts` imports `ModelRecord` — the cycle already exists and resolves; the new typed back-ref adds no new edge. Mitigation: none needed; confirmed both imports are present today.
 - **`old` capture ordering in `set`.** `applySet` overwrites `_data[field]` before `set` builds the change map. Mitigation: capture `old` in `set` *before* calling `applySet` (shown in Internal Structure).
@@ -322,7 +366,7 @@ The new consumer-facing surface is `ModelRecord.beginEdit`/`commitEdit`/`cancelE
 
 ## Non-Goals
 
-- **Reworking the table cell-commit path.** `Row`/`Body` keep their explicit `notifyRecordChanged` call; the resulting benign double-fire on owned-record cell edits is left for a separate component-layer follow-up (see Potential Challenges). Touching it here risks the Cell `setReadOnly` re-entrancy guard.
+- **Reworking the component-layer commit/reparent paths.** `Row`/`Body` ([Body.ts:196](../src/typescript/lib/component/table/Body.ts#L196)), `TreeBody` ([TreeBody.ts:520](../src/typescript/lib/component/table/TreeBody.ts#L520)), and `TreeTable.reparent` ([TreeTable.ts:315](../src/typescript/lib/component/table/TreeTable.ts#L315)) keep their explicit `notifyRecordChanged` calls; the resulting benign double-fire on owned-record edits/reparents is left for a separate component-layer follow-up (see Potential Challenges). Touching it here risks the Cell `setReadOnly` re-entrancy guard and the reparent event ordering.
 - **Cross-store / association propagation.** A record notifies only its own owning store via the back-ref. Parent/child association stores do not cross-notify; the existing cascade-sync path is unchanged.
 - **Nested/deep field-value change detection beyond the existing `isEqual`.** The batch diff reuses `ModelRecord.isEqual` exactly as `getChanges` does today — no new equality semantics.
 - **A store-level `'update'` replay during a store batch.** The store batch coalesces to a single `'datachanged'` only, by design (see Architecture Decisions); per-record granularity is the record batch's job.
