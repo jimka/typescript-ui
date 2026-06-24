@@ -72,6 +72,8 @@ The user asked to go hard-core toward "zero global browser surface." We reach it
 - Delete the `matchMedia` and `CSS.escape` polyfills in [`tests/setup/jsdom-setup.ts`](../tests/setup/jsdom-setup.ts): `matchMedia` already routes through `DOM.source.matchMedia` (which Plan 1 / the seam answers off-browser — [`Glyph.ts:119`](../src/typescript/lib/component/display/Glyph.ts#L119), [`Animation.ts:74`](../src/typescript/lib/core/Animation.ts#L74)), and `CSS.escape` is replaced by `DOM.source.escapeSelector`. The file becomes empty or is deleted.
 - Remove `jsdom` from [`package.json`](../package.json#L118) `devDependencies`.
 
+**AS IMPLEMENTED — production-seam-test residual (the plan did not survive contact here).** The component suite migrated fully to `node` (80 modelled-harness test files dropped the pragma; `tests/setup/jsdom-setup.ts` deleted; the modelled DOM is installed as the node baseline by the new `tests/setup/node-setup.ts`). But the `jsdom` devDependency was **kept**, and **two** files retain `// @vitest-environment jsdom`: `tests/dom/handle-registry.test.ts` and `tests/dom/handle-seam.bench.ts`. These are pre-existing production-seam regression suites that exercise `ProductionDOMSink` / `ProductionDOMSource` against a real `document` (handle canonicalization, GC-based release, batched apply) — behaviour the modelled harness deliberately does **not** cover and that has no `node` equivalent (it *is* the real-DOM path). Removing `jsdom` would delete that coverage. So acceptance-case 12's literal "no `jsdom` dependency" is **not** met for these two suites; this is the honest residual. The migration target — *the component suite runs node-only* — is met: jsdom-environment aggregate setup fell from ~53 s to under 1 s. `package.json:118` `jsdom` and the two pragmas stay by design.
+
 **Honest caveat (purist vs pragmatic).** Two things resist full seaming and may force a *residual* and explicitly-documented allowance, not a global shim:
 1. **`CustomEvent` / `KeyboardEvent` construction** moves *behind the seam* into `core/DOM.ts`'s production sink — which still references the native constructor. That is correct seam discipline (the seam is the one place allowed to name DOM types), not a leak; under `node` the production sink is never instantiated (tests install the modelled sink), so the native constructors are never evaluated. No runtime global needed.
 2. **`FileList`/`DataTransfer`** remain as ambient TS *type* names in signatures (compile-only, no runtime global). Real file-drop behaviour stays manual-verify.
@@ -113,6 +115,8 @@ interface DOMSink {
 
 No new `Component` DOM property, so no typed-setter / `_field` / `XOptions` triad is introduced.
 
+**AS IMPLEMENTED — `dispatchCustomEvent` signature + one consumer-visible API change (broader than this section originally scoped).** The dispatch method shipped as `dispatchCustomEvent(target: Handle, type: string, init?: CustomEventInit)` rather than `(…, detail?: unknown)`: the `fireEvent` string overload's `payload` was always a *`CustomEventInit`* (callers pass `{ detail }`, and the old body did `new CustomEvent(type, payload)`), so forwarding the full init preserves every existing caller (DragManager, TreeTable, the editor blur forward) byte-for-byte. Reshaping the editor keydown forward off `new KeyboardEvent` (Leak class 2) required a **public** signature change this section did not anticipate: `Cell.onKeyDown` (exported via `component/table`) changed from `(evnt: KeyboardEvent)` to `(evnt: CustomEvent<ForwardedKeyDetail>)`, and a new **public exported interface** `ForwardedKeyDetail` (in `CellEditor.ts`, re-exported from the `component/table` barrel, `@category Components`) carries the forwarded `key`/`code`/`keyCode`/modifier fields in the event `detail`. `Cell.onKeyDown`'s only callers are the two editor-keydown forwards (`Cell.ts`, `CellEditorPool.ts`), both updated; the `Body`/`TreeBody` `onKeyDown` (which read native keydowns) are unrelated and untouched. Docs were regenerated (the new interface lands in `docs/api/component/table`).
+
 ---
 
 ## Ordered Implementation Steps
@@ -150,14 +154,20 @@ No new `Component` DOM property, so no typed-setter / `_field` / `XOptions` tria
 | Modify | `src/typescript/lib/component/display/Glyphs.ts` — two `escapeSelector` calls |
 | Modify | `src/typescript/lib/component/table/cell/editor/Number.ts` — keydown forward reshape |
 | Modify | `src/typescript/lib/component/table/cell/editor/String.ts` — keydown forward reshape |
-| Modify | `tests/dom/TestDOM.ts` — modelled `isNode`/`isElement`/`escapeSelector`/`dispatchCustomEvent`/`getTagName` (Plan 1 harness) |
+| Modify *(added during impl)* | `src/typescript/lib/component/table/cell/editor/CellEditor.ts` — new exported `ForwardedKeyDetail` interface (the editor-keydown `detail` shape) |
+| Modify *(added during impl)* | `src/typescript/lib/component/table/cell/Cell.ts` — `onKeyDown` reads `detail.keyCode` (signature → `CustomEvent<ForwardedKeyDetail>`) |
+| Modify *(added during impl)* | `src/typescript/lib/component/table/cell/editor/CellEditorPool.ts` — keydown listener type → `CustomEvent<ForwardedKeyDetail>` |
+| Modify *(added during impl)* | `src/typescript/lib/component/table/index.ts` — `export type { ForwardedKeyDetail }` |
+| Modify | `tests/dom/TestDOM.ts` — modelled `isNode`/`isElement`/`escapeSelector`/`dispatchCustomEvent`/`getTagName`; `makeEvent` gains `keyCode` (Plan 1 harness) |
 | Modify | `scripts/eslint/no-raw-dom.js` — `instanceof <DOM-type>` clause |
-| Modify | `vitest.config.ts` — default-env comment, drop `setupFiles` if shim deleted |
-| Modify | `package.json` — remove `jsdom` devDependency |
-| Modify | ~81 files under `tests/` — remove `// @vitest-environment jsdom` |
-| Delete | `tests/setup/jsdom-setup.ts` — if it ends empty after shim removal |
+| Modify | `vitest.config.ts` — env comment; `setupFiles` → `node-setup.ts` |
+| Modify *(NOT done — see residual)* | `package.json` — `jsdom` devDependency KEPT for the two production-seam suites |
+| Modify | ~80 files under `tests/` — remove `// @vitest-environment jsdom` (2 production-seam files keep it) |
+| Create *(added during impl)* | `tests/setup/node-setup.ts` — installs the modelled DOM as the node baseline (replaces jsdom-setup) |
+| Create *(added during impl)* | `tests/dom/seam-predicates.test.ts` — contract tests for the new seam predicates + dispatch |
+| Delete | `tests/setup/jsdom-setup.ts` |
 
-No new files. No theme tokens. No public-API *additions* visible to consumers (seam interfaces are internal; `Type.isElement`'s signature is unchanged).
+The editor-keydown reshape (Leak class 2) introduced a consumer-visible API change beyond the original Public API scope: `Cell.onKeyDown`'s signature and a new exported `ForwardedKeyDetail` interface (see the AS-IMPLEMENTED note under `## Public API`). `Type.isElement`'s signature is unchanged.
 
 ---
 
