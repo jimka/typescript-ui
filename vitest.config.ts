@@ -7,10 +7,10 @@ import viteConfig from './vite.config';
 // none of the `~/...` imports every source file uses.
 export default mergeConfig(viteConfig, defineConfig({
     test: {
-        environment: 'node',              // default; component tests opt in via `// @vitest-environment jsdom`
+        environment: 'node',              // component tests run under node via the modelled DOM harness; only the production-seam suites keep the `// @vitest-environment jsdom` pragma
         globals: true,
         include: ['tests/**/*.test.ts'],
-        setupFiles: ['tests/setup/jsdom-setup.ts'],   // self-guards to a no-op under the node env
+        setupFiles: ['tests/setup/node-setup.ts'],   // installs the modelled DOM baseline under node; self-guards to a no-op under jsdom
         coverage: {
             provider: 'v8',
             include: ['src/typescript/lib/**/*.ts'],
