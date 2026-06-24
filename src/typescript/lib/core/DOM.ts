@@ -603,6 +603,21 @@ export interface DOMSink {
     dispatchEvent(target: Handle, event: Event): void;
 
     /**
+     * Builds and dispatches a custom event of `type` with the given init on a
+     * target. The framework's sole construction site for fired custom events:
+     * the production sink mints a native `CustomEvent`, while the modelled sink
+     * builds a plain sentinel event, so production code never names the global
+     * `CustomEvent` constructor. `init` is a `CustomEventInit`, so `init.detail`
+     * surfaces as the event's `detail` exactly as the inline `new CustomEvent`
+     * it replaces did.
+     *
+     * @param target - The event target handle.
+     * @param type - The event type (e.g. `"keydown"`).
+     * @param init - Optional `CustomEventInit` (carries `detail`).
+     */
+    dispatchCustomEvent(target: Handle, type: string, init?: CustomEventInit): void;
+
+    /**
      * Schedules a callback for the next animation frame.
      *
      * @param callback - The frame callback.
@@ -694,6 +709,36 @@ export interface DOMSource {
      * @returns Its canonical handle.
      */
     intern(target: EventTarget): Handle;
+
+    /**
+     * Whether a raw value arriving at an event boundary is a DOM node. Replaces
+     * call-site `value instanceof Node` guards (which name a global constructor)
+     * so an `EventTarget | null` field can be narrowed before {@link intern}.
+     *
+     * @param value - The raw value to test (typically `e.relatedTarget` / `e.target`).
+     * @returns `true` when the value is a node; production matches `instanceof Node`.
+     *   The `EventTarget` type guard lets a nullable event field narrow for
+     *   the subsequent {@link intern}.
+     */
+    isNode(value: unknown): value is EventTarget;
+
+    /**
+     * Whether a raw value is a DOM element — {@link isNode} narrowed to elements.
+     * Replaces call-site `value instanceof Element`.
+     *
+     * @param value - The raw value to test.
+     * @returns `true` when the value is an element; production matches `instanceof Element`.
+     */
+    isElement(value: unknown): value is EventTarget;
+
+    /**
+     * Escapes a string for safe use inside a CSS selector. Replaces call-site
+     * `CSS.escape`, which names a global the offline harness does not ship.
+     *
+     * @param value - The raw string (e.g. a glyph id).
+     * @returns The escaped string; production uses `CSS.escape`.
+     */
+    escapeSelector(value: string): string;
 
     /**
      * Returns the viewport-space rectangle of a component's root element.
@@ -1267,6 +1312,11 @@ export class ProductionDOMSink implements DOMSink {
     }
 
     /** @inheritDoc */
+    dispatchCustomEvent(target: Handle, type: string, init?: CustomEventInit): void {
+        _registry.resolve(target).dispatchEvent(new CustomEvent(type, init));
+    }
+
+    /** @inheritDoc */
     requestAnimationFrame(callback: FrameRequestCallback): number {
         return requestAnimationFrame(callback);
     }
@@ -1333,6 +1383,21 @@ export class ProductionDOMSource implements DOMSource {
      */
     intern(target: EventTarget): Handle {
         return _registry.intern(target as Node);
+    }
+
+    /** @inheritDoc */
+    isNode(value: unknown): value is EventTarget {
+        return value instanceof Node;
+    }
+
+    /** @inheritDoc */
+    isElement(value: unknown): value is EventTarget {
+        return value instanceof Element;
+    }
+
+    /** @inheritDoc */
+    escapeSelector(value: string): string {
+        return CSS.escape(value);
     }
 
     /** @inheritDoc */
