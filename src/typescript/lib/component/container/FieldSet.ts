@@ -164,9 +164,9 @@ class FieldSet extends Component {
      * offset itself. {@link getInnerSize} must account for the same space or
      * the bottom row overflows the border, so this adds the legend's height to
      * the `top` perimeter. The child origin is deliberately left untouched —
-     * {@link Component.getContentInsets} derives from insets alone, and the
-     * browser already provides the matching downward offset, so adding it to
-     * the origin too would double-count it.
+     * the content-inset origin derives from insets alone, and the browser
+     * already provides the matching downward offset, so adding it to the
+     * origin too would double-count it.
      *
      * The legend is browser-rendered chrome, not a framework-layout child, so
      * its height is read from the element and cached. The measurement slightly

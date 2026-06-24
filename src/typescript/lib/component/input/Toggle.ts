@@ -232,8 +232,8 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
      *
      * @returns The baseline offset in pixels, or `null`.
      *
-     * @remarks The reported baseline includes {@link labelCenterOffset} because
-     * `doLayout` nudges the label down to sit concentric with the taller pill;
+     * @remarks The reported baseline includes the offset that centres the label
+     * on the pill because `doLayout` nudges the label down to sit concentric with the taller pill;
      * the outer row must align the label at that lowered position so its text
      * baseline still meets the row's.
      */
@@ -277,8 +277,8 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
     }
 
     /**
-     * Lays out the pill and label, then nudges the label down by
-     * {@link labelCenterOffset} so it sits concentric with the taller pill. The
+     * Lays out the pill and label, then nudges the label down so it sits
+     * concentric with the taller pill. The
      * inner `HBox` top-aligns the label to the row's text baseline on every
      * pass, so re-reading its placed `y` here keeps the nudge idempotent.
      *

@@ -1632,8 +1632,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
 
     /**
      * Returns the preferred size, derived live from the content row +
-     * perimeter via {@link computePreferredSize} while the consumer hasn't
-     * pinned one. Deriving live (rather than reading a cached value) means
+     * perimeter while the consumer hasn't pinned one. Deriving live (rather
+     * than reading a cached value) means
      * the button always tracks its current label / glyph: a {@link setText}
      * that grows or shrinks the label is reflected the next time the parent
      * layout queries this button, with no manual recompute call needed at the
