@@ -703,6 +703,22 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     }
 
     /**
+     * Pops the option dropdown if it is currently closed; a no-op when it
+     * is already open. Lets an embedding host (e.g. a table cell editor)
+     * land the user straight in the option list on focus instead of
+     * requiring a second click or keystroke to open the panel.
+     *
+     * @returns This component, for method chaining.
+     */
+    openDropdown(): this {
+        if (!this._dropdown.isOpen()) {
+            this.toggleDropdown();
+        }
+
+        return this;
+    }
+
+    /**
      * Toggles the dropdown's open state.
      */
     private toggleDropdown(): void {

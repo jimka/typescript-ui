@@ -14,6 +14,7 @@ import { DateCell } from "~/component/table/cell/Date.js";
 import { TimeCell } from "~/component/table/cell/Time.js";
 import { DateTimeCell } from "~/component/table/cell/DateTime.js";
 import { GlyphCell } from "~/component/table/cell/Glyph.js";
+import { ComboCell } from "~/component/table/cell/Combo.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
 import { TreeCellRenderer } from "~/component/table/cell/renderer/TreeCell.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
@@ -306,9 +307,25 @@ class Row extends Component {
         this._treeCell = null;
 
         for (const field of targetFields) {
-            let cell        = byName.get(field.getName());
-            const isNew     = !cell;
             const fieldName = field.getName();
+            let cell        = byName.get(fieldName);
+
+            // A config change can flip a column between its combo cell and
+            // its field-type-driven cell. Discard a surviving cell whose
+            // kind no longer matches the current config so it rebuilds with
+            // the right renderer + editor; commit any in-flight edit first.
+            const wantsCombo = (columnConfigs.get(fieldName)?.values?.length ?? 0) > 0;
+
+            if (cell && wantsCombo !== (cell instanceof ComboCell)) {
+                if (cell.isEditing()) {
+                    cell.commitEdit();
+                }
+
+                this.removeComponent(cell);
+                cell = undefined;
+            }
+
+            const isNew = !cell;
 
             if (!cell) {
                 cell = Row.createCellForField(field, columnConfigs);
@@ -371,6 +388,12 @@ class Row extends Component {
      * @returns A new typed cell matching `field.getType()`.
      */
     private static createCellForField(field: Field, columnConfigs: Map<string, ColumnConfig>): Cell<any> {
+        const values = columnConfigs.get(field.getName())?.values;
+
+        if (values && values.length > 0) {
+            return new ComboCell(field.getName(), values);
+        }
+
         switch (field.getType()) {
             case "string":
                 return new StringCell();

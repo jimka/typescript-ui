@@ -9,6 +9,7 @@ import { ModelRecord } from "~/data/ModelRecord.js";
 import { Row } from "~/component/table/Row.js";
 import { Cell } from "~/component/table/cell/Cell.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
+import { ComboEditor } from "~/component/table/cell/editor/Combo.js";
 import { Event } from "~/core/Event.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
 import { ThemeManager } from "~/core/Theme.js";
@@ -407,10 +408,34 @@ class Body extends Component {
      */
     setColumnConfigs(configs: Map<string, ColumnConfig>): this {
         this._columnConfigs = configs;
+        this.registerComboEditors(configs);
         this.syncPoolCells();
         this.renderWindow();
 
         return this;
+    }
+
+    /**
+     * Registers a per-column [`ComboEditor`](/api/component/table/classes/ComboEditor)
+     * factory on the editor pool for every column declaring `values`. The
+     * factory closes over that column's resolved option set, so each combo
+     * column borrows an editor wired to its own choices under the
+     * `combo:<field>` key returned by
+     * [`ComboCell.getEditorKey`](/api/component/table/classes/ComboCell#geteditorkey).
+     *
+     * `register` overwrites and drops any cached editor, so re-applying
+     * configs with new options rebuilds the editor on the next edit.
+     *
+     * @param configs - The column-config map keyed by field name.
+     */
+    private registerComboEditors(configs: Map<string, ColumnConfig>): void {
+        for (const [field, config] of configs) {
+            const values = config.values;
+
+            if (values && values.length > 0) {
+                this._editorPool.register(`combo:${field}`, () => new ComboEditor(values));
+            }
+        }
     }
 
     /**

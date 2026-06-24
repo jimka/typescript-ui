@@ -3,6 +3,45 @@
 import type { ModelRecord } from "~/data/ModelRecord.js";
 
 /**
+ * One selectable option for a constrained-choice (combo-box) column.
+ *
+ * A plain string in a {@link ColumnConfig.values} array is shorthand for
+ * `{ value: s, label: s }`; an object form lets the value stored on the
+ * record differ from the text shown to the user (e.g. value `"AU"`, label
+ * `"Australia"`).
+ *
+ * @category Components
+ */
+export interface ComboOption {
+    /** The value stored on the record and round-tripped by the cell. */
+    value:  string;
+    /** Display text shown in the cell and dropdown; defaults to `value`. */
+    label?: string;
+}
+
+/**
+ * Expands a {@link ColumnConfig.values} array — whose entries are either
+ * plain strings or {@link ComboOption} objects — into fully-populated
+ * `{ value, label }` pairs, defaulting an omitted `label` to the `value`.
+ *
+ * Shared by the combo cell's renderer (which builds a value-to-label map)
+ * and its editor (which builds the dropdown's item list) so the two never
+ * disagree about what label a value renders.
+ *
+ * @param options - The raw `values` entries from a column config.
+ * @returns One `{ value, label }` pair per entry, in the same order.
+ *
+ * @internal
+ */
+export function normalizeComboOptions(options: Array<ComboOption | string>): Array<Required<ComboOption>> {
+    return options.map(option =>
+        typeof option === "string"
+            ? { value: option, label: option }
+            : { value: option.value, label: option.label ?? option.value },
+    );
+}
+
+/**
  * Presentation configuration for a single table column.
  *
  * References a model field by name and carries optional display constraints.
@@ -75,6 +114,18 @@ export interface ColumnConfig {
      * Defaults to `false` (hours and minutes only).
      */
     showSeconds ?: boolean;
+    /**
+     * When present, this column renders as a constrained-choice (combo-box)
+     * cell regardless of the field's declared type. The inline editor offers
+     * exactly these options; the cell displays each option's label for the
+     * stored value, falling back to the raw value when it is not in the set.
+     *
+     * Each entry is either a plain string (shorthand for value === label) or
+     * a {@link ComboOption} `{ value, label }` pair. The value stored on the
+     * record is always the option's `value` string. An empty or absent array
+     * leaves the column on its field-type-driven cell.
+     */
+    values      ?: Array<ComboOption | string>;
     /**
      * Registry glyph name shown to the left of the header text.
      * Omit for no glyph; no left-side gap is reserved when absent.
