@@ -31,6 +31,9 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
+    // One self-contained app/library bundle is an intentional choice here, so
+    // raise the advisory size threshold to silence the >500 kB chunk warning.
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       output: {
         // The framework derives every component's CSS class (and layout

@@ -16,6 +16,13 @@ export default defineConfig({
     cleanUrls:   true,
     lastUpdated: true,
 
+    // The local full-text search index ships as one large (~39 MB) chunk that
+    // VitePress lazy-loads only when search is opened, so it doesn't affect
+    // page load. Raise the advisory threshold past it to silence the warning.
+    vite: {
+        build: { chunkSizeWarningLimit: 50000 },
+    },
+
     themeConfig: {
         nav: [
             { text: 'Guide',      link: '/guide/' },
