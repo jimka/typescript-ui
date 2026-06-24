@@ -25,6 +25,10 @@ TypeDoc emits one entry-point bundle per subpath, so `{@link Foo}` only resolves
 
 Subpath kinds: `classes`, `interfaces`, `enumerations`, `type-aliases`, `variables`, `functions`. For colliding names (`Border`, `Body`, `Column`, `Header`, `Row`), spell out the subpath in the link.
 
+### Never link an internal symbol from public JSDoc
+
+The build excludes `private`, `protected`, and `@internal` members, plus anything not re-exported from an entry point. A `{@link}` from a *documented* symbol to one of those produces a *"links to X which was resolved but is not included in the documentation"* warning, because the generated page would point nowhere. So the JSDoc of an exported symbol may only `{@link}` other symbols that appear in the public API docs — to mention internal mechanics, **describe the behaviour in prose** ("derived live from the content row + perimeter") rather than naming the symbol. See the matching rule in `CODE_CONVENTIONS.md`.
+
 ## typedoc-callable-plugin
 
 Classes exported as `export { XCallable as X }` (where `const X = callable(_X)`) are auto-promoted from `variables/` to `classes/` by `typedoc-callable-plugin.mjs`. No setup needed. If a new class lands under `variables/` after build, verify: export form is `XCallable as X`, inner `_X` is a real `class` declaration, wrapping call is literally `callable(...)`.
