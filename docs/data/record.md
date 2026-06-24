@@ -36,6 +36,28 @@ record?.commit();                // clears dirty flag
 
 `set` also coerces the value to the field's [type](/data/model#value-coercion), so `record.set('age', '31')` stores the number `31`. Values assigned to a name that is not a model field pass through unchanged.
 
+Mutating a field on a record that belongs to a store also **auto-notifies that store** — every view bound to the same store instance refreshes. This is in-memory propagation only and is unrelated to proxy persistence: as noted above, saving still requires an explicit `commit()` (or your app's save action). A no-op `set` (same value) notifies nobody.
+
+### Batch edits and silent writes
+
+Setting several fields one at a time fires one refresh per `set`. To coalesce them into a single notification, wrap the writes in a record batch:
+
+```typescript
+record.beginEdit();
+record.set('first', 'Ada');
+record.set('last', 'Lovelace');
+record.commitEdit();             // one notification carrying both changes
+// record.cancelEdit();          // alternative: discard the batch, revert both fields
+```
+
+`setMany` is the shorthand for the common case:
+
+```typescript
+record.setMany({ first: 'Ada', last: 'Lovelace' });   // one notification
+```
+
+Batches nest: a `setMany` (or another `beginEdit`) inside an open batch collapses into the outer one, so only the outermost `commitEdit` fires, diffed against the outermost baseline. `setSilent(field, value)` mutates a field without notifying at all — for framework-internal writes whose surrounding operation already signals the change.
+
 ## Inspecting changes
 
 `getChanges()` returns a `{ old, new }` map of every field changed since the last `commit()`; `getModified()` is an alias. Both return an empty object for a clean record.
