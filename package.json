@@ -108,10 +108,12 @@
     "test:lint": "node scripts/eslint/forward-super-options.test.mjs && node scripts/eslint/no-element-style.test.mjs && node scripts/eslint/no-raw-dom.test.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "cloc": "cloc src/typescript/lib --include-lang=TypeScript"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.9",
+    "cloc": "^2.6.0-cloc",
     "concurrently": "^6.3.0",
     "eslint": "^9.0.0",
     "google-closure-compiler": "^20200406.0.0",
