@@ -26,7 +26,7 @@ describe('RecordingDOMSink', () => {
             { op: 'createElement', args: ['div'] },
             { op: 'createElement', args: ['span'] },
             { op: 'apply',         args: [el, { addClass: ['Panel'], setAttr: { role: 'group' }, style: { width: '100px' } }] },
-            { op: 'appendChild',   args: [] },
+            { op: 'appendChild',   args: [el, child] },
             { op: 'apply',         args: [el, { toggleClass: { active: true } }] },
         ]);
     });

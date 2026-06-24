@@ -62,6 +62,25 @@ interface HandleStub {
     value:      string;
     scrollLeft: number;
     scrollTop:  number;
+    /** Intrinsic image size, seeded by {@link setNaturalSize} (default 0). */
+    naturalWidth:  number;
+    naturalHeight: number;
+    /**
+     * Accumulated geometry-relevant inline-style writes, folded by
+     * {@link RecordingDOMSink.apply} and parsed by
+     * {@link ModelledDOMSource.getElementRect}. Default `""` (no write recorded).
+     */
+    styleLeft:      string;
+    styleTop:       string;
+    styleWidth:     string;
+    styleHeight:    string;
+    styleTransform: string;
+    /**
+     * Per-handle border inset for geometry composition, seeded by
+     * {@link setBorderInset}. Border is written rule-side and un-attributable per
+     * handle offline, so it is an explicit injected input (default `{0,0,0,0}`).
+     */
+    borderInset: { top: number; right: number; bottom: number; left: number };
 }
 
 /**
@@ -72,6 +91,9 @@ interface HandleStub {
  */
 class TestHandleTable {
     private readonly _stubs = new Map<Handle, HandleStub>();
+    private readonly _parents = new Map<Handle, Handle>();
+    private readonly _byId = new Map<string, Handle>();
+    private _focus: Handle | null = null;
     private _next = 1;
 
     /**
@@ -85,11 +107,19 @@ class TestHandleTable {
 
         this._next += 1;
         this._stubs.set(handle, {
-            tagName:    tag.toUpperCase(),
-            id:         '',
-            value:      '',
-            scrollLeft: 0,
-            scrollTop:  0,
+            tagName:        tag.toUpperCase(),
+            id:             '',
+            value:          '',
+            scrollLeft:     0,
+            scrollTop:      0,
+            naturalWidth:   0,
+            naturalHeight:  0,
+            styleLeft:      '',
+            styleTop:       '',
+            styleWidth:     '',
+            styleHeight:    '',
+            styleTransform: '',
+            borderInset:    { top: 0, right: 0, bottom: 0, left: 0 },
         });
 
         return handle;
@@ -110,10 +140,101 @@ class TestHandleTable {
 
         return stub;
     }
+
+    /** Every handle the table has minted, in mint order. */
+    handles(): Handle[] {
+        return Array.from(this._stubs.keys());
+    }
+
+    /**
+     * Records or clears a child's parent pointer in the modelled tree.
+     *
+     * @param child - The child handle.
+     * @param parent - The parent handle, or null to clear.
+     */
+    setParent(child: Handle, parent: Handle | null): void {
+        if (parent === null) {
+            this._parents.delete(child);
+
+            return;
+        }
+
+        this._parents.set(child, parent);
+    }
+
+    /**
+     * Returns a handle's recorded parent in the modelled tree.
+     *
+     * @param handle - The child handle.
+     * @returns The parent handle, or null when none was recorded.
+     */
+    parent(handle: Handle): Handle | null {
+        return this._parents.get(handle) ?? null;
+    }
+
+    /**
+     * Indexes a handle under an id for {@link byId} (called from `setId`).
+     *
+     * @param handle - The handle to index.
+     * @param id - The id to index it under (empty clears nothing).
+     */
+    indexId(handle: Handle, id: string): void {
+        if (id) {
+            this._byId.set(id, handle);
+        }
+    }
+
+    /**
+     * Looks up the handle indexed under an id.
+     *
+     * @param id - The id to resolve.
+     * @returns The indexed handle, or null.
+     */
+    byId(id: string): Handle | null {
+        return this._byId.get(id) ?? null;
+    }
+
+    /**
+     * Records or clears the focused handle.
+     *
+     * @param handle - The newly-focused handle, or null to clear.
+     */
+    setFocus(handle: Handle | null): void {
+        this._focus = handle;
+    }
+
+    /**
+     * Returns the focused handle.
+     *
+     * @returns The focused handle, or null when nothing is focused.
+     */
+    focus(): Handle | null {
+        return this._focus;
+    }
 }
 
 /** The shared table, rebuilt by {@link installTestDOM}. */
 let _table = new TestHandleTable();
+
+/** The stable window handle, minted once per {@link installTestDOM}. */
+let _windowHandle: Handle = 0 as Handle;
+
+/**
+ * The brand a {@link makeEvent} sentinel carries on its `target`, so the
+ * modelled {@link ModelledDOMSource.intern} resolves it straight back to the
+ * element handle rather than minting a fresh stub.
+ */
+const SENTINEL_TARGET = Symbol('TestDOM.sentinelTarget');
+
+/** A plain event target the modelled `intern` maps back to its embedded handle. */
+interface SentinelTarget {
+    [SENTINEL_TARGET]: Handle;
+}
+
+/** Type guard recognising a {@link makeEvent} sentinel target. */
+function isSentinelTarget(target: unknown): target is SentinelTarget {
+    return typeof target === 'object' && target !== null && SENTINEL_TARGET in target;
+}
 
 /**
  * No-op write sink: every structural mutation and batched {@link ElementPatch}
@@ -122,6 +243,14 @@ let _table = new TestHandleTable();
  */
 export class RecordingDOMSink implements DOMSink {
     readonly writes: Array<{ op: string; args: unknown[] }> = [];
+
+    /**
+     * Registered listeners, keyed by target handle then event type. The
+     * framework registers all its base listeners on the window handle, so in
+     * practice this holds one set per type under the window, plus whatever a
+     * test registers directly.
+     */
+    private readonly _listeners = new Map<Handle, Map<string, Set<Function>>>();
 
     private record(op: string, ...args: unknown[]): void {
         this.writes.push({ op, args });
@@ -141,6 +270,38 @@ export class RecordingDOMSink implements DOMSink {
         if (patch.scrollTop !== undefined) {
             stub.scrollTop = patch.scrollTop;
         }
+
+        this.foldGeometry(stub, patch);
+    }
+
+    /**
+     * Folds the latest geometry-relevant inline-style declarations
+     * (`left`/`top`/`width`/`height`/`transform`) from a patch onto the stub, so
+     * {@link ModelledDOMSource.getElementRect} can parse what was written. A
+     * `null` declaration clears the field; last write wins.
+     *
+     * @param stub - The target handle's stub.
+     * @param patch - The applied patch.
+     */
+    private foldGeometry(stub: HandleStub, patch: ElementPatch): void {
+        const style = patch.style;
+
+        if (!style) {
+            return;
+        }
+
+        const fold = (key: 'left' | 'top' | 'width' | 'height' | 'transform', field:
+            'styleLeft' | 'styleTop' | 'styleWidth' | 'styleHeight' | 'styleTransform'): void => {
+            if (key in style) {
+                stub[field] = style[key] ?? '';
+            }
+        };
+
+        fold('left', 'styleLeft');
+        fold('top', 'styleTop');
+        fold('width', 'styleWidth');
+        fold('height', 'styleHeight');
+        fold('transform', 'styleTransform');
     }
 
     edit(handle: Handle): PatchBuilder {
@@ -177,24 +338,29 @@ export class RecordingDOMSink implements DOMSink {
         return _table.mint(tag);
     }
 
-    appendChild(_parent: Handle, _child: Handle): void {
-        this.record('appendChild');
+    appendChild(parent: Handle, child: Handle): void {
+        this.record('appendChild', parent, child);
+        _table.setParent(child, parent);
     }
 
-    removeChild(_parent: Handle, _child: Handle): void {
+    removeChild(_parent: Handle, child: Handle): void {
         this.record('removeChild');
+        _table.setParent(child, null);
     }
 
-    removeElement(_handle: Handle): void {
+    removeElement(handle: Handle): void {
         this.record('removeElement');
+        _table.setParent(handle, null);
     }
 
-    focus(_handle: Handle, options?: { preventScroll?: boolean }): void {
+    focus(handle: Handle, options?: { preventScroll?: boolean }): void {
         this.record('focus', options);
+        _table.setFocus(handle);
     }
 
     blur(_handle: Handle): void {
         this.record('blur');
+        _table.setFocus(null);
     }
 
     setValue(handle: Handle, value: string): void {
@@ -206,16 +372,50 @@ export class RecordingDOMSink implements DOMSink {
         this.record('setSelectionRange', start, end);
     }
 
-    addListener<T extends Event = Event>(_target: Handle, type: string, _handler: (event: T) => void, _options?: boolean | AddEventListenerOptions): void {
+    addListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, _options?: boolean | AddEventListenerOptions): void {
         this.record('addListener', type);
+
+        let byType = this._listeners.get(target);
+
+        if (!byType) {
+            byType = new Map<string, Set<Function>>();
+            this._listeners.set(target, byType);
+        }
+
+        let set = byType.get(type);
+
+        if (!set) {
+            set = new Set<Function>();
+            byType.set(type, set);
+        }
+
+        set.add(handler as Function);
     }
 
-    removeListener<T extends Event = Event>(_target: Handle, type: string, _handler: (event: T) => void, _options?: boolean | EventListenerOptions): void {
+    removeListener<T extends Event = Event>(target: Handle, type: string, handler: (event: T) => void, _options?: boolean | EventListenerOptions): void {
         this.record('removeListener', type);
+
+        this._listeners.get(target)?.get(type)?.delete(handler as Function);
     }
 
+    /**
+     * Reproduces what the browser does to reach `baseListener`: resolves the
+     * window-handle listeners registered for the event's type and invokes each
+     * with the same event object (so consume-once markers survive). It does NOT
+     * walk the element tree — `baseListener` does that by reading the source.
+     */
     dispatchEvent(_target: Handle, event: Event): void {
         this.record('dispatchEvent', event.type);
+
+        const handlers = this._listeners.get(_windowHandle)?.get(event.type);
+
+        if (!handlers) {
+            return;
+        }
+
+        for (const handler of Array.from(handlers)) {
+            (handler as (event: Event) => void)(event);
+        }
     }
 
     requestAnimationFrame(_callback: FrameRequestCallback): number {
@@ -231,10 +431,12 @@ export class RecordingDOMSink implements DOMSink {
     setId(handle: Handle, id: string): void {
         this.record('setId', id);
         _table.stub(handle).id = id;
+        _table.indexId(handle, id);
     }
 
-    insertBefore(_parent: Handle, _node: Handle, _reference: Handle | null): void {
+    insertBefore(parent: Handle, node: Handle, _reference: Handle | null): void {
         this.record('insertBefore');
+        _table.setParent(node, parent);
     }
 
     createDocumentFragment(): Handle {
@@ -314,8 +516,16 @@ export class ModelledDOMSource implements DOMSource {
         this._config = config;
     }
 
-    /** Interns a raw target by minting a fresh stub handle off the shared table. */
-    intern(_target: EventTarget): Handle {
+    /**
+     * Interns a raw target. A {@link makeEvent} sentinel resolves straight back
+     * to its embedded element handle; any other target mints a fresh stub
+     * (today's behaviour, preserved for non-sentinel callers).
+     */
+    intern(target: EventTarget): Handle {
+        if (isSentinelTarget(target)) {
+            return target[SENTINEL_TARGET];
+        }
+
         return _table.mint('');
     }
 
@@ -345,12 +555,36 @@ export class ModelledDOMSource implements DOMSource {
     }
 
     /**
-     * The modelled source has no model for arbitrary non-component elements, so
-     * it reports a zero rect. Offline assertions are scoped to component
-     * geometry via {@link getViewportRect}.
+     * Composes a handle's viewport rect from the inline-style writes the sink
+     * recorded (`left`/`top`/`width`/`height`/`transform`), climbing the
+     * modelled tree and adding each ancestor's local offset + injected border
+     * inset, subtracting its recorded scroll, and adding the root mount offset.
+     * Sourced entirely from written values, NOT cached component fields, so a
+     * cached-but-not-written divergence is observable. A handle with no recorded
+     * `width`/`height` write returns the zero rect.
      */
-    getElementRect(_handle: Handle): Rect {
-        return makeRect(0, 0, 0, 0);
+    getElementRect(handle: Handle): Rect {
+        const self = localBox(_table.stub(handle));
+
+        if (self.w === 0 && self.h === 0 && _table.stub(handle).styleWidth === '' && _table.stub(handle).styleHeight === '') {
+            return makeRect(0, 0, 0, 0);
+        }
+
+        let x = self.x;
+        let y = self.y;
+
+        for (let parent = _table.parent(handle); parent !== null; parent = _table.parent(parent)) {
+            const parentStub = _table.stub(parent);
+            const parentBox  = localBox(parentStub);
+
+            x += parentBox.x + parentStub.borderInset.left - parentStub.scrollLeft;
+            y += parentBox.y + parentStub.borderInset.top  - parentStub.scrollTop;
+        }
+
+        x += this._config.rootMountOffset.x;
+        y += this._config.rootMountOffset.y;
+
+        return makeRect(x, y, self.w, self.h);
     }
 
     measureText(text: string, _options?: TextMeasureOptions): TextMetrics {
@@ -407,16 +641,34 @@ export class ModelledDOMSource implements DOMSource {
     }
 
     /**
-     * Committed-geometry tests don't assert native overflow, so the modelled
-     * source reports a zeroed metrics box (no scrollable content).
+     * Reports the handle's written client box (`width`/`height`) and recorded
+     * scroll offsets. Absent an injected overflow extent, the scroll extent
+     * equals the client box (no overflow).
      */
-    getScrollMetrics(_handle: Handle): ScrollMetrics {
-        return { scrollTop: 0, scrollLeft: 0, scrollWidth: 0, scrollHeight: 0, clientWidth: 0, clientHeight: 0 };
+    getScrollMetrics(handle: Handle): ScrollMetrics {
+        const stub        = _table.stub(handle);
+        const clientWidth  = px(stub.styleWidth);
+        const clientHeight = px(stub.styleHeight);
+
+        return {
+            scrollTop:    stub.scrollTop,
+            scrollLeft:   stub.scrollLeft,
+            scrollWidth:  clientWidth,
+            scrollHeight: clientHeight,
+            clientWidth,
+            clientHeight,
+        };
     }
 
-    /** No offset-box model offline; reports zeros. */
-    getOffsetSize(_handle: Handle): OffsetSize {
-        return { offsetTop: 0, offsetHeight: 0 };
+    /**
+     * Reports the handle's offset-box top edge (its recorded `top` write,
+     * relative to its offset parent in the modelled tree) and its recorded
+     * `height` write.
+     */
+    getOffsetSize(handle: Handle): OffsetSize {
+        const stub = _table.stub(handle);
+
+        return { offsetTop: px(stub.styleTop), offsetHeight: px(stub.styleHeight) };
     }
 
     /** The modelled source never attaches elements to a document. */
@@ -429,9 +681,9 @@ export class ModelledDOMSource implements DOMSource {
         return _table.stub(handle).value;
     }
 
-    /** No focus model offline; reports nothing focused. */
+    /** Reads the focused handle recorded by the sink's `focus`/`blur`. */
     getActiveElement(): Handle | null {
-        return null;
+        return _table.focus();
     }
 
     /** Modelled media query: never matches; change subscription is a no-op. */
@@ -444,13 +696,23 @@ export class ModelledDOMSource implements DOMSource {
         return false;
     }
 
-    /** Offline window target — a fresh stub handle for listener registration. */
+    /**
+     * The stable window handle minted once per {@link installTestDOM}, so the
+     * listener `installBaseListener` registers and the lookup `dispatchEvent`
+     * performs agree on one window handle.
+     */
     getWindow(): Handle {
-        return _table.mint('window');
+        return _windowHandle;
     }
 
-    /** No DOM tree offline; containment is always false. */
-    contains(_ancestor: Handle, _node: Handle | null): boolean {
+    /** Climbs `node`'s recorded parents looking for `ancestor` (inclusive). */
+    contains(ancestor: Handle, node: Handle | null): boolean {
+        for (let h: Handle | null = node; h !== null; h = _table.parent(h)) {
+            if (h === ancestor) {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -464,14 +726,14 @@ export class ModelledDOMSource implements DOMSource {
         return [];
     }
 
-    /** No DOM tree offline. */
-    getParentElement(_handle: Handle): Handle | null {
-        return null;
+    /** Returns the handle's recorded parent in the modelled tree. */
+    getParentElement(handle: Handle): Handle | null {
+        return _table.parent(handle);
     }
 
-    /** No DOM tree offline. */
-    getParentNode(_handle: Handle): Handle | null {
-        return null;
+    /** Returns the handle's recorded parent in the modelled tree. */
+    getParentNode(handle: Handle): Handle | null {
+        return _table.parent(handle);
     }
 
     /** No DOM tree offline. */
@@ -516,8 +778,8 @@ export class ModelledDOMSource implements DOMSource {
         return '';
     }
 
-    getElementById(_id: string): Handle | null {
-        return null;
+    getElementById(id: string): Handle | null {
+        return _table.byId(id);
     }
 
     getId(handle: Handle): string {
@@ -548,8 +810,11 @@ export class ModelledDOMSource implements DOMSource {
         return undefined;
     }
 
-    getNaturalSize(_handle: Handle): { width: number; height: number } {
-        return { width: 0, height: 0 };
+    /** Reads the intrinsic size seeded by {@link setNaturalSize} (default 0). */
+    getNaturalSize(handle: Handle): { width: number; height: number } {
+        const stub = _table.stub(handle);
+
+        return { width: stub.naturalWidth, height: stub.naturalHeight };
     }
 
     getFiles(_handle: Handle): FileList | null {
@@ -560,8 +825,44 @@ export class ModelledDOMSource implements DOMSource {
         return false;
     }
 
-    elementsFromPoint(_x: number, _y: number): Handle[] {
-        return [];
+    /**
+     * Returns the stack of handles whose written-rect contains `(x, y)`,
+     * topmost first. With no z-index model, paint order is DOM order: a
+     * descendant paints over its ancestor (deeper tree depth = topmost), and a
+     * later sibling over an earlier one (later mint order = topmost).
+     */
+    elementsFromPoint(x: number, y: number): Handle[] {
+        const hits = _table.handles().filter((handle) => {
+            const rect = this.getElementRect(handle);
+
+            if (rect.width === 0 && rect.height === 0) {
+                return false;
+            }
+
+            return x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom;
+        });
+
+        hits.sort((a, b) => {
+            const depthDelta = this.treeDepth(b) - this.treeDepth(a);
+
+            // Tie-break by mint order: a later-minted (later-appended) sibling
+            // paints on top, so it sorts first.
+
+            return depthDelta !== 0 ? depthDelta : (b as number) - (a as number);
+        });
+
+        return hits;
+    }
+
+    /** Counts a handle's ancestors in the modelled tree (0 at the root). */
+    private treeDepth(handle: Handle): number {
+        let depth = 0;
+
+        for (let parent = _table.parent(handle); parent !== null; parent = _table.parent(parent)) {
+            depth += 1;
+        }
+
+        return depth;
     }
 
     /**
@@ -598,6 +899,43 @@ export class ModelledDOMSource implements DOMSource {
     }
 }
 
+/** Parses a recorded `"<n>px"` write to a number, defaulting to 0. */
+function px(value: string): number {
+    const n = parseFloat(value);
+
+    return isNaN(n) ? 0 : n;
+}
+
+/**
+ * Parses a recorded `transform` write to its translate offset. Accepts the 3D
+ * form `setTranslate` writes (`translate3d(<x>px,<y>px,0)`) and a plain
+ * `translate(<x>px,<y>px)`; any other value is `[0, 0]`.
+ *
+ * @param transform - The recorded `transform` style write.
+ * @returns The `[x, y]` translate offset in pixels.
+ */
+function parseTranslate(transform: string): [number, number] {
+    const match = /translate(?:3d)?\(\s*(-?[\d.]+)px\s*,\s*(-?[\d.]+)px/.exec(transform);
+
+    if (!match) {
+        return [0, 0];
+    }
+
+    return [parseFloat(match[1]), parseFloat(match[2])];
+}
+
+/** The local box (position + size) parsed from a stub's recorded writes. */
+function localBox(stub: HandleStub): { x: number; y: number; w: number; h: number } {
+    const [tx, ty] = parseTranslate(stub.styleTransform);
+
+    return {
+        x: px(stub.styleLeft) + tx,
+        y: px(stub.styleTop) + ty,
+        w: px(stub.styleWidth),
+        h: px(stub.styleHeight),
+    };
+}
+
 /** Builds a {@link Rect} with the `DOMRect`-style derived edges filled in. */
 function makeRect(x: number, y: number, width: number, height: number): Rect {
     return {
@@ -619,6 +957,7 @@ function makeRect(x: number, y: number, width: number, height: number): Rect {
  */
 export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
     _table = new TestHandleTable();
+    _windowHandle = _table.mint('window');
 
     const sink   = new RecordingDOMSink();
     const source = new ModelledDOMSource(config);
@@ -626,4 +965,72 @@ export function installTestDOM(config: ModelledDOMConfig): RecordingDOMSink {
     DOM.install({ sink, source });
 
     return sink;
+}
+
+/**
+ * Builds a synthetic event whose `target` resolves through the modelled
+ * {@link ModelledDOMSource.intern} straight back to `target`, so the framework's
+ * `baseListener` routes it to the right component. A plain sentinel object
+ * (not a jsdom `Event`) carries the type, optional coordinate/key/button fields,
+ * and an intact `stopPropagation`/`preventDefault` so the wrap-and-detect logic
+ * in `Event.ts` works unchanged. The same object is delivered to every listener
+ * in a dispatch, so a consume-once marker survives across them.
+ *
+ * @param target - The element handle the event targets.
+ * @param type - The event type (e.g. `"click"`).
+ * @param init - Optional `clientX`/`clientY`/`key`/`button`/`detail` fields.
+ * @returns The synthetic event.
+ */
+export function makeEvent(
+    target: Handle,
+    type: string,
+    init?: { clientX?: number; clientY?: number; key?: string; button?: number; detail?: unknown }
+): Event {
+    const sentinel: SentinelTarget = { [SENTINEL_TARGET]: target };
+
+    const event = {
+        type,
+        target:          sentinel,
+        clientX:         init?.clientX,
+        clientY:         init?.clientY,
+        key:             init?.key,
+        button:          init?.button,
+        detail:          init?.detail,
+        stopPropagation: function (): void {},
+        preventDefault:  function (): void {},
+    };
+
+    return event as unknown as Event;
+}
+
+/**
+ * Seeds a handle's intrinsic image size, read back by
+ * {@link ModelledDOMSource.getNaturalSize} (which has no geometric derivation).
+ *
+ * @param handle - The image element handle.
+ * @param width - The intrinsic width in pixels.
+ * @param height - The intrinsic height in pixels.
+ */
+export function setNaturalSize(handle: Handle, width: number, height: number): void {
+    const stub = _table.stub(handle);
+
+    stub.naturalWidth  = width;
+    stub.naturalHeight = height;
+}
+
+/**
+ * Seeds a handle's border inset for geometry composition. Border width is
+ * written rule-side (keyed by the `CSSStyleRule` object, not the handle), so it
+ * is un-attributable per handle offline — composition reads this injected inset
+ * instead of a cached component field. Only tests with bordered parents need it
+ * (default `{0,0,0,0}`).
+ *
+ * @param handle - The element handle.
+ * @param insets - The four-sided border inset in pixels.
+ */
+export function setBorderInset(
+    handle: Handle,
+    insets: { top: number; right: number; bottom: number; left: number }
+): void {
+    _table.stub(handle).borderInset = insets;
 }
