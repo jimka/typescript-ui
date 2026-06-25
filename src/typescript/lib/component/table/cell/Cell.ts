@@ -85,6 +85,23 @@ export class Cell<T> extends Component {
     }
 
     /**
+     * Opts out of content-size clamping: a cell fits the geometry its host
+     * {@link Body} force-assigns (column width × row height), exactly like a
+     * {@link Container} fits its parent's allocation. Without this, a cell
+     * whose visible child carries a hard maximum — e.g. {@link BooleanCell}'s
+     * 16×16 checkbox — would clamp {@link Component.setHeight} down to that
+     * child max and sit shorter than the row, pinning the checkbox to the top
+     * instead of letting the cell's anchored layout centre it. Only the cell's
+     * own explicit min/max remain hard limits.
+     *
+     * @returns `false` — clamp to explicit constraints only, never to the
+     *   content-derived size.
+     */
+    protected clampsToContentSize(): boolean {
+        return false;
+    }
+
+    /**
      * Returns the pool-key that selects which shared editor this cell should borrow on edit.
      *
      * @returns A string key registered on the {@link CellEditorPool}, or `null` to opt out of
