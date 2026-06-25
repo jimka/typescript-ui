@@ -544,6 +544,13 @@ class Body extends Component {
         // clicks on subtree-owned widgets like the expand/collapse toggle.
         Event.addSubtreeListener(this, "click", (e: MouseEvent) => this.onSubtreeClick(e));
 
+        // A double-click starts an inline edit (wired on the cell's renderer).
+        // The preceding click has already set _focusedColIndex to the target
+        // column, so reveal it through the scroll model before the editor takes
+        // focus — the editor focuses with preventScroll, so the browser no
+        // longer scrolls the clipped body out from under the header + scrollbar.
+        Event.addSubtreeListener(this, "dblclick", () => this.scrollColumnIntoView(this._focusedColIndex));
+
         this.renderWindow();
 
         return this;
@@ -1387,6 +1394,11 @@ class Body extends Component {
                     this._updateFocusStyle();
                     this._updateActiveDescendant();
                 });
+
+                // Mirror the double-click path: reveal the column through the
+                // scroll model so the editor (focused with preventScroll) opens
+                // fully visible instead of off the right edge.
+                this.scrollColumnIntoView(this._focusedColIndex);
                 typedCell.startEdit();
             }
 
@@ -1450,6 +1462,47 @@ class Body extends Component {
         }
         if (target !== scrollTop) {
             this.setScrollY(target);
+        }
+    }
+
+    /**
+     * Scrolls the body horizontally so the column at `colIndex` is fully
+     * visible, without moving the viewport unless necessary. The horizontal
+     * mirror of {@link scrollRecordIntoView}.
+     *
+     * @param colIndex - The visible-column index to reveal.
+     *
+     * @remarks Driving the shared {@link VirtualScroller} keeps the header
+     * translate and the scrollbar thumb in sync with the move. This is why an
+     * inline edit routes through here rather than relying on the browser's
+     * native focus-scroll: that scroll shifts only the clipped content layer
+     * and leaves the header + scrollbar behind. `protected` so subclasses can
+     * reuse it. Not for consumer use.
+     */
+    protected scrollColumnIntoView(colIndex: number): void {
+        const widths = this._lastColumnWidths;
+
+        if (!this._scroller || colIndex < 0 || colIndex >= widths.length) {
+            return;
+        }
+
+        let left = 0;
+        for (let i = 0; i < colIndex; i++) {
+            left += widths[i];
+        }
+        const right         = left + widths[colIndex];
+        const scrollLeft    = this._scroller.getScrollX();
+        const viewportWidth = this.getWidth() || 0;
+        const visibleRight  = scrollLeft + viewportWidth;
+
+        let target = scrollLeft;
+        if (left < scrollLeft) {
+            target = left;
+        } else if (right > visibleRight) {
+            target = right - viewportWidth;
+        }
+        if (target !== scrollLeft) {
+            this.setScrollX(target);
         }
     }
 }

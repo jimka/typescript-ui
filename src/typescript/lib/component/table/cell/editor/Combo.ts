@@ -105,10 +105,12 @@ class ComboEditor extends CellEditor<String | null> {
      * Focuses the combo box surface and pops its dropdown so a double-click
      * on the cell lands the user straight in the option list.
      *
+     * @param preventScroll - Forwarded to the combo box's focus so a native
+     *   focus-scroll doesn't desync the table body's own scroll model.
      * @returns This component, for method chaining.
      */
-    focus(): this {
-        this._combo.focus();
+    focus(preventScroll: boolean = false): this {
+        this._combo.focus(preventScroll);
         this._combo.openDropdown();
 
         return this;

@@ -73,10 +73,12 @@ class StringEditor extends CellEditor<String | null> {
     /**
      * Focuses the text field and selects all its content.
      *
+     * @param preventScroll - Forwarded to the field's focus so a native
+     *   focus-scroll doesn't desync the table body's own scroll model.
      * @returns This component, for method chaining.
      */
-    focus(): this {
-        this._textField.focus();
+    focus(preventScroll: boolean = false): this {
+        this._textField.focus(preventScroll);
         this._textField.select();
 
         return this;

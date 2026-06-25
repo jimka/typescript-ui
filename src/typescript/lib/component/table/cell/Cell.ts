@@ -304,7 +304,12 @@ export class Cell<T> extends Component {
 
         this.getLayoutManager().setVisibleComponentId(editor.getId());
         this.doLayout();
-        editor.focus();
+        // preventScroll: the cell lives in the table body's overflow:hidden,
+        // translate-positioned scroll viewport. A native focus-scroll would
+        // shift the clipped content without moving the VirtualScroller's cached
+        // offset, desyncing the header + scrollbar. The body scrolls the column
+        // into view through the scroll model instead.
+        editor.focus(true);
     }
 
     /**
