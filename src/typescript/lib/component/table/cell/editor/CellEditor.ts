@@ -4,7 +4,34 @@ import { Component } from "~/core/Component.js";
 import { Fit } from "~/layout/Fit.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ThemeManager } from "~/core/Theme.js";
+import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+
+/**
+ * Interns the `relatedTarget` of a blur event into a {@link Handle}, or returns
+ * `null` when no node is receiving focus.
+ *
+ * A native `blur` carries `relatedTarget: Node | null`, but a cell editor that
+ * re-fires its inner field's blur as a synthetic `CustomEvent("blur")` (e.g.
+ * {@link StringEditor}, {@link NumberEditor}) has no `relatedTarget` at all —
+ * the property reads back `undefined`. Feeding that to
+ * [`DOM.source.intern`](/api/core/namespaces/DOM/interfaces/Source#intern)
+ * throws (`new WeakRef(undefined)` is a `TypeError`), which would abort the
+ * blur listener *before* it commits the edit — leaving the cell stuck in edit
+ * mode and the pooled editor un-released, so the whole column can no longer be
+ * edited. Treating both `null` and `undefined` as "focus left the editor
+ * entirely" keeps the commit path alive for the synthetic-blur editors while
+ * preserving the real-node answer the {@link CellEditor.retainsFocus} overrides
+ * depend on.
+ *
+ * @param e - The blur event, native or synthetically re-fired.
+ * @returns The interned handle of the focus target, or `null`.
+ *
+ * @category Components
+ */
+export function blurRelatedTargetHandle(e: FocusEvent): Handle | null {
+    return e.relatedTarget ? DOM.source.intern(e.relatedTarget) : null;
+}
 
 /**
  * The `detail` payload an editor forwards on its re-fired `"keydown"` custom

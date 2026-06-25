@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Event } from "~/core/Event.js";
-import { DOM } from "~/core/DOM.js";
 import type { Cell } from "~/component/table/cell/Cell.js";
-import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
+import { CellEditor, blurRelatedTargetHandle } from "~/component/table/cell/editor/CellEditor.js";
 import type { ForwardedKeyDetail } from "~/component/table/cell/editor/CellEditor.js";
 import { StringEditor } from "~/component/table/cell/editor/String.js";
 import { NumberEditor } from "~/component/table/cell/editor/Number.js";
@@ -120,7 +119,7 @@ export class CellEditorPool {
         editor.setCommitRequestHandler(() => this._activeCell?.commitEdit());
 
         Event.addListener(editor, "blur", (e: FocusEvent) => {
-            if (editor.retainsFocus(e.relatedTarget === null ? null : DOM.source.intern(e.relatedTarget))) {
+            if (editor.retainsFocus(blurRelatedTargetHandle(e))) {
                 return;
             }
 

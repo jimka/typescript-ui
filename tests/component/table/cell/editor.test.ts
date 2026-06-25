@@ -20,6 +20,7 @@ import { NumberEditor } from '~/component/table/cell/editor/Number';
 import { BooleanEditor } from '~/component/table/cell/editor/Boolean';
 import { DefaultCell } from '~/component/table/cell/Default';
 import type { ForwardedKeyDetail } from '~/component/table/cell/editor/CellEditor';
+import { blurRelatedTargetHandle } from '~/component/table/cell/editor/CellEditor';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -37,6 +38,37 @@ function typeInto(editor: unknown, text: string): void {
     (editor as any)._textField.setText(text);
     (editor as any).onInput();
 }
+
+describe('blurRelatedTargetHandle (blur relatedTarget normalization)', () => {
+    // Regression: StringEditor / NumberEditor re-fire their inner field's blur
+    // as a synthetic CustomEvent("blur"), whose `relatedTarget` is `undefined`
+    // (not `null`). The old guard `relatedTarget === null ? null : intern(...)`
+    // fed that `undefined` to DOM.source.intern — in production `new
+    // WeakRef(undefined)` throws, so the pool's blur listener aborted BEFORE it
+    // called commitEdit(): the string/number cell stuck in edit mode, never
+    // returned to its renderer, and the un-released pooled editor locked every
+    // other cell in the column. (Native-blur editors — Date/Time/DateTime —
+    // carry a real `null`/node and were unaffected, which is why only "some
+    // cell types" broke.) Both `null` and `undefined` must normalize to "focus
+    // left the editor entirely" → `null`, the value retainsFocus expects.
+    it('returns null when relatedTarget is undefined (synthetic blur)', () => {
+        expect(blurRelatedTargetHandle({} as FocusEvent)).toBe(null);
+    });
+
+    it('returns null when relatedTarget is null (native blur to nothing)', () => {
+        expect(blurRelatedTargetHandle({ relatedTarget: null } as FocusEvent)).toBe(null);
+    });
+
+    it('interns and returns the focus target when relatedTarget is a real node', () => {
+        // Mint a bare handle (no component, so no listeners) — the window base
+        // listener installs once per type and is not reset between tests, so
+        // constructing a real editor here would pollute the keydown-forward test.
+        const handle   = DOM.sink.createElement('input');
+        const sentinel = (makeEvent(handle, 'blur') as unknown as { target: EventTarget }).target;
+
+        expect(blurRelatedTargetHandle({ relatedTarget: sentinel } as unknown as FocusEvent)).toBe(handle);
+    });
+});
 
 describe('Editor keydown forward to the parent cell', () => {
     // The editor re-fires its inner field's keydown as a CustomEvent carrying the

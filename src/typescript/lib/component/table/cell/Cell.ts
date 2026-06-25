@@ -2,12 +2,11 @@
 
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
-import { DOM } from "~/core/DOM.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { Insets } from "~/primitive/Insets.js";
 import { Card } from "~/layout/Card.js";
 import { CellRenderer } from "~/component/table/cell/renderer/CellRenderer.js";
-import { CellEditor } from "~/component/table/cell/editor/CellEditor.js";
+import { CellEditor, blurRelatedTargetHandle } from "~/component/table/cell/editor/CellEditor.js";
 import type { ForwardedKeyDetail } from "~/component/table/cell/editor/CellEditor.js";
 import { CellEditorPool } from "~/component/table/cell/editor/CellEditorPool.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
@@ -72,7 +71,7 @@ export class Cell<T> extends Component {
             editor.setCommitRequestHandler(() => this.commitEdit());
 
             Event.addListener(editor, 'blur', (e: FocusEvent) => {
-                if (editor.retainsFocus(e.relatedTarget === null ? null : DOM.source.intern(e.relatedTarget))) {
+                if (editor.retainsFocus(blurRelatedTargetHandle(e))) {
                     return;
                 }
 

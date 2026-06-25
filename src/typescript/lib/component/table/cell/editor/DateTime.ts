@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { TextInputCellEditor } from "~/component/table/cell/editor/TextInputCellEditor.js";
+import { blurRelatedTargetHandle } from "~/component/table/cell/editor/CellEditor.js";
 import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
@@ -223,7 +224,7 @@ class DateTimeEditor extends TextInputCellEditor<Date | null> {
      * @param e - The blur event.
      */
     private onEditorBlur(e: FocusEvent): void {
-        if (this.retainsFocus(e.relatedTarget === null ? null : DOM.source.intern(e.relatedTarget))) {
+        if (this.retainsFocus(blurRelatedTargetHandle(e))) {
             return;
         }
 
