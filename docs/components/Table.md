@@ -49,6 +49,7 @@ const table = Table(store, {
 | `readOnly` | When `true`, every cell in this column is display-only — double-click does not start an editor, and the cell renders with a subtle grey tint sourced from `--ts-ui-table-cell-readonly-bg`. Selection, keyboard navigation, sort, resize, and export still work. |
 | `cellReadOnly` | Optional predicate `(record) => boolean`. When it returns `true` for a record, this column's cell on that record's row renders read-only. Composes with `readOnly` and `ColumnSpec.rowReadOnly` (cell is read-only when ANY of the three says so). |
 | `showSeconds` | For `time` / `datetime` columns: include seconds. |
+| `values` | When present, the column renders as a constrained-choice (combo-box) cell regardless of the field's type — see [Combo columns](#combo-columns). |
 | `headerGlyph` | Registry glyph name shown to the left of the header text. |
 | `group` | Parent-header group name. See [Parent headers](#parent-headers). |
 | `groupColor` | Optional background color for the parent-header cell. |
@@ -58,6 +59,30 @@ const table = Table(store, {
 `ColumnSpec.rowReadOnly` is an optional predicate `(record) => boolean`. When it returns `true` for a record, every cell in that record's row renders read-only with the grey tint, regardless of the column's own `readOnly` flag. The predicate runs on every row rebind; it must be O(1) and pure. Mutating a store-owned record auto-refreshes the table; call [`store.notifyRecordChanged(record)`](/api/data/classes/AbstractStore#notifyRecordChanged) only for an unowned record or to force a refresh.
 
 A cell is read-only when its column's `readOnly` flag is `true`, OR the spec's `rowReadOnly(record)` returns `true`, OR the column's `cellReadOnly(record)` returns `true`. The grey tint is the same in all three cases.
+
+## Combo columns
+
+Declare `values` on a column to turn it into a constrained-choice cell: the inline editor offers a dropdown of exactly those options instead of free text, and the cell displays each option's **label** for the stored value. This works regardless of the field's declared type — a `string` field is the natural fit, but any field can opt in.
+
+```typescript
+import { Table } from '@jimka/typescript-ui/component/table';
+const table = Table(store, {
+    columns: [
+        { field: 'name' },
+        { field: 'role', values: [
+            { value: 'dev', label: 'Developer' },
+            { value: 'qa',  label: 'QA Engineer' },
+            { value: 'pm',  label: 'Project Manager' },
+        ] },
+        { field: 'priority', values: ['Low', 'Medium', 'High'] },  // plain strings: value === label
+    ],
+});
+```
+
+- Each entry is either a `{ value, label }` pair ([`ComboOption`](/api/component/table/interfaces/ComboOption)) or a plain string, which is shorthand for `value === label`.
+- The **value** — the option's `value` string — is what is stored on the record and round-tripped on commit. The cell shows the matching **label**; a stored value outside the option set renders as the raw value rather than blanking.
+- Double-clicking a combo cell opens the dropdown; picking an option (mouse or keyboard) commits it. The column honours `readOnly` / `cellReadOnly` / `rowReadOnly` like any other cell.
+- `values` keys are strings. A combo column over a numeric field stores the chosen key verbatim as a string; convert on read if you need a number.
 
 ## Parent headers
 

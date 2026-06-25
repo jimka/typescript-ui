@@ -300,6 +300,21 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     }
 
     /**
+     * Mirrors a manager-allocated z-index onto the element when the dropdown —
+     * or the window / surface it was opened inside — is raised via
+     * {@link LayerManager.bringToFront}. Without this, the dropdown reads its
+     * z once in {@link showAnimated} and never updates; raising its host window
+     * (a `mousedown` brings the window to front) would then re-stamp the host
+     * above the dropdown's stale z, hiding the open panel — and its fade-out —
+     * behind the window.
+     *
+     * @param zIndex - The fresh z-index assigned by the manager.
+     */
+    onZIndexChanged(zIndex: number): void {
+        this.setZIndex(zIndex);
+    }
+
+    /**
      * Returns whether the dropdown is currently open (showing or fading in).
      *
      * @returns true when the dropdown is open.
