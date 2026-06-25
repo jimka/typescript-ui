@@ -462,6 +462,7 @@ class Body extends Component {
             // surviving cells.
             for (const cell of row.getComponents() as Cell<any>[]) {
                 cell.setEditorPool(this._editorPool);
+                cell.setScrollIntoViewHandler(() => this.scrollColumnIntoView(this._focusedColIndex));
             }
 
             // Per-slot geometry is keyed by cell position; both the
@@ -543,13 +544,6 @@ class Body extends Component {
         // `onSubtreeClick` so subclasses (e.g. `TreeBody`) can intercept
         // clicks on subtree-owned widgets like the expand/collapse toggle.
         Event.addSubtreeListener(this, "click", (e: MouseEvent) => this.onSubtreeClick(e));
-
-        // A double-click starts an inline edit (wired on the cell's renderer).
-        // The preceding click has already set _focusedColIndex to the target
-        // column, so reveal it through the scroll model before the editor takes
-        // focus — the editor focuses with preventScroll, so the browser no
-        // longer scrolls the clipped body out from under the header + scrollbar.
-        Event.addSubtreeListener(this, "dblclick", () => this.scrollColumnIntoView(this._focusedColIndex));
 
         this.renderWindow();
 
@@ -752,6 +746,7 @@ class Body extends Component {
 
             for (const cell of row.getComponents() as Cell<any>[]) {
                 cell.setEditorPool(this._editorPool);
+                cell.setScrollIntoViewHandler(() => this.scrollColumnIntoView(this._focusedColIndex));
             }
 
             const rowEl = row.getElement(true);
@@ -1395,10 +1390,6 @@ class Body extends Component {
                     this._updateActiveDescendant();
                 });
 
-                // Mirror the double-click path: reveal the column through the
-                // scroll model so the editor (focused with preventScroll) opens
-                // fully visible instead of off the right edge.
-                this.scrollColumnIntoView(this._focusedColIndex);
                 typedCell.startEdit();
             }
 

@@ -37,6 +37,7 @@ export class Cell<T> extends Component {
     private _renderer: CellRenderer<T>;
     private _editor: CellEditor<T> | undefined;
     private _editorPool: CellEditorPool | null = null;
+    private _scrollIntoView: (() => void) | null = null;
     protected _activeEditor: CellEditor<T> | null = null;
     // Typed as `ListenerBag<string>` rather than `ListenerBag<CellEvent>` so
     // subclasses (e.g. HeaderCell) can re-declare the bag with a wider
@@ -123,6 +124,22 @@ export class Cell<T> extends Component {
      */
     setEditorPool(pool: CellEditorPool | null): this {
         this._editorPool = pool;
+
+        return this;
+    }
+
+    /**
+     * Installs the callback {@link Cell.startEdit} runs before opening the
+     * editor, used by the host {@link Body} to scroll this cell's column into
+     * view through its scroll model. Running it first means the editor — and
+     * any picker dropdown it anchors — opens at the cell's final position
+     * rather than its pre-scroll one.
+     *
+     * @param handler - The scroll-into-view callback, or `null` to clear it.
+     * @returns This cell, for method chaining.
+     */
+    setScrollIntoViewHandler(handler: (() => void) | null): this {
+        this._scrollIntoView = handler;
 
         return this;
     }
@@ -296,6 +313,12 @@ export class Cell<T> extends Component {
             return;
         }
 
+        // Scroll this column fully into view before the editor opens, so the
+        // editor and any picker dropdown it anchors land at the cell's final
+        // position. The editor itself focuses with preventScroll, so the
+        // browser never scrolls the body out from under the scroll model.
+        this._scrollIntoView?.();
+
         if (this._editor) {
             this._activeEditor = this._editor;
         } else {
@@ -320,11 +343,8 @@ export class Cell<T> extends Component {
 
         this.getLayoutManager().setVisibleComponentId(editor.getId());
         this.doLayout();
-        // preventScroll: the cell lives in the table body's overflow:hidden,
-        // translate-positioned scroll viewport. A native focus-scroll would
-        // shift the clipped content without moving the VirtualScroller's cached
-        // offset, desyncing the header + scrollbar. The body scrolls the column
-        // into view through the scroll model instead.
+        // preventScroll — the column was already revealed through the scroll
+        // model above; a native focus-scroll would desync the header + scrollbar.
         editor.focus(true);
     }
 
