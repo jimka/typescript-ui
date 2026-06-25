@@ -134,6 +134,54 @@ describe('ComboEditor value round-trip', () => {
     });
 });
 
+describe('ComboEditor commit path (selection / blur)', () => {
+    // Pins the bug a live double-click first surfaced: a blur on the combo box
+    // surface (focus leaving the editor, e.g. an outside click) must commit
+    // through the cell's commit-request hook, the same hook a selection uses.
+    // Both the `"action"` and `blur` listeners call the private
+    // `commitFromCombo`; we invoke it directly (white-box, as the
+    // `Cell.onKeyDown` tests invoke their handler directly) because the
+    // window-delivered blur path is not isolation-safe across tests — the
+    // `Event` base listener installs once per type and outlives a test's DOM.
+    // The blur/action WIRING itself is a one-line `Event.addListener` /
+    // `combo.on("action")` verified in the live app, not here.
+    it('asks the active cell to commit', () => {
+        const editor = new ComboEditor(COUNTRIES);
+
+        let commits = 0;
+        editor.setCommitRequestHandler(() => { commits++; });
+
+        (editor as any).commitFromCombo();
+
+        expect(commits).toBe(1);
+    });
+
+    it('commits the combo box\'s current value (read at commit time), not a stale cache', () => {
+        const editor = new ComboEditor(COUNTRIES);
+
+        let committed: unknown;
+        editor.setCommitRequestHandler(() => { committed = editor.getValue(); });
+
+        editor.setValue('AU');
+        (editor as any)._combo.setValue('SE');  // selection moved without a fresh setValue
+        (editor as any).commitFromCombo();
+
+        expect(committed).toBe('SE');
+    });
+
+    it('commits null when nothing is selected', () => {
+        const editor = new ComboEditor(COUNTRIES);
+
+        let committed: unknown = 'sentinel';
+        editor.setCommitRequestHandler(() => { committed = editor.getValue(); });
+
+        (editor as any)._combo.setValue('');
+        (editor as any).commitFromCombo();
+
+        expect(committed).toBe(null);
+    });
+});
+
 describe('ComboCell', () => {
     it('getEditorKey namespaces the pool key by field', () => {
         expect(new ComboCell('country', COUNTRIES).getEditorKey()).toBe('combo:country');
