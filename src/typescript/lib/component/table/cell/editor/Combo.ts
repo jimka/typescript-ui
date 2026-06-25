@@ -14,10 +14,11 @@ import { callable } from "~/core/Callable.js";
  * Wraps a [`ComboBox`](/api/component/input/classes/ComboBox) whose option
  * list is fixed to the column's declared values. The combo box keeps DOM
  * focus on its own surface and forwards keystrokes into its dropdown
- * without a focus shift, so a row click never blurs the editor — the edit
- * commits through the combo box's `"action"` event rather than a blur race.
- * Blur and keydown are proxied up to the parent cell so the standard
- * commit / cancel lifecycle (outside-click commit, Escape cancel) works.
+ * without a focus shift, so a row click never blurs the editor. Both a
+ * selection (`"action"`) and a genuine blur — focus leaving the editor
+ * entirely, e.g. an outside click — commit the edit through the cell's
+ * commit-request hook; keydown is proxied to the parent cell so Escape
+ * cancels and Enter ends the edit.
  *
  * The editor stores the option *value* (the code round-tripped to the
  * record); an empty selection commits as `null`, mirroring the cell-stack
@@ -43,7 +44,7 @@ class ComboEditor extends CellEditor<String | null> {
             option => ({ key: option.value, label: option.label }),
         );
 
-        this._combo = new ComboBox({ dropdownAnimated: false });
+        this._combo = new ComboBox();
         this._combo.setItems(items);
 
         // Strip the combo box's own chrome and apply the shared inset
@@ -53,16 +54,18 @@ class ComboEditor extends CellEditor<String | null> {
         this._combo.setBorderRadius('0');
         this._combo.setShadow('inset 0 0 0 1px var(--ts-ui-table-cell-editor-border, rgba(30, 100, 200, 0.6))');
 
-        // A selection (mouse or keyboard) commits the edit. The combo box
-        // keeps focus on its own surface, so there is no blur to race with.
-        this._combo.on("action", () => this.onAction());
+        // A selection (mouse or keyboard) commits the edit, and so does a
+        // genuine blur: the combo box keeps DOM focus on its own surface
+        // throughout the dropdown's lifetime (row clicks `preventDefault`
+        // pointerdown), so a blur means focus left the editor entirely —
+        // commit the current value. Both route through the cell's
+        // commit-request hook directly rather than re-dispatching a blur
+        // for the pool to re-interpret.
+        this._combo.on("action", () => this.commitFromCombo());
+        Event.addListener(this._combo, "blur", () => this.commitFromCombo());
 
-        // Proxy blur / keydown to the parent cell, mirroring the text
-        // editors: blur drives the outside-click commit, keydown carries
-        // Enter / Escape into `Cell.onKeyDown`.
-        Event.addListener(this._combo, "blur", (evnt: UIEvent) => {
-            Event.fireEvent(this, "blur", evnt);
-        });
+        // Proxy keydown to the parent cell so Escape cancels and Enter
+        // ends the edit, mirroring the text editors' `Cell.onKeyDown` path.
         Event.addListener(this._combo, "keydown", (evnt: KeyboardEvent) => {
             Event.fireEvent(this, "keydown", { detail: {
                 key     : evnt.key     , code   : evnt.code   , keyCode: evnt.keyCode,
@@ -112,10 +115,12 @@ class ComboEditor extends CellEditor<String | null> {
     }
 
     /**
-     * Caches the freshly-selected value and asks the active cell to commit.
-     * An empty selection commits as `null`.
+     * Caches the combo box's current value and asks the active cell to
+     * commit. Shared by the selection (`"action"`) and blur paths; an empty
+     * selection commits as `null`. Re-entrant-safe: once the cell has
+     * committed it releases the editor, so a follow-on blur is a no-op.
      */
-    private onAction(): void {
+    private commitFromCombo(): void {
         const selected = this._combo.getValue();
 
         this._value = selected ? selected : null;
