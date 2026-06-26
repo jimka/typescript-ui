@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TabButton } from '~/component/button/TabButton';
 import { ToggleButton } from '~/component/button/ToggleButton';
 import { TabCloseButton } from '~/component/button/TabCloseButton';
+import { Fit } from '~/layout/Fit';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -69,6 +70,19 @@ describe('TabButton inherited options', () => {
 
         expect(btn.getGlyph()).not.toBe(null);
         expect(btn.getGlyph()!.getGlyphName()).toBe('xmark');
+    });
+});
+
+describe('TabButton structural layout (regression)', () => {
+    // TabButton is always constructed with an options bag ({ glyph, closeable }),
+    // so its tail `applyOptions` runs the Component cascade that re-applies the
+    // Absolute default from _defaultOptions, clobbering the per-instance Fit that
+    // Button installs in its constructor. With Absolute layout the content row is
+    // never positioned, so the label collapses to the element's bottom-left corner
+    // and the button mis-reports its preferred size. The Fit must survive.
+    it('keeps its Fit layout (not Absolute) after the options pass', () => {
+        expect(new TabButton('Home', { glyph: 'xmark', closeable: true }).getLayoutManager())
+            .toBeInstanceOf(Fit);
     });
 });
 
