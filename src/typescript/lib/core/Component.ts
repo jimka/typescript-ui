@@ -421,63 +421,65 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * setters.
      */
     protected applyOptions(options: TOptions): this {
-        const opts = { ...this._defaultOptions, ...options };
+        // Dispatch only the caller-supplied options — class-level defaults are a
+        // pure fallback consulted by the getters (and `applyStyle`), never
+        // written into `_options`. See the per-field getters and the
+        // `_defaultOptions` seed in the constructor.
+        if (options.id              !== undefined) this.setId(options.id);
+        if (options.name            !== undefined) this.setName(options.name);
+        if (options.layoutManager   !== undefined) this.setLayoutManager(options.layoutManager);
+        if (options.visible         !== undefined) this.setVisible(options.visible);
+        if (options.displayed       !== undefined) this.setDisplayed(options.displayed);
+        if (options.zIndex          !== undefined) this.setZIndex(options.zIndex);
+        if (options.insets          !== undefined) this.setInsets(options.insets);
+        if (options.padding         !== undefined) this.setPadding(options.padding);
+        if (options.backgroundColor !== undefined) this.setBackgroundColor(options.backgroundColor);
+        if (options.background      !== undefined) this.setBackground(options.background);
+        if (options.foregroundColor !== undefined) this.setForegroundColor(options.foregroundColor);
+        if (options.colorScheme     !== undefined) this.setColorScheme(options.colorScheme);
+        this.applyChromeOptions(options);
+        if (options.outline         !== undefined) this.setOutline(options.outline);
+        if (options.cursor          !== undefined) this.setCursor(options.cursor);
+        if (options.preferredSize   !== undefined) this.setPreferredSize(options.preferredSize.width, options.preferredSize.height);
+        if (options.minSize         !== undefined) this.setMinSize(options.minSize.width, options.minSize.height);
+        if (options.maxSize         !== undefined) this.setMaxSize(options.maxSize.width, options.maxSize.height);
+        if (options.transform       !== undefined) this.setTransform(options.transform);
+        if (options.transition      !== undefined) this.setTransition(options.transition);
+        if (options.willChange      !== undefined) this.setWillChange(options.willChange);
+        if (options.opacity         !== undefined) this.setOpacity(options.opacity);
+        if (options.overflow        !== undefined) this.setOverflow(options.overflow);
+        if (options.pointerEvents   !== undefined) this.setPointerEvents(options.pointerEvents);
+        if (options.writingMode     !== undefined) this.setWritingMode(options.writingMode);
+        if (options.touchAction     !== undefined) this.setTouchAction(options.touchAction);
 
-        if (opts.id              !== undefined) this.setId(opts.id);
-        if (opts.name            !== undefined) this.setName(opts.name);
-        if (opts.layoutManager   !== undefined) this.setLayoutManager(opts.layoutManager);
-        if (opts.visible         !== undefined) this.setVisible(opts.visible);
-        if (opts.displayed       !== undefined) this.setDisplayed(opts.displayed);
-        if (opts.zIndex          !== undefined) this.setZIndex(opts.zIndex);
-        if (opts.insets          !== undefined) this.setInsets(opts.insets);
-        if (opts.padding         !== undefined) this.setPadding(opts.padding);
-        if (opts.backgroundColor !== undefined) this.setBackgroundColor(opts.backgroundColor);
-        if (opts.background      !== undefined) this.setBackground(opts.background);
-        if (opts.foregroundColor !== undefined) this.setForegroundColor(opts.foregroundColor);
-        if (opts.colorScheme     !== undefined) this.setColorScheme(opts.colorScheme);
-        this.applyChromeOptions(opts);
-        if (opts.outline         !== undefined) this.setOutline(opts.outline);
-        if (options.cursor       !== undefined) this.setCursor(options.cursor);
-        if (opts.preferredSize   !== undefined) this.setPreferredSize(opts.preferredSize.width, opts.preferredSize.height);
-        if (options.minSize      !== undefined) this.setMinSize(options.minSize.width, options.minSize.height);
-        if (opts.maxSize         !== undefined) this.setMaxSize(opts.maxSize.width, opts.maxSize.height);
-        if (opts.transform       !== undefined) this.setTransform(opts.transform);
-        if (opts.transition      !== undefined) this.setTransition(opts.transition);
-        if (opts.willChange      !== undefined) this.setWillChange(opts.willChange);
-        if (opts.opacity         !== undefined) this.setOpacity(opts.opacity);
-        if (options.overflow     !== undefined) this.setOverflow(options.overflow);
-        if (opts.pointerEvents   !== undefined) this.setPointerEvents(opts.pointerEvents);
-        if (opts.writingMode     !== undefined) this.setWritingMode(opts.writingMode);
-        if (opts.touchAction     !== undefined) this.setTouchAction(opts.touchAction);
-
-        if (opts.attributes !== undefined) {
+        if (options.attributes !== undefined) {
             // The options bag's `attributes` is a raw-HTML-attribute escape
             // hatch — callers pass arbitrary attribute names (e.g.
             // `placeholder`, `data-foo`, `aria-bar`) and expect a literal
             // write. Stash on `_options.attributes` so `init()` can replay
             // them when the element is created; write through immediately if
             // the element already exists.
-            this._options.attributes = opts.attributes;
+            this._options.attributes = options.attributes;
 
             const element = this.getElement();
             if (element) {
-                DOM.sink.apply(element, { setAttr: opts.attributes });
+                DOM.sink.apply(element, { setAttr: options.attributes });
             }
         }
 
-        if (opts.styleRules !== undefined) {
+        if (options.styleRules !== undefined) {
             // Route every entry through `createStyleRule` so the wrapper is
             // registered in `_deferredStyleRules` and materialised at render
             // time, matching how the lazy state-rule getters in Button /
             // ToggleButton / WindowBorder allocate. Bare `new StyleRule(...)`
             // would skip the deferral and force-insert the stylesheet rule
             // before the element exists.
-            for (const spec of opts.styleRules) {
+            for (const spec of options.styleRules) {
                 this.createStyleRule(spec.suffix).setMany(spec.styles);
             }
         }
 
-        if (opts.components !== undefined) this.addComponents(opts.components);
+        if (options.components !== undefined) this.addComponents(options.components);
 
         return this;
     }
@@ -485,26 +487,37 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     /**
      * Dispatches the visual-chrome subset of a {@link ComponentOptions} bag —
      * `border`, `borderRadius`, `shadow`, and `backgroundImage`. Called from
-     * {@link applyOptions} at the same point those four lines used to live
-     * inline.
+     * {@link applyOptions}.
      *
-     * @param opts - The merged options bag (defaults + caller options) being
-     *   applied. Same shape `applyOptions` produces; the hook does not re-merge.
+     * @param options - The raw caller options bag. Unlike the rest of
+     *   `applyOptions`, the chrome fields fold in `this._defaultOptions` here so
+     *   their class-level defaults are still *dispatched* (e.g.
+     *   `options.border ?? this._defaultOptions.border`). They are kept on the
+     *   dispatch path — rather than resolved lazily by their getters — because
+     *   `border`'s parsed state (`_border`) feeds the layout border-width path
+     *   and a theme re-measure listener, and because `borderRadius`/`shadow`
+     *   must let a deeper subclass `clear*()` suppress an inherited default
+     *   (e.g. TabButton flattening Button's chrome) rather than fall back to it.
+     *   None of these four fields is consulted by a `_options.X === undefined`
+     *   guard, so dispatching their default does not violate the clean-bag
+     *   invariant.
      *
      * @remarks
      * Subclasses override this hook when they need to gate or extend the
      * chrome dispatch — e.g. [`Button`](/api/component/button/classes/Button)
      * gates on its `chromeless` option and appends its pressed/hover chrome
-     * fields after the base call. The default implementation is
-     * byte-equivalent to the four lines this hook replaces in
-     * `applyOptions`, so existing Component subclasses see no behavioural
-     * change.
+     * fields after the base call.
      */
-    protected applyChromeOptions(opts: TOptions): void {
-        if (opts.border          !== undefined) this.setBorder(opts.border);
-        if (opts.borderRadius    !== undefined) this.setBorderRadius(opts.borderRadius);
-        if (opts.shadow          !== undefined) this.setShadow(opts.shadow);
-        if (opts.backgroundImage !== undefined) this.setBackgroundImage(opts.backgroundImage);
+    protected applyChromeOptions(options: TOptions): void {
+        const border          = options.border          ?? this._defaultOptions.border;
+        const borderRadius    = options.borderRadius    ?? this._defaultOptions.borderRadius;
+        const shadow          = options.shadow          ?? this._defaultOptions.shadow;
+        const backgroundImage = options.backgroundImage ?? this._defaultOptions.backgroundImage;
+
+        if (border          !== undefined) this.setBorder(border);
+        if (borderRadius    !== undefined) this.setBorderRadius(borderRadius);
+        if (shadow          !== undefined) this.setShadow(shadow);
+        if (backgroundImage !== undefined) this.setBackgroundImage(backgroundImage);
     }
 
     /**
@@ -1972,7 +1985,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The outline string, or null.
      */
     getOutline(): string | null {
-        return this._outline;
+        return this._outline ?? this._defaultOptions.outline ?? null;
     }
 
     /**
@@ -2146,8 +2159,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         let layoutManager = this.getLayoutManager();
         let preferredSize;
 
-        if (this._options.preferredSize) {
-            preferredSize = this._options.preferredSize;
+        const ownPreferred = this._options.preferredSize ?? this._defaultOptions.preferredSize;
+        if (ownPreferred) {
+            preferredSize = ownPreferred;
         } else if (!layoutManager) {
             preferredSize = this.getSize();
         } else {
@@ -3542,7 +3556,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The pointer-events string, or null.
      */
     getPointerEvents(): string | null {
-        return this._options.pointerEvents ?? null;
+        return this._options.pointerEvents ?? this._defaultOptions.pointerEvents ?? null;
     }
 
     /**
@@ -3583,7 +3597,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The writing-mode string, or null.
      */
     getWritingMode(): string | null {
-        return this._options.writingMode ?? null;
+        return this._options.writingMode ?? this._defaultOptions.writingMode ?? null;
     }
 
     /**
@@ -3842,31 +3856,31 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `CSSStyleRule.style`.
         this.ensureCSSRule();
 
-        // Read through the default-options fallback so class-level defaults
-        // (cursor, insets, padding, minSize/maxSize, overflow, displayed,
-        // zIndex) reach the DOM even when no setter has fired — `_options`
-        // is empty for any field the caller didn't supply.
-        const opts = { ...this._defaultOptions, ...this._options };
-
+        // Every option-backed read below goes through the field's getter (or an
+        // inline `_options.X ?? _defaultOptions.X` for the carve-out sizes), so
+        // class-level defaults reach the DOM even when no setter has fired —
+        // the getter owns the fallback; there is no merged bag to drift from.
         if (this._boxSizing) {
             this._styleRule.set("boxSizing", this._boxSizing);
         }
 
         this._styleRule.set("position", this._position);
 
-        if (opts.visible != null) {
+        const visible = this.isVisible();
+        if (visible != null) {
             // `true` resolves to `inherit`, not `visible`, so an explicitly-shown
             // component still hides when an ancestor hides (e.g. a Tab panel that
             // is switched away). This mirrors the live `setVisible` setter, which
             // also writes `inherit` for `true`; writing `visible` here would pin
             // the element on screen and defeat ancestor-based hiding.
-            this._styleRule.set("visibility", opts.visible ? "inherit" : "hidden");
+            this._styleRule.set("visibility", visible ? "inherit" : "hidden");
         } else {
             this._styleRule.set("visibility", "inherit");
         }
 
-        if (opts.displayed != null) {
-            this._styleRule.set("display", opts.displayed ? "block" : "none");
+        const displayed = this.isDisplayed();
+        if (displayed != null) {
+            this._styleRule.set("display", displayed ? "block" : "none");
         }
 
         const cursor = this.getCursor();
@@ -3874,16 +3888,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._styleRule.set("cursor", cursor);
         }
 
-        if (opts.foregroundColor) {
-            this._styleRule.set("color", opts.foregroundColor);
+        const foregroundColor = this.getForegroundColor();
+        if (foregroundColor) {
+            this._styleRule.set("color", foregroundColor);
         }
 
-        if (opts.backgroundColor) {
-            this._styleRule.set("backgroundColor", opts.backgroundColor);
+        const backgroundColor = this.getBackgroundColor();
+        if (backgroundColor) {
+            this._styleRule.set("backgroundColor", backgroundColor);
         }
 
-        if (opts.backgroundImage) {
-            this._styleRule.set("backgroundImage", opts.backgroundImage);
+        const backgroundImage = this.getBackgroundImage();
+        if (backgroundImage) {
+            this._styleRule.set("backgroundImage", backgroundImage);
         }
 
         // NaN means "never assigned by a setter" — skip the DOM write for those.
@@ -3912,13 +3929,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._inlineStyle.set("transform", "translate3d(" + this._translateX + "px," + this._translateY + "px,0)");
         }
 
-        const minSize = opts.minSize;
+        // Carve-out: the CSS min/max writes use the raw author *constraint*, not
+        // the computed `getMinSize()`/`getMaxSize()` (which fold in the layout
+        // manager and would push computed sizes into CSS, fighting the layout
+        // engine). Read the option/default directly, never via the getter.
+        const minSize = this._options.minSize ?? this._defaultOptions.minSize;
         if (minSize) {
             this._styleRule.set("minWidth",  minSize.width  + "px");
             this._styleRule.set("minHeight", minSize.height + "px");
         }
 
-        const maxSize = opts.maxSize;
+        const maxSize = this._options.maxSize ?? this._defaultOptions.maxSize;
         if (maxSize) {
             this._styleRule.set("maxWidth",  isUnbounded(maxSize.width)  ? "none" : maxSize.width  + "px");
             this._styleRule.set("maxHeight", isUnbounded(maxSize.height) ? "none" : maxSize.height + "px");
@@ -3950,24 +3971,34 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._styleRule.set("border", null);
         }
 
-        if (opts.borderRadius) {
-            this._styleRule.set("borderRadius", opts.borderRadius);
+        const outline = this.getOutline();
+        if (outline) {
+            this._styleRule.set("outline", outline);
         }
 
-        if (opts.shadow) {
-            this._styleRule.set("boxShadow", opts.shadow);
+        const borderRadius = this.getBorderRadius();
+        if (borderRadius) {
+            this._styleRule.set("borderRadius", borderRadius);
         }
 
-        if (opts.pointerEvents) {
-            this._inlineStyle.set("pointerEvents", opts.pointerEvents);
+        const shadow = this.getShadow();
+        if (shadow) {
+            this._styleRule.set("boxShadow", shadow);
         }
 
-        if (opts.writingMode) {
-            this._inlineStyle.set("writingMode", opts.writingMode);
+        const pointerEvents = this.getPointerEvents();
+        if (pointerEvents) {
+            this._inlineStyle.set("pointerEvents", pointerEvents);
         }
 
-        if (opts.zIndex) {
-            this._inlineStyle.set("zIndex", String(opts.zIndex));
+        const writingMode = this.getWritingMode();
+        if (writingMode) {
+            this._inlineStyle.set("writingMode", writingMode);
+        }
+
+        const zIndex = this._options.zIndex ?? this._defaultOptions.zIndex;
+        if (zIndex) {
+            this._inlineStyle.set("zIndex", String(zIndex));
         }
 
         // Replay the cached transition so setters that fired before init
@@ -3987,12 +4018,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._styleRule.set("userSelect", this._userSelect);
         }
 
-        if (opts.padding) {
-            this._styleRule.set("padding", opts.padding.render());
+        const padding = this.getPadding();
+        if (padding) {
+            this._styleRule.set("padding", padding.render());
         }
 
-        if (opts.insets) {
-            this.setDataAttribute("insets", opts.insets.render());
+        const insets = this.getInsets();
+        if (insets) {
+            this.setDataAttribute("insets", insets.render());
         }
 
         this._styleRule.set("margin", "0px 0px 0px 0px");
@@ -4356,7 +4389,19 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The current LayoutManager instance.
      */
     getLayoutManager(): LayoutManager {
-        return (this._options.layoutManager ?? this._defaultOptions.layoutManager) as LayoutManager;
+        const layoutManager = (this._options.layoutManager ?? this._defaultOptions.layoutManager) as LayoutManager;
+
+        // The class-level default manager is no longer dispatched through
+        // `setLayoutManager`, so attach it lazily the first time it is
+        // resolved. Layout consumers read the container back via
+        // `getContainer()`; without this they would see `null`. The `!== this`
+        // guard makes it fire exactly once and leaves the explicitly-set path
+        // (which already attached in `setLayoutManager`) untouched.
+        if (layoutManager && layoutManager.getContainer() !== this) {
+            layoutManager.attach(this);
+        }
+
+        return layoutManager;
     }
 
     /**

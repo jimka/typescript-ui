@@ -1662,7 +1662,12 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The preferred `{width, height}`.
      */
     getPreferredSize(): Size | null {
-        if (this._consumerSetPreferredSize) {
+        // A consumer-pinned size or a class-level `preferredSize` default both
+        // pin the button rather than deriving from content. The default now
+        // lives in `_defaultOptions` (it is no longer dispatched through
+        // `setPreferredSize`, so it never flips `_consumerSetPreferredSize`);
+        // honour it here so subclasses like TabCloseButton keep their fixed size.
+        if (this._consumerSetPreferredSize || this._defaultOptions.preferredSize) {
             return super.getPreferredSize();
         }
 
@@ -1694,7 +1699,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // out via _syncGlyphSize's per-glyph guard, not this early-return.
         this._syncGlyphSize();
 
-        if (this._consumerSetPreferredSize) {
+        if (this._consumerSetPreferredSize || this._defaultOptions.preferredSize) {
             return;
         }
 
