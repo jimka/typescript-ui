@@ -1,14 +1,14 @@
 # ScrollStrip
 
-[`ScrollStrip`](/api/component/container/classes/ScrollStrip) is a reusable overflow-scrolling button rail: a clip frame (`overflow:hidden`, native scroll) that lays a row or column of items and, when they overflow along the main axis, shows lead/trail paging arrows in reserved gutters at each end. Each arrow click pages by one resolved step and disables at the scroll limit. It is the extracted scroll mechanic behind [`TabBar`](/components/TabBar)'s overflowing tab strip, exposed as a standalone primitive for any button/chip/breadcrumb rail.
+[`ScrollStrip`](/api/component/container/classes/ScrollStrip) is a reusable overflow-scrolling button rail: a band hosting an `overflow:hidden` clip (native scroll) that lays a row or column of items and, when they overflow along the main axis, shows lead/trail paging arrows in reserved gutters at each end. Each arrow click pages by one resolved step and disables at the scroll limit. It is the extracted scroll mechanic behind [`TabBar`](/components/TabBar)'s overflowing tab strip, exposed as a standalone primitive for any button/chip/breadcrumb rail.
 
-The strip **is** its own clip frame — its element is the `overflow:hidden` box — so any overlay raw-appended into its clip element (via `getClipElement`) scrolls and clips together with the items. The native main-axis offset is the single source of truth (`mainScroll` / `setMainScroll`), and the owner keeps responsibility for the outer band geometry, arrow theming, and per-item step.
+The strip is a non-scrolling band that hosts an inner clip plus the two arrows. The split is deliberate: because the arrows are children of the non-scrolling band — not the clip — they hold their gutters while the items scroll inside the clip between them. Any overlay raw-appended into the clip element (via `getClipElement`) scrolls and clips together with the items. The clip's native main-axis offset is the single source of truth (`mainScroll` / `setMainScroll`), and the owner keeps responsibility for the band geometry, arrow theming, and per-item step.
 
 Available in horizontal (default, an `HBox`) and vertical (a `VBox`) orientations.
 
 ## Usage
 
-Instantiate, add items, and let the strip scroll on overflow. The owner reserves the arrow gutters from `arrowReserve`, positions the frame, and then asks the strip to place its arrows into the band:
+Instantiate, add items, and let the strip scroll on overflow. The owner reserves the arrow gutters from `arrowReserve`, sizes the band, and then asks the strip to lay its clip and arrows within the band:
 
 ```typescript
 import { ScrollStrip } from '@jimka/typescript-ui/component/container';
@@ -20,11 +20,11 @@ strip.addItem(Button({ text: 'Two' }));
 strip.addItem(Button({ text: 'Three' }));
 
 // In the owner's layout pass: reserve a gutter when the items overflow the
-// region, place the frame, then place the arrows into its (clip-local) band.
+// region, size the band, then let the strip size its clip (band minus the
+// gutters) and place the arrows into them.
 const reserve = strip.arrowReserve(predictedItemsExtent, regionExtent);
 strip.setX(x).setY(y).setWidth(width).setHeight(height);
-strip.doLayout();
-strip.layoutArrows(0, width, 0, height, reserve);
+strip.layoutContent(reserve, 0); // (reserve, endGap)
 ```
 
 ## Orientation
@@ -54,7 +54,7 @@ if (el) {
 | --- | --- |
 | `addItem(c)` / `removeItem(c)` / `moveItem(c, i)` | Manage the scrolling row/column (box children). |
 | `arrowReserve(content, region)` | Per-end gutter (px): the arrow size when scrollable and the content overflows the region past a 1px slop, else 0. |
-| `layoutArrows(mainOrigin, mainExtent, crossOrigin, thickness, reserve)` | Place, size, and enable the arrows into the gutters of the given clip-local band (or hide them when `reserve` is 0). |
+| `layoutContent(reserve, endGap)` | Size the inner clip to the band minus the gutters, lay out the items, and place/enable the arrows in the gutters (or hide them when `reserve` is 0). |
 | `revealItem(el)` | Scroll the minimum amount to bring the item element fully into view. |
 | `mainScroll()` / `setMainScroll(px)` | Read / write the native main-axis scroll offset (single source of truth). |
 | `refreshArrows()` | Re-derive the arrows' enabled state from the live offset. |
