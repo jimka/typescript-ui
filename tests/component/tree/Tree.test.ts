@@ -314,6 +314,12 @@ describe('TreeNode — data payload slot', () => {
         priv._onToggle(a);
         expect(priv._expandedNodes.has(a)).toBe(true);
         expect(priv._expandedNodes.has(b)).toBe(false);
+
+        // Selecting one (seeded white-box) must not select the other: the
+        // selection set is keyed by object reference, never by `data`.
+        (tree as unknown as { _selectedNodes: Set<TreeNode> })._selectedNodes.add(a);
+        expect(tree.getSelectedNodes()).toContain(a);
+        expect(tree.getSelectedNodes()).not.toContain(b);
     });
 });
 
