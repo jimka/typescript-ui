@@ -8,13 +8,13 @@ import type { Handle } from "~/core/DOM.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
 import { Button } from "~/component/button/Button.js";
+import { TabButton } from "~/component/button/TabButton.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
 import { Event } from "~/core/Event.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ButtonGroup } from "~/overlay/ButtonGroup.js";
 import { RovingTabIndex } from "~/core/RovingTabIndex.js";
-import { Fit } from "~/layout/Fit.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { BoxLayout } from "~/layout/BoxLayout.js";
@@ -180,16 +180,15 @@ export interface TabBarOptions extends ContainerOptions {
  */
 interface BarEntry {
     id: string;
-    wrapper: Component;
-    button: ToggleButton;
+    button: TabButton;
     closeButton?: TabCloseButton;
     /** The cell's display label — the same `name` the button was built with. */
     name: string;
     constraints?: LayoutConstraints;
     /**
-     * The wrapper's `contextmenu` subtree listener, retained so {@link TabBar.removeBarEntry}
+     * The button's `contextmenu` subtree listener, retained so {@link TabBar.removeBarEntry}
      * can remove it. Subtree listeners are keyed by component id in a module-level
-     * map (see {@link Event.addSubtreeListener}); removing the wrapper's element
+     * map (see {@link Event.addSubtreeListener}); removing the button's element
      * does not purge that map, so the listener must be torn down explicitly or it
      * (and the entry it closes over) leaks across open/close churn.
      */
@@ -1216,7 +1215,7 @@ class TabBar extends Container<TabBarOptions> {
         const targetHandle = DOM.source.intern(target);
 
         for (const entry of this._entries) {
-            const wrapperEl = entry.wrapper.getElement();
+            const wrapperEl = entry.button.getElement();
 
             if (wrapperEl && DOM.source.contains(wrapperEl, targetHandle)) {
                 return true;
@@ -1407,9 +1406,11 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Builds the wrapper, toggle button, and optional close button for one cell,
-     * registers them with the button group / roving tab index, and pushes the
-     * cell onto the strip. The first cell created becomes the active one (matching
+     * Builds the [`TabButton`](/api/component/button/classes/TabButton) (which
+     * owns the per-tab styling and the optional overlaid close button) for one
+     * cell, registers it with the
+     * button group / roving tab index, and pushes the cell onto the strip.
+     * The first cell created becomes the active one (matching
      * the legacy index-0 default); the owner re-selects later via
      * {@link setActiveEntry}.
      *
@@ -1420,97 +1421,21 @@ class TabBar extends Container<TabBarOptions> {
      * @returns This tab strip, for method chaining.
      */
     createBarEntry(id: string, name: string, constraints?: LayoutConstraints): this {
-        let tabButton = new ToggleButton(name);
-
-        // Unselected fill. ToggleButton inherits Button's `--ts-ui-button-bg`
-        // gradient on `background-image`, which otherwise paints over the tab
-        // colour below and makes `--ts-ui-tab-button-bg` invisible. Route the
-        // same tab token through the image layer so a colour value drops out
-        // (invalid as an image) and a gradient value wins — killing the
-        // gradient bleed-through.
-        tabButton.setBackgroundColor("var(--ts-ui-tab-button-bg, #b8b8c3)");
-        tabButton.setBackgroundImage("var(--ts-ui-tab-button-bg, #b8b8c3)");
-        tabButton.setBorder({
-            borderTop:    "var(--ts-ui-tab-button-border-top,    var(--ts-ui-tab-button-border, none))",
-            borderRight:  "var(--ts-ui-tab-button-border-right,  var(--ts-ui-tab-button-border, none))",
-            borderBottom: "var(--ts-ui-tab-button-border-bottom, var(--ts-ui-tab-button-border, none))",
-            borderLeft:   "var(--ts-ui-tab-button-border-left,   var(--ts-ui-tab-button-border, none))",
-        });
-        tabButton.clearBorderRadius();
-        tabButton.clearShadow();
-
-        // Hover state.
-        tabButton.setHoverBackgroundColor("var(--ts-ui-tab-button-hover-bg, #c4c4cf)");
-        tabButton.setHoverBackgroundImage("var(--ts-ui-tab-button-hover-bg, #c4c4cf)");
-        tabButton.setHoverShadow("none");
-        tabButton.setHoverBorder({
-            borderTop:    "var(--ts-ui-tab-button-hover-border-top,    var(--ts-ui-tab-button-hover-border, none))",
-            borderRight:  "var(--ts-ui-tab-button-hover-border-right,  var(--ts-ui-tab-button-hover-border, none))",
-            borderBottom: "var(--ts-ui-tab-button-hover-border-bottom, var(--ts-ui-tab-button-hover-border, none))",
-            borderLeft:   "var(--ts-ui-tab-button-hover-border-left,   var(--ts-ui-tab-button-hover-border, none))",
-        });
-
-        // Selected (active) state.
-        tabButton.setSelectedBackgroundColor("var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))");
-        tabButton.setSelectedBackgroundImage("var(--ts-ui-tab-button-selected-bg, rgb(255, 255, 255))");
-        tabButton.setSelectedShadow("none");
-        tabButton.setSelectedBorder({
-            borderTop:    "var(--ts-ui-tab-button-selected-border-top,    var(--ts-ui-tab-button-selected-border, none))",
-            borderRight:  "var(--ts-ui-tab-button-selected-border-right,  var(--ts-ui-tab-button-selected-border, none))",
-            borderBottom: "var(--ts-ui-tab-button-selected-border-bottom, var(--ts-ui-tab-button-selected-border, none))",
-            borderLeft:   "var(--ts-ui-tab-button-selected-border-left,   var(--ts-ui-tab-button-selected-border, none))",
+        // The TabButton owns the per-tab fill/hover/selected styling and, when
+        // closeable, the overlaid ✕ — collapsing the styling replay and the Fit
+        // wrapper that used to live here. It is itself the box child: it carries
+        // its own background (so there is no transparent wrapper to stretch a
+        // button across) and hosts the close overlay on its own element.
+        let tabButton = new TabButton(name, {
+            glyph:     constraints?.glyph ?? undefined,
+            closeable: constraints?.closeable,
         });
 
         tabButton.setInsets(this.computeTabButtonInsets(constraints));
 
-        if (constraints?.glyph) {
-            tabButton.setGlyph(constraints.glyph);
-        }
-
         tabButton.on("action", () => this.onTabPressed(tabButton));
 
-        // The tab button fills the whole cell (Fit) so its per-state background
-        // spans the full width; the close button is overlaid on top at the
-        // right rather than placed as a sibling, so the tab reads as one
-        // surface with a ✕ in its corner instead of two abutting buttons.
-        const wrapper = new Component();
-        wrapper.setLayoutManager(new Fit());
-        wrapper.setBackgroundColor("transparent");
-        wrapper.clearBorder();
-        wrapper.clearShadow();
-        wrapper.setInsets(new Insets(0, 0, 0, 0));
-
-        wrapper.addComponent(tabButton);
-
-        let closeButton: TabCloseButton | undefined;
-
-        if (constraints?.closeable) {
-            closeButton = new TabCloseButton();
-
-            // Transparent so the tab's own background shows through; a faint
-            // rounded tint on hover gives the ✕ its affordance.
-            closeButton.setBackgroundColor("transparent");
-            closeButton.setBackgroundImage("none");
-            closeButton.setHoverBackgroundColor("var(--ts-ui-tab-close-hover-bg, rgba(0, 0, 0, 0.12))");
-            closeButton.setHoverBackgroundImage("none");
-            closeButton.setHoverShadow("none");
-            closeButton.setBorderRadius("3px");
-            closeButton.clearBorder();
-            closeButton.clearShadow();
-            closeButton.setZIndex(1);
-
-            // Shrink the ✕ glyph to roughly half the close-button hit box,
-            // centred — the button stays the click target while the mark reads
-            // lighter. Pin it (Glyph.setPreferredSize locks min/max too) so the
-            // line-height sync never re-tracks the glyph to the title line height;
-            // positionCloseButtons re-pins it to the base-scaled size each layout.
-            closeButton.pinGlyphSize(ThemeManager.getResolvedScale().tabCloseGlyph);
-
-            // Overlay it inside the cell rather than enrolling it in the Fit
-            // layout (which would stretch it over the whole tab); `layoutChrome`
-            // pins it to the right edge.
-            DOM.sink.appendChild(wrapper.getElement(true)!, closeButton.getElement(true)!);
-        }
+        const closeButton = tabButton.getCloseButton() ?? undefined;
 
         // Subtree listener so a right-click on the label, the glyph, or the
         // close ✕ all reach one handler that opens the tab context menu. Named
@@ -1524,7 +1449,6 @@ class TabBar extends Container<TabBarOptions> {
 
         const entry: BarEntry = {
             id,
-            wrapper,
             button: tabButton,
             closeButton,
             name,
@@ -1537,7 +1461,7 @@ class TabBar extends Container<TabBarOptions> {
             closeButton.on("action", () => this.emit("tabclose", id));
         }
 
-        Event.addSubtreeListener(wrapper, "contextmenu", onContextMenu);
+        Event.addSubtreeListener(tabButton, "contextmenu", onContextMenu);
 
         this._entries.push(entry);
 
@@ -1552,7 +1476,7 @@ class TabBar extends Container<TabBarOptions> {
 
         this._buttonGroup.addButton(tabButton);
         this._rovingTabIndex.add(tabButton);
-        this._tabClip.addComponent(wrapper);
+        this._tabClip.addComponent(tabButton);
 
         tabButton.getAria().setRole("tab");
         tabButton.getAria().setSelected(isSelected);
@@ -1568,7 +1492,7 @@ class TabBar extends Container<TabBarOptions> {
 
     /**
      * Removes the cell with `id` from the strip — the bar-side teardown (button
-     * group, roving tab index, wrapper, context-menu listener). Leaves the owner
+     * group, roving tab index, tab button, context-menu listener). Leaves the owner
      * to drop its content record. No-op for an unknown id.
      *
      * @param id - The cell id to remove.
@@ -1587,12 +1511,12 @@ class TabBar extends Container<TabBarOptions> {
         this._buttonGroup.removeButton(entry.button);
         this._rovingTabIndex.remove(entry.button);
         this._entries.splice(idx, 1);
-        this._tabClip.removeComponent(entry.wrapper);
+        this._tabClip.removeComponent(entry.button);
 
         // Subtree listeners are keyed by component id in a module-level map;
         // removing the wrapper's element does not purge it, so tear it down or it
         // (and the entry it closes over) leaks.
-        Event.removeSubtreeListener(entry.wrapper, "contextmenu", entry.contextMenuListener);
+        Event.removeSubtreeListener(entry.button, "contextmenu", entry.contextMenuListener);
 
         if (this._activeId === id) {
             this._activeId = null;
@@ -1627,7 +1551,7 @@ class TabBar extends Container<TabBarOptions> {
         const entry = this._entries.splice(from, 1)[0];
 
         this._entries.splice(dest, 0, entry);
-        this._tabClip.moveComponent(entry.wrapper, dest);
+        this._tabClip.moveComponent(entry.button, dest);
 
         return this;
     }
@@ -2003,13 +1927,13 @@ class TabBar extends Container<TabBarOptions> {
                 const extent = this.tabModeExtent(entry.button);
 
                 if (extent > 0) {
-                    this.clampWrapperMain(entry.wrapper, extent, extent);
+                    this.clampWrapperMain(entry.button, extent, extent);
                 } else {
                     // "fill" / pre-measurement: keep each tab's own preferred
                     // extent. Rotated text floors to the derived main extent (the
                     // box would otherwise read the un-rotated size and clip).
                     const floor = this.isRotatedText() ? this.buttonMainExtent(entry.button) : 0;
-                    this.clampWrapperMain(entry.wrapper, floor, Number.MAX_VALUE);
+                    this.clampWrapperMain(entry.button, floor, Number.MAX_VALUE);
                 }
             }
 
@@ -2022,7 +1946,7 @@ class TabBar extends Container<TabBarOptions> {
             box.setMode("equal");
 
             for (const entry of this._entries) {
-                this.clampWrapperMain(entry.wrapper, 0, Number.MAX_VALUE);
+                this.clampWrapperMain(entry.button, 0, Number.MAX_VALUE);
             }
 
             return;
@@ -2040,9 +1964,9 @@ class TabBar extends Container<TabBarOptions> {
                 // the wrapper's preferred main extent, capped at `cap`.
                 if (this.isRotatedText()) {
                     const extent = Math.min(this.buttonMainExtent(entry.button), cap);
-                    this.clampWrapperMain(entry.wrapper, extent, extent);
+                    this.clampWrapperMain(entry.button, extent, extent);
                 } else {
-                    this.clampWrapperMain(entry.wrapper, 0, cap);
+                    this.clampWrapperMain(entry.button, 0, cap);
                 }
             }
 
@@ -2056,7 +1980,7 @@ class TabBar extends Container<TabBarOptions> {
         // buttons have reported a real preferred size.
         if (extent <= 0) {
             for (const entry of this._entries) {
-                this.clampWrapperMain(entry.wrapper, 0, Number.MAX_VALUE);
+                this.clampWrapperMain(entry.button, 0, Number.MAX_VALUE);
             }
 
             return;
@@ -2069,14 +1993,14 @@ class TabBar extends Container<TabBarOptions> {
             box.setMode("equal");
 
             for (const entry of this._entries) {
-                this.clampWrapperMain(entry.wrapper, 0, Number.MAX_VALUE);
+                this.clampWrapperMain(entry.button, 0, Number.MAX_VALUE);
             }
 
             return;
         }
 
         for (const entry of this._entries) {
-            this.clampWrapperMain(entry.wrapper, extent, extent);
+            this.clampWrapperMain(entry.button, extent, extent);
         }
     }
 
@@ -2394,7 +2318,7 @@ class TabBar extends Container<TabBarOptions> {
      * main axis, pinned to the strip's inner edge per side.
      */
     private positionIndicator(): void {
-        const wrapper = this.activeEntry()?.wrapper;
+        const wrapper = this.activeEntry()?.button;
 
         if (!wrapper) {
             return;
@@ -2433,7 +2357,7 @@ class TabBar extends Container<TabBarOptions> {
         for (const entry of this._entries) {
             const closeButton = entry.closeButton;
 
-            if (!closeButton || entry.wrapper.getWidth() <= 0) {
+            if (!closeButton || entry.button.getWidth() <= 0) {
                 continue;
             }
 
@@ -2445,13 +2369,13 @@ class TabBar extends Container<TabBarOptions> {
                 // Centre the ✕ across the strip thickness and pin it to the end
                 // of the reading flow: the bottom for clockwise (top-to-bottom)
                 // text, the top for counter-clockwise (bottom-to-top).
-                closeButton.setX(Math.round((entry.wrapper.getWidth() - closeSize) / 2));
+                closeButton.setX(Math.round((entry.button.getWidth() - closeSize) / 2));
                 closeButton.setY(this._orientation === "vertical-ccw"
                     ? 2
-                    : entry.wrapper.getHeight() - closeSize - 2);
+                    : entry.button.getHeight() - closeSize - 2);
             } else {
-                closeButton.setX(entry.wrapper.getWidth() - closeSize - 2);
-                closeButton.setY(Math.round((entry.wrapper.getHeight() - closeSize) / 2));
+                closeButton.setX(entry.button.getWidth() - closeSize - 2);
+                closeButton.setY(Math.round((entry.button.getHeight() - closeSize) / 2));
             }
         }
     }
@@ -2711,7 +2635,7 @@ class TabBar extends Container<TabBarOptions> {
 
         const selected = this.activeEntry();
         const clipElement = this._tabClip.getElement();
-        const wrapperElement = selected?.wrapper.getElement();
+        const wrapperElement = selected?.button.getElement();
 
         if (!clipElement || !wrapperElement) {
             return;
@@ -2890,7 +2814,7 @@ class TabBar extends Container<TabBarOptions> {
      * @returns The source teardown closure.
      */
     private makeTabDragSource(entry: BarEntry): () => void {
-        return DragManager.makeDragSource(entry.wrapper, {
+        return DragManager.makeDragSource(entry.button, {
             dragData: (): DragData => {
                 const data: TabDragData = {
                     tabDrag:     true,
@@ -3058,7 +2982,7 @@ class TabBar extends Container<TabBarOptions> {
         let insertIndex = this._entries.length;
 
         for (let i = 0; i < this._entries.length; i++) {
-            const wrapper = this._entries[i].wrapper;
+            const wrapper = this._entries[i].button;
             const start = vertical ? wrapper.getY() : wrapper.getX();
             const extent = vertical ? wrapper.getHeight() : wrapper.getWidth();
 
@@ -3089,13 +3013,13 @@ class TabBar extends Container<TabBarOptions> {
      */
     private slotBoundary(insertIndex: number, vertical: boolean): number {
         if (insertIndex < this._entries.length) {
-            const wrapper = this._entries[insertIndex].wrapper;
+            const wrapper = this._entries[insertIndex].button;
 
             return vertical ? wrapper.getY() : wrapper.getX();
         }
 
         if (this._entries.length > 0) {
-            const wrapper = this._entries[this._entries.length - 1].wrapper;
+            const wrapper = this._entries[this._entries.length - 1].button;
 
             return vertical ? wrapper.getY() + wrapper.getHeight() : wrapper.getX() + wrapper.getWidth();
         }
@@ -3112,7 +3036,7 @@ class TabBar extends Container<TabBarOptions> {
     private dropReorder(detail: DragEventDetail): void {
         this.hideDropAffordance();
 
-        const fromIdx = this._entries.findIndex(entry => entry.wrapper.getId() === detail.sourceId);
+        const fromIdx = this._entries.findIndex(entry => entry.button.getId() === detail.sourceId);
 
         if (fromIdx < 0 || this._dragInsertIndex < 0) {
             return;
@@ -3151,7 +3075,7 @@ class TabBar extends Container<TabBarOptions> {
         this._entries.splice(fromIdx, 1);
         this._entries.splice(dest, 0, entry);
 
-        this._tabClip.moveComponent(entry.wrapper, dest);
+        this._tabClip.moveComponent(entry.button, dest);
 
         this.emit("reordered", fromId, dest);
     }

@@ -34,6 +34,7 @@ This page is a flat catalog. Per-component documentation lives in the [API refer
 | [`RadioButton`](/api/component/input/classes/RadioButton) | Single-selection radio (use with `ButtonGroup`) |
 | [`ButtonGroup`](/api/overlay/classes/ButtonGroup) | Enforces single selection across radio / toggle buttons |
 | [`SpinButton`](/api/component/input/classes/SpinButton) | Up / down arrow paired with a numeric field |
+| [`TabButton`](/api/component/button/classes/TabButton) | Tab-styled toggle button with an optional close affordance (used internally by `TabBar`) |
 | [`TabCloseButton`](/api/component/button/classes/TabCloseButton) | Small `×` button for closeable tabs |
 
 ## Inputs

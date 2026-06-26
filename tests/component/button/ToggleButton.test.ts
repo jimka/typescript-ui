@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ToggleButton } from '~/component/button/ToggleButton';
+import { Fit } from '~/layout/Fit';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -99,5 +100,21 @@ describe('ToggleButton flat state', () => {
         btn.setFlat(true);
 
         expect(btn.isFlat()).toBe(true);
+    });
+});
+
+describe('ToggleButton structural layout (regression)', () => {
+    // Button installs a per-instance Fit layout imperatively in its constructor
+    // (a fresh manager can't live in the shared _defaultOptions). ToggleButton
+    // dispatches its consumer options through a tail `applyOptions`, whose
+    // Component-level cascade re-applies the Absolute default from
+    // _defaultOptions — which would clobber Button's Fit. A clobbered Absolute
+    // layout never positions the content row, so the label collapses to the
+    // element's static corner. The structural Fit must survive the options pass.
+    it('keeps its Fit layout when constructed WITHOUT options', () => {
+        expect(new ToggleButton('Bold').getLayoutManager()).toBeInstanceOf(Fit);
+    });
+    it('keeps its Fit layout when constructed WITH an options bag', () => {
+        expect(new ToggleButton('Bold', { glyph: 'xmark' }).getLayoutManager()).toBeInstanceOf(Fit);
     });
 });

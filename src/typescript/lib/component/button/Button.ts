@@ -503,7 +503,24 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @param options - The options bag carrying the values to apply.
      */
     protected applyOptions(options: TOptions): this {
+        // Button structurally owns a per-instance Fit layout, installed
+        // imperatively in the constructor because a fresh manager can't live in
+        // the shared `_defaultOptions` bag. `super.applyOptions` re-dispatches
+        // `_defaultOptions.layoutManager` (always an `Absolute`) on every call,
+        // so a subclass that hands its consumer options to a tail `applyOptions`
+        // (ToggleButton / TabButton: `if (options) this.applyOptions(options)`)
+        // would clobber that Fit — and an Absolute layout never positions the
+        // content row, collapsing the label into a corner. Capture the manager
+        // and restore it when the cascade re-defaulted it away and the consumer
+        // did not explicitly request a different one (ButtonOptions omits
+        // `layoutManager`, so that override path is intentionally unreachable).
+        const structuralLayout = this.getLayoutManager();
+
         super.applyOptions(options);
+
+        if (options.layoutManager === undefined && this.getLayoutManager() !== structuralLayout) {
+            this.setLayoutManager(structuralLayout);
+        }
 
         // Read from defaults-merged opts so subclass defaults (e.g. SpinButton's
         // symbol-derived glyph) dispatch alongside caller-supplied values.

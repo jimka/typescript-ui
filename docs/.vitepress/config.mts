@@ -82,6 +82,7 @@ export default defineConfig({
                     { text: 'RadioButton',    link: '/components/RadioButton' },
                     { text: 'ButtonGroup',    link: '/components/ButtonGroup' },
                     { text: 'SpinButton',     link: '/components/SpinButton' },
+                    { text: 'TabButton',      link: '/components/TabButton' },
                     { text: 'TabCloseButton', link: '/components/TabCloseButton' },
                 ] },
                 { text: 'Inputs', collapsed: false, items: [
