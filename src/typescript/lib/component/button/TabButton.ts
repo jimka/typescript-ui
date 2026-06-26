@@ -84,6 +84,13 @@ class TabButton extends ToggleButton {
         if (this._closeable) {
             this.buildCloseButton();
         }
+
+        // ToggleButton's constructor wired the listener bag from the options it
+        // received — but `super(text)` above passed none, so it wired nothing.
+        // Wire the bag here, as the leaf, after super() and applyOptions, so a
+        // `new TabButton(name, { listeners: { action } })` is not silently
+        // dropped (ARCHITECTURE.md, Event handling).
+        this.applyListeners(options?.listeners);
     }
 
     /**
