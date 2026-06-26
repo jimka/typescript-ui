@@ -167,4 +167,5 @@ These components are usually internal but are publicly exposed in case you need 
 | [`SplitGutter`](/api/component/container/classes/SplitGutter) | Drag handle for the [`Split`](/api/layout/classes/Split) layout |
 | [`AccordionHeader`](/api/component/container/classes/AccordionHeader) | Collapsible section header for the [`Accordion`](/api/layout/classes/Accordion) layout |
 | [`Scrollbar`](/components/Scrollbar) | Custom vertical or horizontal scrollbar overlay for components that own their scroll state |
+| [`ScrollStrip`](/components/ScrollStrip) | Reusable overflow-scrolling button rail (clip frame + paging arrows) — the scroll mechanic behind `TabBar`'s overflowing strip |
 | [`VirtualScroller`](/components/VirtualScroller) | Shared scroll machinery for transform-based virtual lists (rows container, scrollbars, wheel + touch + momentum) |

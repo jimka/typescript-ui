@@ -154,6 +154,7 @@ export default defineConfig({
                 ] },
                 { text: 'Scrolling', collapsed: false, items: [
                     { text: 'Scrollbar',       link: '/components/Scrollbar' },
+                    { text: 'ScrollStrip',     link: '/components/ScrollStrip' },
                     { text: 'VirtualScroller', link: '/components/VirtualScroller' },
                 ] },
             ],
