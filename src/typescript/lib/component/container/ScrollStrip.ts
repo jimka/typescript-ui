@@ -57,7 +57,7 @@ export interface ScrollStripOptions extends PanelOptions {
     /** CSS background applied to the arrow buttons. Default the framework button background. */
     arrowBackground?: string;
 
-    /** Fallback per-click step (px) used when no step provider is set. Default {@link SCROLL_ARROW_STEP}. */
+    /** Fallback per-click step (px) used when no step provider is set. Defaults to roughly one wide control. */
     arrowStep?: number;
 }
 
