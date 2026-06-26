@@ -725,9 +725,14 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
         }
 
         // getBoundingClientRect already reflects the current scroll, so `delta` is
-        // the screen-space correction; apply it to the native offset.
+        // the screen-space correction; apply it to the native offset, then refresh
+        // the arrows. Like scrollBy, a reveal that moves the scroll must re-derive
+        // the arrows' enabled state — reveal-on-select can jump from the start to
+        // the end (e.g. selecting the last tab while scrolled fully to the start),
+        // which flips both arrows' limits.
         if (delta !== 0) {
             this.setMainScroll(this.mainScroll() + delta);
+            this.refreshArrows();
         }
     }
 

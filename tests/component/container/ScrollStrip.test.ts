@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ScrollStrip } from '~/component/container/ScrollStrip';
 import { Panel } from '~/core/Panel';
 import { Button } from '~/component/button/Button';
@@ -164,5 +164,41 @@ describe('ScrollStrip per-click step resolution', () => {
 
         strip.setStepProvider(() => 123);
         expect(strip.resolveStep()).toBe(123);
+    });
+});
+
+describe('ScrollStrip.revealItem arrow refresh (regression)', () => {
+    // Arrow-paging (scrollBy) refreshes the arrows after it moves the native
+    // scroll; revealItem must do the same. Reveal-on-select can jump the scroll
+    // from the far start to the far end (e.g. selecting the last tab via the
+    // context menu while scrolled fully left), and if the arrows aren't
+    // re-evaluated the lead arrow stays wrongly disabled and the trail wrongly
+    // enabled. The live overflow metrics (scrollWidth) are flattened offline, so
+    // drive revealItem's rect inputs directly: the contract under test is "a
+    // reveal that scrolls also refreshes the arrows", independent of the metrics.
+    it('refreshes the arrows after a reveal that moves the scroll', () => {
+        const strip = new ScrollStrip();
+
+        strip.getClipElement(true); // realise the clip so revealItem passes its guard
+        const item = new Button({ text: 'Z' });
+        strip.addItem(item);
+        const itemEl = item.getElement(true)!;
+
+        const rect = (left: number, right: number) =>
+            ({ left, right, top: 0, bottom: 20, width: right - left, height: 20, x: left, y: 0 } as any);
+
+        // revealItem reads the clip rect first, then the item rect. Put the item
+        // fully to the right of the clip viewport so it must scroll right.
+        vi.spyOn(DOM.source, 'getElementRect')
+            .mockReturnValueOnce(rect(0, 100))
+            .mockReturnValueOnce(rect(150, 200));
+
+        const refreshSpy = vi.spyOn(strip, 'refreshArrows');
+        const before = strip.mainScroll();
+
+        strip.revealItem(itemEl);
+
+        expect(strip.mainScroll()).toBeGreaterThan(before); // the reveal actually scrolled
+        expect(refreshSpy).toHaveBeenCalled();              // and re-evaluated the arrows
     });
 });
