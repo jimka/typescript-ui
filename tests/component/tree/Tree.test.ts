@@ -255,6 +255,75 @@ describe('Tree (white-box) — _onToggle expand / collapse', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Payload slot — the optional `data` field is an opaque caller-supplied carrier.
+// The tree never reads it for identity/dedup; it only round-trips by reference
+// through the node-flow API. All four behaviours are in-memory and offline.
+// ---------------------------------------------------------------------------
+describe('TreeNode — data payload slot', () => {
+    it('round-trips through setNodes / getNodes by reference', () => {
+        const tree = new _Tree();
+        const payload = { kind: 'schema', name: 'public' };
+        const nodes: TreeNode[] = [{ label: 'public', data: payload }];
+
+        tree.setNodes(nodes);
+        // getNodes returns the same array, so the same node reference carries data.
+        expect(tree.getNodes()[0].data).toBe(payload);
+    });
+
+    it('is retrievable from a fired selection event', () => {
+        const tree = new TestTree();
+        const payload = { kind: 'table', name: 'users' };
+        const node: TreeNode = { label: 'users', data: payload };
+        let received: TreeNode[] = [];
+
+        tree.on('selection', nodes => {
+            received = nodes;
+        });
+        tree.fire([node]);
+        expect(received[0].data).toBe(payload);
+    });
+
+    it('survives the lazy-load path and is reachable from the loaded child', async () => {
+        const tree = new _Tree();
+        const childPayload = { kind: 'table', name: 'orders' };
+        const parent: TreeNode = {
+            label:        'schema',
+            hasChildren:  true,
+            loadChildren: () => Promise.resolve([{ label: 'orders', data: childPayload }]),
+        };
+
+        tree.setNodes([parent]);
+        // _loadAndExpand writes the resolved children onto the parent by
+        // reference; awaiting it lets the child's payload settle in place.
+        const priv = tree as unknown as { _loadAndExpand(node: TreeNode): Promise<void> };
+        await priv._loadAndExpand(parent);
+
+        expect(parent.children?.[0].data).toBe(childPayload);
+    });
+
+    it('does not affect expansion or selection identity', () => {
+        const tree = new _Tree();
+        const shared = { kind: 'schema' };
+        const a: TreeNode = { label: 'dup', data: shared, children: [{ label: 'child' }] };
+        const b: TreeNode = { label: 'dup', data: shared, children: [{ label: 'child' }] };
+
+        tree.setNodes([a, b]);
+        const priv = asPrivate(tree);
+
+        // Expanding one node with shared data must not expand the other.
+        priv._onToggle(a);
+        expect(priv._expandedNodes.has(a)).toBe(true);
+        expect(priv._expandedNodes.has(b)).toBe(false);
+
+        // Selecting one (seeded white-box) must not select the other: the
+        // selection set is keyed by object reference, never by `data`.
+        (tree as unknown as { _selectedNodes: Set<TreeNode> })._selectedNodes.add(a);
+        expect(tree.getSelectedNodes()).toContain(a);
+        expect(tree.getSelectedNodes()).not.toContain(b);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Renderer content-width tests — these route through DOM.source.measureText
 // (offline-modelled), so the width is a real relational invariant: the sum of
 // the baked advances for the label string.

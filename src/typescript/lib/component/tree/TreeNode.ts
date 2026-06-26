@@ -43,4 +43,17 @@ export interface TreeNode {
      * @returns A promise resolving to this node's child {@link TreeNode} array.
      */
     loadChildren?: () => Promise<TreeNode[]>;
+
+    /**
+     * Optional caller-supplied payload attached to this node.
+     *
+     * @remarks
+     * The tree treats this value as opaque: it is never read, rendered, or used
+     * to establish node identity or deduplicate nodes. Attach any domain object
+     * here and read it back, unchanged, from a node the tree hands you — via
+     * {@link Tree.getSelectedNode}, {@link Tree.getSelectedNodes}, the
+     * `"selection"` event, or the `"loaderror"` event. Typed as `unknown` so the
+     * cast stays explicit at the read site; the tree itself stays payload-agnostic.
+     */
+    data?: unknown;
 }
