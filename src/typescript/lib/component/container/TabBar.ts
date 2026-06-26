@@ -890,8 +890,7 @@ class TabBar extends Container<TabBarOptions> {
 
         // The scroll axis flips with the side, so start the new side unscrolled,
         // then bring the selected tab into view if the new axis is scrollable.
-        this._tabClip.setScrollLeft(0);
-        this._tabClip.setScrollTop(0);
+        this._tabClip.resetScroll();
 
         if (this._scrollable) {
             this._scrollToSelected = true;
@@ -1885,7 +1884,7 @@ class TabBar extends Container<TabBarOptions> {
      *   within (already net of the tool-group reservation).
      */
     private applyTabWidths(available: number): void {
-        const box = this._tabClip.getLayoutManager() as BoxLayout;
+        const box = this._tabClip.getContentBox() as BoxLayout;
         const overflow = this._scrollable;
 
         // Scroll-on-overflow: keep tabs at their width-mode extent and let the
@@ -2078,48 +2077,35 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Positions and sizes the clip frame to span the whole tab band — the strip
-     * region net of the tool group and the leading glyph slot, *including* the
-     * scroll-arrow gutters at each end. The frame's overflow:hidden clips any tab
-     * (and its ✕ overlay) that scrolls past the region edge, and the arrow gutters
-     * are folded into the frame's own main-axis insets so the inner box lays the
-     * tabs out between the arrows (which the strip owns and places into those
-     * gutters). The leading inset additionally carries the `"end"`-align gap, which
-     * trailing-aligns the tabs and survives an independent clip-frame relayout.
+     * Positions and sizes the strip's clip-frame band to span the whole tab band —
+     * the strip region net of the tool group and the leading glyph slot, *including*
+     * the scroll-arrow gutters at each end. The strip then sizes its own inner clip
+     * to the band minus the gutters and places its arrows into them (see
+     * {@link ScrollStrip.layoutContent}), so this only resolves the band rectangle.
      *
      * @param toolExtent - The tool group's main-axis extent in px.
      * @param leadExtent - The leading glyph's reserved main-axis extent in px (0 when no leading glyph).
-     * @param arrowReserve - The per-end scroll-arrow gutter in px (0 when no arrows).
-     * @param endGap - The leading gap that trailing-aligns `"end"` tabs (0 otherwise).
      * @param thickness - The strip's cross-axis thickness in px.
      * @param mainInner - The strip's main-axis inner extent in px.
      * @param crossLead - The bar's leading cross-axis inset (0 unless the bar absorbed a parent inset).
      * @param mainLead - The bar's leading main-axis inset (0 unless the bar absorbed a parent inset).
      */
-    private positionClipFrame(toolExtent: number, leadExtent: number, arrowReserve: number, endGap: number, thickness: number, mainInner: number, crossLead: number, mainLead: number): void {
+    private positionClipFrame(toolExtent: number, leadExtent: number, thickness: number, mainInner: number, crossLead: number, mainLead: number): void {
         const toolsLead = this._align === "end";
         const leadChrome = leadExtent + (toolsLead ? toolExtent : 0);
         const trailChrome = toolsLead ? 0 : toolExtent;
         const mainSize = mainInner - leadChrome - trailChrome;
-
-        // Fold the arrow gutters into the frame's own main-axis insets so the box
-        // lays the tabs out between the arrows; the leading inset also carries the
-        // "end"-align gap.
-        const leadInset = endGap + arrowReserve;
-        const trailInset = arrowReserve;
 
         if (this.isVertical()) {
             this._tabClip.setX(crossLead);
             this._tabClip.setY(leadChrome + mainLead);
             this._tabClip.setWidth(thickness);
             this._tabClip.setHeight(mainSize);
-            this._tabClip.setInsets(new Insets(leadInset, 0, trailInset, 0));
         } else {
             this._tabClip.setX(leadChrome + mainLead);
             this._tabClip.setY(crossLead);
             this._tabClip.setWidth(mainSize);
             this._tabClip.setHeight(thickness);
-            this._tabClip.setInsets(new Insets(0, trailInset, 0, leadInset));
         }
     }
 
@@ -2422,10 +2408,10 @@ class TabBar extends Container<TabBarOptions> {
 
     /**
      * Lays out the strip's internal chrome within the given box: sizes the clip
-     * frame to the tab region (between the tool group and any scroll-arrow
-     * gutters), applies the width mode, runs the clip frame box, reveals the
-     * selected tab, then positions the tool group, indicator, close overlays, and
-     * overflow arrows.
+     * frame band to the tab region (between the tool group and the leading slot),
+     * applies the width mode, then has the strip lay its inner clip and overflow
+     * arrows within the band, reveals the selected tab, and positions the tool
+     * group, indicator, and close overlays.
      *
      * @param width - The strip's box width in px (== outer width).
      * @param height - The strip's box height in px.
@@ -2451,42 +2437,35 @@ class TabBar extends Container<TabBarOptions> {
         const mainOuter = vertical ? height : width;
         const mainInner = mainOuter - mainLead - mainTrail;
 
-        // Place the clip frame between the tool slot, the leading glyph slot, and —
-        // when a scrollable strip is overflowing — a scroll-arrow gutter at each
-        // end, so the tabs lay out (and scroll, clipped) strictly within it rather
-        // than behind the chrome. An "end"-align leading gap is folded in as a
-        // frame inset too, so the box trailing-aligns the tabs natively.
+        // Place the clip-frame band between the tool slot and the leading glyph
+        // slot. A scrollable strip that overflows reserves a scroll-arrow gutter at
+        // each end (held by the strip inside the band); an "end"-align leading gap
+        // trailing-aligns the tabs. The strip lays its inner clip + arrows within
+        // the band so the tabs scroll, clipped, between the fixed arrows.
         const arrowReserve = this._tabClip.arrowReserve(this.predictTabsExtent(), mainInner - toolExtent - leadExtent);
         const available = mainInner - toolExtent - leadExtent - 2 * arrowReserve;
         const endGap = this.endAlignGap(available);
-        this.positionClipFrame(toolExtent, leadExtent, arrowReserve, endGap, thickness, mainInner, crossLead, mainLead);
+        this.positionClipFrame(toolExtent, leadExtent, thickness, mainInner, crossLead, mainLead);
 
+        // Set the tab width mode/clamps before the strip runs its inner box, then
+        // let the strip size its clip to the band minus the gutters, lay out the
+        // tabs, place the arrows, and resync its cached scroll offset. The resync
+        // matters because `applyTabWidths` can lay the content out narrower than the
+        // current offset (e.g. compact while scrolled to the end), so the browser
+        // clamps the native scroll on its own and `revealSelectedIfRequested` would
+        // otherwise add its live-rect delta to a stale base and under-scroll.
         this.applyTabWidths(available);
-        this._tabClip.doLayout();
+        this._tabClip.layoutContent(arrowReserve, endGap);
 
-        // `applyTabWidths` can lay the content out narrower than the current
-        // scroll offset (e.g. switching to `compact` while scrolled to the end);
-        // the browser then clamps the clip's native scroll on its own, behind the
-        // cached scroll API's back, leaving the strip's scroll cache stale. Resync
-        // from the DOM before the reveal reads it, or `revealSelectedIfRequested`
-        // would add its live-rect delta to a stale base and under-scroll.
-        this._tabClip.syncScrollOffsets();
-
-        // Scroll-into-view moves the clip frame's native scroll against the
-        // now-laid-out wrapper rects — a prediction before the box runs can't see
-        // a same-pass width change. No relayout: native scroll shifts the content.
+        // Scroll-into-view moves the clip's native scroll against the now-laid-out
+        // wrapper rects — a prediction before the box runs can't see a same-pass
+        // width change. No relayout: native scroll shifts the content.
         this.revealSelectedIfRequested();
 
         this.positionToolGroup(mainInner, toolExtent, thickness, crossLead, mainLead);
         this.positionLeadGroup(thickness, crossLead, mainLead);
         this.positionIndicator();
         this.positionCloseButtons();
-
-        // The strip owns its overflow arrows; it places them into the gutters at
-        // each end of its own (clip-local) band — the lead gutter at origin 0, the
-        // trail gutter at the far edge — and hides them when nothing overflows.
-        const bandExtent = vertical ? this._tabClip.getHeight() : this._tabClip.getWidth();
-        this._tabClip.layoutArrows(0, bandExtent, 0, thickness, arrowReserve);
     }
 
     /**
@@ -2678,7 +2657,7 @@ class TabBar extends Container<TabBarOptions> {
      * @param detail - The drag event detail (carries the viewport cursor).
      */
     private updateReorderSlot(detail: DragEventDetail): void {
-        const element = this._tabClip.getElement();
+        const element = this._tabClip.getClipElement();
 
         if (!element) {
             return;

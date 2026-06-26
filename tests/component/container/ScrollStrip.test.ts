@@ -36,14 +36,14 @@ describe('ScrollStrip construction', () => {
         const strip = new ScrollStrip();
 
         expect(strip.getOrientation()).toBe('horizontal');
-        expect(strip.getLayoutManager()).toBeInstanceOf(HBox);
+        expect(strip.getContentBox()).toBeInstanceOf(HBox);
     });
 
     it('builds a VBox for { orientation: "vertical" }', () => {
         const strip = new ScrollStrip({ orientation: 'vertical' });
 
         expect(strip.getOrientation()).toBe('vertical');
-        expect(strip.getLayoutManager()).toBeInstanceOf(VBox);
+        expect(strip.getContentBox()).toBeInstanceOf(VBox);
     });
 
     it('defaults to scrollable', () => {
@@ -61,19 +61,19 @@ describe('ScrollStrip.setOrientation box swap', () => {
         const strip = new ScrollStrip();
 
         strip.setOrientation('vertical');
-        expect(strip.getLayoutManager()).toBeInstanceOf(VBox);
+        expect(strip.getContentBox()).toBeInstanceOf(VBox);
 
         strip.setOrientation('horizontal');
-        expect(strip.getLayoutManager()).toBeInstanceOf(HBox);
+        expect(strip.getContentBox()).toBeInstanceOf(HBox);
     });
 
     it('is a no-op when the orientation is unchanged (keeps the box instance)', () => {
         const strip = new ScrollStrip();
-        const box = strip.getLayoutManager();
+        const box = strip.getContentBox();
 
         strip.setOrientation('horizontal');
 
-        expect(strip.getLayoutManager()).toBe(box);
+        expect(strip.getContentBox()).toBe(box);
     });
 });
 
@@ -120,7 +120,7 @@ describe('ScrollStrip item management', () => {
 
         strip.addItem(a).addItem(b);
 
-        expect(strip.getComponents()).toEqual([a, b]);
+        expect(strip.getItems()).toEqual([a, b]);
     });
 
     it('removes an item from the box', () => {
@@ -130,7 +130,7 @@ describe('ScrollStrip item management', () => {
 
         strip.addItem(a).addItem(b).removeItem(a);
 
-        expect(strip.getComponents()).toEqual([b]);
+        expect(strip.getItems()).toEqual([b]);
     });
 
     it('moves an item to a new index', () => {
@@ -141,7 +141,7 @@ describe('ScrollStrip item management', () => {
 
         strip.addItem(a).addItem(b).addItem(c).moveItem(c, 0);
 
-        expect(strip.getComponents()).toEqual([c, a, b]);
+        expect(strip.getItems()).toEqual([c, a, b]);
     });
 });
 

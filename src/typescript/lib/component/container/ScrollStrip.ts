@@ -5,6 +5,7 @@ import { Component } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Button } from "~/component/button/Button.js";
+import { Insets } from "~/primitive/Insets.js";
 import { HBox } from "~/layout/HBox.js";
 import { VBox } from "~/layout/VBox.js";
 import { Glyph } from "~/component/display/Glyph.js";
@@ -62,16 +63,19 @@ export interface ScrollStripOptions extends PanelOptions {
 }
 
 /**
- * A clip frame that lays a row or column of items and scrolls them past its
+ * A button rail that lays a row or column of items and scrolls them past its
  * edges when they overflow, showing lead/trail paging arrows in reserved gutters.
  *
- * `ScrollStrip` **is** its own clip frame: its element is `overflow:hidden` and
- * runs an `HBox` (horizontal) or `VBox` (vertical) over the items added via
- * {@link addItem}. When the items overflow along the main axis it reserves a
- * gutter at each end (see {@link arrowReserve}) and the owner places the strip's
- * frame to span the whole band; the two arrow buttons sit in those gutters,
- * paging one step per click and disabling at the scroll limits. The native
- * scroll offset on the main axis is the single source of truth — read via
+ * `ScrollStrip` is a non-scrolling *band* element that hosts two things: an inner
+ * `overflow:hidden` clip (the scroll-port) running an `HBox` (horizontal) or
+ * `VBox` (vertical) over the items added via {@link addItem}, and the two paging
+ * arrows. Splitting the band from the clip is what keeps the arrows fixed in their
+ * gutters: they are children of the non-scrolling band, so they never inherit the
+ * clip's scroll translation, while the items scroll inside the clip between them.
+ * When the items overflow along the main axis the strip reserves a gutter at each
+ * end (see {@link arrowReserve}); the owner sizes the band, and the strip sizes its
+ * clip to the band minus the gutters and places the arrows ({@link layoutContent}).
+ * The clip's native main-axis offset is the single source of truth — read via
  * {@link mainScroll}, written via {@link setMainScroll} — so any overlay
  * raw-appended into the clip element (via {@link getClipElement}) scrolls and
  * clips together with the items for free.
@@ -107,14 +111,23 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
     // (it is a function the owner supplies after construction), so a plain field.
     private _stepProvider: (() => number) | null = null;
 
-    // The two paging arrows, built lazily the first time the strip overflows
-    // while scrollable. Raw-appended to this element above the box children.
+    // The inner clip: a Panel sized to the band minus the arrow gutters, with
+    // overflow:hidden + native scroll. It — not this element — holds the box
+    // children (the items) and any raw-appended overlays, so the items scroll and
+    // clip inside it while the arrows (children of THIS non-scrolling band element)
+    // hold their gutters. A nested Panel rather than this element because the clip
+    // needs independent behaviour (its own scroll-port) from the band.
+    private _clip: Panel = new Panel();
+
+    // The two paging arrows, built lazily the first time the strip overflows while
+    // scrollable. Raw-appended to THIS element (the non-scrolling band) so they sit
+    // in the gutters and never inherit the inner clip's scroll translation.
     private _leadArrow: Button | null = null;
     private _trailArrow: Button | null = null;
 
     /**
      * Builds an empty scroll strip with the default horizontal orientation,
-     * `overflow:hidden` clip, transparent background, and cleared insets.
+     * transparent background, and an inner overflow:hidden clip for the items.
      *
      * @param options - Optional construction-time options.
      */
@@ -129,13 +142,33 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
         this._arrowBackground ??= null;
         this._arrowStep ??= SCROLL_ARROW_STEP;
 
-        // The clip frame: overflow:hidden so a scrolled-past item is clipped at
-        // the edge, transparent so the owner's surface shows through, no insets,
-        // and the box for the current axis.
-        this.setOverflow("hidden");
+        // The band element itself does not scroll (it hosts the fixed arrows); the
+        // inner clip carries the overflow:hidden scroll-port. Both are transparent
+        // so the owner's surface shows through.
         this.setBackgroundColor("transparent");
         this.clearInsets();
+
+        this._clip.setOverflow("hidden");
+        this._clip.setBackgroundColor("transparent");
+        this._clip.clearInsets();
         this.installBox(this._orientation);
+    }
+
+    /**
+     * Raw-appends the inner clip into the band element at first render — the band
+     * exists by then, unlike during construction.
+     *
+     * @param element - Optional. The element to initialise; falls back to `getElement()`.
+     *
+     * @returns This strip, for method chaining.
+     */
+    protected init(element?: Handle): this {
+        super.init(element);
+
+        const host = element ?? this.getElement(true)!;
+        DOM.sink.appendChild(host, this._clip.getElement(true)!);
+
+        return this;
     }
 
     /**
@@ -176,11 +209,19 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
      * @param orientation - The orientation whose box to install.
      */
     private installBox(orientation: ScrollStripOrientation): void {
+        // A cascade-dispatched `setOrientation` (from `applyOptions`, run inside
+        // super()) can reach here before the `_clip` field initializer runs. Skip
+        // it then — `_orientation` is already cached, and the constructor body
+        // installs the box once `_clip` exists.
+        if (!this._clip) {
+            return;
+        }
+
         const box = orientation === "vertical"
             ? new VBox({ mode: "equal", spacing: 0, stretching: true })
             : new HBox({ mode: "equal", spacing: 0, stretching: true });
 
-        this.setLayoutManager(box);
+        this._clip.setLayoutManager(box);
     }
 
     /**
@@ -299,14 +340,15 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
     }
 
     /**
-     * Adds an item as a box child — part of the scrolling row/column.
+     * Adds an item as a box child of the inner clip — part of the scrolling
+     * row/column.
      *
      * @param item - The item to append.
      *
      * @returns This strip, for method chaining.
      */
     addItem(item: Component): this {
-        this.addComponent(item);
+        this._clip.addComponent(item);
 
         return this;
     }
@@ -319,7 +361,7 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
      * @returns This strip, for method chaining.
      */
     removeItem(item: Component): this {
-        this.removeComponent(item);
+        this._clip.removeComponent(item);
 
         return this;
     }
@@ -333,22 +375,55 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
      * @returns This strip, for method chaining.
      */
     moveItem(item: Component, toIndex: number): this {
-        this.moveComponent(item, toIndex);
+        this._clip.moveComponent(item, toIndex);
 
         return this;
     }
 
     /**
-     * Returns the clip element so an owner can raw-append overlays that must
-     * scroll and clip with the items (e.g. a selection indicator). The element is
-     * this strip's own element.
+     * Returns the items currently in the scrolling box, in order.
+     *
+     * @returns The clip's box children.
+     */
+    getItems(): Array<Component> {
+        return this._clip.getComponents();
+    }
+
+    /**
+     * Returns the inner clip's box layout manager — an `HBox` (horizontal) or
+     * `VBox` (vertical) per the current orientation.
+     *
+     * @returns The clip's layout manager.
+     */
+    getContentBox(): ReturnType<Panel["getLayoutManager"]> {
+        return this._clip.getLayoutManager();
+    }
+
+    /**
+     * Lays out the inner clip's box, sizing the items, then resyncs the strip's
+     * cached scroll offset from the DOM (the browser may clamp the native offset on
+     * its own when the content lays out smaller than the current offset). Call after
+     * positioning the band (see {@link layoutContent}) and before reading the scroll.
+     *
+     * @returns This strip, for method chaining.
+     */
+    layoutItems(): this {
+        this._clip.doLayout();
+        this._clip.syncScrollOffsets();
+
+        return this;
+    }
+
+    /**
+     * Returns the inner clip element so an owner can raw-append overlays that must
+     * scroll and clip with the items (e.g. a selection indicator).
      *
      * @param forceCreate - When true, realises the element if it does not exist yet.
      *
      * @returns The clip element handle, or null when not yet realised.
      */
     getClipElement(forceCreate?: boolean): Handle | null {
-        return this.getElement(forceCreate) ?? null;
+        return this._clip.getElement(forceCreate) ?? null;
     }
 
     /**
@@ -403,6 +478,9 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
         lead.on("action", this.leadClicked);
         trail.on("action", this.trailClicked);
 
+        // Raw-append to the band element (this) — NOT the inner clip — so the
+        // arrows stay fixed in their gutters and never inherit the clip's scroll
+        // translation.
         const element = this.getElement(true)!;
         DOM.sink.appendChild(element, lead.getElement(true)!);
         DOM.sink.appendChild(element, trail.getElement(true)!);
@@ -412,20 +490,58 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
     }
 
     /**
-     * Positions, sizes, and enables the two arrows within the gutters of the band
-     * the owner passes, or hides them when the band carries no reserve. The band is
-     * in this element's own (clip-local) coordinates: the lead gutter sits at
-     * `mainOrigin`, the trail gutter at `mainOrigin + mainExtent - reserve`, both
-     * spanning the cross-axis thickness. Each arrow is disabled (not hidden) at its
-     * scroll limit so the chrome never shifts as the items scroll between them.
+     * Lays out the strip's content within its own (owner-positioned) band: sizes
+     * the inner clip to the band minus a gutter at each end, places and enables the
+     * arrows into those gutters, runs the clip's box, and resyncs the cached scroll
+     * offset. The band is the strip's own width/height; the gutters carry the fixed
+     * arrows while the clip scrolls the items between them. An `endGap` trailing-
+     * aligns the items by insetting the clip's leading edge.
      *
-     * @param mainOrigin - The band's leading edge on the main axis (clip-local px).
-     * @param mainExtent - The band's main-axis extent (px).
-     * @param crossOrigin - The band's leading edge on the cross axis (clip-local px).
+     * @param reserve - The per-end arrow gutter in px (0 = no arrows, clip spans the band).
+     * @param endGap - The leading inset (px) that trailing-aligns the items (0 otherwise).
+     *
+     * @returns This strip, for method chaining.
+     */
+    layoutContent(reserve: number, endGap: number): this {
+        const vertical = this.isVertical();
+        const bandMain = vertical ? this.getHeight() : this.getWidth();
+        const thickness = vertical ? this.getWidth() : this.getHeight();
+        const clipMain = bandMain - 2 * reserve;
+
+        // Size the inner clip to the region between the gutters and fold the
+        // end-align gap into its leading inset, so the box trailing-aligns natively.
+        if (vertical) {
+            this._clip.setX(0);
+            this._clip.setY(reserve);
+            this._clip.setWidth(thickness);
+            this._clip.setHeight(clipMain);
+            this._clip.setInsets(new Insets(endGap, 0, 0, 0));
+        } else {
+            this._clip.setX(reserve);
+            this._clip.setY(0);
+            this._clip.setWidth(clipMain);
+            this._clip.setHeight(thickness);
+            this._clip.setInsets(new Insets(0, 0, 0, endGap));
+        }
+
+        this.layoutItems();
+        this.layoutArrows(bandMain, thickness, reserve);
+
+        return this;
+    }
+
+    /**
+     * Positions, sizes, and enables the two arrows in the gutters at each end of the
+     * band, or hides them when the band carries no reserve. The lead gutter sits at
+     * band origin 0, the trail gutter at `bandMain - reserve`, both spanning the
+     * cross-axis thickness. Each arrow is disabled (not hidden) at its scroll limit
+     * so the chrome never shifts as the items scroll between them.
+     *
+     * @param bandMain - The band's main-axis extent (px).
      * @param thickness - The band's cross-axis thickness (px).
      * @param reserve - The per-end gutter (the arrows' main-axis size) in px; 0 hides them.
      */
-    layoutArrows(mainOrigin: number, mainExtent: number, crossOrigin: number, thickness: number, reserve: number): void {
+    private layoutArrows(bandMain: number, thickness: number, reserve: number): void {
         if (!this._scrollable || reserve <= 0) {
             this.hideArrows();
 
@@ -446,31 +562,30 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
 
         this.refreshArrows();
 
-        const leadPos = mainOrigin;
-        const trailPos = mainOrigin + mainExtent - reserve;
+        const trailPos = bandMain - reserve;
 
         for (const button of [lead, trail]) {
             if (vertical) {
                 // Pin the main-axis (height) to the gutter; fill the thickness.
                 button.setMinSize(0, reserve);
                 button.setMaxSize(Number.MAX_VALUE, reserve);
-                button.setX(crossOrigin);
+                button.setX(0);
                 button.setWidth(thickness);
                 button.setHeight(reserve);
             } else {
                 button.setMinSize(reserve, 0);
                 button.setMaxSize(reserve, Number.MAX_VALUE);
-                button.setY(crossOrigin);
+                button.setY(0);
                 button.setHeight(thickness);
                 button.setWidth(reserve);
             }
         }
 
         if (vertical) {
-            lead.setY(leadPos);
+            lead.setY(0);
             trail.setY(trailPos);
         } else {
-            lead.setX(leadPos);
+            lead.setX(0);
             trail.setX(trailPos);
         }
     }
@@ -490,7 +605,7 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
      * @returns The current main-axis scroll offset in px.
      */
     mainScroll(): number {
-        return this.isVertical() ? this.getScrollTop() : this.getScrollLeft();
+        return this.isVertical() ? this._clip.getScrollTop() : this._clip.getScrollLeft();
     }
 
     /**
@@ -500,7 +615,7 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
      * @returns The last-page scroll offset in px (0 when nothing overflows).
      */
     private mainScrollMax(): number {
-        return this.isVertical() ? this.getMaxScrollTop() : this.getMaxScrollLeft();
+        return this.isVertical() ? this._clip.getMaxScrollTop() : this._clip.getMaxScrollLeft();
     }
 
     /**
@@ -511,10 +626,24 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
      */
     setMainScroll(value: number): void {
         if (this.isVertical()) {
-            this.setScrollTop(value);
+            this._clip.setScrollTop(value);
         } else {
-            this.setScrollLeft(value);
+            this._clip.setScrollLeft(value);
         }
+    }
+
+    /**
+     * Resets the clip's native scroll to the origin on both axes — used when the
+     * scroll axis itself changes (e.g. an owner side-switch) so the strip starts
+     * the new axis unscrolled.
+     *
+     * @returns This strip, for method chaining.
+     */
+    resetScroll(): this {
+        this._clip.setScrollLeft(0);
+        this._clip.setScrollTop(0);
+
+        return this;
     }
 
     /**
@@ -572,7 +701,7 @@ class ScrollStrip extends Panel<ScrollStripOptions> {
      * @param itemElement - The element of the item to reveal.
      */
     revealItem(itemElement: Handle): void {
-        const clipElement = this.getElement();
+        const clipElement = this._clip.getElement();
 
         if (!clipElement) {
             return;
