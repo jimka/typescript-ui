@@ -35,7 +35,9 @@ Build a DAG from hard deps. Reject cycles. Topo-sort; within each level, greedy-
 
 ## Multi-plan dispatch
 
-Worktrees are parent-orchestrated, not harness-isolated, so every concurrent run lives under a predictable, browsable root (see [`_shared/worktree.md`](../_shared/worktree.md)). Per phase:
+Worktrees are parent-orchestrated, not harness-isolated, so every concurrent run lives under a predictable, browsable root (see [`_shared/worktree.md`](../_shared/worktree.md)).
+
+Before fanning out, **track the whole batch on master in a single bookkeeping commit** per _In-progress lifecycle_: stage only the untracked plans being started (skip any already tracked, never stage other plans or unrelated changes) and commit them together, so every worktree branches from a master that already carries its plan. Then, per phase:
 
 1. Pre-create a worktree per plan: `git worktree add .worktrees/<plan-slug> -b feature/<plan-slug>`.
 2. Launch one `Agent` per plan, `subagent_type: "general-purpose"`, **without** `isolation: "worktree"` (worktrees already exist). Prompt each agent to `cd .worktrees/<plan-slug>` and re-enter this skill in single-plan mode for its assigned plan. The branch is already checked out — _Work Instructions_ step 3.5 detects this and stays on it.
@@ -45,9 +47,12 @@ Worktrees are parent-orchestrated, not harness-isolated, so every concurrent run
 
 ## In-progress lifecycle
 
-- Start of work: the plan is untracked in the main tree and does not transfer to a fresh worktree, so copy it into the worktree's `plans/in-progress/<slug>.md`, then delete the main-tree copy. Commit the move (inside the worktree) as bookkeeping.
-- Completion: move from `plans/in-progress/` to `plans/implemented/` in the code commit (inside the worktree).
-- Abort: copy the plan back to the main tree's `plans/<slug>.md` and remove the worktree.
+**Invariant: an implement run must never leave an uncommitted change in the main working tree.** Every plan-file move is a `git mv` performed *inside the worktree* on `feature/<slug>` — the main tree is never edited, deleted from, or copied into. The historical "copy across and delete the main-tree copy" step is gone: it only avoided a git trace because plans used to be untracked, and once a plan was committed to master that delete landed as a dangling, never-committed deletion on master.
+
+- **Track on master first (before any worktree exists).** Every plan in the batch being started must be tracked on master before its worktree is branched, so the worktree inherits the plan instead of needing a hand-copy. If a plan is still untracked (the `plan` skill leaves it so), commit it to master as a bookkeeping commit — staging **only** the plans being started, **one commit for the whole batch** (never one-per-plan), and never touching any other plan or unrelated change. A plan already tracked needs no commit.
+- **Start of work (inside the worktree):** `git mv plans/<slug>.md plans/in-progress/<slug>.md`, commit as bookkeeping. The plan is already present because the worktree branched from a master that tracks it.
+- **Completion (inside the worktree):** `git mv plans/in-progress/<slug>.md plans/implemented/<slug>.md`, commit as bookkeeping — the last commit on the branch.
+- **Abort:** just remove the worktree and delete the branch. The main tree's `plans/<slug>.md` was never touched and stays on master, so nothing needs restoring.
 
 `plans/in-progress/` acts as a soft lock — other invocations should skip plans listed there.
 
@@ -118,14 +123,14 @@ If any item is unchecked, resume at the appropriate step. Do not stop just becau
    2. Read the plan.
    3. Check the codebase for incompatibilities (renamed/removed APIs, signature changes, file moves, broken assumptions). Update the plan in place if drift is found.
    4. If incompatibilities were found, stop and ask the user to review.
-   5. **(fresh only)** Work in a worktree under `.worktrees/` per [`_shared/worktree.md`](../_shared/worktree.md) — never edit source in the main tree. If a parent dispatch already placed you in `.worktrees/<slug>` with `feature/<slug>` checked out, stay there. Otherwise create it: `git worktree add .worktrees/<slug> -b feature/<slug>`, then `cd .worktrees/<slug>`. Reuse an existing `.worktrees/<slug>` rather than duplicating it.
-   6. **(fresh only)** Bring the plan into the worktree per _In-progress lifecycle_: copy the untracked main-tree plan to the worktree's `plans/in-progress/<slug>.md`, delete the main-tree copy, and commit the move as bookkeeping.
+   5. **(fresh only)** Track the plan on master, then branch the worktree. If the plan is still untracked, commit it to master first as a bookkeeping commit (staging only this plan — see _In-progress lifecycle_; a parent dispatch will already have done this for the batch in one commit). Then work in a worktree under `.worktrees/` per [`_shared/worktree.md`](../_shared/worktree.md) — never edit source in the main tree. If a parent dispatch already placed you in `.worktrees/<slug>` with `feature/<slug>` checked out, stay there. Otherwise create it: `git worktree add .worktrees/<slug> -b feature/<slug>`, then `cd .worktrees/<slug>`. Reuse an existing `.worktrees/<slug>` rather than duplicating it.
+   6. **(fresh only)** Move the plan into in-progress per _In-progress lifecycle_: inside the worktree, `git mv plans/<slug>.md plans/in-progress/<slug>.md` and commit the move as bookkeeping. The plan is already tracked (step 5), so never copy from or delete in the main tree.
    7. Implement **test-first** (see _Test-first_): for each functionality, write the failing behavioural test before the code, then implement to green. On resume, pick up at the step identified by _Resume detection_.
 
       **Definition of done for this step:** every file in the plan's "Files to Create/Modify/Delete" table has been written; each functionality's expected behaviour was pinned by a test written before its implementation and now passes (or, where the offline harness can't exercise it, a documented manual-verify step substitutes); every entry in "Ordered Implementation Steps" is addressed; and `npx tsc --noEmit` is clean. Do not advance to step 8 until this clears. Running `git status` / `ls` and seeing reasonable output is not the same as verifying this list.
    8. Add a demo of the new feature to one of the demo panels, if applicable.
    9. Edit any `touches-shared` files last, one commit per file (_Shared-file etiquette_).
-   10. Move plan from `plans/in-progress/` to `plans/implemented/`. Commit as bookkeeping.
+   10. `git mv plans/in-progress/<slug>.md plans/implemented/<slug>.md` (inside the worktree). Commit as bookkeeping.
    11. Update `docs/` per the rules in `_shared/docs-conventions.md`.
    12. Run _Rebase-clean checkpoint_.
    13. Run _Audit_. Fix any BLOCKING findings and re-audit until clean.
