@@ -7,9 +7,9 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { ToggleButton } from "~/component/button/ToggleButton.js";
-import { Button } from "~/component/button/Button.js";
 import { TabButton } from "~/component/button/TabButton.js";
 import { TabCloseButton } from "~/component/button/TabCloseButton.js";
+import { ScrollStrip } from "~/component/container/ScrollStrip.js";
 import { Event } from "~/core/Event.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { Insets } from "~/primitive/Insets.js";
@@ -20,20 +20,11 @@ import { VBox } from "~/layout/VBox.js";
 import { BoxLayout } from "~/layout/BoxLayout.js";
 import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
-import { Glyph } from "~/component/display/Glyph.js";
-import { angle_left } from "~/glyphs/solid/angle_left.js";
-import { angle_right } from "~/glyphs/solid/angle_right.js";
-import { angle_up } from "~/glyphs/solid/angle_up.js";
-import { angle_down } from "~/glyphs/solid/angle_down.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { DragManager, DragEventDetail, DragData, TabDragData } from "~/overlay/DragManager.js";
 import { callable } from "~/core/Callable.js";
 import type { TabWidthMode, TabSide, TabOrientation } from "~/layout/Tab.js";
 import type { AxisPosition, AxisEnd } from "~/primitive/Axis.js";
-
-// Register the overflow scroll-arrow glyphs so the arrows render regardless of
-// which glyphs the consumer has imported (mirrors TabCloseButton's xmark seed).
-Glyph.register(angle_left, angle_right, angle_up, angle_down);
 
 /**
  * Duration (ms) of the selection indicator's slide. Matches `AnimatedDropdown`'s
@@ -65,13 +56,6 @@ const STRIP_THICKNESS_COMPACT = 24;
  * of the breathing room and this knob adding a hair of separation.
  */
 const LEAD_GLYPH_GAP = 4;
-
-/**
- * Main-axis length (px) of each overflow scroll-arrow button — square against
- * the strip thickness. Wide enough to be an easy click target, matching the
- * default tab height.
- */
-const SCROLL_ARROW_SIZE = 24;
 
 /**
  * Floor (px) for the per-overflow-arrow-click scroll step, used only before a
@@ -454,13 +438,13 @@ class TabDropTint extends Component {
  */
 class TabBar extends Container<TabBarOptions> {
 
-    // Clips the tab region. Holds the tab wrappers (its box children), the
-    // selection indicator, and the reorder bar; positioned to the scrollable tab
-    // region between the chrome (tool group + arrows) and set to overflow:hidden,
-    // so a scrolled tab — and its overlaid ✕ — is clipped at the region edge
-    // instead of bleeding over the tool buttons. The chrome lives on the strip
-    // element (this), outside this frame.
-    private _tabClip: Panel = new Panel();
+    // Clips the tab region and owns its overflow chrome. A ScrollStrip whose own
+    // element is the clip frame: it holds the tab wrappers (its box children) plus
+    // the raw-appended selection indicator and reorder bar, and owns the paging
+    // arrows in the gutters it reserves on overflow. Positioned to span the whole
+    // tab band; overflow:hidden clips a scrolled tab — and its overlaid ✕ — at the
+    // region edge instead of bleeding over the tool buttons.
+    private _tabClip: ScrollStrip = new ScrollStrip({ scrollable: false });
     private _entries: Array<BarEntry> = [];
     private _buttonGroup: ButtonGroup = new ButtonGroup();
     // The strip owns the clip frame's native scroll explicitly (arrow clicks and
@@ -519,10 +503,6 @@ class TabBar extends Container<TabBarOptions> {
     // helpers can short-circuit to a no-op when the slot is empty.
     private _leadWidget: Component | null = null;
 
-    // Overflow "arrows" chrome: leading/trailing scroll buttons, hidden when the
-    // strip fits. Built lazily the first time `scrollable` is enabled.
-    private _scrollLeadButton: Button | null = null;
-    private _scrollTrailButton: Button | null = null;
     // One-shot: scroll the selected tab into view on the next layout. Set when
     // scrolling first becomes active (enabling `scrollable`, or a side switch
     // while scrollable), so the selected tab isn't left clipped off-screen.
@@ -572,14 +552,13 @@ class TabBar extends Container<TabBarOptions> {
         this.getAria().setRole("tablist");
 
         // The tab wrappers live in the clip frame (its box lays them out), not on
-        // the strip directly. Transparent so the strip background and under-border
-        // show through; overflow:hidden clips scrolled tabs (and their close
-        // overlays) at the tab-region edge. Hand-positioned in `layoutChrome`, so
-        // it is raw-appended (not a strip box child).
-        this._tabClip.setLayoutManager(new HBox({ mode: "equal", spacing: 0, stretching: true }));
-        this._tabClip.setBackgroundColor("transparent");
-        this._tabClip.clearInsets();
-        this._tabClip.setOverflow("hidden");
+        // the strip directly. The ScrollStrip already configures its own
+        // transparent, overflow:hidden clip and box; here the strip themes the
+        // paging arrows to the toolbar surface and supplies the per-click step as
+        // one tab's live extent (so a click pages by a tab at any font size).
+        // Hand-positioned in `layoutChrome`, so it is raw-appended (not a box child).
+        this._tabClip.setArrowBackground("var(--ts-ui-tab-toolbar-bg, #eee)");
+        this._tabClip.setStepProvider(() => this.scrollStepExtent());
 
         // The tool group is a hand-positioned overlay (not a strip box child); it
         // runs its own box to lay its buttons out along the strip's main axis,
@@ -700,8 +679,7 @@ class TabBar extends Container<TabBarOptions> {
     setBarSurfaceColor(color: string): this {
         this.setBackgroundColor(color);
         this._toolGroup.setBackgroundColor(color);
-        this._scrollLeadButton?.setBackgroundColor(color);
-        this._scrollTrailButton?.setBackgroundColor(color);
+        this._tabClip.setArrowBackground(color);
 
         return this;
     }
@@ -730,7 +708,7 @@ class TabBar extends Container<TabBarOptions> {
         DOM.sink.appendChild(host, this._toolGroup.getElement(true)!);
         DOM.sink.appendChild(host, this._leadGroup.getElement(true)!);
 
-        const clip = this._tabClip.getElement(true)!;
+        const clip = this._tabClip.getClipElement(true)!;
         DOM.sink.appendChild(clip, this._indicator.getElement(true)!);
         DOM.sink.appendChild(clip, this._dropTint.getElement(true)!);
         DOM.sink.appendChild(clip, this._reorderBar.getElement(true)!);
@@ -1028,6 +1006,7 @@ class TabBar extends Container<TabBarOptions> {
         }
 
         this._scrollable = value;
+        this._tabClip.setScrollable(value);
 
         this.scheduleLayout();
 
@@ -1228,15 +1207,7 @@ class TabBar extends Container<TabBarOptions> {
             return true;
         }
 
-        const leadArrowEl = this._scrollLeadButton?.getElement() ?? null;
-
-        if (leadArrowEl && DOM.source.contains(leadArrowEl, targetHandle)) {
-            return true;
-        }
-
-        const trailArrowEl = this._scrollTrailButton?.getElement() ?? null;
-
-        if (trailArrowEl && DOM.source.contains(trailArrowEl, targetHandle)) {
+        if (this._tabClip.containsArrow(target)) {
             return true;
         }
 
@@ -1476,7 +1447,7 @@ class TabBar extends Container<TabBarOptions> {
 
         this._buttonGroup.addButton(tabButton);
         this._rovingTabIndex.add(tabButton);
-        this._tabClip.addComponent(tabButton);
+        this._tabClip.addItem(tabButton);
 
         tabButton.getAria().setRole("tab");
         tabButton.getAria().setSelected(isSelected);
@@ -1511,7 +1482,7 @@ class TabBar extends Container<TabBarOptions> {
         this._buttonGroup.removeButton(entry.button);
         this._rovingTabIndex.remove(entry.button);
         this._entries.splice(idx, 1);
-        this._tabClip.removeComponent(entry.button);
+        this._tabClip.removeItem(entry.button);
 
         // Subtree listeners are keyed by component id in a module-level map;
         // removing the wrapper's element does not purge it, so tear it down or it
@@ -1551,7 +1522,7 @@ class TabBar extends Container<TabBarOptions> {
         const entry = this._entries.splice(from, 1)[0];
 
         this._entries.splice(dest, 0, entry);
-        this._tabClip.moveComponent(entry.button, dest);
+        this._tabClip.moveItem(entry.button, dest);
 
         return this;
     }
@@ -2022,11 +1993,7 @@ class TabBar extends Container<TabBarOptions> {
     private syncToolbarOrientation(): void {
         const wantVertical = this.isVertical();
 
-        if ((this._tabClip.getLayoutManager() instanceof VBox) !== wantVertical) {
-            this._tabClip.setLayoutManager(wantVertical
-                ? new VBox({ spacing: 0, stretching: true })
-                : new HBox({ spacing: 0, stretching: true }));
-        }
+        this._tabClip.setOrientation(wantVertical ? "vertical" : "horizontal");
 
         if ((this._toolGroup.getLayoutManager() instanceof VBox) !== wantVertical) {
             this._toolGroup.setLayoutManager(wantVertical
@@ -2111,29 +2078,13 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Returns the scroll-arrow gutter (px) reserved at *each* end of the tab
-     * region: {@link SCROLL_ARROW_SIZE} when a scrollable strip is overflowing,
-     * else 0.
-     *
-     * @param mainInner - The strip's main-axis inner extent in px.
-     * @param toolExtent - The reserved tool-group main extent in px.
-     *
-     * @returns The per-end arrow gutter in px.
-     */
-    private computeArrowReserve(mainInner: number, toolExtent: number): number {
-        if (!this._scrollable) {
-            return 0;
-        }
-
-        // `+ 1` slop so a strip that exactly fits doesn't flicker the arrows.
-        return this.predictTabsExtent() > mainInner - toolExtent + 1 ? SCROLL_ARROW_SIZE : 0;
-    }
-
-    /**
-     * Positions and sizes the clip frame to the scrollable tab region — the strip
-     * band between the fixed chrome (tool group + scroll-arrow gutters). The
-     * frame's overflow:hidden then clips any tab (and its ✕ overlay) that scrolls
-     * past the region edge. The leading inset is the `"end"`-align gap, which
+     * Positions and sizes the clip frame to span the whole tab band — the strip
+     * region net of the tool group and the leading glyph slot, *including* the
+     * scroll-arrow gutters at each end. The frame's overflow:hidden clips any tab
+     * (and its ✕ overlay) that scrolls past the region edge, and the arrow gutters
+     * are folded into the frame's own main-axis insets so the inner box lays the
+     * tabs out between the arrows (which the strip owns and places into those
+     * gutters). The leading inset additionally carries the `"end"`-align gap, which
      * trailing-aligns the tabs and survives an independent clip-frame relayout.
      *
      * @param toolExtent - The tool group's main-axis extent in px.
@@ -2147,23 +2098,28 @@ class TabBar extends Container<TabBarOptions> {
      */
     private positionClipFrame(toolExtent: number, leadExtent: number, arrowReserve: number, endGap: number, thickness: number, mainInner: number, crossLead: number, mainLead: number): void {
         const toolsLead = this._align === "end";
-        const leadChrome = leadExtent + (toolsLead ? toolExtent : 0) + arrowReserve;
-        const trailChrome = (toolsLead ? 0 : toolExtent) + arrowReserve;
+        const leadChrome = leadExtent + (toolsLead ? toolExtent : 0);
+        const trailChrome = toolsLead ? 0 : toolExtent;
         const mainSize = mainInner - leadChrome - trailChrome;
-        const leadInset = endGap;
+
+        // Fold the arrow gutters into the frame's own main-axis insets so the box
+        // lays the tabs out between the arrows; the leading inset also carries the
+        // "end"-align gap.
+        const leadInset = endGap + arrowReserve;
+        const trailInset = arrowReserve;
 
         if (this.isVertical()) {
             this._tabClip.setX(crossLead);
             this._tabClip.setY(leadChrome + mainLead);
             this._tabClip.setWidth(thickness);
             this._tabClip.setHeight(mainSize);
-            this._tabClip.setInsets(new Insets(leadInset, 0, 0, 0));
+            this._tabClip.setInsets(new Insets(leadInset, 0, trailInset, 0));
         } else {
             this._tabClip.setX(leadChrome + mainLead);
             this._tabClip.setY(crossLead);
             this._tabClip.setWidth(mainSize);
             this._tabClip.setHeight(thickness);
-            this._tabClip.setInsets(new Insets(0, 0, 0, leadInset));
+            this._tabClip.setInsets(new Insets(0, trailInset, 0, leadInset));
         }
     }
 
@@ -2381,197 +2337,6 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Applies the overflow chrome to the strip: the strip always clips, and a
-     * scrollable strip additionally shows the leading/trailing scroll buttons
-     * while overflowing.
-     *
-     * @param mainInner - The strip's main-axis inner extent in px.
-     * @param toolExtent - The reserved tool-group main extent in px.
-     * @param leadExtent - The leading glyph's reserved main-axis extent in px (0 when no leading glyph).
-     * @param thickness - The strip's cross-axis thickness in px.
-     * @param arrowReserve - The per-end scroll-arrow gutter in px (0 when not overflowing).
-     * @param crossLead - The bar's leading cross-axis inset (0 unless the bar absorbed a parent inset).
-     * @param mainLead - The bar's leading main-axis inset (0 unless the bar absorbed a parent inset).
-     */
-    private layoutOverflowChrome(mainInner: number, toolExtent: number, leadExtent: number, thickness: number, arrowReserve: number, crossLead: number, mainLead: number): void {
-        this.setOverflow("hidden");
-
-        if (this._scrollable && arrowReserve > 0) {
-            this.layoutOverflowArrows(mainInner, toolExtent, leadExtent, thickness, arrowReserve, crossLead, mainLead);
-        } else {
-            this.hideOverflowArrows();
-        }
-    }
-
-    /**
-     * Lazily builds the two scroll-arrow buttons and raw-appends them to the strip
-     * element next to the other overlays.
-     */
-    private ensureScrollArrows(): void {
-        if (this._scrollLeadButton && this._scrollTrailButton) {
-            return;
-        }
-
-        const lead = new Button({ glyph: "angle-left" });
-        const trail = new Button({ glyph: "angle-right" });
-
-        for (const button of [lead, trail]) {
-            button.setBackgroundColor("var(--ts-ui-tab-toolbar-bg, #eee)");
-            button.setBackgroundImage("none");
-            button.clearBorder();
-            button.clearShadow();
-            button.setBorderRadius("0");
-            // Drop the default button insets so the glyph fits the narrow gutter.
-            button.clearInsets();
-            // Above the tab wrappers so the arrows stay clickable at the strip
-            // ends; the indicator (z 2) sits below, the arrows above it.
-            button.setZIndex(3);
-        }
-
-        lead.on("action", this.scrollLeadClicked);
-        trail.on("action", this.scrollTrailClicked);
-
-        const element = this.getElement(true)!;
-        DOM.sink.appendChild(element, lead.getElement(true)!);
-        DOM.sink.appendChild(element, trail.getElement(true)!);
-
-        this._scrollLeadButton = lead;
-        this._scrollTrailButton = trail;
-    }
-
-    /**
-     * Shows and positions the scroll arrows in their reserved gutters — fixed in
-     * place, spanning the strip thickness — and disables (rather than hides) each
-     * at its scroll limit, so the chrome stays put while the tabs scroll between
-     * them. Called only when overflowing (`arrowReserve > 0`).
-     *
-     * @param mainInner - The strip's main-axis inner extent in px.
-     * @param toolExtent - The reserved tool-group main extent in px.
-     * @param leadExtent - The leading glyph's reserved main-axis extent in px (0 when no leading glyph).
-     * @param thickness - The strip's cross-axis thickness in px.
-     * @param arrowReserve - The per-end arrow gutter (the arrows' main-axis size) in px.
-     * @param crossLead - The bar's leading cross-axis inset (0 unless the bar absorbed a parent inset).
-     * @param mainLead - The bar's leading main-axis inset (0 unless the bar absorbed a parent inset).
-     */
-    private layoutOverflowArrows(mainInner: number, toolExtent: number, leadExtent: number, thickness: number, arrowReserve: number, crossLead: number, mainLead: number): void {
-        this.ensureScrollArrows();
-
-        const lead = this._scrollLeadButton as Button;
-        const trail = this._scrollTrailButton as Button;
-        const vertical = this.isVertical();
-
-        lead.setGlyph(vertical ? "angle-up" : "angle-left");
-        trail.setGlyph(vertical ? "angle-down" : "angle-right");
-
-        lead.setVisible(true);
-        trail.setVisible(true);
-
-        // Disable (not hide) each arrow at its scroll limit so the chrome layout
-        // never shifts and the first/last tab stays fully in view. Derived from
-        // the live native scroll position.
-        this.refreshScrollArrows();
-
-        // The arrows sit in the gutters at the ends of the tab region, which
-        // excludes the tool-group slot: tools trail the tabs in `"start"`
-        // alignment and lead them in `"end"` alignment.
-        const toolsLead = this._align === "end";
-        const leadPos = leadExtent + (toolsLead ? toolExtent : 0) + mainLead;
-        const trailPos = (toolsLead ? mainInner : mainInner - toolExtent) - arrowReserve + mainLead;
-
-        for (const button of [lead, trail]) {
-            if (vertical) {
-                // Pin the main-axis (height) to the gutter; fill the thickness.
-                button.setMinSize(0, arrowReserve);
-                button.setMaxSize(Number.MAX_VALUE, arrowReserve);
-                button.setX(crossLead);
-                button.setWidth(thickness);
-                button.setHeight(arrowReserve);
-            } else {
-                button.setMinSize(arrowReserve, 0);
-                button.setMaxSize(arrowReserve, Number.MAX_VALUE);
-                button.setY(crossLead);
-                button.setHeight(thickness);
-                button.setWidth(arrowReserve);
-            }
-        }
-
-        if (vertical) {
-            lead.setY(leadPos);
-            trail.setY(trailPos);
-        } else {
-            lead.setX(leadPos);
-            trail.setX(trailPos);
-        }
-    }
-
-    /**
-     * Hides the scroll arrows if they have been built.
-     */
-    private hideOverflowArrows(): void {
-        this._scrollLeadButton?.setVisible(false);
-        this._scrollTrailButton?.setVisible(false);
-    }
-
-    /**
-     * Reads the clip frame's native scroll offset on the strip's main axis — the
-     * single source of truth for the scroll position.
-     *
-     * @returns The current main-axis scroll offset in px (0 when no element).
-     */
-    private clipScroll(): number {
-        return this.isVertical()
-            ? this._tabClip.getScrollTop()
-            : this._tabClip.getScrollLeft();
-    }
-
-    /**
-     * Returns the clip frame's maximum native scroll offset on the main axis,
-     * derived live from the laid-out content frame.
-     *
-     * @returns The last-page scroll offset in px (0 when nothing overflows).
-     */
-    private clipScrollMax(): number {
-        return this.isVertical()
-            ? this._tabClip.getMaxScrollTop()
-            : this._tabClip.getMaxScrollLeft();
-    }
-
-    /**
-     * Writes the clip frame's native main-axis scroll offset. The browser clamps
-     * to the scrollable range; the cross axis is left untouched.
-     *
-     * @param value - The desired main-axis scroll offset in px.
-     */
-    private setClipScroll(value: number): void {
-        if (this.isVertical()) {
-            this._tabClip.setScrollTop(value);
-        } else {
-            this._tabClip.setScrollLeft(value);
-        }
-    }
-
-    /**
-     * Re-derives the overflow arrows' enabled state from the live native scroll
-     * position: the leading arrow is dead at the start, the trailing arrow at the
-     * last page.
-     */
-    private refreshScrollArrows(): void {
-        const lead = this._scrollLeadButton;
-        const trail = this._scrollTrailButton;
-
-        if (!lead || !trail) {
-            return;
-        }
-
-        const scroll = this.clipScroll();
-
-        lead.setEnabled(scroll > 0);
-        // 1px slop so a strip scrolled flush to the end still disables cleanly
-        // despite sub-pixel rounding in scrollWidth/clientWidth.
-        trail.setEnabled(scroll < this.clipScrollMax() - 1);
-    }
-
-    /**
      * Pixels to scroll per overflow-arrow click ≈ one tab, so a click pages by a
      * tab at any font size. Derived from the first tab's predicted main-axis
      * extent (which collapses width-mode sizing and raw content width into the
@@ -2587,40 +2352,10 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Handles a leading overflow-arrow click: scrolls one tab toward the start.
-     * Resolves the step at click time so it tracks the current font.
-     */
-    private scrollLeadClicked = (): void => {
-        this.scrollStrip(-this.scrollStepExtent());
-    };
-
-    /**
-     * Handles a trailing overflow-arrow click: scrolls one tab toward the end.
-     * Resolves the step at click time so it tracks the current font.
-     */
-    private scrollTrailClicked = (): void => {
-        this.scrollStrip(this.scrollStepExtent());
-    };
-
-    /**
-     * Scrolls the strip along the main axis by `delta` px (used by the overflow
-     * arrow buttons) through the clip frame's native scroll, then refreshes the
-     * arrows. No relayout: native scroll moves the wrappers, indicator, and
-     * reorder bar (all children of the clip frame) together for free.
-     *
-     * @param delta - Signed pixel amount to scroll (negative = toward the start).
-     */
-    private scrollStrip(delta: number): void {
-        this.setClipScroll(this.clipScroll() + delta);
-        this.refreshScrollArrows();
-    }
-
-    /**
      * When a scroll-into-view was requested (enabling scrolling, a side switch, or
-     * a `compact` toggle), nudges the native scroll the minimum amount needed to
-     * bring the selected tab fully within the visible region, measured from the
-     * *laid-out* DOM rects. Runs after `clipFrame.doLayout`; one-shot, so it never
-     * fights the user's own scrolling.
+     * a `compact` toggle), asks the clip frame to bring the selected tab fully into
+     * view from the *laid-out* DOM rects. Runs after the clip frame's layout;
+     * one-shot, so it never fights the user's own scrolling.
      */
     private revealSelectedIfRequested(): void {
         if (!this._scrollToSelected) {
@@ -2633,35 +2368,10 @@ class TabBar extends Container<TabBarOptions> {
             return;
         }
 
-        const selected = this.activeEntry();
-        const clipElement = this._tabClip.getElement();
-        const wrapperElement = selected?.button.getElement();
+        const wrapperElement = this.activeEntry()?.button.getElement();
 
-        if (!clipElement || !wrapperElement) {
-            return;
-        }
-
-        const vertical = this.isVertical();
-        const clip = DOM.source.getElementRect(clipElement);
-        const wrap = DOM.source.getElementRect(wrapperElement);
-
-        const clipStart = vertical ? clip.top : clip.left;
-        const clipEnd = vertical ? clip.bottom : clip.right;
-        const wrapStart = vertical ? wrap.top : wrap.left;
-        const wrapEnd = vertical ? wrap.bottom : wrap.right;
-
-        let delta = 0;
-
-        if (wrapStart < clipStart) {
-            delta = wrapStart - clipStart;
-        } else if (wrapEnd > clipEnd) {
-            delta = wrapEnd - clipEnd;
-        }
-
-        // `getBoundingClientRect` already reflects the current scroll, so `delta`
-        // is the screen-space correction; apply it to the native offset.
-        if (delta !== 0) {
-            this.setClipScroll(this.clipScroll() + delta);
+        if (wrapperElement) {
+            this._tabClip.revealItem(wrapperElement);
         }
     }
 
@@ -2746,7 +2456,7 @@ class TabBar extends Container<TabBarOptions> {
         // end, so the tabs lay out (and scroll, clipped) strictly within it rather
         // than behind the chrome. An "end"-align leading gap is folded in as a
         // frame inset too, so the box trailing-aligns the tabs natively.
-        const arrowReserve = this.computeArrowReserve(mainInner, toolExtent + leadExtent);
+        const arrowReserve = this._tabClip.arrowReserve(this.predictTabsExtent(), mainInner - toolExtent - leadExtent);
         const available = mainInner - toolExtent - leadExtent - 2 * arrowReserve;
         const endGap = this.endAlignGap(available);
         this.positionClipFrame(toolExtent, leadExtent, arrowReserve, endGap, thickness, mainInner, crossLead, mainLead);
@@ -2757,7 +2467,7 @@ class TabBar extends Container<TabBarOptions> {
         // `applyTabWidths` can lay the content out narrower than the current
         // scroll offset (e.g. switching to `compact` while scrolled to the end);
         // the browser then clamps the clip's native scroll on its own, behind the
-        // cached scroll API's back, leaving `clipScroll()` stale. Resync the cache
+        // cached scroll API's back, leaving the strip's scroll cache stale. Resync
         // from the DOM before the reveal reads it, or `revealSelectedIfRequested`
         // would add its live-rect delta to a stale base and under-scroll.
         this._tabClip.syncScrollOffsets();
@@ -2771,7 +2481,12 @@ class TabBar extends Container<TabBarOptions> {
         this.positionLeadGroup(thickness, crossLead, mainLead);
         this.positionIndicator();
         this.positionCloseButtons();
-        this.layoutOverflowChrome(mainInner, toolExtent, leadExtent, thickness, arrowReserve, crossLead, mainLead);
+
+        // The strip owns its overflow arrows; it places them into the gutters at
+        // each end of its own (clip-local) band — the lead gutter at origin 0, the
+        // trail gutter at the far edge — and hides them when nothing overflows.
+        const bandExtent = vertical ? this._tabClip.getHeight() : this._tabClip.getWidth();
+        this._tabClip.layoutArrows(0, bandExtent, 0, thickness, arrowReserve);
     }
 
     /**
@@ -2977,7 +2692,7 @@ class TabBar extends Container<TabBarOptions> {
         // scrolled content space, so add the scroll offset to land the cursor in
         // the same space — otherwise a scrolled strip maps it to the wrong slot.
         const cursorMain = (vertical ? detail.clientY - rect.top : detail.clientX - rect.left)
-            + this.clipScroll();
+            + this._tabClip.mainScroll();
 
         let insertIndex = this._entries.length;
 
@@ -3075,7 +2790,7 @@ class TabBar extends Container<TabBarOptions> {
         this._entries.splice(fromIdx, 1);
         this._entries.splice(dest, 0, entry);
 
-        this._tabClip.moveComponent(entry.button, dest);
+        this._tabClip.moveItem(entry.button, dest);
 
         this.emit("reordered", fromId, dest);
     }
