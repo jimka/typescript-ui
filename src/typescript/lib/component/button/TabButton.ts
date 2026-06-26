@@ -64,13 +64,20 @@ class TabButton extends ToggleButton {
         // first; the styling setters below then fire on a fully-built button.
         super(text);
 
-        this.applyTabStyling();
-
         this._closeable = options?.closeable ?? false;
 
         if (options) {
             this.applyOptions(options);
         }
+
+        // Paint the tab styling AFTER applyOptions, not before: the cascade
+        // re-applies Button's chrome defaults from _defaultButtonOptions (the
+        // "2px ridge" border, the 4px border-radius, the button drop-shadow), so
+        // tab styling applied earlier would be clobbered back to a rounded,
+        // ridged, shadowed button. Running it last lets the flat tab tokens and
+        // the cleared radius/shadow win — matching the legacy createBarEntry,
+        // which styled a no-options ToggleButton with nothing applied afterward.
+        this.applyTabStyling();
 
         // Button's constructor late-dispatches `setGlyph` from the options bag
         // once, before this subclass's `applyOptions` runs; a glyph passed to a

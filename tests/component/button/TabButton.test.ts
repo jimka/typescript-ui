@@ -86,6 +86,27 @@ describe('TabButton structural layout (regression)', () => {
     });
 });
 
+describe('TabButton chrome styling (regression)', () => {
+    // TabButton clears the default Button border-radius and shadow and swaps the
+    // ridge border for the flat --ts-ui-tab-button-* tokens. That styling must
+    // win over Button's chrome defaults, which the tail `applyOptions` cascade
+    // re-applies from _defaultButtonOptions (border "2px ridge…", borderRadius
+    // 4px, the button drop-shadow). If the tab styling runs before that cascade,
+    // the tab regains a rounded, ridged, shadowed button look.
+    it('clears the default border-radius', () => {
+        expect(new TabButton('Home', { glyph: 'xmark', closeable: true }).getBorderRadius()).toBe(null);
+    });
+    it('clears the default button shadow', () => {
+        expect(new TabButton('Home', { glyph: 'xmark', closeable: true }).getShadow()).toBe(null);
+    });
+    it('uses the flat tab border token, not the default ridge border', () => {
+        const border = JSON.stringify(new TabButton('Home', { closeable: true }).getBorder());
+
+        expect(border).toContain('--ts-ui-tab-button-border');
+        expect(border).not.toContain('ridge');
+    });
+});
+
 describe('TabButton listeners bag', () => {
     // ToggleButton routes on("action") to the DOM "change" event. A subclass
     // that takes its options after `super(text)` must wire the inherited
