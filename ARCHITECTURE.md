@@ -38,6 +38,19 @@ Because every DOM-routed event reaches the framework through a single window-lev
 
 A class owns exactly one DOM element. If a sub-element needs independent behaviour (event routing, its own CSS rule, layout), extract it into a `Component` subclass. Trivial non-interactive helpers (e.g. a resize-handle div) can stay as raw children.
 
+## Compose before specializing
+
+A thing that can be assembled from components the framework already provides — a container with a layout manager arranging existing pieces — must be built that way, not as a new specialized `Component` or `LayoutManager` subclass. This is the component-level twin of the manager hierarchy under [*Positioning is always absolute*](#positioning-is-always-absolute): just as a missing layout behaviour should extend an existing manager before it becomes a new primitive, a new piece of UI should be a composition of existing components before it becomes a new specialized one.
+
+The bar is **not** "can it be composed" — almost anything can be. The bar is **"does composing it actively reduce total complexity and code, summed across every component involved."** A new specialized component earns its place only when it deletes more code and conceptual load than it adds; equivalently, composition is the wrong call only when it would merely *relocate* complexity across a component seam rather than remove it. Possibility is not justification — run the count, in both directions, before deciding.
+
+The decision turns on what the would-be component mostly *is*:
+
+- **Mostly arrangement → compose.** If its substance is "these existing pieces, positioned thus," a container plus `HBox` / `VBox` / `Grid` / `Card` / `Border` / `Fit` expresses it with no new class. Building a specialized component here just reimplements geometry the managers already own.
+- **Mostly coordination → specialize.** When the mass of the thing is an irreducible coordinator — a state machine, a lifecycle, cross-child orchestration that no layout manager or child component contains — a dedicated class is correct, because composition can only move that logic across a boundary, never dissolve it.
+
+Worked carve-out: `Tab` stays a specialized manager rather than being rebuilt as `VBox` / `HBox` + `TabBar` + `Card`. The strip is already an extracted component (`TabBar`) and the show-one-child primitive already exists (`Card`), so the *arrangement* genuinely is composable — yet `Tab`'s mass is coordination (lazy-load state machine, tear-off windows, cross-tab fade, tab-sync, and a parent-inset absorption that `VBox` / `HBox` cannot even express). Recomposing it would delete a little rect arithmetic while retaining the whole coordinator *and* adding a content container, cross-boundary selection wiring, and an extra DOM level — relocating complexity, not reducing it. So the composition is both possible and wrong: the count, not the possibility, is what decides.
+
 ## Keep presentation state out of data Models
 
 A data `Model` holds domain state only — the fields that represent the record. Presentation and UI state — selection, hover, expanded/collapsed, scroll position, sort order, in-flight edit buffers — never live on the Model; they belong to the component rendering it. The Model is the binding source of truth shared across views, so folding view state into it breaks that contract: multiple views of the same record would contend over one field, and the transient flags would leak into anything that persists the Model.
