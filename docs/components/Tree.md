@@ -28,10 +28,26 @@ interface TreeNode {
     children?:     TreeNode[];
     hasChildren?:  boolean;
     loadChildren?: () => Promise<TreeNode[]>;
+    data?:         unknown;
 }
 ```
 
 Nodes with a non-empty `children` array render as expandable parents; nodes without children render as leaves. Set `hasChildren: true` with a `loadChildren` loader to make a node load its children lazily (see below).
+
+### Attaching domain data
+
+The optional `data` field is an opaque payload slot: attach any domain object to a node and read it back, unchanged, from any node the tree hands you — `getSelectedNode()`, `getSelectedNodes()`, the `selection` event, or the `loaderror` event. The tree never reads, renders, or uses `data` for identity, so two nodes with identical `data` are still independent. This lets a node carry the object it represents without a side-map:
+
+```typescript
+tree.setNodes([
+    { label: 'public', data: { kind: 'schema', name: 'public' } },
+]);
+
+tree.on('selection', nodes => {
+    const meta = nodes[0].data as { kind: string; name: string };
+    console.log(`selected ${meta.kind} ${meta.name}`);
+});
+```
 
 ## Lazy loading
 
