@@ -437,7 +437,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.colorScheme     !== undefined) this.setColorScheme(opts.colorScheme);
         this.applyChromeOptions(opts);
         if (opts.outline         !== undefined) this.setOutline(opts.outline);
-        if (opts.cursor          !== undefined) this.setCursor(opts.cursor);
+        if (options.cursor       !== undefined) this.setCursor(options.cursor);
         if (opts.preferredSize   !== undefined) this.setPreferredSize(opts.preferredSize.width, opts.preferredSize.height);
         if (options.minSize      !== undefined) this.setMinSize(options.minSize.width, options.minSize.height);
         if (opts.maxSize         !== undefined) this.setMaxSize(opts.maxSize.width, opts.maxSize.height);
@@ -445,7 +445,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         if (opts.transition      !== undefined) this.setTransition(opts.transition);
         if (opts.willChange      !== undefined) this.setWillChange(opts.willChange);
         if (opts.opacity         !== undefined) this.setOpacity(opts.opacity);
-        if (opts.overflow        !== undefined) this.setOverflow(opts.overflow);
+        if (options.overflow     !== undefined) this.setOverflow(options.overflow);
         if (opts.pointerEvents   !== undefined) this.setPointerEvents(opts.pointerEvents);
         if (opts.writingMode     !== undefined) this.setWritingMode(opts.writingMode);
         if (opts.touchAction     !== undefined) this.setTouchAction(opts.touchAction);
@@ -1809,7 +1809,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS cursor string, or null if not set.
      */
     getCursor(): string | null {
-        return this._options.cursor ?? null;
+        return this._options.cursor ?? this._defaultOptions.cursor ?? null;
     }
 
     /**
@@ -3110,8 +3110,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The shared overflow string, or null if the axes diverge or are unset.
      */
     getOverflow(): string | null {
-        return this._overflowX !== null
-               && this._overflowX === this._overflowY ? this._overflowX : null;
+        const overflowX = this.getOverflowX();
+        const overflowY = this.getOverflowY();
+
+        return overflowX !== null && overflowX === overflowY ? overflowX : null;
     }
 
     /**
@@ -3143,7 +3145,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS overflow-x string, or null.
      */
     getOverflowX(): string | null {
-        return this._overflowX;
+        return this._overflowX ?? this._defaultOptions.overflow ?? null;
     }
 
     /**
@@ -3188,7 +3190,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS overflow-y string, or null.
      */
     getOverflowY(): string | null {
-        return this._overflowY;
+        return this._overflowY ?? this._defaultOptions.overflow ?? null;
     }
 
     /**
@@ -3247,8 +3249,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * `setOverflow("auto")` users alike.
      */
     private refreshWheelScrolling(): void {
-        const scrollable = this.isOverflowScrollable(this._overflowX)
-                        || this.isOverflowScrollable(this._overflowY);
+        const scrollable = this.isOverflowScrollable(this.getOverflowX())
+                        || this.isOverflowScrollable(this.getOverflowY());
 
         if (scrollable && !this._wheelScroller) {
             this.attachWheelScrolling();
@@ -3320,8 +3322,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param e - The wheel event.
      */
     private onWheelScroll(e: WheelEvent): void {
-        const canX = this.isOverflowScrollable(this._overflowX);
-        const canY = this.isOverflowScrollable(this._overflowY);
+        const canX = this.isOverflowScrollable(this.getOverflowX());
+        const canY = this.isOverflowScrollable(this.getOverflowY());
 
         let dx = canX ? e.deltaX : 0;
         let dy = canY ? e.deltaY : 0;
@@ -3867,8 +3869,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._styleRule.set("display", opts.displayed ? "block" : "none");
         }
 
-        if (opts.cursor) {
-            this._styleRule.set("cursor", opts.cursor);
+        const cursor = this.getCursor();
+        if (cursor) {
+            this._styleRule.set("cursor", cursor);
         }
 
         if (opts.foregroundColor) {
@@ -3922,12 +3925,20 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this.setDataAttribute("maxSize", (isUnbounded(maxSize.width) ? "inf" : (Math.round(maxSize.width) + "px")) + " " + (isUnbounded(maxSize.width) ? "inf" : (Math.round(maxSize.height) + "px")));
         }
 
-        if (this._overflowX !== null) {
-            this._styleRule.set("overflowX", this._overflowX);
+        const overflowX = this.getOverflowX();
+        if (overflowX !== null) {
+            this._styleRule.set("overflowX", overflowX);
         }
-        if (this._overflowY !== null) {
-            this._styleRule.set("overflowY", this._overflowY);
+        const overflowY = this.getOverflowY();
+        if (overflowY !== null) {
+            this._styleRule.set("overflowY", overflowY);
         }
+
+        // A scrollable *default* overflow (e.g. Drawer's `"auto"`) no longer
+        // dispatches `setOverflow` through `applyOptions`, so attach the eased
+        // wheel-scroll controller here from the effective overflow. Idempotent:
+        // `refreshWheelScrolling` no-ops when the scroller already matches.
+        this.refreshWheelScrolling();
 
         if (this._whiteSpace) {
             this._styleRule.set("whiteSpace", this._whiteSpace);
