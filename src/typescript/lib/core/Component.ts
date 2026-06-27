@@ -1386,6 +1386,16 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns the effective z-index — the caller/setter value, else the
+     * class-level default (0 for a plain Component).
+     *
+     * @returns The resolved z-index.
+     */
+    getZIndex(): number {
+        return (this._options.zIndex ?? this._defaultOptions.zIndex ?? 0) as number;
+    }
+
+    /**
      * Returns the {@link Aria} helper for this component, creating it lazily on first access.
      *
      * @returns The ARIA helper instance.
@@ -2151,6 +2161,18 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns this component's own preferred-size *constraint* — the
+     * caller/setter value, else the class default — without consulting the
+     * layout manager or current size. {@link getPreferredSize} layers those on
+     * when no explicit constraint is set.
+     *
+     * @returns The constraint Size, or null when none is set.
+     */
+    getPreferredSizeConstraint(): Size | null {
+        return (this._options.preferredSize ?? this._defaultOptions.preferredSize) ?? null;
+    }
+
+    /**
      * Returns the preferred size from the explicit override, layout manager, or current size.
      *
      * @returns The preferred Size, determined in priority order: explicit override, layout manager, then current size.
@@ -2159,7 +2181,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         let layoutManager = this.getLayoutManager();
         let preferredSize;
 
-        const ownPreferred = this._options.preferredSize ?? this._defaultOptions.preferredSize;
+        const ownPreferred = this.getPreferredSizeConstraint();
         if (ownPreferred) {
             preferredSize = ownPreferred;
         } else if (!layoutManager) {
@@ -2180,8 +2202,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // re-entrant and exponential in tree depth. The merged `[min, max]`
         // envelope is enforced instead on the committed size, in
         // {@link clampWidth} / {@link clampHeight}.
-        const ownMin = (this._options.minSize ?? this._defaultOptions.minSize) ?? null;
-        const ownMax = (this._options.maxSize ?? this._defaultOptions.maxSize) ?? null;
+        const ownMin = this.getMinSizeConstraint();
+        const ownMax = this.getMaxSizeConstraint();
 
         return this.clampPreferredToConstraints(preferredSize, ownMin, ownMax);
     }
@@ -2241,12 +2263,35 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     }
 
     /**
+     * Returns this component's own minimum-size *constraint* — the caller/setter
+     * value, else the class default — without folding in the layout manager's
+     * minimum. This is the raw author constraint written to CSS `min-*` and
+     * clamped against; {@link getMinSize} layers the layout minimum on top.
+     *
+     * @returns The constraint Size, or null when none is set.
+     */
+    getMinSizeConstraint(): Size | null {
+        return (this._options.minSize ?? this._defaultOptions.minSize) ?? null;
+    }
+
+    /**
+     * Returns this component's own maximum-size *constraint* — the caller/setter
+     * value, else the class default — without folding in the layout manager's
+     * maximum. Companion to {@link getMinSizeConstraint}.
+     *
+     * @returns The constraint Size, or null when none is set.
+     */
+    getMaxSizeConstraint(): Size | null {
+        return (this._options.maxSize ?? this._defaultOptions.maxSize) ?? null;
+    }
+
+    /**
      * Returns the effective minimum size: the larger of the component and layout manager minimums.
      *
      * @returns A Size object whose width and height are the element-wise maximums of the component and layout manager minimums.
      */
     getMinSize(): Size | null {
-        let componentMinSize = (this._options.minSize ?? this._defaultOptions.minSize) ?? null;
+        let componentMinSize = this.getMinSizeConstraint();
         let layoutManager = this.getLayoutManager();
 
         if (!layoutManager) {
@@ -2319,7 +2364,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns A Size object whose width and height are the element-wise minimums of the component and layout manager maximums.
      */
     getMaxSize(): Size | null {
-        let componentMaxSize = (this._options.maxSize ?? this._defaultOptions.maxSize) ?? null;
+        let componentMaxSize = this.getMaxSizeConstraint();
         let layoutManager = this.getLayoutManager();
 
         if (!layoutManager) {
@@ -2750,12 +2795,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private clampWidth(width: number): number {
         const toContent = this.clampsToContentSize();
 
-        const maxSize = toContent ? this.getMaxSize() : (this._options.maxSize ?? this._defaultOptions.maxSize ?? null);
+        const maxSize = toContent ? this.getMaxSize() : (this.getMaxSizeConstraint());
         if (maxSize && width > maxSize.width) {
             width = maxSize.width;
         }
 
-        const minSize = toContent ? this.getMinSize() : (this._options.minSize ?? this._defaultOptions.minSize ?? null);
+        const minSize = toContent ? this.getMinSize() : (this.getMinSizeConstraint());
         if (minSize && width < minSize.width) {
             width = minSize.width;
         }
@@ -2813,12 +2858,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     private clampHeight(height: number): number {
         const toContent = this.clampsToContentSize();
 
-        const maxSize = toContent ? this.getMaxSize() : (this._options.maxSize ?? this._defaultOptions.maxSize ?? null);
+        const maxSize = toContent ? this.getMaxSize() : (this.getMaxSizeConstraint());
         if (maxSize && height > maxSize.height) {
             height = maxSize.height;
         }
 
-        const minSize = toContent ? this.getMinSize() : (this._options.minSize ?? this._defaultOptions.minSize ?? null);
+        const minSize = toContent ? this.getMinSize() : (this.getMinSizeConstraint());
         if (minSize && height < minSize.height) {
             height = minSize.height;
         }
@@ -3933,13 +3978,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // the computed `getMinSize()`/`getMaxSize()` (which fold in the layout
         // manager and would push computed sizes into CSS, fighting the layout
         // engine). Read the option/default directly, never via the getter.
-        const minSize = this._options.minSize ?? this._defaultOptions.minSize;
+        const minSize = this.getMinSizeConstraint();
         if (minSize) {
             this._styleRule.set("minWidth",  minSize.width  + "px");
             this._styleRule.set("minHeight", minSize.height + "px");
         }
 
-        const maxSize = this._options.maxSize ?? this._defaultOptions.maxSize;
+        const maxSize = this.getMaxSizeConstraint();
         if (maxSize) {
             this._styleRule.set("maxWidth",  isUnbounded(maxSize.width)  ? "none" : maxSize.width  + "px");
             this._styleRule.set("maxHeight", isUnbounded(maxSize.height) ? "none" : maxSize.height + "px");
@@ -3996,7 +4041,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             this._inlineStyle.set("writingMode", writingMode);
         }
 
-        const zIndex = this._options.zIndex ?? this._defaultOptions.zIndex;
+        const zIndex = this.getZIndex();
         if (zIndex) {
             this._inlineStyle.set("zIndex", String(zIndex));
         }

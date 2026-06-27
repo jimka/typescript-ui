@@ -80,7 +80,7 @@ class IconText extends Component<IconTextOptions> {
         // `_options` now that the row is built. `gap` always applies its
         // effective value (caller override, else the class default) since the
         // HBox is seeded without spacing.
-        (this.getLayoutManager() as HBox).setComponentSpacing(this._options.gap ?? this._defaultOptions.gap!);
+        (this.getLayoutManager() as HBox).setComponentSpacing(this.getGap());
         if (this._options.glyph !== undefined) {
             this.setGlyph(this._options.glyph);
         }
@@ -148,6 +148,16 @@ class IconText extends Component<IconTextOptions> {
         (this.getLayoutManager() as HBox).setComponentSpacing(px);
 
         return this;
+    }
+
+    /**
+     * Returns the effective gap between the glyph and the text — the
+     * caller/setter value, else the class default (2).
+     *
+     * @returns The gap in pixels.
+     */
+    getGap(): number {
+        return (this._options.gap ?? this._defaultOptions.gap)!;
     }
 
     /**

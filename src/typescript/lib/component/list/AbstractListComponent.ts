@@ -62,7 +62,7 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
         // `style` param into `_defaultOptions`), so always dispatch the caller
         // value or the class default — this seeds the `declare`d `_style` field
         // and queues the `list-style-type` rule without touching `_options`.
-        this.setStyle(options.itemStyle ?? this._defaultOptions.itemStyle!);
+        this.setStyle(options.itemStyle ?? this.getStyle()!);
 
         if (options.selectedIndex !== undefined) {
             this.setSelectedIndex(options.selectedIndex, false);
@@ -77,7 +77,7 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      * @returns The current style enum value, or undefined if not yet set.
      */
     getStyle() {
-        return this._style;
+        return this._style ?? this._defaultOptions.itemStyle;
     }
 
     /**

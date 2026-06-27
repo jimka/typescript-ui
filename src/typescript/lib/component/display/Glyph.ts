@@ -607,7 +607,7 @@ class Glyph extends Component<GlyphOptions> {
         // overwritten the pin from `setPreferredSize` with Component's `{0,0}`
         // minSize / `{MAX,MAX}` maxSize defaults; restore it here, but honour
         // an explicit `options.minSize` / `options.maxSize` from the caller.
-        const pref = this._options.preferredSize ?? this._defaultOptions.preferredSize;
+        const pref = this.getPreferredSizeConstraint();
         if (pref) {
             if (options.minSize === undefined) {
                 this.setMinSize(pref.width, pref.height);

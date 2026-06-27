@@ -73,7 +73,7 @@ class IconLabel extends Component<IconLabelOptions> {
 
         // Per-instance layout manager seeded with the effective gap (caller
         // override, else the class default) so it flows into the HBox spacing.
-        this.setLayoutManager(new HBox({ spacing: this._options.gap ?? this._defaultOptions.gap }));
+        this.setLayoutManager(new HBox({ spacing: this.getGap() }));
 
         // Build children with the effective values up front so the late-built
         // dispatch below has nothing to overwrite. The bag-written values
@@ -173,6 +173,16 @@ class IconLabel extends Component<IconLabelOptions> {
         (this.getLayoutManager() as HBox).setComponentSpacing(px);
 
         return this;
+    }
+
+    /**
+     * Returns the effective gap between the glyph and the label — the
+     * caller/setter value, else the class default (2).
+     *
+     * @returns The gap in pixels.
+     */
+    getGap(): number {
+        return (this._options.gap ?? this._defaultOptions.gap)!;
     }
 
     /**

@@ -439,8 +439,8 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this._text.setFontSize("--ts-ui-button-font-size");
 
         this.addComponent(this._content, {
-            fill:   (this._options.fill   ?? this._defaultOptions.fill)   as FillType,
-            anchor: (this._options.anchor ?? this._defaultOptions.anchor) as AnchorType,
+            fill:   this.getFill(),
+            anchor: this.getAnchor(),
         });
 
         // Late-built state: applyOptions wrote any caller `text`/`glyph`/
@@ -492,6 +492,26 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         if (Object.getPrototypeOf(this) === Button.prototype) {
             this.applyListeners(options?.listeners);
         }
+    }
+
+    /**
+     * Returns the content anchor used inside the button's `Fit` layout — the
+     * caller value, else the class default ({@link AnchorType.CENTER}).
+     *
+     * @returns The resolved anchor.
+     */
+    getAnchor(): AnchorType {
+        return (this._options.anchor ?? this._defaultOptions.anchor) as AnchorType;
+    }
+
+    /**
+     * Returns the content fill used inside the button's `Fit` layout — the
+     * caller value, else the class default ({@link FillType.NONE}).
+     *
+     * @returns The resolved fill.
+     */
+    getFill(): FillType {
+        return (this._options.fill ?? this._defaultOptions.fill) as FillType;
     }
 
     /**
@@ -591,7 +611,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this._options.borderRadius    = undefined;
             this._options.shadow          = undefined;
             this._options.backgroundImage = undefined;
-            if ((this._options.backgroundColor ?? this._defaultOptions.backgroundColor) === undefined) {
+            if (this.getBackgroundColor() === null) {
                 this._options.backgroundColor = "transparent";
             }
             return;
@@ -1559,7 +1579,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // transparent while still preserving a genuine consumer-set colour (the
         // old field-only write left the token painting). `_restoreChrome`
         // re-applies the token on `setFlat(false)`.
-        const restingBackground = this._options.backgroundColor ?? this._defaultOptions.backgroundColor;
+        const restingBackground = this.getBackgroundColor();
 
         if (restingBackground === undefined || restingBackground === BUTTON_RESTING_BACKGROUND) {
             this.setBackgroundColor("transparent");
