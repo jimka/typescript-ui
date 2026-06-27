@@ -225,19 +225,11 @@ class SplitGutter extends Component<SplitGutterOptions> {
     protected applyOptions(options: SplitGutterOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as SplitGutterOptions;
-
-        if (opts.orientation !== undefined) {
-            this.setDirection(opts.orientation);
-        }
-
-        if (opts.collapsible !== undefined) {
-            this.setCollapsible(opts.collapsible);
-        }
-
-        if (opts.movable !== undefined) {
-            this.setMovable(opts.movable);
-        }
+        // All three carry a class default and seed construction-time backing
+        // state, so dispatch the caller value or the class default.
+        this.setDirection(options.orientation ?? this._defaultOptions.orientation!);
+        this.setCollapsible(options.collapsible ?? this._defaultOptions.collapsible!);
+        this.setMovable(options.movable ?? this._defaultOptions.movable!);
 
         return this;
     }

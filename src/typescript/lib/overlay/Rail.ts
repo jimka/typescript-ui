@@ -327,24 +327,19 @@ class Rail extends Component<RailOptions> {
     protected applyOptions(options: RailOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as RailOptions;
+        // edge and orientation carry a class default and seed construction-time
+        // state, so always dispatch the caller value or the class default.
+        this.setEdge(options.edge ?? this._defaultOptions.edge!);
+        this.setOrientation(options.orientation ?? this._defaultOptions.orientation!);
 
-        if (opts.edge !== undefined) {
-            this.setEdge(opts.edge);
+        if (options.thickness !== undefined) {
+            this.setThickness(options.thickness);
         }
 
-        if (opts.thickness !== undefined) {
-            this.setThickness(opts.thickness);
-        }
-
-        if (opts.orientation !== undefined) {
-            this.setOrientation(opts.orientation);
-        }
-
-        if (opts.collapsed !== undefined) {
+        if (options.collapsed !== undefined) {
             // Cache only during the cascade — the visual transition needs the
             // element + chevron + handles, which mount() applies once they exist.
-            this._options.collapsed = opts.collapsed;
+            this._options.collapsed = options.collapsed;
         }
 
         return this;

@@ -210,23 +210,12 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
     protected applyOptions(options: DrawerOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as DrawerOptions;
-
-        if (opts.edge !== undefined) {
-            this.setEdge(opts.edge);
-        }
-
-        if (opts.modal !== undefined) {
-            this.setModal(opts.modal);
-        }
-
-        if (opts.size !== undefined) {
-            this.setDrawerSize(opts.size);
-        }
-
-        if (opts.durationMs !== undefined) {
-            this.setDurationMs(opts.durationMs);
-        }
+        // All four carry a class default and seed construction-time state, so
+        // always dispatch the caller value or the class default.
+        this.setEdge(options.edge ?? this._defaultOptions.edge!);
+        this.setModal(options.modal ?? this._defaultOptions.modal!);
+        this.setDrawerSize(options.size ?? this._defaultOptions.size!);
+        this.setDurationMs(options.durationMs ?? this._defaultOptions.durationMs!);
 
         return this;
     }

@@ -183,15 +183,16 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
-
-        if (opts.orientation  !== undefined) this.setOrientation(opts.orientation);
-        if (opts.compact      !== undefined) this.setCompact(opts.compact);
+        // These fields all carry a class default and seed construction-time
+        // backing state, so dispatch the caller value or the class default —
+        // never leave the setter unfired (mirrors Panel.setAutoScroll).
+        this.setOrientation(options.orientation ?? this._defaultOptions.orientation!);
+        this.setCompact(options.compact ?? this._defaultOptions.compact!);
         // Dispatched before `overflow` so the trigger, created on entry to
         // `"menu"` mode, is positioned on the configured side from the start.
-        if (opts.overflowSide !== undefined) this.setOverflowSide(opts.overflowSide);
-        if (opts.overflow     !== undefined) this.setOverflow(opts.overflow);
-        if (opts.flat         !== undefined) this.setFlat(opts.flat);
+        this.setOverflowSide(options.overflowSide ?? this._defaultOptions.overflowSide!);
+        this.setOverflow(options.overflow ?? this._defaultOptions.overflow!);
+        this.setFlat(options.flat ?? this._defaultOptions.flat!);
 
         return this;
     }

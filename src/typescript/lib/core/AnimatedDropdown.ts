@@ -135,11 +135,11 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
-
-        if (opts.animated    !== undefined) this.setAnimated(opts.animated);
-        if (opts.durationMs  !== undefined) this.setDurationMs(opts.durationMs);
-        if (opts.translatePx !== undefined) this.setTranslatePx(opts.translatePx);
+        // These carry a class default and seed construction-time state, so
+        // always dispatch the caller value or the class default.
+        this.setAnimated(options.animated ?? this._defaultOptions.animated!);
+        this.setDurationMs(options.durationMs ?? this._defaultOptions.durationMs!);
+        this.setTranslatePx(options.translatePx ?? this._defaultOptions.translatePx!);
 
         return this;
     }
