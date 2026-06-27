@@ -244,9 +244,11 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
             this.setWhiteSpace(options.whiteSpace);
         }
 
-        if (options.truncate !== undefined) {
-            this.setTruncate(options.truncate);
-        }
+        // `truncate` carries a class default (true) and applies its CSS
+        // (white-space / overflow / text-overflow) imperatively via the setter
+        // with no render re-read, so always dispatch the caller value or the
+        // default — otherwise a default-truncating Text never gets the CSS.
+        this.setTruncate(options.truncate ?? this._defaultOptions.truncate!);
 
         return this;
     }

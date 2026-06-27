@@ -374,7 +374,6 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             layoutManager: new Absolute(),
             cursor       : "default",
             insets       : new Insets(0, 0, 0, 0),
-            padding      : new Insets(0, 0, 0, 0),
             minSize      : { width: 0, height: 0 },
             maxSize      : { width: UNBOUNDED, height: UNBOUNDED },
             overflow     : "hidden",
@@ -1483,7 +1482,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The current padding Insets, or null if none are set.
      */
     getPadding(): Insets | null {
-        return this._options.padding ?? null;
+        return this._options.padding ?? this._defaultOptions.padding ?? null;
     }
 
     /**
