@@ -590,14 +590,13 @@ abstract class AbstractCalendarDropdown<
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
 
-        if (opts.minDate !== undefined) {
-            this._options.minDate = opts.minDate;
+        if (options.minDate !== undefined) {
+            this._options.minDate = options.minDate;
         }
 
-        if (opts.maxDate !== undefined) {
-            this._options.maxDate = opts.maxDate;
+        if (options.maxDate !== undefined) {
+            this._options.maxDate = options.maxDate;
         }
 
         return this;

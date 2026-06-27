@@ -175,14 +175,13 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
     protected applyOptions(options: NumberSpinnerOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as NumberSpinnerOptions;
 
-        if (opts.min       !== undefined) this._options.min       = opts.min;
-        if (opts.max       !== undefined) this._options.max       = opts.max;
-        if (opts.step      !== undefined) this._options.step      = opts.step;
-        if (opts.precision !== undefined) this._options.precision = opts.precision;
-        if (opts.value     !== undefined) this._options.value     = opts.value;
-        if (opts.enabled   !== undefined) this._options.enabled   = opts.enabled;
+        if (options.min       !== undefined) this._options.min       = options.min;
+        if (options.max       !== undefined) this._options.max       = options.max;
+        if (options.step      !== undefined) this._options.step      = options.step;
+        if (options.precision !== undefined) this._options.precision = options.precision;
+        if (options.value     !== undefined) this._options.value     = options.value;
+        if (options.enabled   !== undefined) this._options.enabled   = options.enabled;
 
         return this;
     }

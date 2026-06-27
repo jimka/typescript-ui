@@ -97,22 +97,21 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
     protected applyOptions(options: DateTimeFieldOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as DateTimeFieldOptions;
 
-        if (opts.showSeconds !== undefined) {
-            this._options.showSeconds = opts.showSeconds;
+        if (options.showSeconds !== undefined) {
+            this._options.showSeconds = options.showSeconds;
         }
 
-        if (opts.value !== undefined) {
-            this._options.value = opts.value;
+        if (options.value !== undefined) {
+            this._options.value = options.value;
         }
 
-        if (opts.minDate !== undefined) {
-            this._options.minDate = opts.minDate;
+        if (options.minDate !== undefined) {
+            this._options.minDate = options.minDate;
         }
 
-        if (opts.maxDate !== undefined) {
-            this._options.maxDate = opts.maxDate;
+        if (options.maxDate !== undefined) {
+            this._options.maxDate = options.maxDate;
         }
 
         return this;

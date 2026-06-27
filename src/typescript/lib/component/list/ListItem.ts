@@ -56,13 +56,12 @@ class ListItem extends Component<ListItemOptions> {
     protected applyOptions(options: ListItemOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as ListItemOptions;
 
-        if (opts.text !== undefined) {
-            this._value = opts.text;
+        if (options.text !== undefined) {
+            this._value = options.text;
             const element = this.getElement();
             if (element) {
-                DOM.sink.apply(element, { text: opts.text });
+                DOM.sink.apply(element, { text: options.text });
             }
         }
 

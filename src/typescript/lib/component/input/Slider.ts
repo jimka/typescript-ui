@@ -160,19 +160,18 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
 
-        if (opts.value       !== undefined) this._options.value       = opts.value;
-        if (opts.min         !== undefined) this._options.min         = opts.min;
-        if (opts.max         !== undefined) this._options.max         = opts.max;
-        if (opts.minValue    !== undefined) this._options.minValue    = opts.minValue;
-        if (opts.maxValue    !== undefined) this._options.maxValue    = opts.maxValue;
-        if (opts.step        !== undefined) this._options.step        = opts.step;
-        if (opts.largeStep   !== undefined) this._options.largeStep   = opts.largeStep;
-        if (opts.orientation !== undefined) this._options.orientation = opts.orientation;
-        if (opts.showTicks   !== undefined) this._options.showTicks   = opts.showTicks;
-        if (opts.enabled     !== undefined) this._options.enabled     = opts.enabled;
-        if (opts.readOnly    !== undefined) this._options.readOnly    = opts.readOnly;
+        if (options.value       !== undefined) this._options.value       = options.value;
+        if (options.min         !== undefined) this._options.min         = options.min;
+        if (options.max         !== undefined) this._options.max         = options.max;
+        if (options.minValue    !== undefined) this._options.minValue    = options.minValue;
+        if (options.maxValue    !== undefined) this._options.maxValue    = options.maxValue;
+        if (options.step        !== undefined) this._options.step        = options.step;
+        if (options.largeStep   !== undefined) this._options.largeStep   = options.largeStep;
+        if (options.orientation !== undefined) this._options.orientation = options.orientation;
+        if (options.showTicks   !== undefined) this._options.showTicks   = options.showTicks;
+        if (options.enabled     !== undefined) this._options.enabled     = options.enabled;
+        if (options.readOnly    !== undefined) this._options.readOnly    = options.readOnly;
 
         return this;
     }

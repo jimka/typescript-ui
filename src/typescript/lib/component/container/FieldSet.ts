@@ -68,10 +68,9 @@ class FieldSet extends Component {
     protected applyOptions(options: FieldSetOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as FieldSetOptions;
 
-        if (opts.legend !== undefined) {
-            this.setTitle(opts.legend);
+        if (options.legend !== undefined) {
+            this.setTitle(options.legend);
         }
 
         return this;

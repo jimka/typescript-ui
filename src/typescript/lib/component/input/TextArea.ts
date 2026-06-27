@@ -71,18 +71,17 @@ class TextArea extends TextInput<TextAreaOptions> {
     protected applyOptions(options: TextAreaOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TextAreaOptions;
 
-        if (opts.rows !== undefined) {
-            this.setRows(opts.rows);
+        if (options.rows !== undefined) {
+            this.setRows(options.rows);
         }
 
-        if (opts.cols !== undefined) {
-            this.setCols(opts.cols);
+        if (options.cols !== undefined) {
+            this.setCols(options.cols);
         }
 
-        if (opts.wrap !== undefined) {
-            this.setWrap(opts.wrap);
+        if (options.wrap !== undefined) {
+            this.setWrap(options.wrap);
         }
 
         return this;

@@ -131,38 +131,37 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
 
-        if (opts.text !== undefined) {
-            this.setText(opts.text);
+        if (options.text !== undefined) {
+            this.setText(options.text);
         }
 
-        if (opts.textAlign !== undefined) {
-            this.setTextAlign(opts.textAlign);
+        if (options.textAlign !== undefined) {
+            this.setTextAlign(options.textAlign);
         }
 
-        if (opts.placeholder !== undefined) {
-            this.setPlaceholder(opts.placeholder);
+        if (options.placeholder !== undefined) {
+            this.setPlaceholder(options.placeholder);
         }
 
-        if (opts.readOnly !== undefined) {
-            this.setReadOnly(opts.readOnly);
+        if (options.readOnly !== undefined) {
+            this.setReadOnly(options.readOnly);
         }
 
-        if (opts.enabled !== undefined) {
-            this.setEnabled(opts.enabled);
+        if (options.enabled !== undefined) {
+            this.setEnabled(options.enabled);
         }
 
-        if (opts.maxLength !== undefined) {
-            this.setMaxLength(opts.maxLength);
+        if (options.maxLength !== undefined) {
+            this.setMaxLength(options.maxLength);
         }
 
-        if (opts.inputMode !== undefined) {
-            this.setInputMode(opts.inputMode);
+        if (options.inputMode !== undefined) {
+            this.setInputMode(options.inputMode);
         }
 
-        if (opts.autoComplete !== undefined) {
-            this.setAutoComplete(opts.autoComplete);
+        if (options.autoComplete !== undefined) {
+            this.setAutoComplete(options.autoComplete);
         }
 
         return this;

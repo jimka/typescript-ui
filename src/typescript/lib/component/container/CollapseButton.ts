@@ -167,10 +167,9 @@ class CollapseButton extends Component<CollapseButtonOptions> {
     protected applyOptions(options: CollapseButtonOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as CollapseButtonOptions;
 
-        if (opts.direction !== undefined) {
-            this.setDirection(opts.direction);
+        if (options.direction !== undefined) {
+            this.setDirection(options.direction);
         }
 
         return this;

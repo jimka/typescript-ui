@@ -182,10 +182,9 @@ class SplitButton extends Button<SplitButtonOptions> {
     protected applyOptions(options: SplitButtonOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as SplitButtonOptions;
 
-        if (opts.menuItems !== undefined) {
-            this.setMenuItems(opts.menuItems);
+        if (options.menuItems !== undefined) {
+            this.setMenuItems(options.menuItems);
         }
 
         return this;

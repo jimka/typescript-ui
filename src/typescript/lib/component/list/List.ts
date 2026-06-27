@@ -66,11 +66,10 @@ class List extends AbstractCustomList<string, ListOptions> {
     protected applyOptions(options: ListOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as ListOptions;
 
-        if (opts.selectedIndex !== undefined) this._options.selectedIndex = opts.selectedIndex;
-        if (opts.value         !== undefined) this._options.value         = opts.value;
-        if (opts.selectedItem  !== undefined) this._options.selectedItem  = opts.selectedItem;
+        if (options.selectedIndex !== undefined) this._options.selectedIndex = options.selectedIndex;
+        if (options.value         !== undefined) this._options.value         = options.value;
+        if (options.selectedItem  !== undefined) this._options.selectedItem  = options.selectedItem;
 
         return this;
     }

@@ -212,22 +212,21 @@ class WindowHeader extends Header {
     protected applyOptions(options: WindowHeaderOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as WindowHeaderOptions;
 
-        if (opts.closeable !== undefined) {
-            this.setCloseable(opts.closeable);
+        if (options.closeable !== undefined) {
+            this.setCloseable(options.closeable);
         }
 
-        if (opts.minimizable !== undefined) {
-            this.setMinimizable(opts.minimizable);
+        if (options.minimizable !== undefined) {
+            this.setMinimizable(options.minimizable);
         }
 
-        if (opts.maximizable !== undefined) {
-            this.setMaximizable(opts.maximizable);
+        if (options.maximizable !== undefined) {
+            this.setMaximizable(options.maximizable);
         }
 
-        if (opts.glyph !== undefined) {
-            this.setGlyph(opts.glyph);
+        if (options.glyph !== undefined) {
+            this.setGlyph(options.glyph);
         }
 
         return this;

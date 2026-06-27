@@ -609,17 +609,16 @@ class ComboBox<TOptions extends ComboBoxOptions = ComboBoxOptions> extends Abstr
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
 
-        if (opts.items            !== undefined) this._options.items            = opts.items;
-        if (opts.store            !== undefined) this._options.store            = opts.store;
-        if (opts.displayField     !== undefined) this._options.displayField     = opts.displayField;
-        if (opts.valueField       !== undefined) this._options.valueField       = opts.valueField;
-        if (opts.selectedIndex    !== undefined) this._options.selectedIndex    = opts.selectedIndex;
-        if (opts.value            !== undefined) this._options.value            = opts.value;
-        if (opts.selectedItem     !== undefined) this._options.selectedItem     = opts.selectedItem;
-        if (opts.dropdownAnimated !== undefined) this._options.dropdownAnimated = opts.dropdownAnimated;
-        if (opts.dropdownMinWidth !== undefined) this.setDropdownMinWidth(opts.dropdownMinWidth);
+        if (options.items            !== undefined) this._options.items            = options.items;
+        if (options.store            !== undefined) this._options.store            = options.store;
+        if (options.displayField     !== undefined) this._options.displayField     = options.displayField;
+        if (options.valueField       !== undefined) this._options.valueField       = options.valueField;
+        if (options.selectedIndex    !== undefined) this._options.selectedIndex    = options.selectedIndex;
+        if (options.value            !== undefined) this._options.value            = options.value;
+        if (options.selectedItem     !== undefined) this._options.selectedItem     = options.selectedItem;
+        if (options.dropdownAnimated !== undefined) this._options.dropdownAnimated = options.dropdownAnimated;
+        if (options.dropdownMinWidth !== undefined) this.setDropdownMinWidth(options.dropdownMinWidth);
 
         return this;
     }

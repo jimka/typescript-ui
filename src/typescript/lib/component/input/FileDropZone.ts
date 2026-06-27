@@ -113,9 +113,8 @@ class FileDropZone<TOptions extends FileDropZoneOptions = FileDropZoneOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
 
-        if (opts.promptText !== undefined) this._options.promptText = opts.promptText;
+        if (options.promptText !== undefined) this._options.promptText = options.promptText;
 
         return this;
     }

@@ -67,10 +67,9 @@ class ToggleButton extends Button<ToggleButtonOptions> {
     protected applyOptions(options: ToggleButtonOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as ToggleButtonOptions;
 
-        if (opts.selected !== undefined) {
-            this.setSelected(opts.selected);
+        if (options.selected !== undefined) {
+            this.setSelected(options.selected);
         }
 
         // Button's flat branch runs in `applyChromeOptions` and re-points only
