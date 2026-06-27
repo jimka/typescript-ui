@@ -43,7 +43,7 @@ The dropdown family (`AnimatedDropdown` and its pickers) also registers with `La
 
 `AbstractWindow`, `Dialog`, `Popover`, and `Drawer` do **not** share a common concrete base (they extend `Container`, `Component`, `Container`, `Component` respectively) — only the `DismissableLayer` *interface*. A new shared base class is therefore impossible without a large refactor, and `DismissableLayer` is an interface (no implementation body). The minimal, surgical home is a tiny pair of free functions in a new module under `core/` — `trapWheel(component)` / `untrapWheel(component)` — that wrap the `Event.addSubtreeListener` / `removeSubtreeListener` calls and the gated `preventDefault`. Each of the four overlays calls `trapWheel(this)` from its show path and `untrapWheel(this)` from its hide/teardown path. This keeps the consume-once logic in exactly one place (no four copies), respects the one-element-per-class rule (it adds no DOM, only a listener), and avoids touching the class hierarchy.
 
-The handler reference must be stable per component (so `removeSubtreeListener` matches), so the helper stores the bound handler on a `WeakMap<Component, (e: WheelEvent) => void>` keyed by the component — mirroring how `LayerManager` keys per-layer state with a `WeakMap`. No new field is added to any overlay class.
+The handler captures nothing per component (its body references only the event), so it is a single module-level named function — `swallowUnconsumedWheel` — shared by every trapped overlay, satisfying the named-function listener rule ([ARCHITECTURE.md](../../ARCHITECTURE.md) Event handling). The same stable reference is passed to both `addSubtreeListener` and `removeSubtreeListener`, so removal always matches. A module-private `WeakSet<Component>` records which components are trapped purely for idempotency — mirroring how `LayerManager` keys per-layer state weakly. No new field is added to any overlay class.
 
 **Rejected — centralising the listener inside `LayerManager.register`/`unregister`.** Tempting because all four overlays already route through it, but `LayerManager` deliberately owns *dismissal and z-order*, never per-layer DOM listeners on the layer's own element (its only listeners are the module-global document-level handlers on a sentinel owner). Putting a per-layer subtree wheel listener there would also force the dropdown family into the trap (they register too), contradicting the scope decision, and would entangle two unrelated concerns. A standalone helper called explicitly from the four in-scope overlays keeps the scope precise. Rejected.
 
@@ -79,31 +79,31 @@ Both are internal framework plumbing called from overlay show/hide paths; neithe
 
 ## Internal Structure
 
-`WheelTrap.ts` holds a module-private `WeakMap<Component, (e: WheelEvent) => void>` so each component's bound handler is stable for removal:
+`WheelTrap.ts` holds a single module-level named handler (stable for removal) and a module-private `WeakSet<Component>` used only for idempotency:
 
 ```typescript
-const _handlerByComponent = new WeakMap<Component, (e: WheelEvent) => void>();
+const _trapped = new WeakSet<Component>();
+
+function swallowUnconsumedWheel(e: WheelEvent): void {
+    if (consumeWheel(e)) {                         // unclaimed ⇒ no inner scroller took it
+        e.preventDefault();                        // swallow; do not reach ancestor scroll
+    }
+}
 
 export function trapWheel(component: Component): void {
-    if (_handlerByComponent.has(component)) {
-        return;                                   // idempotent — show may run twice
+    if (_trapped.has(component)) {
+        return;                                    // idempotent — show may run twice
     }
-    const handler = (e: WheelEvent): void => {
-        if (consumeWheel(e)) {                    // unclaimed ⇒ no inner scroller took it
-            e.preventDefault();                   // swallow; do not reach ancestor scroll
-        }
-    };
-    _handlerByComponent.set(component, handler);
-    Event.addSubtreeListener(component, "wheel", handler, { passive: false });
+    _trapped.add(component);
+    Event.addSubtreeListener(component, "wheel", swallowUnconsumedWheel, { passive: false });
 }
 
 export function untrapWheel(component: Component): void {
-    const handler = _handlerByComponent.get(component);
-    if (!handler) {
+    if (!_trapped.has(component)) {
         return;
     }
-    _handlerByComponent.delete(component);
-    Event.removeSubtreeListener(component, "wheel", handler);
+    _trapped.delete(component);
+    Event.removeSubtreeListener(component, "wheel", swallowUnconsumedWheel);
 }
 ```
 
@@ -125,7 +125,7 @@ The trap is installed only after the element is in the DOM, since `addSubtreeLis
 3. **`Dialog.ts`** — same wiring at its register/unregister sites.
 4. **`Popover.ts`** — same wiring in `show()` / `hide()`.
 5. **`Drawer.ts`** — same wiring in `open()` / `close()`.
-6. **Regression grep** — `grep -rn "consumeWheel" src/typescript/lib/` should now show `SmoothScroller.ts` (definition), `Component.ts` (existing inner scroller), and `WheelTrap.ts` (new) — confirming a single shared marker, no fork.
+6. **Regression grep** — `grep -rn "consumeWheel" src/typescript/lib/` should now show `SmoothScroller.ts` (definition), `Component.ts` and `VirtualScroller.ts` (existing inner scrollers), and `WheelTrap.ts` (new) — all importing the one marker from `SmoothScroller.ts`, confirming a single shared marker, no fork.
 7. **Typecheck** — `npm run build` (or the project's typecheck script) passes with zero errors.
 8. **Manual smoke test** per `## Verification`.
 
@@ -173,7 +173,7 @@ Wheel delivery and native scroll are **not exercisable by the offline recording 
 - **Offline unit tests** (the only automatable parts, per `## Expected Behaviour` 8–9):
   - `trapWheel` registers one non-passive `wheel` subtree listener; `untrapWheel` removes it; `trapWheel` is idempotent.
   - The handler calls `preventDefault` exactly when `consumeWheel` returns `true` for the event, and not when the event is already consumed.
-- **Grep invariant:** `grep -rn "consumeWheel" src/typescript/lib/` shows only `SmoothScroller.ts`, `Component.ts`, `WheelTrap.ts` — one shared marker.
+- **Grep invariant:** `grep -rn "consumeWheel" src/typescript/lib/` shows only `SmoothScroller.ts`, `Component.ts`, `VirtualScroller.ts`, `WheelTrap.ts` — all importing the one marker from `SmoothScroller.ts`.
 - **Manual smoke test** (run `npm run dev`, app on http://localhost:8015 — see project dev URL memory; demo screen is **MiscPanel**, which opens windows via `new Window(...).show()` including a fitting "Hello World!" window and several overflowing table/tree windows):
   1. Scroll MiscPanel itself so there is scrollable content behind a window.
   2. Open "Hello World!" (non-scrollable window) → wheel over it → page behind must not move (was the bug). Confirm motion is *blocked*, not a native jump.
