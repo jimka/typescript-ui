@@ -139,7 +139,7 @@ describe('List fills a stretching layout region (region-fill-max-size)', () => {
         h.doLayout();
 
         // The merged max report is unchanged; only the self-clamp policy changed.
-        expect(list.getMaxSize().height).toBe(CONTENT_HEIGHT_13);
+        expect(list.getMaxSize()!.height).toBe(CONTENT_HEIGHT_13);
     });
 
     it('Table already fills a stretching CENTER region (guard, no Table change)', () => {
