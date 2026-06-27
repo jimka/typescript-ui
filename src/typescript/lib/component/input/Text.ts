@@ -184,68 +184,68 @@ class Text<TOptions extends TextOptions = TextOptions> extends Component<TOption
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        // Merge with `_defaultOptions` so the cascade dispatches subclass
-        // defaults (e.g. Header's bold weight) alongside caller values.
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
-
-        if (opts.text !== undefined) {
-            this.setText(opts.text);
+        // Dispatch only caller-supplied values. Class-level font defaults (e.g.
+        // the 14px size, a subclass's bold weight) are resolved lazily by the
+        // font getters' `_defaultOptions` fallback, which `applyStyle` re-reads
+        // at render — so they never enter `_options`.
+        if (options.text !== undefined) {
+            this.setText(options.text);
         }
 
-        if (opts.textAlign !== undefined) {
-            this.setTextAlign(opts.textAlign);
+        if (options.textAlign !== undefined) {
+            this.setTextAlign(options.textAlign);
         }
 
-        if (opts.textShadow !== undefined) {
-            this.setTextShadow(opts.textShadow);
+        if (options.textShadow !== undefined) {
+            this.setTextShadow(options.textShadow);
         }
 
-        if (opts.fontFamily !== undefined) {
-            this.setFontFamily(opts.fontFamily);
+        if (options.fontFamily !== undefined) {
+            this.setFontFamily(options.fontFamily);
         }
 
-        if (opts.fontSize !== undefined) {
-            this.setFontSize(opts.fontSize);
+        if (options.fontSize !== undefined) {
+            this.setFontSize(options.fontSize);
         }
 
-        if (opts.fontWeight !== undefined) {
-            this.setFontWeight(opts.fontWeight);
+        if (options.fontWeight !== undefined) {
+            this.setFontWeight(options.fontWeight);
         }
 
-        if (opts.fontStyle !== undefined) {
-            this.setFontStyle(opts.fontStyle);
+        if (options.fontStyle !== undefined) {
+            this.setFontStyle(options.fontStyle);
         }
 
-        if (opts.fontVariant !== undefined) {
-            this.setFontVariant(opts.fontVariant);
+        if (options.fontVariant !== undefined) {
+            this.setFontVariant(options.fontVariant);
         }
 
-        if (opts.fontStretch !== undefined) {
-            this.setFontStretch(opts.fontStretch);
+        if (options.fontStretch !== undefined) {
+            this.setFontStretch(options.fontStretch);
         }
 
-        if (opts.fontKerning !== undefined) {
-            this.setFontKerning(opts.fontKerning);
+        if (options.fontKerning !== undefined) {
+            this.setFontKerning(options.fontKerning);
         }
 
-        if (opts.fontSizeAdjust !== undefined) {
-            this.setFontSizeAdjust(opts.fontSizeAdjust);
+        if (options.fontSizeAdjust !== undefined) {
+            this.setFontSizeAdjust(options.fontSizeAdjust);
         }
 
-        if (opts.lineHeight !== undefined) {
-            this.setLineHeight(opts.lineHeight);
+        if (options.lineHeight !== undefined) {
+            this.setLineHeight(options.lineHeight);
         }
 
-        if (opts.textOverflow !== undefined) {
-            this.setTextOverflow(opts.textOverflow);
+        if (options.textOverflow !== undefined) {
+            this.setTextOverflow(options.textOverflow);
         }
 
-        if (opts.whiteSpace !== undefined) {
-            this.setWhiteSpace(opts.whiteSpace);
+        if (options.whiteSpace !== undefined) {
+            this.setWhiteSpace(options.whiteSpace);
         }
 
-        if (opts.truncate !== undefined) {
-            this.setTruncate(opts.truncate);
+        if (options.truncate !== undefined) {
+            this.setTruncate(options.truncate);
         }
 
         return this;
