@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { Component, ComponentOptions } from '~/core/Component';
 import { Absolute } from '~/layout/Absolute';
+import { BulletedList } from '~/component/list/BulletedList';
+import { BulletedListItemStyle } from '~/component/list/BulletedListItemStyle';
+import { IconText } from '~/component/display/IconText';
+import { ToolBar } from '~/component/menubar/ToolBar';
+import { SplitGutter } from '~/component/container/SplitGutter';
+import { HBox } from '~/layout/HBox';
 
 // Subclass that seeds class-level defaults the way real subclasses do — through
 // `subclassDefaults`, which land in `_defaultOptions`, never via a setter.
@@ -120,5 +126,51 @@ describe('default options as pure fallback', () => {
         expect(c._options.minSize).toBeUndefined();
         expect(c._options.maxSize).toBeUndefined();
         expect(c.getMaxSize()).not.toBeUndefined();
+    });
+});
+
+describe('subclass defaults resolve as pure fallback', () => {
+    it('BulletedList resolves its DISC default without writing _options', () => {
+        const list = new BulletedList() as any;
+        expect(list.getStyle()).toBe(BulletedListItemStyle.DISC);
+        expect(list._options.itemStyle).toBeUndefined();
+        list.getElement(true);
+        expect(list.getStyle()).toBe(BulletedListItemStyle.DISC);
+    });
+
+    it('BulletedList honors an explicit itemStyle as explicit state', () => {
+        const list = new BulletedList({ itemStyle: BulletedListItemStyle.SQUARE }) as any;
+        expect(list.getStyle()).toBe(BulletedListItemStyle.SQUARE);
+        // itemStyle is backed by the declare'd `_style` field, not `_options`.
+        expect(list._style).toBe(BulletedListItemStyle.SQUARE);
+    });
+
+    it('IconText applies the default gap (2) without writing _options.gap', () => {
+        const row = new IconText('unicode-arrow-up', 'hi') as any;
+        expect(row._options.gap).toBeUndefined();
+        expect((row.getLayoutManager() as HBox).getComponentSpacing()).toBe(2);
+    });
+
+    it('IconText honors an explicit gap', () => {
+        const row = new IconText('unicode-arrow-up', 'hi', { gap: 8 }) as any;
+        expect(row._options.gap).toBe(8);
+        expect((row.getLayoutManager() as HBox).getComponentSpacing()).toBe(8);
+    });
+
+    it('ToolBar seeds its orientation/compact defaults and resolves its bg color, bag clean', () => {
+        const tb = new ToolBar() as any;
+        expect(tb.getOrientation()).toBe('horizontal');
+        expect(tb.isCompact()).toBe(true);
+        expect(tb.getBackgroundColor()).toBe('var(--ts-ui-toolbar-bg, rgb(245, 245, 245))');
+        expect(tb._options.orientation).toBeUndefined();
+        expect(tb._options.compact).toBeUndefined();
+    });
+
+    it('SplitGutter seeds its collapsible/movable defaults with a clean bag', () => {
+        const gutter = new SplitGutter('horizontal') as any;
+        expect(gutter.isCollapsible()).toBe(true);
+        expect(gutter.isMovable()).toBe(true);
+        expect(gutter._options.collapsible).toBeUndefined();
+        expect(gutter._options.movable).toBeUndefined();
     });
 });
