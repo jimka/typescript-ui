@@ -178,23 +178,21 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     protected applyOptions(options: AutoCompleteFieldOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as AutoCompleteFieldOptions;
-
-        if (opts.suggestions    !== undefined) this.setSuggestions(opts.suggestions);
-        if (opts.minChars       !== undefined) this.setMinChars(opts.minChars);
-        if (opts.debounceMs     !== undefined) this.setDebounceMs(opts.debounceMs);
-        if (opts.maxSuggestions !== undefined) this.setMaxSuggestions(opts.maxSuggestions);
-        if (opts.matchMode      !== undefined) this.setMatchMode(opts.matchMode);
-        if (opts.placeholder    !== undefined) this.setPlaceholder(opts.placeholder);
+        if (options.suggestions    !== undefined) this.setSuggestions(options.suggestions);
+        if (options.minChars       !== undefined) this.setMinChars(options.minChars);
+        if (options.debounceMs     !== undefined) this.setDebounceMs(options.debounceMs);
+        if (options.maxSuggestions !== undefined) this.setMaxSuggestions(options.maxSuggestions);
+        if (options.matchMode      !== undefined) this.setMatchMode(options.matchMode);
+        if (options.placeholder    !== undefined) this.setPlaceholder(options.placeholder);
 
         // store + displayField are paired; apply via setStore when both present,
         // otherwise route through the individual options bag fields so partial
         // configuration is preserved without firing a half-configured setStore.
-        if (opts.store !== undefined && opts.displayField !== undefined) {
-            this.setStore(opts.store, opts.displayField);
+        if (options.store !== undefined && options.displayField !== undefined) {
+            this.setStore(options.store, options.displayField);
         } else {
-            if (opts.store        !== undefined) this._options.store        = opts.store;
-            if (opts.displayField !== undefined) this._options.displayField = opts.displayField;
+            if (options.store        !== undefined) this._options.store        = options.store;
+            if (options.displayField !== undefined) this._options.displayField = options.displayField;
         }
 
         return this;

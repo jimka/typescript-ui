@@ -214,20 +214,18 @@ class Spacer extends Component<SpacerOptions> {
     protected applyOptions(options: SpacerOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as SpacerOptions;
-
-        if (opts.width !== undefined || opts.height !== undefined) {
-            const w = opts.width  ?? 0;
-            const h = opts.height ?? w;
+        if (options.width !== undefined || options.height !== undefined) {
+            const w = options.width  ?? 0;
+            const h = options.height ?? w;
             this.setPreferredSize(w, h);
         }
 
-        if (opts.flexWeight !== undefined) {
-            this.setFlexWeight(opts.flexWeight);
+        if (options.flexWeight !== undefined) {
+            this.setFlexWeight(options.flexWeight);
         }
 
-        if (opts.flex !== undefined) {
-            this.setFlex(opts.flex);
+        if (options.flex !== undefined) {
+            this.setFlex(options.flex);
         }
 
         return this;

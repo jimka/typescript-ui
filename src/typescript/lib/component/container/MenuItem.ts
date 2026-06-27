@@ -276,19 +276,17 @@ class MenuItem extends Component {
     protected applyOptions(options: MenuItemOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as MenuItemOptions;
-
-        if (opts.text !== undefined && this._titleText) {
-            this._titleText.setText(opts.text);
+        if (options.text !== undefined && this._titleText) {
+            this._titleText.setText(options.text);
         }
 
-        if (opts.enabled !== undefined) {
-            this.getAria().setDisabled(!opts.enabled);
-            this.setCursor(opts.enabled ? "pointer" : "default");
+        if (options.enabled !== undefined) {
+            this.getAria().setDisabled(!options.enabled);
+            this.setCursor(options.enabled ? "pointer" : "default");
         }
 
-        if (opts.focused !== undefined) {
-            this.setFocused(opts.focused);
+        if (options.focused !== undefined) {
+            this.setFocused(options.focused);
         }
 
         return this;

@@ -200,10 +200,8 @@ abstract class AbstractPickerField<
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
-
-        if (opts.dropdownAnimated !== undefined) {
-            this.setDropdownAnimated(opts.dropdownAnimated);
+        if (options.dropdownAnimated !== undefined) {
+            this.setDropdownAnimated(options.dropdownAnimated);
         }
 
         return this;

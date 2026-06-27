@@ -327,24 +327,19 @@ class Rail extends Component<RailOptions> {
     protected applyOptions(options: RailOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as RailOptions;
+        // edge and orientation carry a class default and seed construction-time
+        // state, so always dispatch the caller value or the class default.
+        this.setEdge(options.edge ?? this.getEdge());
+        this.setOrientation(options.orientation ?? this.getOrientation());
 
-        if (opts.edge !== undefined) {
-            this.setEdge(opts.edge);
+        if (options.thickness !== undefined) {
+            this.setThickness(options.thickness);
         }
 
-        if (opts.thickness !== undefined) {
-            this.setThickness(opts.thickness);
-        }
-
-        if (opts.orientation !== undefined) {
-            this.setOrientation(opts.orientation);
-        }
-
-        if (opts.collapsed !== undefined) {
+        if (options.collapsed !== undefined) {
             // Cache only during the cascade — the visual transition needs the
             // element + chevron + handles, which mount() applies once they exist.
-            this._options.collapsed = opts.collapsed;
+            this._options.collapsed = options.collapsed;
         }
 
         return this;
@@ -373,7 +368,7 @@ class Rail extends Component<RailOptions> {
      * @returns The current edge.
      */
     getEdge(): RailEdge {
-        return this._options.edge ?? Placement.WEST;
+        return this._options.edge ?? this._defaultOptions.edge!;
     }
 
     /**
@@ -765,7 +760,7 @@ class Rail extends Component<RailOptions> {
      * @returns The current orientation.
      */
     getOrientation(): RailOrientation {
-        return this._options.orientation ?? "horizontal";
+        return this._options.orientation ?? this._defaultOptions.orientation!;
     }
 
     // ----- mount / unmount -----

@@ -194,6 +194,17 @@ getLineHeight(): string | null {
 }
 ```
 
+### Class-level defaults must survive the getter
+
+A field seeded in a `_default<Name>Options` bag is a **pure fallback** — never dispatched into `_options` at construction. The `?? null` getter above therefore **silently drops** it: `new Subclass().getX()` returns `null`, not the class default. For any field this class or a subclass defaults, pick one:
+
+- **Fold it in the getter** — `return this._options.foo ?? this._defaultOptions.foo ?? null;` — when the value is read at render (`applyStyle`) or by a consumer. The common case.
+- **Always-dispatch** — when the setter's effect is construction-time with no render re-read, have `applyOptions` call `this.setX(options.foo ?? this.getX())` so the effect fires for the default too. Never gate a defaulted field on `if (options.foo !== undefined)` alone.
+
+A `clearX()` over a *folding* getter must suppress the default, not re-resolve it — distinguish *cleared* from *never-set* by key presence: `return "foo" in this._options ? (this._options.foo ?? null) : (this._defaultOptions.foo ?? null);`, with `clearX()` writing the key (`this._options.foo = undefined`). The chrome group (`border` / `borderRadius` / `shadow` / `backgroundImage`) instead keeps its default on the dispatch path with a non-folding getter, so `clear*()` suppression works without key presence.
+
+This trap is invisible to the offline test harness (the missing default shows only in rendered CSS), so it is guarded mechanically: every class that defaults a field has a row in the default-resolution registry in [`tests/component/default-options-fallback.test.ts`](tests/component/default-options-fallback.test.ts). Add a row with the field.
+
 ### `setElement*` is the low-level seam
 
 `setElementCSSRule(s)`, `setElementStyle(s)`, and `setElementAttribute` are the buffered writes that the three rules above sit on top of. Restrict the callers to:

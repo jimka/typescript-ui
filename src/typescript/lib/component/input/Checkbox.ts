@@ -161,14 +161,12 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
-
-        if (opts.selected      !== undefined) this._options.selected      = opts.selected;
-        if (opts.value         !== undefined) this._options.value         = opts.value;
-        if (opts.indeterminate !== undefined) this._options.indeterminate = opts.indeterminate;
-        if (opts.label         !== undefined) this._options.label         = opts.label;
-        if (opts.enabled       !== undefined) this._options.enabled       = opts.enabled;
-        if (opts.readOnly      !== undefined) this._options.readOnly      = opts.readOnly;
+        if (options.selected      !== undefined) this._options.selected      = options.selected;
+        if (options.value         !== undefined) this._options.value         = options.value;
+        if (options.indeterminate !== undefined) this._options.indeterminate = options.indeterminate;
+        if (options.label         !== undefined) this._options.label         = options.label;
+        if (options.enabled       !== undefined) this._options.enabled       = options.enabled;
+        if (options.readOnly      !== undefined) this._options.readOnly      = options.readOnly;
 
         return this;
     }

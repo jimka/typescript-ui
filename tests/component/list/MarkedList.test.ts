@@ -106,6 +106,24 @@ describe('ListItem — key / value contract', () => {
         expect(item.applyStyle()).toBe(item);
     });
 
+    it('renders the positional value as the item text', () => {
+        // The positional `value` is a per-instance value, not a class default —
+        // `new ListItem(key, value)` must render `value` as the <li> text even
+        // when no `text` option is supplied. render() writes
+        // `text: this._value` through the sink; assert the positional reaches it.
+        const sink = installTestDOM(CONFIG);
+        const item = new _ListItem('k', 'Positional');
+
+        item.getElement(true);
+
+        const textWrites = sink.writes
+            .filter(w => w.op === 'apply')
+            .map(w => (w.args[1] as { text?: string }).text)
+            .filter((t): t is string => t !== undefined);
+
+        expect(textWrites).toContain('Positional');
+    });
+
     it('the text option overrides the positional value', () => {
         // The positional value seeds the defaults bag's `text`; an explicit
         // `text` option wins the options-over-defaults merge (ListItem.ts:44).

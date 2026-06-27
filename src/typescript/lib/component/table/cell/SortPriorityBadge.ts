@@ -97,10 +97,8 @@ class SortPriorityBadge extends Component<SortPriorityBadgeOptions> {
     protected applyOptions(options: SortPriorityBadgeOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as SortPriorityBadgeOptions;
-
-        if (opts.priority !== undefined) {
-            this._priority = opts.priority;
+        if (options.priority !== undefined) {
+            this._priority = options.priority;
         }
 
         return this;

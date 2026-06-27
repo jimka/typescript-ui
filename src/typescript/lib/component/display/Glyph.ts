@@ -585,22 +585,20 @@ class Glyph extends Component<GlyphOptions> {
     protected applyOptions(options: GlyphOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as GlyphOptions;
-
-        if (opts.fontSize !== undefined) {
-            this.setFontSize(opts.fontSize);
+        if (options.fontSize !== undefined) {
+            this.setFontSize(options.fontSize);
         }
 
-        if (opts.lineHeight !== undefined) {
-            this.setLineHeight(opts.lineHeight);
+        if (options.lineHeight !== undefined) {
+            this.setLineHeight(options.lineHeight);
         }
 
-        if (opts.textAlign !== undefined) {
-            this.setTextAlign(opts.textAlign);
+        if (options.textAlign !== undefined) {
+            this.setTextAlign(options.textAlign);
         }
 
-        if (opts.animationDuration !== undefined) {
-            this.setAnimationDuration(opts.animationDuration);
+        if (options.animationDuration !== undefined) {
+            this.setAnimationDuration(options.animationDuration);
         }
 
         // Re-pin minSize / maxSize to the current preferred size so the glyph
@@ -608,7 +606,7 @@ class Glyph extends Component<GlyphOptions> {
         // overwritten the pin from `setPreferredSize` with Component's `{0,0}`
         // minSize / `{MAX,MAX}` maxSize defaults; restore it here, but honour
         // an explicit `options.minSize` / `options.maxSize` from the caller.
-        const pref = this._options.preferredSize ?? this._defaultOptions.preferredSize;
+        const pref = this.getPreferredSizeConstraint();
         if (pref) {
             if (options.minSize === undefined) {
                 this.setMinSize(pref.width, pref.height);
@@ -619,8 +617,8 @@ class Glyph extends Component<GlyphOptions> {
             }
         }
 
-        if (opts.animation !== undefined) {
-            this.setAnimated(opts.animation);
+        if (options.animation !== undefined) {
+            this.setAnimated(options.animation);
         }
 
         return this;

@@ -216,12 +216,13 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
     protected applyOptions(options: PopoverOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as PopoverOptions;
-
-        if (opts.placement !== undefined) this.setPlacement(opts.placement);
-        if (opts.dismissOn !== undefined) this.setDismissOn(opts.dismissOn);
-        if (opts.showArrow !== undefined) this.setShowArrow(opts.showArrow);
-        if (opts.title     !== undefined) this.setTitle(opts.title);
+        // placement/dismissOn/showArrow carry a class default and seed
+        // construction-time state, so always dispatch the caller value or the
+        // class default; title has no default.
+        this.setPlacement(options.placement ?? this.getPlacement());
+        this.setDismissOn(options.dismissOn ?? this.getDismissOn());
+        this.setShowArrow(options.showArrow ?? this.isShowArrow());
+        if (options.title !== undefined) this.setTitle(options.title);
 
         return this;
     }
@@ -244,7 +245,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * @returns The placement set via {@link setPlacement}, or `"auto"` by default.
      */
     getPlacement(): PopoverPlacement {
-        return this._placement;
+        return this._placement ?? this._defaultOptions.placement!;
     }
 
     /**
@@ -265,7 +266,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * @returns The dismiss strategy set via {@link setDismissOn}.
      */
     getDismissOn(): PopoverDismissMode {
-        return this._dismissOn;
+        return this._dismissOn ?? this._defaultOptions.dismissOn!;
     }
 
     /**
@@ -290,7 +291,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * @returns `true` if the arrow is rendered.
      */
     isShowArrow(): boolean {
-        return this._showArrow;
+        return this._showArrow ?? this._defaultOptions.showArrow!;
     }
 
     /**
@@ -537,7 +538,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * @returns The layer dismiss mode.
      */
     getDismissMode(): LayerDismissMode {
-        return this._dismissOn;
+        return this._dismissOn ?? this._defaultOptions.dismissOn!;
     }
 
     /**
@@ -730,7 +731,7 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         };
 
         if (fits(this._placement)) {
-            return this._placement;
+            return this._placement ?? this._defaultOptions.placement!;
         }
 
         const opposite: Record<Exclude<PopoverPlacement, "auto">, Exclude<PopoverPlacement, "auto">> = {

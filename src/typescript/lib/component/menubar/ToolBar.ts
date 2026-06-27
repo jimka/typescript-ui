@@ -183,15 +183,16 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
-
-        if (opts.orientation  !== undefined) this.setOrientation(opts.orientation);
-        if (opts.compact      !== undefined) this.setCompact(opts.compact);
+        // These fields all carry a class default and seed construction-time
+        // backing state, so dispatch the caller value or the class default —
+        // never leave the setter unfired (mirrors Panel.setAutoScroll).
+        this.setOrientation(options.orientation ?? this.getOrientation());
+        this.setCompact(options.compact ?? this.isCompact());
         // Dispatched before `overflow` so the trigger, created on entry to
         // `"menu"` mode, is positioned on the configured side from the start.
-        if (opts.overflowSide !== undefined) this.setOverflowSide(opts.overflowSide);
-        if (opts.overflow     !== undefined) this.setOverflow(opts.overflow);
-        if (opts.flat         !== undefined) this.setFlat(opts.flat);
+        this.setOverflowSide(options.overflowSide ?? this.getOverflowSide());
+        this.setOverflow(options.overflow ?? this.getOverflow());
+        this.setFlat(options.flat ?? this.isFlat());
 
         return this;
     }
@@ -249,7 +250,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      * @returns `"horizontal"` or `"vertical"`.
      */
     getOrientation(): AxisOrientation {
-        return this._orientation;
+        return this._orientation ?? this._defaultOptions.orientation!;
     }
 
     /**
@@ -292,7 +293,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      * @returns `true` if compact mode is enabled.
      */
     isCompact(): boolean {
-        return this._compact;
+        return this._compact ?? this._defaultOptions.compact!;
     }
 
     /**
@@ -391,7 +392,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      * @returns `"clip"` or `"menu"`.
      */
     getOverflow(): ToolBarOverflow {
-        return this._overflowMode;
+        return this._overflowMode ?? this._defaultOptions.overflow!;
     }
 
     /**
@@ -423,7 +424,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      * @returns `"start"` or `"end"`.
      */
     getOverflowSide(): AxisEnd {
-        return this._overflowSide;
+        return this._overflowSide ?? this._defaultOptions.overflowSide!;
     }
 
     /**
@@ -464,7 +465,7 @@ class ToolBar<TOptions extends ToolBarOptions = ToolBarOptions> extends Containe
      * @returns `true` if flat mode is enabled.
      */
     isFlat(): boolean {
-        return this._flat;
+        return this._flat ?? this._defaultOptions.flat!;
     }
 
     /**

@@ -124,10 +124,8 @@ class ProgressSpinner extends Component {
     protected applyOptions(options: ProgressSpinnerOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as ProgressSpinnerOptions;
-
-        if (opts.spinnerSize !== undefined) {
-            this.setSpinnerSize(opts.spinnerSize);
+        if (options.spinnerSize !== undefined) {
+            this.setSpinnerSize(options.spinnerSize);
         }
 
         return this;

@@ -52,8 +52,10 @@ export interface FadeOptions {
 
 /**
  * User-overridable visual defaults forwarded to `super` via the options bag.
- * The cascade in `Component`'s constructor dispatches each present setter once
- * with the final value, so any field the caller supplied wins.
+ * These are a pure fallback: a caller value wins, otherwise the getters
+ * (`isVisible`, `isAnimated`, `getDurationMs`, `getTranslatePx`) resolve the
+ * default — `visible: false` is folded by `Component.isVisible`, the rest are
+ * dispatched from `applyOptions` as `options.X ?? this.getX()`.
  */
 const _defaultAnimatedDropdownOptions: Partial<AnimatedDropdownOptions> = {
     visible:     false,
@@ -135,11 +137,11 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
-
-        if (opts.animated    !== undefined) this.setAnimated(opts.animated);
-        if (opts.durationMs  !== undefined) this.setDurationMs(opts.durationMs);
-        if (opts.translatePx !== undefined) this.setTranslatePx(opts.translatePx);
+        // These carry a class default and seed construction-time state, so
+        // always dispatch the caller value or the class default.
+        this.setAnimated(options.animated ?? this.isAnimated());
+        this.setDurationMs(options.durationMs ?? this.getDurationMs());
+        this.setTranslatePx(options.translatePx ?? this.getTranslatePx());
 
         return this;
     }
@@ -162,7 +164,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @returns true when the fade transition runs on show/hide.
      */
     isAnimated(): boolean {
-        return this._options.animated ?? true;
+        return this._options.animated ?? this._defaultOptions.animated!;
     }
 
     /**
@@ -182,7 +184,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @returns The duration in milliseconds.
      */
     getDurationMs(): number {
-        return this._options.durationMs ?? DEFAULT_DURATION_MS;
+        return this._options.durationMs ?? this._defaultOptions.durationMs!;
     }
 
     /**
@@ -202,7 +204,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @returns The translation distance in pixels.
      */
     getTranslatePx(): number {
-        return this._options.translatePx ?? DEFAULT_TRANSLATE_PX;
+        return this._options.translatePx ?? this._defaultOptions.translatePx!;
     }
 
     /**

@@ -210,23 +210,12 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
     protected applyOptions(options: DrawerOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as DrawerOptions;
-
-        if (opts.edge !== undefined) {
-            this.setEdge(opts.edge);
-        }
-
-        if (opts.modal !== undefined) {
-            this.setModal(opts.modal);
-        }
-
-        if (opts.size !== undefined) {
-            this.setDrawerSize(opts.size);
-        }
-
-        if (opts.durationMs !== undefined) {
-            this.setDurationMs(opts.durationMs);
-        }
+        // All four carry a class default and seed construction-time state, so
+        // always dispatch the caller value or the class default.
+        this.setEdge(options.edge ?? this.getEdge());
+        this.setModal(options.modal ?? this.isModal());
+        this.setDrawerSize(options.size ?? this.getDrawerSize());
+        this.setDurationMs(options.durationMs ?? this.getDurationMs());
 
         return this;
     }
@@ -254,7 +243,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
      * @returns The current edge.
      */
     getEdge(): DrawerEdge {
-        return this._options.edge ?? Placement.WEST;
+        return this._options.edge ?? this._defaultOptions.edge!;
     }
 
     /**
@@ -280,7 +269,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
      * @returns True when modal.
      */
     isModal(): boolean {
-        return this._options.modal ?? false;
+        return this._options.modal ?? this._defaultOptions.modal!;
     }
 
     /**
@@ -305,7 +294,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
      * @returns The current extent.
      */
     getDrawerSize(): number {
-        return this._options.size ?? DEFAULT_DRAWER_SIZE_PX;
+        return this._options.size ?? this._defaultOptions.size!;
     }
 
     /**
@@ -327,7 +316,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
      * @returns The current duration.
      */
     getDurationMs(): number {
-        return this._options.durationMs ?? DEFAULT_DRAWER_DURATION_MS;
+        return this._options.durationMs ?? this._defaultOptions.durationMs!;
     }
 
     // ----- open / close API -----

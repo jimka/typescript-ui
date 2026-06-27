@@ -65,9 +65,7 @@ class MultiSelectList extends AbstractCustomList<string[], MultiSelectListOption
     protected applyOptions(options: MultiSelectListOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as MultiSelectListOptions;
-
-        if (opts.selectedIndices !== undefined) this._options.selectedIndices = opts.selectedIndices;
+        if (options.selectedIndices !== undefined) this._options.selectedIndices = options.selectedIndices;
 
         return this;
     }

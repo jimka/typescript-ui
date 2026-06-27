@@ -233,10 +233,8 @@ abstract class AbstractInput<
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
-
-        if (opts.enabled  !== undefined) this._options.enabled  = opts.enabled;
-        if (opts.readOnly !== undefined) this._options.readOnly = opts.readOnly;
+        if (options.enabled  !== undefined) this._options.enabled  = options.enabled;
+        if (options.readOnly !== undefined) this._options.readOnly = options.readOnly;
 
         return this;
     }

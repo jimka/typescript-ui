@@ -439,22 +439,27 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         this._text.setFontSize("--ts-ui-button-font-size");
 
         this.addComponent(this._content, {
-            fill:   (this._options.fill   ?? this._defaultOptions.fill)   as FillType,
-            anchor: (this._options.anchor ?? this._defaultOptions.anchor) as AnchorType,
+            fill:   this.getFill(),
+            anchor: this.getAnchor(),
         });
 
-        // Late-built state: applyOptions wrote `text`/`glyph` into `_options`
-        // pure (no setter dispatch) because `this.text`/`_content` didn't exist
-        // yet. Dispatch them now that children are wired up.
-        const effectiveText = this._options.text ?? text;
+        // Late-built state: applyOptions wrote any caller `text`/`glyph`/
+        // `description` into `_options` pure (no setter dispatch) because
+        // `this.text`/`_content` didn't exist yet. Dispatch the effective value
+        // now that children are wired up, folding a class default (e.g.
+        // TabCloseButton's `glyph: "xmark"`) that raw dispatch left in
+        // `_defaultOptions` rather than `_options`.
+        const effectiveText = this._options.text ?? this._defaultOptions.text ?? text;
         if (effectiveText !== undefined) {
             this.setText(effectiveText);
         }
-        if (this._options.glyph !== undefined) {
-            this.setGlyph(this._options.glyph);
+        const effectiveGlyph = this._options.glyph ?? this._defaultOptions.glyph;
+        if (effectiveGlyph !== undefined) {
+            this.setGlyph(effectiveGlyph);
         }
-        if (this._options.description !== undefined) {
-            this.setDescription(this._options.description);
+        const effectiveDescription = this._options.description ?? this._defaultOptions.description;
+        if (effectiveDescription !== undefined) {
+            this.setDescription(effectiveDescription);
         }
 
         // Construction-time flat / compact: the flat and compact setters ran
@@ -490,6 +495,26 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
     }
 
     /**
+     * Returns the content anchor used inside the button's `Fit` layout — the
+     * caller value, else the class default ({@link AnchorType.CENTER}).
+     *
+     * @returns The resolved anchor.
+     */
+    getAnchor(): AnchorType {
+        return (this._options.anchor ?? this._defaultOptions.anchor) as AnchorType;
+    }
+
+    /**
+     * Returns the content fill used inside the button's `Fit` layout — the
+     * caller value, else the class default ({@link FillType.NONE}).
+     *
+     * @returns The resolved fill.
+     */
+    getFill(): FillType {
+        return (this._options.fill ?? this._defaultOptions.fill) as FillType;
+    }
+
+    /**
      * Applies a {@link ButtonOptions} bag. Inherited Component fields cascade
      * through `super.applyOptions`; pressed-state, hover-state, and `enabled`
      * fields cascade through their own setters (the lazy `pressedStyleRule`
@@ -522,36 +547,36 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this.setLayoutManager(structuralLayout);
         }
 
-        // Read from defaults-merged opts so subclass defaults (e.g. SpinButton's
-        // symbol-derived glyph) dispatch alongside caller-supplied values.
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
-
-        if (opts.text         !== undefined) this._options.text         = opts.text;
-        if (opts.description  !== undefined) this._options.description  = opts.description;
-        if (opts.glyph        !== undefined) this._options.glyph        = opts.glyph;
+        // Dispatch only caller-supplied options. None of these subclass fields
+        // is set in a Button-subclass `_defaultOptions` (SpinButton's glyph
+        // rides `options`), and anchor/fill are read back with a
+        // `_defaultOptions` fallback below, so raw dispatch loses no default.
+        if (options.text         !== undefined) this._options.text         = options.text;
+        if (options.description  !== undefined) this._options.description  = options.description;
+        if (options.glyph        !== undefined) this._options.glyph        = options.glyph;
 
         // Pure writes — consumed live by `_rebuildContentRow` (which the
         // late-dispatched setGlyph/setDescription already trigger), so no
         // setter dispatch is needed here. They ride the options bag, not a
         // class field, so the super-cascade class-field trap does not apply.
-        if (opts.descriptionUnderGlyph !== undefined) this._options.descriptionUnderGlyph = opts.descriptionUnderGlyph;
-        if (opts.showDescription       !== undefined) this._options.showDescription       = opts.showDescription;
+        if (options.descriptionUnderGlyph !== undefined) this._options.descriptionUnderGlyph = options.descriptionUnderGlyph;
+        if (options.showDescription       !== undefined) this._options.showDescription       = options.showDescription;
 
-        if (opts.enabled      !== undefined) this.setEnabled(opts.enabled);
+        if (options.enabled      !== undefined) this.setEnabled(options.enabled);
 
         // chromeless / anchor / fill are pure writes — no setter dispatch.
         // Runtime flag flips for chromeless go through setChromeless(), which
         // also reconciles the DOM via clearChrome / restoreChrome. anchor and
         // fill are consumed by the constructor body when adding `_content` to
         // the outer Fit layout; later applyOptions calls don't reanchor.
-        if (opts.chromeless   !== undefined) this._options.chromeless   = opts.chromeless;
-        if (opts.flat         !== undefined) this._options.flat          = opts.flat;
+        if (options.chromeless   !== undefined) this._options.chromeless   = options.chromeless;
+        if (options.flat         !== undefined) this._options.flat          = options.flat;
         // Dispatched (not pure-written like `flat`) because it must resolve the
         // inset perimeter; `_resolveInsets` guards on the content row so the
         // cascade-time call before `_text` exists is a safe no-op.
-        if (opts.compact      !== undefined) this.setCompact(opts.compact);
-        if (opts.anchor       !== undefined) this._options.anchor       = opts.anchor;
-        if (opts.fill         !== undefined) this._options.fill         = opts.fill;
+        if (options.compact      !== undefined) this.setCompact(options.compact);
+        if (options.anchor       !== undefined) this._options.anchor       = options.anchor;
+        if (options.fill         !== undefined) this._options.fill         = options.fill;
 
         return this;
     }
@@ -563,17 +588,18 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * previously written (by an earlier `applyOptions` or `setChromeless`)
      * keeps gating future re-applies that omit `chromeless`.
      *
-     * @param opts - The merged options bag passed by {@link applyOptions}.
+     * @param options - The raw caller options bag passed by {@link applyOptions}.
      */
-    protected override applyChromeOptions(opts: TOptions): void {
-        const chromeless = (this._options.chromeless ?? opts.chromeless) === true;
+    protected override applyChromeOptions(options: TOptions): void {
+        const chromeless = (options.chromeless ?? this.isChromeless()) === true;
         if (chromeless) {
-            // `Component.applyStyle` reads `borderRadius`, `shadow`, and
-            // `backgroundImage` from `{...defaults, ...options}` directly, so
-            // chromeful defaults baked into `_defaultOptions` would otherwise
-            // leak through at render time. Write `undefined` into `_options`
-            // so the spread merge masks the defaults and `applyStyle`'s
-            // `if (opts.X)` falsy gates skip the property.
+            // The chrome group's class defaults are dispatched only by
+            // `super.applyChromeOptions` (skipped here for chromeless), so a
+            // fresh chromeless button never receives them. The explicit
+            // `undefined` writes still matter on a re-apply (e.g. `setChromeless`
+            // after a chromeful pass): they clear a previously-written value so
+            // the chrome getters report `null` and `applyStyle` skips the
+            // property.
             //
             // Border goes through the private `_border` field, so `clearBorder`
             // clears it to a `none` border that overrides the UA `<button>` ridge.
@@ -585,13 +611,13 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
             this._options.borderRadius    = undefined;
             this._options.shadow          = undefined;
             this._options.backgroundImage = undefined;
-            if ((this._options.backgroundColor ?? this._defaultOptions.backgroundColor) === undefined) {
+            if (this.getBackgroundColor() === null) {
                 this._options.backgroundColor = "transparent";
             }
             return;
         }
 
-        super.applyChromeOptions(opts);
+        super.applyChromeOptions(options);
 
         // Chromeful resting background: `super` applied the `--ts-ui-button-bg`
         // token as a background *image* (for gradient tokens); also apply it as
@@ -601,32 +627,35 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // and the button fell back to the UA `<button>` background. Skipped when
         // the caller set their own backgroundColor, and when flat (flat is
         // transparent at rest — see `_applyFlatChrome`).
-        const isFlat = (this._options.flat ?? opts.flat) === true;
+        const isFlat = (this._options.flat ?? options.flat) === true;
 
-        if (!isFlat && opts.backgroundColor === undefined) {
+        if (!isFlat && options.backgroundColor === undefined) {
             this.setBackgroundColor(BUTTON_RESTING_BACKGROUND);
         }
 
-        if (opts.pressedForegroundColor !== undefined) this.setPressedForegroundColor(opts.pressedForegroundColor);
-        if (opts.pressedBackgroundColor !== undefined) this.setPressedBackgroundColor(opts.pressedBackgroundColor);
-        if (opts.pressedBackgroundImage !== undefined) this.setPressedBackgroundImage(opts.pressedBackgroundImage);
-        if (opts.pressedShadow          !== undefined) this.setPressedShadow         (opts.pressedShadow);
-        if (opts.pressedBorder          !== undefined) this.setPressedBorder         (opts.pressedBorder);
-        if (opts.pressedBorderRadius    !== undefined) this.setPressedBorderRadius   (opts.pressedBorderRadius);
+        // The pressed/hover colour + shadow + image fields carry class defaults,
+        // so dispatch the caller value or the class default. The pressed/hover
+        // border fields are not defaulted, so they stay caller-gated.
+        this.setPressedForegroundColor(options.pressedForegroundColor ?? this.getPressedForegroundColor()!);
+        this.setPressedBackgroundColor(options.pressedBackgroundColor ?? this.getPressedBackgroundColor()!);
+        this.setPressedBackgroundImage(options.pressedBackgroundImage ?? this.getPressedBackgroundImage()!);
+        this.setPressedShadow         (options.pressedShadow ?? this.getPressedShadow()!);
+        if (options.pressedBorder       !== undefined) this.setPressedBorder      (options.pressedBorder);
+        if (options.pressedBorderRadius !== undefined) this.setPressedBorderRadius(options.pressedBorderRadius);
 
-        if (opts.hoverForegroundColor   !== undefined) this.setHoverForegroundColor  (opts.hoverForegroundColor);
-        if (opts.hoverBackgroundColor   !== undefined) this.setHoverBackgroundColor  (opts.hoverBackgroundColor);
-        if (opts.hoverBackgroundImage   !== undefined) this.setHoverBackgroundImage  (opts.hoverBackgroundImage);
-        if (opts.hoverShadow            !== undefined) this.setHoverShadow           (opts.hoverShadow);
-        if (opts.hoverBorder            !== undefined) this.setHoverBorder           (opts.hoverBorder);
-        if (opts.hoverBorderRadius      !== undefined) this.setHoverBorderRadius     (opts.hoverBorderRadius);
+        if (options.hoverForegroundColor !== undefined) this.setHoverForegroundColor(options.hoverForegroundColor);
+        this.setHoverBackgroundColor(options.hoverBackgroundColor ?? this.getHoverBackgroundColor()!);
+        this.setHoverBackgroundImage(options.hoverBackgroundImage ?? this.getHoverBackgroundImage()!);
+        this.setHoverShadow         (options.hoverShadow ?? this.getHoverShadow()!);
+        if (options.hoverBorder         !== undefined) this.setHoverBorder      (options.hoverBorder);
+        if (options.hoverBorderRadius   !== undefined) this.setHoverBorderRadius(options.hoverBorderRadius);
 
         // Flat is the third appearance mode: it runs in the chromeful `else`
         // path (chromeless already returned above) and re-points the resting
         // chrome + the raised `pressedX`/`hoverX` treatments just dispatched to
         // the flat tokens. Reading the runtime cache first keeps a previously
         // written flag gating future re-applies that omit `flat`.
-        if ((this._options.flat ?? opts.flat) === true) {
+        if ((this._options.flat ?? options.flat) === true) {
             this._flat = true;
             this._applyFlatChrome();
         }
@@ -1299,7 +1328,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns True when chrome dispatches are gated off.
      */
     isChromeless(): boolean {
-        return this._options.chromeless ?? false;
+        return this._options.chromeless ?? this._defaultOptions.chromeless ?? false;
     }
 
     /**
@@ -1319,7 +1348,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * recovered by `setChromeless(false)` — only the defaults round-trip.
      */
     setChromeless(value: boolean): this {
-        if ((this._options.chromeless ?? false) === value) {
+        if (this.isChromeless() === value) {
             return this;
         }
 
@@ -1550,7 +1579,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // transparent while still preserving a genuine consumer-set colour (the
         // old field-only write left the token painting). `_restoreChrome`
         // re-applies the token on `setFlat(false)`.
-        const restingBackground = this._options.backgroundColor ?? this._defaultOptions.backgroundColor;
+        const restingBackground = this.getBackgroundColor();
 
         if (restingBackground === undefined || restingBackground === BUTTON_RESTING_BACKGROUND) {
             this.setBackgroundColor("transparent");
@@ -1662,7 +1691,12 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The preferred `{width, height}`.
      */
     getPreferredSize(): Size | null {
-        if (this._consumerSetPreferredSize) {
+        // A consumer-pinned size or a class-level `preferredSize` default both
+        // pin the button rather than deriving from content. The default now
+        // lives in `_defaultOptions` (it is no longer dispatched through
+        // `setPreferredSize`, so it never flips `_consumerSetPreferredSize`);
+        // honour it here so subclasses like TabCloseButton keep their fixed size.
+        if (this._consumerSetPreferredSize || this._defaultOptions.preferredSize) {
             return super.getPreferredSize();
         }
 
@@ -1694,7 +1728,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // out via _syncGlyphSize's per-glyph guard, not this early-return.
         this._syncGlyphSize();
 
-        if (this._consumerSetPreferredSize) {
+        if (this._consumerSetPreferredSize || this._defaultOptions.preferredSize) {
             return;
         }
 
@@ -1734,7 +1768,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS color string, or null if not set.
      */
     getPressedBackgroundColor(): string | null {
-        return this._options.pressedBackgroundColor ?? null;
+        return this._options.pressedBackgroundColor ?? this._defaultOptions.pressedBackgroundColor ?? null;
     }
 
     /**
@@ -1769,7 +1803,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS background-image string, or null if not set.
      */
     getPressedBackgroundImage(): string | null {
-        return this._options.pressedBackgroundImage ?? null;
+        return this._options.pressedBackgroundImage ?? this._defaultOptions.pressedBackgroundImage ?? null;
     }
 
     /**
@@ -1804,7 +1838,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS color string, or null if not set.
      */
     getPressedForegroundColor(): string | null {
-        return this._options.pressedForegroundColor ?? null;
+        return this._options.pressedForegroundColor ?? this._defaultOptions.pressedForegroundColor ?? null;
     }
 
     /**
@@ -1917,7 +1951,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS box-shadow string, or null if not set.
      */
     getPressedShadow(): string | null {
-        return this._options.pressedShadow ?? null;
+        return this._options.pressedShadow ?? this._defaultOptions.pressedShadow ?? null;
     }
 
     /**
@@ -1952,7 +1986,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS color string, or null if not set.
      */
     getHoverBackgroundColor(): string | null {
-        return this._options.hoverBackgroundColor ?? null;
+        return this._options.hoverBackgroundColor ?? this._defaultOptions.hoverBackgroundColor ?? null;
     }
 
     /**
@@ -1987,7 +2021,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS background-image string, or null if not set.
      */
     getHoverBackgroundImage(): string | null {
-        return this._options.hoverBackgroundImage ?? null;
+        return this._options.hoverBackgroundImage ?? this._defaultOptions.hoverBackgroundImage ?? null;
     }
 
     /**
@@ -2137,7 +2171,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS box-shadow string, or null if not set.
      */
     getHoverShadow(): string | null {
-        return this._options.hoverShadow ?? null;
+        return this._options.hoverShadow ?? this._defaultOptions.hoverShadow ?? null;
     }
 
     /**

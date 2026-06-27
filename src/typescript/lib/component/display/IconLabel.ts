@@ -71,9 +71,9 @@ class IconLabel extends Component<IconLabelOptions> {
     constructor(glyph: string, text: string, forId: string, options?: IconLabelOptions) {
         super(options, _defaultIconLabelOptions);
 
-        // Per-instance layout manager seeded with the merged `_options.gap`
-        // so a consumer override (or the default) flows into the HBox spacing.
-        this.setLayoutManager(new HBox({ spacing: this._options.gap }));
+        // Per-instance layout manager seeded with the effective gap (caller
+        // override, else the class default) so it flows into the HBox spacing.
+        this.setLayoutManager(new HBox({ spacing: this.getGap() }));
 
         // Build children with the effective values up front so the late-built
         // dispatch below has nothing to overwrite. The bag-written values
@@ -111,12 +111,10 @@ class IconLabel extends Component<IconLabelOptions> {
     protected applyOptions(options: IconLabelOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as IconLabelOptions;
-
-        if (opts.gap   !== undefined) this._options.gap   = opts.gap;
-        if (opts.glyph !== undefined) this._options.glyph = opts.glyph;
-        if (opts.text  !== undefined) this._options.text  = opts.text;
-        if (opts.forId !== undefined) this._options.forId = opts.forId;
+        if (options.gap   !== undefined) this._options.gap   = options.gap;
+        if (options.glyph !== undefined) this._options.glyph = options.glyph;
+        if (options.text  !== undefined) this._options.text  = options.text;
+        if (options.forId !== undefined) this._options.forId = options.forId;
 
         return this;
     }
@@ -175,6 +173,16 @@ class IconLabel extends Component<IconLabelOptions> {
         (this.getLayoutManager() as HBox).setComponentSpacing(px);
 
         return this;
+    }
+
+    /**
+     * Returns the effective gap between the glyph and the label — the
+     * caller/setter value, else the class default (2).
+     *
+     * @returns The gap in pixels.
+     */
+    getGap(): number {
+        return (this._options.gap ?? this._defaultOptions.gap)!;
     }
 
     /**

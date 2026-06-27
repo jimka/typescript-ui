@@ -58,14 +58,14 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
     protected applyOptions(options: AbstractListOptions<U>): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as AbstractListOptions<U>;
+        // `itemStyle` is always defaulted (the constructor seeds the required
+        // `style` param into `_defaultOptions`), so always dispatch the caller
+        // value or the class default — this seeds the `declare`d `_style` field
+        // and queues the `list-style-type` rule without touching `_options`.
+        this.setStyle(options.itemStyle ?? this.getStyle()!);
 
-        if (opts.itemStyle !== undefined) {
-            this.setStyle(opts.itemStyle);
-        }
-
-        if (opts.selectedIndex !== undefined) {
-            this.setSelectedIndex(opts.selectedIndex, false);
+        if (options.selectedIndex !== undefined) {
+            this.setSelectedIndex(options.selectedIndex, false);
         }
 
         return this;
@@ -77,7 +77,7 @@ export abstract class AbstractListComponent<U extends BulletedListItemStyle | Nu
      * @returns The current style enum value, or undefined if not yet set.
      */
     getStyle() {
-        return this._style;
+        return this._style ?? this._defaultOptions.itemStyle;
     }
 
     /**

@@ -299,11 +299,9 @@ class FileField<TOptions extends FileFieldOptions = FileFieldOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
-
-        if (opts.multiple   !== undefined) this._options.multiple   = opts.multiple;
-        if (opts.accept     !== undefined) this._options.accept     = opts.accept;
-        if (opts.buttonText !== undefined) this._options.buttonText = opts.buttonText;
+        if (options.multiple   !== undefined) this._options.multiple   = options.multiple;
+        if (options.accept     !== undefined) this._options.accept     = options.accept;
+        if (options.buttonText !== undefined) this._options.buttonText = options.buttonText;
 
         return this;
     }
