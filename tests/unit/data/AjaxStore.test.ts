@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { AjaxStore } from '~/data/AjaxStore';
 import { AjaxProxy } from '~/data/proxy/AjaxProxy';
+import { AjaxError } from '~/data/proxy/AjaxError';
 import { Model } from '~/data/Model';
+import type { StoreExceptionEvent } from '~/data/AbstractStore';
 
 const MODEL = new Model([{ name: 'id' }, { name: 'name' }], 'id');
 
@@ -48,5 +50,48 @@ describe('AjaxStore', () => {
         expect(store.getCount()).toBe(2);
         expect(store.getAt(0)?.get('name')).toBe('Ann');
         expect(fetchMock).toHaveBeenCalledWith('/api/users', expect.objectContaining({ method: 'GET' }));
+    });
+
+    it('surfaces an AjaxError through the exception event and the load rejection', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok        : false,
+            status    : 409,
+            statusText: 'Conflict',
+            json      : async (): Promise<unknown> => ({ detail: 'dup' }),
+        }));
+
+        const store = new AjaxStore(MODEL, { url: '/api/users' });
+
+        let captured: unknown;
+        store.on('exception', (e: StoreExceptionEvent) => { captured = e.error; });
+
+        const err = await store.load().catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(AjaxError);
+        expect(captured).toBeInstanceOf(AjaxError);
+        expect((captured as AjaxError).status).toBe(409);
+        expect((captured as AjaxError).body).toEqual({ detail: 'dup' });
+        expect((captured as AjaxError).operation).toBe('read');
+    });
+
+    it('surfaces an AjaxError in the sync failures payload', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok        : false,
+            status    : 409,
+            statusText: 'Conflict',
+            json      : async (): Promise<unknown> => ({ detail: 'dup' }),
+        }));
+
+        const store = new AjaxStore(MODEL, { url: '/api/users' });
+        store.add({ name: 'Zoe' });
+
+        let failures: StoreExceptionEvent[] = [];
+        store.on('sync', (e: { failures: StoreExceptionEvent[] }) => { failures = e.failures; });
+
+        await store.sync();
+
+        expect(failures).toHaveLength(1);
+        expect(failures[0].error).toBeInstanceOf(AjaxError);
+        expect((failures[0].error as AjaxError).body).toEqual({ detail: 'dup' });
     });
 });
