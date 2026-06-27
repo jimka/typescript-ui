@@ -1563,7 +1563,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS color string, or null if none is set.
      */
     getBackgroundColor(): string | null {
-        return this._options.backgroundColor ?? null;
+        return this._options.backgroundColor ?? this._defaultOptions.backgroundColor ?? null;
     }
 
     /**
@@ -1700,7 +1700,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS color string, or null if none is set.
      */
     getForegroundColor(): string | null {
-        return this._options.foregroundColor ?? null;
+        return this._options.foregroundColor ?? this._defaultOptions.foregroundColor ?? null;
     }
 
     /**
