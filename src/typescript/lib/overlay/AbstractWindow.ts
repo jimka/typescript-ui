@@ -329,11 +329,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // All carry a class default, so dispatch the caller value (stashed in
         // `_options` by `applyOptions`) or the class default — never leave the
         // chrome unbuilt.
-        this.setCloseable(this._options.closeable ?? this._defaultOptions.closeable!);
-        this.setMinimizable(this._options.minimizable ?? this._defaultOptions.minimizable!);
-        this.setMaximizable(this._options.maximizable ?? this._defaultOptions.maximizable!);
-        this.setMaximizeBounds(this._options.maximizeBounds ?? this._defaultOptions.maximizeBounds!);
-        this.setWindowState(this._options.windowState ?? this._defaultOptions.windowState!);
+        this.setCloseable(this.isCloseable());
+        this.setMinimizable(this.isMinimizable());
+        this.setMaximizable(this.isMaximizable());
+        this.setMaximizeBounds(this.getMaximizeBounds());
+        this.setWindowState(this.getWindowState());
 
         this.wireMoveTrigger();
 
@@ -365,7 +365,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         if (options.onReady        !== undefined) this._options.onReady        = options.onReady;
 
         // Geometry carries a class default and seeds the window's first render,
-        // so always dispatch the caller value or the class default.
+        // so always dispatch the caller value or the class default. Resolved
+        // inline (not via getX/getWidth) because those getters return the live,
+        // post-drag geometry — not the construction-time option default.
         this.setX(options.x ?? this._defaultOptions.x!);
         this.setY(options.y ?? this._defaultOptions.y!);
         this.setWidth(options.width ?? this._defaultOptions.width!);
@@ -381,11 +383,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         if (options.maximizeBounds !== undefined) this._options.maximizeBounds = options.maximizeBounds;
         if (options.windowState    !== undefined) this._options.windowState    = options.windowState;
 
-        this.setSnapResizeEnabled(options.snapResizeEnabled ?? this._defaultOptions.snapResizeEnabled!);
-        this.setSnapThreshold(options.snapThreshold ?? this._defaultOptions.snapThreshold!);
-        this.setSnapModifier(options.snapModifier ?? this._defaultOptions.snapModifier!);
+        this.setSnapResizeEnabled(options.snapResizeEnabled ?? this.isSnapResizeEnabled());
+        this.setSnapThreshold(options.snapThreshold ?? this.getSnapThreshold());
+        this.setSnapModifier(options.snapModifier ?? this.getSnapModifier());
 
-        this.setConstrainToViewport(options.constrainToViewport ?? this._defaultOptions.constrainToViewport!);
+        this.setConstrainToViewport(options.constrainToViewport ?? this.isConstrainToViewport());
 
         return this;
     }
@@ -867,7 +869,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns The current {@link WindowState}.
      */
     getWindowState(): WindowState {
-        return this._options.windowState ?? "normal";
+        return this._options.windowState ?? this._defaultOptions.windowState!;
     }
 
     /**
@@ -1221,7 +1223,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns True when the close affordance is enabled.
      */
     isCloseable(): boolean {
-        return this._options.closeable ?? true;
+        return this._options.closeable ?? this._defaultOptions.closeable!;
     }
 
     /**
@@ -1245,7 +1247,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns True when the minimize affordance is shown.
      */
     isMinimizable(): boolean {
-        return this._options.minimizable ?? true;
+        return this._options.minimizable ?? this._defaultOptions.minimizable!;
     }
 
     /**
@@ -1269,7 +1271,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns True when the maximize affordance is shown.
      */
     isMaximizable(): boolean {
-        return this._options.maximizable ?? true;
+        return this._options.maximizable ?? this._defaultOptions.maximizable!;
     }
 
     /**
@@ -1292,7 +1294,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns Either `"viewport"` or `"parent"`.
      */
     getMaximizeBounds(): WindowMaximizeBounds {
-        return this._options.maximizeBounds ?? "viewport";
+        return this._options.maximizeBounds ?? this._defaultOptions.maximizeBounds!;
     }
 
     /**
@@ -1327,7 +1329,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns True when snap-resize is enabled.
      */
     isSnapResizeEnabled(): boolean {
-        return this._options.snapResizeEnabled ?? true;
+        return this._options.snapResizeEnabled ?? this._defaultOptions.snapResizeEnabled!;
     }
 
     /**
@@ -1352,7 +1354,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns True when the entire window is kept inside the viewport.
      */
     isConstrainToViewport(): boolean {
-        return this._options.constrainToViewport ?? true;
+        return this._options.constrainToViewport ?? this._defaultOptions.constrainToViewport!;
     }
 
     /**
@@ -1375,7 +1377,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns The threshold in pixels.
      */
     getSnapThreshold(): number {
-        return this._options.snapThreshold ?? 12;
+        return this._options.snapThreshold ?? this._defaultOptions.snapThreshold!;
     }
 
     /**
@@ -1397,7 +1399,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * @returns One of `"ctrl"`, `"meta"`, `"alt"`, `"shift"`.
      */
     getSnapModifier(): WindowSnapModifier {
-        return this._options.snapModifier ?? "ctrl";
+        return this._options.snapModifier ?? this._defaultOptions.snapModifier!;
     }
 
     /**
