@@ -139,21 +139,20 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Container<T
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
 
-        if (opts.text           !== undefined) this._options.text           = opts.text;
-        if (opts.textAlign      !== undefined) this._options.textAlign      = opts.textAlign;
-        if (opts.textShadow     !== undefined) this._options.textShadow     = opts.textShadow;
-        if (opts.fontFamily     !== undefined) this._options.fontFamily     = opts.fontFamily;
-        if (opts.fontSize       !== undefined) this._options.fontSize       = opts.fontSize;
-        if (opts.fontWeight     !== undefined) this._options.fontWeight     = opts.fontWeight;
-        if (opts.fontStyle      !== undefined) this._options.fontStyle      = opts.fontStyle;
-        if (opts.fontVariant    !== undefined) this._options.fontVariant    = opts.fontVariant;
-        if (opts.fontStretch    !== undefined) this._options.fontStretch    = opts.fontStretch;
-        if (opts.fontKerning    !== undefined) this._options.fontKerning    = opts.fontKerning;
-        if (opts.fontSizeAdjust !== undefined) this._options.fontSizeAdjust = opts.fontSizeAdjust;
-        if (opts.lineHeight     !== undefined) this._options.lineHeight     = opts.lineHeight;
-        if (opts.textOverflow   !== undefined) this._options.textOverflow   = opts.textOverflow;
+        if (options.text           !== undefined) this._options.text           = options.text;
+        if (options.textAlign      !== undefined) this._options.textAlign      = options.textAlign;
+        if (options.textShadow     !== undefined) this._options.textShadow     = options.textShadow;
+        if (options.fontFamily     !== undefined) this._options.fontFamily     = options.fontFamily;
+        if (options.fontSize       !== undefined) this._options.fontSize       = options.fontSize;
+        if (options.fontWeight     !== undefined) this._options.fontWeight     = options.fontWeight;
+        if (options.fontStyle      !== undefined) this._options.fontStyle      = options.fontStyle;
+        if (options.fontVariant    !== undefined) this._options.fontVariant    = options.fontVariant;
+        if (options.fontStretch    !== undefined) this._options.fontStretch    = options.fontStretch;
+        if (options.fontKerning    !== undefined) this._options.fontKerning    = options.fontKerning;
+        if (options.fontSizeAdjust !== undefined) this._options.fontSizeAdjust = options.fontSizeAdjust;
+        if (options.lineHeight     !== undefined) this._options.lineHeight     = options.lineHeight;
+        if (options.textOverflow   !== undefined) this._options.textOverflow   = options.textOverflow;
 
         return this;
     }
