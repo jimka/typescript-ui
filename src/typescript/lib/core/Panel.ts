@@ -118,7 +118,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
     // `declare` rather than initialiser to dodge the class-field super-cascade
     // trap: a `= "none"` initialiser runs *after* super() returns, which
-    // overwrites whatever `setAutoScroll(opts.autoScroll)` had already
+    // overwrites whatever `setAutoScroll(options.autoScroll)` had already
     // written during the super-time cascade. `applyOptions` below always
     // dispatches `setAutoScroll`, so the field gets seeded there.
     declare private _autoScroll:      AutoScrollMode;
@@ -164,7 +164,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as TOptions;
 
         // Seed the scrollbar gutter cache before `setAutoScroll` — the latter
         // reads `_scrollbarGutter` to decide whether to clear it on a
@@ -177,7 +176,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
         // default) keeps the `declare`d backing field initialised and
         // dodges the class-field super-cascade trap that would bite a
         // `= "none"` initialiser.
-        this.setAutoScroll(opts.autoScroll ?? "none");
+        this.setAutoScroll(options.autoScroll ?? "none");
 
         // Seed the `declare`d overlay/handler fields before `setScrollShadows`
         // dispatches — the setter's teardown branch reads them, and the
@@ -187,7 +186,7 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
 
         // Always dispatch (default on) so the backing field is seeded through
         // the setter, mirroring the `setAutoScroll` cascade above.
-        this.setScrollShadows(opts.scrollShadows ?? true);
+        this.setScrollShadows(options.scrollShadows ?? true);
 
         return this;
     }
