@@ -571,7 +571,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @param options - The raw caller options bag passed by {@link applyOptions}.
      */
     protected override applyChromeOptions(options: TOptions): void {
-        const chromeless = (this._options.chromeless ?? options.chromeless ?? this._defaultOptions.chromeless) === true;
+        const chromeless = (options.chromeless ?? this.isChromeless()) === true;
         if (chromeless) {
             // The chrome group's class defaults are dispatched only by
             // `super.applyChromeOptions` (skipped here for chromeless), so a
@@ -607,7 +607,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // and the button fell back to the UA `<button>` background. Skipped when
         // the caller set their own backgroundColor, and when flat (flat is
         // transparent at rest — see `_applyFlatChrome`).
-        const isFlat = (this._options.flat ?? options.flat ?? this._defaultOptions.flat) === true;
+        const isFlat = (this._options.flat ?? options.flat) === true;
 
         if (!isFlat && options.backgroundColor === undefined) {
             this.setBackgroundColor(BUTTON_RESTING_BACKGROUND);
@@ -616,17 +616,17 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // The pressed/hover colour + shadow + image fields carry class defaults,
         // so dispatch the caller value or the class default. The pressed/hover
         // border fields are not defaulted, so they stay caller-gated.
-        this.setPressedForegroundColor(options.pressedForegroundColor ?? this._defaultOptions.pressedForegroundColor!);
-        this.setPressedBackgroundColor(options.pressedBackgroundColor ?? this._defaultOptions.pressedBackgroundColor!);
-        this.setPressedBackgroundImage(options.pressedBackgroundImage ?? this._defaultOptions.pressedBackgroundImage!);
-        this.setPressedShadow         (options.pressedShadow          ?? this._defaultOptions.pressedShadow!);
+        this.setPressedForegroundColor(options.pressedForegroundColor ?? this.getPressedForegroundColor()!);
+        this.setPressedBackgroundColor(options.pressedBackgroundColor ?? this.getPressedBackgroundColor()!);
+        this.setPressedBackgroundImage(options.pressedBackgroundImage ?? this.getPressedBackgroundImage()!);
+        this.setPressedShadow         (options.pressedShadow ?? this.getPressedShadow()!);
         if (options.pressedBorder       !== undefined) this.setPressedBorder      (options.pressedBorder);
         if (options.pressedBorderRadius !== undefined) this.setPressedBorderRadius(options.pressedBorderRadius);
 
         if (options.hoverForegroundColor !== undefined) this.setHoverForegroundColor(options.hoverForegroundColor);
-        this.setHoverBackgroundColor(options.hoverBackgroundColor ?? this._defaultOptions.hoverBackgroundColor!);
-        this.setHoverBackgroundImage(options.hoverBackgroundImage ?? this._defaultOptions.hoverBackgroundImage!);
-        this.setHoverShadow         (options.hoverShadow          ?? this._defaultOptions.hoverShadow!);
+        this.setHoverBackgroundColor(options.hoverBackgroundColor ?? this.getHoverBackgroundColor()!);
+        this.setHoverBackgroundImage(options.hoverBackgroundImage ?? this.getHoverBackgroundImage()!);
+        this.setHoverShadow         (options.hoverShadow ?? this.getHoverShadow()!);
         if (options.hoverBorder         !== undefined) this.setHoverBorder      (options.hoverBorder);
         if (options.hoverBorderRadius   !== undefined) this.setHoverBorderRadius(options.hoverBorderRadius);
 
@@ -635,7 +635,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
         // chrome + the raised `pressedX`/`hoverX` treatments just dispatched to
         // the flat tokens. Reading the runtime cache first keeps a previously
         // written flag gating future re-applies that omit `flat`.
-        if ((this._options.flat ?? options.flat ?? this._defaultOptions.flat) === true) {
+        if ((this._options.flat ?? options.flat) === true) {
             this._flat = true;
             this._applyFlatChrome();
         }
@@ -1748,7 +1748,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS color string, or null if not set.
      */
     getPressedBackgroundColor(): string | null {
-        return this._options.pressedBackgroundColor ?? null;
+        return this._options.pressedBackgroundColor ?? this._defaultOptions.pressedBackgroundColor ?? null;
     }
 
     /**
@@ -1783,7 +1783,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS background-image string, or null if not set.
      */
     getPressedBackgroundImage(): string | null {
-        return this._options.pressedBackgroundImage ?? null;
+        return this._options.pressedBackgroundImage ?? this._defaultOptions.pressedBackgroundImage ?? null;
     }
 
     /**
@@ -1818,7 +1818,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS color string, or null if not set.
      */
     getPressedForegroundColor(): string | null {
-        return this._options.pressedForegroundColor ?? null;
+        return this._options.pressedForegroundColor ?? this._defaultOptions.pressedForegroundColor ?? null;
     }
 
     /**
@@ -1931,7 +1931,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS box-shadow string, or null if not set.
      */
     getPressedShadow(): string | null {
-        return this._options.pressedShadow ?? null;
+        return this._options.pressedShadow ?? this._defaultOptions.pressedShadow ?? null;
     }
 
     /**
@@ -1966,7 +1966,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS color string, or null if not set.
      */
     getHoverBackgroundColor(): string | null {
-        return this._options.hoverBackgroundColor ?? null;
+        return this._options.hoverBackgroundColor ?? this._defaultOptions.hoverBackgroundColor ?? null;
     }
 
     /**
@@ -2001,7 +2001,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS background-image string, or null if not set.
      */
     getHoverBackgroundImage(): string | null {
-        return this._options.hoverBackgroundImage ?? null;
+        return this._options.hoverBackgroundImage ?? this._defaultOptions.hoverBackgroundImage ?? null;
     }
 
     /**
@@ -2151,7 +2151,7 @@ class Button<TOptions extends ButtonOptions = ButtonOptions> extends Component<T
      * @returns The CSS box-shadow string, or null if not set.
      */
     getHoverShadow(): string | null {
-        return this._options.hoverShadow ?? null;
+        return this._options.hoverShadow ?? this._defaultOptions.hoverShadow ?? null;
     }
 
     /**
