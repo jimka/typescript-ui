@@ -77,10 +77,10 @@ class IconText extends Component<IconTextOptions> {
 
         // Late-built state: `gap` and `glyph`/`text` setters reach into
         // children that didn't exist during `super`'s cascade. Dispatch from
-        // `_options` now that the row is built.
-        if (this._options.gap !== undefined) {
-            (this.getLayoutManager() as HBox).setComponentSpacing(this._options.gap);
-        }
+        // `_options` now that the row is built. `gap` always applies its
+        // effective value (caller override, else the class default) since the
+        // HBox is seeded without spacing.
+        (this.getLayoutManager() as HBox).setComponentSpacing(this._options.gap ?? this._defaultOptions.gap!);
         if (this._options.glyph !== undefined) {
             this.setGlyph(this._options.glyph);
         }
@@ -100,11 +100,9 @@ class IconText extends Component<IconTextOptions> {
     protected applyOptions(options: IconTextOptions): this {
         super.applyOptions(options);
 
-        const opts = { ...this._defaultOptions, ...options } as IconTextOptions;
-
-        if (opts.gap   !== undefined) this._options.gap   = opts.gap;
-        if (opts.glyph !== undefined) this._options.glyph = opts.glyph;
-        if (opts.text  !== undefined) this._options.text  = opts.text;
+        if (options.gap   !== undefined) this._options.gap   = options.gap;
+        if (options.glyph !== undefined) this._options.glyph = options.glyph;
+        if (options.text  !== undefined) this._options.text  = options.text;
 
         return this;
     }
