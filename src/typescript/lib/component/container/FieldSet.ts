@@ -18,9 +18,9 @@ export interface FieldSetOptions extends ComponentOptions {
 
 /**
  * Subclass defaults layered into `Component._defaultOptions` via the second
- * super arg. Any field the caller omits falls back to one of these values;
- * `applyOptions`' `{ ...this._defaultOptions, ...options }` merge keeps the
- * defaults intact across subsequent re-invocations of `applyOptions`.
+ * super arg. Any field the caller omits falls back to one of these values via
+ * the getters / `applyStyle`, which consult `_defaultOptions` directly — the
+ * default is never dispatched into `_options`.
  */
 const _defaultFieldSetOptions: Partial<FieldSetOptions> = {
     tag:           "fieldset",

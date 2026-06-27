@@ -333,10 +333,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @param subclassDefaults - Per-subclass default bag merged on top of the
      *   built-in Component defaults to produce `_defaultOptions`. Subclasses
      *   that extend Component (or any further-derived class) pass their
-     *   `_default<Name>Options` constant here so its values flow through every
-     *   `{ ...this._defaultOptions, ...options }` merge in `applyOptions` and
-     *   its overrides. Replaces the older pattern of spreading defaults into
-     *   the options arg at the call site — that pattern populated `_options`
+     *   `_default<Name>Options` constant here. The defaults are a pure
+     *   fallback: getters and `applyStyle` consult `_defaultOptions` directly
+     *   when the caller omitted a field, so a default is never dispatched into
+     *   `_options`. Replaces the older pattern of spreading defaults into the
+     *   options arg at the call site — that pattern populated `_options`
      *   directly and broke whenever `applyOptions` was re-invoked, because
      *   Component's own defaults would silently override values set in the
      *   subclass constructor body. Subclasses-of-subclasses accept their own
