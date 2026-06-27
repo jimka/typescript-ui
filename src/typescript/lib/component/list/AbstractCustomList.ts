@@ -513,6 +513,21 @@ abstract class AbstractCustomList<
     }
 
     /**
+     * Overrides {@link Component.clampsToContentSize} to `false`: a list fits
+     * the space its parent's layout manager allocates — filling a stretching
+     * region (a Border WEST/CENTER, a Fit/Box cell) rather than capping at its
+     * inner VBox's content height — and scrolls the overflow via the inner
+     * panel's `autoScroll`. Only an explicit {@link Component.setMaxSize} /
+     * {@link Component.setMinSize} remains a hard ceiling or floor.
+     *
+     * @returns `false`, so size clamping uses the list's own explicit
+     *   constraints only, not its content-derived ones.
+     */
+    protected clampsToContentSize(): boolean {
+        return false;
+    }
+
+    /**
      * Reflects the enabled flag on the ARIA tree, the tabindex, and the
      * cursor. Disabling the list parks the focus index at -1 so a
      * subsequent enable starts fresh, mirroring the native `<select>`
