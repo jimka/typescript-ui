@@ -7,6 +7,7 @@ import { IconText } from '~/component/display/IconText';
 import { ToolBar } from '~/component/menubar/ToolBar';
 import { SplitGutter } from '~/component/container/SplitGutter';
 import { HBox } from '~/layout/HBox';
+import { TextField } from '~/component/input/TextField';
 
 // Subclass that seeds class-level defaults the way real subclasses do — through
 // `subclassDefaults`, which land in `_defaultOptions`, never via a setter.
@@ -172,5 +173,26 @@ describe('subclass defaults resolve as pure fallback', () => {
         expect(gutter.isMovable()).toBe(true);
         expect(gutter._options.collapsible).toBeUndefined();
         expect(gutter._options.movable).toBeUndefined();
+    });
+});
+
+describe('clear*() suppresses a class-level default (does not revert to it)', () => {
+    it('clearPadding suppresses a subclass padding default', () => {
+        const field = new TextField() as any;
+        expect(field.getPadding()).not.toBeNull(); // TextField defaults 3px
+        field.clearPadding();
+        expect(field.getPadding()).toBeNull();      // cleared, not re-folded
+    });
+
+    it('clearCursor suppresses the base cursor default even when never set', () => {
+        const c = new Component({});
+        expect(c.getCursor()).toBe('default');
+        c.clearCursor();
+        expect(c.getCursor()).toBeNull();
+    });
+
+    it('a never-cleared component still resolves its default, explicit value wins', () => {
+        expect(new Component({}).getCursor()).toBe('default');
+        expect(new Component({ cursor: 'pointer' }).getCursor()).toBe('pointer');
     });
 });

@@ -1492,7 +1492,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The current padding Insets, or null if none are set.
      */
     getPadding(): Insets | null {
-        return this._options.padding ?? this._defaultOptions.padding ?? null;
+        return "padding" in this._options ? (this._options.padding ?? null) : (this._defaultOptions.padding ?? null);
     }
 
     /**
@@ -1573,7 +1573,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS color string, or null if none is set.
      */
     getBackgroundColor(): string | null {
-        return this._options.backgroundColor ?? this._defaultOptions.backgroundColor ?? null;
+        return "backgroundColor" in this._options ? (this._options.backgroundColor ?? null) : (this._defaultOptions.backgroundColor ?? null);
     }
 
     /**
@@ -1600,10 +1600,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearBackgroundColor(): this {
-        if (this._options.backgroundColor === undefined) {
-            return this;
-        }
-
+        // Set (not skip) the key so `getBackgroundColor` sees an explicit clear
+        // and returns null, suppressing a class-level default.
         this._options.backgroundColor = undefined;
         this.setElementCSSRule("backgroundColor", null);
 
@@ -1710,7 +1708,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS color string, or null if none is set.
      */
     getForegroundColor(): string | null {
-        return this._options.foregroundColor ?? this._defaultOptions.foregroundColor ?? null;
+        return "foregroundColor" in this._options ? (this._options.foregroundColor ?? null) : (this._defaultOptions.foregroundColor ?? null);
     }
 
     /**
@@ -1737,10 +1735,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearForegroundColor(): this {
-        if (this._options.foregroundColor === undefined) {
-            return this;
-        }
-
+        // Set (not skip) the key so `getForegroundColor` sees an explicit clear
+        // and returns null, suppressing a class-level default.
         this._options.foregroundColor = undefined;
         this.setElementCSSRule("color", null);
 
@@ -1832,7 +1828,7 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns The CSS cursor string, or null if not set.
      */
     getCursor(): string | null {
-        return this._options.cursor ?? this._defaultOptions.cursor ?? null;
+        return "cursor" in this._options ? (this._options.cursor ?? null) : (this._defaultOptions.cursor ?? null);
     }
 
     /**
@@ -1858,10 +1854,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * @returns This component, for method chaining.
      */
     clearCursor(): this {
-        if (this._options.cursor === undefined) {
-            return this;
-        }
-
+        // Set (not skip) the key so `getCursor` sees an explicit clear and
+        // returns null, suppressing the class default — distinct from the
+        // never-set case where the key is absent and the default applies.
         this._options.cursor = undefined;
         this.setElementStyle("cursor", null);
 
