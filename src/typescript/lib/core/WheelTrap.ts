@@ -5,12 +5,27 @@ import { Event } from "~/core/Event.js";
 import { consumeWheel } from "~/core/SmoothScroller.js";
 
 /**
- * Per-component bound handler, kept so {@link untrapWheel} can remove the exact
- * reference {@link trapWheel} registered. Keyed weakly by the component, mirroring
- * how the layer registry keys per-layer state, so a closed overlay's entry is
- * collectable without an explicit purge.
+ * Components that currently have the wheel trap installed. Used purely for
+ * idempotency — the listener itself ({@link swallowUnconsumedWheel}) captures
+ * nothing per component, so one shared reference serves every overlay. Keyed
+ * weakly, mirroring how the layer registry keys per-layer state, so a closed
+ * overlay's entry is collectable without an explicit purge.
  */
-const _handlerByComponent = new WeakMap<Component, (e: WheelEvent) => void>();
+const _trapped = new WeakSet<Component>();
+
+/**
+ * Subtree `wheel` handler shared by every trapped overlay: claims the event via
+ * the framework's wheel once-marker and, when the claim succeeds (no inner
+ * scroller took it first), `preventDefault()`s it so the native wheel never
+ * reaches a scrollable ancestor behind the overlay.
+ *
+ * @param e - The wheel event reaching the overlay as the outermost ancestor.
+ */
+function swallowUnconsumedWheel(e: WheelEvent): void {
+    if (consumeWheel(e)) {
+        e.preventDefault();
+    }
+}
 
 /**
  * Registers a non-passive subtree `wheel` listener on `component` that
@@ -29,18 +44,12 @@ const _handlerByComponent = new WeakMap<Component, (e: WheelEvent) => void>();
  * because `preventDefault()` is a no-op on a passive listener.
  */
 export function trapWheel(component: Component): void {
-    if (_handlerByComponent.has(component)) {
+    if (_trapped.has(component)) {
         return;
     }
 
-    const handler = (e: WheelEvent): void => {
-        if (consumeWheel(e)) {
-            e.preventDefault();
-        }
-    };
-
-    _handlerByComponent.set(component, handler);
-    Event.addSubtreeListener(component, "wheel", handler, { passive: false });
+    _trapped.add(component);
+    Event.addSubtreeListener(component, "wheel", swallowUnconsumedWheel, { passive: false });
 }
 
 /**
@@ -50,11 +59,10 @@ export function trapWheel(component: Component): void {
  * @param component - The overlay whose trap should be removed.
  */
 export function untrapWheel(component: Component): void {
-    const handler = _handlerByComponent.get(component);
-    if (!handler) {
+    if (!_trapped.has(component)) {
         return;
     }
 
-    _handlerByComponent.delete(component);
-    Event.removeSubtreeListener(component, "wheel", handler);
+    _trapped.delete(component);
+    Event.removeSubtreeListener(component, "wheel", swallowUnconsumedWheel);
 }
