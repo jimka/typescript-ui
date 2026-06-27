@@ -56,7 +56,6 @@ class ListItem extends Component<ListItemOptions> {
     protected applyOptions(options: ListItemOptions): this {
         super.applyOptions(options);
 
-
         if (options.text !== undefined) {
             this._value = options.text;
             const element = this.getElement();

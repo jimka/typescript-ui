@@ -214,7 +214,6 @@ class Spacer extends Component<SpacerOptions> {
     protected applyOptions(options: SpacerOptions): this {
         super.applyOptions(options);
 
-
         if (options.width !== undefined || options.height !== undefined) {
             const w = options.width  ?? 0;
             const h = options.height ?? w;

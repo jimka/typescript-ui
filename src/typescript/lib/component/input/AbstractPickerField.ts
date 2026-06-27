@@ -200,7 +200,6 @@ abstract class AbstractPickerField<
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-
         if (options.dropdownAnimated !== undefined) {
             this.setDropdownAnimated(options.dropdownAnimated);
         }

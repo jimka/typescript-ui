@@ -160,7 +160,6 @@ class Slider<TOptions extends SliderOptions = SliderOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-
         if (options.value       !== undefined) this._options.value       = options.value;
         if (options.min         !== undefined) this._options.min         = options.min;
         if (options.max         !== undefined) this._options.max         = options.max;

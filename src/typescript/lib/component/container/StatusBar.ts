@@ -156,7 +156,6 @@ class StatusBar extends Container<StatusBarOptions> {
     protected applyOptions(options: StatusBarOptions): this {
         super.applyOptions(options);
 
-
         if (options.message        !== undefined) this._options.message        = options.message;
         if (options.defaultMessage !== undefined) this._options.defaultMessage = options.defaultMessage;
 

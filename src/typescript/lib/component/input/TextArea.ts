@@ -71,7 +71,6 @@ class TextArea extends TextInput<TextAreaOptions> {
     protected applyOptions(options: TextAreaOptions): this {
         super.applyOptions(options);
 
-
         if (options.rows !== undefined) {
             this.setRows(options.rows);
         }

@@ -95,7 +95,6 @@ class TimeField extends AbstractPickerField<Date, TimePickerDropdown, TimeFieldO
     protected applyOptions(options: TimeFieldOptions): this {
         super.applyOptions(options);
 
-
         if (options.showSeconds !== undefined) {
             this._options.showSeconds = options.showSeconds;
         }

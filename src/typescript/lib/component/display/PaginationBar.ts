@@ -132,7 +132,6 @@ class PaginationBar extends Component<PaginationBarOptions> {
     protected applyOptions(options: PaginationBarOptions): this {
         super.applyOptions(options);
 
-
         if (options.pageSize !== undefined) {
             this._store.setPageSize(options.pageSize);
         }

@@ -125,7 +125,6 @@ class Toggle<TOptions extends ToggleOptions = ToggleOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-
         if (options.value    !== undefined) this._options.value    = options.value;
         if (options.label    !== undefined) this._options.label    = options.label;
         if (options.enabled  !== undefined) this._options.enabled  = options.enabled;

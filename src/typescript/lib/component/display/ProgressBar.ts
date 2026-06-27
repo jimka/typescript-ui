@@ -87,7 +87,6 @@ class ProgressBar extends Component {
     protected applyOptions(options: ProgressBarOptions): this {
         super.applyOptions(options);
 
-
         if (options.indeterminate !== undefined) {
             this.setIndeterminate(options.indeterminate);
         }

@@ -178,7 +178,6 @@ class AutoCompleteField extends AbstractInput<string, AutoCompleteFieldOptions> 
     protected applyOptions(options: AutoCompleteFieldOptions): this {
         super.applyOptions(options);
 
-
         if (options.suggestions    !== undefined) this.setSuggestions(options.suggestions);
         if (options.minChars       !== undefined) this.setMinChars(options.minChars);
         if (options.debounceMs     !== undefined) this.setDebounceMs(options.debounceMs);

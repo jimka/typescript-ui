@@ -590,7 +590,6 @@ abstract class AbstractCalendarDropdown<
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-
         if (options.minDate !== undefined) {
             this._options.minDate = options.minDate;
         }

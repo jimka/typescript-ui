@@ -585,7 +585,6 @@ class Glyph extends Component<GlyphOptions> {
     protected applyOptions(options: GlyphOptions): this {
         super.applyOptions(options);
 
-
         if (options.fontSize !== undefined) {
             this.setFontSize(options.fontSize);
         }

@@ -150,7 +150,6 @@ class AccordionIndicator extends Component<AccordionIndicatorOptions> {
     protected applyOptions(options: AccordionIndicatorOptions): this {
         super.applyOptions(options);
 
-
         if (options.expanded !== undefined) {
             this.setExpanded(options.expanded);
         }

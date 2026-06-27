@@ -68,7 +68,6 @@ class FieldSet extends Component {
     protected applyOptions(options: FieldSetOptions): this {
         super.applyOptions(options);
 
-
         if (options.legend !== undefined) {
             this.setTitle(options.legend);
         }

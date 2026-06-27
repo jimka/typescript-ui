@@ -131,7 +131,6 @@ class TextInput<TOptions extends TextInputOptions = TextInputOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-
         if (options.text !== undefined) {
             this.setText(options.text);
         }

@@ -175,7 +175,6 @@ class NumberSpinner extends AbstractInput<number, NumberSpinnerOptions> {
     protected applyOptions(options: NumberSpinnerOptions): this {
         super.applyOptions(options);
 
-
         if (options.min       !== undefined) this._options.min       = options.min;
         if (options.max       !== undefined) this._options.max       = options.max;
         if (options.step      !== undefined) this._options.step      = options.step;

@@ -164,7 +164,6 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-
         // Seed the scrollbar gutter cache before `setAutoScroll` — the latter
         // reads `_scrollbarGutter` to decide whether to clear it on a
         // `"none"` transition, and the `declare`d field would otherwise be

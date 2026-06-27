@@ -212,7 +212,6 @@ class WindowHeader extends Header {
     protected applyOptions(options: WindowHeaderOptions): this {
         super.applyOptions(options);
 
-
         if (options.closeable !== undefined) {
             this.setCloseable(options.closeable);
         }

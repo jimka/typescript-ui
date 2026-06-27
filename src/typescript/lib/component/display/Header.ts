@@ -139,7 +139,6 @@ class Header<TOptions extends HeaderOptions = HeaderOptions> extends Container<T
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-
         if (options.text           !== undefined) this._options.text           = options.text;
         if (options.textAlign      !== undefined) this._options.textAlign      = options.textAlign;
         if (options.textShadow     !== undefined) this._options.textShadow     = options.textShadow;

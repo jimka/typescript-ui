@@ -74,7 +74,6 @@ class RailHandle extends Button<RailHandleOptions> {
     protected applyOptions(options: RailHandleOptions): this {
         super.applyOptions(options);
 
-
         if (options.selected !== undefined) {
             this.setSelected(options.selected);
         }

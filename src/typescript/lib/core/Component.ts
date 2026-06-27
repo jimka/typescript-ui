@@ -4436,9 +4436,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // resolved. Layout consumers read the container back via
         // `getContainer()`; without this they would see `null`. The `!== this`
         // guard makes it fire exactly once and leaves the explicitly-set path
-        // (which already attached in `setLayoutManager`) untouched.
+        // (which already attached in `setLayoutManager`) untouched. Mirror that
+        // path's `data-layout` attribute so a default-layout component still
+        // advertises its manager to DevTools.
         if (layoutManager && layoutManager.getContainer() !== this) {
             layoutManager.attach(this);
+            this.setDataAttribute("layout", layoutManager.getClassName().replace(/^_/, ""));
         }
 
         return layoutManager;

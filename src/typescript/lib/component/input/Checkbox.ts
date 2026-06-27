@@ -161,7 +161,6 @@ class Checkbox<TOptions extends CheckboxOptions = CheckboxOptions>
     protected applyOptions(options: TOptions): this {
         super.applyOptions(options);
 
-
         if (options.selected      !== undefined) this._options.selected      = options.selected;
         if (options.value         !== undefined) this._options.value         = options.value;
         if (options.indeterminate !== undefined) this._options.indeterminate = options.indeterminate;

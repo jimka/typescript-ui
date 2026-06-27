@@ -8,6 +8,12 @@ import { ToolBar } from '~/component/menubar/ToolBar';
 import { SplitGutter } from '~/component/container/SplitGutter';
 import { HBox } from '~/layout/HBox';
 import { TextField } from '~/component/input/TextField';
+import { NumberedList } from '~/component/list/NumberedList';
+import { NumberedListItemStyle } from '~/component/list/NumberedListItemStyle';
+import { TabCloseButton } from '~/component/button/TabCloseButton';
+import { Button } from '~/component/button/Button';
+import { Drawer } from '~/overlay/Drawer';
+import { Popover } from '~/overlay/Popover';
 
 // Subclass that seeds class-level defaults the way real subclasses do — through
 // `subclassDefaults`, which land in `_defaultOptions`, never via a setter.
@@ -173,6 +179,45 @@ describe('subclass defaults resolve as pure fallback', () => {
         expect(gutter.isMovable()).toBe(true);
         expect(gutter._options.collapsible).toBeUndefined();
         expect(gutter._options.movable).toBeUndefined();
+    });
+});
+
+describe('more subclass defaults resolve as pure fallback', () => {
+    it('NumberedList resolves its DECIMAL default with a clean bag', () => {
+        const list = new NumberedList() as any;
+        expect(list.getStyle()).toBe(NumberedListItemStyle.DECIMAL);
+        expect(list._options.itemStyle).toBeUndefined();
+    });
+
+    it('TabCloseButton resolves its xmark glyph and 16x16 preferred size', () => {
+        const btn = new TabCloseButton() as any;
+        expect(btn.getGlyph()).not.toBeNull();
+        expect(btn.getGlyph().getGlyphName()).toBe('xmark');
+        const pref = btn.getPreferredSize();
+        expect([pref.width, pref.height]).toEqual([16, 16]);
+    });
+
+    it('Button defaults flat off with a clean bag, and resolves anchor/fill', () => {
+        const b = new Button({ text: 'x' }) as any;
+        expect(b.isFlat()).toBe(false);
+        expect(b._options.flat).toBeUndefined();
+        expect(b.getAnchor()).toBeTruthy();
+        expect(b.getFill()).toBeTruthy();
+    });
+
+    it('Drawer resolves its edge/modal/size/duration defaults', () => {
+        // edge is _options-backed and always-dispatched, so the default is
+        // written by setEdge; the contract is that getEdge resolves it.
+        const d = new Drawer() as any;
+        expect(d.getEdge()).toBeTruthy();
+        expect(typeof d.getDrawerSize()).toBe('number');
+        expect(typeof d.isModal()).toBe('boolean');
+    });
+
+    it('Popover resolves its placement default with a clean bag', () => {
+        const p = new Popover() as any;
+        expect(p.getPlacement()).toBe('auto');
+        expect(p._options.placement).toBeUndefined();
     });
 });
 

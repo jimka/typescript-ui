@@ -89,7 +89,6 @@ class DateField extends AbstractPickerField<Date, DatePickerDropdown, DateFieldO
     protected applyOptions(options: DateFieldOptions): this {
         super.applyOptions(options);
 
-
         if (options.value !== undefined) {
             this._options.value = options.value;
         }

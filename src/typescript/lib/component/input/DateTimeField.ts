@@ -97,7 +97,6 @@ class DateTimeField extends AbstractPickerField<Date, DateTimePickerDropdown, Da
     protected applyOptions(options: DateTimeFieldOptions): this {
         super.applyOptions(options);
 
-
         if (options.showSeconds !== undefined) {
             this._options.showSeconds = options.showSeconds;
         }

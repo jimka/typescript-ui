@@ -276,7 +276,6 @@ class MenuItem extends Component {
     protected applyOptions(options: MenuItemOptions): this {
         super.applyOptions(options);
 
-
         if (options.text !== undefined && this._titleText) {
             this._titleText.setText(options.text);
         }

@@ -63,7 +63,6 @@ class DateTimePickerDropdown extends AbstractCalendarDropdown<DateTimePickerDrop
     protected applyOptions(options: DateTimePickerDropdownOptions): this {
         super.applyOptions(options);
 
-
         if (options.showSeconds !== undefined) {
             this._options.showSeconds = options.showSeconds;
         }
