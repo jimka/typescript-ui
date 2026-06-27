@@ -137,9 +137,9 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
 
         // These carry a class default and seed construction-time state, so
         // always dispatch the caller value or the class default.
-        this.setAnimated(options.animated ?? this._defaultOptions.animated!);
-        this.setDurationMs(options.durationMs ?? this._defaultOptions.durationMs!);
-        this.setTranslatePx(options.translatePx ?? this._defaultOptions.translatePx!);
+        this.setAnimated(options.animated ?? this.isAnimated());
+        this.setDurationMs(options.durationMs ?? this.getDurationMs());
+        this.setTranslatePx(options.translatePx ?? this.getTranslatePx());
 
         return this;
     }
@@ -162,7 +162,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @returns true when the fade transition runs on show/hide.
      */
     isAnimated(): boolean {
-        return this._options.animated ?? true;
+        return this._options.animated ?? this._defaultOptions.animated!;
     }
 
     /**
@@ -182,7 +182,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @returns The duration in milliseconds.
      */
     getDurationMs(): number {
-        return this._options.durationMs ?? DEFAULT_DURATION_MS;
+        return this._options.durationMs ?? this._defaultOptions.durationMs!;
     }
 
     /**
@@ -202,7 +202,7 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
      * @returns The translation distance in pixels.
      */
     getTranslatePx(): number {
-        return this._options.translatePx ?? DEFAULT_TRANSLATE_PX;
+        return this._options.translatePx ?? this._defaultOptions.translatePx!;
     }
 
     /**

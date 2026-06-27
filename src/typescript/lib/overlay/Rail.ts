@@ -329,8 +329,8 @@ class Rail extends Component<RailOptions> {
 
         // edge and orientation carry a class default and seed construction-time
         // state, so always dispatch the caller value or the class default.
-        this.setEdge(options.edge ?? this._defaultOptions.edge!);
-        this.setOrientation(options.orientation ?? this._defaultOptions.orientation!);
+        this.setEdge(options.edge ?? this.getEdge());
+        this.setOrientation(options.orientation ?? this.getOrientation());
 
         if (options.thickness !== undefined) {
             this.setThickness(options.thickness);
@@ -368,7 +368,7 @@ class Rail extends Component<RailOptions> {
      * @returns The current edge.
      */
     getEdge(): RailEdge {
-        return this._options.edge ?? Placement.WEST;
+        return this._options.edge ?? this._defaultOptions.edge!;
     }
 
     /**
@@ -760,7 +760,7 @@ class Rail extends Component<RailOptions> {
      * @returns The current orientation.
      */
     getOrientation(): RailOrientation {
-        return this._options.orientation ?? "horizontal";
+        return this._options.orientation ?? this._defaultOptions.orientation!;
     }
 
     // ----- mount / unmount -----

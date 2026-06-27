@@ -199,7 +199,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
      * @returns True when the collapse button is shown.
      */
     isCollapsible(): boolean {
-        return this._collapsible;
+        return this._collapsible ?? this._defaultOptions.collapsible!;
     }
 
     /**
@@ -227,9 +227,9 @@ class SplitGutter extends Component<SplitGutterOptions> {
 
         // All three carry a class default and seed construction-time backing
         // state, so dispatch the caller value or the class default.
-        this.setDirection(options.orientation ?? this._defaultOptions.orientation!);
-        this.setCollapsible(options.collapsible ?? this._defaultOptions.collapsible!);
-        this.setMovable(options.movable ?? this._defaultOptions.movable!);
+        this.setDirection(options.orientation ?? this.getDirection());
+        this.setCollapsible(options.collapsible ?? this.isCollapsible());
+        this.setMovable(options.movable ?? this.isMovable());
 
         return this;
     }
@@ -240,7 +240,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
      * @returns True when the gutter is draggable.
      */
     isMovable(): boolean {
-        return this._movable;
+        return this._movable ?? this._defaultOptions.movable!;
     }
 
     /**
@@ -368,7 +368,7 @@ class SplitGutter extends Component<SplitGutterOptions> {
      * @returns The current direction string.
      */
     getDirection() {
-        return this._direction;
+        return this._direction ?? this._defaultOptions.orientation!;
     }
 
     /**
