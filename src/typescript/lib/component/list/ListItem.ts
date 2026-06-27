@@ -14,11 +14,9 @@ export interface ListItemOptions extends ComponentOptions {
 }
 
 /**
- * Class-level defaults. The constructor merges the positional `value` in
- * as the bag's `text` default so the cascade-time `applyOptions` seeds
- * `_value` for both the positional and option paths (a caller-supplied
- * `text` overrides the positional via the standard options-over-defaults
- * merge).
+ * Class-level defaults. Only `tag` is a genuine class default; the
+ * positional `value` is a per-instance value resolved in the constructor
+ * body, not smuggled through this bag.
  */
 const _defaultListItemOptions: Partial<ListItemOptions> = {
     tag: "li",
@@ -35,16 +33,19 @@ const _defaultListItemOptions: Partial<ListItemOptions> = {
 class ListItem extends Component<ListItemOptions> {
 
     private _key: string;
-    // `declare` rather than initializer-and-body-assign so the cascade-time
-    // `applyOptions` write (sourced from the merged bag's `text`) survives.
-    // The cascade always writes `_value` because the defaults bag carries
-    // `text: value` (positional) — see the constructor's defaults merge.
+    // Resolved in the constructor body from the positional `value` (or a
+    // caller-supplied `text` option). `declare` rather than an initializer so
+    // a `text` option written by the super-time `applyOptions` cascade is not
+    // clobbered by a field initializer running after super().
     declare private _value: string;
 
     constructor(key: string, value: string, options?: ListItemOptions) {
-        super(options, { ..._defaultListItemOptions, text: value });
+        super(options, _defaultListItemOptions);
 
-        this._key = key;
+        this._key   = key;
+        // `value` is positional (per-instance), so it is not a class default —
+        // resolve it here; an explicit `text` option still wins.
+        this._value = options?.text ?? value;
     }
 
     /**
