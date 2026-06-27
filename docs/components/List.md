@@ -45,6 +45,10 @@ list.setStore(myStore, 'name', 'id');
 
 The list refreshes automatically on `load` / `add` / `remove` / `datachanged` / `sync` events. When records arrive after construction, the previously-selected key is preserved if it still appears in the new record set.
 
+## Sizing
+
+A `List` fills the space its parent's layout manager allocates rather than shrink-wrapping to its rows: placed in a stretching region — a [`Border`](/api/layout/classes/Border) `WEST`/`CENTER`, a `Fit`/`Box` cell with a vertical fill — it grows to the region's full height and scrolls any overflow internally, instead of capping at its content height. An explicit `setMaxSize` / `setMinSize` (or the option-bag `maxSize` / `minSize`) still binds as a hard ceiling or floor. To size a free-standing list to its content instead, give it an explicit `preferredSize` and place it where the layout honours that (e.g. an `Absolute` cell).
+
 ## Theme tokens
 
 Visual chrome is driven by the [`Theme.list`](/api/core/interfaces/Theme) tokens — `--ts-ui-list-bg`, `--ts-ui-list-border`, `--ts-ui-list-row-hover-bg`, `--ts-ui-list-row-selected-bg`, `--ts-ui-list-row-selected-color`, `--ts-ui-list-row-focus-ring`, `--ts-ui-list-row-disabled-color`, and `--ts-ui-list-row-separator`. The separator token defaults to `transparent`; a theme can override it to a `1px solid rgba(...)` colour for a denser, ruled row look.
